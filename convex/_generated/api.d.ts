@@ -21,6 +21,8 @@ import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
 import type * as progress from "../progress.js";
 import type * as seedCampuses from "../seedCampuses.js";
+import type * as seedFlexiDual from "../seedFlexiDual.js";
+import type * as students from "../students.js";
 import type * as types from "../types.js";
 import type * as users from "../users.js";
 
@@ -41,6 +43,8 @@ declare const fullApi: ApiFromModules<{
   lessons: typeof lessons;
   progress: typeof progress;
   seedCampuses: typeof seedCampuses;
+  seedFlexiDual: typeof seedFlexiDual;
+  students: typeof students;
   types: typeof types;
   users: typeof users;
 }>;

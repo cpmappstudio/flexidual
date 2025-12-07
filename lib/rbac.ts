@@ -19,7 +19,7 @@ const roleMatchers = {
 const ROLE_PERMISSIONS: Record<keyof typeof roleMatchers, readonly UserRole[]> = {
     teacher: ['teacher', 'admin', 'superadmin'],
     admin: ['admin', 'superadmin'],
-    shared: ['teacher', 'admin', 'superadmin'],
+    shared: ['teacher', 'admin', 'superadmin', 'student', 'tutor'],
 };
 
 /**
@@ -77,6 +77,20 @@ export function canAccessTeaching(userRole: UserRole | null): boolean {
  */
 export function isTeacher(userRole: UserRole | null): boolean {
     return userRole === 'teacher';
+}
+
+/** 
+ * Check if user is a student
+ */
+export function isStudent(userRole: UserRole | null): boolean {
+    return userRole === 'student';
+}
+
+/** 
+ * Check if user is a tutor
+ */
+export function isTutor(userRole: UserRole | null): boolean {
+    return userRole === 'tutor';
 }
 
 /**
