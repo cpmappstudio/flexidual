@@ -7,6 +7,7 @@ import type { UserRole } from "@/convex/types";
 const roleMatchers = {
     teacher: createRouteMatcher(['/:locale/teaching(.*)', '/teaching(.*)']),
     admin: createRouteMatcher(['/:locale/admin(.*)', '/admin(.*)']),
+    classroom: createRouteMatcher(['/:locale/classroom(.*)', '/classroom(.*)']),
     shared: createRouteMatcher([
         '/:locale/lessons(.*)',
         '/lessons(.*)',
@@ -19,7 +20,8 @@ const roleMatchers = {
 const ROLE_PERMISSIONS: Record<keyof typeof roleMatchers, readonly UserRole[]> = {
     teacher: ['teacher', 'admin', 'superadmin'],
     admin: ['admin', 'superadmin'],
-    shared: ['teacher', 'admin', 'superadmin', 'student', 'tutor'],
+    classroom: ['student', 'teacher', 'tutor', 'admin', 'superadmin'], 
+    shared: ['teacher', 'admin', 'superadmin'],
 };
 
 /**

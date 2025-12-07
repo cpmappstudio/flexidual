@@ -1,4 +1,5 @@
-import { mutation, internalMutation } from "./_generated/server";
+import { mutation, internalMutation, action } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 
 /**
@@ -20,16 +21,12 @@ export const seed = mutation({
       .first();
 
     if (!campus) {
-        // Fallback if seedCampuses hasn't run
-        console.log("Neptune campus not found. Please run seedCampuses first or we will create a basic one.");
-        // For safety, I'll abort if campus is missing to ensure consistency
         throw new Error("Please run the 'seedCampuses' mutation first!");
     }
 
     console.log(`Using Campus: ${campus.name}`);
 
     // 2. CREATE TEACHER (Tony Stark)
-    // We check by email to avoid duplicates
     let teacherId = (await ctx.db
       .query("users")
       .withIndex("by_email", q => q.eq("email", "tony@stark.com"))
@@ -37,7 +34,7 @@ export const seed = mutation({
 
     if (!teacherId) {
       teacherId = await ctx.db.insert("users", {
-        clerkId: "mock_teacher_clerk_id", // Placeholder
+        clerkId: "mock_teacher_clerk_id",
         email: "tony@stark.com",
         firstName: "Tony",
         lastName: "Stark",
@@ -66,7 +63,6 @@ export const seed = mutation({
         status: "active",
         createdAt: now,
         createdBy: teacherId,
-        // Crucial: Assign to Campus with Grade 05
         campusAssignments: [{
             campusId: campus._id,
             assignedTeachers: [teacherId],
@@ -95,18 +91,16 @@ export const seed = mutation({
             academicYear: "2025-2026",
             startDate: now,
             assignmentType: "primary",
-            // CRITICAL: This links the teacher specifically to Group A
             assignedGrades: ["05"],
             assignedGroupCodes: ["05-A"], 
             isActive: true,
             status: "active",
             assignedAt: now,
-            assignedBy: teacherId, // Self-assigned for seed
+            assignedBy: teacherId,
         });
     }
 
     // 5. CREATE STUDENT (Peter Parker)
-    // He is in Grade 05, Group A. This matches the teacher assignment above.
     let studentId = (await ctx.db
         .query("users")
         .withIndex("by_email", q => q.eq("email", "peter@parker.com"))
@@ -114,7 +108,7 @@ export const seed = mutation({
   
       if (!studentId) {
         studentId = await ctx.db.insert("users", {
-          clerkId: "mock_student_clerk_id", // Placeholder
+          clerkId: "mock_student_clerk_id",
           email: "peter@parker.com",
           firstName: "Peter",
           lastName: "Parker",
@@ -124,10 +118,9 @@ export const seed = mutation({
           isActive: true,
           status: "active",
           createdAt: now,
-          // NEW STUDENT PROFILE
           studentProfile: {
               gradeCode: "05",
-              groupCode: "05-A", // Matches the teacher's group
+              groupCode: "05-A",
               parentName: "Aunt May",
               parentEmail: "may@parker.com"
           }
@@ -143,46 +136,111 @@ export const seed = mutation({
   },
 });
 
+// Define return type interface
+interface AdoptRoleResult {
+  success: boolean;
+  clerkId: string;
+  newRole: string;
+  userName: string;
+}
+
 /**
- * DEV TOOL: Adopt a Role
- * Call this from the frontend (or Convex dashboard) to make YOUR logged-in user
- * take over the data of the seeded student or teacher.
+ * INTERNAL MUTATION: Updates the Convex DB profile
  */
-export const adoptRole = mutation({
+export const internalAdoptRole = internalMutation({
     args: { 
-        targetEmail: v.string() // e.g., "peter@parker.com"
+        targetEmail: v.string(), 
+        actorEmail: v.optional(v.string()) 
     },
-    handler: async (ctx, args) => {
+    handler: async (ctx, args): Promise<AdoptRoleResult> => {
+        let userToUpdate;
+
         const identity = await ctx.auth.getUserIdentity();
-        if (!identity) throw new Error("You must be logged in to adopt a role.");
+        if (identity) {
+             userToUpdate = await ctx.db
+                .query("users")
+                .withIndex("by_clerk_id", q => q.eq("clerkId", identity.subject))
+                .first();
+        } else if (args.actorEmail) {
+            userToUpdate = await ctx.db
+                .query("users")
+                .withIndex("by_email", q => q.eq("email", args.actorEmail || ""))
+                .first();
+        }
 
-        // 1. Find your actual user record
-        const myUser = await ctx.db
-            .query("users")
-            .withIndex("by_clerk_id", q => q.eq("clerkId", identity.subject))
-            .first();
+        if (!userToUpdate) {
+            throw new Error("Could not find YOUR user record.");
+        }
 
-        if (!myUser) throw new Error("Your user record was not found.");
-
-        // 2. Find the target seed user (e.g., Peter Parker)
         const targetUser = await ctx.db
             .query("users")
             .withIndex("by_email", q => q.eq("email", args.targetEmail))
             .first();
 
-        if (!targetUser) throw new Error("Target seed user not found.");
+        if (!targetUser) throw new Error(`Target seed user '${args.targetEmail}' not found.`);
 
-        // 3. COPY METADATA: Move Peter's role/profile to YOU
-        await ctx.db.patch(myUser._id, {
+        await ctx.db.patch(userToUpdate._id, {
             role: targetUser.role,
             campusId: targetUser.campusId,
-            studentProfile: targetUser.studentProfile, // Important for students
-            // Keep your own name/email so login still works
+            studentProfile: targetUser.studentProfile,
         });
 
         return {
             success: true,
-            message: `You are now ${targetUser.fullName} (${targetUser.role})!`
+            clerkId: userToUpdate.clerkId,
+            newRole: targetUser.role,
+            userName: targetUser.fullName
         };
+    }
+});
+
+/**
+ * PUBLIC ACTION: Syncs both Convex DB and Clerk Metadata
+ */
+export const adoptRole = action({
+    args: { 
+        targetEmail: v.string(), 
+        actorEmail: v.optional(v.string()) 
+    },
+    handler: async (ctx, args): Promise<AdoptRoleResult & { warning?: string }> => {
+        // Explicitly type the result
+        const result: AdoptRoleResult = await ctx.runMutation(
+            internal.seedFlexiDual.internalAdoptRole, 
+            args
+        );
+        
+        if (result.success && result.clerkId && !result.clerkId.startsWith("mock")) {
+             const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+             
+             if (!clerkSecretKey) {
+                 console.warn("⚠️ CLERK_SECRET_KEY not set. Clerk metadata was NOT updated.");
+                 return { ...result, warning: "Role updated in DB, but Clerk Secret Key is missing." };
+             }
+
+             try {
+                 const response = await fetch(`https://api.clerk.com/v1/users/${result.clerkId}`, {
+                     method: 'PATCH',
+                     headers: {
+                         'Authorization': `Bearer ${clerkSecretKey}`,
+                         'Content-Type': 'application/json'
+                     },
+                     body: JSON.stringify({
+                         public_metadata: {
+                             role: result.newRole
+                         }
+                     })
+                 });
+
+                 if (!response.ok) {
+                    console.error("Clerk API Error:", await response.text());
+                 } else {
+                    console.log(`✅ Clerk metadata updated to: ${result.newRole}`);
+                 }
+             } catch (e) {
+                 console.error("Failed to update Clerk:", e);
+             }
+        }
+        
+        return result;
     }
 });

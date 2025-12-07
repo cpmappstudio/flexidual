@@ -2,33 +2,44 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 
 /**
- * Get the "Source" Menu items (Classes) for a student.
- * This looks up the student's grade/group and finds which curriculums/teachers are assigned.
+ * Get the "Source" Menu items (Classes) for the CURRENT logged-in student.
+ * Uses the auth session to identify the user.
  */
 export const getStudentClasses = query({
-  args: { studentId: v.id("users") },
-  handler: async (ctx, args) => {
-    const student = await ctx.db.get(args.studentId);
+  args: {}, // No arguments needed, we deduce ID from session
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return []; // Not logged in
+
+    // 1. Find the student user
+    const student = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", q => q.eq("clerkId", identity.subject))
+      .first();
+
     if (!student || student.role !== "student" || !student.studentProfile) {
+      console.log("User is not a student or has no profile");
       return [];
     }
 
     const { campusId, studentProfile } = student;
     if (!campusId) return [];
 
-    // 1. Find all active curriculums at this campus
+    // 2. Find all active curriculums at this campus
     const curriculums = await ctx.db
       .query("curriculums")
       .withIndex("by_active", q => q.eq("isActive", true))
       .collect();
 
-    // 2. Filter for curriculums that include the student's grade
+    // 3. Filter for curriculums that include the student's grade
     const myCurriculums = curriculums.filter(c => {
+      // Find the assignment specifically for this campus
       const campusAssignment = c.campusAssignments?.find(ca => ca.campusId === campusId);
+      // Check if this campus offers this curriculum to the student's grade
       return campusAssignment?.gradeCodes.includes(studentProfile.gradeCode);
     });
 
-    // 3. Enhance with Teacher info (The "Drag and Drop" targets)
+    // 4. Enhance with Teacher info (The "Drag and Drop" targets)
     const classes = await Promise.all(myCurriculums.map(async (curr) => {
       // Find the teacher assigned to this student's specific GROUP (e.g., "05-A")
       const assignment = await ctx.db
@@ -38,7 +49,7 @@ export const getStudentClasses = query({
         )
         .collect();
 
-      // Filter for the assignment that covers the student's group
+      // Find the specific teacher for this group or grade
       const relevantAssignment = assignment.find(a => 
         a.assignedGroupCodes?.includes(studentProfile.groupCode) || 
         a.assignedGrades?.includes(studentProfile.gradeCode)
@@ -49,7 +60,7 @@ export const getStudentClasses = query({
       return {
         curriculumId: curr._id,
         name: curr.name,
-        // This is the "Room Name" used for LiveKit connection
+        // Room Name format: CURRICULUM_CODE-GROUP_CODE (e.g. MATH-05-A)
         roomName: `${curr.code || curr._id}-${studentProfile.groupCode}`, 
         teacher: teacher ? {
            name: teacher.fullName,
