@@ -3,45 +3,38 @@ import { query, mutation } from "./_generated/server";
 
 /**
  * Get the "Source" Menu items (Classes) for the CURRENT logged-in student.
- * Uses the auth session to identify the user.
  */
 export const getStudentClasses = query({
-  args: {}, // No arguments needed, we deduce ID from session
+  args: {}, 
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return []; // Not logged in
+    if (!identity) return []; 
 
-    // 1. Find the student user
     const student = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", q => q.eq("clerkId", identity.subject))
       .first();
 
     if (!student || student.role !== "student" || !student.studentProfile) {
-      console.log("User is not a student or has no profile");
       return [];
     }
 
     const { campusId, studentProfile } = student;
     if (!campusId) return [];
 
-    // 2. Find all active curriculums at this campus
+    // Find active curriculums
     const curriculums = await ctx.db
       .query("curriculums")
       .withIndex("by_active", q => q.eq("isActive", true))
       .collect();
 
-    // 3. Filter for curriculums that include the student's grade
+    // Filter by campus/grade
     const myCurriculums = curriculums.filter(c => {
-      // Find the assignment specifically for this campus
       const campusAssignment = c.campusAssignments?.find(ca => ca.campusId === campusId);
-      // Check if this campus offers this curriculum to the student's grade
       return campusAssignment?.gradeCodes.includes(studentProfile.gradeCode);
     });
 
-    // 4. Enhance with Teacher info (The "Drag and Drop" targets)
     const classes = await Promise.all(myCurriculums.map(async (curr) => {
-      // Find the teacher assigned to this student's specific GROUP (e.g., "05-A")
       const assignment = await ctx.db
         .query("teacher_assignments")
         .withIndex("by_campus_curriculum", q => 
@@ -49,7 +42,6 @@ export const getStudentClasses = query({
         )
         .collect();
 
-      // Find the specific teacher for this group or grade
       const relevantAssignment = assignment.find(a => 
         a.assignedGroupCodes?.includes(studentProfile.groupCode) || 
         a.assignedGrades?.includes(studentProfile.gradeCode)
@@ -57,11 +49,18 @@ export const getStudentClasses = query({
 
       const teacher = relevantAssignment ? await ctx.db.get(relevantAssignment.teacherId) : null;
 
+      // === CRITICAL FIX: Normalize Room Name ===
+      // Match Teacher Logic: If group is "05-A", we want just "A"
+      // Result: "MATH-05" + "-" + "A" = "MATH-05-A"
+      const rawGroup = studentProfile.groupCode;
+      const groupSuffix = rawGroup.includes('-') ? rawGroup.split('-')[1] : rawGroup;
+      
+      const roomName = `${curr.code || curr._id}-${groupSuffix}`; 
+
       return {
         curriculumId: curr._id,
         name: curr.name,
-        // Room Name format: CURRICULUM_CODE-GROUP_CODE (e.g. MATH-05-A)
-        roomName: `${curr.code || curr._id}-${studentProfile.groupCode}`, 
+        roomName: roomName, // Now matches Teacher's "MATH-05-A"
         teacher: teacher ? {
            name: teacher.fullName,
            photo: teacher.avatarStorageId
