@@ -92,6 +92,7 @@ export function ActiveClassroomUI({ currentUserRole, currentUserName }: ActiveCl
   const studentTracks = videoTracks.filter((t) => {
     const isMe = t.participant.identity === localParticipant?.identity;
     const role = isMe ? currentUserRole : getRole(t.participant);
+    if (t.participant.isLocal) return false;
     return role === "student";
   });
 
