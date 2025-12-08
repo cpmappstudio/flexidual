@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { useAction } from "convex/react"; // Changed from useMutation
+import { useAction, useQuery } from "convex/react";
 import { LiveKitRoom } from "@livekit/components-react";
 import { api } from "@/convex/_generated/api";
 import "@livekit/components-styles";
 import { ActiveClassroomUI } from "./ActiveClassroomUI";
 
 interface FlexiClassroomProps {
-  roomName: string; // Passed from the Drag & Drop selection
+  roomName: string; 
 }
 
 export default function FlexiClassroom({ roomName }: FlexiClassroomProps) {
@@ -17,6 +17,12 @@ export default function FlexiClassroom({ roomName }: FlexiClassroomProps) {
   const [token, setToken] = useState<string>("");
   const [error, setError] = useState<string>("");
   
+  // 1. Fetch User Profile from Convex (The Source of Truth)
+  // We use the Clerk ID to get the Convex User, which contains the REAL role.
+  const convexUser = useQuery(api.users.getCurrentUser, 
+    user?.id ? { clerkId: user.id } : "skip"
+  );
+
   const getToken = useAction(api.livekit.getToken);
 
   useEffect(() => {
@@ -24,13 +30,12 @@ export default function FlexiClassroom({ roomName }: FlexiClassroomProps) {
 
     const fetchToken = async () => {
       try {
-        const participantName = user.fullName || user.username || "Unknown Student";
-        const userRole = (user.publicMetadata?.role as string) || "student";
-
+        const participantName = user.fullName || user.username || "Unknown";
+        
+        // We don't need to pass role here anymore, the backend fetches it.
         const jwt = await getToken({
           roomName,
-          participantName,
-          userRole,
+          participantName
         });
 
         setToken(jwt);
@@ -45,10 +50,14 @@ export default function FlexiClassroom({ roomName }: FlexiClassroomProps) {
 
   if (error) return <div className="text-red-500 p-4">{error}</div>;
   
-  if (!token) {
+  // Wait for both Token AND User Profile
+  if (!token || !convexUser) {
     return (
       <div className="flex h-full items-center justify-center bg-gray-900 text-white">
-        <div className="animate-pulse">Preparing your classroom...</div>
+        <div className="flex flex-col items-center gap-4">
+           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+           <p className="animate-pulse">Entering Classroom...</p>
+        </div>
       </div>
     );
   }
@@ -61,12 +70,13 @@ export default function FlexiClassroom({ roomName }: FlexiClassroomProps) {
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
       data-lk-theme="default"
       style={{ height: '100dvh' }}
-      onDisconnected={() => setToken("")} // Handle disconnect cleanly
+      onDisconnected={() => setToken("")}
     >
-      {/* We separate the UI into a child component so it can access
-        LiveKit contexts (useParticipants, useRoomContext, etc.)
-      */}
-      <ActiveClassroomUI />
+      {/* 2. Pass the role explicitly to the UI */}
+      <ActiveClassroomUI 
+         currentUserRole={convexUser.role} 
+         currentUserName={convexUser.fullName}
+      />
     </LiveKitRoom>
   );
 }

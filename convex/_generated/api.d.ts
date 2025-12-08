@@ -24,6 +24,7 @@ import type * as progress from "../progress.js";
 import type * as seedCampuses from "../seedCampuses.js";
 import type * as seedFlexiDual from "../seedFlexiDual.js";
 import type * as students from "../students.js";
+import type * as teachers from "../teachers.js";
 import type * as types from "../types.js";
 import type * as users from "../users.js";
 
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   seedCampuses: typeof seedCampuses;
   seedFlexiDual: typeof seedFlexiDual;
   students: typeof students;
+  teachers: typeof teachers;
   types: typeof types;
   users: typeof users;
 }>;

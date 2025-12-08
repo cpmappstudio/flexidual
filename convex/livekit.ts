@@ -3,52 +3,67 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { AccessToken } from "livekit-server-sdk";
+import { api } from "./_generated/api";
 
 // Define roles for token permissions
-type LiveKitRole = "student" | "teacher" | "tutor"; 
+type LiveKitRole = "student" | "teacher" | "tutor" | "admin" | "superadmin"; 
 
 /**
  * Generates an access token for LiveKit. This is called by the client (frontend).
  * It uses the LIVEKIT_API_KEY/SECRET environment variables.
+ * Role is fetched from the database (single source of truth).
  */
 export const getToken = action({
   args: {
     roomName: v.string(), 
-    participantName: v.string(), 
-    userRole: v.string(), 
+    participantName: v.string(),
   },
-  handler: async (ctx, args) => {
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
+  handler: async (ctx, args): Promise<string> => {
+    // 1. Verify Authentication
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // 2. Fetch REAL Role from Database
+    const user = await ctx.runQuery(api.users.getCurrentUser, { 
+      clerkId: identity.subject 
+    });
+
+    if (!user) {
+      throw new Error("User not found in database");
+    }
+
+    // Type assertion with validation
+    const userRole: LiveKitRole = (user.role as LiveKitRole) || "student";
+    
+    // DEBUG LOG: Check your Convex Dashboard Logs to see this!
+    console.log(`🎟️ Generating Token | User: ${user.fullName} | Role: ${userRole} | ID: ${identity.subject}`);
+
+    // 3. Get LiveKit credentials
+    const apiKey: string | undefined = process.env.LIVEKIT_API_KEY;
+    const apiSecret: string | undefined = process.env.LIVEKIT_API_SECRET;
     
     if (!apiKey || !apiSecret) {
       throw new Error("LiveKit API Key or Secret not configured in environment.");
     }
 
-    // Default permissions
-    let canPublish = false;
-    let canSubscribe = true;
-    let canPublishData = true;
+    // 4. Role-based permissions
+    const canPublish: boolean = true; 
+    const canSubscribe: boolean = true;
+    const canPublishData: boolean = true;
     
-    // Role-based permissions
-    if (args.userRole === "teacher" || args.userRole === "tutor") {
-        canPublish = true;
-    } else if (args.userRole === "student") {
-        // Students can usually publish audio/video in a classroom, 
-        // but you might restrict this later via room logic.
-        // For now, let's allow it so they can be seen.
-        canPublish = true; 
-    }
+    // Teachers/Tutors/Admins have admin rights in the room
+    const roomAdmin: boolean = userRole === "teacher" || userRole === "tutor" || userRole === "admin" || userRole === "superadmin";
 
-    // Teachers/tutors can update room metadata and moderate (kick users, mute, etc)
-    let roomAdmin = args.userRole === "teacher" || args.userRole === "admin";
-
-    const at = new AccessToken(apiKey, apiSecret, {
-      identity: args.participantName, 
-      name: args.participantName,
+    // 5. Create Access Token
+    const at: AccessToken = new AccessToken(apiKey, apiSecret, {
+      identity: identity.subject, // Clerk ID (Unique)
+      name: args.participantName, // Display Name
       metadata: JSON.stringify({
-          role: args.userRole,
-          userId: (await ctx.auth.getUserIdentity())?.subject, 
+        role: userRole, // <--- THIS IS THE KEY PART
+        userId: identity.subject,
+        fullName: user.fullName, // Add full name for display
       })
     });
 
@@ -60,7 +75,14 @@ export const getToken = action({
       canPublishData,
       roomAdmin, 
     });
-
+    
+    // More detailed logging
+    console.log(`✅ Token Generated Successfully`);
+    console.log(`   - Identity: ${identity.subject}`);
+    console.log(`   - Name: ${args.participantName}`);
+    console.log(`   - Role: ${userRole}`);
+    console.log(`   - Metadata: ${JSON.stringify({ role: userRole, userId: identity.subject, fullName: user.fullName })}`);
+    
     return at.toJwt();
   },
 });

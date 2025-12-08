@@ -145,16 +145,17 @@ interface AdoptRoleResult {
 }
 
 /**
- * INTERNAL MUTATION: Updates the Convex DB profile
+ * INTERNAL MUTATION: Updates the Convex DB profile AND transfers assignments
  */
 export const internalAdoptRole = internalMutation({
     args: { 
         targetEmail: v.string(), 
         actorEmail: v.optional(v.string()) 
     },
-    handler: async (ctx, args): Promise<AdoptRoleResult> => {
+    handler: async (ctx, args) => {
         let userToUpdate;
 
+        // 1. Find "ME" (The real user to be updated)
         const identity = await ctx.auth.getUserIdentity();
         if (identity) {
              userToUpdate = await ctx.db
@@ -172,6 +173,7 @@ export const internalAdoptRole = internalMutation({
             throw new Error("Could not find YOUR user record.");
         }
 
+        // 2. Find the target seed user (e.g., Tony Stark)
         const targetUser = await ctx.db
             .query("users")
             .withIndex("by_email", q => q.eq("email", args.targetEmail))
@@ -179,11 +181,46 @@ export const internalAdoptRole = internalMutation({
 
         if (!targetUser) throw new Error(`Target seed user '${args.targetEmail}' not found.`);
 
+        // 3. UPDATE PROFILE (Role & Campus)
         await ctx.db.patch(userToUpdate._id, {
             role: targetUser.role,
             campusId: targetUser.campusId,
             studentProfile: targetUser.studentProfile,
         });
+
+        // 4. TRANSFER OWNERSHIP (The Missing Link)
+        // If the target is a teacher, move their assignments to the real user
+        if (targetUser.role === "teacher") {
+            
+            // A. Move Assignments
+            const assignments = await ctx.db
+                .query("teacher_assignments")
+                .withIndex("by_teacher_active", q => q.eq("teacherId", targetUser._id))
+                .collect();
+
+            for (const assignment of assignments) {
+                await ctx.db.patch(assignment._id, {
+                    teacherId: userToUpdate._id, // <--- Reassign to YOU
+                    assignedBy: userToUpdate._id // Optional: update metadata
+                });
+            }
+
+            // B. Move Lesson Progress Records (So you see historical data)
+            // Note: We need a query that can find by teacherId efficiently.
+            // Using the 'by_teacher_lesson' index partially (Convex allows prefix scans)
+            const progressRecords = await ctx.db
+                .query("lesson_progress")
+                .withIndex("by_teacher_lesson", q => q.eq("teacherId", targetUser._id))
+                .collect();
+
+            for (const record of progressRecords) {
+                await ctx.db.patch(record._id, {
+                    teacherId: userToUpdate._id // <--- Reassign to YOU
+                });
+            }
+            
+            console.log(`Transferred ${assignments.length} assignments and ${progressRecords.length} progress records.`);
+        }
 
         return {
             success: true,

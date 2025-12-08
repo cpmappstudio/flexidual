@@ -11,7 +11,6 @@ interface ClassroomPageProps {
 
 export async function generateMetadata(props: ClassroomPageProps) {
   const params = await props.params;
-  const t = await getTranslations({ locale: params.locale, namespace: 'Classroom' });
   
   // Decodes "MATH-05-A" to readable text if needed, or just uses the ID
   return {

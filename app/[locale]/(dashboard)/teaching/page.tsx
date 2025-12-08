@@ -6,10 +6,14 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { useRouter } from "next/navigation";
+import { useLocale } from "next-intl";
 import {
   FileText,
   Upload,
 
+  Video,
+  MonitorPlay
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,6 +38,27 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+// Helper for navigation
+function useLaunchClass() {
+  const router = useRouter();
+  const locale = useLocale();
+
+  return (curriculumCode: string | undefined, curriculumId: string, groupCode?: string) => {
+    // Construct room name: CODE-GROUP (Default to 'A' if no group)
+    const code = curriculumCode || curriculumId;
+    const group = groupCode || 'A';
+    const roomName = `${code}-${group}`;
+    
+    router.push(`/${locale}/classroom/${encodeURIComponent(roomName)}`);
+  };
+}
 
 // Componente de tabla de lecciones para cada curriculum
 function LessonsTable({ teacherId }: { teacherId: string }) {
@@ -41,6 +66,8 @@ function LessonsTable({ teacherId }: { teacherId: string }) {
   const [selectedGradeByCurriculum, setSelectedGradeByCurriculum] = useState<Record<string, string>>({});
   const [expandedQuarter, setExpandedQuarter] = useState<string | null>(null);
   const [hasInitialized, setHasInitialized] = useState(false);
+  
+  const launchClass = useLaunchClass(); // Custom hook for launch logic
 
   // Obtener progreso detallado del profesor
   const assignmentsWithProgress = useQuery(
@@ -127,6 +154,7 @@ function LessonsTable({ teacherId }: { teacherId: string }) {
         const totalProgress = assignment.progressSummary?.progressPercentage || 0;
         const isExpanded = expandedCurriculum === assignment._id;
         const lessons = isExpanded && assignmentLessonProgress ? assignmentLessonProgress.lessons : [];
+        const assignedGroups = assignmentLessonProgress?.assignedGroupCodes || [];
 
         return (
           <Card key={assignment._id} className="border-border/60 bg-card shadow-sm hover:shadow-md transition-shadow py-0">
@@ -138,41 +166,83 @@ function LessonsTable({ teacherId }: { teacherId: string }) {
                 )
               }
             >
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors py-3 px-2 sm:py-5 sm:px-6">
-                  <div className="flex items-center justify-between gap-2 sm:gap-4">
-                    <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
-                      <div className="bg-blue-100 p-1.5 sm:p-3 rounded-lg flex-shrink-0">
-                        <BookOpen className="w-4 h-4 sm:w-6 sm:h-6 text-blue-900" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-3 mb-1.5 sm:mb-2">
-                          <CardTitle className="text-sm sm:text-lg font-semibold text-foreground truncate">
-                            {assignment.curriculumName}
-                          </CardTitle>
-                          {assignment.curriculumCode && (
-                            <Badge variant="secondary" className="text-xs w-fit">{assignment.curriculumCode}</Badge>
-                          )}
+              <div className="flex items-center w-full pr-4">
+                <CollapsibleTrigger asChild className="flex-1">
+                  <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors py-3 px-2 sm:py-5 sm:px-6">
+                    <div className="flex items-center justify-between gap-2 sm:gap-4">
+                      <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+                        <div className="bg-blue-100 p-1.5 sm:p-3 rounded-lg flex-shrink-0">
+                          <BookOpen className="w-4 h-4 sm:w-6 sm:h-6 text-blue-900" />
                         </div>
-                        <div className="flex items-center gap-2 sm:gap-4">
-                          <Progress
-                            value={totalProgress}
-                            className="bg-gray-200 [&>div]:bg-deep-koamaru flex-1"
-                          />
-                          <span className="text-xs sm:text-sm font-medium whitespace-nowrap text-muted-foreground">
-                            {totalProgress}%
-                          </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-3 mb-1.5 sm:mb-2">
+                            <CardTitle className="text-sm sm:text-lg font-semibold text-foreground truncate">
+                              {assignment.curriculumName}
+                            </CardTitle>
+                            {assignment.curriculumCode && (
+                              <Badge variant="secondary" className="text-xs w-fit">{assignment.curriculumCode}</Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 sm:gap-4 max-w-xs">
+                            <Progress value={totalProgress} className="bg-gray-200 [&>div]:bg-deep-koamaru flex-1 h-2" />
+                            <span className="text-xs sm:text-sm font-medium text-muted-foreground">{totalProgress}%</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                    {isExpanded ? (
-                      <ChevronDown className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground flex-shrink-0" />
-                    ) : (
-                      <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground flex-shrink-0" />
-                    )}
-                  </div>
-                </CardHeader>
-              </CollapsibleTrigger>
+                  </CardHeader>
+                </CollapsibleTrigger>
+
+                {/* === LAUNCH BUTTON AREA === */}
+                <div className="flex items-center gap-3">
+                  {assignedGroups.length > 1 ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white shadow-sm gap-2">
+                          <Video className="w-4 h-4" />
+                          <span className="hidden sm:inline">Launch Class</span>
+                          <ChevronDown className="w-3 h-3 opacity-50" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {assignedGroups.map((group: string) => (
+                          <DropdownMenuItem 
+                            key={group}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                const groupSuffix = group.includes('-') ? group.split('-')[1] : group;
+                                launchClass(assignment.curriculumCode, assignment.curriculumId, groupSuffix);
+                            }}
+                          >
+                            <MonitorPlay className="w-4 h-4 mr-2" />
+                            Launch Group {group}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <Button 
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // If single group, try to extract group code or default to 'A'
+                        const group = assignedGroups[0] ? (assignedGroups[0].includes('-') ? assignedGroups[0].split('-')[1] : assignedGroups[0]) : 'A';
+                        launchClass(assignment.curriculumCode, assignment.curriculumId, group);
+                      }}
+                      className="bg-green-600 hover:bg-green-700 text-white shadow-sm gap-2"
+                    >
+                      <Video className="w-4 h-4" />
+                      <span className="hidden sm:inline">Launch Class</span>
+                    </Button>
+                  )}
+
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                </div>
+              </div>
 
               <CollapsibleContent>
                 <CardContent className="py-3 px-2 sm:py-5 sm:px-6">
@@ -556,7 +626,7 @@ export default function TeachingPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">My Courses</h2>
           <p className="text-muted-foreground mt-1">
-            View your assigned curriculums and lessons
+            Manage curriculums and launch live classrooms.
           </p>
         </div>
       </div>
