@@ -72,7 +72,6 @@ export default function FlexiClassroom({ roomName }: FlexiClassroomProps) {
       style={{ height: '100dvh' }}
       onDisconnected={() => setToken("")}
     >
-      {/* 2. Pass the role explicitly to the UI */}
       <ActiveClassroomUI 
          currentUserRole={convexUser.role} 
          currentUserName={convexUser.fullName}
