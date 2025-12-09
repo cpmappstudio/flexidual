@@ -31,6 +31,9 @@
  * 6. curriculum_lessons - Lesson templates per curriculum (indexed by quarter, order)
  * 7. teacher_assignments - Teacher-curriculum assignments (indexed by teacher, campus)
  * 8. lesson_progress - Actual lesson completion tracking (indexed by teacher, status)
+ * 9. class_sessions - Attendance logs for virtual classes (indexed by student, date, room)
+ * 10. assignments - Homework and tasks created by teachers (indexed by curriculum, teacher)
+ * 11. submissions - Student submissions for assignments (indexed by assignment, student)
  */
 
 import { defineSchema, defineTable } from "convex/server";
@@ -59,7 +62,9 @@ export default defineSchema({
     role: v.union(
       v.literal("teacher"),
       v.literal("admin"),
-      v.literal("superadmin")
+      v.literal("superadmin"),
+      v.literal("student"),
+      v.literal("tutor")
     ),
 
     // Campus association (teachers belong to one campus)
@@ -90,12 +95,29 @@ export default defineSchema({
 
     // Password handling (if not using Clerk for everything)
     hashedPassword: v.optional(v.string()),
+
+    // Student-specific profile (if role is student)
+    studentProfile: v.optional(v.object({
+        gradeCode: v.string(), // e.g., "05" (5th Grade)
+        parentName: v.optional(v.string()),
+        parentEmail: v.optional(v.string()),
+        parentPhone: v.optional(v.string()),
+        groupCode: v.string(), // Defines which group section they belong to (e.g., "05-A") - This is crucial for linking them to the specific teacher assigned to this group
+    })),
+
+    // Real-time online status tracking
+    onlineStatus: v.optional(v.object({
+        state: v.union(v.literal("online"), v.literal("offline"), v.literal("in_class")),
+        lastSeen: v.number(),
+        currentRoomId: v.optional(v.string()), // Which class are they currently Dragged & Dropped into?
+    })),
   })
     .index("by_clerk_id", ["clerkId"])
     .index("by_email", ["email"])
     .index("by_role_active", ["role", "isActive"])
     .index("by_campus_active", ["campusId", "isActive"])
-    .index("by_campus_status", ["campusId", "status"]),
+    .index("by_campus_status", ["campusId", "status"])
+    .index("by_campus_grade", ["campusId", "studentProfile.gradeCode"]), 
 
   /**
    * Campuses table
@@ -443,6 +465,84 @@ export default defineSchema({
     .index("by_entity", ["entityType", "entityId"])
     .index("by_action", ["action", "createdAt"])
     .index("by_created", ["createdAt"]),
+
+  /**
+   * Class Sessions (Attendance Log)
+   * Tracks every time a student enters a virtual class via Drag & Drop.
+   * Used to calculate the "Time in Class" and % Assistance.
+   */
+  class_sessions: defineTable({
+    studentId: v.id("users"),
+    campusId: v.id("campuses"),
+    
+    // Which class is this?
+    curriculumId: v.id("curriculums"), 
+    teacherId: v.optional(v.id("users")), // The teacher of this class
+    
+    // LiveKit Room Name (e.g., "math-101-group-a")
+    roomName: v.string(), 
+
+    // Timing
+    enteredAt: v.number(),
+    leftAt: v.optional(v.number()),
+    durationSeconds: v.optional(v.number()), // Calculated on exit
+
+    // Date reference for queries like "Attendance for 2025-10-22"
+    sessionDate: v.string(), // YYYY-MM-DD
+  })
+  .index("by_student_date", ["studentId", "sessionDate"])
+  .index("by_student_curriculum", ["studentId", "curriculumId"])
+  .index("by_room_active", ["roomName", "leftAt"]), // Find currently active sessions
+
+  /**
+   * Assignments/Homeworks
+   * Tasks created by Teachers for Students
+   */
+  assignments: defineTable({
+    curriculumId: v.id("curriculums"),
+    teacherId: v.id("users"),
+    
+    // Target audience
+    gradeCodes: v.array(v.string()), // e.g. ["05"]
+    groupCodes: v.optional(v.array(v.string())), // e.g. ["05-A"]
+
+    title: v.string(),
+    description: v.optional(v.string()),
+    type: v.union(v.literal("homework"), v.literal("quiz"), v.literal("project")),
+    
+    dueDate: v.number(),
+    
+    // Files attached by teacher
+    resourceStorageIds: v.optional(v.array(v.id("_storage"))),
+    
+    isActive: v.boolean(),
+    createdAt: v.number(),
+  })
+  .index("by_curriculum_active", ["curriculumId", "isActive"])
+  .index("by_teacher", ["teacherId"]),
+
+  /**
+   * Student Submissions
+   * Tracking homework completion/files uploaded by students
+   */
+  submissions: defineTable({
+    assignmentId: v.id("assignments"),
+    studentId: v.id("users"),
+    
+    status: v.union(v.literal("draft"), v.literal("submitted"), v.literal("graded")),
+    
+    // Student's work
+    fileStorageIds: v.optional(v.array(v.id("_storage"))),
+    comments: v.optional(v.string()),
+    
+    submittedAt: v.optional(v.number()),
+    
+    // Grading
+    grade: v.optional(v.number()),
+    feedback: v.optional(v.string()),
+  })
+  .index("by_assignment_student", ["assignmentId", "studentId"])
+  .index("by_student", ["studentId"]),
 });
 
 /**

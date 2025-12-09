@@ -8,7 +8,7 @@
 /**
  * User role type for the application
  */
-export type UserRole = "teacher" | "admin" | "superadmin";
+export type UserRole = "teacher" | "admin" | "superadmin" | "student" | "tutor";
 
 /**
  * User status type
@@ -24,3 +24,8 @@ export type CampusStatus = "active" | "inactive" | "maintenance";
  * Curriculum status type
  */
 export type CurriculumStatus = "draft" | "active" | "archived" | "deprecated";
+
+/**
+ * Student attendance status type
+ */
+export type StudentAttendanceStatus = "online" | "offline" | "in_class" | "away";
