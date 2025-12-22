@@ -21,24 +21,19 @@ export default function CalendarBodyDayEvents() {
           >
             <div className={`size-2 rounded-full bg-${event.color}-500 shrink-0`} />
             <div className="flex flex-col min-w-0">
-              {event.course && (
+              {event.curriculumTitle && (
                 <p className="text-sm font-semibold truncate">
-                  {event.course}
+                  {event.curriculumTitle}
                 </p>
               )}
-              {event.lesson && (
+              {event.title && (
                 <p className="text-muted-foreground text-sm truncate">
-                  {event.lesson}
+                  {event.title}
                 </p>
               )}
-              {event.grades && event.grades.length > 0 && (
+              {event.className && (
                 <p className="text-muted-foreground text-xs truncate">
-                  {event.grades.join(', ')}
-                </p>
-              )}
-              {!event.course && !event.lesson && (
-                <p className="text-muted-foreground text-sm">
-                  {event.standards?.join(', ') || 'No title'}
+                  {event.className}
                 </p>
               )}
             </div>

@@ -18,7 +18,7 @@ export default function Calendar({
   setDate,
   calendarIconIsToday = true,
   isLoading = false,
-  teacherId,
+  userId,
 }: CalendarProps) {
   return (
     <CalendarProvider
@@ -30,7 +30,7 @@ export default function Calendar({
       setDate={setDate}
       calendarIconIsToday={calendarIconIsToday}
       isLoading={isLoading}
-      teacherId={teacherId}
+      userId={userId}
     >
       <div className="flex flex-col h-full gap-4">
         <CalendarHeader>

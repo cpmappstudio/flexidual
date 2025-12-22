@@ -16,9 +16,8 @@ import { toast } from "sonner";
 import { Id } from "@/convex/_generated/dataModel";
 
 const formSchema = z.object({
-  assignmentId: z.string().min(1, "Course is required"),
+  classId: z.string().min(1, "Class is required"),
   lessonId: z.string().min(1, "Lesson is required"),
-  targetAudience: z.string().min(1, "Grade/Group is required"), 
   start: z.string(),
   end: z.string(),
 });
@@ -28,7 +27,7 @@ export default function CalendarNewEventDialog() {
     newEventDialogOpen, 
     setNewEventDialogOpen, 
     date, 
-    teacherId,
+    userId,
     preselectedLessonId,
     setPreselectedLessonId 
   } = useCalendarContext();
@@ -36,106 +35,81 @@ export default function CalendarNewEventDialog() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Queries
-  const schedulableLessons = useQuery(api.lessons.getSchedulableLessons, teacherId ? { teacherId } : "skip");
-  const createScheduledLesson = useMutation(api.lessons.createScheduledLesson);
+  const schedulableClasses = useQuery(
+    api.classes.getSchedulableClasses,
+    userId ? {} : "skip"
+  );
+  const scheduleLesson = useMutation(api.schedule.scheduleLesson);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      assignmentId: "",
+      classId: "",
       lessonId: "",
-      targetAudience: "",
       start: date.toISOString(),
       end: new Date(date.getTime() + 60 * 60 * 1000).toISOString(),
     },
   });
 
-  // --- Reset & Pre-fill Logic ---
+  // Reset form when dialog opens
   useEffect(() => {
     if (newEventDialogOpen) {
       form.reset({
-        assignmentId: form.getValues("assignmentId") || "", // Keep selection if exists
-        targetAudience: "", // Always reset audience
-        lessonId: preselectedLessonId || "", // Pre-fill if shortcut used
+        classId: form.getValues("classId") || "",
+        lessonId: preselectedLessonId || "",
         start: date.toISOString(),
         end: new Date(date.getTime() + 60 * 60 * 1000).toISOString(),
       });
     }
   }, [newEventDialogOpen, date, form, preselectedLessonId]);
 
-  // Handle Pre-selection of Course if Shortcut is used
+  // Auto-select class if lesson is preselected
   useEffect(() => {
-    if (newEventDialogOpen && preselectedLessonId && schedulableLessons) {
-      const targetCourse = schedulableLessons.find(course => 
-        course.lessons.some(l => l._id === preselectedLessonId)
+    if (newEventDialogOpen && preselectedLessonId && schedulableClasses) {
+      const targetClass = schedulableClasses.find(c => 
+        c.lessons.some(l => l._id === preselectedLessonId)
       );
-      if (targetCourse) {
-        form.setValue("assignmentId", targetCourse.assignmentId);
+      if (targetClass) {
+        form.setValue("classId", targetClass._id);
       }
     }
-  }, [newEventDialogOpen, preselectedLessonId, schedulableLessons, form]);
+  }, [newEventDialogOpen, preselectedLessonId, schedulableClasses, form]);
 
-  // --- Dropdown Options ---
+  // Dropdown Options
+  const selectedClassId = form.watch("classId");
   
-  const selectedAssignmentId = form.watch("assignmentId");
-  
-  const currentAssignment = useMemo(() => 
-    schedulableLessons?.find(a => a.assignmentId === selectedAssignmentId), 
-  [schedulableLessons, selectedAssignmentId]);
+  const currentClass = useMemo(() => 
+    schedulableClasses?.find(c => c._id === selectedClassId), 
+  [schedulableClasses, selectedClassId]);
 
-  const courseOptions = schedulableLessons?.map(a => ({
-    value: a.assignmentId,
-    label: a.curriculumName
+  const classOptions = schedulableClasses?.map(c => ({
+    value: c._id,
+    label: `${c.name} (${c.curriculumTitle})`
   })) || [];
 
-  const lessonOptions = currentAssignment?.lessons.map(l => ({
-    value: l._id,
-    label: `Q${l.quarter}: ${l.title}`
-  })) || [];
+  const lessonOptions = currentClass?.lessons
+    .filter(l => !l.isScheduled) // Only show unscheduled lessons
+    .map(l => ({
+      value: l._id,
+      label: `${l.order}. ${l.title}`
+    })) || [];
 
-  const audienceOptions = useMemo(() => {
-    if (!currentAssignment) return [];
-    const options: { value: string; label: string }[] = [];
-    
-    // Iterate over grades structure: [{ code, groups: [] }, ...]
-    currentAssignment.grades.forEach(gradeObj => {
-      // 1. Add Groups
-      gradeObj.groups.forEach(g => {
-        options.push({ value: `group:${g}`, label: `Group ${g}` });
-      });
-      
-      // 2. Add Whole Grade option
-      options.push({ value: `grade:${gradeObj.code}`, label: `All ${gradeObj.name}` });
-    });
-    
-    return options;
-  }, [currentAssignment]);
-
-  // --- Submit Handler ---
+  // Submit Handler
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
     try {
-      const [type, code] = values.targetAudience.split(":");
-      
-      await createScheduledLesson({
-        teacherId: teacherId!,
-        lessonId: values.lessonId as Id<"curriculum_lessons">,
-        assignmentId: values.assignmentId as Id<"teacher_assignments">,
-        
+      await scheduleLesson({
+        classId: values.classId as Id<"classes">,
+        lessonId: values.lessonId as Id<"lessons">,
         scheduledStart: new Date(values.start).getTime(),
         scheduledEnd: new Date(values.end).getTime(),
-        
-        // Pass optional context
-        gradeCode: type === 'grade' ? code : undefined,
-        groupCode: type === 'group' ? code : undefined,
-        // Removed 'standards' as it's not in the mutation
       });
 
-      toast.success("Class Scheduled");
+      toast.success("Lesson scheduled successfully!");
       setNewEventDialogOpen(false);
       setPreselectedLessonId(null);
     } catch (e) {
-      toast.error("Failed to schedule");
+      toast.error("Failed to schedule lesson");
       console.error(e);
     } finally {
       setIsSubmitting(false);
@@ -146,8 +120,8 @@ export default function CalendarNewEventDialog() {
     <EntityDialog
       open={newEventDialogOpen}
       onOpenChange={setNewEventDialogOpen}
-      title="Schedule Virtual Class"
-      trigger={null} // Controlled by context
+      title="Schedule Lesson"
+      trigger={null}
       onSubmit={form.handleSubmit(onSubmit)}
       isSubmitting={isSubmitting}
       submitLabel="Schedule"
@@ -155,42 +129,26 @@ export default function CalendarNewEventDialog() {
       <Form {...form}>
         <div className="grid gap-4 py-4">
           
-          <div className="grid grid-cols-2 gap-4">
-            <FormField control={form.control} name="assignmentId" render={({ field }) => (
-              <FormItem>
-                <Label>Course</Label>
-                <SelectDropdown 
-                  options={courseOptions} 
-                  value={field.value} 
-                  onValueChange={field.onChange} 
-                  placeholder="Select Course" 
-                  // Removed 'searchable' prop to fix error
-                />
-              </FormItem>
-            )} />
-
-            <FormField control={form.control} name="targetAudience" render={({ field }) => (
-              <FormItem>
-                <Label>Class/Group</Label>
-                <SelectDropdown 
-                  options={audienceOptions} 
-                  value={field.value} 
-                  onValueChange={field.onChange} 
-                  disabled={!selectedAssignmentId}
-                  placeholder="Select Audience" 
-                />
-              </FormItem>
-            )} />
-          </div>
+          <FormField control={form.control} name="classId" render={({ field }) => (
+            <FormItem>
+              <Label>Class</Label>
+              <SelectDropdown 
+                options={classOptions} 
+                value={field.value} 
+                onValueChange={field.onChange} 
+                placeholder="Select Class" 
+              />
+            </FormItem>
+          )} />
 
           <FormField control={form.control} name="lessonId" render={({ field }) => (
             <FormItem>
-              <Label>Lesson Topic</Label>
+              <Label>Lesson</Label>
               <SelectDropdown 
                 options={lessonOptions} 
                 value={field.value} 
                 onValueChange={field.onChange} 
-                disabled={!selectedAssignmentId}
+                disabled={!selectedClassId}
                 placeholder="Select Lesson" 
               />
             </FormItem>
