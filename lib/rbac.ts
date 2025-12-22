@@ -3,25 +3,30 @@ import { createRouteMatcher } from '@clerk/nextjs/server';
 import type { NextRequest } from 'next/server';
 import type { UserRole } from "@/convex/types";
 
-// Rutas específicas por rol
+// Defined routes
 const roleMatchers = {
     teacher: createRouteMatcher(['/:locale/teaching(.*)', '/teaching(.*)']),
     admin: createRouteMatcher(['/:locale/admin(.*)', '/admin(.*)']),
     classroom: createRouteMatcher(['/:locale/classroom(.*)', '/classroom(.*)']),
-    shared: createRouteMatcher([
-        '/:locale/lessons(.*)',
-        '/lessons(.*)',
-        '/:locale/curriculums(.*)',
-        '/curriculums(.*)'
-    ]),
+    
+    // SPLIT: Lessons are for everyone (Reading), Curriculums are for Teachers (Editing)
+    lessons: createRouteMatcher(['/:locale/lessons(.*)', '/lessons(.*)']),
+    curriculums: createRouteMatcher(['/:locale/curriculums(.*)', '/curriculums(.*)']),
 } as const;
 
-// Constantes inmutables con type safety completo
+// Permission Matrix
 const ROLE_PERMISSIONS: Record<keyof typeof roleMatchers, readonly UserRole[]> = {
     teacher: ['teacher', 'admin', 'superadmin'],
     admin: ['admin', 'superadmin'],
+    
+    // Everyone in the system can enter a classroom if they have the link/schedule
     classroom: ['student', 'teacher', 'tutor', 'admin', 'superadmin'], 
-    shared: ['teacher', 'admin', 'superadmin'],
+    
+    // FIXED: Students need to see lessons to read the content
+    lessons: ['student', 'teacher', 'tutor', 'admin', 'superadmin'],
+    
+    // Curriculums are management tools
+    curriculums: ['teacher', 'admin', 'superadmin'],
 };
 
 /**
@@ -96,14 +101,14 @@ export function isTutor(userRole: UserRole | null): boolean {
 }
 
 /**
- * Verifica acceso por rol en el contexto del middleware
+ * Check role access in middleware context
  * @returns 'allowed' | 'denied' | 'unknown'
  */
 export function checkRoleAccess(
     req: NextRequest,
     userRole: UserRole
 ): 'allowed' | 'denied' | 'unknown' {
-    // Verificar cada matcher de rol
+    // Check each role matcher
     for (const [route, matcher] of Object.entries(roleMatchers)) {
         if (matcher(req)) {
             const allowed = ROLE_PERMISSIONS[route as keyof typeof roleMatchers] as readonly UserRole[];
@@ -111,6 +116,6 @@ export function checkRoleAccess(
         }
     }
 
-    // Si no coincide con ningún matcher, es ruta desconocida
+    // If no matcher matches, it's an unknown route (allow by default)
     return 'unknown';
 }
