@@ -5,9 +5,9 @@ import { api } from "@/convex/_generated/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { BookOpen, ArrowRight } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 import Link from "next/link"
-import { CreateCurriculumDialog } from "@/components/teaching/curriculums/create-curriculum-dialog"
+import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 
 export default function MyCurriculumsPage() {
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
@@ -23,7 +23,7 @@ export default function MyCurriculumsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Curriculums</h1>
           <p className="text-muted-foreground">Manage your course templates and lessons.</p>
         </div>
-        <CreateCurriculumDialog />
+        <CurriculumDialog />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
