@@ -10,7 +10,7 @@ import { CreateClassDialog } from "@/components/teaching/classes/create-class-di
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 
 export default function MyClassesPage() {
   const { user, isLoading: isUserLoading } = useCurrentUser()
@@ -99,7 +99,7 @@ export default function MyClassesPage() {
                   
                   {/* Link to the Schedule/Calendar for this class */}
                   <Button variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground" asChild>
-                    <Link href={`/calendar?classId=${cls._id}`}>
+                    <Link href={`/teaching/classes/${cls._id}`}>
                       Manage Schedule
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>

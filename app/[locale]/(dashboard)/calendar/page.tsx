@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react" // Changed: Import useMemo
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import Calendar from "@/components/calendar/calendar"
@@ -10,55 +10,101 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
-import { Video, Calendar as CalendarIcon } from "lucide-react"
+import { Video, Calendar as CalendarIcon, X } from "lucide-react" // Added X icon
 import Link from "next/link"
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types"
+import { useSearchParams, useRouter, usePathname } from "next/navigation" // Added navigation hooks
 
 export default function CalendarPage() {
   const [mode, setMode] = useState<Mode>("month")
   const [date, setDate] = useState<Date>(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
 
+  // 1. Navigation Hooks
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  
+  const classIdParam = searchParams.get("classId")
+
   // Fetch Universal Schedule
   const scheduleData = useQuery(api.schedule.getMySchedule, {})
+
+  // Transform to CalendarEvent format
+  // Wrapped in useMemo for performance since we have dependencies now
+  const allEvents: CalendarEvent[] = useMemo(() => {
+    if (!scheduleData) return []
+    
+    return scheduleData.map(e => ({
+      id: e.scheduleId,
+      _id: e.scheduleId,
+      scheduleId: e.scheduleId,
+      lessonId: e.lessonId,
+      classId: e.classId,
+      curriculumId: e.curriculumId,
+      title: e.title,
+      description: e.description,
+      start: new Date(e.start),
+      end: new Date(e.end),
+      color: e.color,
+      className: e.className,
+      curriculumTitle: e.curriculumTitle,
+      roomName: e.roomName,
+      isLive: e.isLive,
+      status: e.status,
+    }))
+  }, [scheduleData])
+
+  // 2. Filter Logic
+  const filteredEvents = useMemo(() => {
+    if (!classIdParam) return allEvents
+    return allEvents.filter(e => e.classId === classIdParam)
+  }, [allEvents, classIdParam])
+
+  // Helper to clear filter
+  const clearFilter = () => {
+    router.push(pathname)
+  }
+
+  // Get current class name for display
+  const currentClassName = classIdParam && filteredEvents.length > 0 
+    ? filteredEvents[0].className 
+    : "Current Class"
 
   if (scheduleData === undefined) {
     return <div className="p-6"><Skeleton className="h-[600px] w-full" /></div>
   }
 
-  // Transform to CalendarEvent format
-  const calendarEvents: CalendarEvent[] = scheduleData.map(e => ({
-    id: e.scheduleId,
-    _id: e.scheduleId,
-    scheduleId: e.scheduleId,
-    lessonId: e.lessonId,
-    classId: e.classId,
-    curriculumId: e.curriculumId,
-    title: e.title,
-    description: e.description,
-    start: new Date(e.start),
-    end: new Date(e.end),
-    color: e.color,
-    className: e.className,
-    curriculumTitle: e.curriculumTitle,
-    roomName: e.roomName,
-    isLive: e.isLive,
-    status: e.status,
-  }))
-
-  // Prepare data for the List View (Upcoming)
+  // Prepare data for the List View (Upcoming) - USING FILTERED EVENTS
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   
-  const upcomingEvents = scheduleData
-    .filter(e => e.start >= today.getTime())
-    .sort((a, b) => a.start - b.start)
-    .slice(0, 10) // Show 10 upcoming
+  const upcomingEvents = filteredEvents
+    .filter(e => e.start.getTime() >= today.getTime())
+    .sort((a, b) => a.start.getTime() - b.start.getTime())
+    .slice(0, 10)
 
   return (
     <div className="h-[calc(100vh-4rem)] p-4 flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">My Schedule</h1>
+        <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold">
+                {classIdParam ? "Class Schedule" : "My Schedule"}
+            </h1>
+            
+            {/* 3. Filter Banner */}
+            {classIdParam && (
+                <Badge variant="secondary" className="px-3 py-1 flex items-center gap-2 text-sm">
+                    Filtering: {currentClassName}
+                    <button 
+                        onClick={clearFilter}
+                        className="hover:bg-slate-200 rounded-full p-0.5 transition-colors"
+                    >
+                        <X className="w-3 h-3" />
+                    </button>
+                </Badge>
+            )}
+        </div>
       </div>
 
       <Tabs defaultValue="month" className="h-full flex flex-col">
@@ -72,7 +118,7 @@ export default function CalendarPage() {
         {/* VIEW 1: The Graphical Calendar */}
         <TabsContent value="month" className="flex-1 border rounded-lg overflow-hidden bg-background p-2">
           <Calendar 
-            events={calendarEvents}
+            events={filteredEvents} // <--- PASS FILTERED EVENTS
             setEvents={setEvents}
             mode={mode}
             setMode={setMode}
@@ -87,7 +133,9 @@ export default function CalendarPage() {
           <div className="space-y-4 max-w-3xl mx-auto">
             {upcomingEvents.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                No upcoming lessons scheduled.
+                {classIdParam 
+                    ? "No upcoming lessons found for this class." 
+                    : "No upcoming lessons scheduled."}
               </div>
             ) : (
               upcomingEvents.map((event) => (

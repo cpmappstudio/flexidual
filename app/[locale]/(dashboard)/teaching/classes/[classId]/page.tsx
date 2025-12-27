@@ -11,7 +11,7 @@ import { format } from "date-fns"
 import { CheckCircle2, ArrowRight } from "lucide-react"
 import { ScheduleLessonDialog } from "@/components/teaching/classes/schedule-lesson-dialog"
 import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 
 export default function ClassDetailPage() {
   const params = useParams()
