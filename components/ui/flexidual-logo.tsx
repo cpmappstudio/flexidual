@@ -33,20 +33,20 @@ export function FlexidualLogo({
             </span>
           </>
         ) : (
-          <>
+          <div className="flex items-end -space-x-0.5">
             <span
-              className={`${base} font-logo font-black tracking-tight text-orange-500`}
+              className={`${base} font-logo font-black tracking-tight inline-block text-orange-500 rotate-12`}
               style={{ fontVariationSettings: '"SOFT" 100' }}
             >
               F
             </span>
             <span
-              className={`${base} font-logo font-black tracking-tight text-yellow-500 translate-y-1`}
+              className={`${base} font-logo font-black tracking-tight text-yellow-500 inline-block rotate-12 translate-y-1.5`}
               style={{ fontVariationSettings: '"SOFT" 100' }}
             >
               D
             </span>
-          </>
+          </div>
         )}
     </div>
   );
