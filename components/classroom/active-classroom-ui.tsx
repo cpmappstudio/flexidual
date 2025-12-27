@@ -179,7 +179,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName }: ActiveClassroom
   }, [currentUserRole, roomName, markLive]);
 
   return (
-    <div className="flex h-full w-full bg-[#f8f9fa] overflow-hidden font-sans text-slate-800 relative">
+    <div className="flex h-full w-full bg-[#faf8f9] overflow-hidden font-sans text-slate-800 relative">
       <RoomAudioRenderer />
       
       {/* Audio Unblock Overlay */}
