@@ -35,8 +35,8 @@ export function NavMain() {
         
         {/* 1. DASHBOARD (Everyone) */}
         <SidebarMenuItem>
-          <SidebarMenuButton asChild isActive={pathname.endsWith("/dashboard")}>
-            <Link href="/dashboard">
+          <SidebarMenuButton asChild isActive={pathname.endsWith("/")}>
+            <Link href="/">
               <LayoutDashboard />
               <span>Dashboard</span>
             </Link>

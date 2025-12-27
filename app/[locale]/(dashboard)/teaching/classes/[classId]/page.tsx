@@ -10,25 +10,21 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { CheckCircle2, ArrowRight } from "lucide-react"
 import { ScheduleLessonDialog } from "@/components/teaching/classes/schedule-lesson-dialog"
+import { StudentManager } from "@/components/teaching/classes/student-manager" // <-- Import NEW component
 import { Button } from "@/components/ui/button"
-import { Link } from "@/i18n/navigation"
+import Link from "next/link"
 
 export default function ClassDetailPage() {
   const params = useParams()
   const classId = params.classId as Id<"classes">
 
-  // 1. Fetch Class Details (using existing api.classes.get)
   const classData = useQuery(api.classes.get, { id: classId })
-
-  // 2. Fetch Curriculum Lessons (using existing api.lessons.listByCurriculum)
+  
   const lessons = useQuery(api.lessons.listByCurriculum, 
     classData ? { curriculumId: classData.curriculumId } : "skip"
   )
 
-  // 3. Fetch Schedule for this class
-  // We use getMySchedule, which returns all classes, then filter for this one.
   const allScheduleItems = useQuery(api.schedule.getMySchedule, {})
-  
   const classSchedule = allScheduleItems?.filter(s => s.classId === classId)
 
   if (classData === undefined || lessons === undefined || allScheduleItems === undefined) {
@@ -73,7 +69,6 @@ export default function ClassDetailPage() {
                 )}
 
                 {lessons.map((lesson, index) => {
-                  // Find if this specific lesson is scheduled
                   const scheduledItem = classSchedule?.find(s => s.lessonId === lesson._id)
                   
                   return (
@@ -101,6 +96,16 @@ export default function ClassDetailPage() {
                               </p>
                             </div>
                             
+                            {/* NEW: Edit Button (Reusing Dialog) */}
+                            <ScheduleLessonDialog 
+                                classId={classId}
+                                lessonId={lesson._id}
+                                lessonTitle={lesson.title}
+                                scheduleId={scheduledItem.scheduleId}
+                                initialStart={scheduledItem.start}
+                                initialEnd={scheduledItem.end}
+                            />
+
                             {scheduledItem.isLive ? (
                                <Button size="sm" variant="destructive" asChild>
                                  <Link href={`/classroom/${scheduledItem.roomName}`}>Join Live</Link>
@@ -130,18 +135,8 @@ export default function ClassDetailPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="students">
-          <Card>
-            <CardHeader>
-              <CardTitle>Enrolled Students</CardTitle>
-            </CardHeader>
-            <CardContent>
-               <p className="text-muted-foreground">
-                 Student management list will go here.
-                 (You can use <code>api.classes.getStudents</code> here later)
-               </p>
-            </CardContent>
-          </Card>
+        <TabsContent value="students" className="mt-4">
+           <StudentManager classId={classId} />
         </TabsContent>
       </Tabs>
     </div>
