@@ -3,29 +3,31 @@ import { createRouteMatcher } from '@clerk/nextjs/server';
 import type { NextRequest } from 'next/server';
 import type { UserRole } from "@/convex/types";
 
-// Defined routes
+// 1. DEFINITIONS: Centralize all route patterns here
 const roleMatchers = {
+    // Dashboards
     teacher: createRouteMatcher(['/:locale/teaching(.*)', '/teaching(.*)']),
+    student: createRouteMatcher(['/:locale/student(.*)', '/student(.*)']), // Now properly used
     admin: createRouteMatcher(['/:locale/admin(.*)', '/admin(.*)']),
+    
+    // Core Features
+    calendar: createRouteMatcher(['/:locale/calendar(.*)', '/calendar(.*)']),
     classroom: createRouteMatcher(['/:locale/classroom(.*)', '/classroom(.*)']),
     
-    // SPLIT: Lessons are for everyone (Reading), Curriculums are for Teachers (Editing)
+    // Content
     lessons: createRouteMatcher(['/:locale/lessons(.*)', '/lessons(.*)']),
+    // Note: Curriculums are edited by teachers/admins
     curriculums: createRouteMatcher(['/:locale/curriculums(.*)', '/curriculums(.*)']),
 } as const;
 
-// Permission Matrix
+// 2. PERMISSIONS: Who can access what?
 const ROLE_PERMISSIONS: Record<keyof typeof roleMatchers, readonly UserRole[]> = {
     teacher: ['teacher', 'admin', 'superadmin'],
+    student: ['student', 'admin', 'superadmin'],
     admin: ['admin', 'superadmin'],
-    
-    // Everyone in the system can enter a classroom if they have the link/schedule
+    calendar: ['student', 'teacher', 'tutor', 'admin', 'superadmin'],
     classroom: ['student', 'teacher', 'tutor', 'admin', 'superadmin'], 
-    
-    // FIXED: Students need to see lessons to read the content
     lessons: ['student', 'teacher', 'tutor', 'admin', 'superadmin'],
-    
-    // Curriculums are management tools
     curriculums: ['teacher', 'admin', 'superadmin'],
 };
 
@@ -111,11 +113,11 @@ export function checkRoleAccess(
     // Check each role matcher
     for (const [route, matcher] of Object.entries(roleMatchers)) {
         if (matcher(req)) {
-            const allowed = ROLE_PERMISSIONS[route as keyof typeof roleMatchers] as readonly UserRole[];
+            const allowed = ROLE_PERMISSIONS[route as keyof typeof roleMatchers];
             return allowed.includes(userRole) ? 'allowed' : 'denied';
         }
     }
 
-    // If no matcher matches, it's an unknown route (allow by default)
+    // If no matcher matches, it's an unknown route (allow by default, e.g., home, about)
     return 'unknown';
 }

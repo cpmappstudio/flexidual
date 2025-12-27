@@ -214,8 +214,11 @@ export const getSessionStatus = query({
     const joinWindowStart = schedule.scheduledStart - (10 * 60 * 1000); // 10 min before
     const joinWindowEnd = schedule.scheduledEnd + (5 * 60 * 1000); // 5 min after
 
+    const isTimeWindowActive = now >= joinWindowStart && now <= joinWindowEnd;
+    const isExplicitlyActive = schedule.status === "active";
+
     return {
-      isActive: now >= joinWindowStart && now <= joinWindowEnd,
+      isActive: isTimeWindowActive || isExplicitlyActive,
       status: schedule.status,
       start: schedule.scheduledStart,
       end: schedule.scheduledEnd,
@@ -419,22 +422,21 @@ export const markLive = mutation({
 
     const updates: any = { isLive: args.isLive };
 
-    // Automatically sync the status string with isLive boolean
     if (args.isLive) {
-      // Room is going live
-      if (schedule.status === "scheduled") {
+      // Teacher joined: Mark active
+      // Logic: If it's not cancelled, force it to active. 
+      // This allows re-opening "scheduled" or "completed" sessions.
+      if (schedule.status !== "cancelled") {
         updates.status = "active";
+      
+        if (schedule.completedAt) {
+          updates.completedAt = undefined;
+        }
       }
-      // If status is already "active", keep it
-      // If status is "completed" or "cancelled", don't override (unusual case)
     } else {
-      // Room is closing
       if (schedule.status === "active") {
-        updates.status = "completed";
-        updates.completedAt = Date.now();
+        updates.status = "scheduled"; 
       }
-      // If status is "scheduled" (teacher left without starting), keep as "scheduled"
-      // If status is already "completed", keep it
     }
 
     await ctx.db.patch(schedule._id, updates);

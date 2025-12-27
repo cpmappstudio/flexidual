@@ -76,7 +76,7 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
       >
         <ActiveClassroomUI 
            currentUserRole={convexUser.role} 
-          //  currentUserName={convexUser.fullName}
+           roomName={roomName}
         />
       </LiveKitRoom>
     </div>

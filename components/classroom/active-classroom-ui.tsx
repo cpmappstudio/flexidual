@@ -1,5 +1,7 @@
 "use client";
 
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { 
   VideoTrack,
   useLocalParticipant,
@@ -108,11 +110,13 @@ function ParticipantTile({
 
 interface ActiveClassroomUIProps {
   currentUserRole?: string;
+  roomName: string;
 }
 
-export function ActiveClassroomUI({ currentUserRole }: ActiveClassroomUIProps) {
+export function ActiveClassroomUI({ currentUserRole, roomName }: ActiveClassroomUIProps) {
   const router = useRouter();
   const room = useRoomContext();
+  const markLive = useMutation(api.schedule.markLive);
   const [needsClick, setNeedsClick] = useState(false);
 
   const participants = useParticipants();
@@ -161,8 +165,21 @@ export function ActiveClassroomUI({ currentUserRole }: ActiveClassroomUIProps) {
     initMedia();
   }, [localParticipant]);
 
+  useEffect(() => {
+    // Only the Teacher controls the "Live" status
+    if (currentUserRole !== "teacher") return;
+    
+    // Teacher Joined -> Mark Live
+    markLive({ roomName: roomName, isLive: true });
+
+    // Teacher Left (Cleanup) -> Mark Scheduled (Inactive)
+    return () => {
+      markLive({ roomName: roomName, isLive: false });
+    };
+  }, [currentUserRole, roomName, markLive]);
+
   return (
-    <div className="flex h-screen w-full bg-[#f8f9fa] overflow-hidden font-sans text-slate-800 relative">
+    <div className="flex h-full w-full bg-[#f8f9fa] overflow-hidden font-sans text-slate-800 relative">
       <RoomAudioRenderer />
       
       {/* Audio Unblock Overlay */}
