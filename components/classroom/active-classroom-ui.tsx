@@ -15,6 +15,7 @@ import { Track, Participant, TrackPublication } from "livekit-client";
 import { Mic, MicOff, Video as VideoIcon, VideoOff, LogOut, MessageCircle, VolumeX, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { FlexidualLogo } from "../ui/flexidual-logo";
 
 // --- Helper Functions ---
 const getRole = (p: Participant | undefined): string => {
@@ -199,26 +200,14 @@ export function ActiveClassroomUI({ currentUserRole, roomName }: ActiveClassroom
         {/* Header */}
         <div className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-slate-200">
           <div className="flex items-center">
-            <span 
-              className="text-2xl font-logo font-black tracking-tight text-orange-500"
-              style={{ fontVariationSettings: '"SOFT" 100' }}
-            >
-              Flexi
-            </span>
-            <span 
-              className="text-2xl font-logo font-black tracking-tight text-yellow-700" 
-              style={{ fontVariationSettings: '"SOFT" 100' }}
-            >
-              Dual
-            </span>
+            <FlexidualLogo />
+            <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+                <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-green-500 animate-pulse' : 'bg-orange-400'}`} />
+                <span className="text-xs font-bold text-blue-700 uppercase tracking-wide">
+                  {teacher ? "Class in Session" : "Waiting for Teacher"}
+                </span>
+            </div>
           </div>
-           
-           <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
-              <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-green-500 animate-pulse' : 'bg-orange-400'}`} />
-              <span className="text-xs font-bold text-blue-700 uppercase tracking-wide">
-                {teacher ? "Class in Session" : "Waiting for Teacher"}
-              </span>
-           </div>
         </div>
 
         {/* The Board */}

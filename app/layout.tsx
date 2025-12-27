@@ -21,10 +21,10 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "CPCA Teachers",
+  title: "FlexiDual",
   description: "TODO: Add description",
   icons: {
-    icon: "/cpca.ico",
+    icon: "/flexidual-icon.ico",
   },
 };
 

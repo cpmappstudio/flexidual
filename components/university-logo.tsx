@@ -26,8 +26,8 @@ export function UniversityLogo() {
                 <div className={`flex w-full items-center gap-1 rounded-md pb-2 text-left text-sm ${isCollapsed ? 'justify-center px-0' : 'px-1'}`}>
                     <div className={`flex aspect-square items-center justify-center ${isCollapsed ? 'size-8' : 'size-14'}`}>
                         <Image
-                            src="/cpca.png"
-                            alt="cpca logo"
+                            src="/flexidual-icon.png"
+                            alt="flexidual logo"
                             width={isCollapsed ? 32 : 56}
                             height={isCollapsed ? 32 : 56}
                             className="object-contain"
