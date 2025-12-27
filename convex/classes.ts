@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { getCurrentUserOrThrow } from "./users";
+import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 
 // ============================================================================
 // QUERIES
@@ -124,7 +124,10 @@ export const getWithDetails = query({
  */
 export const getMyClasses = query({
   handler: async (ctx) => {
-    const user = await getCurrentUserOrThrow(ctx);
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) {
+      return [];
+    }
 
     if (user.role === "teacher" || user.role === "tutor") {
       return await ctx.db
@@ -483,7 +486,10 @@ export const remove = mutation({
  */
 export const getSchedulableClasses = query({
   handler: async (ctx) => {
-    const user = await getCurrentUserOrThrow(ctx);
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) {
+      return [];
+    }
 
     // Only teachers can schedule
     if (!["teacher", "admin", "superadmin"].includes(user.role)) {

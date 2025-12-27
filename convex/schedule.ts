@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { getCurrentUserOrThrow } from "./users";
+import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 
 // ============================================================================
 // QUERIES
@@ -22,7 +22,10 @@ export const getMySchedule = query({
     )),
   },
   handler: async (ctx, args) => {
-    const user = await getCurrentUserOrThrow(ctx);
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) {
+      return [];
+    }
 
     // Step 1: Find MY classes (role-based logic)
     let myClasses;
