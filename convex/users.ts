@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, QueryCtx, action } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 // Type for Clerk webhook user data
 type UserJSON = {
@@ -362,7 +362,7 @@ export const deleteFromClerk = internalMutation({
 
 /**
  * Create user in both Clerk and Convex
- * Use this to create users with Clerk invitations
+ * Guarantees immediate consistency by syncing to DB before returning
  */
 export const createUserWithClerk = action({
   args: {
@@ -386,7 +386,7 @@ export const createUserWithClerk = action({
     }
 
     try {
-      // Create user in Clerk
+      // 1. Create user in Clerk
       const clerkResponse = await fetch("https://api.clerk.com/v1/users", {
         method: "POST",
         headers: {
@@ -412,25 +412,34 @@ export const createUserWithClerk = action({
 
       const clerkUser = await clerkResponse.json();
 
-      // Upload avatar if provided
+      // 2. Upload avatar if provided (Optional polish)
       if (args.avatarStorageId) {
         const imageUrl = await ctx.storage.getUrl(args.avatarStorageId);
         if (imageUrl) {
-          const imageResponse = await fetch(imageUrl);
-          const imageBlob = await imageResponse.blob();
-          
-          const formData = new FormData();
-          formData.append('file', imageBlob, 'avatar.png');
+          try {
+            const imageResponse = await fetch(imageUrl);
+            const imageBlob = await imageResponse.blob();
+            
+            const formData = new FormData();
+            formData.append('file', imageBlob, 'avatar.png');
 
-          await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}/profile_image`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${clerkSecretKey}` },
-            body: formData,
-          });
+            await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}/profile_image`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${clerkSecretKey}` },
+              body: formData,
+            });
+          } catch (error) {
+            console.error("Failed to sync avatar to Clerk:", error);
+          }
         }
       }
 
-      // Send invitation if requested
+      // 3. Immediate Sync to Convex
+      await ctx.runMutation(internal.users.upsertFromClerk, {
+        data: clerkUser
+      });
+
+      // 4. Send invitation (Optional)
       if (args.sendInvitation) {
         await fetch("https://api.clerk.com/v1/invitations", {
           method: "POST",
@@ -469,6 +478,14 @@ export const updateUserWithClerk = action({
       lastName: v.optional(v.string()),
       email: v.optional(v.string()),
       avatarStorageId: v.optional(v.union(v.id("_storage"), v.null())),
+      role: v.optional(v.union(
+        v.literal("student"), 
+        v.literal("teacher"), 
+        v.literal("tutor"),
+        v.literal("admin"),
+        v.literal("superadmin")
+      )),
+      isActive: v.optional(v.boolean()),
     }),
   },
   handler: async (ctx, args) => {
@@ -482,7 +499,7 @@ export const updateUserWithClerk = action({
       throw new Error("User not found");
     }
 
-    // Skip Clerk sync for temp users
+    // Skip Clerk sync for temp users (just update DB)
     if (user.clerkId.startsWith("temp_")) {
       await ctx.runMutation(api.users.updateUser, { 
         userId: args.userId, 
@@ -496,6 +513,10 @@ export const updateUserWithClerk = action({
       
       if (args.updates.firstName) clerkUpdates.first_name = args.updates.firstName;
       if (args.updates.lastName) clerkUpdates.last_name = args.updates.lastName;
+      
+      if (args.updates.role) {
+        clerkUpdates.public_metadata = { role: args.updates.role };
+      }
 
       // Update Clerk if there are changes
       if (Object.keys(clerkUpdates).length > 0) {
@@ -541,7 +562,7 @@ export const updateUserWithClerk = action({
         }
       }
 
-      // Update Convex
+      // Update Convex (This handles role, isActive, and names locally)
       await ctx.runMutation(api.users.updateUser, { 
         userId: args.userId, 
         updates: args.updates 

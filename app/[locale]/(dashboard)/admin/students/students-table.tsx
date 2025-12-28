@@ -26,37 +26,40 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-// IMPORT THE NEW UNIFIED DIALOG
-import { TeacherDialog } from "@/components/admin/teachers/teacher-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+// Import the dialog we created previously
+import { StudentDialog } from "@/components/admin/students/student-dialog";
 
-export type Teacher = {
+// Define the shape of our data
+export type Student = {
   _id: Id<"users">;
   fullName: string;
   firstName?: string;
   lastName?: string;
   email: string;
   avatarStorageId?: Id<"_storage">;
-  role: "teacher" | "admin";
+  role: "student";
   isActive: boolean;
 };
 
-function TeacherAvatar({ teacher }: { teacher: Teacher }) {
+// Helper for Avatar rendering
+function StudentAvatar({ student }: { student: Student }) {
   const avatarUrl = useQuery(
     api.users.getAvatarUrl,
-    teacher.avatarStorageId ? { storageId: teacher.avatarStorageId } : "skip",
+    student.avatarStorageId ? { storageId: student.avatarStorageId } : "skip",
   );
 
   return (
     <Avatar className="h-8 w-8">
-      {avatarUrl && <AvatarImage src={avatarUrl} alt={teacher.fullName} />}
-      <AvatarFallback>{teacher.fullName.substring(0, 2).toUpperCase()}</AvatarFallback>
+      {avatarUrl && <AvatarImage src={avatarUrl} alt={student.fullName} />}
+      <AvatarFallback>{student.fullName.substring(0, 2).toUpperCase()}</AvatarFallback>
     </Avatar>
   );
 }
 
-export const columns: ColumnDef<Teacher>[] = [
+// Define Columns
+export const columns: ColumnDef<Student>[] = [
   {
     accessorKey: "fullName",
     header: ({ column }) => (
@@ -66,19 +69,16 @@ export const columns: ColumnDef<Teacher>[] = [
     ),
     cell: ({ row }) => (
       <div className="flex items-center gap-3">
-        <TeacherAvatar teacher={row.original} />
-        <span className="font-medium">{row.getValue("fullName")}</span>
+        <StudentAvatar student={row.original} />
+        <div className="flex flex-col">
+            <span className="font-medium">{row.getValue("fullName")}</span>
+        </div>
       </div>
     ),
   },
   {
     accessorKey: "email",
     header: "Email",
-  },
-  {
-    accessorKey: "role",
-    header: "Role",
-    cell: ({ row }) => <Badge variant="outline">{row.getValue("role")}</Badge>,
   },
   {
     accessorKey: "isActive",
@@ -89,29 +89,29 @@ export const columns: ColumnDef<Teacher>[] = [
       </Badge>
     ),
   },
-  // ADD ACTIONS COLUMN BACK
   {
     id: "actions",
     cell: ({ row }) => {
       return (
         <div className="flex justify-end">
-          <TeacherDialog teacher={row.original} />
+          <StudentDialog student={row.original} />
         </div>
       )
     },
   },
 ];
 
-export function TeachersTable() {
-  const users = useQuery(api.users.getUsers, { role: "teacher" });
+export function StudentsTable() {
+  const users = useQuery(api.users.getUsers, { role: "student" });
   const [sorting, setSorting] = React.useState([]);
+  const [globalFilter, setGlobalFilter] = React.useState("");
   
-  // Transform data to ensure type safety
+  // Transform data safely
   const data = React.useMemo(() => {
     if (!users) return [];
     return users.map(u => ({
         ...u,
-        role: u.role as "teacher" | "admin" // Type assertion
+        role: "student" as const
     }));
   }, [users]);
 
@@ -123,7 +123,15 @@ export function TeachersTable() {
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting as any,
-    state: { sorting: sorting as any },
+    state: { 
+        sorting: sorting as any,
+        globalFilter,
+    },
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row, columnId, filterValue) => {
+        const value = row.getValue(columnId) as string;
+        return value?.toLowerCase().includes(filterValue.toLowerCase());
+    }
   });
 
   if (!users) return <Skeleton className="h-96 w-full" />;
@@ -134,13 +142,14 @@ export function TeachersTable() {
         <div className="relative w-72">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search teachers..."
-            value={(table.getColumn("fullName")?.getFilterValue() as string) ?? ""}
-            onChange={(event) => table.getColumn("fullName")?.setFilterValue(event.target.value)}
+            placeholder="Search students..."
+            value={globalFilter ?? ""}
+            onChange={(event) => setGlobalFilter(event.target.value)}
             className="pl-8"
           />
         </div>
-        <TeacherDialog />
+        {/* CREATE BUTTON */}
+        <StudentDialog />
       </div>
 
       <div className="rounded-md border">
@@ -169,13 +178,33 @@ export function TeachersTable() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No teachers found.
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                  No students found.
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Pagination Controls (Optional but recommended) */}
+      <div className="flex items-center justify-end space-x-2 py-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
+        >
+          Previous
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
+        >
+          Next
+        </Button>
       </div>
     </div>
   );

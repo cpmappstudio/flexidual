@@ -4,9 +4,9 @@ import {
   BookOpen,
   Calendar,
   LayoutDashboard,
-  Settings2,
   Users,
-  Video,
+  GraduationCap,
+  School,
 } from "lucide-react"
 import { Link, usePathname } from "@/i18n/navigation"
 import {
@@ -85,10 +85,37 @@ export function NavMain() {
             <SidebarGroupLabel className="mt-4">Administration</SidebarGroupLabel>
             
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/admin/users")}>
-                <Link href="/admin/users">
+              <SidebarMenuButton asChild isActive={pathname.includes("/admin/teachers")}>
+                <Link href="/admin/teachers">
                   <Users />
-                  <span>Users & Roles</span>
+                  <span>Teachers</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname.includes("/admin/students")}>
+                <Link href="/admin/students">
+                  <GraduationCap />
+                  <span>Students</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+             <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname.includes("/admin/classes")}>
+                <Link href="/teaching/classes"> {/* Admin can view the same class list, we'll fix the permission views */}
+                  <School />
+                  <span>All Classes</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname.includes("/admin/lessons")}>
+                <Link href="/admin/lessons"> {/* Admin can view the same class list, we'll fix the permission views */}
+                  <School />
+                  <span>All Lessons</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

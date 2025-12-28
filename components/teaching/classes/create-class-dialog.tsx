@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { Loader2, Plus } from "lucide-react"
 import { toast } from "sonner"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -39,13 +40,17 @@ import {
 const formSchema = z.object({
   name: z.string().min(2, "Class name must be at least 2 characters"),
   curriculumId: z.string().min(1, "Please select a curriculum"),
+  teacherId: z.string().optional(),
 })
 
 export function CreateClassDialog() {
   const [open, setOpen] = useState(false)
+  const { user } = useCurrentUser()
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
   
   // 1. Fetch available curriculums (Templates)
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
+  const teachers = useQuery(api.users.getUsers, isAdmin ? { role: "teacher" } : "skip")
   const createClass = useMutation(api.classes.create)
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -57,11 +62,16 @@ export function CreateClassDialog() {
   })
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    let teacherIdToUse : string | undefined = user?._id as string
+    if (isAdmin) {
+        teacherIdToUse = values.teacherId
+    }
+
     try {
-      // @ts-ignore - Convex ID typing
       await createClass({
         name: values.name,
-        curriculumId: values.curriculumId as any, 
+        curriculumId: values.curriculumId as any,
+        teacherId: teacherIdToUse as any,
       })
       toast.success("Class created successfully")
       setOpen(false)
@@ -128,6 +138,33 @@ export function CreateClassDialog() {
                 </FormItem>
               )}
             />
+
+            {isAdmin && (
+                <FormField
+                  control={form.control}
+                  name="teacherId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Assign Teacher</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a teacher" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {teachers?.map((t) => (
+                            <SelectItem key={t._id} value={t._id}>
+                              {t.fullName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+            )}
 
             <DialogFooter>
               <Button type="submit" disabled={form.formState.isSubmitting}>

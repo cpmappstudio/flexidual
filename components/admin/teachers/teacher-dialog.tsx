@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useMutation } from "convex/react"
+import { useAction } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Doc, Id } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
@@ -33,9 +33,9 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
     const isEditing = !!teacher
     
     // API Hooks
-    const createUser = useMutation(api.users.createUser)
-    const updateUser = useMutation(api.users.updateUser)
-    const deleteUser = useMutation(api.users.deleteUser)
+    const createUser = useAction(api.users.createUserWithClerk)
+    const updateUser = useAction(api.users.updateUserWithClerk)
+    const deleteUser = useAction(api.users.deleteUserWithClerk)
 
     const [isOpen, setIsOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -53,8 +53,9 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
                         firstName: formData.get("firstName") as string,
                         lastName: formData.get("lastName") as string,
                         email: formData.get("email") as string,
-                        role: formData.get("role") as "teacher" | "admin",
+                        role: formData.get("role") as "teacher" | "admin", 
                         isActive: formData.get("status") === "active",
+                        avatarStorageId: null
                     }
                 })
                 toast.success("Teacher updated")
@@ -63,7 +64,7 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
                     firstName: formData.get("firstName") as string,
                     lastName: formData.get("lastName") as string,
                     email: formData.get("email") as string,
-                    role: formData.get("role") as "teacher" | "admin",
+                    role: "teacher",
                 })
                 toast.success("Teacher created")
             }
