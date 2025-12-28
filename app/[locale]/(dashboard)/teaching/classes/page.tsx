@@ -4,24 +4,26 @@ import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, BookOpen, Calendar, ArrowRight } from "lucide-react"
+import { Users, BookOpen, Calendar, ArrowRight, School } from "lucide-react"
 import { format } from "date-fns"
 import { CreateClassDialog } from "@/components/teaching/classes/create-class-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Link } from "@/i18n/navigation"
+import Link from "next/link"
 
 export default function MyClassesPage() {
   const { user, isLoading: isUserLoading } = useCurrentUser()
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
   
-  // 1. Fetch Classes for this teacher
-  const classes = useQuery(api.classes.list, 
-    user ? { teacherId: user._id } : "skip"
-  )
+  // LOGIC: If Admin -> Fetch ALL classes. If Teacher -> Fetch MY classes.
+  const queryArgs = isAdmin 
+    ? {} // No filters = All classes
+    : (user ? { teacherId: user._id } : "skip")
 
-  // 2. Fetch Curriculums to show titles (optimization: separate query or join in backend)
-  // For now, client-side lookup is fine for < 100 items
+  const classes = useQuery(api.classes.list, queryArgs)
+
+  // Optimization: Fetch curriculums for titles (cached by Convex)
   const curriculums = useQuery(api.curriculums.list, {})
 
   if (isUserLoading || classes === undefined) {
@@ -48,24 +50,31 @@ export default function MyClassesPage() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">My Classes</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {isAdmin ? "All Active Classes" : "My Classes"}
+          </h1>
           <p className="text-muted-foreground">
-            Manage your active student groups and schedules.
+            {isAdmin 
+              ? "Manage all classes, assignments, and schedules across the platform."
+              : "Manage your active student groups and schedules."}
           </p>
         </div>
-        <CreateClassDialog />
+        {/* Only Admins can create classes (per schema/mutation logic) */}
+        {isAdmin && <CreateClassDialog />}
       </div>
 
       {classes.length === 0 ? (
         <Card className="flex flex-col items-center justify-center p-8 text-center border-dashed">
           <div className="rounded-full bg-primary/10 p-4 mb-4">
-            <Users className="h-8 w-8 text-primary" />
+            <School className="h-8 w-8 text-primary" />
           </div>
-          <h3 className="text-lg font-semibold">No active classes</h3>
+          <h3 className="text-lg font-semibold">No active classes found</h3>
           <p className="text-muted-foreground mb-4 max-w-sm">
-            You haven't created any classes yet. Create a class to start enrolling students and scheduling lessons.
+            {isAdmin 
+              ? "Create a class to start enrolling students." 
+              : "You haven't been assigned to any classes yet."}
           </p>
-          <CreateClassDialog />
+          {isAdmin && <CreateClassDialog />}
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -76,7 +85,6 @@ export default function MyClassesPage() {
                   <Badge variant={cls.isActive ? "default" : "secondary"}>
                     {cls.isActive ? "Active" : "Archived"}
                   </Badge>
-                  {/* Future: Add "Manage" dropdown here */}
                 </div>
                 <CardTitle className="line-clamp-1 mt-2">{cls.name}</CardTitle>
                 <CardDescription className="flex items-center gap-2">
@@ -97,10 +105,10 @@ export default function MyClassesPage() {
                     </div>
                   </div>
                   
-                  {/* Link to the Schedule/Calendar for this class */}
+                  {/* Both Admin and Teacher go to the same Detail Page */}
                   <Button variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground" asChild>
                     <Link href={`/teaching/classes/${cls._id}`}>
-                      Manage Schedule
+                      {isAdmin ? "Manage Class" : "Manage Schedule"}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>

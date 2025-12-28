@@ -8,8 +8,9 @@ import { useParams, useRouter } from "next/navigation"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, FileText, Calendar } from "lucide-react"
+import { ArrowLeft, FileText } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { LessonDialog } from "@/components/teaching/lessons/lesson-dialog"
 
 export default function LessonReaderPage() {
   const params = useParams()
@@ -39,6 +40,10 @@ export default function LessonReaderPage() {
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
+        <LessonDialog 
+             curriculumId={lesson.curriculumId} 
+             lesson={lesson} 
+        />
       </div>
 
       {/* 2. Title & Context */}

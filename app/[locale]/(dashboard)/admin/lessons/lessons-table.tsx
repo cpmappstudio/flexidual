@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import {
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Doc, Id } from "@/convex/_generated/dataModel"
 import { LessonDialog } from "@/components/teaching/lessons/lesson-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Loader2 } from "lucide-react"
 
 // Define columns
 const columns: ColumnDef<Doc<"lessons">>[] = [
@@ -37,7 +38,6 @@ const columns: ColumnDef<Doc<"lessons">>[] = [
     id: "actions",
     cell: ({ row }) => (
       <div className="flex justify-end">
-        {/* FIXED: Pass both the lesson object AND its curriculumId */}
         <LessonDialog 
           lesson={row.original} 
           curriculumId={row.original.curriculumId} 
@@ -48,22 +48,26 @@ const columns: ColumnDef<Doc<"lessons">>[] = [
 ]
 
 export function LessonsTable() {
-  const curriculums = useQuery(api.curriculums.list, {})
+  const curriculums = useQuery(api.curriculums.list, { includeInactive: true })
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | "">("")
 
-  // Fetch lessons only when a curriculum is selected
+  // Fetch lessons with a loading guard
   const lessons = useQuery(api.lessons.listByCurriculum, 
     selectedCurriculumId ? { curriculumId: selectedCurriculumId as Id<"curriculums"> } : "skip"
   )
 
+  // Memoize data to prevent table flickering
+  const data = useMemo(() => lessons || [], [lessons])
+  const isLoadingLessons = selectedCurriculumId && lessons === undefined
+
   const table = useReactTable({
-    data: lessons || [],
+    data,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   })
 
-  if (!curriculums) return <Skeleton className="h-96 w-full" />
+  if (curriculums === undefined) return <Skeleton className="h-96 w-full" />
 
   return (
     <div className="space-y-4">
@@ -84,13 +88,19 @@ export function LessonsTable() {
             </Select>
         </div>
         
-        {/* FIXED: Only show Add Lesson button if a curriculum is selected */}
         {selectedCurriculumId && (
           <LessonDialog curriculumId={selectedCurriculumId as Id<"curriculums">} />
         )}
       </div>
 
-      <div className="rounded-md border bg-card">
+      <div className="rounded-md border">
+        {/* Loading Overlay */}
+        {isLoadingLessons && (
+            <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        )}
+
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -121,11 +131,13 @@ export function LessonsTable() {
                 </TableRow>
               ))
             ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No lessons found for this curriculum.
-                </TableCell>
-              </TableRow>
+              !isLoadingLessons && (
+                <TableRow>
+                  <TableCell colSpan={columns.length} className="h-24 text-center">
+                    No lessons found for this curriculum.
+                  </TableCell>
+                </TableRow>
+              )
             )}
           </TableBody>
         </Table>
