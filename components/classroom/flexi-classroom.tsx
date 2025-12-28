@@ -5,7 +5,6 @@ import { useUser } from "@clerk/nextjs";
 import { useAction, useQuery } from "convex/react";
 import { LiveKitRoom } from "@livekit/components-react";
 import { api } from "@/convex/_generated/api";
-import "@livekit/components-styles";
 import { ActiveClassroomUI } from "./active-classroom-ui";
 import { Loader2, CalendarClock, School } from "lucide-react";
 import { format } from "date-fns";
