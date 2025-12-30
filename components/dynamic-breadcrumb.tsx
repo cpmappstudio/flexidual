@@ -46,6 +46,7 @@ const ROUTE_CONFIG: Record<string, RouteConfig> = {
     'professors': { title: 'menu.adminPersonal.items.0.title', fallback: 'Professor Management', parent: 'users' },
     'students': { title: 'menu.adminPersonal.items.1.title', fallback: 'Student Management', parent: 'users' },
     'profile': { title: 'profile', fallback: 'Profile' },
+    // 'classroom': { title: 'Classroom', fallback: 'Classroom' }, // to config later
 }
 
 // Routes that don't need translation (static labels)
@@ -54,12 +55,32 @@ const STATIC_ROUTES: Record<string, string> = {
     'curriculums': 'Curriculums',
     'lessons': 'Lessons',
     'classes': 'Classes',
+    'calendar': 'Calendar',
+    'student': 'Student',
 }
 
 // Helper to detect if a segment is a Convex ID
 const isConvexId = (segment: string): boolean => {
     // Convex IDs are typically long alphanumeric strings (32+ chars)
     return segment.length > 20 && /^[a-z0-9]+$/.test(segment)
+}
+
+// Helper to detect if a segment is a room name (class schedule ID format)
+const isRoomName = (segment: string): boolean => {
+    // Room names follow pattern: class-{classId}-lesson-{lessonId}-{timestamp}
+    return segment.startsWith('class-') && segment.includes('-lesson-')
+}
+
+// Extract IDs from room name
+const parseRoomName = (roomName: string): { classId: string; lessonId: string } | null => {
+    const match = roomName.match(/class-([a-z0-9]+)-lesson-([a-z0-9]+)/)
+    if (match) {
+        return {
+            classId: match[1],
+            lessonId: match[2],
+        }
+    }
+    return null
 }
 
 export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
@@ -72,12 +93,20 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
     }, [pathname])
 
     // Extract dynamic IDs from path
-    const { curriculumId, lessonId, classId, teacherId } = useMemo(() => {
+    const { curriculumId, lessonId, classId, teacherId, roomNameParts } = useMemo(() => {
         const parts = pathWithoutLocale.split('/').filter(Boolean)
         const curriculumIndex = parts.indexOf('curriculums')
         const lessonIndex = parts.indexOf('lessons')
         const classIndex = parts.indexOf('classes')
         const teacherIndex = parts.indexOf('teachers')
+        const classroomIndex = parts.indexOf('classroom')
+
+        // Check for room name in classroom route
+        let roomParts = null
+        if (classroomIndex !== -1 && parts[classroomIndex + 1]) {
+            const roomName = decodeURIComponent(parts[classroomIndex + 1])
+            roomParts = parseRoomName(roomName)
+        }
 
         return {
             curriculumId: curriculumIndex !== -1 && parts[curriculumIndex + 1] && isConvexId(parts[curriculumIndex + 1])
@@ -85,13 +114,14 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
                 : null,
             lessonId: lessonIndex !== -1 && parts[lessonIndex + 1] && isConvexId(parts[lessonIndex + 1])
                 ? parts[lessonIndex + 1] as Id<"lessons">
-                : null,
+                : roomParts?.lessonId as Id<"lessons"> || null,
             classId: classIndex !== -1 && parts[classIndex + 1] && isConvexId(parts[classIndex + 1])
                 ? parts[classIndex + 1] as Id<"classes">
-                : null,
+                : roomParts?.classId as Id<"classes"> || null,
             teacherId: teacherIndex !== -1 && parts[teacherIndex + 1] && isConvexId(parts[teacherIndex + 1])
                 ? parts[teacherIndex + 1] as Id<"users">
                 : null,
+            roomNameParts: roomParts,
         }
     }, [pathWithoutLocale])
 
@@ -153,9 +183,22 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
             currentPath = '/' + actualPathParts.join('/')
             const isLast = index === filteredParts.length - 1
 
-            // Check if this is a dynamic ID
+            // Check if this is a dynamic ID or room name
             let title: string
-            if (isConvexId(part)) {
+            
+            // Handle room names (classroom routes)
+            if (isRoomName(part)) {
+                // Build a nice title from class and lesson names
+                if (classData && lesson) {
+                    title = `${classData.name} - ${lesson.title}`
+                } else if (classData) {
+                    title = classData.name
+                } else if (lesson) {
+                    title = lesson.title
+                } else {
+                    title = 'Loading...'
+                }
+            } else if (isConvexId(part)) {
                 // Get dynamic name based on context
                 if (curriculumId && part === curriculumId) {
                     title = curriculum?.title || 'Loading...'
