@@ -31,6 +31,13 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
     sessionId: roomName 
   });
 
+  // ADD THIS: Fetch full schedule details
+  const scheduleDetails = useQuery(
+    api.schedule.getWithDetails,
+    sessionStatus?.scheduleId ? { id: sessionStatus.scheduleId } : "skip"
+  );
+
+
   const getToken = useAction(api.livekit.getToken);
 
   // 2. Logic: Who allowed to enter?
@@ -174,6 +181,8 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
         <ActiveClassroomUI 
            currentUserRole={convexUser.role} 
            roomName={roomName}
+           className={scheduleDetails?.class?.name}
+           lessonTitle={scheduleDetails?.lesson?.title}
         />
       </LiveKitRoom>
     </div>

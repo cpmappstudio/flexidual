@@ -112,9 +112,11 @@ function ParticipantTile({
 interface ActiveClassroomUIProps {
   currentUserRole?: string;
   roomName: string;
+  className?: string;
+  lessonTitle?: string;
 }
 
-export function ActiveClassroomUI({ currentUserRole, roomName }: ActiveClassroomUIProps) {
+export function ActiveClassroomUI({ currentUserRole, roomName, className, lessonTitle }: ActiveClassroomUIProps) {
   const router = useRouter();
   const room = useRoomContext();
   const markLive = useMutation(api.schedule.markLive);
@@ -199,14 +201,23 @@ export function ActiveClassroomUI({ currentUserRole, roomName }: ActiveClassroom
         
         {/* Header */}
         <div className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center">
+          <div className="flex items-center gap-3">
             <FlexidualLogo />
-            <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
-                <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-green-500 animate-pulse' : 'bg-orange-400'}`} />
-                <span className="text-xs font-bold text-blue-700 uppercase tracking-wide">
-                  {teacher ? "Class in Session" : "Waiting for Teacher"}
-                </span>
+            {/* CHANGE: Show class name instead of static text */}
+            <div className="flex flex-col">
+              <h2 className="text-sm font-bold text-slate-800">
+                {className || "Classroom"} {/* USE CLASS NAME */}
+              </h2>
+              {lessonTitle && (
+                <p className="text-xs text-slate-500">{lessonTitle}</p>
+              )}
             </div>
+          </div>
+          <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+            <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-green-500 animate-pulse' : 'bg-orange-400'}`} />
+            <span className="text-xs font-bold text-blue-700 uppercase tracking-wide">
+              {teacher ? "Live" : "Waiting"}
+            </span>
           </div>
         </div>
 
@@ -254,7 +265,9 @@ export function ActiveClassroomUI({ currentUserRole, roomName }: ActiveClassroom
                <div className="w-32 h-32 mx-auto bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border-2 border-white/20 mb-4">
                   <span className="text-6xl">👩‍🏫</span>
                </div>
-               <h2 className="text-2xl font-bold text-white font-serif tracking-wide">Math Class</h2>
+               <h2 className="text-2xl font-bold text-white font-serif tracking-wide">
+                 {className || "Class"}
+               </h2>
                <p className="text-blue-100 mt-2 text-lg">Waiting for teacher to join...</p>
             </div>
           )}

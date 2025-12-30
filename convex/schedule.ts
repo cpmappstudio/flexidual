@@ -221,6 +221,7 @@ export const getSessionStatus = query({
     const isExplicitlyActive = schedule.status === "active";
 
     return {
+      scheduleId: schedule._id,
       isActive: isTimeWindowActive || isExplicitlyActive,
       status: schedule.status,
       start: schedule.scheduledStart,

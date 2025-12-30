@@ -47,16 +47,15 @@
   /* Custom Alef University Colors */
   --color-fuzzy-wuzzy: oklch(0.6387 0.1418 21.88);
   --color-deep-koamaru: oklch(0.37 0.0568 265.16);
-  /* #313F5E */
 }
 
 :root {
   --radius: 0.625rem;
   --background: oklch(0.9735 0.0261 90.1);
   --foreground: oklch(0.145 0 0);
-  --card: oklch(97.572% 0.01347 93.002);
+  --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(0.9735 0.0261 90.1);
+  --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
@@ -86,23 +85,23 @@
 }
 
 .dark {
-  --background: oklch(0.2679 0.0036 106.64);
+  --background: oklch(0.14 0.004 265.76);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.2679 0.0036 106.64);
+  --card: oklch(0.18 0.006 265.76);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.2679 0.0036 106.64);
+  --popover: oklch(0.18 0.006 265.76);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.168 0.002 106.62);
+  --secondary: oklch(0.22 0.008 265.76);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.168 0.002 106.62);
+  --muted: oklch(0.22 0.008 265.76);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.168 0.002 106.62);
+  --accent: oklch(0.22 0.008 265.76);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --border: oklch(0.3 0.01 265.76);
+  --input: oklch(0.3 0.01 265.76);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -126,5 +125,119 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Dashboard Component Styles - DRY approach */
+@layer components {
+  /* Header */
+  .dashboard-header {
+    @apply bg-card p-6 rounded-xl shadow-sm border border-border;
+  }
+
+  /* Cards */
+  .dashboard-card {
+    @apply border-2 shadow-lg bg-card border-border;
+  }
+
+  /* Sticky sidebar elements */
+  .sidebar-sticky {
+    @apply sticky top-4;
+  }
+
+  /* Time badges */
+  .time-badge {
+    @apply flex items-center gap-2 bg-card px-3 py-1.5 rounded-full shadow-sm border border-border;
+  }
+
+  /* Lesson Cards */
+  .lesson-card {
+    @apply flex items-center gap-4 p-4 rounded-lg border transition-all;
+  }
+
+  .lesson-live {
+    @apply bg-green-50 dark:bg-green-950/30 border-green-300 dark:border-green-700;
+  }
+
+  .lesson-completed {
+    @apply bg-muted border-border opacity-60;
+  }
+
+  .lesson-upcoming {
+    @apply bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 hover:border-blue-300 dark:hover:border-blue-700;
+  }
+
+  /* Time boxes in lessons */
+  .lesson-time-box {
+    @apply flex flex-col items-center justify-center min-w-[60px] text-center p-2 bg-card rounded-md shadow-sm border border-border;
+  }
+
+  .upcoming-date-box {
+    @apply flex flex-col items-center justify-center min-w-[70px] text-center p-2 bg-card rounded-md shadow-sm border border-border;
+  }
+
+  /* Calendar day cards */
+  .calendar-day-card {
+    @apply p-3 rounded-lg border transition-all bg-card border-border hover:border-primary/50;
+  }
+
+  .calendar-day-today {
+    @apply bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-950/30 dark:to-blue-950/30 border-purple-400 dark:border-purple-600;
+  }
+
+  /* Event mini cards */
+  .event-mini-card {
+    @apply text-xs p-2 bg-background rounded border border-border;
+  }
+
+  /* Curriculum link cards */
+  .curriculum-link-card {
+    @apply block p-3 rounded-lg bg-muted border border-border hover:border-primary/50 hover:bg-accent transition-all;
+  }
+
+  /* Custom scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground));
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--foreground) / 0.5);
+  }
+}
+
+/* Student Dashboard Specific Styles */
+@layer components {
+  .student-hero-card {
+    @apply overflow-hidden border-4 shadow-xl transition-all;
+  }
+
+  .student-card {
+    @apply border-2 shadow-lg bg-card/80 backdrop-blur-sm border-border;
+  }
+
+  .student-lesson-card {
+    @apply flex items-center gap-4 p-4 rounded-xl border-2 transition-all;
+  }
+
+  .student-week-card {
+    @apply p-3 rounded-xl border-2 transition-all bg-card border-border;
+  }
+
+  .student-week-today {
+    @apply bg-gradient-to-r from-pink-100 to-purple-100 dark:from-pink-950/30 dark:to-purple-950/30 border-pink-400 dark:border-pink-600 shadow-md;
   }
 }
