@@ -1,6 +1,6 @@
 // ################################################################################
 // # File: types.ts                                                               #
-// # Project: CPCA Teachers - Teacher Progress Tracking System                    #
+// # Project: FlexiDual - Educational Meeting Platform                            #
 // # Description: Shared types and validators for teacher progress tracking       #
 // # Creation date: 09/22/2025                                                    #
 // ################################################################################

@@ -13,18 +13,13 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
-import type * as admin from "../admin.js";
-import type * as auth from "../auth.js";
-import type * as campuses from "../campuses.js";
+import type * as classes from "../classes.js";
 import type * as curriculums from "../curriculums.js";
 import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
 import type * as livekit from "../livekit.js";
-import type * as progress from "../progress.js";
-import type * as seedCampuses from "../seedCampuses.js";
-import type * as seedFlexiDual from "../seedFlexiDual.js";
-import type * as students from "../students.js";
-import type * as teachers from "../teachers.js";
+import type * as schedule from "../schedule.js";
+import type * as seed from "../seed.js";
 import type * as types from "../types.js";
 import type * as users from "../users.js";
 
@@ -37,18 +32,13 @@ import type * as users from "../users.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
-  admin: typeof admin;
-  auth: typeof auth;
-  campuses: typeof campuses;
+  classes: typeof classes;
   curriculums: typeof curriculums;
   http: typeof http;
   lessons: typeof lessons;
   livekit: typeof livekit;
-  progress: typeof progress;
-  seedCampuses: typeof seedCampuses;
-  seedFlexiDual: typeof seedFlexiDual;
-  students: typeof students;
-  teachers: typeof teachers;
+  schedule: typeof schedule;
+  seed: typeof seed;
   types: typeof types;
   users: typeof users;
 }>;

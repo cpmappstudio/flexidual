@@ -50,10 +50,10 @@ const ROUTE_CONFIG: Record<string, RouteConfig> = {
 
 // Routes that don't need translation (static labels)
 const STATIC_ROUTES: Record<string, string> = {
-    'campuses': 'Campuses',
     'teachers': 'Teachers',
     'curriculums': 'Curriculums',
     'lessons': 'Lessons',
+    'classes': 'Classes',
 }
 
 // Helper to detect if a segment is a Convex ID
@@ -72,22 +72,22 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
     }, [pathname])
 
     // Extract dynamic IDs from path
-    const { campusId, curriculumId, lessonId, teacherId } = useMemo(() => {
+    const { curriculumId, lessonId, classId, teacherId } = useMemo(() => {
         const parts = pathWithoutLocale.split('/').filter(Boolean)
-        const campusIndex = parts.indexOf('campuses')
         const curriculumIndex = parts.indexOf('curriculums')
         const lessonIndex = parts.indexOf('lessons')
+        const classIndex = parts.indexOf('classes')
         const teacherIndex = parts.indexOf('teachers')
 
         return {
-            campusId: campusIndex !== -1 && parts[campusIndex + 1] && isConvexId(parts[campusIndex + 1])
-                ? parts[campusIndex + 1] as Id<"campuses">
-                : null,
             curriculumId: curriculumIndex !== -1 && parts[curriculumIndex + 1] && isConvexId(parts[curriculumIndex + 1])
                 ? parts[curriculumIndex + 1] as Id<"curriculums">
                 : null,
             lessonId: lessonIndex !== -1 && parts[lessonIndex + 1] && isConvexId(parts[lessonIndex + 1])
-                ? parts[lessonIndex + 1] as Id<"curriculum_lessons">
+                ? parts[lessonIndex + 1] as Id<"lessons">
+                : null,
+            classId: classIndex !== -1 && parts[classIndex + 1] && isConvexId(parts[classIndex + 1])
+                ? parts[classIndex + 1] as Id<"classes">
                 : null,
             teacherId: teacherIndex !== -1 && parts[teacherIndex + 1] && isConvexId(parts[teacherIndex + 1])
                 ? parts[teacherIndex + 1] as Id<"users">
@@ -96,17 +96,17 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
     }, [pathWithoutLocale])
 
     // Fetch dynamic data
-    const campus = useQuery(
-        api.campuses.getCampus,
-        campusId ? { campusId } : "skip"
-    )
     const curriculum = useQuery(
-        api.curriculums.getCurriculum,
-        curriculumId ? { curriculumId } : "skip"
+        api.curriculums.get,
+        curriculumId ? { id: curriculumId } : "skip"
     )
     const lesson = useQuery(
-        api.lessons.getLesson,
-        lessonId ? { lessonId } : "skip"
+        api.lessons.get,
+        lessonId ? { id: lessonId } : "skip"
+    )
+    const classData = useQuery(
+        api.classes.get,
+        classId ? { id: classId } : "skip"
     )
     const teacher = useQuery(
         api.users.getUser,
@@ -157,12 +157,12 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
             let title: string
             if (isConvexId(part)) {
                 // Get dynamic name based on context
-                if (campusId && part === campusId) {
-                    title = campus?.name || 'Loading...'
-                } else if (curriculumId && part === curriculumId) {
-                    title = curriculum?.name || 'Loading...'
+                if (curriculumId && part === curriculumId) {
+                    title = curriculum?.title || 'Loading...'
                 } else if (lessonId && part === lessonId) {
                     title = lesson?.title || 'Loading...'
+                } else if (classId && part === classId) {
+                    title = classData?.name || 'Loading...'
                 } else if (teacherId && part === teacherId) {
                     title = teacher?.fullName || 'Loading...'
                 } else {
@@ -189,7 +189,18 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
         })
 
         return segments
-    }, [pathWithoutLocale, getTranslation, campusId, campus, curriculumId, curriculum, lessonId, lesson, teacherId, teacher])
+    }, [
+        pathWithoutLocale,
+        getTranslation,
+        curriculumId,
+        curriculum,
+        lessonId,
+        lesson,
+        classId,
+        classData,
+        teacherId,
+        teacher,
+    ])
 
     return (
         <Breadcrumb>

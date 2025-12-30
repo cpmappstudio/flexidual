@@ -1,11 +1,11 @@
 "use node";
 
-import { action } from "./_generated/server";
 import { v } from "convex/values";
-import { AccessToken } from "livekit-server-sdk";
+import { action } from "./_generated/server";
 import { api } from "./_generated/api";
+import { AccessToken } from "livekit-server-sdk";
 
-// Define roles for token permissions
+// Roles for token permissions
 type LiveKitRole = "student" | "teacher" | "tutor" | "admin" | "superadmin"; 
 
 /**
@@ -19,69 +19,65 @@ export const getToken = action({
     participantName: v.string(),
   },
   handler: async (ctx, args): Promise<string> => {
-    // 1. Verify Authentication
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
+    if (!identity) throw new Error("Not authenticated");
 
-    // 2. Fetch REAL Role from Database
-    const user = await ctx.runQuery(api.users.getCurrentUser, { 
-      clerkId: identity.subject 
-    });
+    const user = await ctx.runQuery(api.users.getCurrentUser, { clerkId: identity.subject });
+    if (!user) throw new Error("User not found");
 
-    if (!user) {
-      throw new Error("User not found in database");
-    }
-
-    // Type assertion with validation
     const userRole: LiveKitRole = (user.role as LiveKitRole) || "student";
     
-    // DEBUG LOG: Check your Convex Dashboard Logs to see this!
-    console.log(`🎟️ Generating Token | User: ${user.fullName} | Role: ${userRole} | ID: ${identity.subject}`);
+    const sessionStatus = await ctx.runQuery(api.schedule.getSessionStatus, { 
+      sessionId: args.roomName 
+    });
 
-    // 3. Get LiveKit credentials
-    const apiKey: string | undefined = process.env.LIVEKIT_API_KEY;
-    const apiSecret: string | undefined = process.env.LIVEKIT_API_SECRET;
-    
-    if (!apiKey || !apiSecret) {
-      throw new Error("LiveKit API Key or Secret not configured in environment.");
+    if (!sessionStatus) {
+      throw new Error("Session not found");
     }
 
-    // 4. Role-based permissions
-    const canPublish: boolean = true; 
-    const canSubscribe: boolean = true;
-    const canPublishData: boolean = true;
-    
-    // Teachers/Tutors/Admins have admin rights in the room
-    const roomAdmin: boolean = userRole === "teacher" || userRole === "tutor" || userRole === "admin" || userRole === "superadmin";
+    // Allow Teachers/Admins to join early to set up the room
+    const canJoinEarly = ["teacher", "admin", "superadmin", "tutor"].includes(userRole);
 
-    // 5. Create Access Token
-    const at: AccessToken = new AccessToken(apiKey, apiSecret, {
-      identity: identity.subject, // Clerk ID (Unique)
-      name: args.participantName, // Display Name
+    if (!sessionStatus.isActive && !canJoinEarly) {
+      throw new Error("Class has not started yet. Please wait for your teacher.");
+    }
+
+    // Additional check: Even teachers can't join if session is cancelled
+    if (sessionStatus.status === "cancelled") {
+      throw new Error("This session has been cancelled");
+    }
+
+    // Additional check: Don't allow joining completed sessions
+    if (sessionStatus.status === "completed" && !canJoinEarly) {
+      throw new Error("This session has already ended");
+    }
+    
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      throw new Error("LiveKit credentials not configured");
+    }
+
+    const roomAdmin = ["teacher", "tutor", "admin", "superadmin"].includes(userRole);
+
+    const at = new AccessToken(apiKey, apiSecret, {
+      identity: identity.subject,
+      name: args.participantName,
       metadata: JSON.stringify({
-        role: userRole, // <--- THIS IS THE KEY PART
+        role: userRole,
         userId: identity.subject,
-        fullName: user.fullName, // Add full name for display
+        fullName: user.fullName,
       })
     });
 
     at.addGrant({
       roomJoin: true,
       room: args.roomName,
-      canPublish,
-      canSubscribe,
-      canPublishData,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true,
       roomAdmin, 
     });
-    
-    // More detailed logging
-    console.log(`✅ Token Generated Successfully`);
-    console.log(`   - Identity: ${identity.subject}`);
-    console.log(`   - Name: ${args.participantName}`);
-    console.log(`   - Role: ${userRole}`);
-    console.log(`   - Metadata: ${JSON.stringify({ role: userRole, userId: identity.subject, fullName: user.fullName })}`);
     
     return at.toJwt();
   },
