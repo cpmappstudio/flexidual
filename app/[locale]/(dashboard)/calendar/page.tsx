@@ -85,7 +85,7 @@ export default function CalendarPage() {
     .slice(0, 10)
 
   return (
-    <div className="h-[calc(100vh-4rem)] p-4 flex flex-col gap-4">
+    <div className="min-h-[calc(100vh-4rem)] p-4 flex flex-col gap-4 pb-12">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold">
@@ -116,9 +116,9 @@ export default function CalendarPage() {
         </div>
 
         {/* VIEW 1: The Graphical Calendar */}
-        <TabsContent value="month" className="flex-1 border rounded-lg overflow-hidden bg-background p-2">
+        <TabsContent value="month" className="flex-1 border rounded-lg bg-background p-2">
           <Calendar 
-            events={filteredEvents} // <--- PASS FILTERED EVENTS
+            events={filteredEvents}
             setEvents={setEvents}
             mode={mode}
             setMode={setMode}

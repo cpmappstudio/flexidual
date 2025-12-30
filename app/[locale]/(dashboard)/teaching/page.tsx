@@ -8,9 +8,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 export default function MyCurriculumsPage() {
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
+  const { user, isLoading } = useCurrentUser()
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
 
   if (curriculums === undefined) {
     return <div className="p-6 space-y-4"><Skeleton className="h-10 w-48"/><Skeleton className="h-64 w-full"/></div>
@@ -23,7 +26,7 @@ export default function MyCurriculumsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Curriculums</h1>
           <p className="text-muted-foreground">Manage your course templates and lessons.</p>
         </div>
-        <CurriculumDialog />
+        {isAdmin && <CurriculumDialog />}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

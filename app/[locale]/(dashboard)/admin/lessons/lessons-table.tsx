@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import {
@@ -66,6 +66,12 @@ export function LessonsTable() {
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   })
+
+  useEffect(() => {
+    if (curriculums && curriculums.length && !selectedCurriculumId) {
+      setSelectedCurriculumId(curriculums[0]._id)
+    }
+  }, [curriculums])
 
   if (curriculums === undefined) return <Skeleton className="h-96 w-full" />
 

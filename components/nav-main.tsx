@@ -7,6 +7,7 @@ import {
   Users,
   GraduationCap,
   School,
+  LibraryBig,
 } from "lucide-react"
 import { Link, usePathname } from "@/i18n/navigation"
 import {
@@ -71,8 +72,8 @@ export function NavMain() {
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/teaching/classes")}>
                 <Link href="/teaching/classes">
-                  <Users />
-                  <span>My Classes</span>
+                  <School />
+                  {isAdmin ? <span>All Classes</span> : <span>My Classes</span>}
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -102,19 +103,19 @@ export function NavMain() {
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-             <SidebarMenuItem>
+             {/* <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/classes")}>
-                <Link href="/teaching/classes"> {/* Admin can view the same class list, we'll fix the permission views */}
+                <Link href="/teaching/classes">
                   <School />
                   <span>All Classes</span>
                 </Link>
               </SidebarMenuButton>
-            </SidebarMenuItem>
+            </SidebarMenuItem> */}
 
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/lessons")}>
                 <Link href="/admin/lessons"> {/* Admin can view the same class list, we'll fix the permission views */}
-                  <School />
+                  <LibraryBig />
                   <span>All Lessons</span>
                 </Link>
               </SidebarMenuButton>

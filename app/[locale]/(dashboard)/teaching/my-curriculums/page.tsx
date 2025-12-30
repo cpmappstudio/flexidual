@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { BookOpen, ArrowRight } from "lucide-react"
 import Link from "next/link"
-// CHANGED: Import the unified dialog
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 export default function MyCurriculumsPage() {
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
+  const { user, isLoading } = useCurrentUser()
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
 
   if (curriculums === undefined) {
     return <div className="p-6 space-y-4"><Skeleton className="h-10 w-48"/><Skeleton className="h-64 w-full"/></div>
@@ -24,15 +26,15 @@ export default function MyCurriculumsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Curriculums</h1>
           <p className="text-muted-foreground">Manage your course templates and lessons.</p>
         </div>
-        <CurriculumDialog />
+        {isAdmin && <CurriculumDialog />}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {curriculums.map((curr) => (
           <Card key={curr._id} className="group hover:shadow-md transition-all relative">
-             <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+             {isAdmin && <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                 <CurriculumDialog curriculum={curr} />
-             </div>
+             </div>}
 
             <CardHeader>
               <div className="flex justify-between items-start">
