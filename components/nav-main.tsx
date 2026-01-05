@@ -18,8 +18,10 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { useCurrentUser } from "@/hooks/use-current-user"
+import { useTranslations } from "next-intl"
 
 export function NavMain() {
+  const t = useTranslations()
   const pathname = usePathname()
   const { user, isLoading } = useCurrentUser()
 
@@ -31,7 +33,7 @@ export function NavMain() {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Platform</SidebarGroupLabel>
+      <SidebarGroupLabel>{t('navigation.platform')}</SidebarGroupLabel>
       <SidebarMenu>
         
         {/* 1. DASHBOARD (Everyone) */}
@@ -39,7 +41,7 @@ export function NavMain() {
           <SidebarMenuButton asChild isActive={pathname.endsWith("/")}>
             <Link href="/">
               <LayoutDashboard />
-              <span>Dashboard</span>
+              <span>{t('navigation.dashboard')}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -49,7 +51,7 @@ export function NavMain() {
           <SidebarMenuButton asChild isActive={pathname.includes("/calendar")}>
             <Link href="/calendar">
               <Calendar />
-              <span>Schedule</span>
+              <span>{t('navigation.schedule')}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -57,13 +59,13 @@ export function NavMain() {
         {/* 3. TEACHING TOOLS (Teachers/Admins) */}
         {isTeacher && (
           <>
-            <SidebarGroupLabel className="mt-4">Teaching</SidebarGroupLabel>
+            <SidebarGroupLabel className="mt-4">{t('navigation.teaching')}</SidebarGroupLabel>
             
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/teaching/my-curriculums")}>
                 <Link href="/teaching/my-curriculums">
                   <BookOpen />
-                  <span>Curriculums</span>
+                  <span>{t('navigation.curriculums')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -73,7 +75,7 @@ export function NavMain() {
               <SidebarMenuButton asChild isActive={pathname.includes("/teaching/classes")}>
                 <Link href="/teaching/classes">
                   <School />
-                  {isAdmin ? <span>All Classes</span> : <span>My Classes</span>}
+                  <span>{isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -83,13 +85,13 @@ export function NavMain() {
         {/* 4. ADMIN TOOLS (Admins Only) */}
         {isAdmin && (
           <>
-            <SidebarGroupLabel className="mt-4">Administration</SidebarGroupLabel>
+            <SidebarGroupLabel className="mt-4">{t('navigation.administration')}</SidebarGroupLabel>
             
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/teachers")}>
                 <Link href="/admin/teachers">
                   <Users />
-                  <span>Teachers</span>
+                  <span>{t('navigation.teachers')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -98,25 +100,16 @@ export function NavMain() {
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/students")}>
                 <Link href="/admin/students">
                   <GraduationCap />
-                  <span>Students</span>
+                  <span>{t('navigation.students')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-             {/* <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/admin/classes")}>
-                <Link href="/teaching/classes">
-                  <School />
-                  <span>All Classes</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem> */}
-
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/lessons")}>
-                <Link href="/admin/lessons"> {/* Admin can view the same class list, we'll fix the permission views */}
+                <Link href="/admin/lessons">
                   <LibraryBig />
-                  <span>All Lessons</span>
+                  <span>{t('navigation.allLessons')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -125,7 +118,7 @@ export function NavMain() {
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/curriculums")}>
                 <Link href="/admin/curriculums">
                   <BookOpen />
-                  <span>All Curriculums</span>
+                  <span>{t('navigation.allCurriculums')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -29,13 +29,20 @@
   "navigation": {
     "dashboard": "Dashboard",
     "calendar": "Calendar",
+    "schedule": "Schedule",
     "teaching": "Teaching",
     "admin": "Admin",
+    "administration": "Administration",
+    "platform": "Platform",
     "students": "Students",
     "teachers": "Teachers",
     "curriculums": "Curriculums",
     "lessons": "Lessons",
     "classes": "Classes",
+    "myClasses": "My Classes",
+    "allClasses": "All Classes",
+    "allLessons": "All Lessons",
+    "allCurriculums": "All Curriculums",
     "users": "Users"
   },
   "dashboard": {

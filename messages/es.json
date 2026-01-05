@@ -29,13 +29,20 @@
   "navigation": {
     "dashboard": "Panel",
     "calendar": "Calendario",
+    "schedule": "Horario",
     "teaching": "Enseñanza",
     "admin": "Administración",
+    "administration": "Administración",
+    "platform": "Plataforma",
     "students": "Estudiantes",
     "teachers": "Profesores",
     "curriculums": "Currículos",
     "lessons": "Lecciones",
     "classes": "Clases",
+    "myClasses": "Mis Clases",
+    "allClasses": "Todas las Clases",
+    "allLessons": "Todas las Lecciones",
+    "allCurriculums": "Todos los Currículos",
     "users": "Usuarios"
   },
   "dashboard": {
