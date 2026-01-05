@@ -10,6 +10,7 @@ import { Loader2, CalendarClock, School } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -17,6 +18,7 @@ interface FlexiClassroomProps {
 }
 
 export default function FlexiClassroom({ roomName, className }: FlexiClassroomProps) {
+  const t = useTranslations();
   const { user } = useUser();
   const router = useRouter();
   const [token, setToken] = useState<string>("");
@@ -31,12 +33,11 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
     sessionId: roomName 
   });
 
-  // ADD THIS: Fetch full schedule details
+  // Fetch full schedule details
   const scheduleDetails = useQuery(
     api.schedule.getWithDetails,
     sessionStatus?.scheduleId ? { id: sessionStatus.scheduleId } : "skip"
   );
-
 
   const getToken = useAction(api.livekit.getToken);
 
@@ -67,15 +68,15 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
         // Fallback error handling if logic slips through
         if (err.message.includes("not started")) {
            // Should be handled by UI, but just in case
-           setError("Class hasn't started yet.");
+           setError(t('classroom.hasntStarted'));
         } else {
-           setError("Could not connect to the classroom.");
+           setError(t('classroom.connectionError'));
         }
       }
     };
 
     fetchToken();
-  }, [user, roomName, getToken, shouldConnect]);
+  }, [user, roomName, getToken, shouldConnect, t]);
 
   // --- RENDER STATES ---
 
@@ -85,7 +86,7 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
       <div className={`flex h-full w-full items-center justify-center bg-slate-50 rounded-lg ${className}`}>
         <div className="flex flex-col items-center gap-4">
            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-           <p className="text-sm font-medium text-slate-500 animate-pulse">Checking class status...</p>
+           <p className="text-sm font-medium text-slate-500 animate-pulse">{t('classroom.checkingStatus')}</p>
         </div>
       </div>
     );
@@ -97,9 +98,9 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
       <div className={`flex h-full w-full items-center justify-center bg-slate-50 rounded-lg ${className}`}>
         <div className="text-center p-8 max-w-md">
            <School className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-           <h3 className="text-xl font-bold text-slate-800">Classroom Not Found</h3>
-           <p className="text-slate-500 mt-2">We couldn't find a scheduled class with this ID.</p>
-           <Button variant="outline" className="mt-6" onClick={() => router.back()}>Go Back</Button>
+           <h3 className="text-xl font-bold text-slate-800">{t('classroom.notFound')}</h3>
+           <p className="text-slate-500 mt-2">{t('classroom.notFoundDescription')}</p>
+           <Button variant="outline" className="mt-6" onClick={() => router.back()}>{t('common.back')}</Button>
         </div>
       </div>
     );
@@ -114,11 +115,11 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
               <CalendarClock className="w-10 h-10 text-blue-600" />
            </div>
            
-           <h2 className="text-2xl font-bold text-slate-800 mb-2">Class hasn't started yet</h2>
+           <h2 className="text-2xl font-bold text-slate-800 mb-2">{t('classroom.waitingTitle')}</h2>
            
            <div className="space-y-4 my-6">
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Scheduled Start</p>
+                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{t('classroom.scheduledStart')}</p>
                  <p className="text-xl font-mono font-bold text-slate-700">
                     {format(sessionStatus.start, "h:mm a")}
                  </p>
@@ -126,12 +127,12 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
               </div>
               
               <p className="text-slate-600 text-sm leading-relaxed">
-                Sit tight! You will be automatically joined as soon as your teacher opens the classroom.
+                {t('classroom.waitingMessage')}
               </p>
            </div>
 
            <Button variant="outline" onClick={() => router.back()} className="w-full">
-             Back to Dashboard
+             {t('classroom.backToDashboard')}
            </Button>
         </div>
       </div>
@@ -143,9 +144,9 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
     return (
       <div className={`flex h-full w-full items-center justify-center bg-red-50 rounded-lg ${className}`}>
         <div className="text-center p-6">
-           <div className="text-red-500 font-bold mb-2">Connection Error</div>
+           <div className="text-red-500 font-bold mb-2">{t('classroom.connectionError')}</div>
            <div className="text-slate-600 text-sm mb-4">{error}</div>
-           <Button variant="outline" onClick={() => window.location.reload()}>Try Again</Button>
+           <Button variant="outline" onClick={() => window.location.reload()}>{t('classroom.tryAgain')}</Button>
         </div>
       </div>
     );
@@ -157,7 +158,7 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
       <div className={`flex h-full w-full items-center justify-center bg-slate-900/90 backdrop-blur-sm rounded-lg ${className}`}>
         <div className="flex flex-col items-center gap-4">
            <Loader2 className="w-10 h-10 text-white animate-spin" />
-           <p className="text-white font-medium">Entering Classroom...</p>
+           <p className="text-white font-medium">{t('classroom.entering')}</p>
         </div>
       </div>
     );

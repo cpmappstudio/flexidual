@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Loader2, Video } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useTranslations } from "next-intl"
 
 interface JoinClassButtonProps {
   lessonId: Id<"lessons">
 }
 
 export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
+  const t = useTranslations()
   const router = useRouter()
   
   // 1. Get my entire schedule (Universal Query)
@@ -28,7 +30,7 @@ export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
     if (activeSession?.roomName) {
       router.push(`/classroom/${activeSession.roomName}`)
     } else {
-      toast.error("Class is not currently active.")
+      toast.error(t('classroom.notActive'))
     }
   }
 
@@ -37,7 +39,7 @@ export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
     return (
       <Button disabled variant="outline" size="sm">
         <Loader2 className="w-4 h-4 animate-spin mr-2"/> 
-        Checking...
+        {t('classroom.checking')}
       </Button>
     )
   }
@@ -51,7 +53,7 @@ export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
         className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white animate-pulse font-bold"
       >
         <Video className="w-5 h-5 mr-2" />
-        Join Live Class
+        {t('classroom.joinLive')}
       </Button>
     )
   }
@@ -60,7 +62,7 @@ export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
   // Usually better to render nothing if not active, or a "Not Started" badge
   return (
     <Button disabled variant="secondary">
-      Not Live
+      {t('classroom.notLive')}
     </Button>
   )
 }
