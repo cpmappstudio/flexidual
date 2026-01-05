@@ -264,7 +264,7 @@ export default function TeachingDashboard() {
         <div className="space-y-6">
           
           {/* Week Calendar Mini View */}
-          <Card className="dashboard-card sidebar-sticky">
+          <Card className="dashboard-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <CalendarIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
