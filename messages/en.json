@@ -1,289 +1,174 @@
 {
-    "common": {
-        "language": "Language",
-        "english": "English",
-        "spanish": "Español",
-        "theme": "Theme",
-        "light": "Light",
-        "dark": "Dark",
-        "system": "System"
-    },
-    "navigation": {
-        "university": "CENTRAL POINTE CHRISTIAN ACADEMY",
-        "dashboard": "Dashboard",
-        "navigation": "Navigation",
-        "playground": "Playground",
-        "models": "Models",
-        "documentation": "Documentation",
-        "settings": "Settings",
-        "history": "History",
-        "starred": "Starred",
-        "general": "General",
-        "introduction": "Introduction",
-        "getStarted": "Get Started",
-        "tutorials": "Tutorials",
-        "changelog": "Changelog",
-        "profile": "My Account",
-        "myStudy": "My Study",
-        "studentDocs": "Documentation",
-        "myClasses": "My Classes",
-        "professorDocs": "Documentation",
-        "academicAdmin": "Academic Administration",
-        "personalAdmin": "Personal Administration",
-        "adminDocs": "Documentation",
-        "menu": {
-            "profile": {
-                "title": "My Account",
-                "url": "/profile",
-                "items": [
-                    {
-                        "title": "Personal Information",
-                        "url": "/profile"
-                    }
-                ]
-            },
-            "student": {
-                "title": "My Study",
-                "url": "/academic",
-                "items": [
-                    {
-                        "title": "Academic History",
-                        "url": "/academic/history"
-                    },
-                    {
-                        "title": "Academic Progress",
-                        "url": "/academic/progress"
-                    }
-                ]
-            },
-            "studentDocs": {
-                "title": "Documentation",
-                "url": "/docs",
-                "items": [
-                    {
-                        "title": "Certificates & Transcripts",
-                        "url": "/docs/transcripts"
-                    },
-                    {
-                        "title": "Academic Progress Guide",
-                        "url": "/docs/progress"
-                    }
-                ]
-            },
-            "professor": {
-                "title": "My Classes",
-                "url": "/teaching",
-                "items": [
-                    {
-                        "title": "Gradebook",
-                        "url": "/teaching/gradebook"
-                    },
-                    {
-                        "title": "Teaching Progress",
-                        "url": "/teaching/progress"
-                    }
-                ]
-            },
-            "professorDocs": {
-                "title": "Documentation",
-                "url": "/docs/teaching",
-                "items": [
-                    {
-                        "title": "Grading Guide",
-                        "url": "/docs/teaching/grading"
-                    },
-                    {
-                        "title": "Teaching Resources",
-                        "url": "/docs/teaching/resources"
-                    }
-                ]
-            },
-            "adminAcademic": {
-                "title": "Academic Administration",
-                "url": "/admin",
-                "items": [
-                    {
-                        "title": "Program Management",
-                        "url": "/admin/programs"
-                    },
-                    {
-                        "title": "Course Management",
-                        "url": "/admin/courses"
-                    },
-                    {
-                        "title": "Period Management",
-                        "url": "/admin/periods"
-                    }
-                ]
-            },
-            "adminPersonal": {
-                "title": "Personal Administration",
-                "url": "/admin/users",
-                "items": [
-                    {
-                        "title": "Professor Management",
-                        "url": "/admin/professors"
-                    },
-                    {
-                        "title": "Student Management",
-                        "url": "/admin/students"
-                    }
-                ]
-            },
-            "adminDocs": {
-                "title": "Documentation",
-                "url": "/docs/admin",
-                "items": [
-                    {
-                        "title": "Administration Manual",
-                        "url": "/docs/admin/manual"
-                    },
-                    {
-                        "title": "System Guides",
-                        "url": "/docs/admin/guides"
-                    }
-                ]
-            }
-        }
-    },
-    "university": {
-        "name": "CENTRAL POINTE",
-        "academicRecords": "CHRISTIAN ACADEMY"
-    },
-    "dashboard": {
-        "student": {
-            "metrics": {
-                "completedCredits": "Completed Credits",
-                "cumulativeGPA": "Cumulative GPA",
-                "currentBimester": "Current Bimester",
-                "careerProgress": "Career Progress",
-                "excellentProgress": "Excellent progress",
-                "creditsRemaining": "{count} credits remaining to graduate",
-                "outstandingPerformance": "Outstanding performance",
-                "maintainLevel": "Maintain this level to graduate with honors",
-                "currentlyEnrolled": "Currently enrolled",
-                "creditsInProgress": "{count} credits in progress this bimester",
-                "almostGraduating": "Almost graduating",
-                "bimestersRemaining": "{count} bimester remaining expected",
-                "excellent": "Excellent",
-                "bimesters": "bimesters",
-                "subjects": "subjects"
-            },
-            "program": {
-                "title": "Software Engineering",
-                "subtitle": "Undergraduate Program • Code: IDS-001",
-                "admissionDate": "Admission Date",
-                "estimatedGraduation": "Estimated Graduation",
-                "status": "Status",
-                "active": "Active",
-                "totalCredits": "Total Credits",
-                "duration": "Duration",
-                "languages": "Languages",
-                "modalityPresential": "Presential",
-                "viewDetails": "View Details"
-            },
-            "currentSubjects": {
-                "title": "Bimester Subjects",
-                "subtitle": "{period} • {count} enrolled subjects • {credits} credits",
-                "code": "Code",
-                "subject": "Subject",
-                "credits": "Credits",
-                "grade": "Grade",
-                "status": "Status",
-                "inProgress": "In Progress",
-                "pending": "Pending",
-                "viewHistory": "View History"
-            },
-            "creditDistribution": {
-                "title": "Credit Distribution",
-                "core": "Core",
-                "humanities": "Humanities",
-                "electives": "Electives"
-            },
-            "upcomingDates": {
-                "title": "Upcoming Dates",
-                "gradesDeadline": "Grades deadline",
-                "nextBimesterStart": "Next bimester start",
-                "earlyEnrollment": "Early enrollment"
-            },
-            "documents": {
-                "title": "Documents",
-                "transcriptCertificate": "Transcript Certificate",
-                "academicHistory": "Academic History",
-                "progressAnalysis": "Progress Analysis",
-                "academicCalendar": "Academic Calendar"
-            }
-        }
-    },
-    "academicHistory": {
-        "title": "Academic History",
-        "subtitle": "Complete record of academic performance",
-        "printTranscript": "Print Transcript",
-        "printPeriod": "Print Period",
-        "filters": {
-            "searchSubject": "Search subject...",
-            "filterByPeriod": "Filter by period",
-            "allPeriods": "All periods",
-            "columns": "Columns"
-        },
-        "table": {
-            "code": "Code",
-            "group": "Group",
-            "subject": "Subject",
-            "credits": "Credits",
-            "category": "Category",
-            "letterGrade": "Letter Grade",
-            "percentGrade": "Percent",
-            "gpaScale": "GPA Scale",
-            "status": "Status",
-            "professor": "Professor",
-            "actions": "Actions"
-        },
-        "status": {
-            "passed": "Passed",
-            "failed": "Failed",
-            "inProgress": "In Progress",
-            "withdrawn": "Withdrawn",
-            "incomplete": "Incomplete"
-        },
-        "categories": {
-            "core": "Core",
-            "humanities": "Humanities",
-            "electives": "Electives",
-            "prerequisite": "Prerequisite"
-        },
-        "periodSummary": {
-            "title": "Period Completion Summary",
-            "creditsEnrolled": "Credits Enrolled",
-            "creditsApproved": "Credits Approved",
-            "percentApproved": "% Credits Approved",
-            "cumulativeCredits": "Cumulative Credits",
-            "cumulativeApproved": "Cumulative Credits Approved",
-            "periodGPA": "Period GPA",
-            "cumulativeGPA": "Cumulative GPA"
-        },
-        "overallSummary": {
-            "title": "Overall Academic Summary",
-            "totalCreditsCompleted": "Total Credits Completed",
-            "totalCreditsRequired": "Total Credits Required",
-            "overallGPA": "Overall GPA",
-            "academicStanding": "Academic Standing",
-            "expectedGraduation": "Expected Graduation"
-        },
-        "standing": {
-            "excellent": "Excellent",
-            "good": "Good Standing",
-            "probation": "Academic Probation",
-            "warning": "Academic Warning"
-        },
-        "subjectDetails": {
-            "title": "Subject Details",
-            "description": "Description",
-            "prerequisites": "Prerequisites",
-            "schedule": "Schedule",
-            "notes": "Notes",
-            "none": "None"
-        },
-        "noResults": "No subjects found matching your criteria"
-    }
+  "common": {
+    "add": "Add",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "create": "Create",
+    "update": "Update",
+    "search": "Search",
+    "filter": "Filter",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "loading": "Loading",
+    "noResults": "No results found",
+    "actions": "Actions",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "archived": "Archived"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "calendar": "Calendar",
+    "teaching": "Teaching",
+    "admin": "Admin",
+    "students": "Students",
+    "teachers": "Teachers",
+    "curriculums": "Curriculums",
+    "lessons": "Lessons",
+    "classes": "Classes",
+    "users": "Users"
+  },
+  "dashboard": {
+    "welcome": "Hi, {name}! 👋",
+    "welcomeMessage": "Ready to learn something awesome today?",
+    "nextClass": "Up Next",
+    "classLive": "Class is Live!",
+    "noClasses": "No classes scheduled!",
+    "enjoyFreeTime": "Enjoy your free time! 🎉",
+    "todaysClasses": "Today's Classes",
+    "comingUp": "Coming Up",
+    "thisWeek": "This Week",
+    "viewFullCalendar": "View Full Calendar"
+  },
+  "classroom": {
+    "joinLive": "Join Live Class",
+    "notLive": "Not Live",
+    "checkingStatus": "Checking class status...",
+    "notFound": "Classroom Not Found",
+    "notFoundMessage": "We couldn't find a scheduled class with this ID.",
+    "notStarted": "Class hasn't started yet",
+    "scheduledStart": "Scheduled Start",
+    "sitTight": "Sit tight! You will be automatically joined as soon as your teacher opens the classroom.",
+    "enteringClassroom": "Entering Classroom...",
+    "enableAudio": "Enable Audio",
+    "startClass": "Start Class",
+    "participants": "Participants",
+    "students": "Students"
+  },
+  "curriculum": {
+    "title": "Title",
+    "code": "Code",
+    "description": "Description",
+    "new": "New Curriculum",
+    "edit": "Edit Curriculum",
+    "deleteConfirm": "Delete this curriculum? All associated lessons will be deleted.",
+    "created": "Curriculum created",
+    "updated": "Curriculum updated",
+    "deleted": "Curriculum deleted",
+    "noResults": "No curriculums found. Create one to get started.",
+    "manage": "Manage Curriculums",
+    "myCurriculums": "My Curriculums",
+    "manageLessons": "Manage Lessons"
+  },
+  "lesson": {
+    "title": "Lesson Title",
+    "description": "Short Description",
+    "content": "Content (HTML/Text)",
+    "new": "Add New Lesson",
+    "edit": "Edit Lesson",
+    "deleteConfirm": "Delete this lesson permanently?",
+    "created": "Lesson created",
+    "updated": "Lesson updated",
+    "deleted": "Lesson deleted",
+    "noContent": "No content has been added to this lesson yet.",
+    "noLessons": "No lessons yet.",
+    "clickToAdd": "Click \"Add Lesson\" to start building your course.",
+    "schedule": "Schedule",
+    "reschedule": "Reschedule",
+    "scheduled": "Scheduled",
+    "scheduleSuccess": "Lesson scheduled",
+    "scheduleUpdated": "Schedule updated"
+  },
+  "class": {
+    "name": "Class Name",
+    "new": "Create New Class",
+    "edit": "Edit Class",
+    "created": "Class created successfully",
+    "updated": "Class updated",
+    "deleted": "Class deleted",
+    "selectCurriculum": "Select a curriculum",
+    "assignTeacher": "Assign Teacher",
+    "selectTeacher": "Select a teacher",
+    "enrollStudent": "Enroll Student",
+    "studentAdded": "Added {name} to class",
+    "studentRemoved": "Student removed",
+    "removeConfirm": "Are you sure you want to remove {name} from this class?",
+    "noStudents": "No students enrolled yet.",
+    "manageEnrollment": "Manage enrollment for this class.",
+    "lessonPlan": "Lesson Plan & Schedule",
+    "courseRoadmap": "Course Roadmap",
+    "schedulePrompt": "Schedule your lessons to make them available to students.",
+    "noActive": "No active classes found",
+    "createPrompt": "Create a class to start enrolling students.",
+    "notAssigned": "You haven't been assigned to any classes yet.",
+    "manageClass": "Manage Class",
+    "manageSchedule": "Manage Schedule",
+    "allClasses": "All Active Classes"
+  },
+  "student": {
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "email": "Email",
+    "new": "Add New Student",
+    "edit": "Edit Student",
+    "deleteConfirm": "Delete this student account?",
+    "created": "Student created",
+    "updated": "Student updated",
+    "deleted": "Student deleted",
+    "searchPlaceholder": "Search by name or email...",
+    "searchMinChars": "Type at least 2 characters to search.",
+    "noResults": "No students found.",
+    "removeFromClass": "Remove from Class"
+  },
+  "teacher": {
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "email": "Email",
+    "role": "Role",
+    "new": "Add New Teacher",
+    "edit": "Edit Teacher",
+    "deleteConfirm": "Are you sure? This will permanently delete this teacher account.",
+    "created": "Teacher created",
+    "updated": "Teacher updated",
+    "deleted": "Teacher deleted",
+    "searchPlaceholder": "Search teachers..."
+  },
+  "schedule": {
+    "date": "Date",
+    "time": "Start Time",
+    "duration": "Duration (min)",
+    "pickDate": "Pick a date",
+    "confirmSchedule": "Confirm Schedule",
+    "updateSchedule": "Update Schedule"
+  },
+  "calendar": {
+    "mySchedule": "My Schedule",
+    "classSchedule": "Class Schedule",
+    "filtering": "Filtering: {className}",
+    "monthView": "Month View",
+    "agendaList": "Agenda List",
+    "noUpcoming": "No upcoming lessons scheduled.",
+    "noUpcomingClass": "No upcoming lessons found for this class.",
+    "viewDetails": "View Details",
+    "cancelled": "Cancelled"
+  },
+  "errors": {
+    "operationFailed": "Operation failed",
+    "deleteConfirm": "Are you sure you want to delete this?",
+    "permissionDenied": "You don't have permission to perform this action."
+  }
 }

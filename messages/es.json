@@ -1,289 +1,174 @@
 {
-    "common": {
-        "language": "Idioma",
-        "english": "English",
-        "spanish": "Español",
-        "theme": "Tema",
-        "light": "Claro",
-        "dark": "Oscuro",
-        "system": "Sistema"
-    },
-    "navigation": {
-        "university": "CENTRAL POINTE CHRISTIAN ACADEMY",
-        "dashboard": "Tablero",
-        "navigation": "Navegación",
-        "playground": "Área de Pruebas",
-        "models": "Modelos",
-        "documentation": "Documentación",
-        "settings": "Configuración",
-        "history": "Historial",
-        "starred": "Destacados",
-        "general": "General",
-        "introduction": "Introducción",
-        "getStarted": "Comenzar",
-        "tutorials": "Tutoriales",
-        "changelog": "Registro de Cambios",
-        "profile": "Mi Cuenta",
-        "myStudy": "Mi Estudio",
-        "studentDocs": "Documentación",
-        "myClasses": "Mis Clases",
-        "professorDocs": "Documentación",
-        "academicAdmin": "Administración Académica",
-        "personalAdmin": "Administración Personal",
-        "adminDocs": "Documentación",
-        "menu": {
-            "profile": {
-                "title": "Mi Cuenta",
-                "url": "/profile",
-                "items": [
-                    {
-                        "title": "Información Personal",
-                        "url": "/profile"
-                    }
-                ]
-            },
-            "student": {
-                "title": "Mi Estudio",
-                "url": "/academic",
-                "items": [
-                    {
-                        "title": "Historial Académico",
-                        "url": "/academic/history"
-                    },
-                    {
-                        "title": "Progreso Académico",
-                        "url": "/academic/progress"
-                    }
-                ]
-            },
-            "studentDocs": {
-                "title": "Documentación",
-                "url": "/docs",
-                "items": [
-                    {
-                        "title": "Certificados y Transcripciones",
-                        "url": "/docs/transcripts"
-                    },
-                    {
-                        "title": "Guía de Progreso Académico",
-                        "url": "/docs/progress"
-                    }
-                ]
-            },
-            "professor": {
-                "title": "Mis Clases",
-                "url": "/teaching",
-                "items": [
-                    {
-                        "title": "Libro de Calificaciones",
-                        "url": "/teaching/gradebook"
-                    },
-                    {
-                        "title": "Progreso de Enseñanza",
-                        "url": "/teaching/progress"
-                    }
-                ]
-            },
-            "professorDocs": {
-                "title": "Documentación",
-                "url": "/docs/teaching",
-                "items": [
-                    {
-                        "title": "Guía de Calificaciones",
-                        "url": "/docs/teaching/grading"
-                    },
-                    {
-                        "title": "Recursos Pedagógicos",
-                        "url": "/docs/teaching/resources"
-                    }
-                ]
-            },
-            "adminAcademic": {
-                "title": "Administración Académica",
-                "url": "/admin",
-                "items": [
-                    {
-                        "title": "Gestión de Programas",
-                        "url": "/admin/programs"
-                    },
-                    {
-                        "title": "Gestión de Cursos",
-                        "url": "/admin/courses"
-                    },
-                    {
-                        "title": "Gestión de Períodos",
-                        "url": "/admin/periods"
-                    }
-                ]
-            },
-            "adminPersonal": {
-                "title": "Administración Personal",
-                "url": "/admin/users",
-                "items": [
-                    {
-                        "title": "Gestión de Profesores",
-                        "url": "/admin/professors"
-                    },
-                    {
-                        "title": "Gestión de Estudiantes",
-                        "url": "/admin/students"
-                    }
-                ]
-            },
-            "adminDocs": {
-                "title": "Documentación",
-                "url": "/docs/admin",
-                "items": [
-                    {
-                        "title": "Manual de Administración",
-                        "url": "/docs/admin/manual"
-                    },
-                    {
-                        "title": "Guías del Sistema",
-                        "url": "/docs/admin/guides"
-                    }
-                ]
-            }
-        }
-    },
-    "university": {
-        "name": "CENTRAL POINTE",
-        "academicRecords": "CHRISTIAN ACADEMY"
-    },
-    "dashboard": {
-        "student": {
-            "metrics": {
-                "completedCredits": "Créditos Completados",
-                "cumulativeGPA": "GPA Acumulado",
-                "currentBimester": "Bimestre Actual",
-                "careerProgress": "Progreso Carrera",
-                "excellentProgress": "Progreso excelente",
-                "creditsRemaining": "{count} créditos restantes para graduarte",
-                "outstandingPerformance": "Rendimiento destacado",
-                "maintainLevel": "Mantén este nivel para graduarte con honores",
-                "currentlyEnrolled": "Inscrito actualmente",
-                "creditsInProgress": "{count} créditos en curso este bimestre",
-                "almostGraduating": "Casi graduándote",
-                "bimestersRemaining": "{count} bimestre restante previsto",
-                "excellent": "Excelente",
-                "bimesters": "bimestres",
-                "subjects": "materias"
-            },
-            "program": {
-                "title": "Ingeniería de Software",
-                "subtitle": "Programa de Pregrado • Código: IDS-001",
-                "admissionDate": "Fecha de Ingreso",
-                "estimatedGraduation": "Graduación Estimada",
-                "status": "Estado",
-                "active": "Activo",
-                "totalCredits": "Créditos Totales",
-                "duration": "Duración",
-                "languages": "Idiomas",
-                "modalityPresential": "Presencial",
-                "viewDetails": "Ver Detalles"
-            },
-            "currentSubjects": {
-                "title": "Materias del Bimestre",
-                "subtitle": "{period} • {count} materias inscritas • {credits} créditos",
-                "code": "Código",
-                "subject": "Materia",
-                "credits": "Créditos",
-                "grade": "Nota",
-                "status": "Estado",
-                "inProgress": "Cursando",
-                "pending": "Pendiente",
-                "viewHistory": "Ver Historial"
-            },
-            "creditDistribution": {
-                "title": "Distribución de Créditos",
-                "core": "Troncales",
-                "humanities": "Humanísticas",
-                "electives": "Electivas"
-            },
-            "upcomingDates": {
-                "title": "Próximas Fechas",
-                "gradesDeadline": "Fecha límite calificaciones",
-                "nextBimesterStart": "Inicio próximo bimestre",
-                "earlyEnrollment": "Matrícula anticipada"
-            },
-            "documents": {
-                "title": "Documentos",
-                "transcriptCertificate": "Certificado de Notas",
-                "academicHistory": "Historial Académico",
-                "progressAnalysis": "Análisis de Progreso",
-                "academicCalendar": "Calendario Académico"
-            }
-        }
-    },
-    "academicHistory": {
-        "title": "Historial Académico",
-        "subtitle": "Registro completo del rendimiento académico",
-        "printTranscript": "Imprimir Histórico",
-        "printPeriod": "Imprimir Periodo",
-        "filters": {
-            "searchSubject": "Buscar asignatura...",
-            "filterByPeriod": "Filtrar por periodo",
-            "allPeriods": "Todos los periodos",
-            "columns": "Columnas"
-        },
-        "table": {
-            "code": "Código",
-            "group": "Grupo",
-            "subject": "Asignatura",
-            "credits": "Créditos",
-            "category": "Categoría",
-            "letterGrade": "Nota Literal",
-            "percentGrade": "Porcentaje",
-            "gpaScale": "Escala 4.0",
-            "status": "Estado",
-            "professor": "Profesor",
-            "actions": "Acciones"
-        },
-        "status": {
-            "passed": "Aprobado",
-            "failed": "Reprobado",
-            "inProgress": "Cursando",
-            "withdrawn": "Retirado",
-            "incomplete": "Incompleto"
-        },
-        "categories": {
-            "core": "Troncal",
-            "humanities": "Humanística",
-            "electives": "Electiva",
-            "prerequisite": "Prerrequisito"
-        },
-        "periodSummary": {
-            "title": "Resumen de Finalización por Periodo",
-            "creditsEnrolled": "Créditos Matriculados",
-            "creditsApproved": "Núm. Créd. Aprobados",
-            "percentApproved": "% Créd. Aprobados",
-            "cumulativeCredits": "Créditos Acumulados",
-            "cumulativeApproved": "Núm. Créd. Aprobados Acumulados",
-            "periodGPA": "Promedio Semestral",
-            "cumulativeGPA": "Promedio Acumulado"
-        },
-        "overallSummary": {
-            "title": "Resumen Académico General",
-            "totalCreditsCompleted": "Total Créditos Completados",
-            "totalCreditsRequired": "Total Créditos Requeridos",
-            "overallGPA": "Promedio Total Acumulado",
-            "academicStanding": "Estado Académico",
-            "expectedGraduation": "Graduación Esperada"
-        },
-        "standing": {
-            "excellent": "Excelente",
-            "good": "Buen Rendimiento",
-            "probation": "Probatoria Académica",
-            "warning": "Advertencia Académica"
-        },
-        "subjectDetails": {
-            "title": "Detalles de la Asignatura",
-            "description": "Descripción",
-            "prerequisites": "Prerrequisitos",
-            "schedule": "Horario",
-            "notes": "Notas",
-            "none": "Ninguno"
-        },
-        "noResults": "No se encontraron asignaturas que coincidan con los criterios"
-    }
+  "common": {
+    "add": "Agregar",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "create": "Crear",
+    "update": "Actualizar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "back": "Volver",
+    "next": "Siguiente",
+    "previous": "Anterior",
+    "loading": "Cargando",
+    "noResults": "No se encontraron resultados",
+    "actions": "Acciones",
+    "status": "Estado",
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "archived": "Archivado"
+  },
+  "navigation": {
+    "dashboard": "Panel",
+    "calendar": "Calendario",
+    "teaching": "Enseñanza",
+    "admin": "Administración",
+    "students": "Estudiantes",
+    "teachers": "Profesores",
+    "curriculums": "Currículos",
+    "lessons": "Lecciones",
+    "classes": "Clases",
+    "users": "Usuarios"
+  },
+  "dashboard": {
+    "welcome": "¡Hola, {name}! 👋",
+    "welcomeMessage": "¿Listo para aprender algo increíble hoy?",
+    "nextClass": "Próxima Clase",
+    "classLive": "¡Clase en Vivo!",
+    "noClasses": "¡No hay clases programadas!",
+    "enjoyFreeTime": "¡Disfruta tu tiempo libre! 🎉",
+    "todaysClasses": "Clases de Hoy",
+    "comingUp": "Próximamente",
+    "thisWeek": "Esta Semana",
+    "viewFullCalendar": "Ver Calendario Completo"
+  },
+  "classroom": {
+    "joinLive": "Unirse a Clase en Vivo",
+    "notLive": "No en Vivo",
+    "checkingStatus": "Verificando estado de la clase...",
+    "notFound": "Aula No Encontrada",
+    "notFoundMessage": "No pudimos encontrar una clase programada con este ID.",
+    "notStarted": "La clase aún no ha comenzado",
+    "scheduledStart": "Inicio Programado",
+    "sitTight": "¡Espera! Te unirás automáticamente cuando tu profesor abra el aula.",
+    "enteringClassroom": "Entrando al Aula...",
+    "enableAudio": "Habilitar Audio",
+    "startClass": "Iniciar Clase",
+    "participants": "Participantes",
+    "students": "Estudiantes"
+  },
+  "curriculum": {
+    "title": "Título",
+    "code": "Código",
+    "description": "Descripción",
+    "new": "Nuevo Currículo",
+    "edit": "Editar Currículo",
+    "deleteConfirm": "¿Eliminar este currículo? Todas las lecciones asociadas serán eliminadas.",
+    "created": "Currículo creado",
+    "updated": "Currículo actualizado",
+    "deleted": "Currículo eliminado",
+    "noResults": "No se encontraron currículos. Crea uno para comenzar.",
+    "manage": "Gestionar Currículos",
+    "myCurriculums": "Mis Currículos",
+    "manageLessons": "Gestionar Lecciones"
+  },
+  "lesson": {
+    "title": "Título de la Lección",
+    "description": "Descripción Breve",
+    "content": "Contenido (HTML/Texto)",
+    "new": "Agregar Nueva Lección",
+    "edit": "Editar Lección",
+    "deleteConfirm": "¿Eliminar esta lección permanentemente?",
+    "created": "Lección creada",
+    "updated": "Lección actualizada",
+    "deleted": "Lección eliminada",
+    "noContent": "Aún no se ha agregado contenido a esta lección.",
+    "noLessons": "Aún no hay lecciones.",
+    "clickToAdd": "Haz clic en \"Agregar Lección\" para comenzar a construir tu curso.",
+    "schedule": "Programar",
+    "reschedule": "Reprogramar",
+    "scheduled": "Programado",
+    "scheduleSuccess": "Lección programada",
+    "scheduleUpdated": "Horario actualizado"
+  },
+  "class": {
+    "name": "Nombre de la Clase",
+    "new": "Crear Nueva Clase",
+    "edit": "Editar Clase",
+    "created": "Clase creada exitosamente",
+    "updated": "Clase actualizada",
+    "deleted": "Clase eliminada",
+    "selectCurriculum": "Seleccionar un currículo",
+    "assignTeacher": "Asignar Profesor",
+    "selectTeacher": "Seleccionar un profesor",
+    "enrollStudent": "Inscribir Estudiante",
+    "studentAdded": "{name} agregado a la clase",
+    "studentRemoved": "Estudiante eliminado",
+    "removeConfirm": "¿Estás seguro de que quieres eliminar a {name} de esta clase?",
+    "noStudents": "Aún no hay estudiantes inscritos.",
+    "manageEnrollment": "Gestionar inscripción para esta clase.",
+    "lessonPlan": "Plan de Lecciones y Horario",
+    "courseRoadmap": "Hoja de Ruta del Curso",
+    "schedulePrompt": "Programa tus lecciones para hacerlas disponibles a los estudiantes.",
+    "noActive": "No se encontraron clases activas",
+    "createPrompt": "Crea una clase para comenzar a inscribir estudiantes.",
+    "notAssigned": "Aún no has sido asignado a ninguna clase.",
+    "manageClass": "Gestionar Clase",
+    "manageSchedule": "Gestionar Horario",
+    "allClasses": "Todas las Clases Activas"
+  },
+  "student": {
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "email": "Correo Electrónico",
+    "new": "Agregar Nuevo Estudiante",
+    "edit": "Editar Estudiante",
+    "deleteConfirm": "¿Eliminar esta cuenta de estudiante?",
+    "created": "Estudiante creado",
+    "updated": "Estudiante actualizado",
+    "deleted": "Estudiante eliminado",
+    "searchPlaceholder": "Buscar por nombre o correo...",
+    "searchMinChars": "Escribe al menos 2 caracteres para buscar.",
+    "noResults": "No se encontraron estudiantes.",
+    "removeFromClass": "Eliminar de la Clase"
+  },
+  "teacher": {
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "email": "Correo Electrónico",
+    "role": "Rol",
+    "new": "Agregar Nuevo Profesor",
+    "edit": "Editar Profesor",
+    "deleteConfirm": "¿Estás seguro? Esto eliminará permanentemente esta cuenta de profesor.",
+    "created": "Profesor creado",
+    "updated": "Profesor actualizado",
+    "deleted": "Profesor eliminado",
+    "searchPlaceholder": "Buscar profesores..."
+  },
+  "schedule": {
+    "date": "Fecha",
+    "time": "Hora de Inicio",
+    "duration": "Duración (min)",
+    "pickDate": "Seleccionar fecha",
+    "confirmSchedule": "Confirmar Horario",
+    "updateSchedule": "Actualizar Horario"
+  },
+  "calendar": {
+    "mySchedule": "Mi Horario",
+    "classSchedule": "Horario de Clase",
+    "filtering": "Filtrando: {className}",
+    "monthView": "Vista Mensual",
+    "agendaList": "Lista de Agenda",
+    "noUpcoming": "No hay lecciones próximas programadas.",
+    "noUpcomingClass": "No se encontraron lecciones próximas para esta clase.",
+    "viewDetails": "Ver Detalles",
+    "cancelled": "Cancelado"
+  },
+  "errors": {
+    "operationFailed": "La operación falló",
+    "deleteConfirm": "¿Estás seguro de que quieres eliminar esto?",
+    "permissionDenied": "No tienes permiso para realizar esta acción."
+  }
 }
