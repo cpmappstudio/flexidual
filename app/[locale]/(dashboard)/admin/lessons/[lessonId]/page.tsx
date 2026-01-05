@@ -1,4 +1,3 @@
-// app/[locale]/(dashboard)/lessons/[lessonId]/page.tsx
 "use client"
 
 import { useQuery } from "convex/react"
@@ -11,8 +10,10 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, FileText } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { LessonDialog } from "@/components/teaching/lessons/lesson-dialog"
+import { useTranslations } from "next-intl"
 
 export default function LessonReaderPage() {
+  const t = useTranslations()
   const params = useParams()
   const router = useRouter()
   const lessonId = params.lessonId as Id<"lessons">
@@ -26,19 +27,18 @@ export default function LessonReaderPage() {
   if (lesson === null) {
     return (
       <div className="p-8 flex flex-col items-center gap-4">
-        <p>Lesson not found</p>
-        <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
+        <p>{t('lesson.notFound')}</p>
+        <Button variant="outline" onClick={() => router.back()}>{t('common.back')}</Button>
       </div>
     )
   }
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
-      {/* 1. Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
+          {t('common.back')}
         </Button>
         <LessonDialog 
              curriculumId={lesson.curriculumId} 
@@ -46,10 +46,9 @@ export default function LessonReaderPage() {
         />
       </div>
 
-      {/* 2. Title & Context */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <Badge variant="outline">Lesson Content</Badge>
+          <Badge variant="outline">{t('lesson.contentBadge')}</Badge>
         </div>
         <h1 className="text-4xl font-bold tracking-tight">{lesson.title}</h1>
         {lesson.description && (
@@ -57,7 +56,6 @@ export default function LessonReaderPage() {
         )}
       </div>
 
-      {/* 3. The Content Area */}
       <Card>
         <CardContent className="p-8 prose dark:prose-invert max-w-none">
           {lesson.content ? (
@@ -65,7 +63,7 @@ export default function LessonReaderPage() {
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground opacity-50">
               <FileText className="h-16 w-16 mb-4" />
-              <p>No text content available for this lesson.</p>
+              <p>{t('lesson.noContent')}</p>
             </div>
           )}
         </CardContent>

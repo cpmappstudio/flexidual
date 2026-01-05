@@ -11,12 +11,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { EntityDialog } from "@/components/ui/entity-dialog"
 import { Plus, Edit, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslations } from "next-intl"
 
 interface CurriculumDialogProps {
   curriculum?: Doc<"curriculums">
 }
 
 export function CurriculumDialog({ curriculum }: CurriculumDialogProps) {
+  const t = useTranslations()
   const isEditing = !!curriculum
   const create = useMutation(api.curriculums.create)
   const update = useMutation(api.curriculums.update)
@@ -38,18 +40,18 @@ export function CurriculumDialog({ curriculum }: CurriculumDialogProps) {
           code: formData.get("code") as string,
           description: formData.get("description") as string,
         })
-        toast.success("Curriculum updated")
+        toast.success(t('curriculum.updated'))
       } else {
         await create({
           title: formData.get("title") as string,
           code: formData.get("code") as string,
           description: formData.get("description") as string,
         })
-        toast.success("Curriculum created")
+        toast.success(t('curriculum.created'))
       }
       setIsOpen(false)
     } catch (error) {
-      toast.error("Operation failed")
+      toast.error(t('errors.operationFailed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -57,13 +59,13 @@ export function CurriculumDialog({ curriculum }: CurriculumDialogProps) {
 
   const handleDelete = async () => {
     if (!curriculum) return
-    if (!confirm("Delete this curriculum? All associated lessons will be deleted.")) return
+    if (!confirm(t('curriculum.deleteConfirm'))) return
     try {
       await remove({ id: curriculum._id })
-      toast.success("Curriculum deleted")
+      toast.success(t('curriculum.deleted'))
       setIsOpen(false)
     } catch {
-      toast.error("Failed to delete")
+      toast.error(t('errors.operationFailed'))
     }
   }
 
@@ -73,36 +75,36 @@ export function CurriculumDialog({ curriculum }: CurriculumDialogProps) {
     </Button>
   ) : (
     <Button className="gap-2">
-      <Plus className="h-4 w-4" /> Add Curriculum
+      <Plus className="h-4 w-4" /> {t('common.add')} {t('navigation.curriculums')}
     </Button>
   )
 
   return (
     <EntityDialog
       trigger={trigger}
-      title={isEditing ? "Edit Curriculum" : "New Curriculum"}
+      title={isEditing ? t('curriculum.edit') : t('curriculum.new')}
       onSubmit={handleSubmit}
-      submitLabel={isEditing ? "Save" : "Create"}
+      submitLabel={isEditing ? t('common.save') : t('common.create')}
       open={isOpen}
       onOpenChange={setIsOpen}
       isSubmitting={isSubmitting}
       leftActions={isEditing ? (
         <Button type="button" variant="destructive" onClick={handleDelete}>
-          <Trash2 className="h-4 w-4 mr-2" /> Delete
+          <Trash2 className="h-4 w-4 mr-2" /> {t('common.delete')}
         </Button>
       ) : undefined}
     >
       <div className="grid gap-4 py-4">
         <div className="grid gap-2">
-          <Label>Title</Label>
+          <Label>{t('curriculum.title')}</Label>
           <Input name="title" defaultValue={curriculum?.title} required />
         </div>
         <div className="grid gap-2">
-          <Label>Code (Optional)</Label>
+          <Label>{t('curriculum.code')}</Label>
           <Input name="code" defaultValue={curriculum?.code} placeholder="e.g. MATH-101" />
         </div>
         <div className="grid gap-2">
-          <Label>Description</Label>
+          <Label>{t('curriculum.description')}</Label>
           <Textarea name="description" defaultValue={curriculum?.description} />
         </div>
       </div>

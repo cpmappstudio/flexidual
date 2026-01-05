@@ -26,10 +26,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-// IMPORT THE NEW UNIFIED DIALOG
 import { TeacherDialog } from "@/components/admin/teachers/teacher-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useTranslations } from "next-intl";
 
 export type Teacher = {
   _id: Id<"users">;
@@ -89,7 +89,6 @@ export const columns: ColumnDef<Teacher>[] = [
       </Badge>
     ),
   },
-  // ADD ACTIONS COLUMN BACK
   {
     id: "actions",
     cell: ({ row }) => {
@@ -103,15 +102,15 @@ export const columns: ColumnDef<Teacher>[] = [
 ];
 
 export function TeachersTable() {
+  const t = useTranslations(); // ADD THIS
   const users = useQuery(api.users.getUsers, { role: "teacher" });
   const [sorting, setSorting] = React.useState([]);
   
-  // Transform data to ensure type safety
   const data = React.useMemo(() => {
     if (!users) return [];
     return users.map(u => ({
         ...u,
-        role: u.role as "teacher" | "admin" // Type assertion
+        role: u.role as "teacher" | "admin"
     }));
   }, [users]);
 
@@ -134,7 +133,7 @@ export function TeachersTable() {
         <div className="relative w-72">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search teachers..."
+            placeholder={t('teacher.searchPlaceholder')} // CHANGE HERE
             value={(table.getColumn("fullName")?.getFilterValue() as string) ?? ""}
             onChange={(event) => table.getColumn("fullName")?.setFilterValue(event.target.value)}
             className="pl-8"
@@ -170,7 +169,7 @@ export function TeachersTable() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No teachers found.
+                  {t('common.noResults')} {/* CHANGE HERE */}
                 </TableCell>
               </TableRow>
             )}

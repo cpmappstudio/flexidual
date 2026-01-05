@@ -12,8 +12,10 @@ import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-d
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { format, isToday, isTomorrow, startOfDay, addDays } from "date-fns"
 import { useMemo } from "react"
+import { useTranslations } from "next-intl"
 
 export default function TeachingDashboard() {
+  const t = useTranslations()
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
   const events = useQuery(api.schedule.getMySchedule, {})
   const { user, isLoading } = useCurrentUser()
@@ -76,8 +78,8 @@ export default function TeachingDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between dashboard-header">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Teaching Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Manage your curriculums, lessons, and upcoming classes.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t('dashboard.teachingDashboard')}</h1>
+          <p className="text-muted-foreground mt-1">{t('dashboard.manageCurriculums')}</p>
         </div>
         {isAdmin && <CurriculumDialog />}
       </div>
@@ -97,11 +99,11 @@ export default function TeachingDashboard() {
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-2xl">
                   <Video className={`w-6 h-6 ${isLive ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`} />
-                  {isLive ? "Class in Session" : "Next Class"}
+                  {isLive ? t('dashboard.classInSession') : t('dashboard.nextClass')}
                 </CardTitle>
                 {isLive && (
                   <Badge className="bg-red-500 text-white animate-pulse px-3 py-1">
-                    ● LIVE
+                    ● {t('dashboard.live')}
                   </Badge>
                 )}
               </div>
@@ -126,9 +128,9 @@ export default function TeachingDashboard() {
                       <CalendarIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                       <span className="font-medium">
                         {isToday(nextLesson.start) 
-                          ? "Today" 
+                          ? t('dashboard.today')
                           : isTomorrow(nextLesson.start) 
-                          ? "Tomorrow" 
+                          ? t('dashboard.tomorrow')
                           : format(nextLesson.start, "EEEE, MMM d")}
                       </span>
                     </div>
@@ -145,9 +147,9 @@ export default function TeachingDashboard() {
                   >
                     <Link href={`/classroom/${nextLesson.roomName}`}>
                       {isLive ? (
-                        <><Video className="mr-2 w-5 h-5" /> Enter Live Class</>
+                        <><Video className="mr-2 w-5 h-5" /> {t('dashboard.enterLive')}</>
                       ) : (
-                        <><BookOpen className="mr-2 w-5 h-5" /> Go to Classroom</>
+                        <><BookOpen className="mr-2 w-5 h-5" /> {t('dashboard.goToClassroom')}</>
                       )}
                     </Link>
                   </Button>
@@ -155,7 +157,7 @@ export default function TeachingDashboard() {
               ) : (
                 <div className="py-8 text-center text-muted-foreground">
                   <CalendarIcon className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                  <p className="text-lg font-medium">No classes scheduled</p>
+                  <p className="text-lg font-medium">{t('dashboard.noClassesScheduled')}</p>
                 </div>
               )}
             </CardContent>
@@ -167,7 +169,7 @@ export default function TeachingDashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <CalendarIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                  Today's Schedule
+                  {t('dashboard.todaySchedule')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -199,10 +201,10 @@ export default function TeachingDashboard() {
 
                       {lesson.isLive ? (
                         <Badge className="bg-red-500 text-white animate-pulse">
-                          LIVE
+                          {t('dashboard.live')}
                         </Badge>
                       ) : lesson.end < now ? (
-                        <Badge variant="secondary">Completed</Badge>
+                        <Badge variant="secondary">{t('dashboard.completed')}</Badge>
                       ) : null}
                     </div>
                   ))}
@@ -217,7 +219,7 @@ export default function TeachingDashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Clock className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                  Upcoming Classes
+                  {t('dashboard.upcomingClasses')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -250,7 +252,7 @@ export default function TeachingDashboard() {
                 
                 <Button variant="outline" className="w-full mt-4" asChild>
                   <Link href="/calendar">
-                    View Full Calendar
+                    {t('dashboard.viewFullCalendar')}
                   </Link>
                 </Button>
               </CardContent>
@@ -261,12 +263,12 @@ export default function TeachingDashboard() {
         {/* RIGHT COLUMN - Week View & Curriculums */}
         <div className="space-y-6">
           
-          {/* Week Calendar Mini View - Now with max-height */}
+          {/* Week Calendar Mini View */}
           <Card className="dashboard-card sidebar-sticky">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <CalendarIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                This Week
+                {t('dashboard.thisWeek')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -319,12 +321,12 @@ export default function TeachingDashboard() {
                           ))}
                           {day.events.length > 2 && (
                             <p className="text-xs text-muted-foreground font-medium pl-2">
-                              +{day.events.length - 2} more
+                              {t('dashboard.moreClasses', { count: day.events.length - 2 })}
                             </p>
                           )}
                         </div>
                       ) : (
-                        <p className="text-xs text-muted-foreground italic">No classes</p>
+                        <p className="text-xs text-muted-foreground italic">{t('dashboard.noClassesToday')}</p>
                       )}
                     </div>
                   )
@@ -333,12 +335,12 @@ export default function TeachingDashboard() {
             </CardContent>
           </Card>
 
-          {/* Curriculums Quick Access - Separate card, not sticky */}
+          {/* Curriculums Quick Access */}
           <Card className="dashboard-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <BookOpen className="w-5 h-5 text-green-600 dark:text-green-400" />
-                My Curriculums
+                {t('dashboard.myCurriculums')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -362,14 +364,14 @@ export default function TeachingDashboard() {
                 ))}
                 {curriculums.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
-                    No curriculums yet
+                    {t('dashboard.noCurriculums')}
                   </p>
                 )}
               </div>
               
               <Button variant="outline" className="w-full mt-3" asChild>
                 <Link href="/teaching">
-                  View All Curriculums
+                  {t('dashboard.viewAllCurriculums')}
                 </Link>
               </Button>
             </CardContent>

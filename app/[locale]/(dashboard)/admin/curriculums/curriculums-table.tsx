@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { Doc } from "@/convex/_generated/dataModel"
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 
 const columns: ColumnDef<Doc<"curriculums">>[] = [
   {
@@ -50,6 +51,7 @@ const columns: ColumnDef<Doc<"curriculums">>[] = [
 ]
 
 export function CurriculumsTable() {
+  const t = useTranslations()
   const data = useQuery(api.curriculums.list, { includeInactive: true })
   const [filter, setFilter] = useState("")
 
@@ -69,7 +71,7 @@ export function CurriculumsTable() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <Input
-          placeholder="Filter curriculums..."
+          placeholder={t('curriculum.filterPlaceholder')}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           className="max-w-sm"
@@ -103,7 +105,7 @@ export function CurriculumsTable() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No results.
+                  {t('common.noResults')}
                 </TableCell>
               </TableRow>
             )}

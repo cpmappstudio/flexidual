@@ -16,6 +16,7 @@ import { Doc, Id } from "@/convex/_generated/dataModel"
 import { LessonDialog } from "@/components/teaching/lessons/lesson-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Loader2 } from "lucide-react"
+import { useTranslations } from "next-intl"
 
 // Define columns
 const columns: ColumnDef<Doc<"lessons">>[] = [
@@ -48,15 +49,14 @@ const columns: ColumnDef<Doc<"lessons">>[] = [
 ]
 
 export function LessonsTable() {
+  const t = useTranslations()
   const curriculums = useQuery(api.curriculums.list, { includeInactive: true })
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | "">("")
 
-  // Fetch lessons with a loading guard
   const lessons = useQuery(api.lessons.listByCurriculum, 
     selectedCurriculumId ? { curriculumId: selectedCurriculumId as Id<"curriculums"> } : "skip"
   )
 
-  // Memoize data to prevent table flickering
   const data = useMemo(() => lessons || [], [lessons])
   const isLoadingLessons = selectedCurriculumId && lessons === undefined
 
@@ -84,7 +84,7 @@ export function LessonsTable() {
                 onValueChange={(val) => setSelectedCurriculumId(val as Id<"curriculums">)}
             >
                 <SelectTrigger>
-                    <SelectValue placeholder="Select a Curriculum to view lessons" />
+                    <SelectValue placeholder={t('lesson.selectCurriculum')} />
                 </SelectTrigger>
                 <SelectContent>
                     {curriculums.map((c) => (
@@ -100,7 +100,6 @@ export function LessonsTable() {
       </div>
 
       <div className="rounded-md border">
-        {/* Loading Overlay */}
         {isLoadingLessons && (
             <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -123,7 +122,7 @@ export function LessonsTable() {
             {!selectedCurriculumId ? (
                 <TableRow>
                     <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
-                        Please select a curriculum above to manage its lessons.
+                        {t('lesson.selectCurriculumPrompt')}
                     </TableCell>
                 </TableRow>
             ) : table.getRowModel().rows.length ? (
@@ -140,7 +139,7 @@ export function LessonsTable() {
               !isLoadingLessons && (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-24 text-center">
-                    No lessons found for this curriculum.
+                    {t('lesson.noLessonsForCurriculum')}
                   </TableCell>
                 </TableRow>
               )

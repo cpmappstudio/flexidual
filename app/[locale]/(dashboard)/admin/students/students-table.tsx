@@ -28,10 +28,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-// Import the dialog we created previously
 import { StudentDialog } from "@/components/admin/students/student-dialog";
+import { useTranslations } from "next-intl";
 
-// Define the shape of our data
 export type Student = {
   _id: Id<"users">;
   fullName: string;
@@ -43,7 +42,6 @@ export type Student = {
   isActive: boolean;
 };
 
-// Helper for Avatar rendering
 function StudentAvatar({ student }: { student: Student }) {
   const avatarUrl = useQuery(
     api.users.getAvatarUrl,
@@ -58,7 +56,7 @@ function StudentAvatar({ student }: { student: Student }) {
   );
 }
 
-// Define Columns
+// KEEP AS IS - columns defined outside component
 export const columns: ColumnDef<Student>[] = [
   {
     accessorKey: "fullName",
@@ -102,11 +100,11 @@ export const columns: ColumnDef<Student>[] = [
 ];
 
 export function StudentsTable() {
+  const t = useTranslations(); // ADD THIS
   const users = useQuery(api.users.getUsers, { role: "student" });
   const [sorting, setSorting] = React.useState([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
   
-  // Transform data safely
   const data = React.useMemo(() => {
     if (!users) return [];
     return users.map(u => ({
@@ -142,13 +140,12 @@ export function StudentsTable() {
         <div className="relative w-72">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search students..."
+            placeholder={t('student.searchPlaceholder')} // CHANGE HERE
             value={globalFilter ?? ""}
             onChange={(event) => setGlobalFilter(event.target.value)}
             className="pl-8"
           />
         </div>
-        {/* CREATE BUTTON */}
         <StudentDialog />
       </div>
 
@@ -179,7 +176,7 @@ export function StudentsTable() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                  No students found.
+                  {t('common.noResults')} {/* CHANGE HERE */}
                 </TableCell>
               </TableRow>
             )}
@@ -187,7 +184,6 @@ export function StudentsTable() {
         </Table>
       </div>
 
-      {/* Pagination Controls (Optional but recommended) */}
       <div className="flex items-center justify-end space-x-2 py-4">
         <Button
           variant="outline"
@@ -195,7 +191,7 @@ export function StudentsTable() {
           onClick={() => table.previousPage()}
           disabled={!table.getCanPreviousPage()}
         >
-          Previous
+          {t('common.previous')} {/* CHANGE HERE */}
         </Button>
         <Button
           variant="outline"
@@ -203,7 +199,7 @@ export function StudentsTable() {
           onClick={() => table.nextPage()}
           disabled={!table.getCanNextPage()}
         >
-          Next
+          {t('common.next')} {/* CHANGE HERE */}
         </Button>
       </div>
     </div>

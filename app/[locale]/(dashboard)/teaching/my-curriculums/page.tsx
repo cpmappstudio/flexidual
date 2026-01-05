@@ -5,12 +5,14 @@ import { api } from "@/convex/_generated/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { BookOpen, ArrowRight } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { useCurrentUser } from "@/hooks/use-current-user"
+import { useTranslations } from "next-intl"
 
 export default function MyCurriculumsPage() {
+  const t = useTranslations()
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
   const { user, isLoading } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
@@ -23,8 +25,8 @@ export default function MyCurriculumsPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Curriculums</h1>
-          <p className="text-muted-foreground">Manage your course templates and lessons.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t('curriculum.myCurriculums')}</h1>
+          <p className="text-muted-foreground">{t('curriculum.manageDescription')}</p>
         </div>
         {isAdmin && <CurriculumDialog />}
       </div>
@@ -44,13 +46,13 @@ export default function MyCurriculumsPage() {
                  {curr.code && <span className="text-xs font-mono bg-muted px-2 py-1 rounded">{curr.code}</span>}
               </div>
               <CardDescription className="line-clamp-2 min-h-[40px]">
-                {curr.description || "No description"}
+                {curr.description || t('curriculum.noDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground" asChild>
                 <Link href={`/curriculums/${curr._id}`}>
-                  Manage Lessons
+                  {t('curriculum.manageLessons')}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
@@ -59,7 +61,7 @@ export default function MyCurriculumsPage() {
         ))}
         {curriculums.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
-            No curriculums found. Create one to get started.
+            {t('curriculum.noResults')}
           </div>
         )}
       </div>

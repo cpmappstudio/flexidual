@@ -10,11 +10,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { CheckCircle2, ArrowRight } from "lucide-react"
 import { ScheduleLessonDialog } from "@/components/teaching/classes/schedule-lesson-dialog"
-import { StudentManager } from "@/components/teaching/classes/student-manager" // <-- Import NEW component
+import { StudentManager } from "@/components/teaching/classes/student-manager"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 
 export default function ClassDetailPage() {
+  const t = useTranslations()
   const params = useParams()
   const classId = params.classId as Id<"classes">
 
@@ -36,7 +38,7 @@ export default function ClassDetailPage() {
     )
   }
 
-  if (!classData) return <div className="p-6">Class not found</div>
+  if (!classData) return <div className="p-6">{t('class.notFound')}</div>
 
   return (
     <div className="space-y-6 p-6">
@@ -44,27 +46,27 @@ export default function ClassDetailPage() {
       <div>
         <h1 className="text-3xl font-bold">{classData.name}</h1>
         <p className="text-muted-foreground">
-          Curriculum: <span className="font-medium text-foreground">{classData.curriculumTitle}</span>
+          {t('curriculum.title')}: <span className="font-medium text-foreground">{classData.curriculumTitle}</span>
         </p>
       </div>
 
       <Tabs defaultValue="schedule" className="w-full">
         <TabsList>
-          <TabsTrigger value="schedule">Lesson Plan & Schedule</TabsTrigger>
-          <TabsTrigger value="students">Students ({classData.students.length})</TabsTrigger>
+          <TabsTrigger value="schedule">{t('class.lessonPlan')}</TabsTrigger>
+          <TabsTrigger value="students">{t('navigation.students')} ({classData.students.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule" className="space-y-4 mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Course Roadmap</CardTitle>
-              <CardDescription>Schedule your lessons to make them available to students.</CardDescription>
+              <CardTitle>{t('class.courseRoadmap')}</CardTitle>
+              <CardDescription>{t('class.schedulePrompt')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {lessons.length === 0 && (
                   <div className="text-center py-6 text-muted-foreground">
-                    No lessons found in this curriculum.
+                    {t('class.noCurriculumLessons')}
                   </div>
                 )}
 
@@ -89,7 +91,7 @@ export default function ClassDetailPage() {
                             <div className="text-right">
                               <div className="flex items-center justify-end gap-1.5 text-sm font-medium text-green-600">
                                 <CheckCircle2 className="h-4 w-4" />
-                                Scheduled
+                                {t('lesson.scheduled')}
                               </div>
                               <p className="text-xs text-muted-foreground">
                                 {format(scheduledItem.start, "MMM d, h:mm a")}
@@ -108,12 +110,12 @@ export default function ClassDetailPage() {
 
                             {scheduledItem.isLive ? (
                                <Button size="sm" variant="destructive" asChild>
-                                 <Link href={`/classroom/${scheduledItem.roomName}`}>Join Live</Link>
+                                 <Link href={`/classroom/${scheduledItem.roomName}`}>{t('classroom.joinLive')}</Link>
                                </Button>
                             ) : (
                                <Button size="sm" variant="outline" asChild>
                                  <Link href={`/classroom/${scheduledItem.roomName}`}>
-                                   Prepare Room
+                                   {t('classroom.prepareRoom')}
                                    <ArrowRight className="ml-2 h-4 w-4" />
                                  </Link>
                                </Button>

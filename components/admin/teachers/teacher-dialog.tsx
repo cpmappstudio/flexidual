@@ -17,6 +17,7 @@ import {
 import { EntityDialog } from "@/components/ui/entity-dialog"
 import { UserPlus, Edit, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslations } from "next-intl"
 
 interface TeacherDialogProps {
     teacher?: {
@@ -30,6 +31,7 @@ interface TeacherDialogProps {
 }
 
 export function TeacherDialog({ teacher }: TeacherDialogProps) {
+    const t = useTranslations()
     const isEditing = !!teacher
     
     // API Hooks
@@ -58,7 +60,7 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
                         avatarStorageId: null
                     }
                 })
-                toast.success("Teacher updated")
+                toast.success(t('teacher.updated'))
             } else {
                 await createUser({
                     firstName: formData.get("firstName") as string,
@@ -66,12 +68,12 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
                     email: formData.get("email") as string,
                     role: "teacher",
                 })
-                toast.success("Teacher created")
+                toast.success(t('teacher.created'))
             }
             setIsOpen(false)
         } catch (error) {
             console.error(error)
-            toast.error("Operation failed")
+            toast.error(t('errors.operationFailed'))
         } finally {
             setIsSubmitting(false)
         }
@@ -79,14 +81,14 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
 
     const handleDelete = async () => {
         if (!teacher) return
-        if (!confirm("Are you sure? This will permanently delete this teacher account.")) return
+        if (!confirm(t('teacher.deleteConfirm'))) return
         
         try {
             await deleteUser({ userId: teacher._id })
-            toast.success("Teacher deleted")
+            toast.success(t('teacher.deleted'))
             setIsOpen(false)
         } catch (error) {
-            toast.error("Failed to delete teacher")
+            toast.error(t('errors.operationFailed'))
         }
     }
 
@@ -94,34 +96,34 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
     const trigger = isEditing ? (
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
             <Edit className="h-4 w-4 text-muted-foreground" />
-            <span className="sr-only">Edit</span>
+            <span className="sr-only">{t('common.edit')}</span>
         </Button>
     ) : (
         <Button className="gap-2">
             <UserPlus className="h-4 w-4" />
-            Add Teacher
+            {t('teacher.new')}
         </Button>
     )
 
     return (
         <EntityDialog
             trigger={trigger}
-            title={isEditing ? "Edit Teacher" : "Add New Teacher"}
+            title={isEditing ? t('teacher.edit') : t('teacher.new')}
             onSubmit={handleSubmit}
-            submitLabel={isEditing ? "Save Changes" : "Create Teacher"}
+            submitLabel={isEditing ? t('common.save') : t('common.create')}
             open={isOpen}
             onOpenChange={setIsOpen}
             isSubmitting={isSubmitting}
             leftActions={isEditing ? (
                 <Button type="button" variant="destructive" onClick={handleDelete}>
-                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                    <Trash2 className="h-4 w-4 mr-2" /> {t('common.delete')}
                 </Button>
             ) : undefined}
         >
             <div className="grid gap-6 py-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="grid gap-3">
-                        <Label htmlFor="firstName">First Name</Label>
+                        <Label htmlFor="firstName">{t('teacher.firstName')}</Label>
                         <Input 
                             id="firstName" 
                             name="firstName" 
@@ -130,7 +132,7 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
                         />
                     </div>
                     <div className="grid gap-3">
-                        <Label htmlFor="lastName">Last Name</Label>
+                        <Label htmlFor="lastName">{t('teacher.lastName')}</Label>
                         <Input 
                             id="lastName" 
                             name="lastName" 
@@ -141,7 +143,7 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
                 </div>
 
                 <div className="grid gap-3">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="email">{t('teacher.email')}</Label>
                     <Input 
                         id="email" 
                         name="email" 
@@ -153,28 +155,28 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-3">
-                        <Label htmlFor="role">Role</Label>
+                        <Label htmlFor="role">{t('teacher.role')}</Label>
                         <Select name="role" defaultValue={teacher?.role || "teacher"}>
                             <SelectTrigger>
-                                <SelectValue placeholder="Select role" />
+                                <SelectValue placeholder={t('teacher.selectRole')} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="teacher">Teacher</SelectItem>
-                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="teacher">{t('navigation.teachers')}</SelectItem>
+                                <SelectItem value="admin">{t('navigation.admin')}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
                     
                     {isEditing && (
                         <div className="grid gap-3">
-                            <Label htmlFor="status">Status</Label>
+                            <Label htmlFor="status">{t('common.status')}</Label>
                             <Select name="status" defaultValue={teacher?.isActive ? "active" : "inactive"}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Select status" />
+                                    <SelectValue placeholder={t('common.selectStatus')} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="active">Active</SelectItem>
-                                    <SelectItem value="inactive">Inactive</SelectItem>
+                                    <SelectItem value="active">{t('common.active')}</SelectItem>
+                                    <SelectItem value="inactive">{t('common.inactive')}</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

@@ -10,8 +10,10 @@ import { Link } from "@/i18n/navigation"
 import { format, isToday, isTomorrow, startOfDay, addDays } from "date-fns"
 import { useUser } from "@clerk/clerk-react"
 import { useMemo } from "react"
+import { useTranslations } from "next-intl"
 
 export default function StudentDashboard() {
+  const t = useTranslations()
   const events = useQuery(api.schedule.getMySchedule, {})
   const { user } = useUser()
   
@@ -79,13 +81,13 @@ export default function StudentDashboard() {
           </div>
           <div className="flex-1">
             <h1 className="text-3xl font-bold">
-              Hi, {user?.firstName}! 👋
+              {t('dashboard.welcome', { name: user?.firstName || 'Student' })}
             </h1>
-            <p className="text-muted-foreground text-lg">Ready to learn something awesome today?</p>
+            <p className="text-muted-foreground text-lg">{t('dashboard.welcomeMessage')}</p>
           </div>
           <div className="hidden md:flex items-center gap-2 bg-gradient-to-r from-yellow-400 to-orange-400 px-4 py-2 rounded-full shadow-md">
             <Trophy className="w-5 h-5 text-white" />
-            <span className="text-white font-bold">Level 5</span>
+            <span className="text-white font-bold">{t('dashboard.level', { level: 5 })}</span>
           </div>
         </div>
 
@@ -104,11 +106,11 @@ export default function StudentDashboard() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2 text-2xl">
                     <Video className={`w-6 h-6 ${isLive ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`} />
-                    {isLive ? "Class is Live!" : "Up Next"}
+                    {isLive ? t('dashboard.classLive') : t('dashboard.nextClass')}
                   </CardTitle>
                   {isLive && (
                     <Badge className="bg-red-500 text-white animate-pulse px-3 py-1 text-sm">
-                      ● LIVE NOW
+                      ● {t('dashboard.liveNow')}
                     </Badge>
                   )}
                 </div>
@@ -136,9 +138,9 @@ export default function StudentDashboard() {
                         <CalendarIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                         <span className="font-medium">
                           {isToday(nextLesson.start) 
-                            ? "Today" 
+                            ? t('dashboard.today')
                             : isTomorrow(nextLesson.start) 
-                            ? "Tomorrow" 
+                            ? t('dashboard.tomorrow')
                             : format(nextLesson.start, "EEEE, MMM d")}
                         </span>
                       </div>
@@ -155,9 +157,9 @@ export default function StudentDashboard() {
                     >
                       <Link href={`/classroom/${nextLesson.roomName}`}>
                         {isLive ? (
-                          <><Video className="mr-2 w-5 h-5" /> Join Class Now!</>
+                          <><Video className="mr-2 w-5 h-5" /> {t('dashboard.joinNow')}</>
                         ) : (
-                          <><BookOpen className="mr-2 w-5 h-5" /> Enter Classroom</>
+                          <><BookOpen className="mr-2 w-5 h-5" /> {t('dashboard.enterClassroom')}</>
                         )}
                       </Link>
                     </Button>
@@ -168,10 +170,10 @@ export default function StudentDashboard() {
                       <Star className="w-12 h-12 text-white" />
                     </div>
                     <p className="text-xl font-bold mb-2">
-                      No classes scheduled!
+                      {t('dashboard.noClasses')}
                     </p>
                     <p className="text-muted-foreground">
-                      Enjoy your free time! 🎉
+                      {t('dashboard.enjoyFreeTime')}
                     </p>
                   </div>
                 )}
@@ -184,7 +186,7 @@ export default function StudentDashboard() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-xl">
                     <CalendarIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                    Today's Classes
+                    {t('dashboard.todayClasses')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -216,7 +218,7 @@ export default function StudentDashboard() {
 
                         {lesson.isLive && (
                           <Badge className="bg-red-500 text-white animate-pulse">
-                            LIVE
+                            {t('dashboard.live')}
                           </Badge>
                         )}
                       </div>
@@ -232,7 +234,7 @@ export default function StudentDashboard() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-xl">
                     <Clock className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                    Coming Up
+                    {t('dashboard.comingUp')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -264,7 +266,7 @@ export default function StudentDashboard() {
                   
                   <Button variant="outline" className="w-full mt-4 border-2 border-orange-300 dark:border-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30" asChild>
                     <Link href="/calendar">
-                      View Full Calendar
+                      {t('dashboard.viewFullCalendar')}
                     </Link>
                   </Button>
                 </CardContent>
@@ -278,7 +280,7 @@ export default function StudentDashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">
                   <CalendarIcon className="w-5 h-5 text-pink-600 dark:text-pink-400" />
-                  This Week
+                  {t('dashboard.thisWeek')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -337,12 +339,12 @@ export default function StudentDashboard() {
                             ))}
                             {day.events.length > 2 && (
                               <p className="text-xs text-muted-foreground font-medium pl-2">
-                                +{day.events.length - 2} more
+                                {t('dashboard.moreClasses', { count: day.events.length - 2 })}
                               </p>
                             )}
                           </div>
                         ) : (
-                          <p className="text-xs text-muted-foreground italic">No classes</p>
+                          <p className="text-xs text-muted-foreground italic">{t('dashboard.noClassesToday')}</p>
                         )}
                       </div>
                     )
@@ -351,7 +353,7 @@ export default function StudentDashboard() {
                 
                 <Button variant="outline" className="w-full mt-4 border-2 border-pink-300 dark:border-pink-700 hover:bg-pink-50 dark:hover:bg-pink-950/30" asChild>
                   <Link href="/calendar">
-                    Full Calendar
+                    {t('dashboard.fullCalendar')}
                   </Link>
                 </Button>
               </CardContent>

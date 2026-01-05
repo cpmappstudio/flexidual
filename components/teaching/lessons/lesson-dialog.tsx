@@ -28,6 +28,7 @@ import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { Loader2, Plus, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslations } from "next-intl"
 
 const formSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -41,6 +42,7 @@ interface LessonDialogProps {
 }
 
 export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
+  const t = useTranslations()
   const isEditing = !!lesson
   const [open, setOpen] = useState(false)
   
@@ -64,29 +66,29 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
           id: lesson._id,
           ...values,
         })
-        toast.success("Lesson updated")
+        toast.success(t('lesson.updated'))
       } else {
         await create({
           curriculumId,
           ...values,
         })
-        toast.success("Lesson created")
+        toast.success(t('lesson.created'))
         form.reset()
       }
       setOpen(false)
     } catch (error) {
-      toast.error("Failed to save lesson")
+      toast.error(t('errors.operationFailed'))
     }
   }
 
   const handleDelete = async () => {
-    if (!lesson || !confirm("Delete this lesson permanently?")) return
+    if (!lesson || !confirm(t('lesson.deleteConfirm'))) return
     try {
       await remove({ id: lesson._id })
-      toast.success("Lesson deleted")
+      toast.success(t('lesson.deleted'))
       setOpen(false)
     } catch {
-      toast.error("Failed to delete lesson")
+      toast.error(t('errors.operationFailed'))
     }
   }
 
@@ -100,13 +102,13 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
         ) : (
           <Button size="sm">
             <Plus className="mr-2 h-4 w-4" />
-            Add Lesson
+            {t('common.add')} {t('navigation.lessons')}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Lesson" : "Add New Lesson"}</DialogTitle>
+          <DialogTitle>{isEditing ? t('lesson.edit') : t('lesson.new')}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -115,7 +117,7 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Lesson Title</FormLabel>
+                  <FormLabel>{t('lesson.title')}</FormLabel>
                   <FormControl><Input {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -126,8 +128,8 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Short Description</FormLabel>
-                  <FormControl><Input {...field} placeholder="Brief summary of what this lesson covers" /></FormControl>
+                  <FormLabel>{t('lesson.description')}</FormLabel>
+                  <FormControl><Input {...field} placeholder={t('lesson.description')} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -137,7 +139,7 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
               name="content"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Content (HTML/Text)</FormLabel>
+                  <FormLabel>{t('lesson.content')}</FormLabel>
                   <FormControl>
                     <Textarea 
                       {...field} 
@@ -152,12 +154,12 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
             <DialogFooter className="gap-2 sm:justify-between">
               {isEditing && (
                 <Button type="button" variant="destructive" size="sm" onClick={handleDelete}>
-                  <Trash2 className="h-4 w-4 mr-2" /> Delete Lesson
+                  <Trash2 className="h-4 w-4 mr-2" /> {t('common.delete')} {t('navigation.lessons')}
                 </Button>
               )}
               <Button type="submit" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isEditing ? "Save Changes" : "Create Lesson"}
+                {isEditing ? t('common.save') : t('common.create')}
               </Button>
             </DialogFooter>
           </form>

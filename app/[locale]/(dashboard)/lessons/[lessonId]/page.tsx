@@ -10,8 +10,10 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, FileText } from "lucide-react"
 import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
+import { useTranslations } from "next-intl"
 
 export default function LessonViewerPage() {
+  const t = useTranslations()
   const params = useParams()
   const lessonId = params.lessonId as Id<"lessons">
   
@@ -22,7 +24,7 @@ export default function LessonViewerPage() {
   }
 
   if (lesson === null) {
-    return <div className="p-8">Lesson not found</div>
+    return <div className="p-8">{t('lesson.notFound')}</div>
   }
 
   return (
@@ -32,7 +34,7 @@ export default function LessonViewerPage() {
         <Button variant="ghost" size="sm" asChild>
           <Link href="/dashboard">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
+            {t('common.back')}
           </Link>
         </Button>
       </div>
@@ -40,7 +42,7 @@ export default function LessonViewerPage() {
       {/* 2. Lesson Title & Meta */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="h-6">Lesson</Badge>
+          <Badge variant="outline" className="h-6">{t('lesson.contentBadge')}</Badge>
           {/* You could add a "Completed" badge here for students later */}
         </div>
         <h1 className="text-4xl font-bold tracking-tight">{lesson.title}</h1>
@@ -57,7 +59,7 @@ export default function LessonViewerPage() {
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <FileText className="h-12 w-12 mb-4 opacity-20" />
-              <p>No content has been added to this lesson yet.</p>
+              <p>{t('lesson.noContent')}</p>
             </div>
           )}
         </CardContent>

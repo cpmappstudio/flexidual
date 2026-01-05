@@ -11,19 +11,18 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 
 export default function MyClassesPage() {
+  const t = useTranslations()
   const { user, isLoading: isUserLoading } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
   
-  // LOGIC: If Admin -> Fetch ALL classes. If Teacher -> Fetch MY classes.
   const queryArgs = isAdmin 
-    ? {} // No filters = All classes
+    ? {} 
     : (user ? { teacherId: user._id } : "skip")
 
   const classes = useQuery(api.classes.list, queryArgs)
-
-  // Optimization: Fetch curriculums for titles (cached by Convex)
   const curriculums = useQuery(api.curriculums.list, {})
 
   if (isUserLoading || classes === undefined) {
@@ -43,7 +42,7 @@ export default function MyClassesPage() {
   }
 
   const getCurriculumTitle = (id: string) => {
-    return curriculums?.find(c => c._id === id)?.title || "Unknown Curriculum"
+    return curriculums?.find(c => c._id === id)?.title || t('curriculum.unknown')
   }
 
   return (
@@ -51,15 +50,14 @@ export default function MyClassesPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            {isAdmin ? "All Active Classes" : "My Classes"}
+            {isAdmin ? t('class.allClasses') : t('class.myClasses')}
           </h1>
           <p className="text-muted-foreground">
             {isAdmin 
-              ? "Manage all classes, assignments, and schedules across the platform."
-              : "Manage your active student groups and schedules."}
+              ? t('class.manageAllDescription') 
+              : t('class.manageMyDescription')}
           </p>
         </div>
-        {/* Only Admins can create classes (per schema/mutation logic) */}
         {isAdmin && <CreateClassDialog />}
       </div>
 
@@ -68,11 +66,11 @@ export default function MyClassesPage() {
           <div className="rounded-full bg-primary/10 p-4 mb-4">
             <School className="h-8 w-8 text-primary" />
           </div>
-          <h3 className="text-lg font-semibold">No active classes found</h3>
+          <h3 className="text-lg font-semibold">{t('class.noActive')}</h3>
           <p className="text-muted-foreground mb-4 max-w-sm">
             {isAdmin 
-              ? "Create a class to start enrolling students." 
-              : "You haven't been assigned to any classes yet."}
+              ? t('class.createPrompt') 
+              : t('class.notAssigned')}
           </p>
           {isAdmin && <CreateClassDialog />}
         </Card>
@@ -83,7 +81,7 @@ export default function MyClassesPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <Badge variant={cls.isActive ? "default" : "secondary"}>
-                    {cls.isActive ? "Active" : "Archived"}
+                    {cls.isActive ? t('common.active') : t('common.archived')}
                   </Badge>
                 </div>
                 <CardTitle className="line-clamp-1 mt-2">{cls.name}</CardTitle>
@@ -97,18 +95,17 @@ export default function MyClassesPage() {
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Users className="h-4 w-4" />
-                      <span>{cls.students?.length || 0} Students</span>
+                      <span>{cls.students?.length || 0} {t('navigation.students')}</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Calendar className="h-4 w-4" />
-                      <span>{cls.startDate ? format(cls.startDate, "MMM yyyy") : "No date"}</span>
+                      <span>{cls.startDate ? format(cls.startDate, "MMM yyyy") : t('class.noDate')}</span>
                     </div>
                   </div>
                   
-                  {/* Both Admin and Teacher go to the same Detail Page */}
                   <Button variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground" asChild>
                     <Link href={`/teaching/classes/${cls._id}`}>
-                      {isAdmin ? "Manage Class" : "Manage Schedule"}
+                      {isAdmin ? t('class.manageClass') : t('class.manageSchedule')}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>

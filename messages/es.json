@@ -18,7 +18,13 @@
     "status": "Estado",
     "active": "Activo",
     "inactive": "Inactivo",
-    "archived": "Archivado"
+    "archived": "Archivado",
+    "name": "Nombre",
+    "selectStatus": "Seleccionar estado"
+  },
+  "admin": {
+    "title": "Administración Académica",
+    "description": "Centro de administración y herramientas de gestión académica."
   },
   "navigation": {
     "dashboard": "Panel",
@@ -35,14 +41,36 @@
   "dashboard": {
     "welcome": "¡Hola, {name}! 👋",
     "welcomeMessage": "¿Listo para aprender algo increíble hoy?",
+    "level": "Nivel {level}",
     "nextClass": "Próxima Clase",
     "classLive": "¡Clase en Vivo!",
+    "liveNow": "EN VIVO AHORA",
+    "live": "EN VIVO",
+    "today": "Hoy",
+    "tomorrow": "Mañana",
+    "joinNow": "¡Unirse Ahora!",
+    "enterClassroom": "Entrar al Aula",
     "noClasses": "¡No hay clases programadas!",
     "enjoyFreeTime": "¡Disfruta tu tiempo libre! 🎉",
-    "todaysClasses": "Clases de Hoy",
+    "todayClasses": "Clases de Hoy",
     "comingUp": "Próximamente",
+    "viewFullCalendar": "Ver Calendario Completo",
     "thisWeek": "Esta Semana",
-    "viewFullCalendar": "Ver Calendario Completo"
+    "moreClasses": "+{count} más",
+    "noClassesToday": "Sin clases",
+    "fullCalendar": "Calendario Completo",
+    "teachingDashboard": "Panel de Enseñanza",
+    "manageCurriculums": "Gestiona tus currículos, lecciones y próximas clases.",
+    "classInSession": "Clase en Sesión",
+    "enterLive": "Entrar a Clase en Vivo",
+    "goToClassroom": "Ir al Aula",
+    "noClassesScheduled": "No hay clases programadas",
+    "todaySchedule": "Horario de Hoy",
+    "completed": "Completado",
+    "upcomingClasses": "Próximas Clases",
+    "myCurriculums": "Mis Currículos",
+    "noCurriculums": "Aún no hay currículos",
+    "viewAllCurriculums": "Ver Todos los Currículos"
   },
   "classroom": {
     "joinLive": "Unirse a Clase en Vivo",
@@ -57,7 +85,8 @@
     "enableAudio": "Habilitar Audio",
     "startClass": "Iniciar Clase",
     "participants": "Participantes",
-    "students": "Estudiantes"
+    "students": "Estudiantes",
+    "prepareRoom": "Preparar Sala"
   },
   "curriculum": {
     "title": "Título",
@@ -72,7 +101,11 @@
     "noResults": "No se encontraron currículos. Crea uno para comenzar.",
     "manage": "Gestionar Currículos",
     "myCurriculums": "Mis Currículos",
-    "manageLessons": "Gestionar Lecciones"
+    "manageLessons": "Gestionar Lecciones",
+    "filterPlaceholder": "Filtrar currículos...",
+    "manageDescription": "Gestiona tus plantillas de curso y lecciones.",
+    "noDescription": "Sin descripción",
+    "unknown": "Currículo Desconocido"
   },
   "lesson": {
     "title": "Título de la Lección",
@@ -91,7 +124,12 @@
     "reschedule": "Reprogramar",
     "scheduled": "Programado",
     "scheduleSuccess": "Lección programada",
-    "scheduleUpdated": "Horario actualizado"
+    "scheduleUpdated": "Horario actualizado",
+    "selectCurriculum": "Selecciona un currículo para ver las lecciones",
+    "selectCurriculumPrompt": "Por favor selecciona un currículo arriba para gestionar sus lecciones.",
+    "noLessonsForCurriculum": "No se encontraron lecciones para este currículo.",
+    "contentBadge": "Contenido de Lección",
+    "notFound": "Lección no encontrada"
   },
   "class": {
     "name": "Nombre de la Clase",
@@ -117,7 +155,11 @@
     "notAssigned": "Aún no has sido asignado a ninguna clase.",
     "manageClass": "Gestionar Clase",
     "manageSchedule": "Gestionar Horario",
-    "allClasses": "Todas las Clases Activas"
+    "myClasses": "Mis Clases",
+    "allClasses": "Todas las Clases Activas",
+    "manageAllDescription": "Gestiona todas las clases, asignaciones y horarios de la plataforma.",
+    "manageMyDescription": "Gestiona tus grupos de estudiantes activos y horarios.",
+    "noDate": "Sin fecha"
   },
   "student": {
     "firstName": "Nombre",
@@ -145,7 +187,8 @@
     "created": "Profesor creado",
     "updated": "Profesor actualizado",
     "deleted": "Profesor eliminado",
-    "searchPlaceholder": "Buscar profesores..."
+    "searchPlaceholder": "Buscar profesores...",
+    "selectRole": "Seleccionar rol"
   },
   "schedule": {
     "date": "Fecha",

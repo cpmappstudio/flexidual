@@ -18,7 +18,13 @@
     "status": "Status",
     "active": "Active",
     "inactive": "Inactive",
-    "archived": "Archived"
+    "archived": "Archived",
+    "name": "Name",
+    "selectStatus": "Select status"
+  },
+  "admin": {
+    "title": "Academic Administration",
+    "description": "Central hub for academic administration and management tools."
   },
   "navigation": {
     "dashboard": "Dashboard",
@@ -35,14 +41,36 @@
   "dashboard": {
     "welcome": "Hi, {name}! 👋",
     "welcomeMessage": "Ready to learn something awesome today?",
+    "level": "Level {level}",
     "nextClass": "Up Next",
     "classLive": "Class is Live!",
+    "liveNow": "LIVE NOW",
+    "live": "LIVE",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "joinNow": "Join Class Now!",
+    "enterClassroom": "Enter Classroom",
     "noClasses": "No classes scheduled!",
     "enjoyFreeTime": "Enjoy your free time! 🎉",
-    "todaysClasses": "Today's Classes",
+    "todayClasses": "Today's Classes",
     "comingUp": "Coming Up",
+    "viewFullCalendar": "View Full Calendar",
     "thisWeek": "This Week",
-    "viewFullCalendar": "View Full Calendar"
+    "moreClasses": "+{count} more",
+    "noClassesToday": "No classes",
+    "fullCalendar": "Full Calendar",
+    "teachingDashboard": "Teaching Dashboard",
+    "manageCurriculums": "Manage your curriculums, lessons, and upcoming classes.",
+    "classInSession": "Class in Session",
+    "enterLive": "Enter Live Class",
+    "goToClassroom": "Go to Classroom",
+    "noClassesScheduled": "No classes scheduled",
+    "todaySchedule": "Today's Schedule",
+    "completed": "Completed",
+    "upcomingClasses": "Upcoming Classes",
+    "myCurriculums": "My Curriculums",
+    "noCurriculums": "No curriculums yet",
+    "viewAllCurriculums": "View All Curriculums"
   },
   "classroom": {
     "joinLive": "Join Live Class",
@@ -57,7 +85,8 @@
     "enableAudio": "Enable Audio",
     "startClass": "Start Class",
     "participants": "Participants",
-    "students": "Students"
+    "students": "Students",
+    "prepareRoom": "Prepare Room"
   },
   "curriculum": {
     "title": "Title",
@@ -72,7 +101,11 @@
     "noResults": "No curriculums found. Create one to get started.",
     "manage": "Manage Curriculums",
     "myCurriculums": "My Curriculums",
-    "manageLessons": "Manage Lessons"
+    "manageLessons": "Manage Lessons",
+    "filterPlaceholder": "Filter curriculums...",
+    "manageDescription": "Manage your course templates and lessons.",
+    "noDescription": "No description",
+    "unknown": "Unknown Curriculum"
   },
   "lesson": {
     "title": "Lesson Title",
@@ -91,7 +124,12 @@
     "reschedule": "Reschedule",
     "scheduled": "Scheduled",
     "scheduleSuccess": "Lesson scheduled",
-    "scheduleUpdated": "Schedule updated"
+    "scheduleUpdated": "Schedule updated",
+    "selectCurriculum": "Select a curriculum to view lessons",
+    "selectCurriculumPrompt": "Please select a curriculum above to manage its lessons.",
+    "noLessonsForCurriculum": "No lessons found for this curriculum.",
+    "contentBadge": "Lesson Content",
+    "notFound": "Lesson not found"
   },
   "class": {
     "name": "Class Name",
@@ -117,7 +155,11 @@
     "notAssigned": "You haven't been assigned to any classes yet.",
     "manageClass": "Manage Class",
     "manageSchedule": "Manage Schedule",
-    "allClasses": "All Active Classes"
+    "myClasses": "My Classes",
+    "allClasses": "All Active Classes",
+    "manageAllDescription": "Manage all classes, assignments, and schedules across the platform.",
+    "manageMyDescription": "Manage your active student groups and schedules.",
+    "noDate": "No date"
   },
   "student": {
     "firstName": "First Name",
@@ -145,7 +187,8 @@
     "created": "Teacher created",
     "updated": "Teacher updated",
     "deleted": "Teacher deleted",
-    "searchPlaceholder": "Search teachers..."
+    "searchPlaceholder": "Search teachers...",
+    "selectRole": "Select role"
   },
   "schedule": {
     "date": "Date",
