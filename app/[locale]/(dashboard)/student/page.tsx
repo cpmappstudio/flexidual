@@ -71,14 +71,14 @@ export default function StudentDashboard() {
         
         {/* Welcome Header */}
         <div className="flex items-center gap-4 bg-card/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-border">
-          <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-card shadow-lg bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+          <div className={`w-16 h-16 rounded-full overflow-hidden border-4 border-card shadow-lg ${user?.imageUrl ? "" : "bg-gradient-to-br from-blue-400 to-purple-500"} flex items-center justify-center`}>
             {user?.imageUrl ? (
               <Image 
                 src={user.imageUrl} 
                 alt={user.firstName || "Student"} 
-                fill
-                className="object-cover"
-                sizes="64px"
+                width={64}
+                height={64}
+                className="w-full h-full object-cover" 
               />
             ) : (
               <span className="text-2xl font-bold text-white">
