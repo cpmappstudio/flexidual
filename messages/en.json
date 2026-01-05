@@ -20,7 +20,15 @@
     "inactive": "Inactive",
     "archived": "Archived",
     "name": "Name",
-    "selectStatus": "Select status"
+    "selectStatus": "Select status",
+    "theme": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "language": "Language",
+    "english": "English",
+    "spanish": "Spanish",
+    "portuguese": "Portuguese (BR)"
   },
   "admin": {
     "title": "Academic Administration",

@@ -21,53 +21,38 @@ interface BreadcrumbSegment {
     isCurrentPage?: boolean
 }
 
-interface RouteConfig {
-    title: string
-    parent?: string
-    translationKey?: string
-    fallback?: string
-}
-
-// Flexible route configuration - easily extensible
-const ROUTE_CONFIG: Record<string, RouteConfig> = {
-    'dashboard': { title: 'dashboard' },
-    'academic': { title: 'menu.student.title', fallback: 'Academic' },
-    'history': { title: 'menu.student.items.0.title', fallback: 'Academic History', parent: 'academic' },
-    'progress': { title: 'menu.student.items.1.title', fallback: 'Academic Progress', parent: 'academic' },
-    'docs': { title: 'studentDocs', fallback: 'Documentation' },
-    'transcripts': { title: 'menu.studentDocs.items.0.title', fallback: 'Certificates & Transcripts', parent: 'docs' },
-    'teaching': { title: 'menu.professor.title', fallback: 'Teaching' },
-    'gradebook': { title: 'menu.professor.items.0.title', fallback: 'Gradebook', parent: 'teaching' },
-    'admin': { title: 'academicAdmin', fallback: 'Administration' },
-    'programs': { title: 'menu.adminAcademic.items.0.title', fallback: 'Program Management', parent: 'admin' },
-    'courses': { title: 'menu.adminAcademic.items.1.title', fallback: 'Course Management', parent: 'admin' },
-    'periods': { title: 'menu.adminAcademic.items.2.title', fallback: 'Period Management', parent: 'admin' },
-    'users': { title: 'personalAdmin', fallback: 'User Management' },
-    'professors': { title: 'menu.adminPersonal.items.0.title', fallback: 'Professor Management', parent: 'users' },
-    'students': { title: 'menu.adminPersonal.items.1.title', fallback: 'Student Management', parent: 'users' },
-    'profile': { title: 'profile', fallback: 'Profile' },
-    // 'classroom': { title: 'Classroom', fallback: 'Classroom' }, // to config later
-}
-
-// Routes that don't need translation (static labels)
-const STATIC_ROUTES: Record<string, string> = {
-    'teachers': 'Teachers',
-    'curriculums': 'Curriculums',
-    'lessons': 'Lessons',
-    'classes': 'Classes',
-    'calendar': 'Calendar',
-    'student': 'Student',
+// Updated route configuration matching your actual translation keys
+const ROUTE_CONFIG: Record<string, { key: string; namespace?: string }> = {
+    // Main navigation
+    'dashboard': { key: 'dashboard', namespace: 'navigation' },
+    'calendar': { key: 'calendar', namespace: 'navigation' },
+    'teaching': { key: 'teaching', namespace: 'navigation' },
+    'admin': { key: 'administration', namespace: 'navigation' },
+    
+    // Teaching section
+    'my-curriculums': { key: 'curriculums', namespace: 'navigation' },
+    'curriculums': { key: 'curriculums', namespace: 'navigation' },
+    'lessons': { key: 'lessons', namespace: 'navigation' },
+    'classes': { key: 'classes', namespace: 'navigation' },
+    
+    // Admin section
+    'teachers': { key: 'teachers', namespace: 'navigation' },
+    'students': { key: 'students', namespace: 'navigation' },
+    
+    // Student section
+    'student': { key: 'dashboard', namespace: 'navigation' }, // Student dashboard
+    
+    // Classroom
+    'classroom': { key: 'classroom', namespace: 'classroom' },
 }
 
 // Helper to detect if a segment is a Convex ID
 const isConvexId = (segment: string): boolean => {
-    // Convex IDs are typically long alphanumeric strings (32+ chars)
     return segment.length > 20 && /^[a-z0-9]+$/.test(segment)
 }
 
-// Helper to detect if a segment is a room name (class schedule ID format)
+// Helper to detect if a segment is a room name
 const isRoomName = (segment: string): boolean => {
-    // Room names follow pattern: class-{classId}-lesson-{lessonId}-{timestamp}
     return segment.startsWith('class-') && segment.includes('-lesson-')
 }
 
@@ -85,11 +70,14 @@ const parseRoomName = (roomName: string): { classId: string; lessonId: string } 
 
 export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
     const pathname = usePathname()
-    const t = useTranslations('navigation')
+    const tNav = useTranslations('navigation')
+    const tClass = useTranslations('classroom')
+    const tCurr = useTranslations('curriculum')
+    const tLesson = useTranslations('lesson')
 
     // Memoize path processing
     const pathWithoutLocale = useMemo(() => {
-        return pathname.replace(/^\/[a-z]{2}(?=\/|$)/, '')
+        return pathname.replace(/^\/[a-z]{2}(?:-[A-Z]{2})?(?=\/|$)/, '') // Support pt-BR format
     }, [pathname])
 
     // Extract dynamic IDs from path
@@ -101,7 +89,6 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
         const teacherIndex = parts.indexOf('teachers')
         const classroomIndex = parts.indexOf('classroom')
 
-        // Check for room name in classroom route
         let roomParts = null
         if (classroomIndex !== -1 && parts[classroomIndex + 1]) {
             const roomName = decodeURIComponent(parts[classroomIndex + 1])
@@ -143,19 +130,28 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
         teacherId ? { userId: teacherId } : "skip"
     )
 
-    // Stable translation function with useCallback
-    const getTranslation = useCallback((key: string, fallback: string) => {
+    // Translation helper that uses the correct namespace
+    const getTranslation = useCallback((part: string, fallback: string) => {
+        const config = ROUTE_CONFIG[part]
+        if (!config) return fallback
+
         try {
-            // Handle nested keys like "menu.student.title"
-            if (key.includes('.')) {
-                const result = t.raw(key as never)
-                return result || fallback
+            switch (config.namespace) {
+                case 'navigation':
+                    return tNav(config.key as any) || fallback
+                case 'classroom':
+                    return tClass(config.key as any) || fallback
+                case 'curriculum':
+                    return tCurr(config.key as any) || fallback
+                case 'lesson':
+                    return tLesson(config.key as any) || fallback
+                default:
+                    return fallback
             }
-            return t(key as never) || fallback
         } catch {
             return fallback
         }
-    }, [t])
+    }, [tNav, tClass, tCurr, tLesson])
 
     const breadcrumbSegments = useMemo((): BreadcrumbSegment[] => {
         const segments: BreadcrumbSegment[] = []
@@ -163,7 +159,7 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
         // Handle root/dashboard
         if (!pathWithoutLocale || pathWithoutLocale === '/') {
             segments.push({
-                title: getTranslation('dashboard', 'Dashboard'),
+                title: tNav('dashboard'),
                 isCurrentPage: true
             })
             return segments
@@ -172,23 +168,16 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
         // Split path and create segments
         const pathParts = pathWithoutLocale.split('/').filter(Boolean)
 
-        // Filter out 'admin' segment from breadcrumb (Academic Administration)
-        const filteredParts = pathParts.filter(part => part !== 'admin')
-
         // Build breadcrumb path
         let currentPath = ''
-        filteredParts.forEach((part, index) => {
-            // Reconstruct the actual path including admin for navigation
-            const actualPathParts = pathParts.slice(0, pathParts.indexOf(part) + 1)
-            currentPath = '/' + actualPathParts.join('/')
-            const isLast = index === filteredParts.length - 1
+        pathParts.forEach((part, index) => {
+            currentPath += '/' + part
+            const isLast = index === pathParts.length - 1
 
-            // Check if this is a dynamic ID or room name
             let title: string
             
             // Handle room names (classroom routes)
             if (isRoomName(part)) {
-                // Build a nice title from class and lesson names
                 if (classData && lesson) {
                     title = `${classData.name} - ${lesson.title}`
                 } else if (classData) {
@@ -196,32 +185,26 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
                 } else if (lesson) {
                     title = lesson.title
                 } else {
-                    title = 'Loading...'
+                    title = tClass('classroom')
                 }
-            } else if (isConvexId(part)) {
-                // Get dynamic name based on context
+            } 
+            // Handle Convex IDs
+            else if (isConvexId(part)) {
                 if (curriculumId && part === curriculumId) {
-                    title = curriculum?.title || 'Loading...'
+                    title = curriculum?.title || tCurr('unknown')
                 } else if (lessonId && part === lessonId) {
-                    title = lesson?.title || 'Loading...'
+                    title = lesson?.title || tLesson('title')
                 } else if (classId && part === classId) {
-                    title = classData?.name || 'Loading...'
+                    title = classData?.name || tNav('classes')
                 } else if (teacherId && part === teacherId) {
-                    title = teacher?.fullName || 'Loading...'
+                    title = teacher?.fullName || tNav('teachers')
                 } else {
                     title = part
                 }
-            } else {
-                // Check static routes first (no translation needed)
-                if (STATIC_ROUTES[part]) {
-                    title = STATIC_ROUTES[part]
-                } else {
-                    // Then check translated routes
-                    const config = ROUTE_CONFIG[part]
-                    title = config
-                        ? getTranslation(config.title, config.fallback || config.title)
-                        : part.charAt(0).toUpperCase() + part.slice(1)
-                }
+            } 
+            // Handle known routes
+            else {
+                title = getTranslation(part, part.charAt(0).toUpperCase() + part.slice(1))
             }
 
             segments.push({
@@ -234,6 +217,10 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
         return segments
     }, [
         pathWithoutLocale,
+        tNav,
+        tClass,
+        tCurr,
+        tLesson,
         getTranslation,
         curriculumId,
         curriculum,

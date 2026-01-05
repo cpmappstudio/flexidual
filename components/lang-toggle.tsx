@@ -16,7 +16,7 @@ interface LangToggleProps {
     showText?: boolean
 }
 
-const LOCALES = ['en', 'es'] as const
+const LOCALES = ['en', 'es', 'pt-BR'] as const
 
 export function LangToggle({ showText = true }: LangToggleProps) {
     const router = useRouter()
@@ -31,7 +31,7 @@ export function LangToggle({ showText = true }: LangToggleProps) {
 
     // Memoizar función de cambio de idioma
     const changeLanguage = React.useCallback((newLocale: string) => {
-        if (newLocale === locale) return // Evitar navegación innecesaria
+        if (newLocale === locale) return
 
         // Reemplazar el locale en la URL actual
         const newPath = pathname.replace(`/${locale}`, `/${newLocale}`)
@@ -43,6 +43,7 @@ export function LangToggle({ showText = true }: LangToggleProps) {
         switch (locale) {
             case 'en': return t('english')
             case 'es': return t('spanish')
+            case 'pt-BR': return t('portuguese')
             default: return t('language')
         }
     }, [locale, t])
@@ -52,6 +53,7 @@ export function LangToggle({ showText = true }: LangToggleProps) {
         switch (localeCode) {
             case 'en': return t('english')
             case 'es': return t('spanish')
+            case 'pt-BR': return t('portuguese')
             default: return t('language')
         }
     }, [t])

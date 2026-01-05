@@ -449,7 +449,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               <div className="w-16 h-10 rounded overflow-hidden border border-slate-300 relative shadow-sm">
                  {localParticipant && <ParticipantTile participant={localParticipant} variant="mini" className="w-full h-full" showLabel={false} />}
               </div>
-              <span className="text-sm font-bold text-slate-600">{t('classroom.you', { role: currentUserRole })}</span>
+              <span className="text-sm font-bold text-slate-600">{t('classroom.you', { role: currentUserRole || 'student' })}</span>
            </div>
 
            <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
