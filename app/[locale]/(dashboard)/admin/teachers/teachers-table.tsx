@@ -14,7 +14,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ArrowUpDown, Search } from "lucide-react";
-
+import type { TableSortingState } from "@/lib/types/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -102,9 +102,9 @@ export const columns: ColumnDef<Teacher>[] = [
 ];
 
 export function TeachersTable() {
-  const t = useTranslations(); // ADD THIS
+  const t = useTranslations();
   const users = useQuery(api.users.getUsers, { role: "teacher" });
-  const [sorting, setSorting] = React.useState([]);
+  const [sorting, setSorting] = React.useState<TableSortingState>([]);
   
   const data = React.useMemo(() => {
     if (!users) return [];
@@ -121,8 +121,8 @@ export function TeachersTable() {
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting as any,
-    state: { sorting: sorting as any },
+    onSortingChange: setSorting,
+    state: { sorting: sorting },
   });
 
   if (!users) return <Skeleton className="h-96 w-full" />;
@@ -133,7 +133,7 @@ export function TeachersTable() {
         <div className="relative w-72">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder={t('teacher.searchPlaceholder')} // CHANGE HERE
+            placeholder={t('teacher.searchPlaceholder')}
             value={(table.getColumn("fullName")?.getFilterValue() as string) ?? ""}
             onChange={(event) => table.getColumn("fullName")?.setFilterValue(event.target.value)}
             className="pl-8"
@@ -169,7 +169,7 @@ export function TeachersTable() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  {t('common.noResults')} {/* CHANGE HERE */}
+                  {t('common.noResults')}
                 </TableCell>
               </TableRow>
             )}

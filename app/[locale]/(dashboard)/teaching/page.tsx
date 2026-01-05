@@ -2,11 +2,11 @@
 
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Video, Calendar as CalendarIcon, Clock, BookOpen, Users, Plus } from "lucide-react"
+import { ArrowRight, Video, Calendar as CalendarIcon, Clock, BookOpen } from "lucide-react"
 import Link from "next/link"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { useCurrentUser } from "@/hooks/use-current-user"
@@ -18,7 +18,7 @@ export default function TeachingDashboard() {
   const t = useTranslations()
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
   const events = useQuery(api.schedule.getMySchedule, {})
-  const { user, isLoading } = useCurrentUser()
+  const { user } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
 
   const now = Date.now()

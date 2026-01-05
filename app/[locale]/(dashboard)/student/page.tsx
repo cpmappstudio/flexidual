@@ -11,6 +11,7 @@ import { format, isToday, isTomorrow, startOfDay, addDays } from "date-fns"
 import { useUser } from "@clerk/clerk-react"
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
+import Image from "next/image"
 
 export default function StudentDashboard() {
   const t = useTranslations()
@@ -72,7 +73,13 @@ export default function StudentDashboard() {
         <div className="flex items-center gap-4 bg-card/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-border">
           <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-card shadow-lg bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
             {user?.imageUrl ? (
-              <img src={user.imageUrl} alt={user.firstName || "Student"} className="w-full h-full object-cover" />
+              <Image 
+                src={user.imageUrl} 
+                alt={user.firstName || "Student"} 
+                fill
+                className="object-cover"
+                sizes="64px"
+              />
             ) : (
               <span className="text-2xl font-bold text-white">
                 {user?.firstName?.charAt(0) || "S"}

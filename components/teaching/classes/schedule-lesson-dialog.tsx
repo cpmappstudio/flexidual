@@ -143,7 +143,7 @@ export function ScheduleLessonDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Reschedule" : "Schedule"} "{lessonTitle}"</DialogTitle>
+          <DialogTitle>{isEditing ? "Reschedule" : "Schedule"} &quot;{lessonTitle}&quot;</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

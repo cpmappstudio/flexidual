@@ -208,7 +208,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const isScreenSharingActive = !!activeScreenTrack;
   const isSharingLocally = localParticipant?.isScreenShareEnabled;
 
-  // FIX: Explicit subscription for remote screen shares
+  // Explicit subscription for remote screen shares
   useEffect(() => {
     if (!activeScreenTrack || activeScreenTrack.participant.isLocal) return;
     
@@ -226,11 +226,9 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const isTeacherVideoOn = teacherCameraTrack && teacherCameraTrack.isSubscribed && !teacherCameraTrack.isMuted;
   const isTeacherAudioOn = teacherAudioTrack && teacherAudioTrack.isSubscribed && !teacherAudioTrack.isMuted;
 
-  // --- SIGNALING ---
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-
   useEffect(() => {
+    const decoder = new TextDecoder();
+
     const handleData = (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const msg = JSON.parse(decoder.decode(payload));
@@ -261,7 +259,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
 
     room.on("dataReceived", handleData);
     return () => { room.off("dataReceived", handleData); };
-  }, [room, amITeacher, isSharingLocally, localParticipant, decoder, t]);
+  }, [room, amITeacher, isSharingLocally, localParticipant, t]);
 
   const requestPermission = async () => {
     if (isScreenSharingActive && !isSharingLocally) {
@@ -269,6 +267,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
       return;
     }
     setWaitingForApproval(true);
+    const encoder = new TextEncoder();
     const data = JSON.stringify({ type: "REQUEST_SHARE" });
     await room.localParticipant.publishData(encoder.encode(data), { reliable: true });
     toast.info(t('classroom.requestSent'));
@@ -276,6 +275,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
 
   const grantPermission = async (allow: boolean) => {
     if (!pendingRequest) return;
+    const encoder = new TextEncoder();
     const type = allow ? "ALLOW_SHARE" : "DENY_SHARE";
     const data = JSON.stringify({ type });
     await room.localParticipant.publishData(encoder.encode(data), { 
@@ -303,7 +303,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   useEffect(() => {
     const unlockAudio = async () => {
         try { await room.startAudio(); } 
-        catch (e) { setNeedsClick(true); }
+        catch { setNeedsClick(true);}
     };
     unlockAudio();
   }, [room]);
@@ -311,8 +311,16 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   useEffect(() => {
     if (!localParticipant) return;
     const initMedia = async () => {
-      try { await localParticipant.setMicrophoneEnabled(true); } catch (e) {}
-      try { await localParticipant.setCameraEnabled(true); } catch (e) {}
+      try { 
+        await localParticipant.setMicrophoneEnabled(true); 
+      } catch (error) {
+        console.error("Failed to enable microphone:", error);
+      }
+      try { 
+        await localParticipant.setCameraEnabled(true); 
+      } catch (error) {
+        console.error("Failed to enable camera:", error);
+      }
     };
     initMedia();
   }, [localParticipant]);

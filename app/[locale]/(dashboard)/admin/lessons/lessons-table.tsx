@@ -71,7 +71,7 @@ export function LessonsTable() {
     if (curriculums && curriculums.length && !selectedCurriculumId) {
       setSelectedCurriculumId(curriculums[0]._id)
     }
-  }, [curriculums])
+  }, [curriculums, selectedCurriculumId])
 
   if (curriculums === undefined) return <Skeleton className="h-96 w-full" />
 

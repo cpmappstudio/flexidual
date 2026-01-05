@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useAction } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { Doc, Id } from "@/convex/_generated/dataModel"
+import { Id } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -88,7 +88,7 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
             toast.success(t('teacher.deleted'))
             setIsOpen(false)
         } catch (error) {
-            toast.error(t('errors.operationFailed'))
+            toast.error(t('errors.operationFailed') + ': ' + (error as Error).message)
         }
     }
 

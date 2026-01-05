@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react" // Changed: Import useMemo
+import { useState, useMemo, Suspense } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import Calendar from "@/components/calendar/calendar"
@@ -10,17 +10,18 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
-import { Video, Calendar as CalendarIcon, X } from "lucide-react" // Added X icon
+import { Video, Calendar as CalendarIcon, X } from "lucide-react"
 import Link from "next/link"
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types"
-import { useSearchParams, useRouter, usePathname } from "next/navigation" // Added navigation hooks
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
 
-export default function CalendarPage() {
+// Separate component that uses useSearchParams
+function CalendarContent() {
   const [mode, setMode] = useState<Mode>("month")
   const [date, setDate] = useState<Date>(new Date())
-  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [, setEvents] = useState<CalendarEvent[]>([])
 
-  // 1. Navigation Hooks
+  // Navigation Hooks
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
@@ -31,8 +32,7 @@ export default function CalendarPage() {
   const scheduleData = useQuery(api.schedule.getMySchedule, {})
 
   // Transform to CalendarEvent format
-  // Wrapped in useMemo for performance since we have dependencies now
-  const allEvents: CalendarEvent[] = useMemo(() => {
+  const allEvents = useMemo(() => {
     if (!scheduleData) return []
     
     return scheduleData.map(e => ({
@@ -55,7 +55,7 @@ export default function CalendarPage() {
     }))
   }, [scheduleData])
 
-  // 2. Filter Logic
+  // Filter Logic
   const filteredEvents = useMemo(() => {
     if (!classIdParam) return allEvents
     return allEvents.filter(e => e.classId === classIdParam)
@@ -75,7 +75,7 @@ export default function CalendarPage() {
     return <div className="p-6"><Skeleton className="h-[600px] w-full" /></div>
   }
 
-  // Prepare data for the List View (Upcoming) - USING FILTERED EVENTS
+  // Prepare data for the List View (Upcoming)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   
@@ -92,7 +92,7 @@ export default function CalendarPage() {
                 {classIdParam ? "Class Schedule" : "My Schedule"}
             </h1>
             
-            {/* 3. Filter Banner */}
+            {/* Filter Banner */}
             {classIdParam && (
                 <Badge variant="secondary" className="px-3 py-1 flex items-center gap-2 text-sm">
                     Filtering: {currentClassName}
@@ -212,5 +212,14 @@ export default function CalendarPage() {
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+// Main component with Suspense boundary
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={<div className="p-6"><Skeleton className="h-[600px] w-full" /></div>}>
+      <CalendarContent />
+    </Suspense>
   )
 }

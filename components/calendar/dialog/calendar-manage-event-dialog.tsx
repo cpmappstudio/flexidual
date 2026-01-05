@@ -6,7 +6,6 @@ import { z } from "zod";
 import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import {
   Dialog,
   DialogContent,
@@ -39,7 +38,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Trash2, Video } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
 import Link from "next/link";
 
 const formSchema = z

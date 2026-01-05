@@ -63,10 +63,10 @@ export default function FlexiClassroom({ roomName, className }: FlexiClassroomPr
           participantName
         });
         setToken(jwt);
-      } catch (err: any) {
+      } catch (err) {
         console.error("Error fetching token:", err);
         // Fallback error handling if logic slips through
-        if (err.message.includes("not started")) {
+        if ((err as Error).message.includes("not started")) {
            // Should be handled by UI, but just in case
            setError(t('classroom.hasntStarted'));
         } else {

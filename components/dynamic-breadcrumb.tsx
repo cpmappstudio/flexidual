@@ -21,8 +21,13 @@ interface BreadcrumbSegment {
     isCurrentPage?: boolean
 }
 
+// Translation key type
+type TranslationKey = 'dashboard' | 'calendar' | 'teaching' | 'administration' | 
+                      'curriculums' | 'lessons' | 'classes' | 'teachers' | 'students' | 
+                      'classroom' | 'unknown' | 'title';
+
 // Updated route configuration matching your actual translation keys
-const ROUTE_CONFIG: Record<string, { key: string; namespace?: string }> = {
+const ROUTE_CONFIG: Record<string, { key: TranslationKey; namespace?: string }> = {
     // Main navigation
     'dashboard': { key: 'dashboard', namespace: 'navigation' },
     'calendar': { key: 'calendar', namespace: 'navigation' },
@@ -40,7 +45,7 @@ const ROUTE_CONFIG: Record<string, { key: string; namespace?: string }> = {
     'students': { key: 'students', namespace: 'navigation' },
     
     // Student section
-    'student': { key: 'dashboard', namespace: 'navigation' }, // Student dashboard
+    'student': { key: 'dashboard', namespace: 'navigation' },
     
     // Classroom
     'classroom': { key: 'classroom', namespace: 'classroom' },
@@ -77,11 +82,11 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
 
     // Memoize path processing
     const pathWithoutLocale = useMemo(() => {
-        return pathname.replace(/^\/[a-z]{2}(?:-[A-Z]{2})?(?=\/|$)/, '') // Support pt-BR format
+        return pathname.replace(/^\/[a-z]{2}(?:-[A-Z]{2})?(?=\/|$)/, '')
     }, [pathname])
 
     // Extract dynamic IDs from path
-    const { curriculumId, lessonId, classId, teacherId, roomNameParts } = useMemo(() => {
+    const { curriculumId, lessonId, classId, teacherId } = useMemo(() => {
         const parts = pathWithoutLocale.split('/').filter(Boolean)
         const curriculumIndex = parts.indexOf('curriculums')
         const lessonIndex = parts.indexOf('lessons')
@@ -108,7 +113,6 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
             teacherId: teacherIndex !== -1 && parts[teacherIndex + 1] && isConvexId(parts[teacherIndex + 1])
                 ? parts[teacherIndex + 1] as Id<"users">
                 : null,
-            roomNameParts: roomParts,
         }
     }, [pathWithoutLocale])
 
@@ -130,7 +134,7 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
         teacherId ? { userId: teacherId } : "skip"
     )
 
-    // Translation helper that uses the correct namespace
+    // Translation helper with proper typing
     const getTranslation = useCallback((part: string, fallback: string) => {
         const config = ROUTE_CONFIG[part]
         if (!config) return fallback
@@ -138,13 +142,13 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
         try {
             switch (config.namespace) {
                 case 'navigation':
-                    return tNav(config.key as any) || fallback
+                    return tNav(config.key) || fallback
                 case 'classroom':
-                    return tClass(config.key as any) || fallback
+                    return tClass(config.key) || fallback
                 case 'curriculum':
-                    return tCurr(config.key as any) || fallback
+                    return tCurr(config.key) || fallback
                 case 'lesson':
-                    return tLesson(config.key as any) || fallback
+                    return tLesson(config.key) || fallback
                 default:
                     return fallback
             }

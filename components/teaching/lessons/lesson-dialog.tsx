@@ -77,7 +77,7 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
       }
       setOpen(false)
     } catch (error) {
-      toast.error(t('errors.operationFailed'))
+      toast.error(t('errors.operationFailed') + ': ' + (error as Error).message)
     }
   }
 

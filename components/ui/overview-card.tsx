@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+// import { useQuery } from "convex/react";
+// import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Expand } from "lucide-react";
 
@@ -33,7 +33,7 @@ interface OverviewCardProps {
 export function OverviewCard({
     title,
     description,
-    imageStorageId,
+    // imageStorageId,
     imageUrl,
     imageAlt,
     fallbackIcon,
@@ -42,14 +42,14 @@ export function OverviewCard({
 }: OverviewCardProps) {
     const [isImageExpanded, setIsImageExpanded] = useState(false);
 
-    // Get image URL from Convex storage if storageId is provided
-    const convexImageUrl = useQuery(
-        api.campuses.getImageUrl,
-        imageStorageId ? { storageId: imageStorageId } : "skip"
-    );
+    // // Get image URL from Convex storage if storageId is provided
+    // const convexImageUrl = useQuery(
+    //     api.entity.getImageUrl,
+    //     imageStorageId ? { storageId: imageStorageId } : "skip"
+    // );
 
     // Prefer provided imageUrl, then convexImageUrl from storage
-    const imageSrc = imageUrl || convexImageUrl || null;
+    const imageSrc = imageUrl /*|| convexImageUrl */ || null;
 
     return (
         <>

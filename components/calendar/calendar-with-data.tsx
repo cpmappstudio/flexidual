@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import Calendar from "./calendar";
 import { CalendarEvent, Mode } from "./calendar-types";
 import { useCurrentUser } from "@/hooks/use-current-user";

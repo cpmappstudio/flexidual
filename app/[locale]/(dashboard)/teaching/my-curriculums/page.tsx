@@ -14,7 +14,7 @@ import { useTranslations } from "next-intl"
 export default function MyCurriculumsPage() {
   const t = useTranslations()
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
-  const { user, isLoading } = useCurrentUser()
+  const { user } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
 
   if (curriculums === undefined) {

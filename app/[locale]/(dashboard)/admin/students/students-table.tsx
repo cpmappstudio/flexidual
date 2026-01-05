@@ -14,7 +14,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ArrowUpDown, Search } from "lucide-react";
-
+import type { TableSortingState } from "@/lib/types/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -100,9 +100,9 @@ export const columns: ColumnDef<Student>[] = [
 ];
 
 export function StudentsTable() {
-  const t = useTranslations(); // ADD THIS
+  const t = useTranslations();
   const users = useQuery(api.users.getUsers, { role: "student" });
-  const [sorting, setSorting] = React.useState([]);
+  const [sorting, setSorting] = React.useState<TableSortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
   
   const data = React.useMemo(() => {
@@ -120,9 +120,9 @@ export function StudentsTable() {
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting as any,
+    onSortingChange: setSorting,
     state: { 
-        sorting: sorting as any,
+        sorting: sorting,
         globalFilter,
     },
     onGlobalFilterChange: setGlobalFilter,
@@ -140,7 +140,7 @@ export function StudentsTable() {
         <div className="relative w-72">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder={t('student.searchPlaceholder')} // CHANGE HERE
+            placeholder={t('student.searchPlaceholder')}
             value={globalFilter ?? ""}
             onChange={(event) => setGlobalFilter(event.target.value)}
             className="pl-8"
@@ -176,7 +176,7 @@ export function StudentsTable() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                  {t('common.noResults')} {/* CHANGE HERE */}
+                  {t('common.noResults')}
                 </TableCell>
               </TableRow>
             )}
@@ -191,7 +191,7 @@ export function StudentsTable() {
           onClick={() => table.previousPage()}
           disabled={!table.getCanPreviousPage()}
         >
-          {t('common.previous')} {/* CHANGE HERE */}
+          {t('common.previous')}
         </Button>
         <Button
           variant="outline"
@@ -199,7 +199,7 @@ export function StudentsTable() {
           onClick={() => table.nextPage()}
           disabled={!table.getCanNextPage()}
         >
-          {t('common.next')} {/* CHANGE HERE */}
+          {t('common.next')}
         </Button>
       </div>
     </div>

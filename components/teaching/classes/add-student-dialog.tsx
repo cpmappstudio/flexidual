@@ -40,7 +40,7 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
       toast.success(`Added ${name} to class`)
       // Keep dialog open to add more? Or close? Let's keep it open.
     } catch (error) {
-      toast.error("Failed to add student")
+      toast.error("Failed to add student: " + (error as Error).message)
     }
   }
 

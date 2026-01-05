@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
@@ -70,8 +71,8 @@ export function CreateClassDialog() {
     try {
       await createClass({
         name: values.name,
-        curriculumId: values.curriculumId as any,
-        teacherId: teacherIdToUse as any,
+        curriculumId: values.curriculumId as Id<"curriculums">,
+        teacherId: teacherIdToUse as Id<"users">,
       })
       toast.success("Class created successfully")
       setOpen(false)

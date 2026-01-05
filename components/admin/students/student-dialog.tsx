@@ -75,7 +75,7 @@ export function StudentDialog({ student }: StudentDialogProps) {
             toast.success(t('student.deleted'))
             setIsOpen(false)
         } catch (error) {
-            toast.error(t('errors.operationFailed'))
+            toast.error(t('errors.operationFailed') + ': ' + (error as Error).message)
         }
     }
 

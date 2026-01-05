@@ -1,6 +1,5 @@
 import { use } from 'react';
 import FlexiClassroom from '@/components/classroom/flexi-classroom';
-import { getTranslations } from 'next-intl/server';
 
 interface ClassroomPageProps {
   params: Promise<{
