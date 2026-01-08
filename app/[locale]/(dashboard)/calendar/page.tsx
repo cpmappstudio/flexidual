@@ -3,6 +3,7 @@
 import { useState, useMemo, Suspense } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import { Id } from "@/convex/_generated/dataModel"
 import Calendar from "@/components/calendar/calendar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -14,19 +15,22 @@ import { Video, Calendar as CalendarIcon, X } from "lucide-react"
 import Link from "next/link"
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
+import { CreateScheduleDialog } from "@/components/teaching/classes/create-schedule-dialog"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 // Separate component that uses useSearchParams
 function CalendarContent() {
   const [mode, setMode] = useState<Mode>("month")
   const [date, setDate] = useState<Date>(new Date())
   const [, setEvents] = useState<CalendarEvent[]>([])
+  const { user } = useCurrentUser()
 
   // Navigation Hooks
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
   
-  const classIdParam = searchParams.get("classId")
+  const classIdParam = searchParams.get("classId") as Id<"classes"> | null
 
   // Fetch Universal Schedule
   const scheduleData = useQuery(api.schedule.getMySchedule, {})
@@ -105,6 +109,10 @@ function CalendarContent() {
                 </Badge>
             )}
         </div>
+
+        {(user?.role === "teacher" || user?.role === "admin" || user?.role === "superadmin") && (
+          <CreateScheduleDialog classId={classIdParam || undefined} />
+        )}
       </div>
 
       <Tabs defaultValue="month" className="h-full flex flex-col">

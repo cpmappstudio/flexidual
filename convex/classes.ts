@@ -481,24 +481,21 @@ export const remove = mutation({
 });
 
 /**
- * Get schedulable classes for a teacher
- * Returns classes with lessons that can be scheduled
+ * Get classes I can schedule for (with curriculum details for lesson selection)
  */
 export const getSchedulableClasses = query({
   handler: async (ctx) => {
     const user = await getCurrentUserFromAuth(ctx);
-    if (!user) {
-      return [];
-    }
+    if (!user) return [];
 
-    // Only teachers can schedule
-    if (!["teacher", "admin", "superadmin"].includes(user.role)) {
-      throw new Error("Only teachers can schedule lessons");
-    }
-
-    // Get teacher's classes
+    // Teachers/Tutors see their classes, Admins see all
     let classes;
-    if (user.role === "teacher") {
+    if (user.role === "admin" || user.role === "superadmin") {
+      classes = await ctx.db
+        .query("classes")
+        .withIndex("by_active", (q) => q.eq("isActive", true))
+        .collect();
+    } else if (user.role === "teacher" || user.role === "tutor") {
       classes = await ctx.db
         .query("classes")
         .withIndex("by_teacher", (q) => 
@@ -506,54 +503,39 @@ export const getSchedulableClasses = query({
         )
         .collect();
     } else {
-      // Admins see all classes
-      classes = await ctx.db
-        .query("classes")
-        .withIndex("by_active", (q) => q.eq("isActive", true))
-        .collect();
+      return [];
     }
 
-    // Enrich with curriculum and lessons
+    // Hydrate with curriculum and lessons
     const enriched = await Promise.all(
-      classes.map(async (classItem) => {
-        const curriculum = await ctx.db.get(classItem.curriculumId);
-        if (!curriculum) return null;
-
+      classes.map(async (cls) => {
+        const curriculum = await ctx.db.get(cls.curriculumId);
         const lessons = await ctx.db
           .query("lessons")
           .withIndex("by_curriculum", (q) => 
-            q.eq("curriculumId", classItem.curriculumId)
+            q.eq("curriculumId", cls.curriculumId)
           )
           .filter((q) => q.eq(q.field("isActive"), true))
           .collect();
 
-        // Check which lessons are already scheduled
-        const schedules = await ctx.db
-          .query("classSchedule")
-          .withIndex("by_class", (q) => q.eq("classId", classItem._id))
-          .collect();
-
-        const scheduledLessonIds = new Set(schedules.map(s => s.lessonId));
+        // Sort lessons by order
+        const sortedLessons = lessons.sort((a, b) => a.order - b.order);
 
         return {
-          _id: classItem._id,
-          name: classItem.name,
-          curriculumId: curriculum._id,
-          curriculumTitle: curriculum.title,
-          curriculumCode: curriculum.code,
-          color: curriculum.color || "#3b82f6",
-          teacherId: classItem.teacherId,
-          lessons: lessons.map(lesson => ({
-            _id: lesson._id,
-            title: lesson.title,
-            description: lesson.description,
-            order: lesson.order,
-            isScheduled: scheduledLessonIds.has(lesson._id),
-          })).sort((a, b) => a.order - b.order),
+          _id: cls._id,
+          name: cls.name,
+          curriculumId: cls.curriculumId,
+          curriculumTitle: curriculum?.title || "Unknown",
+          curriculumColor: curriculum?.color,
+          lessons: sortedLessons.map(l => ({
+            _id: l._id,
+            title: l.title,
+            order: l.order,
+          })),
         };
       })
     );
 
-    return enriched.filter((c): c is NonNullable<typeof c> => c !== null);
+    return enriched;
   },
 });

@@ -131,27 +131,36 @@ export default defineSchema({
 
   /**
    * CLASS_SCHEDULE
-   * The bridge: "When does Lesson X happen for Class Y?"
-   * This is THE core scheduling table
+   * The bridge: "When does Class Y meet?" (lesson is now optional)
+   * Supports recurring schedules
    */
   classSchedule: defineTable({
     classId: v.id("classes"),
-    lessonId: v.id("lessons"),
+    lessonId: v.optional(v.id("lessons")),
     
-    // When? (Single timestamp for start time)
-    scheduledStart: v.number(), // Unix timestamp
-    scheduledEnd: v.number(), // Unix timestamp
+    // Basic info (for schedules without lessons)
+    title: v.optional(v.string()), // Custom title if no lesson
+    description: v.optional(v.string()), // Custom description
+    
+    // When?
+    scheduledStart: v.number(),
+    scheduledEnd: v.number(),
+    
+    // Recurrence support
+    isRecurring: v.optional(v.boolean()),
+    recurrenceRule: v.optional(v.string()), // RRULE format or simple pattern
+    recurrenceParentId: v.optional(v.id("classSchedule")), // Links to parent if part of series
     
     // LiveKit Integration
-    roomName: v.string(), // e.g., "class-123-lesson-456"
-    isLive: v.optional(v.boolean()), // Is the session currently active?
+    roomName: v.string(),
+    isLive: v.optional(v.boolean()),
     
     // Status tracking
     status: v.union(
-      v.literal("scheduled"), // Not yet started
-      v.literal("active"), // Currently happening
-      v.literal("completed"), // Finished
-      v.literal("cancelled") // Cancelled
+      v.literal("scheduled"),
+      v.literal("active"),
+      v.literal("completed"),
+      v.literal("cancelled")
     ),
     
     // Completion tracking
@@ -165,7 +174,8 @@ export default defineSchema({
     .index("by_class_status", ["classId", "status"])
     .index("by_date_range", ["scheduledStart"])
     .index("by_room", ["roomName"])
-    .index("by_status", ["status", "scheduledStart"]),
+    .index("by_status", ["status", "scheduledStart"])
+    .index("by_recurrence_parent", ["recurrenceParentId"]),
 
   /**
    * CLASS_SESSIONS

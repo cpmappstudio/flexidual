@@ -12,8 +12,8 @@ import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
  */
 export const getMySchedule = query({
   args: {
-    from: v.optional(v.number()), // Start of date range
-    to: v.optional(v.number()),   // End of date range
+    from: v.optional(v.number()),
+    to: v.optional(v.number()),
     status: v.optional(v.union(
       v.literal("scheduled"),
       v.literal("active"),
@@ -78,18 +78,26 @@ export const getMySchedule = query({
     // Step 5: Hydrate with lesson and class details
     const results = await Promise.all(
       flatSchedule.map(async (item) => {
-        const lesson = await ctx.db.get(item.lessonId);
         const classData = myClasses.find(c => c._id === item.classId);
-
-        if (!lesson || !classData) return null;
+        if (!classData) return null;
 
         // Get curriculum for color
         const curriculum = await ctx.db.get(classData.curriculumId);
 
+        // Lesson is optional now - only fetch if exists
+        let lessonData = null;
+        if (item.lessonId) {
+          lessonData = await ctx.db.get(item.lessonId);
+        }
+
+        // Use lesson data if available, otherwise use custom title/description
+        const title = lessonData?.title || item.title || "Class Session";
+        const description = lessonData?.description || item.description || "";
+
         return {
           scheduleId: item._id,
-          title: lesson.title,
-          description: lesson.description,
+          title,
+          description,
           className: classData.name,
           curriculumTitle: curriculum?.title || "Unknown",
           color: curriculum?.color || "#3b82f6",
@@ -98,7 +106,7 @@ export const getMySchedule = query({
           roomName: item.roomName,
           isLive: item.isLive || false,
           status: item.status,
-          lessonId: lesson._id,
+          lessonId: item.lessonId,
           classId: classData._id,
           curriculumId: classData.curriculumId,
         };
@@ -130,12 +138,14 @@ export const getWithDetails = query({
     const schedule = await ctx.db.get(args.id);
     if (!schedule) return null;
 
-    const [lesson, classData] = await Promise.all([
-      ctx.db.get(schedule.lessonId),
-      ctx.db.get(schedule.classId),
-    ]);
+    const classData = await ctx.db.get(schedule.classId);
+    if (!classData) return null;
 
-    if (!lesson || !classData) return null;
+    // Lesson is now optional
+    let lesson = null;
+    if (schedule.lessonId) {
+      lesson = await ctx.db.get(schedule.lessonId);
+    }
 
     const [curriculum, teacher] = await Promise.all([
       ctx.db.get(classData.curriculumId),
@@ -144,12 +154,12 @@ export const getWithDetails = query({
 
     return {
       ...schedule,
-      lesson: {
+      lesson: lesson ? {
         _id: lesson._id,
         title: lesson.title,
         description: lesson.description,
         content: lesson.content,
-      },
+      } : null,
       class: {
         _id: classData._id,
         name: classData.name,
@@ -237,6 +247,176 @@ export const getSessionStatus = query({
 // ============================================================================
 
 /**
+ * Create a single schedule (with or without lesson)
+ */
+export const createSchedule = mutation({
+  args: {
+    classId: v.id("classes"),
+    lessonId: v.optional(v.id("lessons")),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    scheduledStart: v.number(),
+    scheduledEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+
+    const classData = await ctx.db.get(args.classId);
+    if (!classData) throw new Error("Class not found");
+
+    // Permission check
+    if (
+      !["admin", "superadmin"].includes(user.role) &&
+      classData.teacherId !== user._id
+    ) {
+      throw new Error("Only administrators or the class teacher can create schedules");
+    }
+
+    // Validate lesson if provided
+    if (args.lessonId) {
+      const lesson = await ctx.db.get(args.lessonId);
+      if (!lesson) throw new Error("Lesson not found");
+      if (lesson.curriculumId !== classData.curriculumId) {
+        throw new Error("Lesson does not belong to this class's curriculum");
+      }
+    }
+
+    // Validate time range
+    if (args.scheduledEnd <= args.scheduledStart) {
+      throw new Error("End time must be after start time");
+    }
+
+    const roomName = `class-${args.classId}-${Date.now()}`;
+
+    return await ctx.db.insert("classSchedule", {
+      classId: args.classId,
+      lessonId: args.lessonId,
+      title: args.title,
+      description: args.description,
+      scheduledStart: args.scheduledStart,
+      scheduledEnd: args.scheduledEnd,
+      roomName,
+      isLive: false,
+      isRecurring: false,
+      status: "scheduled",
+      createdAt: Date.now(),
+      createdBy: user._id,
+    });
+  },
+});
+
+/**
+ * Create recurring schedules
+ * Supports: daily, weekly, custom patterns
+ */
+export const createRecurringSchedule = mutation({
+  args: {
+    classId: v.id("classes"),
+    lessonId: v.optional(v.id("lessons")),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    scheduledStart: v.number(), // First occurrence
+    scheduledEnd: v.number(),
+    recurrence: v.object({
+      type: v.union(
+        v.literal("daily"),
+        v.literal("weekly"),
+        v.literal("biweekly"),
+        v.literal("monthly")
+      ),
+      daysOfWeek: v.optional(v.array(v.number())), // 0=Sunday, 1=Monday, etc.
+      endDate: v.optional(v.number()), // When to stop generating
+      occurrences: v.optional(v.number()), // Or max number of occurrences
+    }),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+
+    const classData = await ctx.db.get(args.classId);
+    if (!classData) throw new Error("Class not found");
+
+    if (
+      !["admin", "superadmin"].includes(user.role) &&
+      classData.teacherId !== user._id
+    ) {
+      throw new Error("Only administrators or the class teacher can create schedules");
+    }
+
+    if (args.lessonId) {
+      const lesson = await ctx.db.get(args.lessonId);
+      if (!lesson) throw new Error("Lesson not found");
+      if (lesson.curriculumId !== classData.curriculumId) {
+        throw new Error("Lesson does not belong to this class's curriculum");
+      }
+    }
+
+    if (args.scheduledEnd <= args.scheduledStart) {
+      throw new Error("End time must be after start time");
+    }
+
+    // Generate occurrences
+    const duration = args.scheduledEnd - args.scheduledStart;
+    const occurrences = generateRecurrenceOccurrences(
+      args.scheduledStart,
+      args.recurrence
+    );
+
+    if (occurrences.length === 0) {
+      throw new Error("No valid occurrences generated");
+    }
+
+    // Create parent schedule
+    const parentRoomName = `class-${args.classId}-series-${Date.now()}`;
+    const parentId = await ctx.db.insert("classSchedule", {
+      classId: args.classId,
+      lessonId: args.lessonId,
+      title: args.title,
+      description: args.description,
+      scheduledStart: args.scheduledStart,
+      scheduledEnd: args.scheduledEnd,
+      roomName: parentRoomName,
+      isLive: false,
+      isRecurring: true,
+      recurrenceRule: JSON.stringify(args.recurrence),
+      status: "scheduled",
+      createdAt: Date.now(),
+      createdBy: user._id,
+    });
+
+    // Create child schedules
+    const childIds = [];
+    for (let i = 1; i < occurrences.length; i++) {
+      const start = occurrences[i];
+      const end = start + duration;
+      
+      const childId = await ctx.db.insert("classSchedule", {
+        classId: args.classId,
+        lessonId: args.lessonId,
+        title: args.title,
+        description: args.description,
+        scheduledStart: start,
+        scheduledEnd: end,
+        roomName: `${parentRoomName}-${i}`,
+        isLive: false,
+        isRecurring: true,
+        recurrenceParentId: parentId,
+        status: "scheduled",
+        createdAt: Date.now(),
+        createdBy: user._id,
+      });
+      
+      childIds.push(childId);
+    }
+
+    return {
+      parentId,
+      childIds,
+      totalOccurrences: occurrences.length,
+    };
+  },
+});
+
+/**
  * Schedule a lesson for a class
  */
 export const scheduleLesson = mutation({
@@ -295,11 +475,15 @@ export const scheduleLesson = mutation({
 });
 
 /**
- * Update scheduled lesson
+ * Update schedule (including linking to lesson later)
+ * Now supports updating entire recurring series
  */
 export const updateSchedule = mutation({
   args: {
     id: v.id("classSchedule"),
+    lessonId: v.optional(v.union(v.id("lessons"), v.null())),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
     scheduledStart: v.optional(v.number()),
     scheduledEnd: v.optional(v.number()),
     status: v.optional(v.union(
@@ -308,21 +492,17 @@ export const updateSchedule = mutation({
       v.literal("completed"),
       v.literal("cancelled")
     )),
+    updateSeries: v.optional(v.boolean()), // Update all in recurring series
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
     const schedule = await ctx.db.get(args.id);
-    if (!schedule) {
-      throw new Error("Schedule not found");
-    }
+    if (!schedule) throw new Error("Schedule not found");
 
     const classData = await ctx.db.get(schedule.classId);
-    if (!classData) {
-      throw new Error("Class not found");
-    }
+    if (!classData) throw new Error("Class not found");
 
-    // Validate permissions
     if (
       !["admin", "superadmin"].includes(user.role) &&
       classData.teacherId !== user._id
@@ -330,41 +510,76 @@ export const updateSchedule = mutation({
       throw new Error("Only administrators or the class teacher can update schedules");
     }
 
-    // Validate time range if changing
+    // Validate lesson if changing
+    if (args.lessonId && args.lessonId !== null) {
+      const lesson = await ctx.db.get(args.lessonId);
+      if (!lesson) throw new Error("Lesson not found");
+      if (lesson.curriculumId !== classData.curriculumId) {
+        throw new Error("Lesson does not belong to this class's curriculum");
+      }
+    }
+
     if (args.scheduledStart && args.scheduledEnd) {
       if (args.scheduledEnd <= args.scheduledStart) {
         throw new Error("End time must be after start time");
       }
     }
 
-    const { id, ...updates } = args;
+    const { id, updateSeries, ...updates } = args;
 
-    // Auto-mark completed
-    if (updates.status === "completed" && !schedule.completedAt) {
-      (updates as any).completedAt = Date.now();
+    // Prepare updates
+    const cleanUpdates: any = { ...updates };
+    if (cleanUpdates.lessonId === null) {
+      cleanUpdates.lessonId = undefined;
     }
 
-    await ctx.db.patch(id, updates);
+    if (updates.status === "completed" && !schedule.completedAt) {
+      cleanUpdates.completedAt = Date.now();
+    }
+
+    // Update single or series
+    if (updateSeries && schedule.isRecurring) {
+      const parentId = schedule.recurrenceParentId || schedule._id;
+      
+      // Find all in series
+      const series = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_recurrence_parent", (q) => q.eq("recurrenceParentId", parentId))
+        .collect();
+      
+      // Update parent
+      await ctx.db.patch(parentId, cleanUpdates);
+      
+      // Update children
+      for (const child of series) {
+        await ctx.db.patch(child._id, cleanUpdates);
+      }
+      
+      return { updated: series.length + 1, type: "series" };
+    } else {
+      await ctx.db.patch(id, cleanUpdates);
+      return { updated: 1, type: "single" };
+    }
   },
 });
 
 /**
- * Cancel scheduled lesson
+ * Cancel schedule or series (soft delete - preserves history)
  */
 export const cancelSchedule = mutation({
-  args: { id: v.id("classSchedule") },
+  args: { 
+    id: v.id("classSchedule"),
+    cancelSeries: v.optional(v.boolean()),
+    reason: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
     const schedule = await ctx.db.get(args.id);
-    if (!schedule) {
-      throw new Error("Schedule not found");
-    }
+    if (!schedule) throw new Error("Schedule not found");
 
     const classData = await ctx.db.get(schedule.classId);
-    if (!classData) {
-      throw new Error("Class not found");
-    }
+    if (!classData) throw new Error("Class not found");
 
     if (
       !["admin", "superadmin"].includes(user.role) &&
@@ -373,35 +588,85 @@ export const cancelSchedule = mutation({
       throw new Error("Only administrators or the class teacher can cancel schedules");
     }
 
-    await ctx.db.patch(args.id, {
-      status: "cancelled",
-    });
+    // Cancel series or single
+    if (args.cancelSeries && schedule.isRecurring) {
+      const parentId = schedule.recurrenceParentId || schedule._id;
+      
+      const series = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_recurrence_parent", (q) => q.eq("recurrenceParentId", parentId))
+        .collect();
+      
+      await ctx.db.patch(parentId, { 
+        status: "cancelled" as const,
+        description: args.reason ? `${schedule.description || ''}\n\nCancellation reason: ${args.reason}` : schedule.description
+      });
+      
+      for (const child of series) {
+        await ctx.db.patch(child._id, { 
+          status: "cancelled" as const,
+          description: args.reason ? `${child.description || ''}\n\nCancellation reason: ${args.reason}` : child.description
+        });
+      }
+      
+      return { cancelled: series.length + 1, type: "series" };
+    } else {
+      await ctx.db.patch(args.id, { 
+        status: "cancelled" as const,
+        description: args.reason ? `${schedule.description || ''}\n\nCancellation reason: ${args.reason}` : schedule.description
+      });
+      return { cancelled: 1, type: "single" };
+    }
   },
 });
 
 /**
- * Delete schedule
+ * Delete schedule or entire recurring series
  */
 export const deleteSchedule = mutation({
-  args: { id: v.id("classSchedule") },
+  args: { 
+    id: v.id("classSchedule"),
+    deleteSeries: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    if (!["admin", "superadmin"].includes(user.role)) {
-      throw new Error("Only administrators can delete schedules");
-    }
-
     const schedule = await ctx.db.get(args.id);
-    if (!schedule) {
-      throw new Error("Schedule not found");
+    if (!schedule) throw new Error("Schedule not found");
+
+    const classData = await ctx.db.get(schedule.classId);
+    if (!classData) throw new Error("Class not found");
+
+    if (
+      !["admin", "superadmin"].includes(user.role) &&
+      classData.teacherId !== user._id
+    ) {
+      throw new Error("Only administrators or the class teacher can delete schedules");
     }
 
-    // Prevent deletion of active sessions
-    if (schedule.status === "active") {
-      throw new Error("Cannot delete active session");
+    // Delete series or single
+    if (args.deleteSeries && schedule.isRecurring) {
+      const parentId = schedule.recurrenceParentId || schedule._id;
+      
+      // Find all in series
+      const series = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_recurrence_parent", (q) => q.eq("recurrenceParentId", parentId))
+        .collect();
+      
+      // Delete parent
+      await ctx.db.delete(parentId);
+      
+      // Delete children
+      for (const child of series) {
+        await ctx.db.delete(child._id);
+      }
+      
+      return { deleted: series.length + 1, type: "series" };
+    } else {
+      await ctx.db.delete(args.id);
+      return { deleted: 1, type: "single" };
     }
-
-    await ctx.db.delete(args.id);
   },
 });
 
@@ -446,3 +711,68 @@ export const markLive = mutation({
     await ctx.db.patch(schedule._id, updates);
   },
 });
+
+/**
+ * Generate occurrence timestamps based on recurrence rules
+ */
+function generateRecurrenceOccurrences(
+  startTime: number,
+  recurrence: {
+    type: "daily" | "weekly" | "biweekly" | "monthly";
+    daysOfWeek?: number[];
+    endDate?: number;
+    occurrences?: number;
+  }
+): number[] {
+  const occurrences: number[] = [startTime];
+  const maxOccurrences = recurrence.occurrences || 52; // Default 1 year of weekly
+  const endDate = recurrence.endDate || (startTime + (365 * 24 * 60 * 60 * 1000)); // 1 year
+
+  let current = startTime;
+  let count = 1;
+
+  while (count < maxOccurrences && current < endDate) {
+    let next: number;
+
+    switch (recurrence.type) {
+      case "daily":
+        next = current + (24 * 60 * 60 * 1000);
+        break;
+      
+      case "weekly":
+        next = current + (7 * 24 * 60 * 60 * 1000);
+        break;
+      
+      case "biweekly":
+        next = current + (14 * 24 * 60 * 60 * 1000);
+        break;
+      
+      case "monthly":
+        const date = new Date(current);
+        date.setMonth(date.getMonth() + 1);
+        next = date.getTime();
+        break;
+      
+      default:
+        return occurrences;
+    }
+
+    // Filter by days of week if specified
+    if (recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0) {
+      const nextDate = new Date(next);
+      const dayOfWeek = nextDate.getDay();
+      
+      if (recurrence.daysOfWeek.includes(dayOfWeek)) {
+        occurrences.push(next);
+        count++;
+      }
+    } else {
+      occurrences.push(next);
+      count++;
+    }
+
+    current = next;
+  }
+
+  return occurrences;
+}

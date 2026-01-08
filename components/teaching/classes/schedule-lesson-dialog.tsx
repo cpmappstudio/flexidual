@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useMutation } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -46,8 +46,7 @@ const formSchema = z.object({
 interface ScheduleLessonDialogProps {
   classId: Id<"classes">
   lessonId: Id<"lessons">
-  lessonTitle: string
-  // NEW PROPS FOR EDITING
+  lessonTitle?: string
   scheduleId?: Id<"classSchedule">
   initialStart?: number
   initialEnd?: number
@@ -56,7 +55,7 @@ interface ScheduleLessonDialogProps {
 export function ScheduleLessonDialog({ 
   classId, 
   lessonId, 
-  lessonTitle,
+  lessonTitle: providedTitle,
   scheduleId,
   initialStart,
   initialEnd 
@@ -66,6 +65,13 @@ export function ScheduleLessonDialog({
   
   const scheduleLesson = useMutation(api.schedule.scheduleLesson)
   const updateSchedule = useMutation(api.schedule.updateSchedule)
+
+  const lesson = useQuery(
+    api.lessons.get, 
+    !providedTitle ? { id: lessonId } : "skip"
+  )
+  
+  const lessonTitle = providedTitle || lesson?.title || "Lesson"
 
   // Calculate default values from timestamps if editing
   const defaultDate = initialStart ? new Date(initialStart) : undefined

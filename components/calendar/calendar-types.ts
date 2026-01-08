@@ -31,7 +31,7 @@ export type CalendarEvent = {
   
   // Core scheduling info
   scheduleId: Id<"classSchedule">
-  lessonId: Id<"lessons">
+  lessonId?: Id<"lessons">
   classId: Id<"classes">
   curriculumId: Id<"curriculums">
   
