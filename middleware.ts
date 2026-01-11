@@ -1,10 +1,9 @@
-// middleware.ts
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import createIntlMiddleware from 'next-intl/middleware'
 import { routing } from './i18n/routing'
 import { getLocaleFromPathname } from './lib/locale-setup'
-import { roleFromSessionClaims, checkRoleAccess } from './lib/rbac'
+import { roleFromSessionClaims, checkRoleAccess, getDefaultDashboard } from './lib/rbac'
 
 const intlMiddleware = createIntlMiddleware(routing)
 
@@ -54,12 +53,8 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
         return NextResponse.redirect(pendingUrl)
       }
 
-      // Redirect Logic
-      let targetPath = `/${locale}/student` // Default for student
-      if (userRole === 'teacher') targetPath = `/${locale}/teaching`
-      else if (userRole === 'admin' || userRole === 'superadmin') targetPath = `/${locale}/admin`
-      else if (userRole === 'tutor') targetPath = `/${locale}/teaching`
-
+      // Call centralized dashboard logic
+      const targetPath = getDefaultDashboard(userRole, locale)
       return NextResponse.redirect(new URL(targetPath, req.url))
       
     } catch (error) {
@@ -91,15 +86,12 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
       return NextResponse.redirect(pendingUrl)
     }
 
-    // THE FIX: Single call to check permissions
+    // Check permissions using RBAC
     const accessResult = checkRoleAccess(req, userRole)
 
     if (accessResult === 'denied') {
-      // Smart redirect based on role
-      let dashboardPath = `/${locale}/student`
-      if (userRole === 'teacher') dashboardPath = `/${locale}/teaching`
-      else if (userRole === 'admin' || userRole === 'superadmin') dashboardPath = `/${locale}/admin`
-      
+      // Redirect to appropriate dashboard
+      const dashboardPath = getDefaultDashboard(userRole, locale)
       return NextResponse.redirect(new URL(dashboardPath, req.url))
     }
 

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import {
   BookOpen,
   Calendar,
@@ -9,7 +10,7 @@ import {
   School,
   LibraryBig,
 } from "lucide-react"
-import { Link, usePathname } from "@/i18n/navigation"
+import { Link, usePathname, useRouter } from "@/i18n/navigation"
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -30,6 +31,25 @@ export function NavMain() {
   // Role helpers
   const isTeacher = user?.role === "teacher" || user?.role === "admin" || user?.role === "superadmin"
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
+
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isLoading && user?.role === "student") {
+      const isDashboardRoute = 
+        pathname.includes("/teaching") || 
+        pathname.includes("/admin") ||
+        pathname.includes("/calendar")
+
+      if (isDashboardRoute) {
+        router.replace("/student")
+      }
+    }
+  }, [user?.role, isLoading, pathname, router])
+
+  if (user?.role === "student") {
+    return null
+  }
 
   return (
     <SidebarGroup>

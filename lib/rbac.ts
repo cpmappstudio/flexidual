@@ -5,30 +5,36 @@ import type { UserRole } from "@/convex/types";
 
 // 1. DEFINITIONS: Centralize all route patterns here
 const roleMatchers = {
-    // Dashboards
+    // Dashboards (Separate route groups)
     teacher: createRouteMatcher(['/:locale/teaching(.*)', '/teaching(.*)']),
-    student: createRouteMatcher(['/:locale/student(.*)', '/student(.*)']), // Now properly used
+    student: createRouteMatcher(['/:locale/student(.*)', '/student(.*)']), // Student SPA
     admin: createRouteMatcher(['/:locale/admin(.*)', '/admin(.*)']),
     
-    // Core Features
+    // Core Features (Shared between roles)
     calendar: createRouteMatcher(['/:locale/calendar(.*)', '/calendar(.*)']),
     classroom: createRouteMatcher(['/:locale/classroom(.*)', '/classroom(.*)']),
+    docs: createRouteMatcher(['/:locale/docs(.*)', '/docs(.*)']),
     
-    // Content
+    // Content (Role-specific access)
     lessons: createRouteMatcher(['/:locale/lessons(.*)', '/lessons(.*)']),
-    // Note: Curriculums are edited by teachers/admins
     curriculums: createRouteMatcher(['/:locale/curriculums(.*)', '/curriculums(.*)']),
 } as const;
 
 // 2. PERMISSIONS: Who can access what?
 const ROLE_PERMISSIONS: Record<keyof typeof roleMatchers, readonly UserRole[]> = {
-    teacher: ['teacher', 'admin', 'superadmin'],
-    student: ['student', 'admin', 'superadmin'],
-    admin: ['admin', 'superadmin'],
-    calendar: ['student', 'teacher', 'tutor', 'admin', 'superadmin'],
-    classroom: ['student', 'teacher', 'tutor', 'admin', 'superadmin'], 
-    lessons: ['student', 'teacher', 'tutor', 'admin', 'superadmin'],
-    curriculums: ['teacher', 'admin', 'superadmin'],
+    // Dashboards - Exclusive access
+    teacher: ['teacher', 'tutor', 'admin', 'superadmin'], // Teachers, tutors, and admins
+    student: ['student', 'admin', 'superadmin'], // Students and admins (for testing/support)
+    admin: ['admin', 'superadmin'], // Only admins
+    
+    // Shared Features - Open to relevant roles
+    calendar: ['student', 'teacher', 'tutor', 'admin', 'superadmin'], // Everyone (deprecated for students - they use SPA)
+    classroom: ['student', 'teacher', 'tutor', 'admin', 'superadmin'], // Everyone can join
+    docs: ['student', 'teacher', 'tutor', 'admin', 'superadmin'], // Documentation for all
+    
+    // Content - Restricted
+    lessons: ['student', 'teacher', 'tutor', 'admin', 'superadmin'], // View access
+    curriculums: ['teacher', 'admin', 'superadmin'], // Edit access only
 };
 
 /**
@@ -78,7 +84,7 @@ export function canAccessAdmin(userRole: UserRole | null): boolean {
  * Check if user can access teaching features
  */
 export function canAccessTeaching(userRole: UserRole | null): boolean {
-    return hasRole(userRole, ['teacher', 'admin', 'superadmin']);
+    return hasRole(userRole, ['teacher', 'tutor', 'admin', 'superadmin']);
 }
 
 /**
@@ -103,6 +109,24 @@ export function isTutor(userRole: UserRole | null): boolean {
 }
 
 /**
+ * Get default dashboard path for role
+ */
+export function getDefaultDashboard(userRole: UserRole, locale: string = 'en'): string {
+    switch (userRole) {
+        case 'student':
+            return `/${locale}/student`; // Student SPA
+        case 'teacher':
+        case 'tutor':
+            return `/${locale}/teaching`; // Teacher dashboard
+        case 'admin':
+        case 'superadmin':
+            return `/${locale}/admin`; // Admin dashboard
+        default:
+            return `/${locale}/student`; // Fallback
+    }
+}
+
+/**
  * Check role access in middleware context
  * @returns 'allowed' | 'denied' | 'unknown'
  */
@@ -118,6 +142,6 @@ export function checkRoleAccess(
         }
     }
 
-    // If no matcher matches, it's an unknown route (allow by default, e.g., home, about)
+    // If no matcher matches, it's an unknown route (allow by default)
     return 'unknown';
 }
