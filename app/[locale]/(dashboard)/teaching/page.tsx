@@ -103,7 +103,7 @@ export default function TeachingDashboard() {
                 </CardTitle>
                 {isLive && (
                   <Badge className="bg-red-500 text-white animate-pulse px-3 py-1">
-                    ● {t('dashboard.live')}
+                    ● {t('common.live')}
                   </Badge>
                 )}
               </div>
@@ -201,7 +201,7 @@ export default function TeachingDashboard() {
 
                       {lesson.isLive ? (
                         <Badge className="bg-red-500 text-white animate-pulse">
-                          {t('dashboard.live')}
+                          {t('common.live')}
                         </Badge>
                       ) : lesson.end < now ? (
                         <Badge variant="secondary">{t('dashboard.completed')}</Badge>

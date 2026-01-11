@@ -2,6 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion"
 import { Rocket } from "lucide-react"
+import { useMemo } from "react"
+import { useTranslations } from "next-intl"
 
 interface RocketTransitionProps {
   isLaunching: boolean
@@ -9,6 +11,18 @@ interface RocketTransitionProps {
 }
 
 export function RocketTransition({ isLaunching, onComplete }: RocketTransitionProps) {
+  const t = useTranslations('student')
+
+  // Generate stable star positions
+  const stars = useMemo(() => {
+    return Array.from({ length: 50 }, (_, i) => ({
+      id: i,
+      left: `${(i * 13.7) % 100}%`,
+      top: `${(i * 19.3) % 100}%`,
+      duration: 1 + (i % 2),
+    }))
+  }, [])
+
   return (
     <AnimatePresence>
       {isLaunching && (
@@ -19,21 +33,21 @@ export function RocketTransition({ isLaunching, onComplete }: RocketTransitionPr
           className="fixed inset-0 z-[9999] bg-gradient-to-b from-blue-900 via-purple-900 to-pink-900 flex items-center justify-center"
         >
           {/* Stars background */}
-          <div className="absolute inset-0 overflow-hidden">
-            {Array.from({ length: 50 }).map((_, i) => (
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {stars.map((star) => (
               <motion.div
-                key={i}
+                key={star.id}
                 className="absolute w-1 h-1 bg-white rounded-full"
                 style={{
-                  left: `${Math.random() * 100}%`,
-                  top: `${Math.random() * 100}%`,
+                  left: star.left,
+                  top: star.top,
                 }}
                 animate={{
                   opacity: [0.2, 1, 0.2],
                   scale: [1, 1.5, 1],
                 }}
                 transition={{
-                  duration: Math.random() * 2 + 1,
+                  duration: star.duration,
                   repeat: Infinity,
                   ease: "easeInOut",
                 }}
@@ -75,8 +89,10 @@ export function RocketTransition({ isLaunching, onComplete }: RocketTransitionPr
             transition={{ delay: 0.3 }}
             className="absolute bottom-32 text-center"
           >
-            <h2 className="text-4xl font-bold text-white mb-2">🚀 Launching Class!</h2>
-            <p className="text-xl text-blue-200">Get ready for an awesome lesson...</p>
+            <h2 className="text-4xl font-bold text-white mb-2">
+              🚀 {t('launchingClass')}
+            </h2>
+            <p className="text-xl text-blue-200">{t('getReady')}</p>
           </motion.div>
         </motion.div>
       )}

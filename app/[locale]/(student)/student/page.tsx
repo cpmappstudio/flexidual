@@ -10,11 +10,20 @@ import { RocketTransition } from "@/components/student/rocket-transition"
 import { FlexidualLogo } from "@/components/ui/flexidual-logo"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { LogOut, History, Calendar as CalendarIcon } from "lucide-react"
+import { LogOut, History, Calendar as CalendarIcon, Settings } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { SignOutButton } from "@clerk/nextjs"
 import { StudentScheduleEvent } from "@/lib/types/student"
+import { ModeToggle } from "@/components/mode-toggle"
+import { LangToggle } from "@/components/lang-toggle"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 
 export default function StudentHubPage() {
   const t = useTranslations()
@@ -77,17 +86,43 @@ export default function StudentHubPage() {
 
       <div className="h-screen w-screen flex flex-col overflow-hidden">
         {/* Top Bar */}
-        <div className="h-20 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b-4 border-purple-400 dark:border-purple-600 flex items-center justify-between px-6 shadow-lg">
+        <div className="h-20 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b-4 border-purple-400 dark:border-purple-600 flex items-center justify-between px-6 shadow-lg flex-shrink-0">
           <FlexidualLogo size="lg" />
           
           <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-bold text-gray-500">{t('student.welcome')}</p>
-              <p className="text-xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                {user?.firstName || 'Student'}
+            {/* Welcome Message - Hidden on small screens */}
+            <div className="hidden lg:block text-right">
+              <p className="text-lg font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                {t('student.welcome', { name: user?.firstName || 'Student' })}
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+                {t('student.welcomeMessage')}
               </p>
             </div>
+
+            {/* Settings Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full">
+                  <Settings className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>{t('common.theme')}</DropdownMenuLabel>
+                <div className="px-2 py-1">
+                  <ModeToggle showText={true} />
+                </div>
+                
+                <DropdownMenuSeparator />
+                
+                <DropdownMenuLabel>{t('common.language')}</DropdownMenuLabel>
+                <div className="px-2 py-1">
+                  <LangToggle showText={true} />
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
             
+            {/* Avatar */}
             <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 border-4 border-white dark:border-gray-800 shadow-lg flex items-center justify-center overflow-hidden">
               {user?.imageUrl ? (
                 <img src={user.imageUrl} alt="avatar" className="w-full h-full object-cover" />
@@ -98,6 +133,7 @@ export default function StudentHubPage() {
               )}
             </div>
 
+            {/* Sign Out */}
             <SignOutButton>
               <Button variant="ghost" size="icon" className="rounded-full">
                 <LogOut className="w-5 h-5" />
@@ -107,11 +143,11 @@ export default function StudentHubPage() {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex gap-4 p-4 overflow-hidden">
+        <div className="flex-1 flex gap-4 p-4 overflow-hidden min-h-0">
           {/* Left Sidebar - Lessons */}
-          <div className="w-96 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md rounded-3xl border-4 border-purple-400 dark:border-purple-600 shadow-2xl flex flex-col overflow-hidden">
-            <Tabs defaultValue="upcoming" className="flex-1 flex flex-col">
-              <div className="p-4 border-b-2 border-purple-200 dark:border-purple-800">
+          <div className="w-96 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md rounded-3xl border-4 border-purple-400 dark:border-purple-600 shadow-2xl flex flex-col overflow-hidden flex-shrink-0">
+            <Tabs defaultValue="upcoming" className="flex-1 flex flex-col min-h-0">
+              <div className="p-4 border-b-2 border-purple-200 dark:border-purple-800 flex-shrink-0">
                 <TabsList className="grid w-full grid-cols-2 bg-purple-100 dark:bg-purple-900">
                   <TabsTrigger value="upcoming" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white">
                     <CalendarIcon className="w-4 h-4 mr-2" />
@@ -124,58 +160,64 @@ export default function StudentHubPage() {
                 </TabsList>
               </div>
 
-              <TabsContent value="upcoming" className="flex-1 overflow-y-auto p-4 space-y-4 m-0">
-                {upcomingLessons.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                    <div className="text-6xl mb-4">🎉</div>
-                    <h3 className="text-2xl font-bold text-gray-600 dark:text-gray-400 mb-2">
-                      {t('student.noUpcoming')}
-                    </h3>
-                    <p className="text-gray-500 dark:text-gray-500">
-                      {t('student.enjoyFreeTime')}
-                    </p>
-                  </div>
-                ) : (
-                  upcomingLessons.map((lesson) => (
-                    <DraggableLessonCard
-                      key={lesson.scheduleId}
-                      lesson={lesson}
-                      onDragStart={handleDragStart}
-                      onDragEnd={handleDragEnd}
-                    />
-                  ))
-                )}
+              {/* FIXED: Added min-h-0 and proper flex structure */}
+              <TabsContent value="upcoming" className="flex-1 min-h-0 m-0">
+                <div className="h-full overflow-y-auto p-4 space-y-4 scrollbar-hide">
+                  {upcomingLessons.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                      <div className="text-6xl mb-4">🎉</div>
+                      <h3 className="text-2xl font-bold text-gray-600 dark:text-gray-400 mb-2">
+                        {t('student.noUpcoming')}
+                      </h3>
+                      <p className="text-gray-500 dark:text-gray-500">
+                        {t('student.enjoyFreeTime')}
+                      </p>
+                    </div>
+                  ) : (
+                    upcomingLessons.map((lesson) => (
+                      <DraggableLessonCard
+                        key={lesson.scheduleId}
+                        lesson={lesson}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                      />
+                    ))
+                  )}
+                </div>
               </TabsContent>
 
-              <TabsContent value="past" className="flex-1 overflow-y-auto p-4 space-y-4 m-0">
-                {pastLessons.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                    <div className="text-6xl mb-4">📚</div>
-                    <h3 className="text-2xl font-bold text-gray-600 dark:text-gray-400 mb-2">
-                      {t('student.noPast')}
-                    </h3>
-                    <p className="text-gray-500 dark:text-gray-500">
-                      {t('student.historyEmpty')}
-                    </p>
-                  </div>
-                ) : (
-                  pastLessons.map((lesson) => (
-                    <DraggableLessonCard
-                      key={lesson.scheduleId}
-                      lesson={lesson}
-                      onDragStart={handleDragStart}
-                      onDragEnd={handleDragEnd}
-                      isPast
-                      isAttended={lesson.status === "completed"}
-                    />
-                  ))
-                )}
+              {/* FIXED: Added min-h-0 and proper flex structure */}
+              <TabsContent value="past" className="flex-1 min-h-0 m-0">
+                <div className="h-full overflow-y-auto p-4 space-y-4 scrollbar-hide">
+                  {pastLessons.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                      <div className="text-6xl mb-4">📚</div>
+                      <h3 className="text-2xl font-bold text-gray-600 dark:text-gray-400 mb-2">
+                        {t('student.noPast')}
+                      </h3>
+                      <p className="text-gray-500 dark:text-gray-500">
+                        {t('student.historyEmpty')}
+                      </p>
+                    </div>
+                  ) : (
+                    pastLessons.map((lesson) => (
+                      <DraggableLessonCard
+                        key={lesson.scheduleId}
+                        lesson={lesson}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                        isPast
+                        isAttended={lesson.status === "completed"}
+                      />
+                    ))
+                  )}
+                </div>
               </TabsContent>
             </Tabs>
           </div>
 
           {/* Right - Classroom Drop Zone */}
-          <div className="flex-1 relative">
+          <div className="flex-1 relative min-w-0">
             <ClassroomDropZone
               isDragging={isDragging}
               activeLesson={activeLesson}

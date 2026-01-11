@@ -2,9 +2,10 @@
 
 import { motion } from "framer-motion"
 import { format } from "date-fns"
+import { enUS, es, ptBR } from "date-fns/locale"
 import { Clock, Calendar, GripVertical, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { StudentScheduleEvent } from "@/lib/types/student"
 
 interface DraggableLessonCardProps {
@@ -22,7 +23,12 @@ export function DraggableLessonCard({
   isPast = false,
   isAttended = false 
 }: DraggableLessonCardProps) {
-  const t = useTranslations()
+  const t = useTranslations('student')
+  const tCommon = useTranslations('common')
+  const locale = useLocale()
+
+  // Get date-fns locale
+  const dateLocale = locale === 'es' ? es : locale === 'pt-BR' ? ptBR : enUS
 
   return (
     <motion.div
@@ -57,7 +63,7 @@ export function DraggableLessonCard({
           className="absolute -top-3 -right-3"
         >
           <Badge className="bg-red-500 text-white font-bold px-3 py-1 shadow-lg">
-            ● LIVE
+            ● {tCommon('live')}
           </Badge>
         </motion.div>
       )}
@@ -71,7 +77,7 @@ export function DraggableLessonCard({
               : 'bg-orange-500 text-white'
           }`}
         >
-          {isAttended ? '✓ Attended' : '⚠ Missed'}
+          {isAttended ? `✓ ${t('attended')}` : `⚠ ${t('missed')}`}
         </Badge>
       )}
 
@@ -85,7 +91,9 @@ export function DraggableLessonCard({
         <div className="flex-shrink-0 w-16 h-16 rounded-full bg-white dark:bg-gray-800 border-4 flex flex-col items-center justify-center shadow-md"
           style={{ borderColor: lesson.color }}
         >
-          <span className="text-xs font-bold text-gray-500">{format(lesson.start, "MMM")}</span>
+          <span className="text-xs font-bold text-gray-500">
+            {format(lesson.start, "MMM", { locale: dateLocale })}
+          </span>
           <span className="text-2xl font-black">{format(lesson.start, "d")}</span>
         </div>
 
@@ -101,11 +109,15 @@ export function DraggableLessonCard({
           <div className="flex flex-wrap gap-2 text-xs">
             <div className="flex items-center gap-1 bg-white/80 dark:bg-gray-800/80 px-2 py-1 rounded-full">
               <Clock className="w-3 h-3" />
-              <span className="font-bold">{format(lesson.start, "h:mm a")}</span>
+              <span className="font-bold">
+                {format(lesson.start, "h:mm a", { locale: dateLocale })}
+              </span>
             </div>
             <div className="flex items-center gap-1 bg-white/80 dark:bg-gray-800/80 px-2 py-1 rounded-full">
               <Calendar className="w-3 h-3" />
-              <span className="font-medium">{format(lesson.start, "EEEE")}</span>
+              <span className="font-medium">
+                {format(lesson.start, "EEEE", { locale: dateLocale })}
+              </span>
             </div>
           </div>
         </div>
@@ -114,7 +126,7 @@ export function DraggableLessonCard({
       {/* Drag Hint */}
       {!isPast && (
         <div className="mt-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 animate-bounce">
-          👆 Drag me to the rocket! 🚀
+          👆 {t('dragHint')}
         </div>
       )}
     </motion.div>

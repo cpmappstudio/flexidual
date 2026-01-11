@@ -1,12 +1,11 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Rocket, Sparkles } from "lucide-react"
 import FlexiClassroom from "@/components/classroom/flexi-classroom"
 import { useTranslations } from "next-intl"
 import { StudentScheduleEvent } from "@/lib/types/student"
-
 
 interface ClassroomDropZoneProps {
   isDragging: boolean
@@ -15,8 +14,19 @@ interface ClassroomDropZoneProps {
 }
 
 export function ClassroomDropZone({ isDragging, activeLesson, onDrop }: ClassroomDropZoneProps) {
-  const t = useTranslations()
+  const t = useTranslations('student')
   const [isHovering, setIsHovering] = useState(false)
+
+  // Generate stable star positions (only once, not on every render)
+  const stars = useMemo(() => {
+    return Array.from({ length: 20 }, (_, i) => ({
+      id: i,
+      left: `${(i * 17.3) % 100}%`,
+      top: `${(i * 23.7) % 100}%`,
+      delay: (i * 0.1) % 2,
+      duration: 2 + (i % 3),
+    }))
+  }, [])
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -67,14 +77,14 @@ export function ClassroomDropZone({ isDragging, activeLesson, onDrop }: Classroo
             `}
           >
             {/* Animated stars */}
-            <div className="absolute inset-0">
-              {Array.from({ length: 20 }).map((_, i) => (
+            <div className="absolute inset-0 pointer-events-none">
+              {stars.map((star) => (
                 <motion.div
-                  key={i}
+                  key={star.id}
                   className="absolute"
                   style={{
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
+                    left: star.left,
+                    top: star.top,
                   }}
                   animate={{
                     y: [0, -20, 0],
@@ -82,9 +92,9 @@ export function ClassroomDropZone({ isDragging, activeLesson, onDrop }: Classroo
                     scale: [1, 1.2, 1],
                   }}
                   transition={{
-                    duration: Math.random() * 3 + 2,
+                    duration: star.duration,
                     repeat: Infinity,
-                    delay: Math.random() * 2,
+                    delay: star.delay,
                   }}
                 >
                   <Sparkles className="w-6 h-6 text-yellow-300" />
@@ -129,12 +139,10 @@ export function ClassroomDropZone({ isDragging, activeLesson, onDrop }: Classroo
               className="mt-8 text-center z-10"
             >
               <h2 className="text-5xl font-black text-white mb-4 drop-shadow-lg">
-                {isDragging ? "🎯 Drop Here!" : "🚀 Ready for Class?"}
+                {isDragging ? `🎯 ${t('dropHere')}` : `🚀 ${t('readyForClass')}`}
               </h2>
               <p className="text-2xl text-white/90 font-bold drop-shadow-md">
-                {isDragging 
-                  ? "Release to launch!" 
-                  : "Drag a lesson card here to start"}
+                {isDragging ? t('releaseToLaunch') : t('dragToStart')}
               </p>
             </motion.div>
 

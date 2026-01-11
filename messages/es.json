@@ -28,7 +28,8 @@
     "language": "Idioma",
     "english": "Inglés",
     "spanish": "Español",
-    "portuguese": "Portugués (BR)"
+    "portuguese": "Portugués (BR)",
+    "live": "EN VIVO"
   },
   "admin": {
     "title": "Administración Académica",
@@ -60,7 +61,6 @@
     "nextClass": "Próxima Clase",
     "classLive": "¡Clase en Vivo!",
     "liveNow": "EN VIVO AHORA",
-    "live": "EN VIVO",
     "today": "Hoy",
     "tomorrow": "Mañana",
     "joinNow": "¡Unirse Ahora!",
@@ -226,7 +226,24 @@
     "searchPlaceholder": "Buscar por nombre o correo...",
     "searchMinChars": "Escribe al menos 2 caracteres para buscar.",
     "noResults": "No se encontraron estudiantes.",
-    "removeFromClass": "Eliminar de la Clase"
+    "removeFromClass": "Remover de la Clase",
+    "welcome": "¡Hola, {name}! 👋",
+    "welcomeMessage": "¿Listo para aprender algo increíble hoy?",
+    "upcoming": "Próximas",
+    "history": "Historial",
+    "noUpcoming": "¡No hay clases programadas!",
+    "enjoyFreeTime": "Vuelve más tarde para ver tu horario 😊",
+    "noPast": "Sin Historial Todavía",
+    "historyEmpty": "Tus clases completadas aparecerán aquí",
+    "dragHint": "¡Arrástrame al cohete! 🚀",
+    "attended": "Asistido",
+    "missed": "Perdido",
+    "dropHere": "¡Suelta Aquí!",
+    "readyForClass": "¿Listo para la Clase?",
+    "releaseToLaunch": "¡Suelta para despegar!",
+    "dragToStart": "Arrastra una tarjeta de lección aquí para comenzar",
+    "launchingClass": "¡Lanzando Clase!",
+    "getReady": "Prepárate para una lección increíble..."
   },
   "teacher": {
     "firstName": "Nombre",
