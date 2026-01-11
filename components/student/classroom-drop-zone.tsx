@@ -11,11 +11,15 @@ interface ClassroomDropZoneProps {
   isDragging: boolean
   activeLesson: StudentScheduleEvent | null
   onDrop: () => void
+  onLaunchComplete: () => void
+  onLeaveClassroom: () => void
 }
 
-export function ClassroomDropZone({ isDragging, activeLesson, onDrop }: ClassroomDropZoneProps) {
+export function ClassroomDropZone({ isDragging, activeLesson, onDrop, onLaunchComplete, onLeaveClassroom }: ClassroomDropZoneProps) {
   const t = useTranslations('student')
   const [isHovering, setIsHovering] = useState(false)
+  const [isLaunching, setIsLaunching] = useState(false)
+  const [launchedLesson, setLaunchedLesson] = useState<StudentScheduleEvent | null>(null)
 
   // Generate stable star positions (only once, not on every render)
   const stars = useMemo(() => {
@@ -25,6 +29,16 @@ export function ClassroomDropZone({ isDragging, activeLesson, onDrop }: Classroo
       top: `${(i * 23.7) % 100}%`,
       delay: (i * 0.1) % 2,
       duration: 2 + (i % 3),
+    }))
+  }, [])
+
+  // Stars for launch animation
+  const launchStars = useMemo(() => {
+    return Array.from({ length: 50 }, (_, i) => ({
+      id: i,
+      left: `${(i * 13.7) % 100}%`,
+      top: `${(i * 19.3) % 100}%`,
+      duration: 1 + (i % 2),
     }))
   }, [])
 
@@ -40,33 +54,123 @@ export function ClassroomDropZone({ isDragging, activeLesson, onDrop }: Classroo
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setIsHovering(false)
+    setIsLaunching(true)
     onDrop()
   }
 
+  const handleRocketComplete = () => {
+    setIsLaunching(false)
+    setLaunchedLesson(activeLesson)
+    onLaunchComplete()
+  }
+
+  const handleLeaveClassroom = () => {
+    setLaunchedLesson(null)
+    onLeaveClassroom()
+  }
+
   return (
-    <div
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      className="relative h-full w-full rounded-3xl overflow-hidden"
-    >
+    <div className="relative h-full w-full rounded-3xl overflow-hidden border-4 border-purple-400 dark:border-purple-600 shadow-2xl">
       <AnimatePresence mode="wait">
-        {activeLesson ? (
+        {/* Rocket Launch Animation */}
+        {isLaunching && (
+          <motion.div
+            key="launching"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 bg-gradient-to-b from-blue-900 via-purple-900 to-pink-900 flex items-center justify-center"
+          >
+            {/* Stars background */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {launchStars.map((star) => (
+                <motion.div
+                  key={star.id}
+                  className="absolute w-1 h-1 bg-white rounded-full"
+                  style={{
+                    left: star.left,
+                    top: star.top,
+                  }}
+                  animate={{
+                    opacity: [0.2, 1, 0.2],
+                    scale: [1, 1.5, 1],
+                  }}
+                  transition={{
+                    duration: star.duration,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Rocket */}
+            <motion.div
+              initial={{ y: 100, rotate: 0, scale: 0.5 }}
+              animate={{ y: -1000, rotate: -15, scale: 1.5 }}
+              transition={{ duration: 2, ease: "easeIn" }}
+              onAnimationComplete={handleRocketComplete}
+              className="relative"
+            >
+              <Rocket className="w-32 h-32 text-orange-400" strokeWidth={1.5} />
+              
+              {/* Fire trail */}
+              <motion.div
+                className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-12"
+                animate={{
+                  scaleY: [1, 1.5, 1],
+                  opacity: [0.8, 1, 0.8],
+                }}
+                transition={{
+                  duration: 0.3,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              >
+                <div className="bg-gradient-to-b from-yellow-400 via-orange-500 to-red-600 h-24 w-full rounded-b-full blur-sm" />
+              </motion.div>
+            </motion.div>
+
+            {/* Text */}
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="absolute bottom-32 text-center"
+            >
+              <h2 className="text-4xl font-bold text-white mb-2">
+                🚀 {t('launchingClass')}
+              </h2>
+              <p className="text-xl text-blue-200">{t('getReady')}</p>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Active Classroom */}
+        {launchedLesson && !isLaunching ? (
           <motion.div
             key="classroom"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
             className="h-full w-full"
           >
-            <FlexiClassroom roomName={activeLesson.roomName} className={activeLesson.className} />
+            <FlexiClassroom 
+              roomName={launchedLesson.roomName} 
+              className={launchedLesson.className}
+              isStudentView={true}
+              onLeave={handleLeaveClassroom}
+            />
           </motion.div>
-        ) : (
+        ) : !isLaunching && (
+          /* Waiting Screen */
           <motion.div
-            key="placeholder"
+            key="waiting"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             className={`
               h-full w-full flex flex-col items-center justify-center
               bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500

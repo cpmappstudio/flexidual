@@ -52,6 +52,11 @@ export type CalendarEvent = {
   
   // Status
   status: "scheduled" | "active" | "completed" | "cancelled"
+
+  // Recurrence
+  isRecurring?: boolean
+  recurrenceRule?: string
+  recurrenceParentId?: Id<"classSchedule">
 }
 
 // For scheduling new lessons

@@ -55,6 +55,11 @@ export default function CalendarWithData() {
         
         // Status
         status: item.status,
+
+        // Recurrence
+        isRecurring: item.isRecurring,
+        recurrenceRule: item.recurrenceRule,
+        recurrenceParentId: item.recurrenceParentId,
       }));
 
       setEvents(transformedEvents);

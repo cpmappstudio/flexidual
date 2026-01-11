@@ -35,7 +35,6 @@ const ROUTE_CONFIG: Record<string, { key: TranslationKey; namespace?: string }> 
     'admin': { key: 'administration', namespace: 'navigation' },
     
     // Teaching section
-    'my-curriculums': { key: 'curriculums', namespace: 'navigation' },
     'curriculums': { key: 'curriculums', namespace: 'navigation' },
     'lessons': { key: 'lessons', namespace: 'navigation' },
     'classes': { key: 'classes', namespace: 'navigation' },
@@ -58,18 +57,29 @@ const isConvexId = (segment: string): boolean => {
 
 // Helper to detect if a segment is a room name
 const isRoomName = (segment: string): boolean => {
-    return segment.startsWith('class-') && segment.includes('-lesson-')
+    return segment.startsWith('class-') && (segment.includes('-lesson-') || segment.includes('-series-'))
 }
 
-// Extract IDs from room name
-const parseRoomName = (roomName: string): { classId: string; lessonId: string } | null => {
-    const match = roomName.match(/class-([a-z0-9]+)-lesson-([a-z0-9]+)/)
+// Extract IDs from room name (handles both lesson and series)
+const parseRoomName = (roomName: string): { classId: string; lessonId?: string; seriesId?: string } | null => {
+    // Try lesson pattern first
+    let match = roomName.match(/class-([a-z0-9]+)-lesson-([a-z0-9]+)/)
     if (match) {
         return {
             classId: match[1],
             lessonId: match[2],
         }
     }
+    
+    // Try series pattern (for recurring schedules without lessons)
+    match = roomName.match(/class-([a-z0-9]+)-series-(\d+)/)
+    if (match) {
+        return {
+            classId: match[1],
+            seriesId: match[2],
+        }
+    }
+    
     return null
 }
 
@@ -86,7 +96,7 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
     }, [pathname])
 
     // Extract dynamic IDs from path
-    const { curriculumId, lessonId, classId, teacherId } = useMemo(() => {
+    const { curriculumId, lessonId, classId, teacherId, seriesId } = useMemo(() => {
         const parts = pathWithoutLocale.split('/').filter(Boolean)
         const curriculumIndex = parts.indexOf('curriculums')
         const lessonIndex = parts.indexOf('lessons')
@@ -113,6 +123,7 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
             teacherId: teacherIndex !== -1 && parts[teacherIndex + 1] && isConvexId(parts[teacherIndex + 1])
                 ? parts[teacherIndex + 1] as Id<"users">
                 : null,
+            seriesId: roomParts?.seriesId || null,
         }
     }, [pathWithoutLocale])
 
@@ -145,7 +156,7 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
                     return tNav(config.key) || fallback
                 case 'classroom':
                     return tClass(config.key) || fallback
-                case 'curriculum':
+                case 'curriculums':
                     return tCurr(config.key) || fallback
                 case 'lesson':
                     return tLesson(config.key) || fallback
@@ -171,19 +182,35 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
 
         // Split path and create segments
         const pathParts = pathWithoutLocale.split('/').filter(Boolean)
+        
+        // Check if this is a root-level curriculum/lesson that should be under teaching
+        const needsTeachingPrefix = pathParts[0] === 'curriculums' || 
+                                   (pathParts[0] === 'lessons' && !pathParts.includes('teaching'))
 
         // Build breadcrumb path
-        let currentPath = ''
         pathParts.forEach((part, index) => {
-            currentPath += '/' + part
             const isLast = index === pathParts.length - 1
+            
+            // Build the full path up to this point
+            let fullPath = '/' + pathParts.slice(0, index + 1).join('/')
+            
+            // If this is root curriculums or lessons, redirect to teaching version
+            if (index === 0 && needsTeachingPrefix) {
+                fullPath = '/teaching' + fullPath
+            } else if (needsTeachingPrefix && index > 0) {
+                fullPath = '/teaching/' + pathParts.slice(0, index + 1).join('/')
+            }
 
             let title: string
             
             // Handle room names (classroom routes)
             if (isRoomName(part)) {
                 if (classData && lesson) {
+                    // Classroom with a specific lesson
                     title = `${classData.name} - ${lesson.title}`
+                } else if (classData && seriesId) {
+                    // Classroom for a recurring series (no specific lesson)
+                    title = classData.name
                 } else if (classData) {
                     title = classData.name
                 } else if (lesson) {
@@ -213,10 +240,19 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
 
             segments.push({
                 title,
-                href: isLast ? undefined : currentPath,
+                href: isLast ? undefined : fullPath,
                 isCurrentPage: isLast
             })
         })
+        
+        // If we're at root curriculum/lesson, inject "Teaching" breadcrumb at the start
+        if (needsTeachingPrefix) {
+            segments.unshift({
+                title: tNav('teaching'),
+                href: '/teaching',
+                isCurrentPage: false
+            })
+        }
 
         return segments
     }, [
@@ -234,6 +270,7 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
         classData,
         teacherId,
         teacher,
+        seriesId,
     ])
 
     return (

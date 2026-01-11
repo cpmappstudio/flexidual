@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Video, Calendar as CalendarIcon, Clock, BookOpen } from "lucide-react"
-import Link from "next/link"
+import { Link } from "@/i18n/navigation"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { format, isToday, isTomorrow, startOfDay, addDays } from "date-fns"
@@ -370,7 +370,7 @@ export default function TeachingDashboard() {
               </div>
               
               <Button variant="outline" className="w-full mt-3" asChild>
-                <Link href="/teaching">
+                <Link href="/teaching/curriculums">
                   {t('dashboard.viewAllCurriculums')}
                 </Link>
               </Button>

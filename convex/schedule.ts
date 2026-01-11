@@ -109,6 +109,9 @@ export const getMySchedule = query({
           lessonId: item.lessonId,
           classId: classData._id,
           curriculumId: classData.curriculumId,
+          isRecurring: item.isRecurring || false,
+          recurrenceRule: item.recurrenceRule,
+          recurrenceParentId: item.recurrenceParentId,
         };
       })
     );

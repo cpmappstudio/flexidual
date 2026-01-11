@@ -81,8 +81,8 @@ export function NavMain() {
             <SidebarGroupLabel className="mt-4">{t('navigation.teaching')}</SidebarGroupLabel>
             
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/teaching/my-curriculums")}>
-                <Link href="/teaching/my-curriculums">
+              <SidebarMenuButton asChild isActive={pathname.includes("/teaching/curriculums")}>
+                <Link href="/teaching/curriculums">
                   <BookOpen />
                   <span>{t('navigation.curriculums')}</span>
                 </Link>

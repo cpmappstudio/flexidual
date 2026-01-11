@@ -31,6 +31,15 @@
     "portuguese": "Portuguese (BR)",
     "live": "LIVE"
   },
+  "days": {
+    "sunday": "Sunday",
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday"
+  },
   "admin": {
     "title": "Academic Administration",
     "description": "Central hub for academic administration and management tools."
@@ -250,12 +259,55 @@
     "selectRole": "Select role"
   },
   "schedule": {
+    "create": "Create Schedule",
+    "createNew": "Create New Schedule",
+    "createDescription": "Schedule a class session with optional lesson content",
+    "updateSchedule": "Update Schedule",
+    "title": "Title",
+    "enterTitle": "e.g., Office Hours, Review Session",
+    "titleRequired": "Title is required",
+    "description": "Description (Optional)",
+    "descriptionPlaceholder": "Add additional details...",
+    "dateTime": "Date & Time",
+    "duration": "Duration",
+    "minutes": "min",
+    "hour": "hour",
+    "hours": "hours",
+    "recurring": "Recurring Schedule",
+    "recurringDescription": "Create multiple sessions at once",
+    "repeat": "Repeat",
+    "occurrences": "Number of Sessions",
+    "daysOfWeek": "Repeat On (Optional)",
+    "daysHelp": "Leave empty to repeat on the same day of week",
+    "createSessions": "Create Sessions",
+    "selectClass": "Select Class",
+    "overrideTitle": "Override lesson title (optional)",
+    "created": "Schedule created successfully",
+    "createError": "Failed to create schedule",
+    "recurringCreated": "Recurring schedule created",
+    
     "date": "Date",
     "time": "Start Time",
-    "duration": "Duration (min)",
     "pickDate": "Pick a date",
     "confirmSchedule": "Confirm Schedule",
-    "updateSchedule": "Update Schedule"
+    "editSeries": "Edit Series",
+    "editOccurrence": "Edit This Session Only",
+    "updateSeriesPrompt": "This is a recurring event. Do you want to update only this session or the entire series?",
+    "deleteSeriesPrompt": "Do you want to delete only this session or the entire series?",
+    "deleteSeries": "Delete Series",
+    "deleteOccurrence": "Delete Session",
+    "saveChanges": "Save Changes",
+    "viewDetails": "View Details",
+    "linkedLesson": "Linked Lesson",
+    "noLesson": "No specific lesson",
+    "scheduleUpdated": "Schedule updated successfully",
+    "recurrence": {
+      "none": "Does not repeat",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "biweekly": "Every 2 Weeks",
+      "monthly": "Monthly"
+    }
   },
   "calendar": {
     "mySchedule": "My Schedule",
