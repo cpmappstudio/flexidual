@@ -22,34 +22,33 @@ import { useCurrentUser } from "@/hooks/use-current-user"
 import { useTranslations } from "next-intl"
 
 export function NavMain() {
+  // Call ALL hooks unconditionally at the top
+  const { user, isLoading } = useCurrentUser()
   const t = useTranslations()
   const pathname = usePathname()
-  const { user, isLoading } = useCurrentUser()
-
-  if (isLoading) return null
+  const router = useRouter()
 
   // Role helpers
   const isTeacher = user?.role === "teacher" || user?.role === "admin" || user?.role === "superadmin"
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
 
-  const router = useRouter()
-
+  // Redirect effect
   useEffect(() => {
-    if (!isLoading && user?.role === "student") {
-      const isDashboardRoute = 
-        pathname.includes("/teaching") || 
-        pathname.includes("/admin") ||
-        pathname.includes("/calendar")
+    if (!user) return
+    
+    const isDashboardRoute = 
+      pathname.includes("/teaching") || 
+      pathname.includes("/admin") ||
+      pathname.includes("/calendar")
 
-      if (isDashboardRoute) {
-        router.replace("/student")
-      }
+    if (isDashboardRoute && !isTeacher) {
+      router.replace("/")
     }
-  }, [user?.role, isLoading, pathname, router])
+  }, [pathname, router, isTeacher, user])
 
-  if (user?.role === "student") {
-    return null
-  }
+  // Conditional rendering AFTER all hooks
+  if (isLoading) return null
+  if (user?.role === "student") return null
 
   return (
     <SidebarGroup>
@@ -90,7 +89,6 @@ export function NavMain() {
               </SidebarMenuButton>
             </SidebarMenuItem>
             
-            {/* We will build this page next: Managing Active Classes */}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/teaching/classes")}>
                 <Link href="/teaching/classes">
