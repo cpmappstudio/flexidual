@@ -541,7 +541,7 @@ export const updateSchedule = mutation({
       }
     }
 
-    // Calculate time delta and new duration
+    // Calculate time delta and new duration based on the specific instance edited
     const oldStart = schedule.scheduledStart;
     const newStart = args.scheduledStart ?? oldStart;
     const timeShiftDelta = newStart - oldStart;
@@ -565,40 +565,42 @@ export const updateSchedule = mutation({
     }
 
     // Update single or series
-    if (args.updateSeries && schedule.isRecurring) {
-      const parentId = schedule.recurrenceParentId || schedule._id;
+    if (args.updateSeries && (schedule.isRecurring || schedule.recurrenceParentId)) {
+      // Find the Master ID (Parent)
+      // If recurrenceParentId exists, that's the master. If not, THIS item is the master.
+      const masterId = schedule.recurrenceParentId || schedule._id;
+
+      // Collect all items in the series (Master + Children)
+      const itemsToUpdate = [];
       
-      // Find all in series
-      const series = await ctx.db
+      // A. Fetch Parent (Master)
+      const parent = await ctx.db.get(masterId);
+      if (parent) itemsToUpdate.push(parent);
+
+      // B. Fetch Children
+      const children = await ctx.db
         .query("classSchedule")
-        .withIndex("by_recurrence_parent", (q) => q.eq("recurrenceParentId", parentId))
+        .withIndex("by_recurrence_parent", (q) => q.eq("recurrenceParentId", masterId))
         .collect();
-      
-      // Update parent
-      const parentUpdates = { ...metadataUpdates };
-      if (timeShiftDelta !== 0 || args.scheduledStart !== undefined) {
-        parentUpdates.scheduledStart = newStart;
-        parentUpdates.scheduledEnd = newEnd;
-      }
-      await ctx.db.patch(parentId, parentUpdates);
-      
-      // Update children with time shift
-      for (const child of series) {
-        const childUpdates = { ...metadataUpdates };
+      itemsToUpdate.push(...children);
+
+      // Deduplicate (just in case master was in children list)
+      const uniqueItems = Array.from(new Map(itemsToUpdate.map(item => [item._id, item])).values());
+
+      for (const item of uniqueItems) {
+        const updatePatch: any = { ...metadataUpdates };
+
+        // Apply Relative Time Shift
+        // We use the item's OWN stored start time as the base + the Delta calculated from the edited event
+        const itemNewStart = item.scheduledStart + timeShiftDelta;
         
-        if (timeShiftDelta !== 0) {
-          // Shift by delta, preserve duration
-          childUpdates.scheduledStart = child.scheduledStart + timeShiftDelta;
-          childUpdates.scheduledEnd = child.scheduledStart + timeShiftDelta + newDuration;
-        } else if (args.scheduledEnd !== undefined) {
-          // Only duration changed, preserve start times
-          childUpdates.scheduledEnd = child.scheduledStart + newDuration;
-        }
-        
-        await ctx.db.patch(child._id, childUpdates);
+        updatePatch.scheduledStart = itemNewStart;
+        updatePatch.scheduledEnd = itemNewStart + newDuration;
+
+        await ctx.db.patch(item._id, updatePatch);
       }
       
-      return { updated: series.length + 1, type: "series" };
+      return { updated: uniqueItems.length, type: "series" };
     } else {
       // Single instance update
       const singleUpdates = { ...metadataUpdates };
