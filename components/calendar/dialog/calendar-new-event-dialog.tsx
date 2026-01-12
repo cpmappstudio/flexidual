@@ -177,8 +177,8 @@ export default function CalendarNewEventDialog() {
 
       setNewEventDialogOpen(false);
       setPreselectedLessonId(null);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to schedule");
+    } catch (e) {
+      toast.error((e as Error).message || "Failed to schedule");
     } finally {
       setIsSubmitting(false);
     }

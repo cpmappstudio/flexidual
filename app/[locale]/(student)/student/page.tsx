@@ -23,6 +23,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import Image from "next/image"
 
 export default function StudentHubPage() {
   const t = useTranslations()
@@ -114,7 +115,13 @@ export default function StudentHubPage() {
           
           <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 border-4 border-white dark:border-gray-800 shadow-lg flex items-center justify-center overflow-hidden">
             {user?.imageUrl ? (
-              <img src={user.imageUrl} alt="avatar" className="w-full h-full object-cover" />
+              <Image 
+                src={user.imageUrl} 
+                alt="avatar" 
+                width={56}
+                height={56}
+                className="w-full h-full object-cover" 
+              />
             ) : (
               <span className="text-2xl font-bold text-white">
                 {user?.firstName?.charAt(0) || '👦'}

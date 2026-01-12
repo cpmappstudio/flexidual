@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion"
 import { ChevronDown, ChevronUp } from "lucide-react"
-import { useState, useEffect, RefObject } from "react"
+import { useState, useEffect, RefObject, useCallback } from "react"
 import { useTheme } from "next-themes"
 
 interface ScrollIndicatorProps {
@@ -15,7 +15,7 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 
-  const checkScroll = () => {
+  const checkScroll = useCallback(() => {
     const container = containerRef.current
     if (!container) return
 
@@ -26,7 +26,7 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
     
     // Check if can scroll up (not at top)
     setCanScrollUp(scrollTop > 10)
-  }
+  }, [containerRef])
 
   useEffect(() => {
     const container = containerRef.current
@@ -46,7 +46,7 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
       container.removeEventListener('scroll', checkScroll)
       resizeObserver.disconnect()
     }
-  }, [containerRef])
+  }, [containerRef, checkScroll])
 
   const gradientDown = isDark
     ? 'linear-gradient(to top, rgba(17, 24, 39, 0.95) 0%, rgba(17, 24, 39, 0) 100%)'

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { useState } from "react"
+import { StudentScheduleEvent } from "@/lib/types/student"
 
 export default function ClassDetailPage() {
   const t = useTranslations()
@@ -275,7 +276,12 @@ function ScheduleItem({
   classId, 
   isPast = false 
 }: { 
-  schedule: any
+  schedule: StudentScheduleEvent & { 
+    scheduleId: Id<"classSchedule">
+    lessonId?: Id<"lessons">
+    description?: string
+    roomName: string
+  }
   classId: Id<"classes">
   isPast?: boolean 
 }) {

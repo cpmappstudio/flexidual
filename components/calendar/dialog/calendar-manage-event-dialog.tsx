@@ -29,22 +29,19 @@ import { useCalendarContext } from "../calendar-context";
 import { DateTimePicker } from "@/components/calendar/form/date-time-picker";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, School, Link as LinkIcon, Unlink } from "lucide-react";
+import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, School, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { SelectDropdown } from "@/components/ui/select-dropdown";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const formSchema = z.object({
@@ -163,8 +160,8 @@ export default function CalendarManageEventDialog() {
 
       toast.success(t('schedule.scheduleUpdated'));
       handleClose();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update");
+    } catch (error) {
+      toast.error((error as Error).message || "Failed to update");
     } finally {
       setIsSubmitting(false);
     }
@@ -182,8 +179,8 @@ export default function CalendarManageEventDialog() {
       toast.success(t('class.deleted'));
       setDeleteDialogOpen(false);
       handleClose();
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error) {
+      toast.error((error as Error).message);
     } finally {
       setIsSubmitting(false);
     }

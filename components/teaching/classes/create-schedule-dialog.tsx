@@ -118,8 +118,8 @@ export function CreateScheduleDialog({
       setOpen(false)
       resetForm()
       onSuccess?.()
-    } catch (error: any) {
-      toast.error(error.message || t("schedule.createError") || "Failed to create schedule")
+    } catch (error) {
+      toast.error((error as Error).message || t("schedule.createError") || "Failed to create schedule")
     } finally {
       setIsSubmitting(false)
     }
@@ -202,7 +202,7 @@ export function CreateScheduleDialog({
           {classId && (
             <div className="space-y-2">
               <Label>{t("lesson.selectOptional") || "Lesson (Optional)"}</Label>
-              <Select value={lessonId || "none"} onValueChange={(value) => setLessonId(value as any)}>
+              <Select value={lessonId || "none"} onValueChange={(value) => setLessonId(value as Id<"lessons"> | "none")}>
                 <SelectTrigger>
                   <SelectValue placeholder={t("lesson.noLesson") || "No specific lesson"} />
                 </SelectTrigger>
@@ -303,7 +303,7 @@ export function CreateScheduleDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>{t("schedule.repeat") || "Repeat"}</Label>
-                  <Select value={recurrenceType} onValueChange={(v: any) => setRecurrenceType(v)}>
+                  <Select value={recurrenceType} onValueChange={(v: "daily" | "weekly" | "biweekly" | "monthly") => setRecurrenceType(v)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>

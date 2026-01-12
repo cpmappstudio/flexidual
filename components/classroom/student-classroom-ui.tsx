@@ -1,6 +1,5 @@
 "use client";
 
-import { api } from "@/convex/_generated/api";
 import { 
   VideoTrack,
   useLocalParticipant,
@@ -14,11 +13,10 @@ import {
   Track, 
   Participant, 
   TrackPublication,
-  RemoteParticipant,
   RemoteTrackPublication
 } from "livekit-client";
 import { 
-  Mic, MicOff, Video as VideoIcon, VideoOff, Hand, Loader2, VolumeX,
+  Mic, MicOff, Video as VideoIcon, VideoOff, Loader2, VolumeX,
   ZoomIn, ZoomOut, Move, MessageCircle, LogOut,
   MonitorUp
 } from "lucide-react";
@@ -152,7 +150,7 @@ interface StudentClassroomUIProps {
   onLeave?: () => void;
 }
 
-export function StudentClassroomUI({ currentUserRole, roomName, className, lessonTitle, onLeave }: StudentClassroomUIProps) {
+export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentClassroomUIProps) {
   const t = useTranslations();
   const room = useRoomContext();
   const [needsClick, setNeedsClick] = useState(false);
