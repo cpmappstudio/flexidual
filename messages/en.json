@@ -29,7 +29,8 @@
     "english": "English",
     "spanish": "Spanish",
     "portuguese": "Portuguese (BR)",
-    "live": "LIVE"
+    "live": "LIVE",
+    "creating": "Creating..."
   },
   "days": {
     "sunday": "Sunday",
@@ -180,7 +181,11 @@
     "selectCurriculumPrompt": "Please select a curriculum above to manage its lessons.",
     "noLessonsForCurriculum": "No lessons found for this curriculum.",
     "contentBadge": "Lesson Content",
-    "notFound": "Lesson not found"
+    "notFound": "Lesson not found",
+    "selectOptional": "Lesson (Optional)",
+    "optionalHelp": "Leave empty for general class sessions",
+    "noLesson": "No specific lesson",
+    "linked": "Linked Lesson"
   },
   "class": {
     "name": "Class Name",
@@ -210,7 +215,12 @@
     "allClasses": "All Active Classes",
     "manageAllDescription": "Manage all classes, assignments, and schedules across the platform.",
     "manageMyDescription": "Manage your active student groups and schedules.",
-    "noDate": "No date"
+    "noDate": "No date",
+    "selectClass": "Select Class",
+    "selectPlaceholder": "Choose a class...",
+    "schedule": "Schedule",
+    "byLessons": "By Lessons",
+    "allSchedules": "All Schedules"
   },
   "student": {
     "firstName": "First Name",
@@ -285,7 +295,6 @@
     "created": "Schedule created successfully",
     "createError": "Failed to create schedule",
     "recurringCreated": "Recurring schedule created",
-    
     "date": "Date",
     "time": "Start Time",
     "pickDate": "Pick a date",
@@ -307,7 +316,14 @@
       "weekly": "Weekly",
       "biweekly": "Every 2 Weeks",
       "monthly": "Monthly"
-    }
+    },
+    "upcoming": "Upcoming",
+    "upcomingSessions": "Upcoming Sessions",
+    "past": "Past",
+    "pastSessions": "Past Sessions",
+    "andMore": "And {count} more...",
+    "noSchedules": "No schedules found",
+    "createPrompt": "Schedule your first session for this class to get started."
   },
   "calendar": {
     "mySchedule": "My Schedule",

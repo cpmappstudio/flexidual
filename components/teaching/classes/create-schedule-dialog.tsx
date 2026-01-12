@@ -308,10 +308,10 @@ export function CreateScheduleDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="daily">{t("schedule.daily") || "Daily"}</SelectItem>
-                      <SelectItem value="weekly">{t("schedule.weekly") || "Weekly"}</SelectItem>
-                      <SelectItem value="biweekly">{t("schedule.biweekly") || "Every 2 Weeks"}</SelectItem>
-                      <SelectItem value="monthly">{t("schedule.monthly") || "Monthly"}</SelectItem>
+                      <SelectItem value="daily">{t("schedule.recurrence.daily") || "Daily"}</SelectItem>
+                      <SelectItem value="weekly">{t("schedule.recurrence.weekly") || "Weekly"}</SelectItem>
+                      <SelectItem value="biweekly">{t("schedule.recurrence.biweekly") || "Every 2 Weeks"}</SelectItem>
+                      <SelectItem value="monthly">{t("schedule.recurrence.monthly") || "Monthly"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
