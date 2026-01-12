@@ -110,18 +110,27 @@ export default function CalendarNewEventDialog() {
     schedulableClasses?.find(c => c._id === selectedClassId), 
   [schedulableClasses, selectedClassId]);
 
+  const usedLessonIds = useQuery(
+    api.schedule.getUsedLessons,
+    selectedClassId ? { classId: selectedClassId as Id<"classes"> } : "skip"
+  );
+
   const classOptions = schedulableClasses?.map(c => ({
     value: c._id,
     label: `${c.name} (${c.curriculumTitle})`
   })) || [];
 
   const lessonOptions = useMemo(() => {
-    const opts = currentClass?.lessons.map(l => ({
-      value: l._id,
-      label: `${l.order}. ${l.title}`
-    })) || [];
-    return [{ value: "none", label: t('schedule.noLesson') }, ...opts];
-  }, [currentClass, t]);
+    const opts = currentClass?.lessons.map(l => {
+        const isUsed = usedLessonIds?.includes(l._id);
+        return {
+            value: l._id,
+            label: isUsed ? `${l.order}. ${l.title} (Scheduled)` : `${l.order}. ${l.title}`,
+            disabled: isUsed
+        };
+    }) || [];
+    return [{ value: "none", label: t('schedule.noLesson'), disabled: false }, ...opts];
+  }, [currentClass, t, usedLessonIds]);
 
 
   // Submit Handler
@@ -202,13 +211,30 @@ export default function CalendarNewEventDialog() {
               <FormField control={form.control} name="lessonId" render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('navigation.lessons')}</FormLabel>
-                  <SelectDropdown 
-                    options={lessonOptions} 
-                    value={field.value} 
+                  <Select 
                     onValueChange={field.onChange} 
+                    defaultValue={field.value}
                     disabled={!selectedClassId}
-                    placeholder={t('lesson.selectOptional')} 
-                  />
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder={t('lesson.selectOptional')} />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                       {lessonOptions.map((opt) => (
+                          <SelectItem 
+                            key={opt.value} 
+                            value={opt.value} 
+                            disabled={opt.disabled}
+                            className={opt.disabled ? "opacity-50" : ""}
+                          >
+                            {opt.label}
+                          </SelectItem>
+                       ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
                 </FormItem>
               )} />
               

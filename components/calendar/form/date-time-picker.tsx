@@ -82,7 +82,7 @@ export function DateTimePicker({ field }: DateTimePickerProps) {
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0">
-        <div className="sm:flex">
+        <div className="sm:flex gap-2">
           <Calendar
             mode="single"
             selected={date}

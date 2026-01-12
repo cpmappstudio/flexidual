@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
+import { Id } from "./_generated/dataModel";
 
 // ============================================================================
 // QUERIES
@@ -242,6 +243,24 @@ export const getSessionStatus = query({
       roomName: schedule.roomName,
       canJoin: schedule.status === "active" || schedule.status === "scheduled",
     };
+  },
+});
+
+/**
+ * Get lessons already scheduled for a class
+ */
+export const getUsedLessons = query({
+  args: { classId: v.id("classes") },
+  handler: async (ctx, args) => {
+    const schedules = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_class", (q) => q.eq("classId", args.classId))
+      .collect();
+
+    // Return array of lessonIds that are not null/undefined
+    return schedules
+      .map((s) => s.lessonId)
+      .filter((id): id is Id<"lessons"> => !!id);
   },
 });
 
@@ -495,7 +514,7 @@ export const updateSchedule = mutation({
       v.literal("completed"),
       v.literal("cancelled")
     )),
-    updateSeries: v.optional(v.boolean()), // Update all in recurring series
+    updateSeries: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -522,26 +541,31 @@ export const updateSchedule = mutation({
       }
     }
 
-    if (args.scheduledStart && args.scheduledEnd) {
-      if (args.scheduledEnd <= args.scheduledStart) {
-        throw new Error("End time must be after start time");
+    // Calculate time delta and new duration
+    const oldStart = schedule.scheduledStart;
+    const newStart = args.scheduledStart ?? oldStart;
+    const timeShiftDelta = newStart - oldStart;
+    
+    const oldEnd = schedule.scheduledEnd;
+    const newEnd = args.scheduledEnd ?? oldEnd;
+    const newDuration = newEnd - newStart;
+
+    // Prepare metadata updates
+    const metadataUpdates: any = {};
+    if (args.title !== undefined) metadataUpdates.title = args.title;
+    if (args.description !== undefined) metadataUpdates.description = args.description;
+    if (args.lessonId !== undefined) {
+      metadataUpdates.lessonId = args.lessonId === null ? undefined : args.lessonId;
+    }
+    if (args.status) {
+      metadataUpdates.status = args.status;
+      if (args.status === "completed" && !schedule.completedAt) {
+        metadataUpdates.completedAt = Date.now();
       }
     }
 
-    const { id, updateSeries, ...updates } = args;
-
-    // Prepare updates
-    const cleanUpdates: any = { ...updates };
-    if (cleanUpdates.lessonId === null) {
-      cleanUpdates.lessonId = undefined;
-    }
-
-    if (updates.status === "completed" && !schedule.completedAt) {
-      cleanUpdates.completedAt = Date.now();
-    }
-
     // Update single or series
-    if (updateSeries && schedule.isRecurring) {
+    if (args.updateSeries && schedule.isRecurring) {
       const parentId = schedule.recurrenceParentId || schedule._id;
       
       // Find all in series
@@ -551,16 +575,37 @@ export const updateSchedule = mutation({
         .collect();
       
       // Update parent
-      await ctx.db.patch(parentId, cleanUpdates);
+      const parentUpdates = { ...metadataUpdates };
+      if (timeShiftDelta !== 0 || args.scheduledStart !== undefined) {
+        parentUpdates.scheduledStart = newStart;
+        parentUpdates.scheduledEnd = newEnd;
+      }
+      await ctx.db.patch(parentId, parentUpdates);
       
-      // Update children
+      // Update children with time shift
       for (const child of series) {
-        await ctx.db.patch(child._id, cleanUpdates);
+        const childUpdates = { ...metadataUpdates };
+        
+        if (timeShiftDelta !== 0) {
+          // Shift by delta, preserve duration
+          childUpdates.scheduledStart = child.scheduledStart + timeShiftDelta;
+          childUpdates.scheduledEnd = child.scheduledStart + timeShiftDelta + newDuration;
+        } else if (args.scheduledEnd !== undefined) {
+          // Only duration changed, preserve start times
+          childUpdates.scheduledEnd = child.scheduledStart + newDuration;
+        }
+        
+        await ctx.db.patch(child._id, childUpdates);
       }
       
       return { updated: series.length + 1, type: "series" };
     } else {
-      await ctx.db.patch(id, cleanUpdates);
+      // Single instance update
+      const singleUpdates = { ...metadataUpdates };
+      if (args.scheduledStart !== undefined) singleUpdates.scheduledStart = newStart;
+      if (args.scheduledEnd !== undefined) singleUpdates.scheduledEnd = newEnd;
+      
+      await ctx.db.patch(args.id, singleUpdates);
       return { updated: 1, type: "single" };
     }
   },

@@ -3,9 +3,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { useEffect, useState } from "react";
-import { useMutation } from "convex/react";
+import { useEffect, useState, useMemo } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import {
   Dialog,
   DialogContent,
@@ -38,17 +39,20 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, School } from "lucide-react";
+import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, School, Link as LinkIcon, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { SelectDropdown } from "@/components/ui/select-dropdown";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const formSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   start: z.string(),
   end: z.string(),
+  lessonId: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -67,9 +71,27 @@ export default function CalendarManageEventDialog() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
+  // Queries for Edit Mode
+  // 1. Get Class details to know the curriculum
+  const classData = useQuery(
+    api.classes.get, 
+    isEditing && selectedEvent ? { id: selectedEvent.classId } : "skip"
+  );
+  
+  // 2. Get Lessons for that curriculum
+  const lessons = useQuery(
+    api.lessons.listByCurriculum,
+    classData ? { curriculumId: classData.curriculumId } : "skip"
+  );
+
+  // 3. Get Used Lessons in this class to prevent duplicates
+  const usedLessonIds = useQuery(
+    api.schedule.getUsedLessons,
+    selectedEvent ? { classId: selectedEvent.classId } : "skip"
+  );
+
   // Convex mutations
   const updateSchedule = useMutation(api.schedule.updateSchedule);
-  const cancelSchedule = useMutation(api.schedule.cancelSchedule);
   const deleteSchedule = useMutation(api.schedule.deleteSchedule);
 
   const form = useForm<FormValues>({
@@ -79,6 +101,7 @@ export default function CalendarManageEventDialog() {
       description: "",
       start: "",
       end: "",
+      lessonId: "none",
     },
   });
 
@@ -89,24 +112,52 @@ export default function CalendarManageEventDialog() {
         description: selectedEvent.description || "",
         start: selectedEvent.start.toISOString(),
         end: selectedEvent.end.toISOString(),
+        lessonId: selectedEvent.lessonId || "none",
       });
-      // Default to single update
       setUpdateMode("single");
       setIsEditing(false); 
     }
   }, [selectedEvent, form, manageEventDialogOpen]);
+
+  // Transform lessons for dropdown
+  const lessonOptions = useMemo(() => {
+    if (!lessons) return [];
+    
+    const currentLessonId = selectedEvent?.lessonId;
+
+    const opts = lessons.map(l => {
+      // Disable if used by another schedule, but allow if it's the currently selected one
+      const isUsed = usedLessonIds?.includes(l._id) && l._id !== currentLessonId;
+      
+      return {
+        value: l._id,
+        label: isUsed 
+            ? `${l.order}. ${l.title} (Scheduled)` 
+            : `${l.order}. ${l.title}`,
+        disabled: isUsed
+      };
+    });
+    
+    return [
+      { value: "none", label: t('lesson.noLesson') || "No linked lesson", disabled: false }, 
+      ...opts
+    ];
+  }, [lessons, t, usedLessonIds, selectedEvent]);
 
   async function onSubmit(values: FormValues) {
     if (!selectedEvent?.scheduleId) return;
 
     setIsSubmitting(true);
     try {
+      const finalLessonId = values.lessonId === "none" ? null : values.lessonId as Id<"lessons">;
+
       await updateSchedule({
         id: selectedEvent.scheduleId,
         title: values.title,
         description: values.description,
         scheduledStart: new Date(values.start).getTime(),
         scheduledEnd: new Date(values.end).getTime(),
+        lessonId: finalLessonId, // Pass the new lesson ID (or null to unlink)
         updateSeries: updateMode === "series",
       });
 
@@ -123,8 +174,6 @@ export default function CalendarManageEventDialog() {
     if (!selectedEvent?.scheduleId) return;
     setIsSubmitting(true);
     try {
-      // Use deleteSchedule instead of cancel for cleaner calendar management by teachers
-      // Or we can use cancel if we want to keep history. Let's use delete for "Edit" context removal.
       await deleteSchedule({
         id: selectedEvent.scheduleId,
         deleteSeries: deleteSeries,
@@ -145,7 +194,7 @@ export default function CalendarManageEventDialog() {
     setTimeout(() => {
         setSelectedEvent(null);
         setIsEditing(false);
-    }, 300); // Wait for animation
+    }, 300);
   }
 
   if (!selectedEvent) return null;
@@ -161,7 +210,6 @@ export default function CalendarManageEventDialog() {
                 {isEditing ? t('common.edit') : t('schedule.viewDetails')}
             </DialogTitle>
             
-            {/* Action Buttons (View Mode) */}
             {!isEditing && selectedEvent.status !== "cancelled" && (
                 <div className="flex gap-2">
                     <Button variant="outline" size="icon" onClick={() => setIsEditing(true)}>
@@ -180,10 +228,23 @@ export default function CalendarManageEventDialog() {
                 <div className="flex items-start justify-between">
                     <div>
                         <h2 className="text-2xl font-bold">{selectedEvent.title}</h2>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge variant="outline" style={{ borderColor: selectedEvent.color, color: selectedEvent.color }}>
                                 {selectedEvent.curriculumTitle}
                             </Badge>
+                            
+                            {/* Lesson Linked Indicator */}
+                            {selectedEvent.lessonId ? (
+                                <Badge variant="secondary" className="flex items-center gap-1">
+                                    <LinkIcon className="h-3 w-3" />
+                                    {t('lesson.linked') || "Linked Lesson"}
+                                </Badge>
+                            ) : (
+                                <Badge variant="outline" className="text-muted-foreground border-dashed">
+                                    {t('lesson.noLesson') || "No Lesson"}
+                                </Badge>
+                            )}
+
                             {selectedEvent.isLive && (
                                 <Badge variant="destructive" className="animate-pulse">LIVE</Badge>
                             )}
@@ -221,6 +282,16 @@ export default function CalendarManageEventDialog() {
                             <p className="text-muted-foreground whitespace-pre-wrap">{selectedEvent.description}</p>
                         </div>
                     )}
+                    
+                    {/* Lesson Content Preview Link if linked */}
+                    {selectedEvent.lessonId && (
+                         <div className="flex gap-3">
+                            <LinkIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+                            <Link href={`/lessons/${selectedEvent.lessonId}`} className="text-primary hover:underline font-medium">
+                                View Lesson Content
+                            </Link>
+                        </div>
+                    )}
                 </div>
                 
                 <div className="flex justify-end pt-4">
@@ -244,22 +315,58 @@ export default function CalendarManageEventDialog() {
              /* EDIT MODE */
              <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                    {/* Series vs Single Logic */}
+                    
+                    {/* Series vs Single Logic - Fixed Radio Group */}
                     {isSeries && (
                         <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-md border border-amber-200 dark:border-amber-900">
                              <FormLabel className="mb-2 block text-amber-900 dark:text-amber-100">{t('schedule.updateSchedule')}</FormLabel>
-                             <RadioGroup value={updateMode} onValueChange={(v: any) => setUpdateMode(v)} className="flex gap-4">
+                             <RadioGroup 
+                                value={updateMode} 
+                                onValueChange={(v) => setUpdateMode(v as "single" | "series")} 
+                                className="flex flex-col sm:flex-row gap-4"
+                             >
                                 <div className="flex items-center space-x-2">
                                     <RadioGroupItem value="single" id="r1" />
-                                    <FormLabel htmlFor="r1" className="font-normal">{t('schedule.editOccurrence')}</FormLabel>
+                                    <FormLabel htmlFor="r1" className="font-normal cursor-pointer">{t('schedule.editOccurrence')}</FormLabel>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                     <RadioGroupItem value="series" id="r2" />
-                                    <FormLabel htmlFor="r2" className="font-normal">{t('schedule.editSeries')}</FormLabel>
+                                    <FormLabel htmlFor="r2" className="font-normal cursor-pointer">{t('schedule.editSeries')}</FormLabel>
                                 </div>
                              </RadioGroup>
                         </div>
                     )}
+
+                    {/* Lesson Selector - New Feature */}
+                    <FormField control={form.control} name="lessonId" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>{t('navigation.lessons')}</FormLabel>
+                             <Select 
+                                onValueChange={field.onChange} 
+                                defaultValue={field.value}
+                                disabled={!lessons}
+                             >
+                                <FormControl>
+                                <SelectTrigger>
+                                    <SelectValue placeholder={t('lesson.selectOptional')} />
+                                </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                    {lessonOptions.map((opt) => (
+                                        <SelectItem 
+                                            key={opt.value} 
+                                            value={opt.value} 
+                                            disabled={opt.disabled}
+                                            className={opt.disabled ? "opacity-50" : ""}
+                                        >
+                                            {opt.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <FormMessage />
+                        </FormItem>
+                    )} />
 
                     <FormField control={form.control} name="title" render={({ field }) => (
                         <FormItem>

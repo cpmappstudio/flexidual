@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch"
 import { Calendar, Plus } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
+import { DateTimePicker } from "@/components/calendar/form/date-time-picker" // Added
 
 interface CreateScheduleDialogProps {
   classId?: Id<"classes">
@@ -37,13 +38,16 @@ export function CreateScheduleDialog({
   const [lessonId, setLessonId] = useState<Id<"lessons"> | "none" | undefined>("none")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
+  
+  // Changed: Default to ISO string for DateTimePicker compatibility
   const [startDate, setStartDate] = useState(() => {
     const date = initialDate || new Date()
     // Round to next hour
     date.setMinutes(0, 0, 0)
     date.setHours(date.getHours() + 1)
-    return date.toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm
+    return date.toISOString() // DateTimePicker expects ISO
   })
+  
   const [duration, setDuration] = useState(60) // minutes
   const [isRecurring, setIsRecurring] = useState(false)
   const [recurrenceType, setRecurrenceType] = useState<"daily" | "weekly" | "biweekly" | "monthly">("weekly")
@@ -53,6 +57,11 @@ export function CreateScheduleDialog({
   // Queries
   const classes = useQuery(api.classes.getSchedulableClasses)
   const selectedClass = classes?.find(c => c._id === classId)
+
+  const usedLessonIds = useQuery(
+    api.schedule.getUsedLessons,
+    classId ? { classId } : "skip"
+  )
   
   // Mutations
   const createSchedule = useMutation(api.schedule.createSchedule)
@@ -124,7 +133,7 @@ export function CreateScheduleDialog({
     const nextHour = new Date()
     nextHour.setMinutes(0, 0, 0)
     nextHour.setHours(nextHour.getHours() + 1)
-    setStartDate(nextHour.toISOString().slice(0, 16))
+    setStartDate(nextHour.toISOString())
     setDuration(60)
     setIsRecurring(false)
     setRecurrenceType("weekly")
@@ -199,11 +208,19 @@ export function CreateScheduleDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">{t("lesson.noLesson") || "No specific lesson"}</SelectItem>
-                  {selectedClass?.lessons.map((lesson) => (
-                    <SelectItem key={lesson._id} value={lesson._id}>
-                      {lesson.order}. {lesson.title}
-                    </SelectItem>
-                  ))}
+                  {selectedClass?.lessons.map((lesson) => {
+                    const isUsed = usedLessonIds?.includes(lesson._id);
+                    return (
+                        <SelectItem 
+                            key={lesson._id} 
+                            value={lesson._id} 
+                            disabled={isUsed}
+                            className={isUsed ? "opacity-50" : ""}
+                        >
+                        {lesson.order}. {lesson.title} {isUsed && "(Scheduled)"}
+                        </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
@@ -239,14 +256,16 @@ export function CreateScheduleDialog({
             />
           </div>
 
-          {/* Date & Time */}
+          {/* Date & Time - REPLACED */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>{t("schedule.dateTime") || "Date & Time"}</Label>
-              <Input
-                type="datetime-local"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+              {/* Using DateTimePicker instead of native input for consistency */}
+              <DateTimePicker 
+                field={{
+                    value: startDate,
+                    onChange: (val) => setStartDate(val)
+                }} 
               />
             </div>
             <div className="space-y-2">
