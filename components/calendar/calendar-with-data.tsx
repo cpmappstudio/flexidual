@@ -60,6 +60,7 @@ export default function CalendarWithData() {
         isRecurring: item.isRecurring,
         recurrenceRule: item.recurrenceRule,
         recurrenceParentId: item.recurrenceParentId,
+        teacherName: item.teacherName,
       }));
 
       setEvents(transformedEvents);

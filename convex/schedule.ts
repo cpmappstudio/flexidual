@@ -28,9 +28,15 @@ export const getMySchedule = query({
       return [];
     }
 
-    // Step 1: Find MY classes (role-based logic)
+    // Step 1: Find classes (role-based logic)
     let myClasses;
-    if (user.role === "teacher" || user.role === "tutor") {
+    if (user.role === "admin" || user.role === "superadmin") {
+      // Admin: See ALL active classes
+      myClasses = await ctx.db
+        .query("classes")
+        .withIndex("by_active", (q) => q.eq("isActive", true))
+        .collect();
+    } else if (user.role === "teacher" || user.role === "tutor") {
       myClasses = await ctx.db
         .query("classes")
         .withIndex("by_teacher", (q) => 
@@ -84,6 +90,9 @@ export const getMySchedule = query({
 
         // Get curriculum for color
         const curriculum = await ctx.db.get(classData.curriculumId);
+        
+        // Get Teacher Name (Important for Admins view)
+        const teacher = await ctx.db.get(classData.teacherId);
 
         // Lesson is optional now - only fetch if exists
         let lessonData = null;
@@ -113,6 +122,7 @@ export const getMySchedule = query({
           isRecurring: item.isRecurring || false,
           recurrenceRule: item.recurrenceRule,
           recurrenceParentId: item.recurrenceParentId,
+          teacherName: teacher?.fullName || "Unknown",
         };
       })
     );

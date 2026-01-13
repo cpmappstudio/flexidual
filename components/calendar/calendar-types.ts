@@ -57,6 +57,7 @@ export type CalendarEvent = {
   isRecurring?: boolean
   recurrenceRule?: string
   recurrenceParentId?: Id<"classSchedule">
+  teacherName?: string
 }
 
 // For scheduling new lessons
