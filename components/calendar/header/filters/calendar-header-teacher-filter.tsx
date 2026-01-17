@@ -41,19 +41,23 @@ export default function CalendarHeaderTeacherFilter() {
         <Button
           variant={selectedTeacherId ? "secondary" : "outline"}
           size="sm"
-          className="gap-2"
+          className="gap-2 group"
         >
           <Filter className="h-4 w-4" />
           {selectedTeacher ? (
             <>
               <span className="hidden sm:inline">{selectedTeacher.fullName}</span>
-              <X
-                className="h-3 w-3 ml-1"
+              <div
+                role="button"
+                className="ml-1 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/20 cursor-pointer relative z-50"
                 onClick={(e) => {
-                  e.stopPropagation()
-                  onTeacherChange(null)
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onTeacherChange(null);
                 }}
-              />
+              >
+                <X className="h-3 w-3" />
+              </div>
             </>
           ) : (
             <span className="hidden sm:inline">Filter by Teacher</span>
