@@ -26,7 +26,8 @@ export default defineSchema({
     // Profile
     firstName: v.string(),
     lastName: v.string(),
-    fullName: v.string(), // Denormalized for performance
+    fullName: v.string(),
+    imageUrl: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
     
     // Role-based access

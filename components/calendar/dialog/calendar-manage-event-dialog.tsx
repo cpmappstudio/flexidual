@@ -43,6 +43,8 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import Image from "next/image";
 
 const formSchema = z.object({
   title: z.string().optional(),
@@ -267,12 +269,28 @@ export default function CalendarManageEventDialog() {
                     </div>
 
                     <div className="flex gap-3">
-                        <School className="h-5 w-5 text-muted-foreground shrink-0" />
-                        <div>
-                            <p className="font-medium">{selectedEvent.className}</p>
+                        <div className="shrink-0">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 border-2 border-white dark:border-gray-800 shadow-lg flex items-center justify-center overflow-hidden">
+                                {selectedEvent.teacherImageUrl ? (
+                                    <Image 
+                                        src={selectedEvent.teacherImageUrl} 
+                                        alt="avatar" 
+                                        width={48}
+                                        height={48}
+                                        className="w-full h-full object-cover" 
+                                    />
+                                ) : (
+                                    <span className="text-lg font-bold text-white">
+                                    {selectedEvent.teacherName?.charAt(0) || 'T'}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex-1 flex flex-col justify-center">
+                            <p className="font-medium text-lg leading-none">{selectedEvent.className}</p>
                             {selectedEvent.teacherName && (
-                                <p className="text-xs text-muted-foreground">
-                                    Teacher: {selectedEvent.teacherName}
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    with {selectedEvent.teacherName}
                                 </p>
                             )}
                         </div>

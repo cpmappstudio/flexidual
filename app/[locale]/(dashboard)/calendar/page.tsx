@@ -20,6 +20,8 @@ import CalendarProvider from "@/components/calendar/calendar-provider"
 import CalendarNewEventDialog from "@/components/calendar/dialog/calendar-new-event-dialog"
 import CalendarManageEventDialog from "@/components/calendar/dialog/calendar-manage-event-dialog"
 import { useCalendarContext } from "@/components/calendar/calendar-context"
+import CalendarHeaderTeacherFilter from "@/components/calendar/header/filters/calendar-header-teacher-filter"
+import { teardownTraceSubscriber } from "next/dist/build/swc/generated-native"
 
 // Internal component to handle Agenda Logic using Context
 function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
@@ -119,6 +121,8 @@ function CalendarContent() {
   const [mode, setMode] = useState<Mode>("month")
   const [date, setDate] = useState<Date>(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null)
+
   const { user } = useCurrentUser()
 
   // Navigation Hooks
@@ -131,7 +135,9 @@ function CalendarContent() {
   // Fetch Universal Schedule
   // We fetch a broader range or use dynamic ranges in a real app
   // For now, fetching everything (filtered by backend limit) or adding args
-  const scheduleData = useQuery(api.schedule.getMySchedule, {})
+  const scheduleData = useQuery(api.schedule.getMySchedule, {
+    teacherId: selectedTeacherId ?? undefined 
+  })
 
   // Transform to CalendarEvent format
   const allEvents = useMemo(() => {
@@ -154,9 +160,10 @@ function CalendarContent() {
       roomName: e.roomName,
       isLive: e.isLive,
       status: e.status,
-      // Add recurring fields if your backend sends them
       isRecurring: e.isRecurring,
       recurrenceRule: e.recurrenceRule,
+      teacherName: e.teacherName,
+      teacherImageUrl: e.teacherImageUrl,
     }))
   }, [scheduleData])
 
@@ -193,6 +200,8 @@ function CalendarContent() {
       date={date}
       setDate={setDate}
       userId={user?._id}
+      selectedTeacherId={selectedTeacherId}
+      onTeacherChange={setSelectedTeacherId}
     >
       <div className="min-h-[calc(100vh-4rem)] p-4 flex flex-col gap-4 pb-12">
         <div className="flex items-center justify-between">

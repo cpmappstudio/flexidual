@@ -21,6 +21,7 @@ export const getMySchedule = query({
       v.literal("completed"),
       v.literal("cancelled")
     )),
+    teacherId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
@@ -31,11 +32,21 @@ export const getMySchedule = query({
     // Step 1: Find classes (role-based logic)
     let myClasses;
     if (user.role === "admin" || user.role === "superadmin") {
-      // Admin: See ALL active classes
-      myClasses = await ctx.db
-        .query("classes")
-        .withIndex("by_active", (q) => q.eq("isActive", true))
-        .collect();
+      if (args.teacherId) {
+        // Admin filtering by specific teacher
+        myClasses = await ctx.db
+          .query("classes")
+          .withIndex("by_teacher", (q) => 
+            q.eq("teacherId", args.teacherId!).eq("isActive", true)
+          )
+          .collect();
+      } else {
+        // Admin seeing all active classes
+        myClasses = await ctx.db
+          .query("classes")
+          .withIndex("by_active", (q) => q.eq("isActive", true))
+          .collect();
+      }
     } else if (user.role === "teacher" || user.role === "tutor") {
       myClasses = await ctx.db
         .query("classes")
@@ -123,6 +134,7 @@ export const getMySchedule = query({
           recurrenceRule: item.recurrenceRule,
           recurrenceParentId: item.recurrenceParentId,
           teacherName: teacher?.fullName || "Unknown",
+          teacherImageUrl: teacher?.imageUrl,
         };
       })
     );

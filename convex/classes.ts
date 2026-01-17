@@ -527,6 +527,7 @@ export const getSchedulableClasses = query({
           curriculumId: cls.curriculumId,
           curriculumTitle: curriculum?.title || "Unknown",
           curriculumColor: curriculum?.color,
+          teacherId: cls.teacherId,
           lessons: sortedLessons.map(l => ({
             _id: l._id,
             title: l.title,

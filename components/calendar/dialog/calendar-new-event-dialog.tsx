@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { Id } from "@/convex/_generated/dataModel";
 import { Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const formSchema = z.object({
   classId: z.string().min(1, "Class is required"),
@@ -43,7 +44,8 @@ export default function CalendarNewEventDialog() {
     date, 
     userId,
     preselectedLessonId,
-    setPreselectedLessonId 
+    setPreselectedLessonId,
+    selectedTeacherId,
   } = useCalendarContext();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -115,10 +117,20 @@ export default function CalendarNewEventDialog() {
     selectedClassId ? { classId: selectedClassId as Id<"classes"> } : "skip"
   );
 
-  const classOptions = schedulableClasses?.map(c => ({
-    value: c._id,
-    label: `${c.name} (${c.curriculumTitle})`
-  })) || [];
+  const classOptions = useMemo(() => {
+    if (!schedulableClasses) return [];
+    
+    let classes = schedulableClasses;
+    
+    if (selectedTeacherId) {
+      classes = classes.filter(c => c.teacherId === selectedTeacherId);
+    }
+    
+    return classes.map(c => ({
+      value: c._id,
+      label: `${c.name} (${c.curriculumTitle})`
+    }));
+  }, [schedulableClasses, selectedTeacherId]);
 
   const lessonOptions = useMemo(() => {
     const opts = currentClass?.lessons.map(l => {

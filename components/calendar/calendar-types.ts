@@ -19,10 +19,11 @@ export type CalendarContextType = CalendarProps & {
   setManageEventDialogOpen: (open: boolean) => void
   selectedEvent: CalendarEvent | null
   setSelectedEvent: (event: CalendarEvent | null) => void
-  // For scheduling lessons from curriculum view
   preselectedLessonId: Id<"lessons"> | null
   setPreselectedLessonId: (id: Id<"lessons"> | null) => void
   refetchEvents?: () => void
+  selectedTeacherId: Id<"users"> | null
+  onTeacherChange: (id: Id<"users"> | null) => void
 }
 
 export type CalendarEvent = {
@@ -58,6 +59,7 @@ export type CalendarEvent = {
   recurrenceRule?: string
   recurrenceParentId?: Id<"classSchedule">
   teacherName?: string
+  teacherImageUrl?: string
 }
 
 // For scheduling new lessons

@@ -126,6 +126,27 @@ export const getAvatarUrl = query({
   },
 });
 
+/**
+ * Get all teachers (for admin filtering)
+ */
+export const getTeachers = query({
+  handler: async (ctx) => {
+    const teachers = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => 
+        q.eq("role", "teacher").eq("isActive", true)
+      )
+      .collect();
+
+    return teachers.map(t => ({
+      _id: t._id,
+      fullName: t.fullName,
+      email: t.email,
+      imageUrl: t.imageUrl,
+    }));
+  },
+});
+
 // ============================================================================
 // MUTATIONS
 // ============================================================================
@@ -308,6 +329,7 @@ export const upsertFromClerk = internalMutation({
       firstName,
       lastName,
       fullName: `${firstName} ${lastName}`.trim() || email,
+      imageUrl: data.image_url,
       role,
       isActive: true,
       lastLoginAt: Date.now(),

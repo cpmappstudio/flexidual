@@ -6,7 +6,6 @@ import { CalendarEvent, Mode } from "./calendar-types";
 import { Id } from "@/convex/_generated/dataModel";
 
 interface CalendarProviderProps {
-  // Original Props
   events: CalendarEvent[];
   setEvents: (events: CalendarEvent[]) => void;
   mode: Mode;
@@ -16,6 +15,8 @@ interface CalendarProviderProps {
   calendarIconIsToday?: boolean;
   isLoading?: boolean;
   userId?: Id<"users">;
+  selectedTeacherId: Id<"users"> | null;
+  onTeacherChange: (id: Id<"users"> | null) => void;
   children: React.ReactNode;
 }
 
@@ -29,6 +30,8 @@ export default function CalendarProvider({
   calendarIconIsToday = true,
   isLoading = false,
   userId,
+  selectedTeacherId,
+  onTeacherChange,
   children,
 }: CalendarProviderProps) {
   // Dialog States
@@ -64,6 +67,8 @@ export default function CalendarProvider({
         // Scheduling Shortcut
         preselectedLessonId,
         setPreselectedLessonId,
+        selectedTeacherId,
+        onTeacherChange,
       }}
     >
       {children}

@@ -7,6 +7,7 @@ import CalendarHeaderActions from "./header/actions/calendar-header-actions";
 import CalendarHeaderDate from "./header/date/calendar-header-date";
 import CalendarHeaderActionsMode from "./header/actions/calendar-header-actions-mode";
 import CalendarHeaderActionsAdd from "./header/actions/calendar-header-actions-add";
+import CalendarHeaderTeacherFilter from "./header/filters/calendar-header-teacher-filter";
 
 // NOTE: Provider is now handled by the parent Page for better state sharing
 export default function Calendar({
@@ -18,6 +19,7 @@ export default function Calendar({
       <CalendarHeader>
         <CalendarHeaderDate />
         <CalendarHeaderActions>
+          <CalendarHeaderTeacherFilter />
           <CalendarHeaderActionsMode />
           <CalendarHeaderActionsAdd />
         </CalendarHeaderActions>
