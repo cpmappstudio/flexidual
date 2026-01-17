@@ -204,19 +204,22 @@ export default function CalendarManageEventDialog() {
     <>
       <Dialog open={manageEventDialogOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+          <DialogHeader className="flex flex-row items-start justify-between space-y-0 pt-2 pr-4">
             <DialogTitle>
                 {isEditing ? t('common.edit') : t('schedule.viewDetails')}
             </DialogTitle>
             
-            {!isEditing && selectedEvent.status !== "cancelled" && (
+            {selectedEvent.status !== "cancelled" && (
                 <div className="flex gap-2">
-                    <Button variant="outline" size="icon" onClick={() => setIsEditing(true)}>
-                        <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="destructive" size="icon" onClick={() => setDeleteDialogOpen(true)}>
-                        <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {isEditing ? (
+                        <Button variant="destructive" size="icon" onClick={() => setDeleteDialogOpen(true)}>
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    ) : (
+                        <Button variant="outline" size="icon" onClick={() => setIsEditing(true)}>
+                            <Pencil className="h-4 w-4" />
+                        </Button>
+                    )}
                 </div>
             )}
           </DialogHeader>
@@ -256,19 +259,6 @@ export default function CalendarManageEventDialog() {
 
                 <div className="grid gap-4 text-sm">
                     <div className="flex gap-3">
-                        <CalendarClock className="h-5 w-5 text-muted-foreground shrink-0" />
-                        <div>
-                            <p className="font-medium">
-                                {selectedEvent.start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-                            </p>
-                            <p className="text-muted-foreground">
-                                {selectedEvent.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - 
-                                {selectedEvent.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="flex gap-3">
                         <div className="shrink-0">
                             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 border-2 border-white dark:border-gray-800 shadow-lg flex items-center justify-center overflow-hidden">
                                 {selectedEvent.teacherImageUrl ? (
@@ -293,6 +283,19 @@ export default function CalendarManageEventDialog() {
                                     with {selectedEvent.teacherName}
                                 </p>
                             )}
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                        <CalendarClock className="h-5 w-5 text-muted-foreground shrink-0" />
+                        <div>
+                            <p className="font-medium">
+                                {selectedEvent.start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                            </p>
+                            <p className="text-muted-foreground">
+                                {selectedEvent.start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - 
+                                {selectedEvent.end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </p>
                         </div>
                     </div>
 
