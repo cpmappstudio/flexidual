@@ -2,6 +2,9 @@ import { useCalendarContext } from '../../calendar-context'
 import { startOfWeek, addDays } from 'date-fns'
 import CalendarBodyMarginDayMargin from '../day/calendar-body-margin-day-margin'
 import CalendarBodyDayContent from '../day/calendar-body-day-content'
+import CalendarBodyDayCalendar from '../day/calendar-body-day-calendar'
+import CalendarBodyWeekEvents from './calendar-body-week-events'
+
 export default function CalendarBodyWeek() {
   const { date } = useCalendarContext()
 
@@ -25,6 +28,10 @@ export default function CalendarBodyWeek() {
             ))}
           </div>
         </div>
+      </div>
+      <div className="lg:flex hidden flex-col flex-grow divide-y max-w-[276px]">
+        <CalendarBodyDayCalendar />
+        <CalendarBodyWeekEvents />
       </div>
     </div>
   )

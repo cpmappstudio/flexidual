@@ -6,8 +6,10 @@ export default function CalendarBodyDayCalendar() {
   return (
     <Calendar
       selected={date}
-      onSelect={(date: Date | undefined) => date && setDate(date)}
+      onSelect={(newDate) => newDate && setDate(newDate)}
       mode="single"
+      month={date}
+      onMonthChange={setDate}
     />
   )
 }

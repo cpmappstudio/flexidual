@@ -9,7 +9,10 @@ import {
   subDays,
   subMonths,
   subWeeks,
+  startOfWeek,
+  endOfWeek,
 } from 'date-fns'
+import CalendarHeaderDateBadge from './calendar-header-date-badge'
 
 export default function CalendarHeaderDateChevrons() {
   const { mode, date, setDate } = useCalendarContext()
@@ -42,6 +45,21 @@ export default function CalendarHeaderDateChevrons() {
     }
   }
 
+  function getDateLabel() {
+    switch (mode) {
+      case 'month':
+        return format(date, 'MMMM yyyy')
+      case 'week':
+        const weekStart = startOfWeek(date)
+        const weekEnd = endOfWeek(date)
+        return `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`
+      case 'day':
+        return format(date, 'MMMM d, yyyy')
+      default:
+        return format(date, 'MMMM d, yyyy')
+    }
+  }
+
   return (
     <div className="flex items-center gap-2">
       <Button
@@ -53,7 +71,7 @@ export default function CalendarHeaderDateChevrons() {
       </Button>
 
       <span className="min-w-[140px] text-center font-medium">
-        {format(date, 'MMMM d, yyyy')}
+        {getDateLabel()}
       </span>
 
       <Button
@@ -63,6 +81,7 @@ export default function CalendarHeaderDateChevrons() {
       >
         <ChevronRight className="min-w-5 min-h-5" />
       </Button>
+      <CalendarHeaderDateBadge />
     </div>
   )
 }

@@ -29,7 +29,7 @@ export function NavMain() {
   const router = useRouter()
 
   // Role helpers
-  const isTeacher = user?.role === "teacher" || user?.role === "admin" || user?.role === "superadmin"
+  const isTeacher = user?.role === "teacher"
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
 
   // Redirect effect
@@ -41,10 +41,10 @@ export function NavMain() {
       pathname.includes("/admin") ||
       pathname.includes("/calendar")
 
-    if (isDashboardRoute && !isTeacher) {
+    if (isDashboardRoute && !(isTeacher || isAdmin)) {
       router.replace("/")
     }
-  }, [pathname, router, isTeacher, user])
+  }, [pathname, router, isTeacher, isAdmin, user])
 
   // Conditional rendering AFTER all hooks
   if (isLoading) return null
@@ -137,6 +137,15 @@ export function NavMain() {
                 <Link href="/admin/curriculums">
                   <BookOpen />
                   <span>{t('navigation.allCurriculums')}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname.includes("/teaching/classes")}>
+                <Link href="/teaching/classes">
+                  <School />
+                  <span>{isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

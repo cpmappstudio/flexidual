@@ -75,11 +75,11 @@ export const columns: ColumnDef<Teacher>[] = [
     accessorKey: "email",
     header: "Email",
   },
-  {
-    accessorKey: "role",
-    header: "Role",
-    cell: ({ row }) => <Badge variant="outline">{row.getValue("role")}</Badge>,
-  },
+  // {
+  //   accessorKey: "role",
+  //   header: "Role",
+  //   cell: ({ row }) => <Badge variant="outline">{row.getValue("role")}</Badge>,
+  // },
   {
     accessorKey: "isActive",
     header: "Status",
