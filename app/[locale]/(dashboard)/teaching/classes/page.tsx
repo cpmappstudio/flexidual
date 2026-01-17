@@ -1,12 +1,15 @@
 "use client"
 
+import { useState } from "react"
 import { useQuery } from "convex/react"
+import { Id } from "@/convex/_generated/dataModel"
 import { api } from "@/convex/_generated/api"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, BookOpen, Calendar, ArrowRight, School } from "lucide-react"
 import { format } from "date-fns"
 import { CreateClassDialog } from "@/components/teaching/classes/create-class-dialog"
+import { ClassTeacherFilter } from "@/components/teaching/classes/class-teacher-filter"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,9 +20,10 @@ export default function MyClassesPage() {
   const t = useTranslations()
   const { user, isLoading: isUserLoading } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
+  const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null)
   
   const queryArgs = isAdmin 
-    ? {} 
+    ? (selectedTeacherId ? { teacherId: selectedTeacherId } : {}) 
     : (user ? { teacherId: user._id } : "skip")
 
   const classes = useQuery(api.classes.list, queryArgs)
@@ -58,7 +62,16 @@ export default function MyClassesPage() {
               : t('class.manageMyDescription')}
           </p>
         </div>
-        {isAdmin && <CreateClassDialog />}
+        
+        <div className="flex items-center gap-2">
+            {isAdmin && (
+                <ClassTeacherFilter 
+                    selectedTeacherId={selectedTeacherId}
+                    onSelectTeacher={setSelectedTeacherId}
+                />
+            )}
+            {isAdmin && <CreateClassDialog selectedTeacherId={selectedTeacherId} />}
+        </div>
       </div>
 
       {classes.length === 0 ? (

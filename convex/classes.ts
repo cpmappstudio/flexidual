@@ -167,6 +167,7 @@ export const getStudents = query({
       email: s!.email,
       avatarStorageId: s!.avatarStorageId,
       isActive: s!.isActive,
+      imageUrl: s!.imageUrl,
     }));
   },
 });
@@ -208,6 +209,7 @@ export const searchStudents = query({
       fullName: s.fullName,
       email: s.email,
       avatarStorageId: s.avatarStorageId,
+      imageUrl: s.imageUrl,
     }));
   },
 });
@@ -345,11 +347,8 @@ export const addStudent = mutation({
     }
 
     // Validate: Admins or the class teacher can add students
-    if (
-      !["admin", "superadmin"].includes(user.role) &&
-      classData.teacherId !== user._id
-    ) {
-      throw new Error("Only administrators or the class teacher can add students");
+    if (!["admin", "superadmin"].includes(user.role)) {
+      throw new Error("Only administrators can add students");
     }
 
     // Verify student exists
@@ -386,11 +385,8 @@ export const removeStudent = mutation({
     }
 
     // Validate: Admins or the class teacher can remove students
-    if (
-      !["admin", "superadmin"].includes(user.role) &&
-      classData.teacherId !== user._id
-    ) {
-      throw new Error("Only administrators or the class teacher can remove students");
+    if (!["admin", "superadmin"].includes(user.role)) {
+      throw new Error("Only administrators can remove students");
     }
 
     await ctx.db.patch(args.classId, {
@@ -415,11 +411,8 @@ export const addStudents = mutation({
       throw new Error("Class not found");
     }
 
-    if (
-      !["admin", "superadmin"].includes(user.role) &&
-      classData.teacherId !== user._id
-    ) {
-      throw new Error("Only administrators or the class teacher can add students");
+    if (!["admin", "superadmin"].includes(user.role)) {
+      throw new Error("Only administrators can add students");
     }
 
     // Verify all students exist

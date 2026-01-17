@@ -44,7 +44,11 @@ const formSchema = z.object({
   teacherId: z.string().optional(),
 })
 
-export function CreateClassDialog() {
+interface CreateClassDialogProps {
+  selectedTeacherId?: Id<"users"> | null
+}
+
+export function CreateClassDialog({ selectedTeacherId }: CreateClassDialogProps) {
   const [open, setOpen] = useState(false)
   const { user } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
@@ -59,6 +63,7 @@ export function CreateClassDialog() {
     defaultValues: {
       name: "",
       curriculumId: "",
+      teacherId: selectedTeacherId || undefined,
     },
   })
 
