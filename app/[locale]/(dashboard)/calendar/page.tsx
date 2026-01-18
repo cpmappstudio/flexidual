@@ -20,8 +20,6 @@ import CalendarProvider from "@/components/calendar/calendar-provider"
 import CalendarNewEventDialog from "@/components/calendar/dialog/calendar-new-event-dialog"
 import CalendarManageEventDialog from "@/components/calendar/dialog/calendar-manage-event-dialog"
 import { useCalendarContext } from "@/components/calendar/calendar-context"
-import CalendarHeaderTeacherFilter from "@/components/calendar/header/filters/calendar-header-teacher-filter"
-import { teardownTraceSubscriber } from "next/dist/build/swc/generated-native"
 
 // Internal component to handle Agenda Logic using Context
 function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {

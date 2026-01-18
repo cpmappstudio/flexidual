@@ -37,13 +37,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, School, Link as LinkIcon } from "lucide-react";
+import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Image from "next/image";
 
 const formSchema = z.object({

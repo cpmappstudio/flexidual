@@ -20,7 +20,6 @@ import { toast } from "sonner";
 import { Id } from "@/convex/_generated/dataModel";
 import { Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const formSchema = z.object({
   classId: z.string().min(1, "Class is required"),
