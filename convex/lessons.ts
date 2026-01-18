@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getCurrentUserOrThrow } from "./users";
+import { Id } from "./_generated/dataModel";
 
 // ============================================================================
 // QUERIES
@@ -109,7 +110,12 @@ export const create = mutation({
       throw new Error("Curriculum not found");
     }
 
-    // Calculate order if not provided (add to end)
+    // If Teacher, verify they are assigned to this curriculum
+    if (user.role === "teacher") {
+      await verifyTeacherAccess(ctx, user._id, args.curriculumId);
+    }
+
+    // Calculate order if not provided
     let order = args.order;
     if (order === undefined) {
       const lessons = await ctx.db
@@ -150,7 +156,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    // Validate: Teachers and admins can update lessons
+    // Validate role
     if (!["teacher", "admin", "superadmin"].includes(user.role)) {
       throw new Error("Only teachers and administrators can update lessons");
     }
@@ -158,6 +164,11 @@ export const update = mutation({
     const lesson = await ctx.db.get(args.id);
     if (!lesson) {
       throw new Error("Lesson not found");
+    }
+
+    // If Teacher, verify they are assigned to this curriculum
+    if (user.role === "teacher") {
+      await verifyTeacherAccess(ctx, user._id, lesson.curriculumId);
     }
 
     const { id, ...updates } = args;
@@ -173,8 +184,11 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    // Validate: Only admins can delete lessons
-    if (!["admin", "superadmin"].includes(user.role)) {
+    // Only admins usually delete, but if you allow teachers:
+    if (user.role === "teacher") {
+      const lesson = await ctx.db.get(args.id);
+      if (lesson) await verifyTeacherAccess(ctx, user._id, lesson.curriculumId);
+    } else if (!["admin", "superadmin"].includes(user.role)) {
       throw new Error("Only administrators can delete lessons");
     }
 
@@ -282,3 +296,18 @@ export const duplicate = mutation({
     });
   },
 });
+
+/**
+ * Helper: Verify teacher access to curriculum
+ */
+async function verifyTeacherAccess(ctx: any, teacherId: Id<"users">, curriculumId: Id<"curriculums">) {
+  const hasClass = await ctx.db
+    .query("classes")
+    .withIndex("by_teacher", (q: any) => q.eq("teacherId", teacherId).eq("isActive", true))
+    .filter((q: any) => q.eq(q.field("curriculumId"), curriculumId))
+    .first();
+
+  if (!hasClass) {
+    throw new Error("You are not assigned to any class using this curriculum.");
+  }
+}

@@ -32,7 +32,7 @@ export default function MyCurriculumsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {curriculums.map((curr) => (
+        {curriculums?.map((curr) => (
           <Card key={curr._id} className="group hover:shadow-md transition-all relative">
              {isAdmin && <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                 <CurriculumDialog curriculum={curr} />
@@ -59,9 +59,9 @@ export default function MyCurriculumsPage() {
             </CardContent>
           </Card>
         ))}
-        {curriculums.length === 0 && (
+        {curriculums?.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
-            {t('curriculum.noResults')}
+            { isAdmin ? t('curriculum.noResults') : t('common.noResults')}
           </div>
         )}
       </div>

@@ -1,42 +1,101 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { getCurrentUserOrThrow } from "./users";
+import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 
 // ============================================================================
 // QUERIES
 // ============================================================================
 
 /**
- * List all curriculums with optional inactive filter
+ * List curriculums with strict role-based access
+ * - Admins: See all
+ * - Teachers/Tutors: Only see curriculums for classes they are assigned to
  */
 export const list = query({
   args: { 
     includeInactive: v.optional(v.boolean()) 
   },
   handler: async (ctx, args) => {
-    if (args.includeInactive) {
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) return null;
+
+    // 1. ADMINS: Full Access
+    if (["admin", "superadmin"].includes(user.role)) {
+      if (args.includeInactive) {
+        return await ctx.db.query("curriculums").order("desc").collect();
+      }
       return await ctx.db
         .query("curriculums")
+        .withIndex("by_active", (q) => q.eq("isActive", true))
         .order("desc")
         .collect();
     }
-    
-    // Default: only active curriculums
-    return await ctx.db
-      .query("curriculums")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
-      .order("desc")
-      .collect();
+
+    // 2. TEACHERS/TUTORS: Restricted Access
+    if (["teacher", "tutor"].includes(user.role)) {
+      // Find all active classes assigned to this teacher
+      const myClasses = await ctx.db
+        .query("classes")
+        .withIndex("by_teacher", (q) => 
+          q.eq("teacherId", user._id).eq("isActive", true)
+        )
+        .collect();
+      
+      // Extract unique curriculum IDs
+      const myCurriculumIds = Array.from(new Set(myClasses.map(c => c.curriculumId)));
+
+      if (myCurriculumIds.length === 0) return [];
+
+      // Fetch the actual curriculum documents
+      const curriculums = await Promise.all(
+        myCurriculumIds.map(id => ctx.db.get(id))
+      );
+
+      // Filter nulls and strictly respect isActive unless specifically asked otherwise (though teachers usually shouldn't see inactive)
+      return curriculums
+        .filter((c): c is NonNullable<typeof c> => c !== null && (args.includeInactive || c.isActive))
+        .sort((a, b) => b.createdAt - a.createdAt);
+    }
+
+    // Students/Others: No access by default (or implement student logic if needed)
+    return [];
   },
 });
 
 /**
- * Get single curriculum by ID
+ * Get single curriculum by ID with ownership check
  */
 export const get = query({
   args: { id: v.id("curriculums") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) return [];
+    const curriculum = await ctx.db.get(args.id);
+
+    if (!curriculum) return null;
+
+    // 1. ADMINS: Allow
+    if (["admin", "superadmin"].includes(user.role)) {
+      return curriculum;
+    }
+
+    // 2. TEACHERS: Check assignment
+    if (["teacher", "tutor"].includes(user.role)) {
+      // Check if they have ANY active class with this curriculum
+      const hasAccess = await ctx.db
+        .query("classes")
+        .withIndex("by_teacher", (q) => q.eq("teacherId", user._id).eq("isActive", true))
+        .filter(q => q.eq(q.field("curriculumId"), args.id))
+        .first();
+
+      if (!hasAccess) {
+        // Return null instead of error to fail gracefully in UI (404-like)
+        return null; 
+      }
+      return curriculum;
+    }
+
+    return null;
   },
 });
 
