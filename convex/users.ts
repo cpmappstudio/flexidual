@@ -92,27 +92,19 @@ export const getUsers = query({
     isActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("users");
+    let users = await ctx.db.query("users").collect();
 
-    // Filter by role and active status if provided
+    // Filter by role if provided
     if (args.role !== undefined) {
-      const users = await query
-        .withIndex("by_role", (q) => 
-          q.eq("role", args.role!).eq("isActive", args.isActive ?? true)
-        )
-        .collect();
-      return users;
+      users = users.filter(u => u.role === args.role);
     }
 
-    // Otherwise get all users
-    const allUsers = await query.collect();
-    
     // Filter by isActive if specified
     if (args.isActive !== undefined) {
-      return allUsers.filter(u => u.isActive === args.isActive);
+      users = users.filter(u => u.isActive === args.isActive);
     }
 
-    return allUsers;
+    return users;
   },
 });
 

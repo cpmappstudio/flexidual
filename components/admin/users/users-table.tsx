@@ -26,96 +26,107 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { TeacherDialog } from "@/components/admin/teachers/teacher-dialog";
+import { UserDialog } from "./user-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useTranslations } from "next-intl";
+import { UserRole } from "@/convex/types";
 
-export type Teacher = {
+// User type definition
+export type User = {
   _id: Id<"users">;
   fullName: string;
   firstName?: string;
   lastName?: string;
   email: string;
   avatarStorageId?: Id<"_storage">;
-  role: "teacher" | "admin";
+  role: string;
   isActive: boolean;
 };
 
-function TeacherAvatar({ teacher }: { teacher: Teacher }) {
+// Props to configure the table for different views (e.g. "Teachers Only" vs "Admins")
+interface UsersTableProps {
+  roleFilter?: UserRole;
+  allowedRoles?: UserRole[]; // Passed to dialog to limit creation options
+}
+
+function UserAvatar({ user }: { user: User }) {
   const avatarUrl = useQuery(
     api.users.getAvatarUrl,
-    teacher.avatarStorageId ? { storageId: teacher.avatarStorageId } : "skip",
+    user.avatarStorageId ? { storageId: user.avatarStorageId } : "skip",
   );
 
   return (
     <Avatar className="h-8 w-8">
-      {avatarUrl && <AvatarImage src={avatarUrl} alt={teacher.fullName} />}
-      <AvatarFallback>{teacher.fullName.substring(0, 2).toUpperCase()}</AvatarFallback>
+      {avatarUrl && <AvatarImage src={avatarUrl} alt={user.fullName} />}
+      <AvatarFallback>{user.fullName.substring(0, 2).toUpperCase()}</AvatarFallback>
     </Avatar>
   );
 }
 
-export const columns: ColumnDef<Teacher>[] = [
-  {
-    accessorKey: "fullName",
-    header: ({ column }) => (
-      <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-        Name <ArrowUpDown className="ml-2 h-4 w-4" />
-      </Button>
-    ),
-    cell: ({ row }) => (
-      <div className="flex items-center gap-3">
-        <TeacherAvatar teacher={row.original} />
-        <span className="font-medium">{row.getValue("fullName")}</span>
-      </div>
-    ),
-  },
-  {
-    accessorKey: "email",
-    header: "Email",
-  },
-  // {
-  //   accessorKey: "role",
-  //   header: "Role",
-  //   cell: ({ row }) => <Badge variant="outline">{row.getValue("role")}</Badge>,
-  // },
-  {
-    accessorKey: "isActive",
-    header: "Status",
-    cell: ({ row }) => (
-      <Badge variant={row.original.isActive ? "default" : "secondary"}>
-        {row.original.isActive ? "Active" : "Inactive"}
-      </Badge>
-    ),
-  },
-  {
-    id: "actions",
-    cell: ({ row }) => {
-      return (
-        <div className="flex justify-end">
-          <TeacherDialog teacher={row.original} />
-        </div>
-      )
-    },
-  },
-];
-
-export function TeachersTable() {
+export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
   const t = useTranslations();
-  const users = useQuery(api.users.getUsers, { role: "teacher" });
+  
+  // Fetch users (filtered by role if provided)
+  const users = useQuery(api.users.getUsers, roleFilter ? { role: roleFilter } : {});
   const [sorting, setSorting] = React.useState<TableSortingState>([]);
   
-  const data = React.useMemo(() => {
-    if (!users) return [];
-    return users.map(u => ({
-        ...u,
-        role: u.role as "teacher"
-    }));
-  }, [users]);
+  const columns: ColumnDef<User>[] = [
+    {
+      accessorKey: "fullName",
+      header: ({ column }) => (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          {t('common.name')} <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <UserAvatar user={row.original} />
+          <span className="font-medium">{row.getValue("fullName")}</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "email",
+      header: t('teacher.email'),
+    },
+    {
+      accessorKey: "role",
+      header: t('teacher.role'),
+      cell: ({ row }) => {
+        const role = row.getValue("role") as string;
+        // Map role to badge variant
+        const variant = role === "admin" || role === "superadmin" ? "destructive" : 
+                        role === "teacher" ? "default" : "secondary";
+        return <Badge variant={variant}>{t(`navigation.${role}s`)}</Badge>;
+      },
+    },
+    {
+      accessorKey: "isActive",
+      header: t('common.status'),
+      cell: ({ row }) => (
+        <Badge variant={row.original.isActive ? "outline" : "secondary"}>
+          {row.original.isActive ? t('common.active') : t('common.inactive')}
+        </Badge>
+      ),
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        return (
+          <div className="flex justify-end">
+            <UserDialog 
+                user={row.original} 
+                allowedRoles={allowedRoles} // Pass constraints to edit dialog
+            />
+          </div>
+        )
+      },
+    },
+  ];
 
   const table = useReactTable({
-    data,
+    data: users || [],
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -133,13 +144,18 @@ export function TeachersTable() {
         <div className="relative w-72">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder={t('teacher.searchPlaceholder')}
+            placeholder={t('common.search')}
             value={(table.getColumn("fullName")?.getFilterValue() as string) ?? ""}
             onChange={(event) => table.getColumn("fullName")?.setFilterValue(event.target.value)}
             className="pl-8"
           />
         </div>
-        <TeacherDialog />
+        
+        {/* Create Button with context-aware configuration */}
+        <UserDialog 
+            defaultRole={roleFilter} 
+            allowedRoles={allowedRoles} 
+        />
       </div>
 
       <div className="rounded-md border">
@@ -176,6 +192,8 @@ export function TeachersTable() {
           </TableBody>
         </Table>
       </div>
+      
+      {/* Pagination Controls could go here */}
     </div>
   );
 }

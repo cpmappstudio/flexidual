@@ -124,6 +124,15 @@ export function NavMain() {
             </SidebarMenuItem>
 
             <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname.includes("/admin/users")}>
+                <Link href="/admin/users">
+                  <GraduationCap />
+                  <span>{t('navigation.users')}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/lessons")}>
                 <Link href="/admin/lessons">
                   <LibraryBig />
