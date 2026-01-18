@@ -345,7 +345,7 @@ export default function TeachingDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {curriculums.slice(0, 3).map((curr) => (
+                {curriculums?.slice(0, 3).map((curr) => (
                   <Link 
                     key={curr._id} 
                     href={`/curriculums/${curr._id}`}
@@ -362,7 +362,7 @@ export default function TeachingDashboard() {
                     </div>
                   </Link>
                 ))}
-                {curriculums.length === 0 && (
+                {curriculums?.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     {t('dashboard.noCurriculums')}
                   </p>

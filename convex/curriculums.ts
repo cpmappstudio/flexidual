@@ -69,7 +69,7 @@ export const get = query({
   args: { id: v.id("curriculums") },
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
-    if (!user) return [];
+    if (!user) return null;
     const curriculum = await ctx.db.get(args.id);
 
     if (!curriculum) return null;

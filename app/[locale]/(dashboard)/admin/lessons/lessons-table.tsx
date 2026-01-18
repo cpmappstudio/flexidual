@@ -87,7 +87,7 @@ export function LessonsTable() {
                     <SelectValue placeholder={t('lesson.selectCurriculum')} />
                 </SelectTrigger>
                 <SelectContent>
-                    {curriculums.map((c) => (
+                    {curriculums?.map((c) => (
                         <SelectItem key={c._id} value={c._id}>{c.title}</SelectItem>
                     ))}
                 </SelectContent>

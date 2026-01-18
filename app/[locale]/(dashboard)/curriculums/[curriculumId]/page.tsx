@@ -40,7 +40,7 @@ export default function CurriculumDetailPage() {
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          {t('common.back')} {/* CHANGE */}
+          {t('common.back')}
         </Button>
       </div>
 
