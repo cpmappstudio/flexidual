@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import Image from "next/image"
+import { useTranslations } from "next-intl"
 
 interface StudentManagerProps {
   classId: Id<"classes">
@@ -25,6 +26,7 @@ interface StudentManagerProps {
 
 export function StudentManager({ classId }: StudentManagerProps) {
   const { user } = useCurrentUser()
+  const t = useTranslations()
   const students = useQuery(api.classes.getStudents, { classId })
   const removeStudent = useMutation(api.classes.removeStudent)
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
@@ -48,8 +50,8 @@ export function StudentManager({ classId }: StudentManagerProps) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle>Students ({students.length})</CardTitle>
-          <CardDescription>Manage enrollment for this class.</CardDescription>
+          <CardTitle>{t("navigation.students")} ({students.length})</CardTitle>
+          <CardDescription>{t("class.manageEnrollment")}</CardDescription>
         </div>
         
         {isAdmin && <AddStudentDialog classId={classId} />}
@@ -99,7 +101,7 @@ export function StudentManager({ classId }: StudentManagerProps) {
                         onClick={() => handleRemove(student._id, student.fullName)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        Remove from Class
+                        {t("student.removeFromClass")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

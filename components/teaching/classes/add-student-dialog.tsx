@@ -17,6 +17,7 @@ import { Loader2, Plus, Search, UserPlus } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { toast } from "sonner"
 import Image from "next/image"
+import { useTranslations } from "next-intl"
 // import { useDebounce } from "@/hooks/use-debounce" // We might need to create this hook or just use timeout
 
 interface AddStudentDialogProps {
@@ -26,6 +27,7 @@ interface AddStudentDialogProps {
 export function AddStudentDialog({ classId }: AddStudentDialogProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
+  const t = useTranslations()
   // Debounce search to save API calls (optional, but good practice)
   // For now we pass search directly
   
@@ -50,19 +52,19 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
       <DialogTrigger asChild>
         <Button size="sm">
           <UserPlus className="mr-2 h-4 w-4" />
-          Enroll Student
+          {t("class.enrollStudent")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Enroll Students</DialogTitle>
+          <DialogTitle>{t("class.enrollStudent")}</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-4 pt-4">
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by name or email..."
+              placeholder={t("student.searchPlaceholder")}
               className="pl-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -72,7 +74,7 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
           <div className="min-h-[200px] space-y-2">
             {search.length < 2 ? (
               <p className="text-sm text-center text-muted-foreground py-8">
-                Type at least 2 characters to search.
+                {t("student.searchMinChars")}
               </p>
             ) : !searchResults ? (
               <div className="flex justify-center py-8">
