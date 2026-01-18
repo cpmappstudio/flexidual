@@ -32,7 +32,7 @@
     "live": "Ao Vivo",
     "creating": "Criando...",
     "all": "Todos",
-    "newUsers": "Adicionar Novos Usuários"
+    "newUsers": "Adicionar Usuários"
   },
   "days": {
     "sunday": "Domingo",
@@ -67,7 +67,9 @@
     "allClasses": "Todas as Turmas",
     "allLessons": "Todas as Aulas",
     "allCurriculums": "Todos os Currículos",
-    "users": "Usuários"
+    "users": "Usuários",
+    "allUsers": "Todos os Usuários",
+    "allUsersDescription": "Visão geral de todos os usuários registrados na plataforma."
   },
   "dashboard": {
     "today": "Hoje",

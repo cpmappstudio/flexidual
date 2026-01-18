@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAction } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
@@ -14,11 +14,28 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { EntityDialog } from "@/components/ui/entity-dialog"
-import { UserPlus, Edit, Trash2, /*ShieldCheck, GraduationCap, School */ } from "lucide-react"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog"
+import { 
+    UserPlus, 
+    Edit, 
+    Trash2, 
+    Plus, 
+    X,
+    Loader2
+} from "lucide-react"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 import { UserRole } from "@/convex/types"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
 
 interface UserDialogProps {
     user?: {
@@ -30,7 +47,18 @@ interface UserDialogProps {
         isActive?: boolean
     }
     defaultRole?: UserRole
-    allowedRoles?: UserRole[] // If provided, limits the dropdown options
+    allowedRoles?: UserRole[]
+}
+
+const ALL_ROLES: UserRole[] = ["student", "teacher", "tutor", "admin", "superadmin"]
+
+// Temporary type for the queue
+type PendingUser = {
+    id: string
+    firstName: string
+    lastName: string
+    email: string
+    role: UserRole
 }
 
 export function UserDialog({ user, defaultRole, allowedRoles }: UserDialogProps) {
@@ -38,52 +66,142 @@ export function UserDialog({ user, defaultRole, allowedRoles }: UserDialogProps)
     const isEditing = !!user
     
     // API Hooks
-    const createUser = useAction(api.users.createUserWithClerk)
+    const createUsers = useAction(api.users.createUsersWithClerk) // Plural action
     const updateUser = useAction(api.users.updateUserWithClerk)
     const deleteUser = useAction(api.users.deleteUserWithClerk)
 
+    // State
     const [isOpen, setIsOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    
+    // Batch Mode State
+    const [queue, setQueue] = useState<PendingUser[]>([])
+    
+    // Form Inputs (Used for both single edit and batch adding)
+    const [formData, setFormData] = useState({
+        firstName: "",
+        lastName: "",
+        email: "",
+        role: defaultRole || "student" as UserRole,
+        status: "active"
+    })
 
-    // Determine available roles
-    const allRoles: UserRole[] = ["student", "teacher", "tutor", "admin", "superadmin"]
-    const rolesToDisplay = allowedRoles || allRoles
-    const effectiveDefaultRole = user?.role as UserRole || defaultRole || rolesToDisplay[0]
+    // Determine roles
+    
+    const rolesToDisplay = allowedRoles || ALL_ROLES
 
-    async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault()
+    // Reset form when dialog opens/closes
+    useEffect(() => {
+        if (isOpen) {
+            if (isEditing && user) {
+                setFormData({
+                    firstName: user.firstName || "",
+                    lastName: user.lastName || "",
+                    email: user.email,
+                    role: user.role as UserRole,
+                    status: user.isActive ? "active" : "inactive"
+                })
+            } else {
+                setQueue([])
+                setFormData({
+                    firstName: "",
+                    lastName: "",
+                    email: "",
+                    role: (defaultRole || rolesToDisplay[0]) as UserRole,
+                    status: "active"
+                })
+            }
+        }
+    }, [isOpen, user])
+
+    // --- BATCH MODE HANDLERS ---
+
+    const handleAddToQueue = (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!formData.email || !formData.firstName || !formData.lastName) return
+
+        const newUser: PendingUser = {
+            id: Math.random().toString(36).substr(2, 9),
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            role: formData.role
+        }
+
+        setQueue([...queue, newUser])
+        
+        // Reset inputs but keep role
+        setFormData(prev => ({
+            ...prev,
+            firstName: "",
+            lastName: "",
+            email: ""
+        }))
+        
+        // Focus back on first name (optional, would require ref)
+    }
+
+    const handleRemoveFromQueue = (id: string) => {
+        setQueue(queue.filter(u => u.id !== id))
+    }
+
+    const handleBatchSubmit = async () => {
+        if (queue.length === 0) return
         setIsSubmitting(true)
-        const formData = new FormData(event.currentTarget)
 
         try {
-            const role = formData.get("role") as UserRole
-            
-            if (isEditing && user) {
-                await updateUser({
-                    userId: user._id,
-                    updates: {
-                        firstName: formData.get("firstName") as string,
-                        lastName: formData.get("lastName") as string,
-                        email: formData.get("email") as string,
-                        role: role, 
-                        isActive: formData.get("status") === "active",
-                        avatarStorageId: null // Handled separately if needed
-                    }
-                })
-                toast.success(t('common.save'))
+            const results = await createUsers({
+                users: queue.map(u => ({
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    email: u.email,
+                    role: u.role
+                })),
+                sendInvitation: true // Could be a checkbox option
+            })
+
+            const successes = results.filter(r => r.status === "success").length
+            const failures = results.filter(r => r.status === "error")
+
+            if (failures.length === 0) {
+                toast.success(`${successes} users created successfully`)
+                setIsOpen(false)
             } else {
-                await createUser({
-                    firstName: formData.get("firstName") as string,
-                    lastName: formData.get("lastName") as string,
-                    email: formData.get("email") as string,
-                    role: role,
-                })
-                toast.success(t('common.create'))
+                toast.warning(`${successes} created, ${failures.length} failed`)
+                // Keep failed users in queue? For now, we close to keep it simple, 
+                // or you could filter the queue to only show failed ones.
+                console.error("Failed users:", failures)
             }
+        } catch (error) {
+            toast.error("Batch creation failed")
+            console.error(error)
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    // --- SINGLE EDIT HANDLER ---
+
+    const handleEditSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!user) return
+        setIsSubmitting(true)
+
+        try {
+            await updateUser({
+                userId: user._id,
+                updates: {
+                    firstName: formData.firstName,
+                    lastName: formData.lastName,
+                    email: formData.email,
+                    role: formData.role, 
+                    isActive: formData.status === "active",
+                }
+            })
+            toast.success(t('common.save'))
             setIsOpen(false)
         } catch (error) {
-            console.error(error)
-            toast.error(t('errors.operationFailed'))
+            toast.error("Update failed" + (error instanceof Error ? `: ${error.message}` : ""))
         } finally {
             setIsSubmitting(false)
         }
@@ -98,11 +216,12 @@ export function UserDialog({ user, defaultRole, allowedRoles }: UserDialogProps)
             toast.success(t('common.delete'))
             setIsOpen(false)
         } catch (error) {
-            toast.error(t('errors.operationFailed') + ': ' + (error as Error).message)
+            toast.error("Delete failed" + (error instanceof Error ? `: ${error.message}` : ""))
         }
     }
 
-    // Dynamic Trigger Button
+    // --- RENDER HELPERS ---
+
     const trigger = isEditing ? (
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
             <Edit className="h-4 w-4 text-muted-foreground" />
@@ -111,108 +230,209 @@ export function UserDialog({ user, defaultRole, allowedRoles }: UserDialogProps)
     ) : (
         <Button className="gap-2">
             <UserPlus className="h-4 w-4" />
-            {/* Show specific text if only one role allowed, e.g. "Add Teacher" */}
-            {allowedRoles?.length && allowedRoles?.length >= 1 
-                ? `${t('common.add')} ${t(`navigation.${allowedRoles[0]}s`)}` // Naive pluralization fallback
-                : t('common.newUsers') // Fallback to "Add New..."
+            {allowedRoles?.length === 1 
+                ? `${t('common.add')} ${t(`navigation.${allowedRoles[0]}s`)}`
+                : t('common.add') + " Users"
             }
         </Button>
     )
 
     return (
-        <EntityDialog
-            trigger={trigger}
-            title={isEditing ? t('common.edit') : t('common.create')}
-            onSubmit={handleSubmit}
-            submitLabel={isEditing ? t('common.save') : t('common.create')}
-            open={isOpen}
-            onOpenChange={setIsOpen}
-            isSubmitting={isSubmitting}
-            leftActions={isEditing ? (
-                <Button type="button" variant="destructive" onClick={handleDelete}>
-                    <Trash2 className="h-4 w-4 mr-2" /> {t('common.delete')}
-                </Button>
-            ) : undefined}
-        >
-            <div className="grid gap-6 py-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="grid gap-3">
-                        <Label htmlFor="firstName">{t('teacher.firstName')}</Label>
-                        <Input 
-                            id="firstName" 
-                            name="firstName" 
-                            defaultValue={user?.firstName} 
-                            required 
-                        />
-                    </div>
-                    <div className="grid gap-3">
-                        <Label htmlFor="lastName">{t('teacher.lastName')}</Label>
-                        <Input 
-                            id="lastName" 
-                            name="lastName" 
-                            defaultValue={user?.lastName} 
-                            required 
-                        />
-                    </div>
-                </div>
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                {trigger}
+            </DialogTrigger>
+            <DialogContent className={isEditing ? "sm:max-w-[500px]" : "sm:max-w-[700px]"}>
+                <DialogHeader>
+                    <DialogTitle>
+                        {isEditing ? t('common.edit') : "Add Users"}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {isEditing 
+                            ? "Update user details and permissions." 
+                            : "Add one or more users to the platform."}
+                    </DialogDescription>
+                </DialogHeader>
 
-                <div className="grid gap-3">
-                    <Label htmlFor="email">{t('teacher.email')}</Label>
-                    <Input 
-                        id="email" 
-                        name="email" 
-                        type="email" 
-                        defaultValue={user?.email} 
-                        required 
-                    />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-3">
-                        <Label htmlFor="role">{t('teacher.role')}</Label>
-                        
-                        {/* Lock role if editing OR if allowedRoles is restricted to 1 */}
-                        {rolesToDisplay.length === 1 ? (
-                            <>
+                <div className="grid gap-6 py-4">
+                    {/* INPUT FORM */}
+                    <form 
+                        id="user-form" 
+                        onSubmit={isEditing ? handleEditSubmit : handleAddToQueue}
+                        className="grid gap-4 p-4 border rounded-lg bg-muted/30"
+                    >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="firstName">{t('teacher.firstName')}</Label>
                                 <Input 
-                                    value={t(`navigation.${rolesToDisplay[0]}s`)} // Display name
-                                    disabled 
-                                    className="bg-muted"
+                                    id="firstName" 
+                                    value={formData.firstName}
+                                    onChange={e => setFormData({...formData, firstName: e.target.value})}
+                                    required 
                                 />
-                                <input type="hidden" name="role" value={rolesToDisplay[0]} />
-                            </>
-                        ) : (
-                            <Select name="role" defaultValue={effectiveDefaultRole}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder={t('teacher.selectRole')} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {rolesToDisplay.map(role => (
-                                        <SelectItem key={role} value={role}>
-                                            {t(`navigation.${role}s`)}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="lastName">{t('teacher.lastName')}</Label>
+                                <Input 
+                                    id="lastName" 
+                                    value={formData.lastName}
+                                    onChange={e => setFormData({...formData, lastName: e.target.value})}
+                                    required 
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="email">{t('teacher.email')}</Label>
+                            <Input 
+                                id="email" 
+                                type="email"
+                                value={formData.email}
+                                onChange={e => setFormData({...formData, email: e.target.value})}
+                                required 
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="role">{t('teacher.role')}</Label>
+                                {/* Role is locked in edit mode */}
+                                <Select 
+                                    value={formData.role} 
+                                    onValueChange={(v) => setFormData({...formData, role: v as UserRole})}
+                                    disabled={isEditing || rolesToDisplay.length === 1}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={t('teacher.selectRole')} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {rolesToDisplay.map(role => (
+                                            <SelectItem key={role} value={role}>
+                                                {t(`navigation.${role}s`)}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            
+                            {isEditing && (
+                                <div className="grid gap-2">
+                                    <Label htmlFor="status">{t('common.status')}</Label>
+                                    <Select 
+                                        value={formData.status}
+                                        onValueChange={(v) => setFormData({...formData, status: v})}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="active">{t('common.active')}</SelectItem>
+                                            <SelectItem value="inactive">{t('common.inactive')}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Add to Queue Button (Create Mode Only) */}
+                        {!isEditing && (
+                            <div className="flex justify-end mt-2">
+                                <Button type="submit" variant="secondary" size="sm" className="gap-2">
+                                    <Plus className="h-4 w-4" />
+                                    Add to Queue
+                                </Button>
+                            </div>
                         )}
-                    </div>
-                    
-                    {isEditing && (
-                        <div className="grid gap-3">
-                            <Label htmlFor="status">{t('common.status')}</Label>
-                            <Select name="status" defaultValue={user?.isActive ? "active" : "inactive"}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder={t('common.selectStatus')} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="active">{t('common.active')}</SelectItem>
-                                    <SelectItem value="inactive">{t('common.inactive')}</SelectItem>
-                                </SelectContent>
-                            </Select>
+                    </form>
+
+                    {/* QUEUE LIST (Create Mode Only) */}
+                    {!isEditing && (
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <Label>Users to Create ({queue.length})</Label>
+                                {queue.length > 0 && (
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="text-muted-foreground h-auto p-0"
+                                        onClick={() => setQueue([])}
+                                    >
+                                        Clear All
+                                    </Button>
+                                )}
+                            </div>
+                            
+                            <ScrollArea className="h-[150px] border rounded-md">
+                                {queue.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-4">
+                                        <UserPlus className="h-8 w-8 mb-2 opacity-20" />
+                                        <p>Add users above to build your list.</p>
+                                    </div>
+                                ) : (
+                                    <div className="divide-y">
+                                        {queue.map((u) => (
+                                            <div key={u.id} className="flex items-center justify-between p-3 text-sm hover:bg-muted/50">
+                                                <div className="grid gap-0.5">
+                                                    <div className="font-medium flex items-center gap-2">
+                                                        {u.firstName} {u.lastName}
+                                                        <Badge variant="outline" className="text-[10px] h-5">
+                                                            {t(`navigation.${u.role}s`)}
+                                                        </Badge>
+                                                    </div>
+                                                    <div className="text-muted-foreground text-xs">{u.email}</div>
+                                                </div>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                                    onClick={() => handleRemoveFromQueue(u.id)}
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </ScrollArea>
                         </div>
                     )}
                 </div>
-            </div>
-        </EntityDialog>
+
+                <DialogFooter className="gap-2">
+                    {isEditing && (
+                         <Button 
+                            type="button" 
+                            variant="destructive" 
+                            onClick={handleDelete}
+                            className="mr-auto"
+                        >
+                            <Trash2 className="h-4 w-4 mr-2" /> {t('common.delete')}
+                        </Button>
+                    )}
+
+                    <Button variant="outline" onClick={() => setIsOpen(false)}>
+                        {t('common.cancel')}
+                    </Button>
+                    
+                    {isEditing ? (
+                        <Button 
+                            onClick={handleEditSubmit} 
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {t('common.save')}
+                        </Button>
+                    ) : (
+                        <Button 
+                            onClick={handleBatchSubmit} 
+                            disabled={queue.length === 0 || isSubmitting}
+                        >
+                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {t('common.create')} {queue.length > 0 && `(${queue.length})`}
+                        </Button>
+                    )}
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }

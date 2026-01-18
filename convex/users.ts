@@ -482,6 +482,101 @@ export const createUserWithClerk = action({
 });
 
 /**
+ * Batch create users in Clerk and Convex
+ * Returns a report of success/failures
+ */
+export const createUsersWithClerk = action({
+  args: {
+    users: v.array(v.object({
+      firstName: v.string(),
+      lastName: v.string(),
+      email: v.string(),
+      role: v.union(
+        v.literal("student"),
+        v.literal("teacher"),
+        v.literal("tutor"),
+        v.literal("admin"),
+        v.literal("superadmin")
+      ),
+    })),
+    sendInvitation: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) {
+      throw new Error("CLERK_SECRET_KEY not configured");
+    }
+
+    const results = [];
+
+    // Process sequentially to avoid rate limits, or Promise.all for speed if batches are small
+    // Using sequential here for safety and clearer error reporting
+    for (const user of args.users) {
+      try {
+        // 1. Create in Clerk
+        const clerkResponse = await fetch("https://api.clerk.com/v1/users", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${clerkSecretKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email_address: [user.email],
+            first_name: user.firstName,
+            last_name: user.lastName,
+            public_metadata: {
+              role: user.role,
+            },
+            skip_password_checks: true,
+            skip_password_requirement: true,
+          }),
+        });
+
+        if (!clerkResponse.ok) {
+          const errorData = await clerkResponse.json();
+          throw new Error(errorData.errors?.[0]?.message || "Clerk error");
+        }
+
+        const clerkUser = await clerkResponse.json();
+
+        // 2. Sync to Convex
+        await ctx.runMutation(internal.users.upsertFromClerk, {
+          data: clerkUser
+        });
+
+        // 3. Send Invite (Optional)
+        if (args.sendInvitation) {
+          await fetch("https://api.clerk.com/v1/invitations", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${clerkSecretKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email_address: user.email,
+              public_metadata: { role: user.role },
+              redirect_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/sign-in`,
+            }),
+          });
+        }
+
+        results.push({ email: user.email, status: "success" });
+
+      } catch (error) {
+        console.error(`Failed to create user ${user.email}:`, error);
+        results.push({ 
+          email: user.email, 
+          status: "error", 
+          reason: (error as Error).message 
+        });
+      }
+    }
+
+    return results;
+  },
+});
+
+/**
  * Update user in both Clerk and Convex
  */
 export const updateUserWithClerk = action({

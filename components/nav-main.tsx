@@ -6,7 +6,7 @@ import {
   Calendar,
   LayoutDashboard,
   Users,
-  GraduationCap,
+  // GraduationCap,
   School,
   LibraryBig,
 } from "lucide-react"
@@ -105,7 +105,7 @@ export function NavMain() {
           <>
             <SidebarGroupLabel className="mt-4">{t('navigation.administration')}</SidebarGroupLabel>
             
-            <SidebarMenuItem>
+            {/* <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/teachers")}>
                 <Link href="/admin/teachers">
                   <Users />
@@ -121,13 +121,13 @@ export function NavMain() {
                   <span>{t('navigation.students')}</span>
                 </Link>
               </SidebarMenuButton>
-            </SidebarMenuItem>
+            </SidebarMenuItem> */}
 
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/users")}>
                 <Link href="/admin/users">
-                  <GraduationCap />
-                  <span>{t('navigation.users')}</span>
+                  <Users />
+                  <span>{t('navigation.allUsers')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

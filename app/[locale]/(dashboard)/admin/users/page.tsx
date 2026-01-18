@@ -32,10 +32,10 @@ export default function UserManagementPage() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Users className="h-5 w-5" />
-                                All Users
+                                {t('navigation.allUsers')}
                             </CardTitle>
                             <CardDescription>
-                                Overview of all registered users in the platform.
+                                {t('navigation.allUsersDescription')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
