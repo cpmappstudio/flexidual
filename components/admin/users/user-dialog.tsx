@@ -15,7 +15,7 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { EntityDialog } from "@/components/ui/entity-dialog"
-import { UserPlus, Edit, Trash2, ShieldCheck, GraduationCap, School } from "lucide-react"
+import { UserPlus, Edit, Trash2, /*ShieldCheck, GraduationCap, School */ } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 import { UserRole } from "@/convex/types"
@@ -46,7 +46,7 @@ export function UserDialog({ user, defaultRole, allowedRoles }: UserDialogProps)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     // Determine available roles
-    const allRoles: UserRole[] = ["student", "teacher", "tutor", "admin"]
+    const allRoles: UserRole[] = ["student", "teacher", "tutor", "admin", "superadmin"]
     const rolesToDisplay = allowedRoles || allRoles
     const effectiveDefaultRole = user?.role as UserRole || defaultRole || rolesToDisplay[0]
 
@@ -112,9 +112,9 @@ export function UserDialog({ user, defaultRole, allowedRoles }: UserDialogProps)
         <Button className="gap-2">
             <UserPlus className="h-4 w-4" />
             {/* Show specific text if only one role allowed, e.g. "Add Teacher" */}
-            {allowedRoles?.length === 1 
+            {allowedRoles?.length && allowedRoles?.length >= 1 
                 ? `${t('common.add')} ${t(`navigation.${allowedRoles[0]}s`)}` // Naive pluralization fallback
-                : t('student.new') // Fallback to "Add New..."
+                : t('common.newUsers') // Fallback to "Add New..."
             }
         </Button>
     )

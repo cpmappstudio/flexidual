@@ -30,7 +30,9 @@
     "spanish": "Español",
     "portuguese": "Portugués (BR)",
     "live": "EN VIVO",
-    "creating": "Creando..."
+    "creating": "Creando...",
+    "all": "Todos",
+    "newUsers": "Agregar Nuevos Usuarios"
   },
   "days": {
     "sunday": "Domingo",
@@ -55,6 +57,9 @@
     "platform": "Plataforma",
     "students": "Estudiantes",
     "teachers": "Profesores",
+    "admins": "Administradores",
+    "tutors": "Tutores",
+    "superadmins": "Super Administradores",
     "curriculums": "Currículos",
     "lessons": "Lecciones",
     "classes": "Clases",

@@ -30,7 +30,9 @@
     "spanish": "Spanish",
     "portuguese": "Portuguese (BR)",
     "live": "LIVE",
-    "creating": "Creating..."
+    "creating": "Creating...",
+    "all": "All",
+    "newUsers": "Add New Users"
   },
   "days": {
     "sunday": "Sunday",
@@ -55,6 +57,9 @@
     "platform": "Platform",
     "students": "Students",
     "teachers": "Teachers",
+    "admins": "Admins",
+    "tutors": "Tutors",
+    "superadmins": "Super Admins",
     "curriculums": "Curriculums",
     "lessons": "Lessons",
     "classes": "Classes",
@@ -62,7 +67,7 @@
     "allClasses": "All Classes",
     "allLessons": "All Lessons",
     "allCurriculums": "All Curriculums",
-    "users": "Users"
+    "users": "Users"    
   },
   "dashboard": {
     "today": "Today",
