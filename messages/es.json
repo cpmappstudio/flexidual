@@ -189,11 +189,14 @@
   },
   "class": {
     "name": "Nombre de la Clase",
+    "namePlaceholder": "ej., Ciencia 101 - Otoño 2024",
     "new": "Crear Nueva Clase",
+    "description": "Crear un grupo de estudiantes que seguirán un currículo específico.",
     "edit": "Editar Clase",
     "created": "Clase creada exitosamente",
     "updated": "Clase actualizada",
     "deleted": "Clase eliminada",
+    "curriculum": "Currículo",
     "selectCurriculum": "Seleccionar un currículo",
     "assignTeacher": "Asignar Profesor",
     "selectTeacher": "Seleccionar un profesor",
@@ -220,7 +223,9 @@
     "selectPlaceholder": "Elegir una clase...",
     "schedule": "Horario",
     "byLessons": "Por Lecciones",
-    "allSchedules": "Todos los Horarios"
+    "allSchedules": "Todos los Horarios",
+    "filterByTeacher": "Filtrar por Profesor",
+    "createClass": "Crear Clase"
   },
   "student": {
     "firstName": "Nombre",

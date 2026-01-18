@@ -189,11 +189,14 @@
   },
   "class": {
     "name": "Class Name",
+    "namePlaceholder": "e.g. Science 101 - Fall 2024",
     "new": "Create New Class",
+    "description": "Create a student group that will follow a specific curriculum.",
     "edit": "Edit Class",
     "created": "Class created successfully",
     "updated": "Class updated",
     "deleted": "Class deleted",
+    "curriculum": "Curriculum",
     "selectCurriculum": "Select a curriculum",
     "assignTeacher": "Assign Teacher",
     "selectTeacher": "Select a teacher",
@@ -220,7 +223,9 @@
     "selectPlaceholder": "Choose a class...",
     "schedule": "Schedule",
     "byLessons": "By Lessons",
-    "allSchedules": "All Schedules"
+    "allSchedules": "All Schedules",
+    "filterByTeacher": "Filter by Teacher",
+    "createClass": "Create Class"
   },
   "student": {
     "firstName": "First Name",

@@ -189,11 +189,14 @@
   },
   "class": {
     "name": "Nome da Turma",
+    "namePlaceholder": "ex., Ciências 101 - Outono 2024",
     "new": "Criar Nova Turma",
+    "description": "Crie um grupo de estudantes que seguirão um currículo específico.",
     "edit": "Editar Turma",
     "created": "Turma criada com sucesso",
     "updated": "Turma atualizada",
     "deleted": "Turma excluída",
+    "curriculum": "Currículo",
     "selectCurriculum": "Selecione um currículo",
     "assignTeacher": "Atribuir Professor",
     "selectTeacher": "Selecione um professor",
@@ -220,7 +223,9 @@
     "selectPlaceholder": "Escolher uma turma...",
     "schedule": "Agenda",
     "byLessons": "Por Aulas",
-    "allSchedules": "Todas as Agendas"
+    "allSchedules": "Todas as Agendas",
+    "filterByTeacher": "Filtrar por Professor",
+    "createClass": "Criar Turma"
   },
   "student": {
     "firstName": "Nome",

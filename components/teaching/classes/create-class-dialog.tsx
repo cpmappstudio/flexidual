@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useTranslations } from "next-intl"
 
 const formSchema = z.object({
   name: z.string().min(2, "Class name must be at least 2 characters"),
@@ -51,6 +52,7 @@ interface CreateClassDialogProps {
 export function CreateClassDialog({ selectedTeacherId }: CreateClassDialogProps) {
   const [open, setOpen] = useState(false)
   const { user } = useCurrentUser()
+  const t = useTranslations()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
   
   // 1. Fetch available curriculums (Templates)
@@ -93,14 +95,14 @@ export function CreateClassDialog({ selectedTeacherId }: CreateClassDialogProps)
       <DialogTrigger asChild>
         <Button>
           <Plus className="mr-2 h-4 w-4" />
-          Create Class
+          {t("class.new")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Create New Class</DialogTitle>
+          <DialogTitle>{t("class.new")}</DialogTitle>
           <DialogDescription>
-            Create a group of students that will follow a specific curriculum.
+            {t("class.description")}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -111,9 +113,9 @@ export function CreateClassDialog({ selectedTeacherId }: CreateClassDialogProps)
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Class Name</FormLabel>
+                  <FormLabel>{t("class.name")}</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Science 101 - Fall 2024" {...field} />
+                    <Input placeholder={t("class.namePlaceholder")} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -125,11 +127,11 @@ export function CreateClassDialog({ selectedTeacherId }: CreateClassDialogProps)
               name="curriculumId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Curriculum</FormLabel>
+                  <FormLabel>{t("class.curriculum")}</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a curriculum" />
+                        <SelectValue placeholder={t("class.selectCurriculum")} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -151,11 +153,11 @@ export function CreateClassDialog({ selectedTeacherId }: CreateClassDialogProps)
                   name="teacherId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Assign Teacher</FormLabel>
+                      <FormLabel>{t("class.assignTeacher")}</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select a teacher" />
+                            <SelectValue placeholder={t("class.selectTeacher")} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -177,7 +179,7 @@ export function CreateClassDialog({ selectedTeacherId }: CreateClassDialogProps)
                 {form.formState.isSubmitting && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Create Class
+                {t("class.createClass")}
               </Button>
             </DialogFooter>
           </form>

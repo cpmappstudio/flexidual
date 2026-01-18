@@ -15,10 +15,12 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { useCalendarContext } from "../../calendar-context"
 import Image from "next/image"
+import { useTranslations } from "next-intl"
 
 export default function CalendarHeaderTeacherFilter() {
   const { selectedTeacherId, onTeacherChange } = useCalendarContext()
   const { user } = useCurrentUser()
+  const t = useTranslations()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
 
@@ -60,7 +62,7 @@ export default function CalendarHeaderTeacherFilter() {
               </div>
             </>
           ) : (
-            <span className="hidden sm:inline">Filter by Teacher</span>
+            <span className="hidden sm:inline">{t("class.filterByTeacher")}</span>
           )}
         </Button>
       </PopoverTrigger>

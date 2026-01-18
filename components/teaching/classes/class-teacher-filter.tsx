@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Id } from "@/convex/_generated/dataModel"
 import Image from "next/image"
+import { useTranslations } from "next-intl"
 
 interface ClassTeacherFilterProps {
   selectedTeacherId: Id<"users"> | null
@@ -21,6 +22,7 @@ interface ClassTeacherFilterProps {
 }
 
 export function ClassTeacherFilter({ selectedTeacherId, onSelectTeacher }: ClassTeacherFilterProps) {
+  const t = useTranslations()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
 
@@ -57,7 +59,7 @@ export function ClassTeacherFilter({ selectedTeacherId, onSelectTeacher }: Class
               </div>
             </>
           ) : (
-            <span className="hidden sm:inline">Filter by Teacher</span>
+            <span className="hidden sm:inline">{t("class.filterByTeacher")}</span>
           )}
         </Button>
       </PopoverTrigger>
