@@ -1,5 +1,4 @@
 import { SignIn } from "@clerk/nextjs"
-import { FlexidualLogo } from "@/components/ui/flexidual-logo"
 
 export default function SignInPage() {
     return (
