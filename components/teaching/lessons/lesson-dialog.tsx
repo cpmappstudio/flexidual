@@ -237,7 +237,7 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
                             <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                className="text-muted-foreground h-auto p-0"
+                                className="text-muted-foreground h-auto px-1"
                                 onClick={() => setQueue([])}
                             >
                                 Clear All
@@ -281,7 +281,7 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
             )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2 sm:gap-1">
             {isEditing && (
                 <Button 
                     type="button" 

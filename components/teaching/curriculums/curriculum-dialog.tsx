@@ -284,7 +284,7 @@ export function CurriculumDialog({ curriculum }: CurriculumDialogProps) {
             )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2 sm:gap-1">
              {isEditing && (
                  <Button 
                     type="button" 

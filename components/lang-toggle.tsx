@@ -74,7 +74,7 @@ export function LangToggle({ showText = true }: LangToggleProps) {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <div className={`flex items-center ${showText ? 'justify-between w-full px-2' : 'justify-center w-8 h-8'} py-1.5 text-left text-sm cursor-pointer hover:bg-[oklch(0.45_0.0568_265.16)] hover:text-white rounded-md transition-colors`}>
+                <div className={`flex items-center ${showText ? 'justify-between w-full px-2' : 'justify-center w-8 h-8'} py-1.5 text-left text-sm cursor-pointer hover:bg-sidebar-accent hover:text-white rounded-md transition-colors`}>
                     <div className="flex items-center gap-2">
                         <Languages className="h-4 w-4" />
                         {showText && <span className="font-medium">{getCurrentLangLabel}</span>}
