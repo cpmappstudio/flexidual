@@ -1,5 +1,5 @@
 import { SignIn } from "@clerk/nextjs"
-// import Image from "next/image"
+import { FlexidualLogo } from "@/components/ui/flexidual-logo"
 
 export default function SignInPage() {
     return (
@@ -9,6 +9,9 @@ export default function SignInPage() {
                     appearance={{
                         elements: {
                             logoImage: "size-20",
+                        },
+                        layout: {
+                            logoImageUrl: "/flexidual-icon.png",
                         },
                     }}
                 />
