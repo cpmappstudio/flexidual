@@ -119,7 +119,7 @@ export function CurriculumDialog({ curriculum }: CurriculumDialogProps) {
             // You could log failures here: console.log(failures)
         }
     } catch (error) {
-        toast.error(t('errors.operationFailed'))
+        toast.error(t('errors.operationFailed' + (error instanceof Error ? `: ${error.message}` : "")))
     } finally {
         setIsSubmitting(false)
     }
@@ -142,7 +142,7 @@ export function CurriculumDialog({ curriculum }: CurriculumDialogProps) {
         toast.success(t('curriculum.updated'))
         setIsOpen(false)
     } catch (error) {
-        toast.error(t('errors.operationFailed'))
+        toast.error(t('errors.operationFailed' + (error instanceof Error ? `: ${error.message}` : "")))
     } finally {
         setIsSubmitting(false)
     }

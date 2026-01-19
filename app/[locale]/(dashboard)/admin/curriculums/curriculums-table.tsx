@@ -82,10 +82,9 @@ export function CurriculumsTable() {
     getSortedRowModel: getSortedRowModel(),
     state: { 
         globalFilter: filter,
-        // @ts-ignore - tanstack table typing issue with simple sorting
         sorting 
     },
-    // @ts-ignore
+    // @ts-expect-error - tanstack table typing issue with simple sorting
     onSortingChange: setSorting,
     onGlobalFilterChange: setFilter,
   })

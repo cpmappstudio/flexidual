@@ -121,7 +121,7 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
             toast.warning(`${successes} created, ${failures.length} failed`)
         }
     } catch (error) {
-        toast.error(t('errors.operationFailed'))
+        toast.error(t('errors.operationFailed' + (error instanceof Error ? `: ${error.message}` : "")))
     } finally {
         setIsSubmitting(false)
     }
@@ -144,7 +144,7 @@ export function LessonDialog({ curriculumId, lesson }: LessonDialogProps) {
         toast.success(t('lesson.updated'))
         setOpen(false)
     } catch (error) {
-        toast.error(t('errors.operationFailed'))
+        toast.error(t('errors.operationFailed' + (error instanceof Error ? `: ${error.message}` : "")))
     } finally {
         setIsSubmitting(false)
     }
