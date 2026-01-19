@@ -32,7 +32,9 @@
     "live": "Ao Vivo",
     "creating": "Criando...",
     "all": "Todos",
-    "newUsers": "Adicionar Usuários"
+    "newUsers": "Adicionar Usuários",
+    "title": "Título",
+    "code": "Código"
   },
   "days": {
     "sunday": "Domingo",

@@ -32,7 +32,9 @@
     "live": "LIVE",
     "creating": "Creating...",
     "all": "All",
-    "newUsers": "Add Users"
+    "newUsers": "Add Users",
+    "title": "Title",
+    "code": "Code"
   },
   "days": {
     "sunday": "Sunday",

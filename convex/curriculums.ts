@@ -200,6 +200,62 @@ export const create = mutation({
 });
 
 /**
+ * Batch create curriculums
+ * Returns status for each item to support "Staging Area" pattern
+ */
+export const createBatch = mutation({
+  args: {
+    curriculums: v.array(v.object({
+      title: v.string(),
+      description: v.optional(v.string()),
+      code: v.optional(v.string()),
+    }))
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+
+    if (!["admin", "superadmin"].includes(user.role)) {
+      throw new Error("Only administrators can create curriculums");
+    }
+
+    const results = [];
+
+    for (const item of args.curriculums) {
+      try {
+        // Uniqueness check for code
+        if (item.code) {
+          const existing = await ctx.db
+            .query("curriculums")
+            .withIndex("by_code", (q) => q.eq("code", item.code))
+            .first();
+          
+          if (existing) {
+            results.push({ title: item.title, status: "error", reason: `Code '${item.code}' already taken` });
+            continue;
+          }
+        }
+
+        await ctx.db.insert("curriculums", {
+          title: item.title,
+          description: item.description,
+          code: item.code,
+          color: "#3b82f6", // Default color
+          isActive: true,
+          createdAt: Date.now(),
+          createdBy: user._id,
+        });
+
+        results.push({ title: item.title, status: "success" });
+      } catch (e) {
+        results.push({ title: item.title, status: "error", reason: (e as Error).message });
+      }
+    }
+
+    return results;
+  },
+});
+
+/**
  * Update curriculum
  */
 export const update = mutation({

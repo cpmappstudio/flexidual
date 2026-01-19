@@ -142,6 +142,67 @@ export const create = mutation({
 });
 
 /**
+ * Batch create lessons
+ * Auto-calculates order to append to the end of the curriculum
+ */
+export const createBatch = mutation({
+  args: {
+    curriculumId: v.id("curriculums"),
+    lessons: v.array(v.object({
+      title: v.string(),
+      description: v.optional(v.string()),
+      content: v.optional(v.string()),
+    }))
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+
+    if (!["teacher", "admin", "superadmin"].includes(user.role)) {
+      throw new Error("Only teachers and administrators can create lessons");
+    }
+
+    const curriculum = await ctx.db.get(args.curriculumId);
+    if (!curriculum) {
+      throw new Error("Curriculum not found");
+    }
+
+    // 1. Get current max order
+    const existingLessons = await ctx.db
+      .query("lessons")
+      .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
+      .collect();
+    
+    let currentOrder = existingLessons.reduce((max, l) => Math.max(max, l.order), 0);
+
+    const results = [];
+
+    // 2. Insert items sequentially
+    for (const item of args.lessons) {
+      try {
+        currentOrder++; // Increment for next item
+
+        await ctx.db.insert("lessons", {
+          curriculumId: args.curriculumId,
+          title: item.title,
+          description: item.description,
+          content: item.content,
+          order: currentOrder,
+          isActive: true,
+          createdAt: Date.now(),
+          createdBy: user._id,
+        });
+
+        results.push({ title: item.title, status: "success" });
+      } catch (e) {
+        results.push({ title: item.title, status: "error", reason: (e as Error).message });
+      }
+    }
+
+    return results;
+  },
+});
+
+/**
  * Update lesson
  */
 export const update = mutation({

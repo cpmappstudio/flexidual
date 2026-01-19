@@ -18,44 +18,45 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Loader2 } from "lucide-react"
 import { useTranslations } from "next-intl"
 
-// Define columns
-const columns: ColumnDef<Doc<"lessons">>[] = [
-  {
-    accessorKey: "order",
-    header: "#",
-    cell: ({ row }) => <span className="text-muted-foreground font-mono">{row.original.order}</span>,
-  },
-  {
-    accessorKey: "title",
-    header: "Lesson Title",
-    cell: ({ row }) => (
-        <div>
-            <div className="font-medium">{row.getValue("title")}</div>
-            <div className="text-xs text-muted-foreground truncate max-w-[300px]">{row.original.description}</div>
-        </div>
-    )
-  },
-  {
-    id: "actions",
-    cell: ({ row }) => (
-      <div className="flex justify-end">
-        <LessonDialog 
-          lesson={row.original} 
-          curriculumId={row.original.curriculumId} 
-        />
-      </div>
-    ),
-  },
-]
-
 export function LessonsTable() {
   const t = useTranslations()
   const curriculums = useQuery(api.curriculums.list, { includeInactive: true })
+  curriculums?.sort((a, b) => a.title.localeCompare(b.title))
+  
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | "">("")
 
   const lessons = useQuery(api.lessons.listByCurriculum, 
     selectedCurriculumId ? { curriculumId: selectedCurriculumId as Id<"curriculums"> } : "skip"
   )
+
+  const columns: ColumnDef<Doc<"lessons">>[] = useMemo(() => [
+    {
+      accessorKey: "order",
+      header: "#",
+      cell: ({ row }) => <span className="text-muted-foreground font-mono">{row.original.order}</span>,
+    },
+    {
+      accessorKey: "title",
+      header: t('lesson.title'),
+      cell: ({ row }) => (
+          <div>
+              <div className="font-medium">{row.getValue("title")}</div>
+              <div className="text-xs text-muted-foreground truncate max-w-[300px]">{row.original.description}</div>
+          </div>
+      )
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => (
+        <div className="flex justify-end">
+          <LessonDialog 
+            lesson={row.original} 
+            curriculumId={row.original.curriculumId} 
+          />
+        </div>
+      ),
+    },
+  ], [t])
 
   const data = useMemo(() => lessons || [], [lessons])
   const isLoadingLessons = selectedCurriculumId && lessons === undefined
@@ -67,6 +68,7 @@ export function LessonsTable() {
     getPaginationRowModel: getPaginationRowModel(),
   })
 
+  // Auto-select first curriculum
   useEffect(() => {
     if (curriculums && curriculums.length && !selectedCurriculumId) {
       setSelectedCurriculumId(curriculums[0]._id)
@@ -94,12 +96,13 @@ export function LessonsTable() {
             </Select>
         </div>
         
+        {/* Consistent Dialog Action */}
         {selectedCurriculumId && (
           <LessonDialog curriculumId={selectedCurriculumId as Id<"curriculums">} />
         )}
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border relative">
         {isLoadingLessons && (
             <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
