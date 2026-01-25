@@ -293,6 +293,8 @@
     "create": "Criar Agendamento",
     "createNew": "Criar Novo Agendamento",
     "createDescription": "Agendar uma sessão de aula com conteúdo de aula opcional",
+    "edit": "Editar Agendamento",
+    "editDescription": "Modificar uma sessão de aula existente ou o agendamento de uma lição",
     "updateSchedule": "Atualizar Agendamento",
     "title": "Título",
     "enterTitle": "ex., Horário de Atendimento, Sessão de Revisão",
@@ -350,7 +352,10 @@
     "dailyDaysHelp": "Deixe vazio para repetir todos os dias",
     "joinLiveClass": "Entrar na Aula ao Vivo",
     "liveNow": "Ao Vivo Agora",
-    "cancelled": "Cancelado"
+    "cancelled": "Cancelado",
+    "sessionType": "Tipo de Sessão",
+    "typeLive": "Aula ao Vivo",
+    "typeIgnitia": "Lição Ignitia"
   },
   "calendar": {
     "mySchedule": "Minha Agenda",

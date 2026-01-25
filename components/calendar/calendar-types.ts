@@ -37,6 +37,7 @@ export type CalendarEvent = {
   lessonId?: Id<"lessons">
   classId: Id<"classes">
   curriculumId: Id<"curriculums">
+  sessionType: "live" | "ignitia"
   
   // Display fields
   title: string

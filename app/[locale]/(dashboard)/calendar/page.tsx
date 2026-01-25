@@ -161,6 +161,7 @@ function CalendarContent() {
       lessonId: e.lessonId,
       classId: e.classId,
       curriculumId: e.curriculumId,
+      sessionType: e.sessionType,
       title: e.title,
       description: e.description,
       start: new Date(e.start),

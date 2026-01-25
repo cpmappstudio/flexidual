@@ -2,7 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion"
 import { useState, useMemo } from "react"
-import { Rocket, Sparkles } from "lucide-react"
+import { Rocket, Sparkles, ExternalLink, Maximize2 } from "lucide-react"
+import { Button } from "@/components/ui/button";
 import FlexiClassroom from "@/components/classroom/flexi-classroom"
 import { useTranslations } from "next-intl"
 import { StudentScheduleEvent } from "@/lib/types/student"
@@ -68,6 +69,9 @@ export function ClassroomDropZone({ isDragging, activeLesson, onDrop, onLaunchCo
     setLaunchedLesson(null)
     onLeaveClassroom()
   }
+
+  const isIgnitia = launchedLesson?.sessionType === "ignitia";
+  const ignitiaUrl = "https://ignitiumwa.ignitiaschools.com/owsoo/login/auth/true";
 
   return (
     <div className="relative h-full w-full rounded-3xl overflow-hidden border-4 border-purple-400 dark:border-purple-600 shadow-2xl">
@@ -152,14 +156,47 @@ export function ClassroomDropZone({ isDragging, activeLesson, onDrop, onLaunchCo
             key="classroom"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="h-full w-full"
+            className="h-full w-full relative"
           >
-            <FlexiClassroom 
-              roomName={launchedLesson.roomName} 
-              className={launchedLesson.className}
-              isStudentView={true}
-              onLeave={handleLeaveClassroom}
-            />
+            {isIgnitia ? (
+              <div className="h-full w-full flex flex-col bg-white">
+                {/* Header for Ignitia Frame */}
+                <div className="h-12 bg-gray-100 dark:bg-gray-800 border-b flex items-center justify-between px-4 shrink-0">
+                   <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-700 dark:text-gray-200">
+                        Ignitia: {launchedLesson.title}
+                      </span>
+                   </div>
+                   <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" asChild>
+                        <a href={ignitiaUrl} target="_blank" rel="noopener noreferrer" className="text-xs">
+                           <ExternalLink className="w-4 h-4 mr-1" />
+                           Open in new tab
+                        </a>
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={handleLeaveClassroom}>
+                        Close Session
+                      </Button>
+                   </div>
+                </div>
+                
+                {/* The Iframe */}
+                <iframe 
+                  src={ignitiaUrl}
+                  className="flex-1 w-full h-full border-0"
+                  allow="microphone; camera; fullscreen; display-capture"
+                  title="Ignitia Lesson"
+                />
+              </div>
+            ) : (
+              /* Standard LiveKit Classroom */
+              <FlexiClassroom 
+                roomName={launchedLesson.roomName} 
+                className={launchedLesson.className}
+                isStudentView={true}
+                onLeave={handleLeaveClassroom}
+              />
+            )}
           </motion.div>
         ) : !isLaunching && (
           /* Waiting Screen */

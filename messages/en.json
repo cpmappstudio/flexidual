@@ -291,6 +291,8 @@
   },
   "schedule": {
     "create": "Create Schedule",
+    "edit": "Edit Schedule",
+    "editDescription": "Modify an existing class session or lesson schedule",
     "createNew": "Create New Schedule",
     "createDescription": "Schedule a class session with optional lesson content",
     "updateSchedule": "Update Schedule",
@@ -350,7 +352,10 @@
     "dailyDaysHelp": "Leave empty to repeat every day",
     "joinLiveClass": "Join Live Class",
     "live": "Live Now",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "sessionType": "Session Type",
+    "typeLive": "Live Class",
+    "typeIgnitia": "Ignitia Lesson"
   },
   "calendar": {
     "mySchedule": "My Schedule",

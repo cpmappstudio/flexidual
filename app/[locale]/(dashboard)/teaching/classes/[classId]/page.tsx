@@ -9,9 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
-import { CheckCircle2, ArrowRight, Calendar as CalendarIcon, BookOpen, Plus } from "lucide-react"
-import { ScheduleLessonDialog } from "@/components/teaching/classes/schedule-lesson-dialog"
-import { CreateScheduleDialog } from "@/components/teaching/classes/create-schedule-dialog"
+import { CheckCircle2, ArrowRight, Calendar as CalendarIcon, BookOpen, Plus, Edit } from "lucide-react"
+import { ManageScheduleDialog } from "@/components/teaching/classes/manage-schedule-dialog"
 import { StudentManager } from "@/components/teaching/classes/student-manager"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -106,7 +105,7 @@ export default function ClassDetailPage() {
               </Button>
             </div>
 
-            <CreateScheduleDialog 
+            <ManageScheduleDialog 
               classId={classId}
               trigger={
                 <Button>
@@ -160,13 +159,22 @@ export default function ClassDetailPage() {
                                 </p>
                               </div>
                               
-                              <ScheduleLessonDialog 
+                              <ManageScheduleDialog 
                                 classId={classId}
-                                lessonId={lesson._id}
-                                lessonTitle={lesson.title}
                                 scheduleId={scheduledItem.scheduleId}
-                                initialStart={scheduledItem.start}
-                                initialEnd={scheduledItem.end}
+                                initialData={{
+                                  lessonId: lesson._id,
+                                  title: scheduledItem.title,
+                                  description: scheduledItem.description,
+                                  start: scheduledItem.start,
+                                  end: scheduledItem.end,
+                                  sessionType: scheduledItem.sessionType
+                                }}
+                                trigger={
+                                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                    <Edit className="h-4 w-4 text-muted-foreground" />
+                                  </Button>
+                                }
                               />
 
                               {scheduledItem.isLive ? (
@@ -185,10 +193,10 @@ export default function ClassDetailPage() {
                               )}
                             </div>
                           ) : (
-                            <ScheduleLessonDialog 
-                              classId={classId} 
-                              lessonId={lesson._id} 
-                              lessonTitle={lesson.title} 
+                            <ManageScheduleDialog 
+                              classId={classId}
+                              preselectedLessonId={lesson._id}
+                              trigger={<Button size="sm" variant="outline">{t('schedule.schedule')}</Button>}
                             />
                           )}
                         </div>
@@ -254,7 +262,7 @@ export default function ClassDetailPage() {
                     <p className="text-muted-foreground mb-4 max-w-sm">
                       {t('schedule.createPrompt')}
                     </p>
-                    <CreateScheduleDialog classId={classId} />
+                    <ManageScheduleDialog classId={classId} />
                   </CardContent>
                 </Card>
               )}
@@ -345,22 +353,20 @@ function ScheduleItem({
       <div className="flex items-center gap-2 shrink-0">
         {!isPast && schedule.status !== "cancelled" && (
           <>
-            {schedule.lessonId ? (
-              <ScheduleLessonDialog 
-                classId={classId}
-                lessonId={schedule.lessonId}
-                lessonTitle={schedule.title} // Use the schedule title which comes from lesson or custom
-                scheduleId={schedule.scheduleId}
-                initialStart={schedule.start}
-                initialEnd={schedule.end}
-              />
-            ) : (
-              <CreateScheduleDialog 
-                classId={classId}
-                // TODO: Add edit mode to CreateScheduleDialog
-                trigger={<Button size="sm" variant="outline">{t('common.edit')}</Button>}
-              />
-            )}
+            {/* ✅ FIXED: Always pass initialData so Edit works for both Lessons and Generic events */}
+            <ManageScheduleDialog 
+              classId={classId}
+              scheduleId={schedule.scheduleId}
+              initialData={{
+                lessonId: schedule.lessonId, // If undefined, it just acts as "No Lesson"
+                title: schedule.title,
+                description: schedule.description,
+                start: schedule.start,
+                end: schedule.end,
+                sessionType: schedule.sessionType || "live"
+              }}
+              trigger={<Button size="sm" variant="outline">{t('common.edit')}</Button>}
+            />
             
             {schedule.isLive ? (
               <Button size="sm" variant="destructive" asChild>

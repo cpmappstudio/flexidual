@@ -126,6 +126,7 @@ export const getMySchedule = query({
           end: item.scheduledEnd,
           roomName: item.roomName,
           isLive: item.isLive || false,
+          sessionType: item.sessionType || "live",
           status: item.status,
           lessonId: item.lessonId,
           classId: classData._id,
@@ -301,6 +302,7 @@ export const createSchedule = mutation({
     description: v.optional(v.string()),
     scheduledStart: v.number(),
     scheduledEnd: v.number(),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -337,6 +339,7 @@ export const createSchedule = mutation({
       lessonId: args.lessonId,
       title: args.title,
       description: args.description,
+      sessionType: args.sessionType || "live",
       scheduledStart: args.scheduledStart,
       scheduledEnd: args.scheduledEnd,
       roomName,
@@ -361,6 +364,7 @@ export const createRecurringSchedule = mutation({
     description: v.optional(v.string()),
     scheduledStart: v.number(), // First occurrence
     scheduledEnd: v.number(),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
     recurrence: v.object({
       type: v.union(
         v.literal("daily"),
@@ -420,6 +424,7 @@ export const createRecurringSchedule = mutation({
       scheduledEnd: args.scheduledEnd,
       roomName: parentRoomName,
       isLive: false,
+      sessionType: args.sessionType || "live",
       isRecurring: true,
       recurrenceRule: JSON.stringify(args.recurrence),
       status: "scheduled",
@@ -442,6 +447,7 @@ export const createRecurringSchedule = mutation({
         scheduledEnd: end,
         roomName: `${parentRoomName}-${i}`,
         isLive: false,
+        sessionType: args.sessionType || "live",
         isRecurring: true,
         recurrenceParentId: parentId,
         status: "scheduled",
@@ -469,6 +475,8 @@ export const scheduleLesson = mutation({
     lessonId: v.id("lessons"),
     scheduledStart: v.number(),
     scheduledEnd: v.number(),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
+
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -509,6 +517,7 @@ export const scheduleLesson = mutation({
       lessonId: args.lessonId,
       scheduledStart: args.scheduledStart,
       scheduledEnd: args.scheduledEnd,
+      sessionType: args.sessionType || "live",
       roomName,
       isLive: false,
       status: "scheduled",
@@ -536,6 +545,7 @@ export const updateSchedule = mutation({
       v.literal("completed"),
       v.literal("cancelled")
     )),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
     updateSeries: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -575,6 +585,7 @@ export const updateSchedule = mutation({
     // Prepare metadata updates
     const metadataUpdates: any = {};
     if (args.title !== undefined) metadataUpdates.title = args.title;
+    if (args.sessionType !== undefined) metadataUpdates.sessionType = args.sessionType;
     if (args.description !== undefined) metadataUpdates.description = args.description;
     if (args.lessonId !== undefined) {
       metadataUpdates.lessonId = args.lessonId === null ? undefined : args.lessonId;

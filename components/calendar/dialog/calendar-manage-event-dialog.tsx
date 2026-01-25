@@ -37,7 +37,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, Link as LinkIcon } from "lucide-react";
+import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, Link as LinkIcon, MonitorPlay } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -51,6 +51,7 @@ const formSchema = z.object({
   start: z.string(),
   end: z.string(),
   lessonId: z.string().optional(),
+  sessionType: z.enum(["live", "ignitia"]),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -100,6 +101,7 @@ export default function CalendarManageEventDialog() {
       start: "",
       end: "",
       lessonId: "none",
+      sessionType: "live",
     },
   });
 
@@ -111,6 +113,7 @@ export default function CalendarManageEventDialog() {
         start: selectedEvent.start.toISOString(),
         end: selectedEvent.end.toISOString(),
         lessonId: selectedEvent.lessonId || "none",
+        sessionType: (selectedEvent as any).sessionType || "live",
       });
       setUpdateMode("single");
       setIsEditing(false); 
@@ -155,7 +158,8 @@ export default function CalendarManageEventDialog() {
         description: values.description,
         scheduledStart: new Date(values.start).getTime(),
         scheduledEnd: new Date(values.end).getTime(),
-        lessonId: finalLessonId, // Pass the new lesson ID (or null to unlink)
+        lessonId: finalLessonId,
+        sessionType: values.sessionType,
         updateSeries: updateMode === "series",
       });
 
@@ -233,6 +237,18 @@ export default function CalendarManageEventDialog() {
                             <Badge variant="outline" style={{ borderColor: selectedEvent.color, color: selectedEvent.color }}>
                                 {selectedEvent.curriculumTitle}
                             </Badge>
+
+                            {(selectedEvent as any).sessionType === "ignitia" ? (
+                                <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200">
+                                    <MonitorPlay className="h-3 w-3 mr-1" />
+                                    Ignitia Lesson
+                                </Badge>
+                            ) : (
+                                <Badge variant="secondary">
+                                    <Video className="h-3 w-3 mr-1" />
+                                    Live Class
+                                </Badge>
+                            )}
                             
                             {/* Lesson Linked Indicator */}
                             {selectedEvent.lessonId ? (
@@ -358,6 +374,30 @@ export default function CalendarManageEventDialog() {
                              </RadioGroup>
                         </div>
                     )}
+                    
+                    {/* Session Type Selector */}
+                    <FormField control={form.control} name="sessionType" render={({ field }) => (
+                        <FormItem className="space-y-2">
+                            <FormLabel>Session Type</FormLabel>
+                            <FormControl>
+                            <RadioGroup
+                                onValueChange={field.onChange}
+                                defaultValue={field.value}
+                                className="flex flex-row space-x-4"
+                            >
+                                <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="live" id="edit-live" />
+                                <FormLabel htmlFor="edit-live" className="font-normal cursor-pointer">Live Class</FormLabel>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="ignitia" id="edit-ignitia" />
+                                <FormLabel htmlFor="edit-ignitia" className="font-normal cursor-pointer">Ignitia</FormLabel>
+                                </div>
+                            </RadioGroup>
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )} />
 
                     {/* Lesson Selector - New Feature */}
                     <FormField control={form.control} name="lessonId" render={({ field }) => (

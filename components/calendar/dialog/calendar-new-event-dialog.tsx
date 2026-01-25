@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { Id } from "@/convex/_generated/dataModel";
 import { Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const formSchema = z.object({
   classId: z.string().min(1, "Class is required"),
@@ -28,6 +29,7 @@ const formSchema = z.object({
   description: z.string().optional(),
   start: z.string(),
   end: z.string(),
+  sessionType: z.enum(["live", "ignitia"]),
   isRecurring: z.boolean(),
   recurrenceType: z.enum(["daily", "weekly", "biweekly", "monthly"]),
   occurrences: z.number().min(1).max(52),
@@ -69,6 +71,7 @@ export default function CalendarNewEventDialog() {
       description: "",
       start: new Date().toISOString(),
       end: new Date(new Date().getTime() + 60 * 60 * 1000).toISOString(),
+      sessionType: "live",
       isRecurring: false,
       recurrenceType: "weekly",
       occurrences: 10,
@@ -192,6 +195,7 @@ export default function CalendarNewEventDialog() {
           description: values.description || undefined,
           scheduledStart: startMs,
           scheduledEnd: endMs,
+          sessionType: values.sessionType as "live" | "ignitia",
           recurrence: {
             type: values.recurrenceType,
             occurrences: values.occurrences,
@@ -207,6 +211,7 @@ export default function CalendarNewEventDialog() {
           description: values.description || undefined,
           scheduledStart: startMs,
           scheduledEnd: endMs,
+          sessionType: values.sessionType as "live" | "ignitia",
         });
         toast.success(t('schedule.created') || "Event created");
       }
@@ -239,6 +244,37 @@ export default function CalendarNewEventDialog() {
                   onValueChange={field.onChange} 
                   placeholder={t('class.selectClass') || "Select Class"}
                 />
+                <FormMessage />
+              </FormItem>
+            )} />
+
+            <FormField control={form.control} name="sessionType" render={({ field }) => (
+              <FormItem className="space-y-3">
+                <FormLabel>{t('schedule.sessionType')}</FormLabel>
+                <FormControl>
+                  <RadioGroup
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                    className="flex flex-row space-x-4"
+                  >
+                    <FormItem className="flex items-center space-x-2 space-y-0">
+                      <FormControl>
+                        <RadioGroupItem value="live" />
+                      </FormControl>
+                      <FormLabel className="font-normal cursor-pointer">
+                        {t('schedule.typeLive')}
+                      </FormLabel>
+                    </FormItem>
+                    <FormItem className="flex items-center space-x-2 space-y-0">
+                      <FormControl>
+                        <RadioGroupItem value="ignitia" />
+                      </FormControl>
+                      <FormLabel className="font-normal cursor-pointer">
+                        {t('schedule.typeIgnitia')}
+                      </FormLabel>
+                    </FormItem>
+                  </RadioGroup>
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )} />

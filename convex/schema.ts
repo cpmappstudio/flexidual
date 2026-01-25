@@ -138,6 +138,7 @@ export default defineSchema({
   classSchedule: defineTable({
     classId: v.id("classes"),
     lessonId: v.optional(v.id("lessons")),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
     
     // Basic info (for schedules without lessons)
     title: v.optional(v.string()), // Custom title if no lesson
