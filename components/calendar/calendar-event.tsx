@@ -87,10 +87,15 @@ export default function CalendarEvent({
     event.status === "cancelled" ? "red" :
     event.color.replace("#", ""); // Default to curriculum color
 
+   const tooltipText = month 
+    ? `${event.className} - ${format(event.start, "h:mm a")}`
+    : `${event.className}\n${event.title}\n${event.curriculumTitle}\n${format(event.start, "h:mm a")} - ${format(event.end, "h:mm a")}`;
+
   return (
     <MotionConfig reducedMotion="user">
       <AnimatePresence mode="wait">
         <motion.div
+          title={tooltipText}
           className={cn(
             `px-3 py-1.5 rounded-md truncate cursor-pointer transition-all duration-300`,
             `bg-${statusColor}-500/10 hover:bg-${statusColor}-500/20 border border-${statusColor}-500`,
@@ -138,46 +143,44 @@ export default function CalendarEvent({
           <motion.div
             className={cn(
               `flex flex-col w-full text-${statusColor}-500`,
-              month && "flex-row items-center justify-between",
+              month && "flex-row items-center justify-between gap-2",
             )}
             layout="position"
           >
             <div
               className={cn(
                 "flex flex-col",
-                month && "flex-row items-center gap-1",
+                month && "flex-row items-center gap-1 flex-1 min-w-0",
               )}
             >
-              {/* Curriculum Title */}
+              {/* Class Name - Most specific identifier */}
               <p className={cn("font-bold truncate", month && "text-xs")}>
-                {event.curriculumTitle}
+                {event.className}
               </p>
               
-              {/* Lesson Title */}
+              {/* Lesson Title - What's being taught */}
               <p
                 className={cn(
-                  "text-sm truncate",
+                  "text-sm truncate font-medium",
                   month && "hidden",
-                  !month && "font-medium",
                 )}
               >
                 {event.title}
               </p>
               
-              {/* Class Name */}
+              {/* Curriculum Title - Context (less prominent) */}
               <p
                 className={cn(
-                  "text-sm truncate",
+                  "text-xs truncate opacity-80",
                   month && "hidden",
-                  !month && "font-medium",
                 )}
               >
-                {event.className}
+                {event.curriculumTitle}
               </p>
 
               {/* Live Indicator */}
               {event.isLive && (
-                <div className="flex items-center gap-1 text-xs font-medium">
+                <div className="flex items-center gap-1 text-xs font-medium mt-1">
                   <Video className="h-3 w-3" />
                   <span>Live Now</span>
                 </div>
@@ -185,7 +188,7 @@ export default function CalendarEvent({
             </div>
             
             {/* Time */}
-            <p className={cn("text-sm", month && "text-xs")}>
+            <p className={cn("text-sm", month && "text-xs flex-shrink-0")}>
               <span>{format(event.start, "h:mm a")}</span>
               <span className={cn("mx-1", month && "hidden")}>-</span>
               <span className={cn(month && "hidden")}>

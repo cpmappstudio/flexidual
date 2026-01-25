@@ -352,7 +352,7 @@ export default function CalendarManageEventDialog() {
                                     <FormLabel htmlFor="r1" className="font-normal cursor-pointer">{t('schedule.editOccurrence')}</FormLabel>
                                 </div>
                                 <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="series" id="r2" />
+                                    <RadioGroupItem value="series" id="r2"/>
                                     <FormLabel htmlFor="r2" className="font-normal cursor-pointer">{t('schedule.editSeries')}</FormLabel>
                                 </div>
                              </RadioGroup>

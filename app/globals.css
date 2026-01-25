@@ -46,6 +46,7 @@
 
   --color-fuzzy-wuzzy: oklch(0.7 0 80);
   --color-deep-koamaru: oklch(0.3 0 80);
+  --color-radio-button-fill: var(--radio-button-fill);
 }
 
 :root {
@@ -81,6 +82,7 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(44.648% 0.08265 312.611);
   --sidebar-ring: oklch(0.669 0.136 15.8);
+  --radio-button-fill: oklch(41.4% 0.112 45.904);
 }
 
 .dark {
@@ -115,6 +117,7 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(44.648% 0.08265 312.611);
   --sidebar-ring: oklch(0.669 0.136 15.8);
+  --radio-button-fill: oklch(96.2% 0.059 95.617);
 }
 
 @layer base {

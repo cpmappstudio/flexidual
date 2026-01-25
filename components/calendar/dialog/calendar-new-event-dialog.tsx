@@ -31,6 +31,7 @@ const formSchema = z.object({
   isRecurring: z.boolean(),
   recurrenceType: z.enum(["daily", "weekly", "biweekly", "monthly"]),
   occurrences: z.number().min(1).max(52),
+  daysOfWeek: z.array(z.number().min(0).max(6)).optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -71,6 +72,7 @@ export default function CalendarNewEventDialog() {
       isRecurring: false,
       recurrenceType: "weekly",
       occurrences: 10,
+      daysOfWeek: [],
     },
   });
 
@@ -105,7 +107,27 @@ export default function CalendarNewEventDialog() {
   // Dropdown Options
   const selectedClassId = form.watch("classId");
   const isRecurring = form.watch("isRecurring");
+  const recurrenceType = form.watch("recurrenceType");
+  const daysOfWeek = form.watch("daysOfWeek") || [];
   const selectedLessonId = form.watch("lessonId");
+
+  const toggleDayOfWeek = (day: number) => {
+    const current = form.getValues("daysOfWeek") || [];
+    const updated = current.includes(day)
+      ? current.filter(d => d !== day)
+      : [...current, day].sort();
+    form.setValue("daysOfWeek", updated);
+  };
+
+  const weekDays = [
+    { value: 0, label: "Sun", key: "days.sunday" },
+    { value: 1, label: "Mon", key: "days.monday" },
+    { value: 2, label: "Tue", key: "days.tuesday" },
+    { value: 3, label: "Wed", key: "days.wednesday" },
+    { value: 4, label: "Thu", key: "days.thursday" },
+    { value: 5, label: "Fri", key: "days.friday" },
+    { value: 6, label: "Sat", key: "days.saturday" },
+  ];
   
   const currentClass = useMemo(() => 
     schedulableClasses?.find(c => c._id === selectedClassId), 
@@ -159,6 +181,10 @@ export default function CalendarNewEventDialog() {
       const endMs = new Date(values.end).getTime();
 
       if (values.isRecurring) {
+        const finalDaysOfWeek = values.daysOfWeek && values.daysOfWeek.length > 0
+          ? values.daysOfWeek
+          : undefined;
+
         await createRecurring({
           classId: values.classId as Id<"classes">,
           lessonId: finalLessonId,
@@ -169,8 +195,7 @@ export default function CalendarNewEventDialog() {
           recurrence: {
             type: values.recurrenceType,
             occurrences: values.occurrences,
-            // Simple logic: repeat on the day of the week of the start date
-            daysOfWeek: [new Date(values.start).getDay()],
+            daysOfWeek: finalDaysOfWeek,
           }
         });
         toast.success(t('schedule.recurringCreated') || "Series created");
@@ -287,10 +312,10 @@ export default function CalendarNewEventDialog() {
               )} />
             </div>
 
-            {/* Recurrence Toggle */}
+            {/* Recurrence Section */}
             <div className="flex flex-col gap-4 p-4 border rounded-lg bg-muted/20">
                 <FormField control={form.control} name="isRecurring" render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg shadow-sm">
+                    <FormItem className="flex flex-row items-center justify-between">
                         <div className="space-y-0.5">
                             <FormLabel>{t('schedule.recurring')}</FormLabel>
                         </div>
@@ -301,40 +326,77 @@ export default function CalendarNewEventDialog() {
                 )} />
 
                 {isRecurring && (
-                    <div className="grid grid-cols-2 gap-4 animate-in fade-in zoom-in-95 duration-200">
-                         <FormField control={form.control} name="recurrenceType" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Repeat</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField control={form.control} name="recurrenceType" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>{t('schedule.repeat')}</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="daily">{t('schedule.recurrence.daily')}</SelectItem>
+                                            <SelectItem value="weekly">{t('schedule.recurrence.weekly')}</SelectItem>
+                                            <SelectItem value="biweekly">{t('schedule.recurrence.biweekly')}</SelectItem>
+                                            <SelectItem value="monthly">{t('schedule.recurrence.monthly')}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </FormItem>
+                            )} />
+                            
+                            <FormField control={form.control} name="occurrences" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>{t('schedule.occurrences')}</FormLabel>
                                     <FormControl>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
+                                        <Input 
+                                            type="number" 
+                                            {...field} 
+                                            onChange={e => field.onChange(parseInt(e.target.value))} 
+                                            min={2} 
+                                            max={52} 
+                                        />
                                     </FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="daily">{t('schedule.recurrence.daily')}</SelectItem>
-                                        <SelectItem value="weekly">{t('schedule.recurrence.weekly')}</SelectItem>
-                                        <SelectItem value="biweekly">{t('schedule.recurrence.biweekly')}</SelectItem>
-                                        <SelectItem value="monthly">{t('schedule.recurrence.monthly')}</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </FormItem>
-                        )} />
-                        
-                        <FormField control={form.control} name="occurrences" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Sessions</FormLabel>
-                                <FormControl>
-                                    <Input 
-                                        type="number" 
-                                        {...field} 
-                                        onChange={e => field.onChange(parseInt(e.target.value))} 
-                                        min={2} 
-                                        max={52} 
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )} />
+                                </FormItem>
+                            )} />
+                        </div>
+
+                        {/* Day of Week Selector - Show for daily/weekly/biweekly */}
+                        {(recurrenceType === "daily" || recurrenceType === "weekly" || recurrenceType === "biweekly") && (
+                            <FormField control={form.control} name="daysOfWeek" render={() => (
+                                <FormItem>
+                                    <FormLabel>
+                                        {recurrenceType === "daily" 
+                                            ? t('schedule.repeatOnDays') || "Repeat on days (optional)"
+                                            : t('schedule.daysOfWeek') || "Repeat on"
+                                        }
+                                    </FormLabel>
+                                    <div className="flex flex-wrap gap-2">
+                                        {weekDays.map((day) => (
+                                            <Button
+                                                key={day.value}
+                                                type="button"
+                                                variant={daysOfWeek.includes(day.value) ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={() => toggleDayOfWeek(day.value)}
+                                                className="w-12 h-10"
+                                            >
+                                                {t(day.key) || day.label}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {recurrenceType === "daily"
+                                            ? t('schedule.dailyDaysHelp') || "Leave empty to repeat every day"
+                                            : t('schedule.daysHelp') || "Leave empty to repeat on the same day of week"
+                                        }
+                                    </p>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
+                        )}
                     </div>
                 )}
             </div>

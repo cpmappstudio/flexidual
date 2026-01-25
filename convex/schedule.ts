@@ -796,54 +796,85 @@ function generateRecurrenceOccurrences(
     occurrences?: number;
   }
 ): number[] {
-  const occurrences: number[] = [startTime];
-  const maxOccurrences = recurrence.occurrences || 52; // Default 1 year of weekly
-  const endDate = recurrence.endDate || (startTime + (365 * 24 * 60 * 60 * 1000)); // 1 year
+  const occurrences: number[] = [];
+  const maxOccurrences = recurrence.occurrences || 52;
+  const endDate = recurrence.endDate || (startTime + (365 * 24 * 60 * 60 * 1000));
 
-  let current = startTime;
-  let count = 1;
+  const startDate = new Date(startTime);
+  const startDayOfWeek = startDate.getDay();
 
-  while (count < maxOccurrences && current < endDate) {
-    let next: number;
-
-    switch (recurrence.type) {
-      case "daily":
-        next = current + (24 * 60 * 60 * 1000);
-        break;
+  // For daily recurrence, respect daysOfWeek if provided
+  if (recurrence.type === "daily") {
+    let current = startTime;
+    
+    while (occurrences.length < maxOccurrences && current <= endDate) {
+      const currentDate = new Date(current);
+      const dayOfWeek = currentDate.getDay();
       
-      case "weekly":
-        next = current + (7 * 24 * 60 * 60 * 1000);
-        break;
-      
-      case "biweekly":
-        next = current + (14 * 24 * 60 * 60 * 1000);
-        break;
-      
-      case "monthly":
-        const date = new Date(current);
-        date.setMonth(date.getMonth() + 1);
-        next = date.getTime();
-        break;
-      
-      default:
-        return occurrences;
-    }
-
-    // Filter by days of week if specified
-    if (recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0) {
-      const nextDate = new Date(next);
-      const dayOfWeek = nextDate.getDay();
-      
-      if (recurrence.daysOfWeek.includes(dayOfWeek)) {
-        occurrences.push(next);
-        count++;
+      // If daysOfWeek specified, only add if current day matches
+      if (!recurrence.daysOfWeek || recurrence.daysOfWeek.includes(dayOfWeek)) {
+        occurrences.push(current);
       }
-    } else {
-      occurrences.push(next);
-      count++;
+      
+      // Move to next day
+      current += (24 * 60 * 60 * 1000);
     }
+    
+    return occurrences;
+  }
 
-    current = next;
+  // For weekly/biweekly: Generate occurrences for each selected day
+  if (recurrence.type === "weekly" || recurrence.type === "biweekly") {
+    const interval = recurrence.type === "weekly" ? 7 : 14;
+    const daysToGenerate = recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0
+      ? recurrence.daysOfWeek
+      : [startDayOfWeek]; // Default to start day if none specified
+
+    let weekStart = startTime;
+    
+    while (occurrences.length < maxOccurrences && weekStart <= endDate) {
+      // For each day in this week/period
+      for (const targetDay of daysToGenerate) {
+        // Calculate days to add from week start
+        let daysToAdd = targetDay - startDayOfWeek;
+        if (daysToAdd < 0) daysToAdd += 7;
+        
+        const occurrenceTime = weekStart + (daysToAdd * 24 * 60 * 60 * 1000);
+        
+        // Only add if within bounds and not exceeding max
+        if (occurrenceTime >= startTime && 
+            occurrenceTime <= endDate && 
+            occurrences.length < maxOccurrences) {
+          occurrences.push(occurrenceTime);
+        }
+      }
+      
+      // Move to next week/period
+      weekStart += (interval * 24 * 60 * 60 * 1000);
+    }
+    
+    return occurrences.sort((a, b) => a - b);
+  }
+
+  // Monthly: Keep existing logic but respect daysOfWeek
+  if (recurrence.type === "monthly") {
+    let current = startTime;
+    
+    while (occurrences.length < maxOccurrences && current <= endDate) {
+      const currentDate = new Date(current);
+      const dayOfWeek = currentDate.getDay();
+      
+      if (!recurrence.daysOfWeek || recurrence.daysOfWeek.includes(dayOfWeek)) {
+        occurrences.push(current);
+      }
+      
+      // Move to same date next month
+      const nextDate = new Date(current);
+      nextDate.setMonth(nextDate.getMonth() + 1);
+      current = nextDate.getTime();
+    }
+    
+    return occurrences;
   }
 
   return occurrences;

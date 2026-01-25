@@ -37,13 +37,13 @@
     "code": "Código"
   },
   "days": {
-    "sunday": "Domingo",
-    "monday": "Lunes",
-    "tuesday": "Martes",
-    "wednesday": "Miércoles",
-    "thursday": "Jueves",
-    "friday": "Viernes",
-    "saturday": "Sábado"
+    "sunday": "Dom",
+    "monday": "Lun",
+    "tuesday": "Mar",
+    "wednesday": "Mié",
+    "thursday": "Jue",
+    "friday": "Vie",
+    "saturday": "Sáb"
   },
   "admin": {
     "title": "Administración Académica",
@@ -342,7 +342,9 @@
     "pastSessions": "Sesiones Pasadas",
     "andMore": "Y {count} más...",
     "noSchedules": "No se encontraron horarios",
-    "createPrompt": "Programa tu primera sesión para esta clase para comenzar."
+    "createPrompt": "Programa tu primera sesión para esta clase para comenzar.",
+    "repeatOnDays": "Repetir en días",
+    "dailyDaysHelp": "Dejar vacío para repetir todos los días"
   },
   "calendar": {
     "mySchedule": "Mi Horario",

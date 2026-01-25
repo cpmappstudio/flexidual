@@ -37,13 +37,13 @@
     "code": "Code"
   },
   "days": {
-    "sunday": "Sunday",
-    "monday": "Monday",
-    "tuesday": "Tuesday",
-    "wednesday": "Wednesday",
-    "thursday": "Thursday",
-    "friday": "Friday",
-    "saturday": "Saturday"
+    "sunday": "Sun",
+    "monday": "Mon",
+    "tuesday": "Tue",
+    "wednesday": "Wed",
+    "thursday": "Thu",
+    "friday": "Fri",
+    "saturday": "Sat"
   },
   "admin": {
     "title": "Academic Administration",
@@ -342,7 +342,9 @@
     "pastSessions": "Past Sessions",
     "andMore": "And {count} more...",
     "noSchedules": "No schedules found",
-    "createPrompt": "Schedule your first session for this class to get started."
+    "createPrompt": "Schedule your first session for this class to get started.",
+    "repeatOnDays": "Repeat on days",
+    "dailyDaysHelp": "Leave empty to repeat every day"
   },
   "calendar": {
     "mySchedule": "My Schedule",

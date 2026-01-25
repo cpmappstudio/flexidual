@@ -84,11 +84,11 @@ export function CreateScheduleDialog({
     try {
       const start = new Date(startDate).getTime()
       const end = start + (duration * 60 * 1000)
-
-      // Convert "none" to undefined for the mutation
       const finalLessonId = lessonId === "none" ? undefined : lessonId as Id<"lessons">
 
       if (isRecurring) {
+        const finalDaysOfWeek = daysOfWeek.length > 0 ? daysOfWeek : undefined;
+
         await createRecurring({
           classId,
           lessonId: finalLessonId,
@@ -98,11 +98,11 @@ export function CreateScheduleDialog({
           scheduledEnd: end,
           recurrence: {
             type: recurrenceType,
-            daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : undefined,
+            daysOfWeek: finalDaysOfWeek,
             occurrences,
           },
-        })
-        toast.success(t("schedule.recurringCreated") || `${occurrences} sessions created successfully`)
+        });
+        toast.success(t("schedule.recurringCreated") || `${occurrences} sessions created successfully`);
       } else {
         await createSchedule({
           classId,
@@ -327,10 +327,15 @@ export function CreateScheduleDialog({
                 </div>
               </div>
 
-              {/* Days of Week (for weekly/biweekly) */}
-              {(recurrenceType === "weekly" || recurrenceType === "biweekly") && (
+              {/* Days of Week */}
+              {(recurrenceType === "daily" || recurrenceType === "weekly" || recurrenceType === "biweekly") && (
                 <div className="space-y-2">
-                  <Label>{t("schedule.daysOfWeek") || "Repeat On (Optional)"}</Label>
+                  <Label>
+                    {recurrenceType === "daily"
+                      ? t("schedule.repeatOnDays") || "Repeat on days (Optional)"
+                      : t("schedule.daysOfWeek") || "Repeat On"
+                    }
+                  </Label>
                   <div className="flex flex-wrap gap-2">
                     {weekDays.map((day) => (
                       <Button
@@ -339,13 +344,17 @@ export function CreateScheduleDialog({
                         variant={daysOfWeek.includes(day.value) ? "default" : "outline"}
                         size="sm"
                         onClick={() => toggleDayOfWeek(day.value)}
+                        className="w-12"
                       >
                         {day.label}
                       </Button>
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {t("schedule.daysHelp") || "Leave empty to repeat on the same day of week"}
+                    {recurrenceType === "daily"
+                      ? t("schedule.dailyDaysHelp") || "Leave empty to repeat every day"
+                      : t("schedule.daysHelp") || "Leave empty to repeat on the same day of week"
+                    }
                   </p>
                 </div>
               )}
