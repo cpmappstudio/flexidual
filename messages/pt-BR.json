@@ -237,7 +237,8 @@
     "schedule": "Agenda",
     "byLessons": "Por Aulas",
     "allSchedules": "Todas as Agendas",
-    "filterByTeacher": "Filtrar por Professor",
+    "filterBy": "Filtrar",
+    "filtered": "Filtrado",
     "createClass": "Criar Turma"
   },
   "student": {

@@ -20,7 +20,6 @@ export default function Calendar({
       <CalendarHeader>
         <CalendarHeaderDate />
         <CalendarHeaderActions>
-          <CalendarHeaderCombinedFilter />
           <CalendarHeaderActionsMode />
           <CalendarHeaderActionsAdd />
         </CalendarHeaderActions>

@@ -237,7 +237,8 @@
     "schedule": "Horario",
     "byLessons": "Por Lecciones",
     "allSchedules": "Todos los Horarios",
-    "filterByTeacher": "Filtrar por Profesor",
+    "filterBy": "Filtrar",
+    "filtered": "Filtrado",
     "createClass": "Crear Clase"
   },
   "student": {

@@ -63,7 +63,7 @@ export default function CalendarHeaderCombinedFilter() {
         >
           <Filter className="h-4 w-4" />
           <span className="hidden sm:inline">
-            {hasActiveFilters ? "Filtered" : t("class.filterByTeacher")}
+            {hasActiveFilters ? t("class.filtered") : t("class.filterBy")}
           </span>
           {hasActiveFilters && (
             <>

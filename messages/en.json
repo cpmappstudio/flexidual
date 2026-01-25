@@ -237,7 +237,8 @@
     "schedule": "Schedule",
     "byLessons": "By Lessons",
     "allSchedules": "All Schedules",
-    "filterByTeacher": "Filter by Teacher",
+    "filterBy": "filter",
+    "filtered": "filtered",
     "createClass": "Create Class"
   },
   "student": {
