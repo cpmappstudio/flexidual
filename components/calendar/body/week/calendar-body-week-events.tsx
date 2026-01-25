@@ -1,10 +1,22 @@
 import { useCalendarContext } from '../../calendar-context'
 import { startOfWeek, endOfWeek, isWithinInterval, format } from 'date-fns'
+import { enUS, es, ptBR } from 'date-fns/locale'
+import { useLocale, useTranslations } from 'next-intl'
+
+const localeMap = {
+  en: enUS,
+  es: es,
+  "pt-BR": ptBR,
+} as const
 
 export default function CalendarBodyWeekEvents() {
   const { events, date, setManageEventDialogOpen, setSelectedEvent } =
     useCalendarContext()
   
+  const t = useTranslations('calendar')
+  const locale = useLocale()
+  const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
+
   const weekStart = startOfWeek(date, { weekStartsOn: 1 })
   const weekEnd = endOfWeek(date, { weekStartsOn: 1 })
   
@@ -14,7 +26,7 @@ export default function CalendarBodyWeekEvents() {
 
   return !!weekEvents.length ? (
     <div className="flex flex-col gap-2">
-      <p className="font-medium p-2 pb-0 font-heading">Events This Week</p>
+      <p className="font-medium p-2 pb-0 font-heading">{t('eventsThisWeek')}</p>
       <div className="flex flex-col gap-2">
         {weekEvents.map((event) => (
           <div
@@ -28,7 +40,7 @@ export default function CalendarBodyWeekEvents() {
             <div className={`size-2 rounded-full bg-${event.color}-500 shrink-0`} />
             <div className="flex flex-col min-w-0">
               <p className="text-xs text-muted-foreground">
-                {format(event.start, 'EEE, MMM d')}
+                {format(event.start, 'EEE, MMM d', { locale: dateLocale })}
               </p>
               {event.curriculumTitle && (
                 <p className="text-sm font-semibold truncate">
@@ -51,6 +63,6 @@ export default function CalendarBodyWeekEvents() {
       </div>
     </div>
   ) : (
-    <div className="p-2 text-muted-foreground">No events this week...</div>
+    <div className="p-2 text-muted-foreground">{t('noEventsThisWeek')}</div>
   )
 }

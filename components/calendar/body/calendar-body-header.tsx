@@ -1,5 +1,13 @@
 import { format, isSameDay } from 'date-fns'
+import { enUS, es, ptBR } from 'date-fns/locale'
+import { useLocale } from 'next-intl'
 import { cn } from '@/lib/utils'
+
+const localeMap = {
+  en: enUS,
+  es: es,
+  "pt-BR": ptBR,
+} as const
 
 export default function CalendarBodyHeader({
   date,
@@ -8,6 +16,8 @@ export default function CalendarBodyHeader({
   date: Date
   onlyDay?: boolean
 }) {
+  const locale = useLocale()
+  const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
   const isToday = isSameDay(date, new Date())
 
   return (
@@ -18,7 +28,7 @@ export default function CalendarBodyHeader({
           isToday ? 'text-deep-koamaru' : 'text-muted-foreground'
         )}
       >
-        {format(date, 'EEE')}
+        {format(date, 'EEE', { locale: dateLocale })}
       </span>
       {!onlyDay && (
         <span
@@ -27,7 +37,7 @@ export default function CalendarBodyHeader({
             isToday ? 'text-deep-koamaru font-bold' : 'text-foreground'
           )}
         >
-          {format(date, 'dd')}
+          {format(date, 'dd', { locale: dateLocale })}
         </span>
       )}
     </div>

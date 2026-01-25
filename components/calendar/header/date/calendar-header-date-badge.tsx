@@ -1,8 +1,10 @@
 import { useCalendarContext } from '../../calendar-context'
+import { useTranslations } from 'next-intl'
 import { isSameMonth, isSameDay, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns'
 
 export default function CalendarHeaderDateBadge() {
   const { events, date, mode } = useCalendarContext()
+  const t = useTranslations('calendar')
   
   let filteredEvents = []
   
@@ -28,7 +30,7 @@ export default function CalendarHeaderDateBadge() {
   
   return (
     <div className="whitespace-nowrap rounded-sm border px-1.5 py-0.5 text-xs">
-      {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+      {filteredEvents.length} {filteredEvents.length === 1 ? t('event') : t('events')}
     </div>
   )
 }

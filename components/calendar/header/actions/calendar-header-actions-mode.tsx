@@ -6,9 +6,11 @@ import { useCalendarContext } from '../../calendar-context'
 import { calendarModeIconMap } from '../../calendar-mode-icon-map'
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion'
 import { cn } from '@/lib/utils'
+import { useTranslations } from 'next-intl'
 
 export default function CalendarHeaderActionsMode() {
   const { mode, setMode } = useCalendarContext()
+  const t = useTranslations('calendar.modes')
 
   return (
     <LayoutGroup>
@@ -114,7 +116,7 @@ export default function CalendarHeaderActionsMode() {
                           },
                         }}
                       >
-                        {modeValue.charAt(0).toUpperCase() + modeValue.slice(1)}
+                        {t(modeValue)}
                       </motion.p>
                     )}
                   </AnimatePresence>

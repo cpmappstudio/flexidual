@@ -34,7 +34,8 @@
     "all": "Todos",
     "newUsers": "Adicionar Usuários",
     "title": "Título",
-    "code": "Código"
+    "code": "Código",
+    "with": "com"
   },
   "days": {
     "sunday": "Dom",
@@ -327,6 +328,7 @@
     "saveChanges": "Salvar Alterações",
     "viewDetails": "Ver Detalhes",
     "linkedLesson": "Aula Vinculada",
+    "viewLessonContent": "Ver Conteúdo da Aula",
     "noLesson": "Sem aula específica",
     "scheduleUpdated": "Agendamento atualizado com sucesso",
     "recurrence": {
@@ -344,7 +346,10 @@
     "noSchedules": "Nenhum agendamento encontrado",
     "createPrompt": "Agende sua primeira sessão para esta turma para começar.",
     "repeatOnDays": "Repetir em dias",
-    "dailyDaysHelp": "Deixe vazio para repetir todos os dias"
+    "dailyDaysHelp": "Deixe vazio para repetir todos os dias",
+    "joinLiveClass": "Entrar na Aula ao Vivo",
+    "liveNow": "Ao Vivo Agora",
+    "cancelled": "Cancelado"
   },
   "calendar": {
     "mySchedule": "Minha Agenda",
@@ -355,7 +360,20 @@
     "noUpcoming": "Nenhuma aula próxima agendada.",
     "noUpcomingClass": "Nenhuma aula próxima encontrada para esta turma.",
     "viewDetails": "Ver Detalhes",
-    "cancelled": "Cancelado"
+    "cancelled": "Cancelado",
+    "addEvent": "Adicionar Evento",
+    "event": "evento",
+    "events": "eventos",
+    "eventsThisWeek": "Eventos Desta Semana",
+    "noEventsThisWeek": "Nenhum evento nesta semana...",
+    "eventsToday": "Eventos de Hoje",
+    "noEventsToday": "Nenhum evento hoje...",
+    "moreEvents": "+{count} mais",
+    "modes": {
+      "day": "Dia",
+      "week": "Semana",
+      "month": "Mês"
+    }
   },
   "errors": {
     "operationFailed": "Operação falhou",

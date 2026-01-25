@@ -1,5 +1,13 @@
 import { format } from 'date-fns'
+import { enUS, es, ptBR } from 'date-fns/locale'
+import { useLocale } from 'next-intl'
 import { cn } from '@/lib/utils'
+
+const localeMap = {
+  en: enUS,
+  es: es,
+  "pt-BR": ptBR,
+} as const
 
 export const hours = Array.from({ length: 24 }, (_, i) => i)
 
@@ -8,6 +16,9 @@ export default function CalendarBodyMarginDayMargin({
 }: {
   className?: string
 }) {
+  const locale = useLocale()
+  const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
+
   return (
     <div
       className={cn(
@@ -21,7 +32,7 @@ export default function CalendarBodyMarginDayMargin({
           <div key={hour} className="relative h-32 first:mt-0">
             {hour !== 0 && (
               <span className="absolute text-xs text-muted-foreground -top-2.5 left-2">
-                {format(new Date().setHours(hour, 0, 0, 0), 'h a')}
+                {format(new Date().setHours(hour, 0, 0, 0), 'h a', { locale: dateLocale })}
               </span>
             )}
           </div>

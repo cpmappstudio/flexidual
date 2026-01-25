@@ -247,10 +247,10 @@ export default function CalendarManageEventDialog() {
                             )}
 
                             {selectedEvent.isLive && (
-                                <Badge variant="destructive" className="animate-pulse">LIVE</Badge>
+                                <Badge variant="destructive" className="animate-pulse">{t('schedule.live')}</Badge>
                             )}
                             {isSeries && (
-                                <Badge variant="secondary">Recurring</Badge>
+                                <Badge variant="secondary">{t('schedule.recurring')}</Badge>
                             )}
                         </div>
                     </div>
@@ -279,7 +279,7 @@ export default function CalendarManageEventDialog() {
                             <p className="font-medium text-lg leading-none">{selectedEvent.className}</p>
                             {selectedEvent.teacherName && (
                                 <p className="text-sm text-muted-foreground mt-1">
-                                    with {selectedEvent.teacherName}
+                                    {t('common.with')} {selectedEvent.teacherName}
                                 </p>
                             )}
                         </div>
@@ -310,7 +310,7 @@ export default function CalendarManageEventDialog() {
                          <div className="flex gap-3">
                             <LinkIcon className="h-5 w-5 text-muted-foreground shrink-0" />
                             <Link href={`/lessons/${selectedEvent.lessonId}`} className="text-primary hover:underline font-medium">
-                                View Lesson Content
+                                {t('schedule.viewLessonContent')}
                             </Link>
                         </div>
                     )}

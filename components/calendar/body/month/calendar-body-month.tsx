@@ -10,12 +10,23 @@ import {
   format,
   isWithinInterval,
 } from 'date-fns'
+import { enUS, es, ptBR } from 'date-fns/locale'
+import { useLocale, useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import CalendarEvent from '../../calendar-event'
 import { AnimatePresence, motion } from 'framer-motion'
 
+const localeMap = {
+  en: enUS,
+  es: es,
+  "pt-BR": ptBR,
+} as const
+
 export default function CalendarBodyMonth() {
   const { date, events, setDate, setMode } = useCalendarContext()
+  const locale = useLocale()
+  const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
+  const t = useTranslations('calendar')
 
   // Get the first day of the month
   const monthStart = startOfMonth(date)
@@ -23,9 +34,9 @@ export default function CalendarBodyMonth() {
   const monthEnd = endOfMonth(date)
 
   // Get the first Monday of the first week (may be in previous month)
-  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1, locale: dateLocale })
   // Get the last Sunday of the last week (may be in next month)
-  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1, locale: dateLocale })
 
   // Get all days between start and end
   const calendarDays = eachDayOfInterval({
@@ -45,12 +56,18 @@ export default function CalendarBodyMonth() {
       isWithinInterval(event.end, { start: calendarStart, end: calendarEnd })
   )
 
+  // Week days starting Monday
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(2024, 0, 1 + i) // Jan 1, 2024 is Monday
+    return format(day, 'EEE', { locale: dateLocale })
+  })
+
   return (
     <div className="flex flex-col flex-grow overflow-hidden">
       <div className="hidden md:grid grid-cols-7 border-border divide-x divide-border">
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+        {weekDays.map((day, index) => (
           <div
-            key={day}
+            key={index}
             className="py-2 text-center text-sm font-medium text-muted-foreground border-b border-border"
           >
             {day}
@@ -96,7 +113,7 @@ export default function CalendarBodyMonth() {
                     isToday && 'bg-deep-koamaru text-white'
                   )}
                 >
-                  {format(day, 'd')}
+                  {format(day, 'd', { locale: dateLocale })}
                 </div>
                 <AnimatePresence mode="wait">
                   <div className="flex flex-col gap-1 mt-1">
@@ -124,7 +141,7 @@ export default function CalendarBodyMonth() {
                           setMode('day')
                         }}
                       >
-                        +{dayEvents.length - 3} more
+                        {t('moreEvents', { count: dayEvents.length - 3 })}
                       </motion.div>
                     )}
                   </div>

@@ -20,10 +20,13 @@ import CalendarProvider from "@/components/calendar/calendar-provider"
 import CalendarNewEventDialog from "@/components/calendar/dialog/calendar-new-event-dialog"
 import CalendarManageEventDialog from "@/components/calendar/dialog/calendar-manage-event-dialog"
 import { useCalendarContext } from "@/components/calendar/calendar-context"
+import { useTranslations } from "next-intl"
 
 // Internal component to handle Agenda Logic using Context
 function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
   const { setSelectedEvent, setManageEventDialogOpen } = useCalendarContext()
+
+  const t = useTranslations('schedule');
   
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -73,11 +76,11 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
                 <h3 className="font-semibold text-lg">{event.title}</h3>
                 {event.isLive && (
                   <Badge variant="destructive" className="animate-pulse">
-                    LIVE NOW
+                    {t("live")}
                   </Badge>
                 )}
                 {event.status === "cancelled" && (
-                  <Badge variant="secondary">Cancelled</Badge>
+                  <Badge variant="secondary">{t("cancelled")}</Badge>
                 )}
               </div>
               <p className="text-sm font-medium text-muted-foreground">
@@ -95,7 +98,7 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
                 <Button className="w-full sm:w-auto" variant="destructive" asChild>
                   <Link href={`/classroom/${event.roomName}`}>
                     <Video className="mr-2 h-4 w-4" />
-                    Join
+                    {t("joinLiveClass")}
                   </Link>
                 </Button>
               ) : (
@@ -103,7 +106,7 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
                   setSelectedEvent(event)
                   setManageEventDialogOpen(true)
                 }}>
-                  Details
+                  {t("viewDetails")}
                 </Button>
               )}
             </div>
@@ -123,6 +126,7 @@ function CalendarContent() {
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null)
 
   const { user } = useCurrentUser()
+  const t = useTranslations()
 
   // Navigation Hooks
   const searchParams = useSearchParams()
@@ -214,13 +218,9 @@ function CalendarContent() {
       selectedCurriculumId={selectedCurriculumId}
       onCurriculumChange={setSelectedCurriculumId}
     >
-      <div className="min-h-[calc(100vh-4rem)] p-4 flex flex-col gap-4 pb-12">
+      <div className="min-h-[calc(100vh)] flex flex-col pb-12">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold">
-                  {classIdParam ? "Class Schedule" : "My Schedule"}
-              </h1>
-              
               {classIdParam && (
                   <Badge variant="secondary" className="px-3 py-1 flex items-center gap-2 text-sm">
                       Filtering: {currentClassName}
@@ -238,8 +238,8 @@ function CalendarContent() {
         <Tabs defaultValue="month" className="h-full flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <TabsList>
-              <TabsTrigger value="month">Month View</TabsTrigger>
-              <TabsTrigger value="agenda">Agenda List</TabsTrigger>
+              <TabsTrigger value="month">{t("calendar.monthView")}</TabsTrigger>
+              <TabsTrigger value="agenda">{t("calendar.agendaList")}</TabsTrigger>
             </TabsList>
           </div>
 

@@ -34,7 +34,8 @@
     "all": "All",
     "newUsers": "Add Users",
     "title": "Title",
-    "code": "Code"
+    "code": "Code",
+    "with": "with"
   },
   "days": {
     "sunday": "Sun",
@@ -327,6 +328,7 @@
     "saveChanges": "Save Changes",
     "viewDetails": "View Details",
     "linkedLesson": "Linked Lesson",
+    "viewLessonContent": "View Lesson Content",
     "noLesson": "No specific lesson",
     "scheduleUpdated": "Schedule updated successfully",
     "recurrence": {
@@ -344,7 +346,10 @@
     "noSchedules": "No schedules found",
     "createPrompt": "Schedule your first session for this class to get started.",
     "repeatOnDays": "Repeat on days",
-    "dailyDaysHelp": "Leave empty to repeat every day"
+    "dailyDaysHelp": "Leave empty to repeat every day",
+    "joinLiveClass": "Join Live Class",
+    "live": "Live Now",
+    "cancelled": "Cancelled"
   },
   "calendar": {
     "mySchedule": "My Schedule",
@@ -355,7 +360,20 @@
     "noUpcoming": "No upcoming lessons scheduled.",
     "noUpcomingClass": "No upcoming lessons found for this class.",
     "viewDetails": "View Details",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "addEvent": "Add Event",
+    "event": "event",
+    "events": "events",
+    "eventsThisWeek": "Events This Week",
+    "noEventsThisWeek": "No events this week...",
+    "eventsToday": "Events Today",
+    "noEventsToday": "No events today...",
+    "moreEvents": "+{count} more",
+    "modes": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month"
+    }
   },
   "errors": {
     "operationFailed": "Operation failed",

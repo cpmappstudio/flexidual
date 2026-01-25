@@ -12,10 +12,20 @@ import {
   startOfWeek,
   endOfWeek,
 } from 'date-fns'
+import { enUS, es, ptBR } from 'date-fns/locale'
+import { useLocale } from 'next-intl'
 import CalendarHeaderDateBadge from './calendar-header-date-badge'
+
+const localeMap = {
+  en: enUS,
+  es: es,
+  "pt-BR": ptBR,
+} as const
 
 export default function CalendarHeaderDateChevrons() {
   const { mode, date, setDate } = useCalendarContext()
+  const locale = useLocale()
+  const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
 
   function handleDateBackward() {
     switch (mode) {
@@ -48,15 +58,15 @@ export default function CalendarHeaderDateChevrons() {
   function getDateLabel() {
     switch (mode) {
       case 'month':
-        return format(date, 'MMMM yyyy')
+        return format(date, 'MMMM yyyy', { locale: dateLocale })
       case 'week':
         const weekStart = startOfWeek(date)
         const weekEnd = endOfWeek(date)
-        return `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`
+        return `${format(weekStart, 'MMM d', { locale: dateLocale })} - ${format(weekEnd, 'MMM d, yyyy', { locale: dateLocale })}`
       case 'day':
-        return format(date, 'MMMM d, yyyy')
+        return format(date, 'MMMM d, yyyy', { locale: dateLocale })
       default:
-        return format(date, 'MMMM d, yyyy')
+        return format(date, 'MMMM d, yyyy', { locale: dateLocale })
     }
   }
 

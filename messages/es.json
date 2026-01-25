@@ -34,7 +34,8 @@
     "all": "Todos",
     "newUsers": "Agregar Usuarios",
     "title": "Título",
-    "code": "Código"
+    "code": "Código",
+    "with": "con"
   },
   "days": {
     "sunday": "Dom",
@@ -327,6 +328,7 @@
     "saveChanges": "Guardar Cambios",
     "viewDetails": "Ver Detalles",
     "linkedLesson": "Lección Vinculada",
+    "viewLessonContent": "Ver Contenido de la Lección",
     "noLesson": "Sin lección específica",
     "scheduleUpdated": "Horario actualizado exitosamente",
     "recurrence": {
@@ -344,7 +346,10 @@
     "noSchedules": "No se encontraron horarios",
     "createPrompt": "Programa tu primera sesión para esta clase para comenzar.",
     "repeatOnDays": "Repetir en días",
-    "dailyDaysHelp": "Dejar vacío para repetir todos los días"
+    "dailyDaysHelp": "Dejar vacío para repetir todos los días",
+    "joinLiveClass": "Unirse a Clase en Vivo",
+    "liveNow": "En Vivo Ahora",
+    "cancelled": "Cancelado"
   },
   "calendar": {
     "mySchedule": "Mi Horario",
@@ -355,7 +360,20 @@
     "noUpcoming": "No hay lecciones próximas programadas.",
     "noUpcomingClass": "No se encontraron lecciones próximas para esta clase.",
     "viewDetails": "Ver Detalles",
-    "cancelled": "Cancelado"
+    "cancelled": "Cancelado",
+    "addEvent": "Agregar Evento",
+    "event": "evento",
+    "events": "eventos",
+    "eventsThisWeek": "Eventos Esta Semana",
+    "noEventsThisWeek": "No hay eventos esta semana...",
+    "eventsToday": "Eventos Hoy",
+    "noEventsToday": "No hay eventos hoy...",
+    "moreEvents": "+{count} más",
+    "modes": {
+      "day": "Día",
+      "week": "Semana",
+      "month": "Mes"
+    }
   },
   "errors": {
     "operationFailed": "La operación falló",
