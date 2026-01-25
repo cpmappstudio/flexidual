@@ -66,11 +66,13 @@
     "lessons": "Lecciones",
     "classes": "Clases",
     "myClasses": "Mis Clases",
-    "allClasses": "Todas las Clases",
-    "allLessons": "Todas las Lecciones",
-    "allCurriculums": "Todos los Currículos",
+    "allClasses": "Clases",
+    "allLessons": "Lecciones",
+    "allCurriculums": "Currículos",
+    "curriculum": "Currículo",
+    "teacher": "Profesor",
     "users": "Usuarios",
-    "allUsers": "Todos los Usuarios",
+    "allUsers": "Usuarios",
     "allUsersDescription": "Resumen de todos los usuarios registrados en la plataforma."
   },
   "dashboard": {
@@ -150,6 +152,7 @@
     "chatWithTutor": "Chatear con Tutor"
   },
   "curriculum": {
+    "search": "Buscar currículos...",
     "title": "Título del currículo",
     "code": "Código",
     "description": "Descripción",
@@ -269,6 +272,7 @@
     "getReady": "Prepárate para una lección increíble..."
   },
   "teacher": {
+    "search": "Buscar profesores...",
     "firstName": "Nombre",
     "lastName": "Apellido",
     "email": "Correo Electrónico",
@@ -280,7 +284,8 @@
     "updated": "Profesor actualizado",
     "deleted": "Profesor eliminado",
     "searchPlaceholder": "Buscar profesores...",
-    "selectRole": "Seleccionar rol"
+    "selectRole": "Seleccionar rol",
+    "noResults": "No se encontraron profesores."
   },
   "schedule": {
     "create": "Crear Horario",

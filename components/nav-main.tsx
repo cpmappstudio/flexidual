@@ -131,21 +131,22 @@ export function NavMain() {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/admin/lessons")}>
-                <Link href="/admin/lessons">
-                  <LibraryBig />
-                  <span>{t('navigation.allLessons')}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
             
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes("/admin/curriculums")}>
                 <Link href="/admin/curriculums">
                   <BookOpen />
                   <span>{t('navigation.allCurriculums')}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            {/* Lessons as child of Curriculums */}
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname.includes("/admin/lessons")} className="pl-8">
+                <Link href="/admin/lessons">
+                  <LibraryBig />
+                  <span>{t('navigation.allLessons')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

@@ -120,6 +120,7 @@ function CalendarContent() {
   const [date, setDate] = useState<Date>(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null)
+  const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null)
 
   const { user } = useCurrentUser()
 
@@ -167,9 +168,19 @@ function CalendarContent() {
 
   // Filter Logic
   const filteredEvents = useMemo(() => {
-    if (!classIdParam) return allEvents
-    return allEvents.filter(e => e.classId === classIdParam)
-  }, [allEvents, classIdParam])
+    let result = allEvents
+    
+    if (classIdParam) {
+      result = result.filter(e => e.classId === classIdParam)
+    }
+    
+    // Client-side curriculum filter (in case backend doesn't filter)
+    if (selectedCurriculumId && !classIdParam) {
+      result = result.filter(e => e.curriculumId === selectedCurriculumId)
+    }
+    
+    return result
+  }, [allEvents, classIdParam, selectedCurriculumId])
 
   // Update events state when data changes
   // Note: CalendarProvider uses this state
@@ -200,6 +211,8 @@ function CalendarContent() {
       userId={user?._id}
       selectedTeacherId={selectedTeacherId}
       onTeacherChange={setSelectedTeacherId}
+      selectedCurriculumId={selectedCurriculumId}
+      onCurriculumChange={setSelectedCurriculumId}
     >
       <div className="min-h-[calc(100vh-4rem)] p-4 flex flex-col gap-4 pb-12">
         <div className="flex items-center justify-between">

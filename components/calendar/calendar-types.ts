@@ -24,6 +24,8 @@ export type CalendarContextType = CalendarProps & {
   refetchEvents?: () => void
   selectedTeacherId: Id<"users"> | null
   onTeacherChange: (id: Id<"users"> | null) => void
+  selectedCurriculumId: Id<"curriculums"> | null
+  onCurriculumChange: (id: Id<"curriculums"> | null) => void
 }
 
 export type CalendarEvent = {

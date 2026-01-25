@@ -66,11 +66,13 @@
     "lessons": "Lessons",
     "classes": "Classes",
     "myClasses": "My Classes",
-    "allClasses": "All Classes",
-    "allLessons": "All Lessons",
-    "allCurriculums": "All Curriculums",
+    "allClasses": "Classes",
+    "allLessons": "Lessons",
+    "allCurriculums": "Curriculums",
+    "curriculum": "Curriculum",
+    "teacher": "Teacher",
     "users": "Users",
-    "allUsers": "All Users",
+    "allUsers": "Users",
     "allUsersDescription": "Overview of all registered users in the platform."
   },
   "dashboard": {
@@ -150,6 +152,7 @@
     "chatWithTutor": "Chat with Tutor"
   },
   "curriculum": {
+    "search": "Search curriculums...",
     "title": "Curriculum Title",
     "code": "Code",
     "description": "Description",
@@ -159,7 +162,7 @@
     "created": "Curriculum created",
     "updated": "Curriculum updated",
     "deleted": "Curriculum deleted",
-    "noResults": "No curriculums found. Create one to get started.",
+    "noResults": "No curriculums found.",
     "manage": "Manage Curriculums",
     "myCurriculums": "My Curriculums",
     "manageLessons": "Manage Lessons",
@@ -269,6 +272,7 @@
     "getReady": "Get ready for an awesome lesson..."
   },
   "teacher": {
+    "search": "Search teachers...",
     "firstName": "First Name",
     "lastName": "Last Name",
     "email": "Email",
@@ -280,7 +284,8 @@
     "updated": "Teacher updated",
     "deleted": "Teacher deleted",
     "searchPlaceholder": "Search teachers...",
-    "selectRole": "Select role"
+    "selectRole": "Select role",
+    "noResults": "No teachers found."
   },
   "schedule": {
     "create": "Create Schedule",

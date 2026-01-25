@@ -17,6 +17,8 @@ interface CalendarProviderProps {
   userId?: Id<"users">;
   selectedTeacherId: Id<"users"> | null;
   onTeacherChange: (id: Id<"users"> | null) => void;
+  selectedCurriculumId: Id<"curriculums"> | null;
+  onCurriculumChange: (id: Id<"curriculums"> | null) => void;
   children: React.ReactNode;
 }
 
@@ -32,6 +34,8 @@ export default function CalendarProvider({
   userId,
   selectedTeacherId,
   onTeacherChange,
+  selectedCurriculumId,
+  onCurriculumChange,
   children,
 }: CalendarProviderProps) {
   // Dialog States
@@ -69,6 +73,8 @@ export default function CalendarProvider({
         setPreselectedLessonId,
         selectedTeacherId,
         onTeacherChange,
+        selectedCurriculumId,
+        onCurriculumChange,
       }}
     >
       {children}

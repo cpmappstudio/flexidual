@@ -228,21 +228,21 @@ export default function CalendarNewEventDialog() {
                     disabled={!selectedClassId}
                   >
                     <FormControl>
-                      <SelectTrigger>
+                      <SelectTrigger className="!w-full min-w-0">
                         <SelectValue placeholder={t('lesson.selectOptional')} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                       {lessonOptions.map((opt) => (
+                      {lessonOptions.map((opt) => (
                           <SelectItem 
                             key={opt.value} 
                             value={opt.value} 
                             disabled={opt.disabled}
                             className={opt.disabled ? "opacity-50" : ""}
                           >
-                            {opt.label}
+                            <span className="truncate block max-w-full">{opt.label}</span>
                           </SelectItem>
-                       ))}
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -250,16 +250,16 @@ export default function CalendarNewEventDialog() {
               )} />
               
               <FormField control={form.control} name="title" render={({ field }) => (
-                 <FormItem>
-                   <FormLabel>{t('schedule.title')}</FormLabel>
-                   <FormControl>
-                     <Input 
+                <FormItem>
+                  <FormLabel>{t('schedule.title')}</FormLabel>
+                  <FormControl>
+                    <Input 
                         {...field} 
                         placeholder={selectedLessonId !== "none" ? "Override lesson title" : "Required"} 
-                     />
-                   </FormControl>
-                   <FormMessage />
-                 </FormItem>
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )} />
             </div>
 

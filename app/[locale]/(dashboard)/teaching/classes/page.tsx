@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useQuery } from "convex/react"
 import { Id } from "@/convex/_generated/dataModel"
 import { api } from "@/convex/_generated/api"
@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Users, BookOpen, Calendar, ArrowRight, School } from "lucide-react"
 import { format } from "date-fns"
 import { CreateClassDialog } from "@/components/teaching/classes/create-class-dialog"
-import { ClassTeacherFilter } from "@/components/teaching/classes/class-teacher-filter"
+import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,13 +21,22 @@ export default function MyClassesPage() {
   const { user, isLoading: isUserLoading } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
   const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null)
+  const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null)
   
+  // Fetch all classes based on teacher filter (admin) or current user (teacher)
   const queryArgs = isAdmin 
     ? (selectedTeacherId ? { teacherId: selectedTeacherId } : {}) 
     : (user ? { teacherId: user._id } : "skip")
 
-  const classes = useQuery(api.classes.list, queryArgs)
+  const allClasses = useQuery(api.classes.list, queryArgs)
   const curriculums = useQuery(api.curriculums.list, {})
+
+  // Apply curriculum filter client-side
+  const classes = useMemo(() => {
+    if (!allClasses) return undefined
+    if (!selectedCurriculumId) return allClasses
+    return allClasses.filter(cls => cls.curriculumId === selectedCurriculumId)
+  }, [allClasses, selectedCurriculumId])
 
   if (isUserLoading || classes === undefined) {
     return (
@@ -64,13 +73,14 @@ export default function MyClassesPage() {
         </div>
         
         <div className="flex items-center gap-2">
-            {isAdmin && (
-                <ClassTeacherFilter 
-                    selectedTeacherId={selectedTeacherId}
-                    onSelectTeacher={setSelectedTeacherId}
-                />
-            )}
-            {isAdmin && <CreateClassDialog selectedTeacherId={selectedTeacherId} />}
+          <ClassCombinedFilter 
+            selectedTeacherId={selectedTeacherId}
+            onSelectTeacher={setSelectedTeacherId}
+            selectedCurriculumId={selectedCurriculumId}
+            onSelectCurriculum={setSelectedCurriculumId}
+            isAdmin={isAdmin}
+          />
+          {isAdmin && <CreateClassDialog selectedTeacherId={selectedTeacherId} />}
         </div>
       </div>
 
