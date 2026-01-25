@@ -30,7 +30,6 @@ const localeMap = {
   "pt-BR": ptBR,
 } as const
 
-
 // Internal component to handle Agenda Logic using Context
 function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
   const { setSelectedEvent, setManageEventDialogOpen } = useCalendarContext()
@@ -132,7 +131,7 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
 function CalendarContent() {
   const [mode, setMode] = useState<Mode>("month")
   const [date, setDate] = useState<Date>(new Date())
-  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [activeTab, setActiveTab] = useState("month") // Added: Persist tab state
   const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null)
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null)
 
@@ -147,8 +146,6 @@ function CalendarContent() {
   const classIdParam = searchParams.get("classId") as Id<"classes"> | null
 
   // Fetch Universal Schedule
-  // We fetch a broader range or use dynamic ranges in a real app
-  // For now, fetching everything (filtered by backend limit) or adding args
   const scheduleData = useQuery(api.schedule.getMySchedule, {
     teacherId: selectedTeacherId ?? undefined 
   })
@@ -189,7 +186,7 @@ function CalendarContent() {
       result = result.filter(e => e.classId === classIdParam)
     }
     
-    // Client-side curriculum filter (in case backend doesn't filter)
+    // Client-side curriculum filter
     if (selectedCurriculumId && !classIdParam) {
       result = result.filter(e => e.curriculumId === selectedCurriculumId)
     }
@@ -197,11 +194,13 @@ function CalendarContent() {
     return result
   }, [allEvents, classIdParam, selectedCurriculumId])
 
-  // Update events state when data changes
-  // Note: CalendarProvider uses this state
-  if (events !== filteredEvents && scheduleData) {
-     setEvents(filteredEvents)
-  }
+  // FIXED: Use stable reference for events state
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  
+  // Update events only when filteredEvents actually changes
+  useMemo(() => {
+    setEvents(filteredEvents)
+  }, [filteredEvents])
 
   const clearFilter = () => {
     router.push(pathname)
@@ -230,7 +229,11 @@ function CalendarContent() {
       onCurriculumChange={setSelectedCurriculumId}
     >
       <div className="min-h-[calc(100vh)] flex flex-col pb-12">
-        <Tabs defaultValue="month" className="h-full flex flex-col">
+        <Tabs 
+          value={activeTab} 
+          onValueChange={setActiveTab}
+          className="h-full flex flex-col"
+        >
           <div className="flex items-center justify-between mb-4">
             <TabsList>
               <TabsTrigger value="month">{t("calendar.monthView")}</TabsTrigger>
