@@ -355,7 +355,8 @@
     "cancelled": "Cancelled",
     "sessionType": "Session Type",
     "typeLive": "Live Class",
-    "typeIgnitia": "Ignitia Lesson"
+    "typeIgnitia": "Ignitia Lesson",
+    "classStartingSoon": "Class starting soon"
   },
   "calendar": {
     "mySchedule": "My Schedule",

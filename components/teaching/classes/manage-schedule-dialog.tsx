@@ -150,7 +150,7 @@ export function ManageScheduleDialog({
           sessionType,
           // Note: Series update logic omitted for simplicity, defaults to single instance update
         })
-        toast.success(t("schedule.updated") || "Schedule updated")
+        toast.success(t("schedule.updated"))
       } else {
         // --- CREATE MODE ---
         if (isRecurring) {
@@ -169,7 +169,7 @@ export function ManageScheduleDialog({
               occurrences,
             },
           });
-          toast.success(t("schedule.recurringCreated") || "Series created");
+          toast.success(t("schedule.recurringCreated"));
         } else {
           await createSchedule({
             classId,
@@ -180,7 +180,7 @@ export function ManageScheduleDialog({
             scheduledStart: start,
             scheduledEnd: end,
           })
-          toast.success(t("schedule.created") || "Schedule created")
+          toast.success(t("schedule.created"))
         }
       }
 

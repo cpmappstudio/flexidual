@@ -355,7 +355,8 @@
     "cancelled": "Cancelado",
     "sessionType": "Tipo de Sesión",
     "typeLive": "Clase en Vivo",
-    "typeIgnitia": "Lección Ignitia"
+    "typeIgnitia": "Lección Ignitia",
+    "classStartingSoon": "La clase comenzará pronto"
   },
   "calendar": {
     "mySchedule": "Mi Horario",

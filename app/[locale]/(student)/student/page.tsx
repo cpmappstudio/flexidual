@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { useUser } from "@clerk/nextjs"
@@ -10,7 +10,7 @@ import { ScrollIndicator } from "@/components/student/scroll-indicator"
 import { FlexidualLogo } from "@/components/ui/flexidual-logo"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { LogOut, History, Calendar as CalendarIcon, Settings } from "lucide-react"
+import { LogOut, History, Calendar as CalendarIcon, Settings, BellRing } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { SignOutButton } from "@clerk/nextjs"
 import { StudentScheduleEvent } from "@/lib/types/student"
@@ -24,6 +24,8 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import Image from "next/image"
+// ✅ Import Toaster Hook
+import { toast } from "sonner"
 
 export default function StudentHubPage() {
   const t = useTranslations()
@@ -35,6 +37,9 @@ export default function StudentHubPage() {
 
   const upcomingScrollRef = useRef<HTMLDivElement>(null)
   const pastScrollRef = useRef<HTMLDivElement>(null)
+
+  // Track notified lessons to prevent spam
+  const [notifiedLessons, setNotifiedLessons] = useState<Set<string>>(new Set())
 
   const events = useQuery(api.schedule.getMySchedule, {})
   const now = Date.now()
@@ -53,6 +58,49 @@ export default function StudentHubPage() {
 
     return { upcomingLessons: upcoming, pastLessons: past }
   }, [events, now])
+
+  // ✅ NOTIFICATION SYSTEM
+  useEffect(() => {
+    if (upcomingLessons.length === 0) return;
+
+    const checkNotifications = () => {
+        const currentTime = Date.now();
+        
+        upcomingLessons.forEach(lesson => {
+            const timeDiff = lesson.start - currentTime;
+            const minutesLeft = timeDiff / 60000;
+
+            // Trigger notification if roughly 5 minutes left (between 4.8 and 5.2 to catch interval)
+            // AND we haven't notified yet
+            if (minutesLeft <= 5 && minutesLeft > 0 && !notifiedLessons.has(lesson.scheduleId)) {
+                
+                // Play a simple sound? (Optional, browsers often block this without interaction)
+                // const audio = new Audio('/notification.mp3'); audio.play().catch(() => {});
+
+                toast(t('student.classStartingSoon'), {
+                    description: `${lesson.title} starts in 5 minutes!`,
+                    icon: <BellRing className="w-5 h-5 text-orange-500 animate-bounce" />,
+                    duration: 10000, // Stay longer
+                    action: {
+                        label: "Go",
+                        onClick: () => {
+                             // Optional: Scroll to card logic here if needed
+                        }
+                    }
+                });
+
+                // Mark as notified
+                setNotifiedLessons(prev => new Set(prev).add(lesson.scheduleId));
+            }
+        });
+    };
+
+    // Run check every 15 seconds
+    const interval = setInterval(checkNotifications, 15000);
+    return () => clearInterval(interval);
+
+  }, [upcomingLessons, notifiedLessons, t]);
+
 
   const handleDragStart = (lesson: StudentScheduleEvent) => {
     setIsDragging(true)
@@ -220,17 +268,6 @@ export default function StudentHubPage() {
             onLaunchComplete={handleLaunchComplete}
             onLeaveClassroom={handleExitClassroom}
           />
-
-          {/* {activeLesson && (
-            <Button
-              onClick={handleExitClassroom}
-              className="absolute top-4 right-4 z-50 bg-red-500 hover:bg-red-600 text-white shadow-2xl rounded-full"
-              size="lg"
-            >
-              <LogOut className="w-5 h-5 mr-2" />
-              {t('classroom.leave')}
-            </Button>
-          )} */}
         </div>
       </div>
     </div>
