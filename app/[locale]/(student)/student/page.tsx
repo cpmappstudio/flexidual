@@ -249,7 +249,6 @@ export default function StudentHubPage() {
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       isPast
-                      isAttended={lesson.status === "completed"}
                     />
                   ))
                 )}

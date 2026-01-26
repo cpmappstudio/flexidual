@@ -3,6 +3,8 @@ import { mutation, query } from "./_generated/server";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Id } from "./_generated/dataModel";
 
+const ATTENDANCE_THRESHOLD_PERCENT = 0.5;
+
 // ============================================================================
 // QUERIES
 // ============================================================================
@@ -93,7 +95,7 @@ export const getMySchedule = query({
       flatSchedule = flatSchedule.filter(s => s.status === args.status);
     }
 
-    // Step 5: Hydrate with lesson and class details
+    // Step 5: Hydrate with lesson, class details AND Attendance
     const results = await Promise.all(
       flatSchedule.map(async (item) => {
         const classData = myClasses.find(c => c._id === item.classId);
@@ -114,6 +116,56 @@ export const getMySchedule = query({
         // Use lesson data if available, otherwise use custom title/description
         const title = lessonData?.title || item.title || "Class Session";
         const description = lessonData?.description || item.description || "";
+
+        // --- 🧠 INTELLIGENT ATTENDANCE LOGIC ---
+        let attendanceStatus: "upcoming" | "present" | "absent" | "partial" | "in-progress" = "upcoming";
+        let timeInClass = 0;
+        let isStudentActive = false;
+        
+        // 1. Check if student is CURRENTLY connected
+        // We look for a session that has a joinedAt but NO leftAt
+        if (user.role === "student") {
+          const sessions = await ctx.db
+            .query("class_sessions")
+            .withIndex("by_student_schedule", (q) => 
+              q.eq("studentId", user._id).eq("scheduleId", item._id)
+            )
+            .collect();
+
+          // True if they have an open session right now
+          const activeSession = sessions.find(s => s.joinedAt && !s.leftAt);
+          isStudentActive = !!activeSession;
+
+          const now = Date.now();
+          
+          // Calculate total historical time
+          timeInClass = sessions.reduce((sum, s) => {
+            if (s.durationSeconds) return sum + s.durationSeconds;
+            // Add current active session time dynamically
+            if (s.joinedAt && !s.leftAt) return sum + (now - s.joinedAt) / 1000;
+            return sum;
+          }, 0);
+          
+          const scheduledDuration = (item.scheduledEnd - item.scheduledStart) / 1000;
+          // Avoid division by zero
+          const ratio = scheduledDuration > 0 ? timeInClass / scheduledDuration : 0;
+
+          // --- STATUS DETERMINATION ---
+          
+          if (item.scheduledStart > now && !isStudentActive) {
+             attendanceStatus = "upcoming";
+          } else if (ratio >= ATTENDANCE_THRESHOLD_PERCENT) {
+             // If they crossed the threshold, they are present regardless of whether class ended
+             attendanceStatus = "present";
+          } else if (item.scheduledEnd < now) {
+             // Class is over, and they didn't meet threshold
+             attendanceStatus = (timeInClass > 60) ? "partial" : "absent";
+          } else {
+             // Class is currently running (or student is active early)
+             // If they are inside, show specific status, otherwise they are technically 'late' (handled by UI) or 'partial' so far
+             attendanceStatus = isStudentActive ? "in-progress" : "partial"; 
+          }
+        }
 
         return {
           scheduleId: item._id,
@@ -136,6 +188,9 @@ export const getMySchedule = query({
           recurrenceParentId: item.recurrenceParentId,
           teacherName: teacher?.fullName || "Unknown",
           teacherImageUrl: teacher?.imageUrl,
+          attendance: attendanceStatus,
+          minutesAttended: Math.round(timeInClass / 60),
+          isStudentActive: isStudentActive
         };
       })
     );
@@ -793,6 +848,51 @@ export const markLive = mutation({
 
     await ctx.db.patch(schedule._id, updates);
   },
+});
+
+/**
+ * Log Student Presence (Call this on Join/Leave)
+ */
+export const logStudentPresence = mutation({
+  args: {
+    scheduleId: v.id("classSchedule"),
+    action: v.union(v.literal("join"), v.literal("leave")),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const now = Date.now();
+
+    const schedule = await ctx.db.get(args.scheduleId);
+    if (!schedule) throw new Error("Schedule not found");
+
+    if (args.action === "join") {
+      // Create new session record
+      await ctx.db.insert("class_sessions", {
+        scheduleId: args.scheduleId,
+        studentId: user._id,
+        joinedAt: now,
+        roomName: schedule.roomName,
+        sessionDate: new Date().toISOString().split('T')[0],
+      });
+    } else {
+      // Find active session and close it
+      const activeSession = await ctx.db
+        .query("class_sessions")
+        .withIndex("by_student_schedule", (q) => 
+          q.eq("studentId", user._id).eq("scheduleId", args.scheduleId)
+        )
+        .filter(q => q.eq(q.field("leftAt"), undefined))
+        .first();
+
+      if (activeSession) {
+        const duration = (now - activeSession.joinedAt) / 1000;
+        await ctx.db.patch(activeSession._id, {
+          leftAt: now,
+          durationSeconds: duration
+        });
+      }
+    }
+  }
 });
 
 /**
