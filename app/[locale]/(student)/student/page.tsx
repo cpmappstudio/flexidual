@@ -77,7 +77,7 @@ export default function StudentHubPage() {
                 // Play a simple sound? (Optional, browsers often block this without interaction)
                 // const audio = new Audio('/notification.mp3'); audio.play().catch(() => {});
 
-                toast(t('student.classStartingSoon'), {
+                toast(t('schedule.classStartingSoon'), {
                     description: `${lesson.title} starts in 5 minutes!`,
                     icon: <BellRing className="w-5 h-5 text-orange-500 animate-bounce" />,
                     duration: 10000, // Stay longer
