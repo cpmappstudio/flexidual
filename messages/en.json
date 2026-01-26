@@ -273,7 +273,10 @@
     "releaseToLaunch": "Release to launch!",
     "dragToStart": "Drag a lesson card here to start",
     "launchingClass": "Launching Class!",
-    "getReady": "Get ready for an awesome lesson..."
+    "getReady": "Get ready for an awesome lesson...",
+    "partialCreditOnly": "Partial Credit Only",
+    "late": "Late",
+    "partial": "Partial"
   },
   "teacher": {
     "search": "Search teachers...",

@@ -273,7 +273,10 @@
     "releaseToLaunch": "¡Suelta para despegar!",
     "dragToStart": "Arrastra una tarjeta de lección aquí para comenzar",
     "launchingClass": "¡Lanzando Clase!",
-    "getReady": "Prepárate para una lección increíble..."
+    "getReady": "Prepárate para una lección increíble...",
+    "partialCreditOnly": "Solo Crédito Parcial",
+    "late": "Tarde",
+    "partial": "Parcial"
   },
   "teacher": {
     "search": "Buscar profesores...",

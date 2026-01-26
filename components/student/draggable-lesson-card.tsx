@@ -156,12 +156,12 @@ export function DraggableLessonCard({
             {canStillPass ? (
                 <Badge className="bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 border-red-300 dark:border-red-700 animate-pulse font-mono font-bold shadow-sm border-2">
                     <AlertCircle className="w-3 h-3 mr-1" />
-                    Late: -{formatCountdown(now - lesson.start)}
+                    {t('late')}: {formatCountdown(now - lesson.start)}
                 </Badge>
             ) : (
                 <Badge className="bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-100 border-orange-300 dark:border-orange-700 font-bold shadow-sm border-2">
                     <Hourglass className="w-3 h-3 mr-1" />
-                    Partial Credit Only
+                    {t('partialCreditOnly')}
                 </Badge>
             )}
         </motion.div>
@@ -199,7 +199,7 @@ export function DraggableLessonCard({
           ) : isPresent ? (
             `✓ ${t('attended')}`
           ) : isPartialFinal ? (
-            `~ Partial`
+            `~ ${t('partial')}`
           ) : (
             `⚠ ${t('missed')}`
           )}
