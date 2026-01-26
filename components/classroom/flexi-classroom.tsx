@@ -7,11 +7,12 @@ import { LiveKitRoom } from "@livekit/components-react";
 import { api } from "@/convex/_generated/api";
 import { ActiveClassroomUI } from "./active-classroom-ui";
 import { StudentClassroomUI } from "./student-classroom-ui";
-import { Loader2, CalendarClock, School } from "lucide-react";
+import { Loader2, CalendarClock, School, LogOut, Timer, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Badge } from "@/components/ui/badge";
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -27,6 +28,9 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   const [token, setToken] = useState<string>("");
   const [error, setError] = useState<string>("");
   
+  // Timer State
+  const [now, setNow] = useState(Date.now());
+
   const convexUser = useQuery(api.users.getCurrentUser, 
     user?.id ? { clerkId: user.id } : "skip"
   );
@@ -45,6 +49,12 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   const canJoinEarly = ["teacher", "admin", "superadmin", "tutor"].includes(convexUser?.role || "");
   const isClassLive = sessionStatus?.isActive || false;
   const shouldConnect = (isClassLive || canJoinEarly) && !!convexUser;
+
+  // Timer Effect
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!user || !roomName || !shouldConnect) return;
@@ -70,6 +80,20 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
     fetchToken();
   }, [user, roomName, getToken, shouldConnect, t]);
 
+  // --- Render Helpers ---
+  
+  // Helper to format countdown
+  const getCountdown = (targetTime: number) => {
+    const diff = targetTime - now;
+    if (diff <= 0) return "00:00:00";
+    
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    return `${hours > 0 ? `${hours}:` : ''}${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
   // Loading State
   if (!convexUser || sessionStatus === undefined) {
     return (
@@ -90,7 +114,16 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
            <School className="w-16 h-16 text-gray-300 dark:text-gray-700 mx-auto mb-4" />
            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200">{t('classroom.notFound')}</h3>
            <p className="text-gray-500 dark:text-gray-400 mt-2">{t('classroom.notFoundDescription')}</p>
-           {!isStudentView && <Button variant="outline" className="mt-6" onClick={() => router.back()}>{t('common.back')}</Button>}
+           
+           {/* Add Leave Button for Student here too just in case */}
+           {isStudentView && onLeave ? (
+             <Button variant="outline" className="mt-6 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={onLeave}>
+                <LogOut className="w-4 h-4 mr-2" />
+                {t('classroom.leave')}
+             </Button>
+           ) : (
+             !isStudentView && <Button variant="outline" className="mt-6" onClick={() => router.back()}>{t('common.back')}</Button>
+           )}
         </div>
       </div>
     );
@@ -98,28 +131,83 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   // Waiting Room
   if (!shouldConnect && !token) {
+    const timeDiff = sessionStatus.start - now;
+    const isUrgent = timeDiff > 0 && timeDiff <= 15 * 60 * 1000; // 15 mins
+    const isLate = timeDiff <= 0;
+
     return (
       <div className={`flex h-full w-full items-center justify-center ${isStudentView ? 'bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950' : 'bg-blue-50/50'} rounded-lg ${className}`}>
         <div className="text-center p-8 max-w-md bg-white dark:bg-gray-900 shadow-xl rounded-2xl border-4 border-purple-400 dark:border-purple-600 animate-in fade-in zoom-in duration-500">
-           <div className="w-20 h-20 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
-              <CalendarClock className="w-10 h-10 text-purple-600 dark:text-purple-400" />
+           
+           {/* Icon Badge */}
+           <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${
+               isLate ? 'bg-orange-100 dark:bg-orange-900 animate-pulse' : 'bg-purple-100 dark:bg-purple-900 animate-bounce'
+           }`}>
+              {isLate ? (
+                <AlertCircle className="w-10 h-10 text-orange-600 dark:text-orange-400" />
+              ) : (
+                <CalendarClock className="w-10 h-10 text-purple-600 dark:text-purple-400" />
+              )}
            </div>
            
-           <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">{t('classroom.waitingTitle')}</h2>
+           <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">
+               {isLate ? t('classroom.waitingForTeacher') : t('classroom.waitingTitle')}
+           </h2>
            
            <div className="space-y-4 my-6">
-              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                 <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">{t('classroom.scheduledStart')}</p>
-                 <p className="text-xl font-mono font-bold text-gray-700 dark:text-gray-300">
-                    {format(sessionStatus.start, "h:mm a")}
-                 </p>
-                 <p className="text-sm text-gray-500 dark:text-gray-400">{format(sessionStatus.start, "EEEE, MMMM do")}</p>
+              {/* Enhanced Time Display */}
+              <div className={`p-4 rounded-lg border flex flex-col items-center justify-center ${
+                  isUrgent 
+                    ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800' 
+                    : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+              }`}>
+                 {isLate ? (
+                    <>
+                        <p className="text-xs font-bold text-orange-600 uppercase tracking-wider mb-1">
+                            {t('classroom.shouldHaveStarted')}
+                        </p>
+                        <p className="text-2xl font-mono font-bold text-orange-700 dark:text-orange-400">
+                             {format(sessionStatus.start, "h:mm a")}
+                        </p>
+                    </>
+                 ) : (
+                    <>
+                        <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">
+                            {isUrgent ? t('classroom.startsIn') : t('classroom.scheduledStart')}
+                        </p>
+                        <p className={`text-3xl font-mono font-bold ${
+                            isUrgent ? 'text-amber-600 dark:text-amber-400' : 'text-gray-700 dark:text-gray-300'
+                        }`}>
+                            {isUrgent ? getCountdown(sessionStatus.start) : format(sessionStatus.start, "h:mm a")}
+                        </p>
+                        {!isUrgent && (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                {format(sessionStatus.start, "EEEE, MMMM do")}
+                            </p>
+                        )}
+                    </>
+                 )}
               </div>
               
               <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                {t('classroom.waitingMessage')}
+                {isLate 
+                    ? t('classroom.teacherRunningLate') 
+                    : t('classroom.waitingMessage')
+                }
               </p>
            </div>
+
+            {/* Leave Button for Students */}
+           {isStudentView && onLeave && (
+             <Button 
+                variant="outline" 
+                onClick={onLeave} 
+                className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900 dark:hover:bg-red-950 dark:text-red-400"
+             >
+                <LogOut className="w-4 h-4 mr-2" />
+                {t('classroom.leave')}
+             </Button>
+           )}
 
            {!isStudentView && (
              <Button variant="outline" onClick={() => router.back()} className="w-full">
@@ -138,7 +226,18 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
         <div className="text-center p-6">
            <div className="text-red-500 font-bold mb-2">{t('classroom.connectionError')}</div>
            <div className="text-gray-600 dark:text-gray-400 text-sm mb-4">{error}</div>
-           <Button variant="outline" onClick={() => window.location.reload()}>{t('classroom.tryAgain')}</Button>
+           
+            <div className="flex gap-2 justify-center">
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                    {t('classroom.tryAgain')}
+                </Button>
+                {/* Leave Button for Error State */}
+                {isStudentView && onLeave && (
+                    <Button variant="ghost" onClick={onLeave} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                        {t('classroom.leave')}
+                    </Button>
+                )}
+           </div>
         </div>
       </div>
     );
