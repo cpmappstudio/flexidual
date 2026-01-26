@@ -3,7 +3,114 @@ import { mutation, query } from "./_generated/server";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Id } from "./_generated/dataModel";
 
-const ATTENDANCE_THRESHOLD_PERCENT = 0.5;
+// ============================================================================
+// CONSTANTS & CONFIGURATION
+// ============================================================================
+
+// 50% attendance required for "Present"
+const FULL_ATTENDANCE_THRESHOLD_PERCENT = 0.5;
+
+// 10% attendance required for "Partial"
+const PARTIAL_ATTENDANCE_THRESHOLD_PERCENT = 0.10;
+
+// Minimum seconds absolute (e.g., 2 minutes) to count as partial, 
+// prevents noise from accidental clicks
+const MIN_PARTIAL_SECONDS = 120; 
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/**
+ * Validate that the teacher and class are not double-booked.
+ * Returns void or throws Error.
+ */
+async function validateScheduleOverlap(
+  ctx: any,
+  {
+    teacherId,
+    classId,
+    start,
+    end,
+    excludeScheduleId
+  }: {
+    teacherId: Id<"users">,
+    classId: Id<"classes">,
+    start: number,
+    end: number,
+    excludeScheduleId?: Id<"classSchedule">
+  }
+) {
+  // 1. Check if the CLASS is already busy
+  const classConflicts = await ctx.db
+    .query("classSchedule")
+    .withIndex("by_class", (q: any) => q.eq("classId", classId))
+    .filter((q: any) => 
+      q.and(
+        q.neq(q.field("status"), "cancelled"),
+        q.lt(q.field("scheduledStart"), end),
+        q.gt(q.field("scheduledEnd"), start)
+      )
+    )
+    .collect();
+
+  // Filter out self (for updates)
+  const realClassConflicts = excludeScheduleId 
+    ? classConflicts.filter((s: any) => s._id !== excludeScheduleId)
+    : classConflicts;
+
+  if (realClassConflicts.length > 0) {
+    const conflict = realClassConflicts[0];
+    const dateStr = new Date(conflict.scheduledStart).toLocaleTimeString();
+    throw new Error(`This Class is already scheduled at this time (${dateStr}).`);
+  }
+
+  // 2. Check if the TEACHER is already busy
+  // Note: We have to find classes taught by this teacher first, then their schedules,
+  // OR we rely on a direct index if available. 
+  // Since we don't have a "by_teacher" index on schedule, we query by time 
+  // or iterating active classes.
+  // OPTIMIZATION: To avoid scanning all schedules, we get the teacher's active classes first.
+  
+  const teacherClasses = await ctx.db
+    .query("classes")
+    .withIndex("by_teacher", (q: any) => q.eq("teacherId", teacherId).eq("isActive", true))
+    .collect();
+  
+  const teacherClassIds = new Set(teacherClasses.map((c: any) => c._id));
+
+  // If the teacher has no active classes, no conflict possible (except the one being created)
+  if (teacherClassIds.size === 0) return;
+
+  // We check schedules for ANY of the teacher's classes in this time range
+  // Ideally, we'd have a `by_teacher_time` index, but we can approximate by checking date ranges
+  // Since we can't do an "IN" query easily on index, we might need to check overlaps more broadly
+  // or iterate. For now, let's use the date range index which is efficient.
+  
+  const potentialOverlaps = await ctx.db
+    .query("classSchedule")
+    .withIndex("by_date_range", (q: any) => q.gte("scheduledStart", start - 24 * 60 * 60 * 1000)) // Broad range optimization
+    .filter((q: any) => 
+      q.and(
+        q.neq(q.field("status"), "cancelled"),
+        q.lt(q.field("scheduledStart"), end),
+        q.gt(q.field("scheduledEnd"), start)
+      )
+    )
+    .collect();
+
+  const teacherConflict = potentialOverlaps.find((s: any) => 
+    teacherClassIds.has(s.classId) && s._id !== excludeScheduleId
+  );
+
+  if (teacherConflict) {
+    const conflictClass = teacherClasses.find((c: any) => c._id === teacherConflict.classId);
+    const dateStr = new Date(teacherConflict.scheduledStart).toLocaleTimeString();
+    throw new Error(
+      `Teacher is already teaching "${conflictClass?.name || 'another class'}" at this time (${dateStr}).`
+    );
+  }
+}
 
 // ============================================================================
 // QUERIES
@@ -35,7 +142,6 @@ export const getMySchedule = query({
     let myClasses;
     if (user.role === "admin" || user.role === "superadmin") {
       if (args.teacherId) {
-        // Admin filtering by specific teacher
         myClasses = await ctx.db
           .query("classes")
           .withIndex("by_teacher", (q) => 
@@ -43,7 +149,6 @@ export const getMySchedule = query({
           )
           .collect();
       } else {
-        // Admin seeing all active classes
         myClasses = await ctx.db
           .query("classes")
           .withIndex("by_active", (q) => q.eq("isActive", true))
@@ -82,48 +187,39 @@ export const getMySchedule = query({
 
     let flatSchedule = scheduleItems.flat();
 
-    // Step 3: Filter by date range if provided
+    // Step 3: Filter by date/status
     if (args.from) {
       flatSchedule = flatSchedule.filter(s => s.scheduledStart >= args.from!);
     }
     if (args.to) {
       flatSchedule = flatSchedule.filter(s => s.scheduledStart <= args.to!);
     }
-
-    // Step 4: Filter by status if provided
     if (args.status) {
       flatSchedule = flatSchedule.filter(s => s.status === args.status);
     }
 
-    // Step 5: Hydrate with lesson, class details AND Attendance
+    // Step 4: Hydrate with details AND Robust Attendance Logic
     const results = await Promise.all(
       flatSchedule.map(async (item) => {
         const classData = myClasses.find(c => c._id === item.classId);
         if (!classData) return null;
 
-        // Get curriculum for color
         const curriculum = await ctx.db.get(classData.curriculumId);
-        
-        // Get Teacher Name (Important for Admins view)
         const teacher = await ctx.db.get(classData.teacherId);
 
-        // Lesson is optional now - only fetch if exists
         let lessonData = null;
         if (item.lessonId) {
           lessonData = await ctx.db.get(item.lessonId);
         }
 
-        // Use lesson data if available, otherwise use custom title/description
         const title = lessonData?.title || item.title || "Class Session";
         const description = lessonData?.description || item.description || "";
 
-        // --- 🧠 INTELLIGENT ATTENDANCE LOGIC ---
-        let attendanceStatus: "upcoming" | "present" | "absent" | "partial" | "in-progress" = "upcoming";
+        // --- 🧠 IMPROVED ATTENDANCE LOGIC ---
+        let attendanceStatus: "upcoming" | "present" | "absent" | "partial" | "in-progress" | "late" = "upcoming";
         let timeInClass = 0;
         let isStudentActive = false;
         
-        // 1. Check if student is CURRENTLY connected
-        // We look for a session that has a joinedAt but NO leftAt
         if (user.role === "student") {
           const sessions = await ctx.db
             .query("class_sessions")
@@ -132,38 +228,45 @@ export const getMySchedule = query({
             )
             .collect();
 
-          // True if they have an open session right now
+          // Check if currently connected (joined but not left)
           const activeSession = sessions.find(s => s.joinedAt && !s.leftAt);
           isStudentActive = !!activeSession;
-
           const now = Date.now();
-          
-          // Calculate total historical time
+
+          // Calculate total historical time + current active time
           timeInClass = sessions.reduce((sum, s) => {
             if (s.durationSeconds) return sum + s.durationSeconds;
-            // Add current active session time dynamically
             if (s.joinedAt && !s.leftAt) return sum + (now - s.joinedAt) / 1000;
             return sum;
           }, 0);
           
           const scheduledDuration = (item.scheduledEnd - item.scheduledStart) / 1000;
-          // Avoid division by zero
+          
+          // Prevent division by zero
           const ratio = scheduledDuration > 0 ? timeInClass / scheduledDuration : 0;
 
-          // --- STATUS DETERMINATION ---
-          
-          if (item.scheduledStart > now && !isStudentActive) {
-             attendanceStatus = "upcoming";
-          } else if (ratio >= ATTENDANCE_THRESHOLD_PERCENT) {
-             // If they crossed the threshold, they are present regardless of whether class ended
-             attendanceStatus = "present";
-          } else if (item.scheduledEnd < now) {
-             // Class is over, and they didn't meet threshold
-             attendanceStatus = (timeInClass > 60) ? "partial" : "absent";
-          } else {
-             // Class is currently running (or student is active early)
-             // If they are inside, show specific status, otherwise they are technically 'late' (handled by UI) or 'partial' so far
-             attendanceStatus = isStudentActive ? "in-progress" : "partial"; 
+          // --- DETERMINISTIC STATUS CALCULATION ---
+          // Priority 1: Did they attend enough? (Regardless of if class is live or over)
+          if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) {
+            attendanceStatus = "present";
+          } 
+          // Priority 2: Did they attend partially? (Defined by % or Min Seconds)
+          else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || timeInClass >= MIN_PARTIAL_SECONDS) {
+            attendanceStatus = "partial";
+          } 
+          // Priority 3: Class hasn't started yet
+          else if (item.scheduledStart > now && !isStudentActive) {
+            attendanceStatus = "upcoming";
+          }
+          // Priority 4: Class is currently running
+          else if (now >= item.scheduledStart && now <= item.scheduledEnd) {
+             // If they are inside, they are "in-progress" (accumulating time)
+             // If they are outside, they are "late" (missing time)
+             attendanceStatus = isStudentActive ? "in-progress" : "late";
+          } 
+          // Priority 5: Class ended, didn't meet thresholds
+          else {
+             attendanceStatus = "absent";
           }
         }
 
@@ -291,7 +394,6 @@ export const getSessionStatus = query({
 
     if (!schedule) {
       // Fallback: Search all schedules if sessionId looks like an ID
-      // This is a safety fallback, but roomName should be preferred
       const allSchedules = await ctx.db
         .query("classSchedule")
         .withIndex("by_status", (q) => 
@@ -299,7 +401,6 @@ export const getSessionStatus = query({
         )
         .collect();
       
-      // Try to find by ID if the sessionId matches
       schedule = allSchedules.find(s => s._id === args.sessionId) || null;
     }
 
@@ -387,6 +488,14 @@ export const createSchedule = mutation({
       throw new Error("End time must be after start time");
     }
 
+    // VALIDATE OVERLAP (Teacher & Class)
+    await validateScheduleOverlap(ctx, {
+      teacherId: classData.teacherId,
+      classId: args.classId,
+      start: args.scheduledStart,
+      end: args.scheduledEnd
+    });
+
     const roomName = `class-${args.classId}-${Date.now()}`;
 
     return await ctx.db.insert("classSchedule", {
@@ -467,6 +576,15 @@ export const createRecurringSchedule = mutation({
     if (occurrences.length === 0) {
       throw new Error("No valid occurrences generated");
     }
+
+    // Check overlap for the FIRST occurrence (basic check)
+    // Checking all recurring overlaps is expensive, but we check the master start
+    await validateScheduleOverlap(ctx, {
+      teacherId: classData.teacherId,
+      classId: args.classId,
+      start: args.scheduledStart,
+      end: args.scheduledEnd
+    });
 
     // Create parent schedule
     const parentRoomName = `class-${args.classId}-series-${Date.now()}`;
@@ -564,6 +682,14 @@ export const scheduleLesson = mutation({
       throw new Error("End time must be after start time");
     }
 
+    // VALIDATE OVERLAP
+    await validateScheduleOverlap(ctx, {
+      teacherId: classData.teacherId,
+      classId: args.classId,
+      start: args.scheduledStart,
+      end: args.scheduledEnd
+    });
+
     // Generate unique room name
     const roomName = `class-${args.classId}-lesson-${args.lessonId}-${Date.now()}`;
 
@@ -628,7 +754,7 @@ export const updateSchedule = mutation({
       }
     }
 
-    // Calculate time delta and new duration based on the specific instance edited
+    // Calculate time delta and new duration
     const oldStart = schedule.scheduledStart;
     const newStart = args.scheduledStart ?? oldStart;
     const timeShiftDelta = newStart - oldStart;
@@ -636,6 +762,18 @@ export const updateSchedule = mutation({
     const oldEnd = schedule.scheduledEnd;
     const newEnd = args.scheduledEnd ?? oldEnd;
     const newDuration = newEnd - newStart;
+
+    // VALIDATE OVERLAP if times are changing
+    // (Only checks the specific item being edited, or the master if updating series)
+    if (args.scheduledStart !== undefined || args.scheduledEnd !== undefined) {
+      await validateScheduleOverlap(ctx, {
+        teacherId: classData.teacherId,
+        classId: classData._id,
+        start: newStart,
+        end: newEnd,
+        excludeScheduleId: args.id
+      });
+    }
 
     // Prepare metadata updates
     const metadataUpdates: any = {};
@@ -655,31 +793,26 @@ export const updateSchedule = mutation({
     // Update single or series
     if (args.updateSeries && (schedule.isRecurring || schedule.recurrenceParentId)) {
       // Find the Master ID (Parent)
-      // If recurrenceParentId exists, that's the master. If not, THIS item is the master.
       const masterId = schedule.recurrenceParentId || schedule._id;
 
       // Collect all items in the series (Master + Children)
       const itemsToUpdate = [];
       
-      // A. Fetch Parent (Master)
       const parent = await ctx.db.get(masterId);
       if (parent) itemsToUpdate.push(parent);
 
-      // B. Fetch Children
       const children = await ctx.db
         .query("classSchedule")
         .withIndex("by_recurrence_parent", (q) => q.eq("recurrenceParentId", masterId))
         .collect();
       itemsToUpdate.push(...children);
 
-      // Deduplicate (just in case master was in children list)
       const uniqueItems = Array.from(new Map(itemsToUpdate.map(item => [item._id, item])).values());
 
       for (const item of uniqueItems) {
         const updatePatch: any = { ...metadataUpdates };
 
         // Apply Relative Time Shift
-        // We use the item's OWN stored start time as the base + the Delta calculated from the edited event
         const itemNewStart = item.scheduledStart + timeShiftDelta;
         
         updatePatch.scheduledStart = itemNewStart;
@@ -831,8 +964,6 @@ export const markLive = mutation({
 
     if (args.isLive) {
       // Teacher joined: Mark active
-      // Logic: If it's not cancelled, force it to active. 
-      // This allows re-opening "scheduled" or "completed" sessions.
       if (schedule.status !== "cancelled") {
         updates.status = "active";
       
