@@ -1,9 +1,9 @@
 "use client"
 
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { format } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
-import { Clock, Calendar, GripVertical, Sparkles, MonitorPlay, Video, AlertCircle, Timer } from "lucide-react"
+import { Clock, Calendar, GripVertical, Sparkles, MonitorPlay, Video, AlertCircle, Timer, RotateCcw, CheckCircle2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useTranslations, useLocale } from "next-intl"
 import { StudentScheduleEvent } from "@/lib/types/student"
@@ -30,7 +30,6 @@ export function DraggableLessonCard({
   const locale = useLocale()
   const dateLocale = locale === 'es' ? es : locale === 'pt-BR' ? ptBR : enUS
   
-  // State for Countdown
   const [now, setNow] = useState(Date.now())
   const [timeLeft, setTimeLeft] = useState(lesson.start - now)
 
@@ -39,7 +38,8 @@ export function DraggableLessonCard({
   
   // Update Timer
   useEffect(() => {
-    if (isPast) return; // Don't run timer for history
+    // Ignitia lessons don't need a countdown if they are past/available
+    if (isPast && !isIgnitia) return; 
 
     const interval = setInterval(() => {
       const currentNow = Date.now()
@@ -48,12 +48,17 @@ export function DraggableLessonCard({
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [lesson.start, isPast])
+  }, [lesson.start, isPast, isIgnitia])
 
   // --- Logic for Status ---
-  const isLate = timeLeft <= 0 && !lesson.isLive // Started but not joined yet
-  const isUrgent = timeLeft > 0 && timeLeft <= 5 * 60 * 1000 // 5 minutes or less
-  const isFuture = timeLeft > 5 * 60 * 1000
+  
+  // ✅ FIX: Ignitia is NEVER "Late". It is self-paced.
+  const isLate = !isIgnitia && timeLeft <= 0 && !lesson.isLive
+  
+  const isUrgent = timeLeft > 0 && timeLeft <= 5 * 60 * 1000 
+  
+  // ✅ FIX: Ignitia is always draggable/accessible, even in history
+  const canDrag = !isPast || isIgnitia;
 
   // Formatter for countdown
   const formatCountdown = (ms: number) => {
@@ -65,48 +70,58 @@ export function DraggableLessonCard({
 
   // --- Dynamic Styles ---
   const getCardStyle = () => {
-    if (isPast) return 'bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700 opacity-60';
-    
-    // 🔴 LATE STATE
+    // 🔴 LATE STATE (Live classes only)
     if (isLate) {
         return 'bg-red-50 dark:bg-red-950/20 border-red-500 dark:border-red-600 shadow-xl shadow-red-200 dark:shadow-red-900/20 ring-2 ring-red-400 ring-offset-2 ring-offset-white dark:ring-offset-gray-900';
     }
+
+    // 🟠 IGNITIA STATE (Always active visuals, even in history)
+    if (isIgnitia) {
+        // If it's officially "past" but Ignitia, we still show it as accessible
+        if (isPast) {
+             return 'bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 border-orange-300 dark:border-orange-700 opacity-90 hover:opacity-100';
+        }
+        // Active/Upcoming Ignitia
+        if (lesson.isLive || timeLeft <= 0) {
+            return 'bg-gradient-to-r from-orange-100 to-amber-100 dark:from-orange-950 dark:to-amber-950 border-orange-400 dark:border-orange-600 shadow-lg shadow-orange-200 dark:shadow-orange-900/30';
+        }
+        // Future Ignitia
+        return 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-orange-300 dark:border-orange-700 shadow-lg hover:shadow-xl';
+    }
+
+    // ⚪ PAST STATE (Standard Live Classes)
+    if (isPast) return 'bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700 opacity-60';
 
     // 🟡 URGENT STATE (5 min warning)
     if (isUrgent) {
         return 'bg-amber-50 dark:bg-amber-950/20 border-amber-500 dark:border-amber-500 shadow-lg shadow-amber-200 dark:shadow-amber-900/20';
     }
     
-    // 🟢 ACTIVE/LIVE
+    // 🟢 ACTIVE/LIVE (Standard)
     if (lesson.isLive) {
-      if (isIgnitia) {
-        return 'bg-gradient-to-r from-orange-100 to-amber-100 dark:from-orange-950 dark:to-amber-950 border-orange-400 dark:border-orange-600 shadow-lg shadow-orange-200 dark:shadow-orange-900/30';
-      }
       return 'bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-950 dark:to-emerald-950 border-green-400 dark:border-green-600 shadow-lg shadow-green-200 dark:shadow-green-900/30';
     }
 
     // 🔵 STANDARD FUTURE
-    if (isIgnitia) {
-        return 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-orange-300 dark:border-orange-700 shadow-lg hover:shadow-xl';
-    }
     return 'bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950 border-blue-400 dark:border-purple-600 shadow-lg hover:shadow-xl';
   }
 
   return (
     <motion.div
-      draggable={!isPast}
-      onDragStart={() => onDragStart(lesson)}
+      draggable={canDrag}
+      onDragStart={() => canDrag && onDragStart(lesson)}
       onDragEnd={onDragEnd}
-      whileHover={!isPast ? { scale: 1.02, y: -2 } : {}}
-      whileTap={!isPast ? { scale: 0.98 } : {}}
+      whileHover={canDrag ? { scale: 1.02, y: -2 } : {}}
+      whileTap={canDrag ? { scale: 0.98 } : {}}
       className={cn(
-        "relative rounded-2xl border-4 p-4 transition-all cursor-grab active:cursor-grabbing",
+        "relative rounded-2xl border-4 p-4 transition-all",
+        canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-default",
         getCardStyle()
       )}
       style={{ borderColor: !isPast && !isIgnitia && !lesson.isLive && !isLate && !isUrgent ? lesson.color : undefined }}
     >
-      {/* Drag Handle */}
-      {!isPast && (
+      {/* Drag Handle - Show if draggable */}
+      {canDrag && (
         <div className="absolute -left-3 top-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 rounded-full p-1 shadow-md border-2 border-gray-300 dark:border-gray-600 z-20">
           <GripVertical className="w-5 h-5 text-gray-400" />
         </div>
@@ -114,8 +129,8 @@ export function DraggableLessonCard({
 
       {/* --- BADGES --- */}
 
-      {/* 1. Live Badge */}
-      {lesson.isLive && (
+      {/* 1. Live/Active Badge */}
+      {(lesson.isLive || (isIgnitia && timeLeft <= 0 && !isPast)) && (
         <motion.div
           animate={{ scale: [1, 1.1, 1] }}
           transition={{ duration: 1, repeat: Infinity }}
@@ -134,7 +149,7 @@ export function DraggableLessonCard({
         <motion.div
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="absolute -top-3 right-8 z-10" // Positioned next to sparkles
+            className="absolute -top-3 right-8 z-10"
         >
             <Badge className={cn(
                 "font-mono font-bold shadow-sm border-2",
@@ -157,37 +172,47 @@ export function DraggableLessonCard({
         </motion.div>
       )}
 
-      {/* 3. Past Badge */}
+      {/* 3. Past Badge / Ignitia History Badge */}
       {isPast && (
         <Badge 
-          className={`absolute -top-3 -right-3 ${
-            isAttended ? 'bg-green-500 text-white' : 'bg-orange-500 text-white'
-          }`}
+          className={cn(
+            "absolute -top-3 -right-3 z-10",
+            isIgnitia 
+                ? "bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200" 
+                : (isAttended ? 'bg-green-500 text-white' : 'bg-gray-500 text-white')
+          )}
         >
-          {isAttended ? `✓ ${t('attended')}` : `⚠ ${t('missed')}`}
+          {isIgnitia ? (
+            <span className="flex items-center gap-1">
+                <RotateCcw className="w-3 h-3" />
+                {t('pending')}
+            </span>
+          ) : (
+            isAttended ? `✓ ${t('attended')}` : `⚠ ${t('missed')}`
+          )}
         </Badge>
       )}
 
-      {/* --- SPARKLES LOGIC --- */}
-      {!isPast && !lesson.isLive && (
+      {/* --- SPARKLES LOGIC (Show for Ignitia even if past, to indicate 'magical/active') --- */}
+      {(canDrag && !lesson.isLive) && (
         <motion.div
             className="absolute top-2 right-2 z-0"
             animate={
                 isLate 
-                    ? { scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] } // Violent pulse
+                    ? { scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] } 
                     : isUrgent 
-                        ? { scale: [1, 1.3, 1], rotate: [0, 15, -15, 0] } // Urgent jitter
-                        : { opacity: [0.4, 1, 0.4] } // Calm pulse
+                        ? { scale: [1, 1.3, 1], rotate: [0, 15, -15, 0] } 
+                        : { opacity: [0.4, 1, 0.4] }
             }
             transition={{
-                duration: isLate ? 0.5 : isUrgent ? 1 : 2, // Faster if urgent/late
+                duration: isLate ? 0.5 : isUrgent ? 1 : 2, 
                 repeat: Infinity,
                 ease: "easeInOut"
             }}
         >
             <Sparkles className={cn(
                 "w-6 h-6",
-                isLate ? "text-red-500" : isUrgent ? "text-orange-500" : (isIgnitia ? "text-orange-300" : "text-yellow-400")
+                isLate ? "text-red-500" : (isIgnitia ? "text-orange-300" : "text-yellow-400")
             )} />
         </motion.div>
       )}
@@ -255,8 +280,8 @@ export function DraggableLessonCard({
         </div>
       </div>
 
-      {/* Drag Hint */}
-      {!isPast && (
+      {/* Drag Hint - Show for all Ignitia (even past) and future Live */}
+      {canDrag && (
         <div className={cn(
             "mt-3 text-center text-xs font-bold animate-bounce",
             isLate ? "text-red-500" : "text-gray-500 dark:text-gray-400"

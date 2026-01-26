@@ -150,7 +150,8 @@
     "youAreFirst": "Você é o primeiro!",
     "liveTutor": "Tutor ao Vivo",
     "online": "Online",
-    "chatWithTutor": "Conversar com Tutor"
+    "chatWithTutor": "Conversar com Tutor",
+    "shouldHaveStarted": "A aula deveria ter começado"
   },
   "curriculum": {
     "search": "Pesquisar currículos...",
@@ -266,6 +267,7 @@
     "dragHint": "Me arraste para o foguete! 🚀",
     "attended": "Participou",
     "missed": "Perdeu",
+    "pending": "Pendente",
     "dropHere": "Solte Aqui!",
     "readyForClass": "Pronto para a Aula?",
     "releaseToLaunch": "Solte para decolar!",
