@@ -150,6 +150,7 @@ export function DraggableLessonCard({
         </motion.div>
       )}
 
+      {/* 🔴 LATE BADGE */}
       {isLate && (
         <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="absolute -top-3 right-8 z-10">
             {canStillPass ? (
@@ -166,12 +167,21 @@ export function DraggableLessonCard({
         </motion.div>
       )}
 
-      {/* ✅ UPDATED BADGE LOGIC: Supports Pending Ignitia */}
+      {/* 🟡 URGENT / UPCOMING BADGE (Starts in < 5 mins) */}
+      {isUrgent && (
+        <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="absolute -top-3 right-8 z-10">
+             <Badge className="bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-100 border-amber-300 dark:border-amber-700 animate-pulse font-mono font-bold shadow-sm border-2">
+                <Clock className="w-3 h-3 mr-1" />
+                {formatCountdown(lesson.start - now)}
+            </Badge>
+        </motion.div>
+      )}
+
+      {/* ✅ TRAILING BADGE (Status) */}
       {showTrailingBadge && (
         <Badge 
           className={cn(
             "absolute -top-3 -right-3 z-10 border-2",
-            // If it's Ignitia (Pending), show Orange. Else check Present/Partial/Missed
             (isIgnitia && !isPresent)
                 ? "bg-orange-100 dark:bg-orange-900/80 text-orange-700 dark:text-orange-100 border-orange-300 dark:border-orange-700" 
             : isPresent 
@@ -251,7 +261,7 @@ export function DraggableLessonCard({
 
       {canDrag && (
         <div className={cn("mt-3 text-center text-xs font-bold animate-bounce relative z-10", isLate ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400")}>
-          👆 {isInClass ? "Rejoin Session" : t('dragHint')}
+           {isInClass ? "" : `👆 ${t('dragHint')}`}
         </div>
       )}
     </motion.div>
