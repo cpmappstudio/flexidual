@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Video, Calendar as CalendarIcon, Clock, BookOpen } from "lucide-react"
+import { ArrowRight, Video, Calendar as CalendarIcon, Clock, BookOpen, MonitorPlay } from "lucide-react"
 import { Link } from "@/i18n/navigation"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { useCurrentUser } from "@/hooks/use-current-user"
@@ -25,10 +25,11 @@ export default function TeachingDashboard() {
   const todayStart = startOfDay(new Date()).getTime()
 
   // Process events
-  const { nextLesson, isLive, todayLessons, upcomingLessons, weekCalendar } = useMemo(() => {
+  const { nextLesson, isLive, isIgnitia, todayLessons, upcomingLessons, weekCalendar } = useMemo(() => {
     if (!events) return { 
       nextLesson: null, 
       isLive: false, 
+      isIgnitia: false,
       todayLessons: [], 
       upcomingLessons: [],
       weekCalendar: []
@@ -36,6 +37,7 @@ export default function TeachingDashboard() {
 
     const next = events.find(e => e.end > now)
     const live = next && next.start <= now && next.end >= now
+    const ignitia = next?.sessionType === "ignitia"
 
     const today = events.filter(e => 
       e.start >= todayStart && e.start < todayStart + 86400000
@@ -46,7 +48,7 @@ export default function TeachingDashboard() {
       .sort((a, b) => a.start - b.start)
       .slice(0, 5)
 
-    // Week calendar
+    // Week calendar logic (unchanged)
     const week = Array.from({ length: 7 }, (_, i) => {
       const date = addDays(new Date(), i)
       const dayStart = startOfDay(date).getTime()
@@ -62,11 +64,22 @@ export default function TeachingDashboard() {
     return { 
       nextLesson: next, 
       isLive: live, 
+      isIgnitia: ignitia,
       todayLessons: today, 
       upcomingLessons: upcoming,
       weekCalendar: week
     }
   }, [events, now, todayStart])
+
+  const getCardStyle = () => {
+    if (isLive) {
+      if (isIgnitia) {
+        return 'border-orange-500 dark:border-orange-600 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30'
+      }
+      return 'border-green-500 dark:border-green-600 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30'
+    }
+    return 'border-blue-500 dark:border-blue-600 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30'
+  }
 
   if (curriculums === undefined || events === undefined) {
     return <div className="p-6 space-y-4"><Skeleton className="h-10 w-48"/><Skeleton className="h-64 w-full"/></div>
@@ -86,24 +99,35 @@ export default function TeachingDashboard() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         
-        {/* LEFT COLUMN - Schedule & Classes */}
+        {/* LEFT COLUMN */}
         <div className="lg:col-span-2 space-y-6">
           
           {/* Next Class Hero */}
-          <Card className={`dashboard-card ${
-            isLive 
-              ? 'border-green-500 dark:border-green-600 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30' 
-              : 'border-blue-500 dark:border-blue-600 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30'
-          }`}>
+          <Card className={`dashboard-card ${getCardStyle()}`}>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-2xl">
-                  <Video className={`w-6 h-6 ${isLive ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`} />
-                  {isLive ? t('dashboard.classInSession') : t('dashboard.nextClass')}
+                  {/* Icon Logic */}
+                  {isIgnitia ? (
+                     <MonitorPlay className={`w-6 h-6 ${isLive ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600'}`} />
+                  ) : (
+                     <Video className={`w-6 h-6 ${isLive ? 'text-green-600 dark:text-green-400' : 'text-blue-600'}`} />
+                  )}
+                  
+                  {/* Title Logic */}
+                  {isLive 
+                    ? (isIgnitia ? "Ignitia Session Active" : t('dashboard.classInSession')) 
+                    : t('dashboard.nextClass')
+                  }
                 </CardTitle>
-                {isLive && (
+                {isLive && !isIgnitia && (
                   <Badge className="bg-red-500 text-white animate-pulse px-3 py-1">
                     ● {t('common.live')}
+                  </Badge>
+                )}
+                {isLive && isIgnitia && (
+                  <Badge className="bg-orange-500 text-white px-3 py-1">
+                    ● Active
                   </Badge>
                 )}
               </div>
@@ -140,14 +164,20 @@ export default function TeachingDashboard() {
                     size="lg" 
                     className={`w-full font-bold ${
                       isLive 
-                        ? 'bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800' 
-                        : 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800'
+                        ? (isIgnitia 
+                            ? 'bg-orange-600 hover:bg-orange-700 dark:bg-orange-700' 
+                            : 'bg-green-600 hover:bg-green-700 dark:bg-green-700')
+                        : 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700'
                     }`}
                     asChild
                   >
                     <Link href={`/classroom/${nextLesson.roomName}`}>
                       {isLive ? (
-                        <><Video className="mr-2 w-5 h-5" /> {t('dashboard.enterLive')}</>
+                         isIgnitia ? (
+                            <><MonitorPlay className="mr-2 w-5 h-5" /> Open Ignitia Access</>
+                         ) : (
+                            <><Video className="mr-2 w-5 h-5" /> {t('dashboard.enterLive')}</>
+                         )
                       ) : (
                         <><BookOpen className="mr-2 w-5 h-5" /> {t('dashboard.goToClassroom')}</>
                       )}
@@ -179,7 +209,7 @@ export default function TeachingDashboard() {
                       key={lesson.scheduleId}
                       className={`lesson-card ${
                         lesson.isLive 
-                          ? 'lesson-live' 
+                          ? (lesson.sessionType === 'ignitia' ? 'border-l-4 border-orange-500 bg-orange-50/50' : 'lesson-live')
                           : lesson.end < now
                           ? 'lesson-completed'
                           : 'lesson-upcoming'
@@ -242,10 +272,26 @@ export default function TeachingDashboard() {
                       </div>
                       
                       <div className="flex-1">
-                        <h4 className="font-bold">{lesson.title}</h4>
+                        <div className="flex items-center gap-2">
+                            <h4 className="font-bold">{lesson.title}</h4>
+                            {lesson.sessionType === 'ignitia' && (
+                                <Badge variant="outline" className="text-[10px] h-5 px-1 text-orange-600 border-orange-200 bg-orange-50">
+                                    Ignitia
+                                </Badge>
+                            )}
+                        </div>
                         <p className="text-sm text-muted-foreground">{lesson.className}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{lesson.curriculumTitle}</p>
                       </div>
+
+                      {lesson.isLive ? (
+                        lesson.sessionType === 'ignitia' ? (
+                            <Badge className="bg-orange-500 text-white">Active</Badge>
+                        ) : (
+                            <Badge className="bg-red-500 text-white animate-pulse">{t('common.live')}</Badge>
+                        )
+                      ) : lesson.end < now ? (
+                        <Badge variant="secondary">{t('dashboard.completed')}</Badge>
+                      ) : null}
                     </div>
                   ))}
                 </div>

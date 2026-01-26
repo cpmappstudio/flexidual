@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
-import { CheckCircle2, ArrowRight, Calendar as CalendarIcon, BookOpen, Plus, Edit } from "lucide-react"
+import { CheckCircle2, ArrowRight, Calendar as CalendarIcon, BookOpen, Plus, MonitorPlay, Video } from "lucide-react"
 import { ManageScheduleDialog } from "@/components/teaching/classes/manage-schedule-dialog"
 import { StudentManager } from "@/components/teaching/classes/student-manager"
 import { Button } from "@/components/ui/button"
@@ -105,6 +105,7 @@ export default function ClassDetailPage() {
               </Button>
             </div>
 
+            {/* Replaced CreateScheduleDialog with ManageScheduleDialog */}
             <ManageScheduleDialog 
               classId={classId}
               trigger={
@@ -133,15 +134,27 @@ export default function ClassDetailPage() {
 
                   {lessons.map((lesson, index) => {
                     const scheduledItem = lessonSchedules.find(s => s.lessonId === lesson._id)
+                    const isIgnitia = scheduledItem?.sessionType === "ignitia"
                     
                     return (
                       <div key={lesson._id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4">
                         <div className="flex items-start gap-4">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
+                          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-sm ${
+                            isIgnitia 
+                                ? "bg-orange-100 text-orange-700" 
+                                : "bg-primary/10 text-primary"
+                          }`}>
                             {index + 1}
                           </div>
                           <div>
-                            <p className="font-medium">{lesson.title}</p>
+                            <div className="flex items-center gap-2">
+                                <p className="font-medium">{lesson.title}</p>
+                                {isIgnitia && (
+                                    <Badge variant="outline" className="text-[10px] h-5 px-1 text-orange-600 border-orange-200 bg-orange-50">
+                                        Ignitia
+                                    </Badge>
+                                )}
+                            </div>
                             <p className="text-sm text-muted-foreground line-clamp-1">{lesson.description}</p>
                           </div>
                         </div>
@@ -150,7 +163,9 @@ export default function ClassDetailPage() {
                           {scheduledItem ? (
                             <div className="flex items-center gap-4">
                               <div className="text-right">
-                                <div className="flex items-center justify-end gap-1.5 text-sm font-medium text-green-600">
+                                <div className={`flex items-center justify-end gap-1.5 text-sm font-medium ${
+                                    isIgnitia ? "text-orange-600" : "text-green-600"
+                                }`}>
                                   <CheckCircle2 className="h-4 w-4" />
                                   {t('lesson.scheduled')}
                                 </div>
@@ -159,44 +174,55 @@ export default function ClassDetailPage() {
                                 </p>
                               </div>
                               
+                              {/* Replaced ScheduleLessonDialog with ManageScheduleDialog (Edit Mode) */}
                               <ManageScheduleDialog 
                                 classId={classId}
                                 scheduleId={scheduledItem.scheduleId}
                                 initialData={{
-                                  lessonId: lesson._id,
-                                  title: scheduledItem.title,
-                                  description: scheduledItem.description,
-                                  start: scheduledItem.start,
-                                  end: scheduledItem.end,
-                                  sessionType: scheduledItem.sessionType
+                                    lessonId: lesson._id,
+                                    title: scheduledItem.title,
+                                    description: scheduledItem.description,
+                                    start: scheduledItem.start,
+                                    end: scheduledItem.end,
+                                    sessionType: scheduledItem.sessionType || "live"
                                 }}
-                                trigger={
-                                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                                    <Edit className="h-4 w-4 text-muted-foreground" />
-                                  </Button>
-                                }
                               />
 
+                              {/* BUTTON LOGIC SPLIT */}
                               {scheduledItem.isLive ? (
-                                <Button size="sm" variant="destructive" asChild>
+                                <Button size="sm" 
+                                    variant={isIgnitia ? "default" : "destructive"} 
+                                    className={isIgnitia ? "bg-orange-600 hover:bg-orange-700" : ""}
+                                    asChild
+                                >
                                   <Link href={`/classroom/${scheduledItem.roomName}`}>
-                                    {t('classroom.joinLive')}
+                                    {isIgnitia ? "Open Active Session" : t('classroom.joinLive')}
                                   </Link>
                                 </Button>
                               ) : (
                                 <Button size="sm" variant="outline" asChild>
                                   <Link href={`/classroom/${scheduledItem.roomName}`}>
-                                    {t('classroom.prepareRoom')}
-                                    <ArrowRight className="ml-2 h-4 w-4" />
+                                    {isIgnitia ? (
+                                        <>
+                                            <MonitorPlay className="mr-2 h-4 w-4 text-orange-600" />
+                                            Open Ignitia
+                                        </>
+                                    ) : (
+                                        <>
+                                            {t('classroom.prepareRoom')}
+                                            <ArrowRight className="ml-2 h-4 w-4" />
+                                        </>
+                                    )}
                                   </Link>
                                 </Button>
                               )}
                             </div>
                           ) : (
+                            // Replaced ScheduleLessonDialog with ManageScheduleDialog (Create Mode)
                             <ManageScheduleDialog 
-                              classId={classId}
-                              preselectedLessonId={lesson._id}
-                              trigger={<Button size="sm" variant="outline">{t('schedule.schedule')}</Button>}
+                                classId={classId}
+                                preselectedLessonId={lesson._id}
+                                trigger={<Button size="sm" variant="outline">{t('schedule.schedule')}</Button>}
                             />
                           )}
                         </div>
@@ -289,24 +315,28 @@ function ScheduleItem({
     lessonId?: Id<"lessons">
     description?: string
     roomName: string
+    sessionType?: "live" | "ignitia"
   }
   classId: Id<"classes">
   isPast?: boolean 
 }) {
   const t = useTranslations()
+  const isIgnitia = schedule.sessionType === "ignitia";
   
   return (
-    <div className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4 ${isPast ? 'opacity-60' : ''}`}>
+    <div className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4 ${isPast ? 'opacity-60' : ''} ${isIgnitia ? 'bg-orange-50/30 border-orange-100' : ''}`}>
       <div className="flex items-start gap-4 flex-1">
         {/* Date Badge */}
-        <div className="flex flex-col items-center justify-center min-w-[60px] text-center p-2 bg-muted rounded-md">
-          <span className="text-xs font-bold uppercase text-muted-foreground">
+        <div className={`flex flex-col items-center justify-center min-w-[60px] text-center p-2 rounded-md ${
+            isIgnitia ? "bg-orange-100 text-orange-900" : "bg-muted"
+        }`}>
+          <span className="text-xs font-bold uppercase opacity-70">
             {format(schedule.start, "MMM")}
           </span>
           <span className="text-xl font-bold">
             {format(schedule.start, "d")}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs opacity-70">
             {format(schedule.start, "h:mm a")}
           </span>
         </div>
@@ -315,17 +345,38 @@ function ScheduleItem({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h4 className="font-medium">{schedule.title}</h4>
+            
+            {/* Session Type Badge */}
+            {isIgnitia ? (
+                 <Badge variant="outline" className="shrink-0 text-orange-700 bg-orange-100 border-orange-200">
+                    <MonitorPlay className="h-3 w-3 mr-1" />
+                    Ignitia
+                </Badge>
+            ) : (
+                <Badge variant="secondary" className="shrink-0">
+                    <Video className="h-3 w-3 mr-1" />
+                    Live Class
+                </Badge>
+            )}
+
             {schedule.lessonId && (
               <Badge variant="outline" className="shrink-0">
                 <BookOpen className="h-3 w-3 mr-1" />
                 {t('lesson.linked')}
               </Badge>
             )}
+            
+            {/* Active Status */}
             {schedule.isLive && (
-              <Badge variant="destructive" className="animate-pulse shrink-0">
-                {t('common.live')}
-              </Badge>
+              isIgnitia ? (
+                <Badge className="shrink-0 bg-orange-500">Active</Badge>
+              ) : (
+                <Badge variant="destructive" className="animate-pulse shrink-0">
+                    {t('common.live')}
+                </Badge>
+              )
             )}
+            
             {schedule.status === "cancelled" && (
               <Badge variant="secondary" className="shrink-0">
                 {t('common.cancelled')}
@@ -353,12 +404,12 @@ function ScheduleItem({
       <div className="flex items-center gap-2 shrink-0">
         {!isPast && schedule.status !== "cancelled" && (
           <>
-            {/* ✅ FIXED: Always pass initialData so Edit works for both Lessons and Generic events */}
+            {/* Unified Manage Dialog */}
             <ManageScheduleDialog 
               classId={classId}
               scheduleId={schedule.scheduleId}
               initialData={{
-                lessonId: schedule.lessonId, // If undefined, it just acts as "No Lesson"
+                lessonId: schedule.lessonId, 
                 title: schedule.title,
                 description: schedule.description,
                 start: schedule.start,
@@ -368,17 +419,31 @@ function ScheduleItem({
               trigger={<Button size="sm" variant="outline">{t('common.edit')}</Button>}
             />
             
+            {/* Button Logic Split */}
             {schedule.isLive ? (
-              <Button size="sm" variant="destructive" asChild>
+              <Button size="sm" 
+                variant={isIgnitia ? "default" : "destructive"} 
+                className={isIgnitia ? "bg-orange-600 hover:bg-orange-700" : ""}
+                asChild
+              >
                 <Link href={`/classroom/${schedule.roomName}`}>
-                  {t('classroom.joinLive')}
+                  {isIgnitia ? "Open Session" : t('classroom.joinLive')}
                 </Link>
               </Button>
             ) : (
               <Button size="sm" variant="outline" asChild>
                 <Link href={`/classroom/${schedule.roomName}`}>
-                  {t('classroom.prepareRoom')}
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                   {isIgnitia ? (
+                      <>
+                        <MonitorPlay className="mr-2 h-4 w-4 text-orange-600" />
+                        Open Ignitia
+                      </>
+                   ) : (
+                      <>
+                        {t('classroom.prepareRoom')}
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </>
+                   )}
                 </Link>
               </Button>
             )}
