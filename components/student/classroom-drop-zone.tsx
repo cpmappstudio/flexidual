@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion"
 import { useState, useMemo } from "react"
-import { Rocket, Sparkles, ExternalLink, Maximize2 } from "lucide-react"
+import { Rocket, Sparkles, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import FlexiClassroom from "@/components/classroom/flexi-classroom"
 import { useTranslations } from "next-intl"

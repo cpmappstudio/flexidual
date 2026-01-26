@@ -44,6 +44,7 @@ import { useTranslations } from "next-intl";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Image from "next/image";
+import { CalendarEvent } from "../calendar-types";
 
 const formSchema = z.object({
   title: z.string().optional(),
@@ -113,7 +114,7 @@ export default function CalendarManageEventDialog() {
         start: selectedEvent.start.toISOString(),
         end: selectedEvent.end.toISOString(),
         lessonId: selectedEvent.lessonId || "none",
-        sessionType: (selectedEvent as any).sessionType || "live",
+        sessionType: (selectedEvent as CalendarEvent).sessionType || "live",
       });
       setUpdateMode("single");
       setIsEditing(false); 
@@ -238,7 +239,7 @@ export default function CalendarManageEventDialog() {
                                 {selectedEvent.curriculumTitle}
                             </Badge>
 
-                            {(selectedEvent as any).sessionType === "ignitia" ? (
+                            {(selectedEvent as CalendarEvent).sessionType === "ignitia" ? (
                                 <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200">
                                     <MonitorPlay className="h-3 w-3 mr-1" />
                                     Ignitia Lesson
@@ -251,7 +252,7 @@ export default function CalendarManageEventDialog() {
                             )}
                             
                             {/* Lesson Linked Indicator */}
-                            {selectedEvent.lessonId ? (
+                            {(selectedEvent as CalendarEvent).lessonId ? (
                                 <Badge variant="secondary" className="flex items-center gap-1">
                                     <LinkIcon className="h-3 w-3" />
                                     {t('lesson.linked') || "Linked Lesson"}

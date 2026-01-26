@@ -58,6 +58,10 @@ export function DraggableLessonCard({
   const isLate = !isIgnitia && isLiveWindow && !isInClass && !isPresent;
   const isMissed = !isIgnitia && now >= lesson.end && !isPresent && !isPartialFinal && !isInClass;
   const isUrgent = timeToStart > 0 && timeToStart <= 5 * 60 * 1000;
+  
+  // Logic update: Ensure we catch "Past Ignitia" that isn't complete
+  const isIgnitiaPending = isIgnitia && (isPast || now > lesson.end) && !isPresent;
+
   const canDrag = isIgnitia || isInClass || isLiveWindow || (now < lesson.start);
 
   const formatCountdown = (ms: number) => {
@@ -69,60 +73,40 @@ export function DraggableLessonCard({
 
   // --- 🎨 VISUAL STYLES ---
   const getCardStyle = () => {
-    // 🔵 ACTIVE / IN CLASS
-    if (isInClass) {
-        return 'bg-green-50 dark:bg-green-950/50 border-green-500 ring-2 ring-green-400 ring-offset-2 dark:ring-offset-gray-900 animate-pulse-slow';
-    }
-
-    // 🔴 LATE STATE
+    if (isInClass) return 'bg-green-50 dark:bg-green-950/50 border-green-500 ring-2 ring-green-400 ring-offset-2 dark:ring-offset-gray-900 animate-pulse-slow';
+    
     if (isLate) {
-        if (!canStillPass) {
-            return 'bg-red-50/50 dark:bg-red-950/20 border-red-300 dark:border-red-900 border-dashed';
-        }
+        if (!canStillPass) return 'bg-red-50/50 dark:bg-red-950/20 border-red-300 dark:border-red-900 border-dashed';
         return 'bg-red-50 dark:bg-red-950/40 border-red-500 dark:border-red-700 shadow-xl shadow-red-200 dark:shadow-none';
     }
 
-    // 🟠 IGNITIA STATE (Refined Gradients)
     if (isIgnitia) {
         if (lesson.isLive || (now >= lesson.start && now <= lesson.end)) {
-            // Live/Active Ignitia -> Vibrant Orange Gradient
             return 'bg-gradient-to-br from-orange-100 via-amber-100 to-yellow-100 dark:from-orange-950 dark:via-amber-950 dark:to-yellow-950 border-orange-400 dark:border-orange-500';
         }
-        // Scheduled Ignitia -> Warm Subtle Gradient
         return 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-orange-300 dark:border-orange-800 shadow-lg';
     }
 
-    // ⚫ MISSED
-    if (isMissed) {
-        return 'bg-gray-100 dark:bg-gray-900/50 border-gray-300 dark:border-gray-800 opacity-60 grayscale';
-    }
+    if (isMissed) return 'bg-gray-100 dark:bg-gray-900/50 border-gray-300 dark:border-gray-800 opacity-60 grayscale';
 
-    // 🟢 COMPLETED
-    if (isPresent || isPartialFinal) {
-        return 'bg-white dark:bg-gray-900 border-green-200 dark:border-green-900 opacity-80';
-    }
+    if (isPresent || isPartialFinal) return 'bg-white dark:bg-gray-900 border-green-200 dark:border-green-900 opacity-80';
 
-    // 🟡 URGENT
-    if (isUrgent) {
-        return 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 shadow-lg shadow-amber-200 dark:shadow-none';
-    }
+    if (isUrgent) return 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 shadow-lg shadow-amber-200 dark:shadow-none';
     
-    // 🟢 TEACHER LIVE
-    if (lesson.isLive) {
-      return 'bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-950 dark:to-emerald-950 border-green-400 dark:border-green-600 shadow-lg';
-    }
+    if (lesson.isLive) return 'bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-950 dark:to-emerald-950 border-green-400 dark:border-green-600 shadow-lg';
 
-    // 🔵 STANDARD FUTURE
     return 'bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950 border-blue-400 dark:border-purple-500 shadow-lg hover:shadow-xl transition-shadow';
   }
 
-  // --- TEXT COLORS ---
   const getTextColor = () => {
       if (isMissed) return "text-gray-500 dark:text-gray-500";
       if (isLate) return "text-gray-800 dark:text-red-100";
       if (isIgnitia) return "text-gray-800 dark:text-orange-100";
       return "text-gray-800 dark:text-gray-100";
   }
+
+  // Determine if we show the trailing badge
+  const showTrailingBadge = (isMissed || isPresent || isPartialFinal || isIgnitiaPending) && !isInClass;
 
   return (
     <motion.div
@@ -132,34 +116,21 @@ export function DraggableLessonCard({
       whileHover={canDrag ? { scale: 1.02, y: -2 } : {}}
       whileTap={canDrag ? { scale: 0.98 } : {}}
       className={cn(
-        "relative rounded-2xl border-4 p-4 transition-all",
+        "relative rounded-2xl border-4 p-4 transition-all", 
         canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-default",
         getCardStyle()
       )}
       style={{ borderColor: !isMissed && !isIgnitia && !lesson.isLive && !isLate && !isUrgent && !isInClass ? lesson.color : undefined }}
     >
       
-      {/* --- ✨ SPARKLES LOGIC ✨ --- */}
+      {/* Sparkles */}
       {(canDrag && !lesson.isLive) && (
         <motion.div
             className="absolute top-2 right-2 z-0 pointer-events-none"
-            animate={
-                isLate 
-                    ? { scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] } 
-                    : isUrgent 
-                        ? { scale: [1, 1.3, 1], rotate: [0, 15, -15, 0] } 
-                        : { opacity: [0.4, 1, 0.4] }
-            }
-            transition={{
-                duration: isLate ? 0.5 : isUrgent ? 1 : 2, 
-                repeat: Infinity,
-                ease: "easeInOut"
-            }}
+            animate={isLate ? { scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] } : isUrgent ? { scale: [1, 1.3, 1], rotate: [0, 15, -15, 0] } : { opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: isLate ? 0.5 : isUrgent ? 1 : 2, repeat: Infinity, ease: "easeInOut" }}
         >
-            <Sparkles className={cn(
-                "w-6 h-6 opacity-80",
-                isLate ? "text-red-500" : (isIgnitia ? "text-orange-400 dark:text-orange-300" : "text-yellow-400")
-            )} />
+            <Sparkles className={cn("w-6 h-6 opacity-80", isLate ? "text-red-500" : (isIgnitia ? "text-orange-400 dark:text-orange-300" : "text-yellow-400"))} />
         </motion.div>
       )}
 
@@ -171,10 +142,7 @@ export function DraggableLessonCard({
 
       {/* --- BADGES --- */}
       {isInClass && (
-        <motion.div
-            initial={{ scale: 0 }} animate={{ scale: 1 }}
-            className="absolute -top-3 left-8 z-10"
-        >
+        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute -top-3 left-8 z-10">
             <Badge className="bg-green-600 text-white font-bold border-2 border-white dark:border-gray-800 shadow-md animate-pulse">
                 <Radio className="w-3 h-3 mr-1" />
                 In Class
@@ -183,11 +151,7 @@ export function DraggableLessonCard({
       )}
 
       {isLate && (
-        <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="absolute -top-3 right-8 z-10"
-        >
+        <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="absolute -top-3 right-8 z-10">
             {canStillPass ? (
                 <Badge className="bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 border-red-300 dark:border-red-700 animate-pulse font-mono font-bold shadow-sm border-2">
                     <AlertCircle className="w-3 h-3 mr-1" />
@@ -202,11 +166,13 @@ export function DraggableLessonCard({
         </motion.div>
       )}
 
-      {(isMissed || isPresent || isPartialFinal) && !isInClass && (
+      {/* ✅ UPDATED BADGE LOGIC: Supports Pending Ignitia */}
+      {showTrailingBadge && (
         <Badge 
           className={cn(
             "absolute -top-3 -right-3 z-10 border-2",
-            isIgnitia 
+            // If it's Ignitia (Pending), show Orange. Else check Present/Partial/Missed
+            (isIgnitia && !isPresent)
                 ? "bg-orange-100 dark:bg-orange-900/80 text-orange-700 dark:text-orange-100 border-orange-300 dark:border-orange-700" 
             : isPresent 
                 ? 'bg-green-500 text-white border-green-600' 
@@ -215,8 +181,11 @@ export function DraggableLessonCard({
             : 'bg-gray-500 dark:bg-gray-700 text-white border-gray-600'
           )}
         >
-          {isIgnitia ? (
-            <span className="flex items-center gap-1"><RotateCcw className="w-3 h-3" /> Review</span>
+          {(isIgnitia && !isPresent) ? (
+            <span className="flex items-center gap-1">
+                <RotateCcw className="w-3 h-3" /> 
+                {t('pending')}
+            </span>
           ) : isPresent ? (
             `✓ ${t('attended')}`
           ) : isPartialFinal ? (
@@ -264,18 +233,12 @@ export function DraggableLessonCard({
           </p>
           
           <div className="flex flex-wrap gap-2 text-xs">
-            <div className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded-full",
-                isLate 
-                    ? "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-200 font-bold" 
-                    : "bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300"
-            )}>
+            <div className={cn("flex items-center gap-1 px-2 py-1 rounded-full", isLate ? "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-200 font-bold" : "bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300")}>
               <Clock className="w-3 h-3" />
               <span className="font-bold">
                 {format(lesson.start, "h:mm a", { locale: dateLocale })} - {format(lesson.end, "h:mm a", { locale: dateLocale })}
               </span>
             </div>
-            
             {(lesson.minutesAttended > 0) && (
                 <div className="flex items-center gap-1 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-2 py-1 rounded-full font-bold">
                     <Clock className="w-3 h-3" />
@@ -287,10 +250,7 @@ export function DraggableLessonCard({
       </div>
 
       {canDrag && (
-        <div className={cn(
-            "mt-3 text-center text-xs font-bold animate-bounce relative z-10",
-            isLate ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400"
-        )}>
+        <div className={cn("mt-3 text-center text-xs font-bold animate-bounce relative z-10", isLate ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400")}>
           👆 {isInClass ? "Rejoin Session" : t('dragHint')}
         </div>
       )}

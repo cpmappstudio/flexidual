@@ -61,6 +61,8 @@ export default function CalendarWithData() {
         recurrenceRule: item.recurrenceRule,
         recurrenceParentId: item.recurrenceParentId,
         teacherName: item.teacherName,
+
+        sessionType: item.sessionType || "live",
       }));
 
       setEvents(transformedEvents);

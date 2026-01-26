@@ -16,6 +16,7 @@ import { Calendar, Plus, Edit, Loader2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 import { DateTimePicker } from "@/components/calendar/form/date-time-picker"
+import { RecurrenceType } from "@/lib/types/schedule"
 
 interface ManageScheduleDialogProps {
   classId: Id<"classes">
@@ -203,7 +204,7 @@ export function ManageScheduleDialog({
         toast.success("Schedule deleted")
         setOpen(false)
     } catch (e) {
-        toast.error("Failed to delete")
+        toast.error("Failed to delete" + (e instanceof Error ? `: ${e.message}` : ""))
     } finally {
         setIsSubmitting(false)
     }
@@ -372,15 +373,18 @@ export function ManageScheduleDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Repeat</Label>
-                  <Select value={recurrenceType} onValueChange={(v: any) => setRecurrenceType(v)}>
+                  <Select 
+                    value={recurrenceType} 
+                    onValueChange={(v) => setRecurrenceType(v as RecurrenceType)}
+                >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="biweekly">Every 2 Weeks</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="biweekly">Every 2 Weeks</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
                     </SelectContent>
-                  </Select>
+                </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Occurrences</Label>

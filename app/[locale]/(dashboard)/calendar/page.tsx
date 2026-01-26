@@ -12,10 +12,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
-import { Video, Calendar as CalendarIcon, X } from "lucide-react"
+import { Video, Calendar as CalendarIcon } from "lucide-react"
 import Link from "next/link"
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types"
-import { useSearchParams, useRouter, usePathname } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import CalendarProvider from "@/components/calendar/calendar-provider"
 import CalendarNewEventDialog from "@/components/calendar/dialog/calendar-new-event-dialog"
@@ -140,8 +140,6 @@ function CalendarContent() {
 
   // Navigation Hooks
   const searchParams = useSearchParams()
-  const router = useRouter()
-  const pathname = usePathname()
   
   const classIdParam = searchParams.get("classId") as Id<"classes"> | null
 
@@ -195,21 +193,13 @@ function CalendarContent() {
     return result
   }, [allEvents, classIdParam, selectedCurriculumId])
 
-  // FIXED: Use stable reference for events state
-  const [events, setEvents] = useState<CalendarEvent[]>([])
+  // Use stable reference for events state
+  const [, setEvents] = useState<CalendarEvent[]>([])
   
   // Update events only when filteredEvents actually changes
   useMemo(() => {
     setEvents(filteredEvents)
   }, [filteredEvents])
-
-  const clearFilter = () => {
-    router.push(pathname)
-  }
-
-  const currentClassName = classIdParam && filteredEvents.length > 0 
-    ? filteredEvents[0].className 
-    : "Current Class"
 
   if (scheduleData === undefined) {
     return <div className="p-6"><Skeleton className="h-[600px] w-full" /></div>

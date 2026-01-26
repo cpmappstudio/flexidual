@@ -1,4 +1,3 @@
-import { use } from 'react';
 import FlexiClassroom from '@/components/classroom/flexi-classroom';
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
