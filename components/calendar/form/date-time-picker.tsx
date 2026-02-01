@@ -26,6 +26,15 @@ export function DateTimePicker({ field }: DateTimePickerProps) {
   )
   const [isOpen, setIsOpen] = React.useState(false)
 
+  React.useEffect(() => {
+    if (field.value) {
+      const newDate = new Date(field.value);
+      if (newDate.getTime() !== date.getTime()) {
+        setDate(newDate);
+      }
+    }
+  }, [field.value]);
+
   const hours = Array.from({ length: 12 }, (_, i) => i + 1)
 
   const handleDateSelect = (selectedDate: Date | undefined) => {

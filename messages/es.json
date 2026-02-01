@@ -366,7 +366,9 @@
     "sessionType": "Tipo de Sesión",
     "typeLive": "Clase en Vivo",
     "typeIgnitia": "Lección Ignitia",
-    "classStartingSoon": "La clase comenzará pronto"
+    "classStartingSoon": "La clase comenzará pronto",
+    "dateAdjusted": "Fecha de inicio ajustada automáticamente",
+    "dateAdjustedDesc": "Hemos movido la fecha de inicio a {date} para que coincida con los días seleccionados."
   },
   "calendar": {
     "mySchedule": "Mi Horario",

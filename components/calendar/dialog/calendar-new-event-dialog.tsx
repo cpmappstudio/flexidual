@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,10 +18,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DateTimePicker } from "@/components/calendar/form/date-time-picker";
 import { toast } from "sonner";
 import { Id } from "@/convex/_generated/dataModel";
-import { Loader2 } from "lucide-react";
+import { Loader2, CalendarClock } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
+import { getSmartStartDate } from "@/lib/date-utils";
 
 const formSchema = z.object({
   classId: z.string().min(1, "Class is required"),
@@ -53,6 +54,7 @@ export default function CalendarNewEventDialog() {
   } = useCalendarContext();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [anchorDate, setAnchorDate] = useState<Date>(new Date());
 
   // Queries
   const schedulableClasses = useQuery(
@@ -95,6 +97,8 @@ export default function CalendarNewEventDialog() {
         startDate.setMinutes(0);
       }
 
+      setAnchorDate(startDate);
+
       form.reset({
         classId: form.getValues("classId") || "",
         lessonId: preselectedLessonId || "none",
@@ -112,6 +116,8 @@ export default function CalendarNewEventDialog() {
   }, [newEventDialogOpen, date, form, preselectedLessonId]);
 
   // Dropdown Options
+  const start = form.watch("start");
+  const prevDaysRef = useRef<number[]>([]);
   const selectedClassId = form.watch("classId");
   const isRecurring = form.watch("isRecurring");
   const recurrenceType = form.watch("recurrenceType");
@@ -237,6 +243,41 @@ export default function CalendarNewEventDialog() {
     }
   }
 
+  // [UPDATED] Smart Start Date Logic
+  useEffect(() => {
+    if (!daysOfWeek || daysOfWeek.length === 0) return;
+    
+    // Check if days actually changed
+    const daysChanged = JSON.stringify(daysOfWeek) !== JSON.stringify(prevDaysRef.current);
+    if (!daysChanged) return;
+
+    prevDaysRef.current = daysOfWeek;
+
+    // Use anchorDate as the base, NOT the current form value
+    // This ensures we always calculate relative to the user's original intent
+    const smartStartDate = getSmartStartDate(anchorDate, daysOfWeek);
+
+    // Only update if the result is different from what's currently shown
+    const currentFormDate = new Date(form.getValues("start"));
+    
+    if (smartStartDate.getTime() !== currentFormDate.getTime()) {
+      form.setValue("start", smartStartDate.toISOString());
+
+      // [OPTIONAL] Toast notification
+      toast.info(t('schedule.dateAdjusted') || "Start Date Adjusted", {
+        description: t('schedule.dateAdjustedDesc', { 
+            date: smartStartDate.toLocaleDateString(undefined, { 
+                weekday: 'long', 
+                month: 'short', 
+                day: 'numeric' 
+            }) 
+        }),
+        duration: 3000,
+        icon: <CalendarClock className="h-4 w-4 text-blue-500" />
+      });
+    }
+  }, [daysOfWeek, anchorDate, form, t]);
+
   return (
     <Dialog open={newEventDialogOpen} onOpenChange={setNewEventDialogOpen}>
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
@@ -349,7 +390,15 @@ export default function CalendarNewEventDialog() {
               <FormField control={form.control} name="start" render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('schedule.dateTime') || "Start Time"}</FormLabel>
-                  <DateTimePicker field={field} />
+                  <DateTimePicker 
+                    field={{
+                      ...field,
+                      onChange: (isoDateString: string) => {
+                        setAnchorDate(new Date(isoDateString));
+                        field.onChange(isoDateString);
+                      }
+                    }} 
+                  />
                   <FormMessage />
                 </FormItem>
               )} />
@@ -431,37 +480,45 @@ export default function CalendarNewEventDialog() {
 
                         {/* Day of Week Selector - Show for daily/weekly/biweekly */}
                         {(recurrenceType === "daily" || recurrenceType === "weekly" || recurrenceType === "biweekly") && (
-                            <FormField control={form.control} name="daysOfWeek" render={() => (
-                                <FormItem>
-                                    <FormLabel>
-                                        {recurrenceType === "daily" 
-                                            ? t('schedule.repeatOnDays') || "Repeat on days (optional)"
-                                            : t('schedule.daysOfWeek') || "Repeat on"
-                                        }
-                                    </FormLabel>
-                                    <div className="flex flex-wrap gap-2">
-                                        {weekDays.map((day) => (
+                            <FormField control={form.control} name="daysOfWeek" render={() => {
+                                const startDayIndex = new Date(start).getDay();
+                                return (
+                                  <FormItem>
+                                  <FormLabel>
+                                      {recurrenceType === "daily" 
+                                          ? t('schedule.repeatOnDays') || "Repeat on days (optional)"
+                                          : t('schedule.daysOfWeek') || "Repeat on"
+                                      }
+                                  </FormLabel>
+                                  <div className="flex flex-wrap gap-2">
+                                      {weekDays.map((day) => {
+                                          const isStartDay = day.value === startDayIndex;
+
+                                          return (
                                             <Button
                                                 key={day.value}
                                                 type="button"
                                                 variant={daysOfWeek.includes(day.value) ? "default" : "outline"}
                                                 size="sm"
                                                 onClick={() => toggleDayOfWeek(day.value)}
-                                                className="w-12 h-10"
+                                                className={`w-12 h-10 ${isStartDay ? "ring-2 ring-offset-2 ring-blue-500 dark:ring-blue-400" : ""}`}
+                                                title={isStartDay ? "Current Start Date" : undefined}
                                             >
                                                 {t(day.key) || day.label}
                                             </Button>
-                                        ))}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        {recurrenceType === "daily"
-                                            ? t('schedule.dailyDaysHelp') || "Leave empty to repeat every day"
-                                            : t('schedule.daysHelp') || "Leave empty to repeat on the same day of week"
-                                        }
-                                    </p>
-                                    <FormMessage />
-                                </FormItem>
-                            )} />
+                                          );
+                                      })}
+                                  </div>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                          {recurrenceType === "daily"
+                                              ? t('schedule.dailyDaysHelp') || "Leave empty to repeat every day"
+                                              : t('schedule.daysHelp') || "Leave empty to repeat on the same day of week"
+                                          }
+                                      </p>
+                                      <FormMessage />
+                                  </FormItem>
+                                );
+                            }} />
                         )}
                     </div>
                 )}

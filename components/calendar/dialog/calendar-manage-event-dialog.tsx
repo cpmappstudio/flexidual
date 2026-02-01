@@ -157,16 +157,34 @@ export default function CalendarManageEventDialog() {
   const updateSchedule = useMutation(api.schedule.updateSchedule);
   const deleteSchedule = useMutation(api.schedule.deleteSchedule);
 
+  const defaultValues = useMemo(() => {
+    if (!selectedEvent) {
+      return {
+        title: "",
+        description: "",
+        start: new Date().toISOString(), // Or appropriate default
+        duration: 60,
+        lessonId: "none",
+        sessionType: "live" as const,
+      };
+    }
+
+    const durationMs = selectedEvent.end.getTime() - selectedEvent.start.getTime();
+    
+    return {
+      title: selectedEvent.title,
+      description: selectedEvent.description || "",
+      start: selectedEvent.start.toISOString(),
+      duration: Math.round(durationMs / (60 * 1000)),
+      lessonId: selectedEvent.lessonId || "none",
+      sessionType: (selectedEvent as any).sessionType || "live",
+    };
+  }, [selectedEvent]);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      title: "",
-      description: "",
-      start: "",
-      duration: 60,
-      lessonId: "none",
-      sessionType: "live",
-    },
+    defaultValues,
+    values: defaultValues
   });
 
   // Calculate duration from event dates
@@ -487,7 +505,7 @@ export default function CalendarManageEventDialog() {
              </div>
           ) : (
              /* EDIT MODE */
-             <Form {...form}>
+             <Form {...form} key={selectedEvent.scheduleId}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                     
                     {/* Series vs Single Logic */}

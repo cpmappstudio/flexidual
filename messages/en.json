@@ -366,7 +366,9 @@
     "sessionType": "Session Type",
     "typeLive": "Live Class",
     "typeIgnitia": "Ignitia Lesson",
-    "classStartingSoon": "Class starting soon"
+    "classStartingSoon": "Class starting soon",
+    "dateAdjusted": "Start Date Auto-Adjusted",
+    "dateAdjustedDesc": "We moved the start date to {date} to match your selected days."
   },
   "calendar": {
     "mySchedule": "My Schedule",

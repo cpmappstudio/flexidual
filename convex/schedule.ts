@@ -115,6 +115,38 @@ async function validateScheduleOverlap(
   }
 }
 
+/**
+  * Generate recurrence occurrences based on the rules provided.
+ */
+function getFirstValidRecurrenceDate(
+  startDateMs: number, 
+  daysOfWeek: number[] | undefined
+): number {
+  if (!daysOfWeek || daysOfWeek.length === 0) return startDateMs;
+
+  const start = new Date(startDateMs);
+  const startDay = start.getDay(); // 0 = Sunday
+
+  if (daysOfWeek.includes(startDay)) return startDateMs;
+
+  // Find the next matching day
+  // Sort days to ensure we find the closest one in the future
+  const sortedDays = [...daysOfWeek].sort((a, b) => a - b);
+  
+  // Try to find a day later in the same week
+  const nextInWeek = sortedDays.find(d => d > startDay);
+  
+  let daysToAdd = 0;
+  if (nextInWeek !== undefined) {
+    daysToAdd = nextInWeek - startDay;
+  } else {
+    // Wrap around to the first available day next week
+    daysToAdd = (7 - startDay) + sortedDays[0];
+  }
+
+  return startDateMs + (daysToAdd * 24 * 60 * 60 * 1000);
+}
+
 // ============================================================================
 // QUERIES
 // ============================================================================
@@ -576,9 +608,25 @@ export const createRecurringSchedule = mutation({
     }
 
     // Generate occurrences
-    const duration = args.scheduledEnd - args.scheduledStart;
+    // 1. Calculate the Effective Start Date
+    // If the user selected Saturday but wants Mon-Fri, this moves the start to Monday.
+    let effectiveStart = args.scheduledStart;
+    let effectiveEnd = args.scheduledEnd;
+
+    if (args.recurrence.daysOfWeek && args.recurrence.daysOfWeek.length > 0) {
+      const adjustedStart = getFirstValidRecurrenceDate(args.scheduledStart, args.recurrence.daysOfWeek);
+      
+      if (adjustedStart !== args.scheduledStart) {
+        const diff = adjustedStart - args.scheduledStart;
+        effectiveStart = adjustedStart;
+        effectiveEnd = args.scheduledEnd + diff;
+      }
+    }
+
+    // 2. Generate occurrences using the NEW effective start
+    const duration = effectiveEnd - effectiveStart;
     const occurrences = generateRecurrenceOccurrences(
-      args.scheduledStart,
+      effectiveStart,
       args.recurrence
     );
 
@@ -586,24 +634,25 @@ export const createRecurringSchedule = mutation({
       throw new Error("No valid occurrences generated");
     }
 
-    // Check overlap for the FIRST occurrence (basic check)
-    // Checking all recurring overlaps is expensive, but we check the master start
+    // Check overlap using the EFFECTIVE times
     await validateScheduleOverlap(ctx, {
       teacherId: classData.teacherId,
       classId: args.classId,
-      start: args.scheduledStart,
-      end: args.scheduledEnd
+      start: effectiveStart,
+      end: effectiveEnd
     });
 
     // Create parent schedule
     const parentRoomName = `class-${args.classId}-series-${Date.now()}`;
+    
+    // 3. Create Parent Schedule using EFFECTIVE times
     const parentId = await ctx.db.insert("classSchedule", {
       classId: args.classId,
       lessonId: args.lessonId,
       title: args.title,
       description: args.description,
-      scheduledStart: args.scheduledStart,
-      scheduledEnd: args.scheduledEnd,
+      scheduledStart: effectiveStart,
+      scheduledEnd: effectiveEnd,
       roomName: parentRoomName,
       isLive: false,
       sessionType: args.sessionType || "live",
@@ -614,7 +663,8 @@ export const createRecurringSchedule = mutation({
       createdBy: user._id,
     });
 
-    // Create child schedules
+    // 4. Create child schedules
+    // Loop starts at 1 because index 0 is the parent (effectiveStart)
     const childIds = [];
     for (let i = 1; i < occurrences.length; i++) {
       const start = occurrences[i];
