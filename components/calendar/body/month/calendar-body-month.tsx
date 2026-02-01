@@ -9,6 +9,7 @@ import {
   isSameDay,
   format,
   isWithinInterval,
+  type Locale,
 } from 'date-fns'
 import { enUS, es, ptBR } from 'date-fns/locale'
 import { useLocale, useTranslations } from 'next-intl'
@@ -16,6 +17,7 @@ import { cn } from '@/lib/utils'
 import CalendarEvent from '../../calendar-event'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useRef, useState, useEffect } from 'react'
+import { CalendarEvent as CalendarEventType } from '../../calendar-types'
 
 const localeMap = {
   en: enUS,
@@ -120,12 +122,12 @@ function DayCell({
   t,
 }: {
   day: Date
-  dayEvents: any[]
+  dayEvents: CalendarEventType[]
   isToday: boolean
   isCurrentMonth: boolean
   dateLocale: Locale
   onDayClick: () => void
-  t: (key: string, params?: any) => string
+  t: ReturnType<typeof useTranslations<'calendar'>>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [maxVisibleEvents, setMaxVisibleEvents] = useState(2)

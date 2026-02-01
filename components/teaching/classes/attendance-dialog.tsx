@@ -40,11 +40,11 @@ export function AttendanceDialog({ scheduleId, trigger, open, onOpenChange, titl
       await updateStatus({
         scheduleId,
         studentId,
-        status: newStatus as any
+        status: newStatus as "present" | "absent" | "partial" | "excused",
       })
       toast.success(t("schedule.attendance.updated"))
     } catch (error) {
-      toast.error(t("schedule.attendance.updateFailed"))
+      toast.error(t("schedule.attendance.updateFailed" + ": " + (error as Error).message))
     }
   }
 

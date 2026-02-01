@@ -18,7 +18,6 @@ import { toast } from "sonner"
 import Image from "next/image"
 import { useLocale, useTranslations } from "next-intl"
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
-import { ConvexError } from "convex/values"
 
 interface AddStudentDialogProps {
   classId: Id<"classes">

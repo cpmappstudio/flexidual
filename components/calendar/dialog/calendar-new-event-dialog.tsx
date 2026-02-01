@@ -246,7 +246,7 @@ export default function CalendarNewEventDialog() {
     }
   }
 
-  // [UPDATED] Smart Start Date Logic
+  // Smart Start Date Logic
   useEffect(() => {
     if (!daysOfWeek || daysOfWeek.length === 0) return;
     
@@ -266,7 +266,6 @@ export default function CalendarNewEventDialog() {
     if (smartStartDate.getTime() !== currentFormDate.getTime()) {
       form.setValue("start", smartStartDate.toISOString());
 
-      // [OPTIONAL] Toast notification
       toast.info(t('schedule.dateAdjusted') || "Start Date Adjusted", {
         description: t('schedule.dateAdjustedDesc', { 
             date: smartStartDate.toLocaleDateString(undefined, { 

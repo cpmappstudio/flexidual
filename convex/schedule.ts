@@ -176,7 +176,6 @@ export const getMySchedule = query({
     const isTeacherOrAdmin = ["teacher", "admin", "superadmin", "tutor"].includes(user.role);
 
     // Step 1: Find classes (role-based logic)
-    // ... existing class finding logic ...
     let myClasses;
     if (user.role === "admin" || user.role === "superadmin") {
       if (args.teacherId) {
@@ -259,7 +258,7 @@ export const getMySchedule = query({
         const title = lessonData?.title || item.title || "Class Session";
         const description = lessonData?.description || item.description || "";
 
-        // --- 🧠 IMPROVED ATTENDANCE LOGIC ---
+        // --- 🧠 ATTENDANCE LOGIC ---
         let attendanceStatus: "upcoming" | "present" | "absent" | "partial" | "in-progress" | "late" = "upcoming";
         let timeInClass = 0;
         let isStudentActive = false;
@@ -272,6 +271,8 @@ export const getMySchedule = query({
           total: classData.students.length
         };
 
+        const now = Date.now();
+
         if (user.role === "student") {
           const sessions = await ctx.db
             .query("class_sessions")
@@ -283,7 +284,6 @@ export const getMySchedule = query({
           // Check if currently connected (joined but not left)
           const activeSession = sessions.find(s => s.joinedAt && !s.leftAt);
           isStudentActive = !!activeSession;
-          const now = Date.now();
 
           // Check for manual status first
           const manualRecord = sessions.find(s => s.attendanceStatus);
@@ -292,11 +292,21 @@ export const getMySchedule = query({
              // Map stored status to UI status
              attendanceStatus = manualRecord.attendanceStatus as any;
           } else {
-              // Calculate total historical time
+              // PROTECTED CALCULATION: Only count time WITHIN the schedule window
               timeInClass = sessions.reduce((sum, s) => {
-                if (s.durationSeconds) return sum + s.durationSeconds;
-                if (s.joinedAt && !s.leftAt) return sum + (now - s.joinedAt) / 1000;
-                return sum;
+                const sessionStart = s.joinedAt;
+                // If they haven't left, calculate up to NOW, but fallback to now if leftAt is missing
+                const sessionEnd = s.leftAt || now;
+
+                // Clamp the session time to the schedule's start and end
+                const effectiveStart = Math.max(sessionStart, item.scheduledStart);
+                const effectiveEnd = Math.min(sessionEnd, item.scheduledEnd);
+
+                // If effectiveEnd > effectiveStart, we have valid overlap. 
+                // Math.max(0, ...) handles cases where the session is entirely outside the window.
+                const duration = Math.max(0, (effectiveEnd - effectiveStart) / 1000);
+                
+                return sum + duration;
               }, 0);
               
               const scheduledDuration = (item.scheduledEnd - item.scheduledStart) / 1000;
@@ -324,18 +334,23 @@ export const getMySchedule = query({
             .withIndex("by_schedule", (q) => q.eq("scheduleId", item._id))
             .collect();
             
-          // We need to aggregate by student (one student might have multiple session entries)
+          // We need to aggregate by student
           const studentStats = new Map<string, { totalSeconds: number, manualStatus?: string }>();
           
           allSessions.forEach(s => {
             const current = studentStats.get(s.studentId) || { totalSeconds: 0 };
             
-            // Add time
-            if (s.durationSeconds) current.totalSeconds += s.durationSeconds;
+            // PROTECTED CALCULATION FOR SUMMARY
+            const sessionStart = s.joinedAt;
+            const sessionEnd = s.leftAt || now;
             
-            // Check manual status (last one wins if multiple, though shouldn't happen)
+            const effectiveStart = Math.max(sessionStart, item.scheduledStart);
+            const effectiveEnd = Math.min(sessionEnd, item.scheduledEnd);
+            const duration = Math.max(0, (effectiveEnd - effectiveStart) / 1000);
+
+            current.totalSeconds += duration;
+            
             if (s.attendanceStatus) current.manualStatus = s.attendanceStatus;
-            
             studentStats.set(s.studentId, current);
           });
           

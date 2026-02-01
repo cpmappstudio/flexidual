@@ -177,7 +177,7 @@ export default function CalendarManageEventDialog() {
       start: selectedEvent.start.toISOString(),
       duration: Math.round(durationMs / (60 * 1000)),
       lessonId: selectedEvent.lessonId || "none",
-      sessionType: (selectedEvent as any).sessionType || "live",
+      sessionType: (selectedEvent as CalendarEvent).sessionType || "live",
     };
   }, [selectedEvent]);
 
