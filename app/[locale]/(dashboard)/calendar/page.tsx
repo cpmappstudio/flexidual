@@ -219,13 +219,13 @@ function CalendarContent() {
       selectedCurriculumId={selectedCurriculumId}
       onCurriculumChange={setSelectedCurriculumId}
     >
-      <div className="min-h-[calc(100vh)] flex flex-col pb-12">
+      <div className="flex flex-col h-[calc(100vh-8rem)]">
         <Tabs 
           value={activeTab} 
           onValueChange={setActiveTab}
-          className="h-full flex flex-col"
+          className="flex flex-col h-full"
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-2 px-1">
             <TabsList>
               <TabsTrigger value="month">{t("calendar.monthView")}</TabsTrigger>
               <TabsTrigger value="agenda">{t("calendar.agendaList")}</TabsTrigger>
@@ -234,7 +234,7 @@ function CalendarContent() {
             <CalendarHeaderCombinedFilter />
           </div>
 
-          <TabsContent value="month" className="flex-1 border rounded-lg bg-background p-2">
+          <TabsContent value="month" className="flex-1 min-h-0 border rounded-lg bg-background p-2 m-0">
             <Calendar 
               events={filteredEvents}
               setEvents={setEvents}
@@ -245,8 +245,8 @@ function CalendarContent() {
             />
           </TabsContent>
 
-          <TabsContent value="agenda" className="flex-1 overflow-auto">
-             <AgendaView filteredEvents={filteredEvents} />
+          <TabsContent value="agenda" className="flex-1 min-h-0 overflow-y-auto m-0 p-2">
+            <AgendaView filteredEvents={filteredEvents} />
           </TabsContent>
         </Tabs>
 

@@ -8,10 +8,9 @@ import CalendarHeaderDate from "./header/date/calendar-header-date";
 import CalendarHeaderActionsMode from "./header/actions/calendar-header-actions-mode";
 import CalendarHeaderActionsAdd from "./header/actions/calendar-header-actions-add";
 
-export default function Calendar({
-}: CalendarProps) {
+export default function Calendar({}: CalendarProps) {
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-[calc(100vh-12rem)] max-h-[800px]">
       <CalendarHeader>
         <CalendarHeaderDate />
         <CalendarHeaderActions>
@@ -19,8 +18,8 @@ export default function Calendar({
           <CalendarHeaderActionsAdd />
         </CalendarHeaderActions>
       </CalendarHeader>
-      <div className="flex-1 overflow-hidden min-h-0">
-         <CalendarBody />
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <CalendarBody />
       </div>
     </div>
   );
