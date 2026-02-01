@@ -2,13 +2,15 @@
 
 import { format } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
-import { CheckCircle2, MonitorPlay, Video, BookOpen, ArrowRight } from "lucide-react"
+import { CheckCircle2, MonitorPlay, Video, BookOpen, ArrowRight, Users, UserCheck, UserX, Clock } from "lucide-react"
 import { useTranslations, useLocale } from "next-intl"
 import Link from "next/link"
 import { Id } from "@/convex/_generated/dataModel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ManageScheduleDialog } from "@/components/teaching/classes/manage-schedule-dialog"
+import { AttendanceDialog } from "@/components/teaching/classes/attendance-dialog"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 const localeMap = {
   en: enUS,
@@ -31,6 +33,12 @@ interface ScheduleItemProps {
     status?: "scheduled" | "active" | "cancelled" | "completed"
     className?: string
     curriculumTitle?: string
+    attendanceSummary?: {
+      present: number
+      partial: number
+      missed: number
+      total: number
+    }
   }
   classId?: Id<"classes">
   isPast?: boolean
@@ -63,10 +71,54 @@ export function ScheduleItem({
       onEventClick()
     }
   }
+
+  // Helper for attendance summary
+  const renderAttendanceSummary = () => {
+    if (!schedule.attendanceSummary) return null;
+    const { present, partial, missed, total } = schedule.attendanceSummary;
+
+    return (
+      <div className="flex items-center gap-3 mt-2 text-xs font-medium text-muted-foreground bg-muted/30 p-1.5 rounded-md w-fit">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1 text-green-600">
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>{present}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Present</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1 text-yellow-600">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{partial}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Partial</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1 text-red-500">
+                <UserX className="w-3.5 h-3.5" />
+                <span>{missed}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Missed</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <div className="h-3 w-px bg-border mx-1" />
+        <span className="text-muted-foreground/70">{total} Students</span>
+      </div>
+    )
+  }
   
   return (
     <div 
-      className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4 ${isPast ? 'opacity-60' : ''} ${isIgnitia ? 'bg-orange-50/30 border-orange-100' : ''} ${onEventClick ? 'cursor-pointer' : ''}`}
+      className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4 ${isPast ? 'opacity-90 bg-muted/10' : ''} ${isIgnitia ? 'bg-orange-50/30 border-orange-100' : ''} ${onEventClick ? 'cursor-pointer' : ''}`}
       onClick={handleClick}
     >
       <div className="flex items-start gap-4 flex-1">
@@ -157,6 +209,9 @@ export function ScheduleItem({
               {schedule.description}
             </p>
           )}
+
+          {/* New Attendance Resume */}
+          {renderAttendanceSummary()}
           
           <p className="text-xs text-muted-foreground mt-1.5">
             {format(startDate, "h:mm a", { locale: dateLocale })} - {format(endDate, "h:mm a", { locale: dateLocale })}
@@ -165,10 +220,24 @@ export function ScheduleItem({
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+        {/* Attendance Button (New) */}
+        {classId && showEdit && (
+            <AttendanceDialog 
+              scheduleId={schedule.scheduleId}
+              title={schedule.title}
+              trigger={
+                <Button size="sm" variant="outline" className="gap-2">
+                  <Users className="h-4 w-4" />
+                  <span className="sr-only sm:not-sr-only sm:inline-block">Attendance</span>
+                </Button>
+              }
+            />
+        )}
+
         {!isPast && schedule.status !== "cancelled" && (
           <>
-            {/* Edit Button - only show if classId is provided and showEdit is true */}
+            {/* Edit Button */}
             {classId && showEdit && (
               <ManageScheduleDialog 
                 classId={classId}

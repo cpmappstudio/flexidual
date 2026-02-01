@@ -173,7 +173,10 @@ export const getMySchedule = query({
       return [];
     }
 
+    const isTeacherOrAdmin = ["teacher", "admin", "superadmin", "tutor"].includes(user.role);
+
     // Step 1: Find classes (role-based logic)
+    // ... existing class finding logic ...
     let myClasses;
     if (user.role === "admin" || user.role === "superadmin") {
       if (args.teacherId) {
@@ -261,6 +264,14 @@ export const getMySchedule = query({
         let timeInClass = 0;
         let isStudentActive = false;
         
+        // Stats for Teachers
+        let attendanceSummary = {
+          present: 0,
+          partial: 0,
+          missed: 0,
+          total: classData.students.length
+        };
+
         if (user.role === "student") {
           const sessions = await ctx.db
             .query("class_sessions")
@@ -274,40 +285,80 @@ export const getMySchedule = query({
           isStudentActive = !!activeSession;
           const now = Date.now();
 
-          // Calculate total historical time + current active time
-          timeInClass = sessions.reduce((sum, s) => {
-            if (s.durationSeconds) return sum + s.durationSeconds;
-            if (s.joinedAt && !s.leftAt) return sum + (now - s.joinedAt) / 1000;
-            return sum;
-          }, 0);
+          // Check for manual status first
+          const manualRecord = sessions.find(s => s.attendanceStatus);
+          
+          if (manualRecord && manualRecord.attendanceStatus) {
+             // Map stored status to UI status
+             attendanceStatus = manualRecord.attendanceStatus as any;
+          } else {
+              // Calculate total historical time
+              timeInClass = sessions.reduce((sum, s) => {
+                if (s.durationSeconds) return sum + s.durationSeconds;
+                if (s.joinedAt && !s.leftAt) return sum + (now - s.joinedAt) / 1000;
+                return sum;
+              }, 0);
+              
+              const scheduledDuration = (item.scheduledEnd - item.scheduledStart) / 1000;
+              const ratio = scheduledDuration > 0 ? timeInClass / scheduledDuration : 0;
+
+              if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) {
+                attendanceStatus = "present";
+              } else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || timeInClass >= MIN_PARTIAL_SECONDS) {
+                attendanceStatus = "partial";
+              } else if (item.scheduledStart > now && !isStudentActive) {
+                attendanceStatus = "upcoming";
+              } else if (now >= item.scheduledStart && now <= item.scheduledEnd) {
+                 attendanceStatus = isStudentActive ? "in-progress" : "late";
+              } else {
+                 attendanceStatus = "absent";
+              }
+          }
+        } 
+        
+        // --- TEACHER SUMMARY LOGIC ---
+        if (isTeacherOrAdmin) {
+          // Fetch all sessions for this schedule
+          const allSessions = await ctx.db
+            .query("class_sessions")
+            .withIndex("by_schedule", (q) => q.eq("scheduleId", item._id))
+            .collect();
+            
+          // We need to aggregate by student (one student might have multiple session entries)
+          const studentStats = new Map<string, { totalSeconds: number, manualStatus?: string }>();
+          
+          allSessions.forEach(s => {
+            const current = studentStats.get(s.studentId) || { totalSeconds: 0 };
+            
+            // Add time
+            if (s.durationSeconds) current.totalSeconds += s.durationSeconds;
+            
+            // Check manual status (last one wins if multiple, though shouldn't happen)
+            if (s.attendanceStatus) current.manualStatus = s.attendanceStatus;
+            
+            studentStats.set(s.studentId, current);
+          });
           
           const scheduledDuration = (item.scheduledEnd - item.scheduledStart) / 1000;
-          
-          // Prevent division by zero
-          const ratio = scheduledDuration > 0 ? timeInClass / scheduledDuration : 0;
 
-          // --- DETERMINISTIC STATUS CALCULATION ---
-          // Priority 1: Did they attend enough? (Regardless of if class is live or over)
-          if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) {
-            attendanceStatus = "present";
-          } 
-          // Priority 2: Did they attend partially? (Defined by % or Min Seconds)
-          else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || timeInClass >= MIN_PARTIAL_SECONDS) {
-            attendanceStatus = "partial";
-          } 
-          // Priority 3: Class hasn't started yet
-          else if (item.scheduledStart > now && !isStudentActive) {
-            attendanceStatus = "upcoming";
-          }
-          // Priority 4: Class is currently running
-          else if (now >= item.scheduledStart && now <= item.scheduledEnd) {
-             // If they are inside, they are "in-progress" (accumulating time)
-             // If they are outside, they are "late" (missing time)
-             attendanceStatus = isStudentActive ? "in-progress" : "late";
-          } 
-          // Priority 5: Class ended, didn't meet thresholds
-          else {
-             attendanceStatus = "absent";
+          // Calculate counts based on registered students in class
+          // Note: This iterates registered students. Dropouts handled by current enrollment.
+          for (const studentId of classData.students) {
+            const stats = studentStats.get(studentId);
+            let status = "absent";
+            
+            if (stats?.manualStatus) {
+               status = stats.manualStatus;
+            } else if (stats) {
+               const ratio = scheduledDuration > 0 ? stats.totalSeconds / scheduledDuration : 0;
+               if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) status = "present";
+               else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || stats.totalSeconds >= MIN_PARTIAL_SECONDS) status = "partial";
+            }
+            
+            // Map to summary buckets
+            if (status === "present" || status === "excused") attendanceSummary.present++;
+            else if (status === "partial" || status === "late") attendanceSummary.partial++;
+            else attendanceSummary.missed++;
           }
         }
 
@@ -334,7 +385,8 @@ export const getMySchedule = query({
           teacherImageUrl: teacher?.imageUrl,
           attendance: attendanceStatus,
           minutesAttended: Math.round(timeInClass / 60),
-          isStudentActive: isStudentActive
+          isStudentActive: isStudentActive,
+          attendanceSummary: isTeacherOrAdmin ? attendanceSummary : undefined
         };
       })
     );
@@ -482,6 +534,83 @@ export const getUsedLessons = query({
       .map((s) => s.lessonId)
       .filter((id): id is Id<"lessons"> => !!id);
   },
+});
+
+/**
+ * Get detailed attendance for a specific schedule
+ * Used by the AttendanceDialog
+ */
+export const getAttendanceDetails = query({
+  args: { scheduleId: v.id("classSchedule") },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    
+    // 1. Get Schedule & Class
+    const schedule = await ctx.db.get(args.scheduleId);
+    if (!schedule) throw new Error("Schedule not found");
+    const classData = await ctx.db.get(schedule.classId);
+    if (!classData) throw new Error("Class not found");
+
+    // Auth Check
+    if (!["admin", "superadmin"].includes(user.role) && classData.teacherId !== user._id) {
+       throw new Error("Unauthorized");
+    }
+
+    // 2. Get Students
+    const students = await Promise.all(
+      classData.students.map(id => ctx.db.get(id))
+    );
+    const validStudents = students.filter(s => s !== null);
+
+    // 3. Get All Sessions
+    const sessions = await ctx.db
+      .query("class_sessions")
+      .withIndex("by_schedule", (q) => q.eq("scheduleId", args.scheduleId))
+      .collect();
+
+    // 4. Compute Status Per Student
+    const results = validStudents.map(student => {
+      const studentSessions = sessions.filter(s => s.studentId === student!._id);
+      
+      // Calculate derived stats
+      const totalSeconds = studentSessions.reduce((sum, s) => {
+         return sum + (s.durationSeconds || 0);
+      }, 0);
+      
+      // Check for manual override
+      const manualRecord = studentSessions.find(s => s.attendanceStatus);
+      const manualStatus = manualRecord?.attendanceStatus;
+      
+      // Calculate automated status
+      const scheduledDuration = (schedule.scheduledEnd - schedule.scheduledStart) / 1000;
+      const ratio = scheduledDuration > 0 ? totalSeconds / scheduledDuration : 0;
+      
+      let computedStatus = "absent";
+      if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) computedStatus = "present";
+      else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || totalSeconds >= MIN_PARTIAL_SECONDS) computedStatus = "partial";
+      
+      // Special case: If Ignitia and no sessions, it's effectively "absent" pending confirmation
+      // But we label it "pending" if it's an ignitia session with no data
+      if (schedule.sessionType === "ignitia" && totalSeconds === 0 && !manualStatus) {
+         computedStatus = "pending";
+      }
+
+      return {
+        studentId: student!._id,
+        fullName: student!.fullName,
+        email: student!.email,
+        imageUrl: student!.imageUrl,
+        totalMinutes: Math.round(totalSeconds / 60),
+        status: manualStatus || computedStatus,
+        isManual: !!manualStatus,
+        lastSeen: studentSessions.length > 0 
+           ? Math.max(...studentSessions.map(s => s.joinedAt)) 
+           : null
+      };
+    });
+
+    return results.sort((a, b) => a.fullName.localeCompare(b.fullName));
+  }
 });
 
 // ============================================================================
@@ -1081,6 +1210,68 @@ export const logStudentPresence = mutation({
           durationSeconds: duration
         });
       }
+    }
+  }
+});
+
+/**
+ * Update attendance status for a student
+ */
+export const updateAttendance = mutation({
+  args: {
+    scheduleId: v.id("classSchedule"),
+    studentId: v.id("users"),
+    status: v.union(
+      v.literal("present"),
+      v.literal("absent"),
+      v.literal("partial"),
+      v.literal("excused")
+    )
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    
+    // Auth Check
+    const schedule = await ctx.db.get(args.scheduleId);
+    if (!schedule) throw new Error("Schedule not found");
+    const classData = await ctx.db.get(schedule.classId);
+    if (!classData) throw new Error("Class not found");
+
+    if (!["admin", "superadmin"].includes(user.role) && classData.teacherId !== user._id) {
+       throw new Error("Unauthorized");
+    }
+
+    // Find existing session record to update, or create new one
+    const existingSessions = await ctx.db
+      .query("class_sessions")
+      .withIndex("by_student_schedule", (q) => 
+         q.eq("studentId", args.studentId).eq("scheduleId", args.scheduleId)
+      )
+      .collect();
+
+    // Prefer updating the one that already has a manual status, or the most recent one
+    let targetSession = existingSessions.find(s => s.attendanceStatus) || existingSessions[0];
+
+    if (targetSession) {
+      await ctx.db.patch(targetSession._id, {
+        attendanceStatus: args.status,
+        manualMarkedBy: user._id,
+        manualMarkedAt: Date.now()
+      });
+    } else {
+      // Create new "virtual" session record for this status
+      await ctx.db.insert("class_sessions", {
+        scheduleId: args.scheduleId,
+        studentId: args.studentId,
+        joinedAt: Date.now(), // Placeholder
+        leftAt: Date.now(),   // Placeholder
+        durationSeconds: 0,   // No actual time accumulated
+        roomName: schedule.roomName,
+        sessionDate: new Date(schedule.scheduledStart).toISOString().split('T')[0],
+        attendanceStatus: args.status,
+        manualMarkedBy: user._id,
+        manualMarkedAt: Date.now()
+      });
     }
   }
 });

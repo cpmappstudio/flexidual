@@ -16,7 +16,7 @@ export interface StudentScheduleEvent {
   color: string
   status: "scheduled" | "active" | "completed" | "cancelled",
   sessionType?: "live" | "ignitia",
-  attendance: "upcoming" | "present" | "absent" | "partial" | "in-progress" | "late";
+  attendance: "upcoming" | "present" | "absent" | "partial" | "in-progress" | "late" | "excused";
   minutesAttended: number
   isStudentActive: boolean
 }

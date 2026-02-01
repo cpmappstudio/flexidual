@@ -52,17 +52,17 @@ export function DraggableLessonCard({
 
   // --- 🧠 STATE LOGIC ---
   const isInClass = lesson.isStudentActive;
-  const isPresent = lesson.attendance === "present";
-  const isPartialFinal = lesson.attendance === "partial" && now > lesson.end; 
+  const isPresent = lesson.attendance === "present" || lesson.attendance === "excused";
+  const isPartialFinal = lesson.attendance === "partial";
   const isLiveWindow = now >= lesson.start && now < lesson.end;
   const isLate = !isIgnitia && isLiveWindow && !isInClass && !isPresent;
   const isMissed = !isIgnitia && now >= lesson.end && !isPresent && !isPartialFinal && !isInClass;
   const isUrgent = timeToStart > 0 && timeToStart <= 5 * 60 * 1000;
   
-  // Logic update: Ensure we catch "Past Ignitia" that isn't complete
-  const isIgnitiaPending = isIgnitia && (isPast || now > lesson.end) && !isPresent;
+  // Ignitia Pending Logic
+  const isIgnitiaPending = isIgnitia && (isPast || now > lesson.end) && !isPresent && !isPartialFinal;
 
-  const canDrag = isIgnitia || isInClass || isLiveWindow || (now < lesson.start);
+  const canDrag = (isIgnitia && !isPresent) || isInClass || isLiveWindow || (now < lesson.start);
 
   const formatCountdown = (ms: number) => {
     const absMs = Math.abs(ms)
@@ -182,7 +182,7 @@ export function DraggableLessonCard({
         <Badge 
           className={cn(
             "absolute -top-3 -right-3 z-10 border-2",
-            (isIgnitia && !isPresent)
+            (isIgnitia && !isPresent && !isPartialFinal)
                 ? "bg-orange-100 dark:bg-orange-900/80 text-orange-700 dark:text-orange-100 border-orange-300 dark:border-orange-700" 
             : isPresent 
                 ? 'bg-green-500 text-white border-green-600' 
@@ -191,13 +191,14 @@ export function DraggableLessonCard({
             : 'bg-gray-500 dark:bg-gray-700 text-white border-gray-600'
           )}
         >
-          {(isIgnitia && !isPresent) ? (
+          {(isIgnitia && !isPresent && !isPartialFinal) ? (
             <span className="flex items-center gap-1">
                 <RotateCcw className="w-3 h-3" /> 
                 {t('pending')}
             </span>
           ) : isPresent ? (
-            `✓ ${t('attended')}`
+            // Distinguish between normal Present and Excused if you added translation keys
+            lesson.attendance === "excused" ? `✓ ${t('excused') || 'Excused'}` : `✓ ${t('attended')}`
           ) : isPartialFinal ? (
             `~ ${t('partial')}`
           ) : (

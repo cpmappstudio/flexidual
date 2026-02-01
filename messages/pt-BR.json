@@ -14,6 +14,7 @@
     "previous": "Anterior",
     "loading": "Carregando",
     "noResults": "Nenhum resultado encontrado",
+    "action": "Ação",
     "actions": "Ações",
     "status": "Status",
     "active": "Ativo",
@@ -35,7 +36,8 @@
     "newUsers": "Adicionar Usuários",
     "title": "Título",
     "code": "Código",
-    "with": "com"
+    "with": "com",
+    "loadMore": "Carregar Mais"
   },
   "days": {
     "sunday": "Dom",
@@ -243,6 +245,7 @@
     "createClass": "Criar Turma"
   },
   "student": {
+    "name": "Nome do Estudante",
     "firstName": "Nome",
     "lastName": "Sobrenome",
     "email": "E-mail",
@@ -267,6 +270,7 @@
     "dragHint": "Me arraste para o foguete! 🚀",
     "attended": "Participou",
     "missed": "Perdeu",
+    "excused": "Justificado",
     "pending": "Pendente",
     "dropHere": "Solte Aqui!",
     "readyForClass": "Pronto para a Aula?",
@@ -368,7 +372,23 @@
     "typeIgnitia": "Lição Ignitia",
     "classStartingSoon": "A aula começará em breve",
     "dateAdjusted": "Data de Início Ajustada",
-    "dateAdjustedDesc": "Nós movemos a data de início para {date} para corresponder aos dias selecionados."
+    "dateAdjustedDesc": "Nós movemos a data de início para {date} para corresponder aos dias selecionados.",
+    "attendance": {
+      "title": "Presença da Sessão",
+      "description": "Revisar e atualizar o status de presença para esta sessão.",
+      "timeTracked": "Tempo Registrado",
+      "lastSeen": "Última vez visto",
+      "status": "Status",
+      "setStatus": "Definir Status",
+      "present": "Presente",
+      "partial": "Parcial",
+      "late": "Atrasado",
+      "excused": "Justificado",
+      "absent": "Ausente",
+      "updated": "Presença atualizada",
+      "updateFailed": "Falha ao atualizar a presença"
+    },
+    "showing": "Mostrando {count} de {total} sessões passadas"
   },
   "calendar": {
     "mySchedule": "Minha Agenda",

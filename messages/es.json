@@ -14,6 +14,7 @@
     "previous": "Anterior",
     "loading": "Cargando",
     "noResults": "No se encontraron resultados",
+    "action": "Acción",
     "actions": "Acciones",
     "status": "Estado",
     "active": "Activo",
@@ -35,7 +36,8 @@
     "newUsers": "Agregar Usuarios",
     "title": "Título",
     "code": "Código",
-    "with": "con"
+    "with": "con",
+    "loadMore": "Cargar Más"
   },
   "days": {
     "sunday": "Dom",
@@ -243,6 +245,7 @@
     "createClass": "Crear Clase"
   },
   "student": {
+    "name": "Nombre del Estudiante",
     "firstName": "Nombre",
     "lastName": "Apellido",
     "email": "Correo Electrónico",
@@ -267,6 +270,7 @@
     "dragHint": "¡Arrástrame al cohete! 🚀",
     "attended": "Asistido",
     "missed": "Perdido",
+    "excused": "Justificado",
     "pending": "Pendiente",
     "dropHere": "¡Suelta Aquí!",
     "readyForClass": "¿Listo para la Clase?",
@@ -368,7 +372,23 @@
     "typeIgnitia": "Lección Ignitia",
     "classStartingSoon": "La clase comenzará pronto",
     "dateAdjusted": "Fecha de inicio ajustada automáticamente",
-    "dateAdjustedDesc": "Hemos movido la fecha de inicio a {date} para que coincida con los días seleccionados."
+    "dateAdjustedDesc": "Hemos movido la fecha de inicio a {date} para que coincida con los días seleccionados.",
+    "attendance": {
+      "title": "Asistencia",
+      "description": "Revisar y actualizar el estado de asistencia para esta sesión.",
+      "timeTracked": "Tiempo Registrado",
+      "lastSeen": "Última vez visto",
+      "status": "Estado",
+      "setStatus": "Establecer Estado",
+      "present": "Presente",
+      "partial": "Parcial",
+      "late": "Tarde",
+      "excused": "Justificado",
+      "absent": "Ausente",
+      "updated": "Asistencia actualizada",
+      "updateFailed": "Error al actualizar la asistencia"
+    },
+    "showing": "Mostrando {count} de {total} sesiones pasadas"
   },
   "calendar": {
     "mySchedule": "Mi Horario",

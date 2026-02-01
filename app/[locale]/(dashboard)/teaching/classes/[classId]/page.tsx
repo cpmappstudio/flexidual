@@ -23,6 +23,7 @@ export default function ClassDetailPage() {
   const params = useParams()
   const classId = params.classId as Id<"classes">
   const [scheduleView, setScheduleView] = useState<"lessons" | "calendar">("lessons")
+  const [visiblePast, setVisiblePast] = useState(10)
 
   const classData = useQuery(api.classes.get, { id: classId })
   
@@ -51,7 +52,7 @@ export default function ClassDetailPage() {
   // Get upcoming and past schedules
   const now = Date.now()
   const upcomingSchedules = classSchedule?.filter(s => s.start >= now) || []
-  const pastSchedules = classSchedule?.filter(s => s.start < now) || []
+  const pastSchedules = classSchedule?.filter(s => s.start < now).reverse() || []
 
   return (
     <div className="space-y-6 p-6">
@@ -266,7 +267,7 @@ export default function ClassDetailPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {pastSchedules.slice(0, 10).map((schedule) => (
+                      {pastSchedules.slice(0, visiblePast).map((schedule) => (
                         <ScheduleItem 
                           key={schedule.scheduleId} 
                           schedule={schedule} 
@@ -274,10 +275,22 @@ export default function ClassDetailPage() {
                           isPast 
                         />
                       ))}
-                      {pastSchedules.length > 10 && (
-                        <p className="text-sm text-muted-foreground text-center pt-2">
-                          {t('schedule.andMore', { count: pastSchedules.length - 10 })}
-                        </p>
+                      
+                      {pastSchedules.length > visiblePast && (
+                        <div className="flex flex-col items-center gap-2 pt-4">
+                           <p className="text-sm text-muted-foreground">
+                             {t('schedule.showing', { 
+                               count: visiblePast, 
+                               total: pastSchedules.length 
+                             })}
+                           </p>
+                           <Button 
+                             variant="outline" 
+                             onClick={() => setVisiblePast(prev => prev + 10)}
+                           >
+                             {t('common.loadMore')}
+                           </Button>
+                        </div>
                       )}
                     </div>
                   </CardContent>

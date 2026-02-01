@@ -185,24 +185,34 @@ export default defineSchema({
    * Used for the "Student Assistance" timer/percentage
    */
   class_sessions: defineTable({
-    scheduleId: v.id("classSchedule"), // Which scheduled session?
+    scheduleId: v.id("classSchedule"),
     studentId: v.id("users"),
     
     // Timing
     joinedAt: v.number(),
     leftAt: v.optional(v.number()),
-    durationSeconds: v.optional(v.number()), // Calculated on exit
+    durationSeconds: v.optional(v.number()),
     
     // LiveKit room context
     roomName: v.string(),
     
     // Date for easy querying
     sessionDate: v.string(), // YYYY-MM-DD
+
+    // Manual Status Override
+    attendanceStatus: v.optional(v.union(
+      v.literal("present"),
+      v.literal("absent"), 
+      v.literal("partial"),
+      v.literal("excused")
+    )),
+    manualMarkedBy: v.optional(v.id("users")),
+    manualMarkedAt: v.optional(v.number()),
   })
     .index("by_schedule", ["scheduleId"])
     .index("by_student_date", ["studentId", "sessionDate"])
     .index("by_student_schedule", ["studentId", "scheduleId"])
-    .index("by_room_active", ["roomName", "leftAt"]), // Find currently active sessions
+    .index("by_room_active", ["roomName", "leftAt"]),
 });
 
 /**
