@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 
 // ============================================================================
@@ -214,6 +215,43 @@ export const searchStudents = query({
   },
 });
 
+/**
+ * Internal query to check if student is enrolled in a class with the same curriculum
+ */
+export const checkStudentCurriculumEnrollment = internalQuery({
+  args: {
+    studentId: v.id("users"),
+    curriculumId: v.id("curriculums"),
+    excludeClassId: v.optional(v.id("classes")),
+  },
+  handler: async (ctx, args) => {
+    // Get all active classes for this curriculum
+    const curriculumClasses = await ctx.db
+      .query("classes")
+      .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .collect();
+
+    // Find if student is enrolled in any of these classes
+    const conflict = curriculumClasses.find(
+      (cls) => 
+        cls.students.includes(args.studentId) && 
+        (!args.excludeClassId || cls._id !== args.excludeClassId)
+    );
+
+    if (conflict) {
+      const curriculum = await ctx.db.get(args.curriculumId);
+      return {
+        hasConflict: true,
+        className: conflict.name,
+        curriculumTitle: curriculum?.title || 'Unknown',
+      };
+    }
+
+    return { hasConflict: false };
+  },
+});
+
 // ============================================================================
 // MUTATIONS
 // ============================================================================
@@ -362,6 +400,23 @@ export const addStudent = mutation({
       throw new Error("Student already enrolled in this class");
     }
 
+    // Check for curriculum conflict
+    const conflictCheck = await ctx.runQuery(
+      internal.classes.checkStudentCurriculumEnrollment,
+      {
+        studentId: args.studentId,
+        curriculumId: classData.curriculumId,
+        excludeClassId: args.classId,
+      }
+    );
+
+    if (conflictCheck.hasConflict) {
+      throw new Error(
+        `Student is already enrolled in "${conflictCheck.className}" which uses the same curriculum (${conflictCheck.curriculumTitle}). ` +
+        `A student cannot be enrolled in multiple classes with the same curriculum.`
+      );
+    }
+
     await ctx.db.patch(args.classId, {
       students: [...classData.students, args.studentId],
     });
@@ -429,6 +484,25 @@ export const addStudents = mutation({
     const newStudents = args.studentIds.filter(
       id => !classData.students.includes(id)
     );
+
+    // Check for curriculum conflicts for each new student
+    for (const studentId of newStudents) {
+      const conflictCheck = await ctx.runQuery(
+        internal.classes.checkStudentCurriculumEnrollment,
+        {
+          studentId,
+          curriculumId: classData.curriculumId,
+          excludeClassId: args.classId,
+        }
+      );
+
+      if (conflictCheck.hasConflict) {
+        throw new Error(
+          `Student is already enrolled in "${conflictCheck.className}" which uses the same curriculum (${conflictCheck.curriculumTitle}). ` +
+          `A student cannot be enrolled in multiple classes with the same curriculum.`
+        );
+      }
+    }
 
     await ctx.db.patch(args.classId, {
       students: [...classData.students, ...newStudents],
