@@ -4,6 +4,7 @@ import { format, isSameDay, isSameMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { motion, MotionConfig, AnimatePresence } from "framer-motion";
 import { Video } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface EventPosition {
   left: string;
@@ -26,9 +27,20 @@ function getOverlappingEvents(
   });
 }
 
+// Get responsive hour height based on screen size
+function getHourHeight(): number {
+  if (typeof window === 'undefined') return 64;
+  
+  const width = window.innerWidth;
+  if (width >= 1536) return 96;  // 2xl: 24 (6rem)
+  if (width >= 1280) return 80;  // xl: 20 (5rem)
+  return 64;                      // default: 16 (4rem)
+}
+
 function calculateEventPosition(
   event: CalendarEventType,
   allEvents: CalendarEventType[],
+  hourHeight: number,
 ): EventPosition {
   const overlappingEvents = getOverlappingEvents(event, allEvents);
   const group = [event, ...overlappingEvents].sort(
@@ -49,11 +61,9 @@ function calculateEventPosition(
     endMinutes = 59;
   }
 
-  // Updated to use 64px per hour instead of 128px
-  const HOUR_HEIGHT = 64;
-  const topPosition = startHour * HOUR_HEIGHT + (startMinutes / 60) * HOUR_HEIGHT;
+  const topPosition = startHour * hourHeight + (startMinutes / 60) * hourHeight;
   const duration = endHour * 60 + endMinutes - (startHour * 60 + startMinutes);
-  const height = (duration / 60) * HOUR_HEIGHT;
+  const height = (duration / 60) * hourHeight;
 
   return {
     left,
@@ -74,22 +84,33 @@ export default function CalendarEvent({
 }) {
   const { events, setSelectedEvent, setManageEventDialogOpen, date } =
     useCalendarContext();
-  const style = month ? {} : calculateEventPosition(event, events);
+  
+  const [hourHeight, setHourHeight] = useState(getHourHeight());
 
-  // Generate a unique key that includes the current month to prevent animation conflicts
+  // Update hour height on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setHourHeight(getHourHeight());
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const style = month ? {} : calculateEventPosition(event, events, hourHeight);
+
   const isEventInCurrentMonth = isSameMonth(event.start, date);
   const animationKey = `${event.id}-${
     isEventInCurrentMonth ? "current" : "adjacent"
   }`;
 
-  // Get status badge color
   const statusColor = 
     event.status === "active" ? "green" :
     event.status === "completed" ? "gray" :
     event.status === "cancelled" ? "red" :
-    event.color.replace("#", ""); // Default to curriculum color
+    event.color.replace("#", "");
 
-   const tooltipText = month 
+  const tooltipText = month 
     ? `${event.className} - ${format(event.start, "h:mm a")}`
     : `${event.className}\n${event.title}\n${event.curriculumTitle}\n${format(event.start, "h:mm a")} - ${format(event.end, "h:mm a")}`;
 
@@ -155,12 +176,10 @@ export default function CalendarEvent({
                 month && "flex-row items-center gap-1 flex-1 min-w-0",
               )}
             >
-              {/* Class Name - Most specific identifier */}
               <p className={cn("font-bold truncate", month && "text-xs")}>
                 {event.className}
               </p>
               
-              {/* Lesson Title - What's being taught */}
               <p
                 className={cn(
                   "text-sm truncate font-medium",
@@ -170,7 +189,6 @@ export default function CalendarEvent({
                 {event.title}
               </p>
               
-              {/* Curriculum Title - Context (less prominent) */}
               <p
                 className={cn(
                   "text-xs truncate opacity-80",
@@ -180,7 +198,6 @@ export default function CalendarEvent({
                 {event.curriculumTitle}
               </p>
 
-              {/* Live Indicator */}
               {event.isLive && (
                 <div className="flex items-center gap-1 text-xs font-medium mt-1">
                   <Video className="h-3 w-3" />
@@ -189,7 +206,6 @@ export default function CalendarEvent({
               )}
             </div>
             
-            {/* Time */}
             <p className={cn("text-sm", month && "text-xs flex-shrink-0")}>
               <span>{format(event.start, "h:mm a")}</span>
               <span className={cn("mx-1", month && "hidden")}>-</span>

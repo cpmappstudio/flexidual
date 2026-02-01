@@ -10,9 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { format } from "date-fns"
+import { format, isSameDay, startOfDay } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
-import { Video, Calendar as CalendarIcon } from "lucide-react"
+import { Video, Calendar as CalendarIcon, BookOpen } from "lucide-react"
 import Link from "next/link"
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types"
 import { useSearchParams } from "next/navigation"
@@ -37,93 +37,138 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
   const t = useTranslations('calendar')
   const locale = useLocale()
   const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
-  
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  
-  const upcomingEvents = filteredEvents
-    .filter(e => e.start.getTime() >= today.getTime())
-    .sort((a, b) => a.start.getTime() - b.start.getTime())
-    .slice(0, 20)
 
-  if (upcomingEvents.length === 0) {
+  // Group events by date
+  const groupedEvents = useMemo(() => {
+    const groups: { [key: string]: CalendarEvent[] } = {}
+    
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    const upcomingEvents = filteredEvents
+      .filter(e => e.start.getTime() >= today.getTime())
+      .sort((a, b) => a.start.getTime() - b.start.getTime())
+    
+    upcomingEvents.forEach((event) => {
+      const dateKey = format(startOfDay(event.start), 'yyyy-MM-dd')
+      if (!groups[dateKey]) {
+        groups[dateKey] = []
+      }
+      groups[dateKey].push(event)
+    })
+
+    // Sort events within each day
+    Object.keys(groups).forEach(key => {
+      groups[key].sort((a, b) => a.start.getTime() - b.start.getTime())
+    })
+
+    return groups
+  }, [filteredEvents])
+
+  const sortedDates = Object.keys(groupedEvents).sort()
+
+  if (sortedDates.length === 0) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
-        {t('noUpcoming')}
+      <div className="flex items-center justify-center h-64 text-muted-foreground">
+        {t('noEvents')}
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
-      {upcomingEvents.map((event) => (
-        <Card 
-          key={event.scheduleId} 
-          className={`cursor-pointer hover:border-primary/50 transition-colors ${event.isLive ? "border-green-500/50 bg-green-500/5" : ""}`}
-          onClick={() => {
-            setSelectedEvent(event)
-            setManageEventDialogOpen(true)
-          }}
-        >
-          <CardContent className="p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            
-            {/* Time Box */}
-            <div className="flex flex-col items-center justify-center min-w-[80px] text-center p-2 bg-muted rounded-md">
-              <span className="text-sm font-bold uppercase text-muted-foreground">
-                {format(event.start, "MMM", { locale: dateLocale })}
-              </span>
-              <span className="text-2xl font-bold">
-                {format(event.start, "d", { locale: dateLocale })}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {format(event.start, "h:mm a", { locale: dateLocale })}
-              </span>
-            </div>
+    <div className="space-y-6">
+      {sortedDates.map(dateKey => {
+        const date = new Date(dateKey)
+        const dayEvents = groupedEvents[dateKey]
+        const isToday = isSameDay(date, new Date())
 
-            {/* Details */}
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-lg">{event.title}</h3>
-                {event.isLive && (
-                  <Badge variant="destructive" className="animate-pulse">
-                    {t('live')}
-                  </Badge>
-                )}
-                {event.status === "cancelled" && (
-                  <Badge variant="secondary">{t('cancelled')}</Badge>
-                )}
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">
-                {event.curriculumTitle}
-              </p>
-              <p className="text-muted-foreground flex items-center gap-2">
-                <CalendarIcon className="h-3.5 w-3.5" />
-                {event.className}
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="w-full sm:w-auto" onClick={(e) => e.stopPropagation()}>
-              {event.isLive ? (
-                <Button className="w-full sm:w-auto" variant="destructive" asChild>
-                  <Link href={`/classroom/${event.roomName}`}>
-                    <Video className="mr-2 h-4 w-4" />
-                    {t('joinLive')}
-                  </Link>
-                </Button>
-              ) : (
-                <Button className="w-full sm:w-auto" variant="outline" onClick={() => {
-                  setSelectedEvent(event)
-                  setManageEventDialogOpen(true)
-                }}>
-                  {t('viewDetails')}
-                </Button>
+        return (
+          <div key={dateKey} className="space-y-3">
+            <div className="flex items-center gap-2 sticky top-0 bg-background py-2 border-b z-10">
+              <h3 className={`text-lg font-semibold ${isToday ? 'text-primary' : ''}`}>
+                {format(date, 'EEEE, MMMM d, yyyy', { locale: dateLocale })}
+              </h3>
+              {isToday && (
+                <Badge variant="secondary" className="text-xs">
+                  {t('today')}
+                </Badge>
               )}
             </div>
+            
+            <div className="space-y-2">
+              {dayEvents.map((event) => (
+                <div
+                  key={event.scheduleId}
+                  onClick={() => {
+                    setSelectedEvent(event)
+                    setManageEventDialogOpen(true)
+                  }}
+                  className="flex items-start gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 cursor-pointer transition-colors"
+                >
+                  <div className="flex flex-col items-center justify-center min-w-[60px] p-2 rounded-md bg-primary/10 border border-primary/20">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {format(event.start, 'h:mm a', { locale: dateLocale })}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {format(event.end, 'h:mm a', { locale: dateLocale })}
+                    </span>
+                  </div>
 
-          </CardContent>
-        </Card>
-      ))}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-semibold text-sm">{event.className}</h4>
+                      {event.isLive && (
+                        <Badge variant="destructive" className="text-xs gap-1">
+                          <Video className="h-3 w-3" />
+                          Live
+                        </Badge>
+                      )}
+                      <Badge variant="outline" className="text-xs">
+                        {event.sessionType === 'live' ? t('live') : 'Ignitia'}
+                      </Badge>
+                    </div>
+                    
+                    {event.title && (
+                      <p className="text-sm text-muted-foreground line-clamp-1">
+                        {event.title}
+                      </p>
+                    )}
+                    
+                    {event.curriculumTitle && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <BookOpen className="h-3 w-3" />
+                        <span className="line-clamp-1">{event.curriculumTitle}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div onClick={(e) => e.stopPropagation()}>
+                    {event.isLive ? (
+                      <Button size="sm" variant="destructive" asChild>
+                        <Link href={`/classroom/${event.roomName}`}>
+                          <Video className="mr-2 h-4 w-4" />
+                          {t('joinLive')}
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => {
+                          setSelectedEvent(event)
+                          setManageEventDialogOpen(true)
+                        }}
+                      >
+                        {t('viewDetails')}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -131,7 +176,7 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
 function CalendarContent() {
   const [mode, setMode] = useState<Mode>("month")
   const [date, setDate] = useState<Date>(new Date())
-  const [activeTab, setActiveTab] = useState("month") // Added: Persist tab state
+  const [activeTab, setActiveTab] = useState("month")
   const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null)
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null)
 
@@ -159,6 +204,7 @@ function CalendarContent() {
       lessonId: e.lessonId,
       classId: e.classId,
       curriculumId: e.curriculumId,
+      teacherId: e.teacherId,
       sessionType: e.sessionType,
       title: e.title,
       description: e.description,
@@ -219,13 +265,13 @@ function CalendarContent() {
       selectedCurriculumId={selectedCurriculumId}
       onCurriculumChange={setSelectedCurriculumId}
     >
-      <div className="flex flex-col h-[calc(100vh-8rem)]">
+      <div className="flex flex-col h-full w-full">
         <Tabs 
           value={activeTab} 
           onValueChange={setActiveTab}
-          className="flex flex-col h-full"
+          className="flex flex-col h-full w-full"
         >
-          <div className="flex items-center justify-between mb-2 px-1">
+          <div className="flex items-center justify-between mb-4 px-1">
             <TabsList>
               <TabsTrigger value="month">{t("calendar.monthView")}</TabsTrigger>
               <TabsTrigger value="agenda">{t("calendar.agendaList")}</TabsTrigger>
@@ -234,7 +280,7 @@ function CalendarContent() {
             <CalendarHeaderCombinedFilter />
           </div>
 
-          <TabsContent value="month" className="flex-1 min-h-0 border rounded-lg bg-background p-2 m-0">
+          <TabsContent value="month" className="flex-1 min-h-0 border rounded-lg bg-background p-4 m-0 data-[state=active]:flex data-[state=active]:flex-col">
             <Calendar 
               events={filteredEvents}
               setEvents={setEvents}
@@ -245,7 +291,7 @@ function CalendarContent() {
             />
           </TabsContent>
 
-          <TabsContent value="agenda" className="flex-1 min-h-0 overflow-y-auto m-0 p-2">
+          <TabsContent value="agenda" className="flex-1 min-h-0 overflow-y-auto m-0 p-4 data-[state=active]:block">
             <AgendaView filteredEvents={filteredEvents} />
           </TabsContent>
         </Tabs>
@@ -260,8 +306,16 @@ function CalendarContent() {
 
 export default function CalendarPage() {
   return (
-    <Suspense fallback={<div className="p-6"><Skeleton className="h-[600px] w-full" /></div>}>
-      <CalendarContent />
-    </Suspense>
+    <div className="flex flex-col h-[calc(100vh-4rem)] w-full p-6">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold">Calendar</h1>
+        <p className="text-muted-foreground">Manage your schedule and sessions</p>
+      </div>
+      <div className="flex-1 min-h-0">
+        <Suspense fallback={<div className="p-6"><Skeleton className="h-[600px] w-full" /></div>}>
+          <CalendarContent />
+        </Suspense>
+      </div>
+    </div>
   )
 }

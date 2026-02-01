@@ -10,7 +10,7 @@ import CalendarHeaderActionsAdd from "./header/actions/calendar-header-actions-a
 
 export default function Calendar({}: CalendarProps) {
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] max-h-[800px]">
+    <div className="flex flex-col h-full w-full">
       <CalendarHeader>
         <CalendarHeaderDate />
         <CalendarHeaderActions>
