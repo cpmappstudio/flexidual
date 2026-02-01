@@ -570,6 +570,7 @@ export const createRecurringSchedule = mutation({
     scheduledStart: v.number(), // First occurrence
     scheduledEnd: v.number(),
     sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
+    timezoneOffset: v.number(),
     recurrence: v.object({
       type: v.union(
         v.literal("daily"),
@@ -607,52 +608,53 @@ export const createRecurringSchedule = mutation({
       throw new Error("End time must be after start time");
     }
 
-    // Generate occurrences
-    // 1. Calculate the Effective Start Date
-    // If the user selected Saturday but wants Mon-Fri, this moves the start to Monday.
-    let effectiveStart = args.scheduledStart;
-    let effectiveEnd = args.scheduledEnd;
+    const offsetMs = args.timezoneOffset * 60 * 1000;
+    const localStart = args.scheduledStart - offsetMs;
+    const localEnd = args.scheduledEnd - offsetMs;
+    
+    let localEffectiveStart = localStart;
+    let localEffectiveEnd = localEnd;
 
     if (args.recurrence.daysOfWeek && args.recurrence.daysOfWeek.length > 0) {
-      const adjustedStart = getFirstValidRecurrenceDate(args.scheduledStart, args.recurrence.daysOfWeek);
+      const adjustedLocalStart = getFirstValidRecurrenceDate(localStart, args.recurrence.daysOfWeek);
       
-      if (adjustedStart !== args.scheduledStart) {
-        const diff = adjustedStart - args.scheduledStart;
-        effectiveStart = adjustedStart;
-        effectiveEnd = args.scheduledEnd + diff;
+      if (adjustedLocalStart !== localStart) {
+        const diff = adjustedLocalStart - localStart;
+        localEffectiveStart = adjustedLocalStart;
+        localEffectiveEnd = localEnd + diff;
       }
     }
 
-    // 2. Generate occurrences using the NEW effective start
-    const duration = effectiveEnd - effectiveStart;
-    const occurrences = generateRecurrenceOccurrences(
-      effectiveStart,
+    const duration = localEffectiveEnd - localEffectiveStart;
+    const localOccurrences = generateRecurrenceOccurrences(
+      localEffectiveStart,
       args.recurrence
     );
 
-    if (occurrences.length === 0) {
+    if (localOccurrences.length === 0) {
       throw new Error("No valid occurrences generated");
     }
 
-    // Check overlap using the EFFECTIVE times
+    const realEffectiveStart = localEffectiveStart + offsetMs;
+    const realEffectiveEnd = localEffectiveEnd + offsetMs;
+    const realOccurrences = localOccurrences.map(t => t + offsetMs);
+
     await validateScheduleOverlap(ctx, {
       teacherId: classData.teacherId,
       classId: args.classId,
-      start: effectiveStart,
-      end: effectiveEnd
+      start: realEffectiveStart,
+      end: realEffectiveEnd
     });
 
-    // Create parent schedule
     const parentRoomName = `class-${args.classId}-series-${Date.now()}`;
-    
-    // 3. Create Parent Schedule using EFFECTIVE times
+
     const parentId = await ctx.db.insert("classSchedule", {
       classId: args.classId,
       lessonId: args.lessonId,
       title: args.title,
       description: args.description,
-      scheduledStart: effectiveStart,
-      scheduledEnd: effectiveEnd,
+      scheduledStart: realEffectiveStart,
+      scheduledEnd: realEffectiveEnd,
       roomName: parentRoomName,
       isLive: false,
       sessionType: args.sessionType || "live",
@@ -663,11 +665,9 @@ export const createRecurringSchedule = mutation({
       createdBy: user._id,
     });
 
-    // 4. Create child schedules
-    // Loop starts at 1 because index 0 is the parent (effectiveStart)
     const childIds = [];
-    for (let i = 1; i < occurrences.length; i++) {
-      const start = occurrences[i];
+    for (let i = 1; i < realOccurrences.length; i++) {
+      const start = realOccurrences[i];
       const end = start + duration;
       
       const childId = await ctx.db.insert("classSchedule", {
@@ -693,7 +693,7 @@ export const createRecurringSchedule = mutation({
     return {
       parentId,
       childIds,
-      totalOccurrences: occurrences.length,
+      totalOccurrences: realOccurrences.length,
     };
   },
 });

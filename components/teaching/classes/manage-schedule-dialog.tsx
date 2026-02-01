@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
@@ -12,12 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Calendar, Plus, Edit, Loader2, Trash2 } from "lucide-react"
+import { Calendar, Plus, Edit, Loader2, Trash2, CalendarClock } from "lucide-react"
 import { toast } from "sonner"
 import { useLocale, useTranslations } from "next-intl"
 import { DateTimePicker } from "@/components/calendar/form/date-time-picker"
 import { RecurrenceType } from "@/lib/types/schedule"
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
+import { getSmartStartDate } from "@/lib/date-utils"
 
 interface ManageScheduleDialogProps {
   classId: Id<"classes">
@@ -77,7 +78,9 @@ export function ManageScheduleDialog({
     return date.toISOString()
   })
 
-  // Calculate duration from initial data or default to 60
+  // Anchor Date State (to prevent drifting)
+  const [anchorDate, setAnchorDate] = useState<Date>(() => new Date(startDate))
+
   const [duration, setDuration] = useState(() => {
     if (initialData?.start && initialData?.end) {
       return Math.round((initialData.end - initialData.start) / 1000 / 60)
@@ -85,25 +88,23 @@ export function ManageScheduleDialog({
     return 60
   })
 
-  // Recurrence State (Only for creation currently, or display if editing)
-  const [isRecurring, setIsRecurring] = useState(false) // Simplified: Edit series not fully implemented here yet
+  // Recurrence State
+  const [isRecurring, setIsRecurring] = useState(false)
   const [recurrenceType, setRecurrenceType] = useState<"daily" | "weekly" | "biweekly" | "monthly">("weekly")
   const [occurrences, setOccurrences] = useState(10)
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([])
+  const prevDaysRef = useRef<number[]>([])
 
   // --- Data & Mutations ---
   const classes = useQuery(api.classes.getSchedulableClasses)
   const selectedClass = classes?.find(c => c._id === classId)
-
-  // Don't disable the CURRENT lesson if we are editing it
   const usedLessonIds = useQuery(api.schedule.getUsedLessons, { classId })
-  
   const createSchedule = useMutation(api.schedule.createSchedule)
   const createRecurring = useMutation(api.schedule.createRecurringSchedule)
   const updateSchedule = useMutation(api.schedule.updateSchedule)
   const deleteSchedule = useMutation(api.schedule.deleteSchedule)
 
-  // Reset form when opening/closing or switching modes
+  // Reset form when opening
   useEffect(() => {
     if (open) {
       setLessonId(initialData?.lessonId || preselectedLessonId || "none")
@@ -111,8 +112,9 @@ export function ManageScheduleDialog({
       setDescription(initialData?.description || "")
       setSessionType(initialData?.sessionType || "live")
       
+      let initialStartStr = ""
       if (initialData?.start) {
-        setStartDate(new Date(initialData.start).toISOString())
+        initialStartStr = new Date(initialData.start).toISOString()
         setDuration(Math.round((initialData.end - initialData.start) / 1000 / 60))
       } else {
         const date = preselectedDate || new Date()
@@ -120,15 +122,50 @@ export function ManageScheduleDialog({
             date.setMinutes(0, 0, 0)
             date.setHours(date.getHours() + 1)
         }
-        setStartDate(date.toISOString())
+        initialStartStr = date.toISOString()
         setDuration(60)
       }
+      
+      setStartDate(initialStartStr)
+      setAnchorDate(new Date(initialStartStr))
+      setIsRecurring(false)
+      setDaysOfWeek([])
+      prevDaysRef.current = []
     }
   }, [open, initialData, preselectedLessonId, preselectedDate])
 
 
+  useEffect(() => {
+    if (!daysOfWeek || daysOfWeek.length === 0) return
+    
+    // Check if days actually changed
+    const daysChanged = JSON.stringify(daysOfWeek) !== JSON.stringify(prevDaysRef.current)
+    if (!daysChanged) return
+
+    prevDaysRef.current = daysOfWeek
+
+    // Use anchorDate as the base
+    const smartStartDate = getSmartStartDate(anchorDate, daysOfWeek)
+    const currentFormDate = new Date(startDate)
+    
+    if (smartStartDate.getTime() !== currentFormDate.getTime()) {
+      setStartDate(smartStartDate.toISOString())
+
+      toast.info(t('schedule.dateAdjusted') || "Start Date Adjusted", {
+        description: t('schedule.dateAdjustedDesc', { 
+            date: smartStartDate.toLocaleDateString(undefined, { 
+                weekday: 'long', 
+                month: 'short', 
+                day: 'numeric' 
+            }) 
+        }) || `Moved to ${smartStartDate.toLocaleDateString()} to match pattern.`,
+        duration: 3000,
+        icon: <CalendarClock className="h-4 w-4 text-blue-500" />
+      })
+    }
+  }, [daysOfWeek, anchorDate, startDate, t])
+
   const handleSubmit = async () => {
-    // Validate title if no lesson selected
     if (lessonId === "none" && !title.trim()) {
       toast.error(t("schedule.titleRequired") || "Please enter a title")
       return
@@ -140,22 +177,20 @@ export function ManageScheduleDialog({
       const start = new Date(startDate).getTime()
       const end = start + (duration * 60 * 1000)
       const finalLessonId = lessonId === "none" ? undefined : lessonId as Id<"lessons">
+      const timezoneOffset = new Date().getTimezoneOffset()
 
       if (isEditing && scheduleId) {
-        // --- UPDATE MODE ---
         await updateSchedule({
           id: scheduleId,
-          lessonId: finalLessonId === undefined ? null : finalLessonId, // Handle unlinking
+          lessonId: finalLessonId === undefined ? null : finalLessonId,
           title: title || undefined,
           description: description || undefined,
           scheduledStart: start,
           scheduledEnd: end,
           sessionType,
-          // Note: Series update logic omitted for simplicity, defaults to single instance update
         })
         toast.success(t("schedule.updated"))
       } else {
-        // --- CREATE MODE ---
         if (isRecurring) {
           const finalDaysOfWeek = daysOfWeek.length > 0 ? daysOfWeek : undefined;
           await createRecurring({
@@ -166,6 +201,7 @@ export function ManageScheduleDialog({
             description: description || undefined,
             scheduledStart: start,
             scheduledEnd: end,
+            timezoneOffset: timezoneOffset,
             recurrence: {
               type: recurrenceType,
               daysOfWeek: finalDaysOfWeek,
@@ -222,7 +258,7 @@ export function ManageScheduleDialog({
   // --- Render Helpers ---
   const toggleDayOfWeek = (day: number) => {
     setDaysOfWeek(prev => 
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
     )
   }
 
@@ -231,6 +267,8 @@ export function ManageScheduleDialog({
     { value: 3, label: "Wed" }, { value: 4, label: "Thu" }, { value: 5, label: "Fri" },
     { value: 6, label: "Sat" },
   ]
+
+  const currentStartDayIndex = new Date(startDate).getDay()
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -299,7 +337,6 @@ export function ManageScheduleDialog({
                 <SelectContent>
                   <SelectItem value="none">No specific lesson</SelectItem>
                   {selectedClass?.lessons.map((lesson) => {
-                    // Disable if used, UNLESS it's the one currently assigned to this schedule
                     const isUsed = usedLessonIds?.includes(lesson._id) && lesson._id !== initialData?.lessonId;
                     return (
                         <SelectItem 
@@ -346,7 +383,10 @@ export function ManageScheduleDialog({
               <DateTimePicker 
                 field={{
                     value: startDate,
-                    onChange: (val) => setStartDate(val)
+                    onChange: (val) => {
+                        setStartDate(val)
+                        setAnchorDate(new Date(val))
+                    }
                 }} 
               />
             </div>
@@ -405,18 +445,23 @@ export function ManageScheduleDialog({
                   <div className="space-y-2">
                     <Label>Repeat on</Label>
                     <div className="flex flex-wrap gap-2">
-                        {weekDays.map((day) => (
-                        <Button
-                            key={day.value}
-                            type="button"
-                            variant={daysOfWeek.includes(day.value) ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => toggleDayOfWeek(day.value)}
-                            className="w-12"
-                        >
-                            {day.label}
-                        </Button>
-                        ))}
+                        {weekDays.map((day) => {
+                            const isStartDay = day.value === currentStartDayIndex
+
+                            return (
+                                <Button
+                                    key={day.value}
+                                    type="button"
+                                    variant={daysOfWeek.includes(day.value) ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => toggleDayOfWeek(day.value)}
+                                    className={`w-12 ${isStartDay ? "ring-2 ring-offset-2 ring-blue-500 dark:ring-blue-400" : ""}`}
+                                    title={isStartDay ? "Current Start Date" : undefined}
+                                >
+                                    {day.label}
+                                </Button>
+                            )
+                        })}
                     </div>
                   </div>
               )}

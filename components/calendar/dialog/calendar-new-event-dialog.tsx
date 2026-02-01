@@ -198,6 +198,8 @@ export default function CalendarNewEventDialog() {
           ? values.daysOfWeek
           : undefined;
 
+        const timezoneOffset = new Date().getTimezoneOffset();
+
         await createRecurring({
           classId: values.classId as Id<"classes">,
           lessonId: finalLessonId,
@@ -206,6 +208,7 @@ export default function CalendarNewEventDialog() {
           scheduledStart: startMs,
           scheduledEnd: endMs,
           sessionType: values.sessionType as "live" | "ignitia",
+          timezoneOffset: timezoneOffset,
           recurrence: {
             type: values.recurrenceType,
             occurrences: values.occurrences,
