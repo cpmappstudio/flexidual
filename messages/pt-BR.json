@@ -390,6 +390,14 @@
   "errors": {
     "operationFailed": "Operação falhou",
     "deleteConfirm": "Tem certeza que deseja excluir isto?",
-    "permissionDenied": "Você não tem permissão para realizar esta ação."
+    "permissionDenied": "Você não tem permissão para realizar esta ação.",
+    "curriculumConflict": "O aluno já está matriculado em \"{className}\" que utiliza o mesmo currículo ({curriculumTitle})",
+    "curriculumConflictShort": "Aluno já matriculado em uma turma com este currículo",
+    "studentAlreadyEnrolled": "O aluno já está matriculado nesta turma",
+    "invalidStudent": "Aluno inválido",
+    "invalidStudents": "Um ou mais alunos inválidos",
+    "classNotFound": "Turma não encontrada",
+    "classScheduleConflict": "Esta turma já está agendada para {conflictTime}",
+    "teacherScheduleConflict": "O professor já está ensinando \"{className}\" em {conflictTime}"
   }
 }

@@ -17,7 +17,8 @@ import { Loader2, Plus, Search, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
-// import { useDebounce } from "@/hooks/use-debounce" // We might need to create this hook or just use timeout
+import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
+import { ConvexError } from "convex/values"
 
 interface AddStudentDialogProps {
   classId: Id<"classes">
@@ -27,8 +28,6 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const t = useTranslations()
-  // Debounce search to save API calls (optional, but good practice)
-  // For now we pass search directly
   
   const searchResults = useQuery(api.classes.searchStudents, 
     search.length >= 2 ? { searchQuery: search, excludeClassId: classId } : "skip"
@@ -39,10 +38,17 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
   const handleAdd = async (studentId: Id<"users">, name: string) => {
     try {
       await addStudent({ classId, studentId })
-      toast.success(`Added ${name} to class`)
-      // Keep dialog open to add more? Or close? Let's keep it open.
+      toast.success(t("class.studentAdded", { name }))
     } catch (error) {
-      toast.error("Failed to add student: " + (error as Error).message)
+      const parsedError = parseConvexError(error)
+      
+      if (parsedError) {
+        const errorMessage = getErrorMessage(parsedError, t)
+        toast.error(errorMessage)
+      } else {
+        toast.error(t("errors.operationFailed"))
+        console.error("Unexpected error:", error)
+      }
     }
   }
 
@@ -81,13 +87,12 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
               </div>
             ) : searchResults.length === 0 ? (
               <p className="text-sm text-center text-muted-foreground py-8">
-                No students found.
+                {t("student.noResults")}
               </p>
             ) : (
               searchResults.map((student) => (
                 <div key={student._id} className="flex items-center justify-between p-2 rounded-lg border hover:bg-muted/50">
                   <div className="flex items-center gap-3">
-                    
                     <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full border border-border bg-muted">
                       {student.imageUrl ? (
                         <Image 

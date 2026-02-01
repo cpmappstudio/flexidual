@@ -390,6 +390,14 @@
   "errors": {
     "operationFailed": "Operation failed",
     "deleteConfirm": "Are you sure you want to delete this?",
-    "permissionDenied": "You don't have permission to perform this action."
+    "permissionDenied": "You don't have permission to perform this action.",
+    "curriculumConflict": "Student is already enrolled in \"{className}\" which uses the same curriculum ({curriculumTitle})",
+    "curriculumConflictShort": "Student already enrolled in a class with this curriculum",
+    "studentAlreadyEnrolled": "Student is already enrolled in this class",
+    "invalidStudent": "Invalid student",
+    "invalidStudents": "One or more invalid students",
+    "classNotFound": "Class not found",
+    "classScheduleConflict": "This class is already scheduled at {conflictTime}",
+    "teacherScheduleConflict": "Teacher is already teaching \"{className}\" at {conflictTime}"
   }
 }

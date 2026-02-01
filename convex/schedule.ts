@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Id } from "./_generated/dataModel";
+import { ConvexError } from "convex/values";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -61,8 +62,13 @@ async function validateScheduleOverlap(
 
   if (realClassConflicts.length > 0) {
     const conflict = realClassConflicts[0];
-    const dateStr = new Date(conflict.scheduledStart).toLocaleTimeString();
-    throw new Error(`This Class is already scheduled at this time (${dateStr}).`);
+    const conflictClass = await ctx.db.get(conflict.classId);
+    
+    throw new ConvexError({
+      code: "CLASS_SCHEDULE_CONFLICT",
+      className: conflictClass?.name || "Unknown Class",
+      conflictTime: new Date(conflict.scheduledStart).toLocaleString(),
+    });
   }
 
   // 2. Check if the TEACHER is already busy
@@ -82,14 +88,9 @@ async function validateScheduleOverlap(
   // If the teacher has no active classes, no conflict possible (except the one being created)
   if (teacherClassIds.size === 0) return;
 
-  // We check schedules for ANY of the teacher's classes in this time range
-  // Ideally, we'd have a `by_teacher_time` index, but we can approximate by checking date ranges
-  // Since we can't do an "IN" query easily on index, we might need to check overlaps more broadly
-  // or iterate. For now, let's use the date range index which is efficient.
-  
   const potentialOverlaps = await ctx.db
     .query("classSchedule")
-    .withIndex("by_date_range", (q: any) => q.gte("scheduledStart", start - 24 * 60 * 60 * 1000)) // Broad range optimization
+    .withIndex("by_date_range", (q: any) => q.gte("scheduledStart", start - 24 * 60 * 60 * 1000))
     .filter((q: any) => 
       q.and(
         q.neq(q.field("status"), "cancelled"),
@@ -105,10 +106,12 @@ async function validateScheduleOverlap(
 
   if (teacherConflict) {
     const conflictClass = teacherClasses.find((c: any) => c._id === teacherConflict.classId);
-    const dateStr = new Date(teacherConflict.scheduledStart).toLocaleTimeString();
-    throw new Error(
-      `Teacher is already teaching "${conflictClass?.name || 'another class'}" at this time (${dateStr}).`
-    );
+    
+    throw new ConvexError({
+      code: "TEACHER_SCHEDULE_CONFLICT",
+      className: conflictClass?.name || "another class",
+      conflictTime: new Date(teacherConflict.scheduledStart).toLocaleString(),
+    });
   }
 }
 

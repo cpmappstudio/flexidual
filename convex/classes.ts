@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
@@ -381,23 +381,23 @@ export const addStudent = mutation({
 
     const classData = await ctx.db.get(args.classId);
     if (!classData) {
-      throw new Error("Class not found");
+      throw new ConvexError("CLASS_NOT_FOUND");
     }
 
     // Validate: Admins or the class teacher can add students
     if (!["admin", "superadmin"].includes(user.role)) {
-      throw new Error("Only administrators can add students");
+      throw new ConvexError("PERMISSION_DENIED");
     }
 
     // Verify student exists
     const student = await ctx.db.get(args.studentId);
     if (!student || student.role !== "student") {
-      throw new Error("Invalid student");
+      throw new ConvexError("INVALID_STUDENT");
     }
 
     // Check if already enrolled
     if (classData.students.includes(args.studentId)) {
-      throw new Error("Student already enrolled in this class");
+      throw new ConvexError("STUDENT_ALREADY_ENROLLED");
     }
 
     // Check for curriculum conflict
@@ -411,10 +411,11 @@ export const addStudent = mutation({
     );
 
     if (conflictCheck.hasConflict) {
-      throw new Error(
-        `Student is already enrolled in "${conflictCheck.className}" which uses the same curriculum (${conflictCheck.curriculumTitle}). ` +
-        `A student cannot be enrolled in multiple classes with the same curriculum.`
-      );
+      throw new ConvexError({
+        code: "CURRICULUM_CONFLICT",
+        className: conflictCheck.className,
+        curriculumTitle: conflictCheck.curriculumTitle,
+      });
     }
 
     await ctx.db.patch(args.classId, {
@@ -436,12 +437,12 @@ export const removeStudent = mutation({
 
     const classData = await ctx.db.get(args.classId);
     if (!classData) {
-      throw new Error("Class not found");
+      throw new ConvexError("CLASS_NOT_FOUND");
     }
 
     // Validate: Admins or the class teacher can remove students
     if (!["admin", "superadmin"].includes(user.role)) {
-      throw new Error("Only administrators can remove students");
+      throw new ConvexError("PERMISSION_DENIED");
     }
 
     await ctx.db.patch(args.classId, {
@@ -463,11 +464,11 @@ export const addStudents = mutation({
 
     const classData = await ctx.db.get(args.classId);
     if (!classData) {
-      throw new Error("Class not found");
+      throw new ConvexError("CLASS_NOT_FOUND");
     }
 
     if (!["admin", "superadmin"].includes(user.role)) {
-      throw new Error("Only administrators can add students");
+      throw new ConvexError("PERMISSION_DENIED");
     }
 
     // Verify all students exist
@@ -477,7 +478,7 @@ export const addStudents = mutation({
 
     const invalidStudents = students.filter(s => !s || s.role !== "student");
     if (invalidStudents.length > 0) {
-      throw new Error("One or more invalid student IDs");
+      throw new ConvexError("INVALID_STUDENTS");
     }
 
     // Add only new students (avoid duplicates)
@@ -497,10 +498,11 @@ export const addStudents = mutation({
       );
 
       if (conflictCheck.hasConflict) {
-        throw new Error(
-          `Student is already enrolled in "${conflictCheck.className}" which uses the same curriculum (${conflictCheck.curriculumTitle}). ` +
-          `A student cannot be enrolled in multiple classes with the same curriculum.`
-        );
+        throw new ConvexError({
+          code: "CURRICULUM_CONFLICT",
+          className: conflictCheck.className,
+          curriculumTitle: conflictCheck.curriculumTitle,
+        });
       }
     }
 

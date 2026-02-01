@@ -21,6 +21,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 
 const formSchema = z.object({
   classId: z.string().min(1, "Class is required"),
@@ -28,7 +29,7 @@ const formSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   start: z.string(),
-  end: z.string(),
+  duration: z.number().min(15).max(240), // 15 min to 4 hours
   sessionType: z.enum(["live", "ignitia"]),
   isRecurring: z.boolean(),
   recurrenceType: z.enum(["daily", "weekly", "biweekly", "monthly"]),
@@ -70,7 +71,7 @@ export default function CalendarNewEventDialog() {
       title: "",
       description: "",
       start: new Date().toISOString(),
-      end: new Date(new Date().getTime() + 60 * 60 * 1000).toISOString(),
+      duration: 60,
       sessionType: "live",
       isRecurring: false,
       recurrenceType: "weekly",
@@ -99,10 +100,12 @@ export default function CalendarNewEventDialog() {
         title: "",
         description: "",
         start: startDate.toISOString(),
-        end: new Date(startDate.getTime() + 60 * 60 * 1000).toISOString(),
+        duration: 60,
+        sessionType: "live",
         isRecurring: false,
         recurrenceType: "weekly",
         occurrences: 10,
+        daysOfWeek: [],
       });
     }
   }, [newEventDialogOpen, date, form, preselectedLessonId]);
@@ -181,7 +184,7 @@ export default function CalendarNewEventDialog() {
     try {
       const finalLessonId = values.lessonId === "none" ? undefined : values.lessonId as Id<"lessons">;
       const startMs = new Date(values.start).getTime();
-      const endMs = new Date(values.end).getTime();
+      const endMs = startMs + (values.duration * 60 * 1000);
 
       if (values.isRecurring) {
         const finalDaysOfWeek = values.daysOfWeek && values.daysOfWeek.length > 0
@@ -218,8 +221,16 @@ export default function CalendarNewEventDialog() {
 
       setNewEventDialogOpen(false);
       setPreselectedLessonId(null);
-    } catch (e) {
-      toast.error((e as Error).message || "Failed to schedule");
+    } catch (error) {
+      const parsedError = parseConvexError(error);
+      
+      if (parsedError) {
+        const errorMessage = getErrorMessage(parsedError, t);
+        toast.error(errorMessage);
+      } else {
+        toast.error(t("errors.operationFailed"));
+        console.error("Unexpected error:", error);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -336,14 +347,30 @@ export default function CalendarNewEventDialog() {
             <div className="grid grid-cols-2 gap-4">
               <FormField control={form.control} name="start" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('schedule.time')}</FormLabel>
+                  <FormLabel>{t('schedule.dateTime') || "Start Time"}</FormLabel>
                   <DateTimePicker field={field} />
+                  <FormMessage />
                 </FormItem>
               )} />
-              <FormField control={form.control} name="end" render={({ field }) => (
+              
+              <FormField control={form.control} name="duration" render={({ field }) => (
                  <FormItem>
-                  <FormLabel>End Time</FormLabel>
-                  <DateTimePicker field={field} />
+                  <FormLabel>{t('schedule.duration') || "Duration"}</FormLabel>
+                  <Select value={field.value.toString()} onValueChange={(v) => field.onChange(Number(v))}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="30">30 min</SelectItem>
+                      <SelectItem value="45">45 min</SelectItem>
+                      <SelectItem value="60">1 hour</SelectItem>
+                      <SelectItem value="90">1.5 hours</SelectItem>
+                      <SelectItem value="120">2 hours</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
                 </FormItem>
               )} />
             </div>
@@ -380,6 +407,7 @@ export default function CalendarNewEventDialog() {
                                             <SelectItem value="monthly">{t('schedule.recurrence.monthly')}</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                    <FormMessage />
                                 </FormItem>
                             )} />
                             
@@ -395,6 +423,7 @@ export default function CalendarNewEventDialog() {
                                             max={52} 
                                         />
                                     </FormControl>
+                                    <FormMessage />
                                 </FormItem>
                             )} />
                         </div>

@@ -222,7 +222,7 @@ export default function ClassDetailPage() {
                             <ManageScheduleDialog 
                                 classId={classId}
                                 preselectedLessonId={lesson._id}
-                                trigger={<Button size="sm" variant="outline">{t('schedule.schedule')}</Button>}
+                                trigger={<Button size="sm" variant="outline">{t('class.schedule')}</Button>}
                             />
                           )}
                         </div>
