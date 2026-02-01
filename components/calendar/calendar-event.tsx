@@ -49,9 +49,11 @@ function calculateEventPosition(
     endMinutes = 59;
   }
 
-  const topPosition = startHour * 128 + (startMinutes / 60) * 128;
+  // Updated to use 64px per hour instead of 128px
+  const HOUR_HEIGHT = 64;
+  const topPosition = startHour * HOUR_HEIGHT + (startMinutes / 60) * HOUR_HEIGHT;
   const duration = endHour * 60 + endMinutes - (startHour * 60 + startMinutes);
-  const height = (duration / 60) * 128;
+  const height = (duration / 60) * HOUR_HEIGHT;
 
   return {
     left,

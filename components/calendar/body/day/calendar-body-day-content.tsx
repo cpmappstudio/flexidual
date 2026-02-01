@@ -10,12 +10,12 @@ export default function CalendarBodyDayContent({ date }: { date: Date }) {
   const dayEvents = events.filter((event) => isSameDay(event.start, date))
 
   return (
-    <div className="flex flex-col flex-grow">
+    <div className="flex flex-col flex-1 min-w-0">
       <CalendarBodyHeader date={date} />
 
-      <div className="flex-1 relative">
+      <div className="flex-1 relative min-h-0">
         {hours.map((hour) => (
-          <div key={hour} className="h-32 border-b border-border/50 group" />
+          <div key={hour} className="h-16 border-b border-border/50 group" />
         ))}
 
         {dayEvents.map((event) => (
