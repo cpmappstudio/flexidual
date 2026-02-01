@@ -14,9 +14,10 @@ import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Calendar, Plus, Edit, Loader2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { DateTimePicker } from "@/components/calendar/form/date-time-picker"
 import { RecurrenceType } from "@/lib/types/schedule"
+import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
 
 interface ManageScheduleDialogProps {
   classId: Id<"classes">
@@ -48,6 +49,7 @@ export function ManageScheduleDialog({
   initialData
 }: ManageScheduleDialogProps) {
   const t = useTranslations()
+  const locale = useLocale()
   const isEditing = !!scheduleId
   const [open, setOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -187,8 +189,15 @@ export function ManageScheduleDialog({
 
       setOpen(false)
     } catch (error) {
-      toast.error("Failed to save schedule")
-      console.error(error)
+      const parsedError = parseConvexError(error);
+      
+      if (parsedError) {
+        const errorMessage = getErrorMessage(parsedError, t, locale);
+        toast.error(errorMessage);
+      } else {
+        toast.error(t("errors.operationFailed"));
+        console.error("Unexpected error:", error);
+      }
     } finally {
       setIsSubmitting(false)
     }
