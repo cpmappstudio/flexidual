@@ -31,7 +31,27 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
   return null;
 }
 
-export function getErrorMessage(error: ConvexErrorData, t: (key: string, values?: Record<string, string>) => string): string {
+/**
+ * Format a timestamp to local time string
+ * @param timestamp - Unix timestamp in milliseconds
+ * @param locale - User's locale (e.g., 'en-US', 'es-CO', 'pt-BR')
+ * @returns Formatted date-time string in user's local timezone
+ */
+export function formatLocalDateTime(timestamp: number, locale: string = 'en-US'): string {
+  const date = new Date(timestamp);
+  
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    // This will use the user's browser timezone automatically
+  }).format(date);
+}
+
+export function getErrorMessage(
+  error: ConvexErrorData, 
+  t: (key: string, values?: Record<string, string>) => string,
+  locale?: string
+): string {
   switch (error.code) {
     case "CURRICULUM_CONFLICT":
       return t("errors.curriculumConflict", {
@@ -41,12 +61,12 @@ export function getErrorMessage(error: ConvexErrorData, t: (key: string, values?
     case "CLASS_SCHEDULE_CONFLICT":
       return t("errors.classScheduleConflict", {
         className: error.className || "",
-        conflictTime: error.conflictTime || "",
+        conflictTime: error.conflictTime ? formatLocalDateTime(Number(error.conflictTime), locale) : "",
       })
     case "TEACHER_SCHEDULE_CONFLICT":
       return t("errors.teacherScheduleConflict", {
         className: error.className || "",
-        conflictTime: error.conflictTime || "",
+        conflictTime: error.conflictTime ? formatLocalDateTime(Number(error.conflictTime), locale) : "",
       })
     case "CLASS_NOT_FOUND":
       return t("errors.classNotFound")

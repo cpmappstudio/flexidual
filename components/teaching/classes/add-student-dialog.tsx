@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Loader2, Plus, Search, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 import Image from "next/image"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
 import { ConvexError } from "convex/values"
 
@@ -28,7 +28,7 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const t = useTranslations()
-  
+  const locale = useLocale()
   const searchResults = useQuery(api.classes.searchStudents, 
     search.length >= 2 ? { searchQuery: search, excludeClassId: classId } : "skip"
   )
@@ -43,7 +43,7 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
       const parsedError = parseConvexError(error)
       
       if (parsedError) {
-        const errorMessage = getErrorMessage(parsedError, t)
+        const errorMessage = getErrorMessage(parsedError, t, locale)
         toast.error(errorMessage)
       } else {
         toast.error(t("errors.operationFailed"))

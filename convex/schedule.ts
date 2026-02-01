@@ -67,7 +67,7 @@ async function validateScheduleOverlap(
     throw new ConvexError({
       code: "CLASS_SCHEDULE_CONFLICT",
       className: conflictClass?.name || "Unknown Class",
-      conflictTime: new Date(conflict.scheduledStart).toLocaleString(),
+      conflictTime: conflict.scheduledStart.toString(), // Send as string number
     });
   }
 
@@ -110,7 +110,7 @@ async function validateScheduleOverlap(
     throw new ConvexError({
       code: "TEACHER_SCHEDULE_CONFLICT",
       className: conflictClass?.name || "another class",
-      conflictTime: new Date(teacherConflict.scheduledStart).toLocaleString(),
+      conflictTime: teacherConflict.scheduledStart.toString(),
     });
   }
 }
@@ -215,6 +215,12 @@ export const getMySchedule = query({
           lessonData = await ctx.db.get(item.lessonId);
         }
 
+        let recurrenceRule = item.recurrenceRule;
+        if (item.recurrenceParentId && !recurrenceRule) {
+            const parent = await ctx.db.get(item.recurrenceParentId);
+            recurrenceRule = parent?.recurrenceRule;
+        }
+
         const title = lessonData?.title || item.title || "Class Session";
         const description = lessonData?.description || item.description || "";
 
@@ -290,7 +296,7 @@ export const getMySchedule = query({
           classId: classData._id,
           curriculumId: classData.curriculumId,
           isRecurring: item.isRecurring || false,
-          recurrenceRule: item.recurrenceRule,
+          recurrenceRule: recurrenceRule,
           recurrenceParentId: item.recurrenceParentId,
           teacherName: teacher?.fullName || "Unknown",
           teacherImageUrl: teacher?.imageUrl,

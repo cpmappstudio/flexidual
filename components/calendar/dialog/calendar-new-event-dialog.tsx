@@ -19,7 +19,7 @@ import { DateTimePicker } from "@/components/calendar/form/date-time-picker";
 import { toast } from "sonner";
 import { Id } from "@/convex/_generated/dataModel";
 import { Loader2 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 
@@ -41,6 +41,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 export default function CalendarNewEventDialog() {
   const t = useTranslations();
+  const locale = useLocale();
   const { 
     newEventDialogOpen, 
     setNewEventDialogOpen, 
@@ -225,7 +226,7 @@ export default function CalendarNewEventDialog() {
       const parsedError = parseConvexError(error);
       
       if (parsedError) {
-        const errorMessage = getErrorMessage(parsedError, t);
+        const errorMessage = getErrorMessage(parsedError, t, locale);
         toast.error(errorMessage);
       } else {
         toast.error(t("errors.operationFailed"));
