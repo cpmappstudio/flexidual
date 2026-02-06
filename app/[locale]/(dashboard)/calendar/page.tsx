@@ -251,7 +251,7 @@ function CalendarContent() {
 
 export default function CalendarPage() {
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] w-full p-6">
+    <div className="flex flex-col h-[calc(100vh-6rem)] w-full">
       <div className="flex-1 min-h-0">
         <Suspense fallback={<div className="p-6"><Skeleton className="h-[600px] w-full" /></div>}>
           <CalendarContent />

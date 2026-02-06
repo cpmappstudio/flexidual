@@ -262,6 +262,7 @@ export const checkStudentCurriculumEnrollment = internalQuery({
 export const create = mutation({
   args: {
     name: v.string(),
+    description: v.optional(v.string()), // Added description
     curriculumId: v.id("curriculums"),
     teacherId: v.id("users"),
     tutorId: v.optional(v.id("users")),
@@ -280,26 +281,15 @@ export const create = mutation({
 
     // Verify curriculum exists
     const curriculum = await ctx.db.get(args.curriculumId);
-    if (!curriculum) {
-      throw new Error("Curriculum not found");
-    }
+    if (!curriculum) throw new Error("Curriculum not found");
 
     // Verify teacher exists and has correct role
     const teacher = await ctx.db.get(args.teacherId);
-    if (!teacher || teacher.role !== "teacher") {
-      throw new Error("Invalid teacher");
-    }
-
-    // Verify tutor if provided
-    if (args.tutorId) {
-      const tutor = await ctx.db.get(args.tutorId);
-      if (!tutor || tutor.role !== "tutor") {
-        throw new Error("Invalid tutor");
-      }
-    }
+    if (!teacher || teacher.role !== "teacher") throw new Error("Invalid teacher");
 
     return await ctx.db.insert("classes", {
       name: args.name,
+      description: args.description,
       curriculumId: args.curriculumId,
       teacherId: args.teacherId,
       tutorId: args.tutorId,
@@ -321,7 +311,9 @@ export const update = mutation({
   args: {
     id: v.id("classes"),
     name: v.optional(v.string()),
+    description: v.optional(v.string()),
     teacherId: v.optional(v.id("users")),
+    curriculumId: v.optional(v.id("curriculums")),
     tutorId: v.optional(v.union(v.id("users"), v.null())),
     academicYear: v.optional(v.string()),
     startDate: v.optional(v.number()),
@@ -336,24 +328,12 @@ export const update = mutation({
     }
 
     const classData = await ctx.db.get(args.id);
-    if (!classData) {
-      throw new Error("Class not found");
-    }
+    if (!classData) throw new Error("Class not found");
 
     // Validate new teacher if changing
     if (args.teacherId) {
       const teacher = await ctx.db.get(args.teacherId);
-      if (!teacher || teacher.role !== "teacher") {
-        throw new Error("Invalid teacher");
-      }
-    }
-
-    // Validate new tutor if changing
-    if (args.tutorId !== undefined && args.tutorId !== null) {
-      const tutor = await ctx.db.get(args.tutorId);
-      if (!tutor || tutor.role !== "tutor") {
-        throw new Error("Invalid tutor");
-      }
+      if (!teacher || teacher.role !== "teacher") throw new Error("Invalid teacher");
     }
 
     const { id, ...updates } = args;

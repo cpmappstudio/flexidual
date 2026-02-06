@@ -1,5 +1,5 @@
 /**
- * FlexiDual - Simplified Schema
+ * FlexiDual - Schema
  * Focus: Core scheduling system with LiveKit classroom integration
  * 
  * Core Flow:
@@ -107,6 +107,7 @@ export default defineSchema({
    */
   classes: defineTable({
     name: v.string(), // e.g., "Math 5th Grade - Fall 2024"
+    description: v.optional(v.string()),
     curriculumId: v.id("curriculums"), // What curriculum are we following?
     
     // People

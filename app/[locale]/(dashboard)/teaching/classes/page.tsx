@@ -6,9 +6,9 @@ import { Id } from "@/convex/_generated/dataModel"
 import { api } from "@/convex/_generated/api"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, BookOpen, Calendar, ArrowRight, School } from "lucide-react"
+import { Users, BookOpen, Calendar, ArrowRight, School, Edit } from "lucide-react"
 import { format } from "date-fns"
-import { CreateClassDialog } from "@/components/teaching/classes/create-class-dialog"
+import { ClassDialog } from "@/components/teaching/classes/class-dialog" // Using the new Dialog
 import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -80,7 +80,8 @@ export default function MyClassesPage() {
             onSelectCurriculum={setSelectedCurriculumId}
             isAdmin={isAdmin}
           />
-          {isAdmin && <CreateClassDialog selectedTeacherId={selectedTeacherId} />}
+          {/* Main Create Button */}
+          {isAdmin && <ClassDialog selectedTeacherId={selectedTeacherId} />}
         </div>
       </div>
 
@@ -95,17 +96,22 @@ export default function MyClassesPage() {
               ? t('class.createPrompt') 
               : t('class.notAssigned')}
           </p>
-          {isAdmin && <CreateClassDialog />}
+          {isAdmin && <ClassDialog />}
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {classes.map((cls) => (
-            <Card key={cls._id} className="group relative overflow-hidden transition-all hover:shadow-md">
+            <Card key={cls._id} className="group relative overflow-hidden transition-all hover:shadow-md flex flex-col">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <Badge variant={cls.isActive ? "default" : "secondary"}>
                     {cls.isActive ? t('common.active') : t('common.archived')}
                   </Badge>
+                  {cls.academicYear && (
+                    <Badge variant="outline" className="text-xs">
+                        {cls.academicYear}
+                    </Badge>
+                  )}
                 </div>
                 <CardTitle className="line-clamp-1 mt-2">{cls.name}</CardTitle>
                 <CardDescription className="flex items-center gap-2">
@@ -113,25 +119,40 @@ export default function MyClassesPage() {
                   <span className="line-clamp-1">{getCurriculumTitle(cls.curriculumId)}</span>
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="grid gap-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
+              
+              <CardContent className="flex flex-col gap-4 mt-auto">
+                {/* Stats Row - Separated from buttons for better layout */}
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
                       <Users className="h-4 w-4" />
                       <span>{cls.students?.length || 0} {t('navigation.students')}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
                       <span>{cls.startDate ? format(cls.startDate, "MMM yyyy") : t('class.noDate')}</span>
                     </div>
-                  </div>
-                  
-                  <Button variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground" asChild>
+                </div>
+                
+                {/* Actions Row */}
+                <div className="flex gap-2 pt-2 border-t">
+                  <Button variant="outline" className="flex-1 group-hover:bg-primary group-hover:text-primary-foreground transition-colors" asChild>
                     <Link href={`/teaching/classes/${cls._id}`}>
                       {isAdmin ? t('class.manageClass') : t('class.manageSchedule')}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
+                  
+                  {/* Edit Button */}
+                  {isAdmin && (
+                    <ClassDialog 
+                      classDoc={cls}
+                      trigger={
+                          <Button variant="secondary" size="icon" className="shrink-0" title="Edit Class Details">
+                              <Edit className="h-4 w-4" />
+                          </Button>
+                      }
+                    />
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -1,125 +1,94 @@
 "use client"
 
+import * as React from "react"
+import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog"
-import { ReactNode } from "react"
-import { Save } from "lucide-react"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface EntityDialogProps {
-    // Trigger configuration
-    trigger: ReactNode
-
-    // Header configuration
-    title: string
-
-    // Content
-    children: ReactNode
-
-    // Form handling (optional - if not provided, no form or footer will be shown)
-    onSubmit?: (event: React.FormEvent<HTMLFormElement>) => void
-
-    // Footer configuration (optional customization)
-    submitLabel?: string
-    isSubmitting?: boolean
-    leftActions?: ReactNode // Para botones adicionales a la izquierda
-    showActions?: boolean // Control si mostrar el footer con acciones
-
-    // Size customization (optional)
-    maxWidth?: string
-
-    // Dialog state control (optional)
-    open?: boolean
-    onOpenChange?: (open: boolean) => void
+  trigger?: React.ReactNode
+  title: string
+  description?: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
+  isSubmitting?: boolean
+  submitLabel?: string
+  children: React.ReactNode
+  leftActions?: React.ReactNode
+  maxWidth?: string
 }
 
 export function EntityDialog({
-    trigger,
-    title,
-    children,
-    onSubmit,
-    submitLabel = "Save changes",
-    isSubmitting = false,
-    leftActions,
-    showActions = true,
-    maxWidth = "600px",
-    open,
-    onOpenChange
+  trigger,
+  title,
+  description,
+  open,
+  onOpenChange,
+  onSubmit,
+  isSubmitting = false,
+  submitLabel = "Save",
+  children,
+  leftActions,
+  maxWidth = "sm:max-w-[600px]",
 }: EntityDialogProps) {
-    const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        event.stopPropagation() // Prevenir propagación a formularios padres
-        if (onSubmit) {
-            onSubmit(event)
-        }
+  // Internal state for open/close if not controlled externally
+  const [internalOpen, setInternalOpen] = React.useState(false)
+  const isControlled = open !== undefined
+
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!isControlled) {
+      setInternalOpen(newOpen)
     }
+    onOpenChange?.(newOpen)
+  }
 
-    // Si no hay onSubmit, renderizar sin form
-    const content = (
-        <>
-            {/* Fixed Header */}
-            <DialogHeader className="px-6 pt-6 pb-4 border-b bg-background flex-shrink-0">
-                <DialogTitle>{title}</DialogTitle>
-            </DialogHeader>
+  const effectiveOpen = isControlled ? open : internalOpen
 
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-hidden">
-                <ScrollArea className="h-full w-full">
-                    <div className="px-6 py-4">
-                        {children}
-                    </div>
-                </ScrollArea>
+  return (
+    <Dialog open={effectiveOpen} onOpenChange={handleOpenChange}>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
+      <DialogContent className={`${maxWidth} flex flex-col max-h-[90vh] gap-0 p-0`}>
+        <DialogHeader className="p-6 pb-4 border-b">
+          <DialogTitle>{title}</DialogTitle>
+          {description && <DialogDescription>{description}</DialogDescription>}
+        </DialogHeader>
+
+        <form onSubmit={onSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <ScrollArea className="flex-1 p-6">
+            {children}
+          </ScrollArea>
+
+          <DialogFooter className="p-6 pt-4 border-t gap-2 sm:gap-0 bg-muted/10">
+            <div className="flex flex-1 items-center gap-2">
+              {leftActions}
             </div>
-
-            {/* Fixed Footer - solo si showActions es true */}
-            {showActions && (
-                <DialogFooter className="px-6 py-4 border-t bg-background flex-shrink-0">
-                    <div className="flex items-center gap-2 w-full justify-end">
-                        {/* Left actions (like delete button) */}
-                        {leftActions}
-
-                        {/* Submit button */}
-                        <Button
-                            type="submit"
-                            className="min-w-[120px]"
-                            disabled={isSubmitting}
-                            variant="default"
-                        >
-                            <Save className="h-4 w-4" />
-                            {isSubmitting ? "Saving..." : submitLabel}
-                        </Button>
-                    </div>
-                </DialogFooter>
-            )}
-        </>
-    )
-
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogTrigger asChild>
-                {trigger}
-            </DialogTrigger>
-            <DialogContent
-                className="w-[95vw] h-[90vh] flex flex-col p-0 overflow-hidden"
-                style={{ maxWidth }}
-            >
-                {onSubmit ? (
-                    <form onSubmit={handleFormSubmit} className="flex flex-col h-full">
-                        {content}
-                    </form>
-                ) : (
-                    <div className="flex flex-col h-full">
-                        {content}
-                    </div>
-                )}
-            </DialogContent>
-        </Dialog>
-    )
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleOpenChange(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {submitLabel}
+              </Button>
+            </div>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
 }

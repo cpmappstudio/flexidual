@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
-import { CheckCircle2, ArrowRight, Calendar as CalendarIcon, BookOpen, Plus, MonitorPlay } from "lucide-react"
+import { CheckCircle2, ArrowRight, Calendar as CalendarIcon, BookOpen, Plus, MonitorPlay, Edit } from "lucide-react"
 import { ManageScheduleDialog } from "@/components/teaching/classes/manage-schedule-dialog"
 import { StudentManager } from "@/components/teaching/classes/student-manager"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,8 @@ import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { useState } from "react"
 import { ScheduleItem } from "@/components/schedule/schedule-item"
+import { ClassDialog } from "@/components/teaching/classes/class-dialog"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 export default function ClassDetailPage() {
   const t = useTranslations()
@@ -24,6 +26,8 @@ export default function ClassDetailPage() {
   const classId = params.classId as Id<"classes">
   const [scheduleView, setScheduleView] = useState<"lessons" | "calendar">("lessons")
   const [visiblePast, setVisiblePast] = useState(10)
+  const { user } = useCurrentUser()
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
 
   const classData = useQuery(api.classes.get, { id: classId })
   
@@ -59,7 +63,19 @@ export default function ClassDetailPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{classData.name}</h1>
+          <div className="flex items-center gap-2">
+             <h1 className="text-3xl font-bold">{classData.name}</h1>
+             {isAdmin && (
+               <ClassDialog 
+                  classDoc={classData}
+                  trigger={
+                      <Button variant="ghost" size="icon">
+                          <Edit className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                  }
+               />
+             )}
+          </div>
           <p className="text-muted-foreground">
             {t('curriculum.title')}: <span className="font-medium text-foreground">{classData.curriculumTitle}</span>
           </p>

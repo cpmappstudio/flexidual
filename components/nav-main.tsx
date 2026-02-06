@@ -6,9 +6,7 @@ import {
   Calendar,
   LayoutDashboard,
   Users,
-  // GraduationCap,
   School,
-  LibraryBig,
 } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/navigation"
 import {
@@ -137,16 +135,6 @@ export function NavMain() {
                 <Link href="/admin/curriculums">
                   <BookOpen />
                   <span>{t('navigation.allCurriculums')}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-
-            {/* Lessons as child of Curriculums */}
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/admin/lessons")} className="pl-8">
-                <Link href="/admin/lessons">
-                  <LibraryBig />
-                  <span>{t('navigation.allLessons')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
