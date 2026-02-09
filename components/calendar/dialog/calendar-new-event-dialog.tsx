@@ -503,7 +503,7 @@ export default function CalendarNewEventDialog() {
                                                 variant={daysOfWeek.includes(day.value) ? "default" : "outline"}
                                                 size="sm"
                                                 onClick={() => toggleDayOfWeek(day.value)}
-                                                className={`w-12 h-10 ${isStartDay ? "ring-2 ring-offset-2 ring-blue-500 dark:ring-blue-400" : ""}`}
+                                                className={`w-12 h-10 ${isStartDay ? "ring-2 ring-ring dark:ring-ring" : ""}`}
                                                 title={isStartDay ? "Current Start Date" : undefined}
                                             >
                                                 {t(day.key) || day.label}

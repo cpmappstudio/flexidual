@@ -13,7 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Search } from "lucide-react";
+import { ArrowUpDown, Edit, Search } from "lucide-react";
 import type { TableSortingState } from "@/lib/types/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,7 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
   // Fetch users (filtered by role if provided)
   const users = useQuery(api.users.getUsers, roleFilter ? { role: roleFilter } : {});
   const [sorting, setSorting] = React.useState<TableSortingState>([]);
+  const [editingUser, setEditingUser] = React.useState<User | null>(null);
   
   const columns: ColumnDef<User>[] = [
     {
@@ -115,10 +116,18 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
       cell: ({ row }) => {
         return (
           <div className="flex justify-end">
-            <UserDialog 
-                user={row.original} 
-                allowedRoles={allowedRoles} // Pass constraints to edit dialog
-            />
+            <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-8 w-8 p-0"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingUser(row.original);
+                }}
+            >
+                <Edit className="h-4 w-4 text-muted-foreground" />
+                <span className="sr-only">{t('common.edit')}</span>
+            </Button>
           </div>
         )
       },
@@ -140,6 +149,18 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
 
   return (
     <div className="space-y-4">
+      {editingUser && (
+            <UserDialog 
+                user={editingUser}
+                allowedRoles={allowedRoles}
+                open={true}
+                onOpenChange={(open) => {
+                    if (!open) setEditingUser(null);
+                }}
+                trigger={<span className="hidden" />} 
+            />
+        )}
+
       <div className="flex items-center justify-between">
         <div className="relative w-72">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -174,7 +195,12 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow 
+                  key={row.id}
+                  data-state={row.getIsSelected() && "selected"}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setEditingUser(row.original)}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -18,6 +18,7 @@ import type * as curriculums from "../curriculums.js";
 import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
 import type * as livekit from "../livekit.js";
+import type * as migration from "../migration.js";
 import type * as schedule from "../schedule.js";
 import type * as seed from "../seed.js";
 import type * as types from "../types.js";
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   lessons: typeof lessons;
   livekit: typeof livekit;
+  migration: typeof migration;
   schedule: typeof schedule;
   seed: typeof seed;
   types: typeof types;

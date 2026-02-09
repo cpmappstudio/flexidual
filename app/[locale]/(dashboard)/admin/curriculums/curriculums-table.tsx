@@ -20,14 +20,23 @@ import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-d
 import { Doc } from "@/convex/_generated/dataModel"
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { ArrowUpDown, Search } from "lucide-react"
+import { ArrowUpDown, Edit, Search } from "lucide-react" // Ensure Edit is imported
 import { Button } from "@/components/ui/button"
 
-export function CurriculumsTable() {
+// 1. Add Props Interface
+interface CurriculumsTableProps {
+  includeInactive?: boolean
+}
+
+// 2. Accept the prop
+export function CurriculumsTable({ includeInactive = false }: CurriculumsTableProps) {
   const t = useTranslations()
-  const data = useQuery(api.curriculums.list, { includeInactive: true })
+  // 3. Use the prop in the query
+  const data = useQuery(api.curriculums.list, { includeInactive })
+  
   const [filter, setFilter] = useState("")
   const [sorting, setSorting] = React.useState([])
+  const [editingCurriculum, setEditingCurriculum] = useState<Doc<"curriculums"> | null>(null)
 
   const columns: ColumnDef<Doc<"curriculums">>[] = [
     {
@@ -67,7 +76,18 @@ export function CurriculumsTable() {
       id: "actions",
       cell: ({ row }) => (
         <div className="flex justify-end">
-            <CurriculumDialog curriculum={row.original} />
+            <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-8 w-8 p-0"
+                onClick={(e) => {
+                    e.stopPropagation()
+                    setEditingCurriculum(row.original)
+                }}
+            >
+                <Edit className="h-4 w-4 text-muted-foreground" />
+                <span className="sr-only">{t('common.edit')}</span>
+            </Button>
         </div>
       ),
     },
@@ -84,7 +104,7 @@ export function CurriculumsTable() {
         globalFilter: filter,
         sorting 
     },
-    // @ts-expect-error - tanstack table typing issue with simple sorting
+    // @ts-expect-error - tanstack table typing issue
     onSortingChange: setSorting,
     onGlobalFilterChange: setFilter,
   })
@@ -93,6 +113,15 @@ export function CurriculumsTable() {
 
   return (
     <div className="space-y-4">
+      {editingCurriculum && (
+        <CurriculumDialog 
+            curriculum={editingCurriculum}
+            open={true}
+            onOpenChange={(open) => !open && setEditingCurriculum(null)}
+            trigger={<span className="hidden" />}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <div className="relative w-72">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -104,7 +133,6 @@ export function CurriculumsTable() {
           />
         </div>
         
-        {/* Consistent Action Placement */}
         <CurriculumDialog />
       </div>
 
@@ -124,7 +152,11 @@ export function CurriculumsTable() {
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow 
+                  key={row.id}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setEditingCurriculum(row.original)}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

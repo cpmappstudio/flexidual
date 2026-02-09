@@ -173,7 +173,9 @@
     "filterPlaceholder": "Filtrar currículos...",
     "manageDescription": "Gestiona tus plantillas de curso y lecciones.",
     "noDescription": "Sin descripción",
-    "unknown": "Currículo Desconocido"
+    "unknown": "Currículo Desconocido",
+    "allList": "Todos los Currículos",
+    "activeList": "Currículos Activos"
   },
   "lesson": {
     "title": "Título de la Lección",

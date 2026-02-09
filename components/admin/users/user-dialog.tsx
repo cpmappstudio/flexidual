@@ -39,7 +39,9 @@ interface UserDialogProps {
     }
     defaultRole?: UserRole
     allowedRoles?: UserRole[]
-    trigger?: React.ReactNode // 2. Added missing prop
+    trigger?: React.ReactNode
+    open?: boolean 
+    onOpenChange?: (open: boolean) => void
 }
 
 const ALL_ROLES: UserRole[] = ["student", "teacher", "tutor", "admin", "superadmin"]
@@ -52,7 +54,14 @@ type PendingUser = {
     role: UserRole
 }
 
-export function UserDialog({ user, defaultRole, allowedRoles, trigger }: UserDialogProps) {
+export function UserDialog({ 
+    user, 
+    defaultRole, 
+    allowedRoles, 
+    trigger, 
+    open: controlledOpen,
+    onOpenChange: controlledOnOpenChange
+}: UserDialogProps) {
     const t = useTranslations()
     const isEditing = !!user
     
@@ -62,7 +71,10 @@ export function UserDialog({ user, defaultRole, allowedRoles, trigger }: UserDia
     const deleteUser = useAction(api.users.deleteUserWithClerk)
 
     // State
-    const [isOpen, setIsOpen] = useState(false)
+    const [internalOpen, setInternalOpen] = useState(false)
+    const isControlled = controlledOpen !== undefined
+    const isOpen = isControlled ? controlledOpen : internalOpen
+    const setIsOpen = isControlled ? controlledOnOpenChange! : setInternalOpen
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [queue, setQueue] = useState<PendingUser[]>([])
     

@@ -173,7 +173,9 @@
     "filterPlaceholder": "Filter curriculums...",
     "manageDescription": "Manage your course templates and lessons.",
     "noDescription": "No description",
-    "unknown": "Unknown Curriculum"
+    "unknown": "Unknown Curriculum",
+    "allList": "All Curriculums",
+    "activeList": "Active Curriculums"
   },
   "lesson": {
     "title": "Lesson Title",

@@ -9,7 +9,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-deep-koamaru hover:bg-deep-koamaru/90 text-white",
+        default: "bg-deep-koamaru dark:bg-radio-button-fill/90 hover:bg-deep-koamaru/90 dark:hover:bg-radio-button-fill/100 text-white dark:text-black",
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:

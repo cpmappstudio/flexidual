@@ -20,6 +20,8 @@ import { CurriculumLessonList } from "./curriculum-lesson-list"
 interface CurriculumDialogProps {
   curriculum?: Doc<"curriculums">
   trigger?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 type PendingCurriculum = {
@@ -29,7 +31,12 @@ type PendingCurriculum = {
     description: string
 }
 
-export function CurriculumDialog({ curriculum, trigger }: CurriculumDialogProps) {
+export function CurriculumDialog({ 
+    curriculum, 
+    trigger, 
+    open: controlledOpen,
+    onOpenChange: controlledOnOpenChange 
+}: CurriculumDialogProps) {
   const t = useTranslations()
   const isEditing = !!curriculum
   
@@ -37,7 +44,9 @@ export function CurriculumDialog({ curriculum, trigger }: CurriculumDialogProps)
   const update = useMutation(api.curriculums.update)
   const remove = useMutation(api.curriculums.remove)
 
-  const [isOpen, setIsOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setIsOpen = controlledOnOpenChange || setInternalOpen
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [queue, setQueue] = useState<PendingCurriculum[]>([])
   

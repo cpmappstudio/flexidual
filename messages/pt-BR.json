@@ -173,7 +173,9 @@
     "filterPlaceholder": "Filtrar currículos...",
     "manageDescription": "Gerencie seus modelos de curso e aulas.",
     "noDescription": "Sem descrição",
-    "unknown": "Currículo Desconhecido"
+    "unknown": "Currículo Desconhecido",
+    "allList": "Todos os Currículos",
+    "activeList": "Currículos Ativos"
   },
   "lesson": {
     "title": "Título da Aula",
