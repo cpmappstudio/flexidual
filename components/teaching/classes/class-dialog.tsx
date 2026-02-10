@@ -19,7 +19,6 @@ import { useCurrentUser } from "@/hooks/use-current-user"
 // Interconnections
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { UserDialog } from "@/components/admin/users/user-dialog"
-import { AddStudentDialog } from "./add-student-dialog"
 import { StudentManager } from "./student-manager"
 
 interface ClassDialogProps {

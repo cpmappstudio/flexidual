@@ -10,6 +10,7 @@ import {
   getSortedRowModel,
   getFilteredRowModel,
   useReactTable,
+  SortingState,
 } from "@tanstack/react-table";
 import { ArrowUpDown, Edit, Users, Calendar, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ export function ClassesTable({ data, curriculums }: ClassesTableProps) {
   const { user } = useCurrentUser();
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
 
-  const [sorting, setSorting] = React.useState([]);
+  const [sorting, setSorting] = React.useState<SortingState>([]);
   const [filter, setFilter] = React.useState(""); // Search state
   const [editingClass, setEditingClass] = React.useState<Doc<"classes"> | null>(null);
 
@@ -138,7 +139,7 @@ export function ClassesTable({ data, curriculums }: ClassesTableProps) {
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(), // Enable filtering
-    onSortingChange: setSorting as any,
+    onSortingChange: setSorting,
     onGlobalFilterChange: setFilter, // Bind filter state
     state: { 
         sorting,

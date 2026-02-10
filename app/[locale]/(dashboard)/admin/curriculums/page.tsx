@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl"
 import { CurriculumsTable } from "./curriculums-table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { BookOpen, Archive, Library } from "lucide-react"
+import { BookOpen, Library } from "lucide-react"
 
 export default function CurriculumsPage() {
     const t = useTranslations()

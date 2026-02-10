@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { Id } from "@/convex/_generated/dataModel"
+import { Doc, Id } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Edit, Plus, GripVertical, Loader2 } from "lucide-react"
@@ -39,7 +39,7 @@ interface CurriculumLessonListProps {
 }
 
 // Helper Component for Sortable Item
-function SortableLessonItem({ lesson, curriculumId }: { lesson: any, curriculumId: Id<"curriculums"> }) {
+function SortableLessonItem({ lesson, curriculumId }: { lesson: Doc<"lessons">, curriculumId: Id<"curriculums"> }) {
     const {
         attributes,
         listeners,
@@ -146,7 +146,7 @@ export function CurriculumLessonList({ curriculumId }: CurriculumLessonListProps
           setIsPending(true)
           await reorderLessons({ updates })
       } catch (error) {
-          toast.error("Failed to reorder lessons")
+          toast.error("Failed to reorder lessons" + (error instanceof Error ? `: ${error.message}` : ""))
           setItems(lessons) 
       } finally {
           setIsPending(false)
