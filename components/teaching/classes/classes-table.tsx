@@ -106,7 +106,7 @@ export function ClassesTable({ data, curriculums }: ClassesTableProps) {
       cell: ({ row }) => {
         return (
           <div className="flex justify-end items-center gap-2">
-            <Button variant="ghost" size="sm" asChild>
+            <Button variant="secondary" size="sm" asChild>
                 <Link href={`/teaching/classes/${row.original._id}`} onClick={(e) => e.stopPropagation()}>
                     {isAdmin ? t('class.manageClass') : t('class.manageSchedule')}
                 </Link>

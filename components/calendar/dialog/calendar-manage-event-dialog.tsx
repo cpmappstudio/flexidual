@@ -606,7 +606,7 @@ export default function CalendarManageEventDialog() {
                     {/* Description */}
                     <FormField control={form.control} name="description" render={({ field }) => (
                         <FormItem>
-                            <FormLabel>{t('curriculum.description')}</FormLabel>
+                            <FormLabel>{t('common.description')}</FormLabel>
                             <FormControl>
                                 <Textarea {...field} className="resize-none h-20" />
                             </FormControl>

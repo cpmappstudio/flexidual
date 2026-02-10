@@ -161,12 +161,12 @@ export function CurriculumDialog({
     }
   }
 
-  const dialogTitle = isEditing ? t('curriculum.edit') : "Batch Create Curriculums"
-  const dialogDesc = isEditing ? "Manage curriculum details and lessons." : "Add one or more curriculums."
+  const dialogTitle = isEditing ? t('curriculum.edit') : t('curriculum.createCurriculum') + 's'
+  const dialogDesc = isEditing ? t('navigation.curriculumEditDescription') : t('curriculum.addCurriculums')
 
   const createLabel = queue.length > 0 
-    ? `Create All (${queue.length})` 
-    : (formData.title ? "Create Curriculum" : "Create")
+    ? t('common.createAllNumber', { count: queue.length }) 
+    : (formData.title ? t('curriculum.createCurriculum') : t('common.create'))
 
   return (
     <EntityDialog
@@ -196,8 +196,8 @@ export function CurriculumDialog({
         {isEditing ? (
             <Tabs defaultValue="details" className="w-full h-full flex flex-col">
                 <TabsList className="w-full justify-start mb-4">
-                    <TabsTrigger value="details" className="gap-2"><BookOpen className="h-4 w-4" /> Details</TabsTrigger>
-                    <TabsTrigger value="lessons" className="gap-2"><Layers className="h-4 w-4" /> Lessons</TabsTrigger>
+                    <TabsTrigger value="details" className="gap-2"><BookOpen className="h-4 w-4" /> {t('common.details')}</TabsTrigger>
+                    <TabsTrigger value="lessons" className="gap-2"><Layers className="h-4 w-4" /> {t('navigation.lessons')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="details" className="flex-1 space-y-4">
@@ -232,7 +232,7 @@ export function CurriculumDialog({
                     </div>
 
                     <div className="grid gap-2">
-                        <Label>{t('curriculum.description')}</Label>
+                        <Label>{t('common.description')}</Label>
                         <Textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="h-32 resize-none" />
                     </div>
                 </TabsContent>
@@ -255,28 +255,28 @@ export function CurriculumDialog({
                         </div>
                     </div>
                     <div className="grid gap-2">
-                        <Label>{t('curriculum.description')}</Label>
-                        <Textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="h-20 resize-none" placeholder="Brief description..." />
+                        <Label>{t('common.description')}</Label>
+                        <Textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="h-20 resize-none" placeholder={t('curriculum.descriptionInputPlaceholder')} />
                     </div>
                     <div className="flex justify-end">
                         <Button type="button" onClick={handleAddToQueue} variant="secondary" size="sm" className="gap-2">
-                            <Plus className="h-4 w-4" /> Add to Batch
+                            <Plus className="h-4 w-4" /> {t('common.addToQueue')}
                         </Button>
                     </div>
                 </div>
 
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                        <Label>Curriculums to Create ({queue.length})</Label>
+                        <Label>{t('curriculum.curriculumsToCreate', { count: queue.length })}</Label>
                         {queue.length > 0 && (
-                            <Button variant="ghost" size="sm" onClick={() => setQueue([])} type="button">Clear All</Button>
+                            <Button variant="ghost" size="sm" onClick={() => setQueue([])} type="button">{t('common.clearAll')}</Button>
                         )}
                     </div>
                     <ScrollArea className="h-[200px] border rounded-md bg-background">
                          {queue.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-4">
                                 <BookOpen className="h-8 w-8 mb-2 opacity-20" />
-                                <p>Add items above to build your list.</p>
+                                <p>{t('curriculum.addBatchCurriculumsInstruction')}</p>
                             </div>
                         ) : (
                             <div className="divide-y">

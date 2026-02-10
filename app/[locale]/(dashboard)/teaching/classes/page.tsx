@@ -79,10 +79,10 @@ export default function MyClassesPage() {
             
             <TabsList>
                 <TabsTrigger value="grid" className="gap-2">
-                    <LayoutGrid className="h-4 w-4" /> Grid
+                    <LayoutGrid className="h-4 w-4" />
                 </TabsTrigger>
                 <TabsTrigger value="list" className="gap-2">
-                    <ListIcon className="h-4 w-4" /> List
+                    <ListIcon className="h-4 w-4" />
                 </TabsTrigger>
             </TabsList>
         </div>
@@ -144,7 +144,7 @@ export default function MyClassesPage() {
                                 <ClassDialog 
                                 classDoc={cls}
                                 trigger={
-                                    <Button variant="secondary" size="icon" className="shrink-0" title="Edit Class Details">
+                                    <Button variant="secondary" size="icon" className="shrink-0" title={t('class.edit')}>
                                         <Edit className="h-4 w-4" />
                                     </Button>
                                 }
@@ -165,12 +165,12 @@ export default function MyClassesPage() {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <School className="h-5 w-5 text-primary" />
-                        {isAdmin ? "All Classes" : "My Classes"}
+                        {isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}
                     </CardTitle>
                     <CardDescription>
                         {isAdmin 
-                            ? "View and manage all classes, assignments, and schedules." 
-                            : "View your assigned classes and manage your schedule."}
+                            ? t('navigation.adminClassesDescription2') 
+                            : t('navigation.classesDescription2')}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>

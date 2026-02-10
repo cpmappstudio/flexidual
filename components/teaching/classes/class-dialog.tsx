@@ -160,7 +160,7 @@ export function ClassDialog({
         onOpenChange={setIsOpen}
         trigger={trigger || defaultTrigger}
         title={isEditing ? t('class.edit') : t('class.new')}
-        description={isEditing ? "Manage class details and students." : t('class.description')}
+        description={isEditing ? t('class.editDescription') : t('class.description')}
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}
         submitLabel={isEditing ? t('common.save') : t('class.createClass')}
@@ -174,7 +174,7 @@ export function ClassDialog({
         <Tabs defaultValue="details" className="w-full">
             <TabsList className="w-full justify-start mb-4">
                 <TabsTrigger value="details" className="gap-2">
-                    <BookOpen className="h-4 w-4" /> Details
+                    <BookOpen className="h-4 w-4" /> {t('common.details')}
                 </TabsTrigger>
                 {isEditing && (
                     <TabsTrigger value="students" className="gap-2">
@@ -196,7 +196,7 @@ export function ClassDialog({
                             />
                         </div>
                         <div className="grid gap-2 col-span-2 sm:col-span-1">
-                            <Label>Academic Year</Label>
+                            <Label>{t('class.academicYear')}</Label>
                             <div className="relative">
                                 <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input 
@@ -210,11 +210,11 @@ export function ClassDialog({
                     </div>
 
                     <div className="grid gap-2">
-                        <Label>Description</Label>
+                        <Label>{t('common.description')}</Label>
                         <Textarea 
                             value={formData.description} 
                             onChange={e => setFormData({...formData, description: e.target.value})}
-                            placeholder="Optional class description..."
+                            placeholder={t('common.descriptionPlaceholder')}
                             className="h-20 resize-none"
                         />
                     </div>
@@ -286,12 +286,6 @@ export function ClassDialog({
             {isEditing && currentClassId && (
                 <TabsContent value="students" className="min-h-[300px]">
                     <div className="space-y-4">
-                         <div className="flex justify-between items-center bg-muted/20 p-3 rounded-lg border">
-                             <div className="text-sm text-muted-foreground">
-                                 Manage enrollments for this class.
-                             </div>
-                             <AddStudentDialog classId={currentClassId} />
-                         </div>
                          <div className="rounded-md border p-4 bg-background">
                             <StudentManager classId={currentClassId} />
                          </div>

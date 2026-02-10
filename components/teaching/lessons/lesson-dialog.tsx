@@ -248,7 +248,7 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
                 </div>
                 
                 <div className="grid gap-2">
-                    <Label>{t('lesson.description')}</Label>
+                    <Label>{t('common.descriptionPlaceholder')}</Label>
                     <Input 
                         value={formData.description} 
                         onChange={e => setFormData({...formData, description: e.target.value})}

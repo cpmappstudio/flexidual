@@ -23,7 +23,7 @@ interface BreadcrumbSegment {
 
 // Translation key type
 type TranslationKey = 'dashboard' | 'calendar' | 'teaching' | 'administration' | 
-                      'curriculums' | 'lessons' | 'classes' | 'teachers' | 'students' | 
+                      'curriculums' | 'lessons' | 'classes' | 'teachers' | 'students' | 'users' |
                       'classroom' | 'unknown' | 'title';
 
 // Updated route configuration matching your actual translation keys
@@ -48,6 +48,9 @@ const ROUTE_CONFIG: Record<string, { key: TranslationKey; namespace?: string }> 
     
     // Classroom
     'classroom': { key: 'classroom', namespace: 'classroom' },
+
+    // Users
+    'users': { key: 'users', namespace: 'navigation' },
 }
 
 // Helper to detect if a segment is a Convex ID

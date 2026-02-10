@@ -14,7 +14,7 @@ export default function UserManagementPage() {
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">{t('navigation.users')}</h1>
                 <p className="text-muted-foreground">
-                    Manage system access, roles, and permissions.
+                    {t('dashboard.usersSummary')}
                 </p>
             </div>
 
@@ -50,10 +50,10 @@ export default function UserManagementPage() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <ShieldCheck className="h-5 w-5 text-destructive" />
-                                Administrators
+                                {t('navigation.admins')}
                             </CardTitle>
                             <CardDescription>
-                                Users with full system access and configuration privileges.
+                                {t('navigation.adminsDescription')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -71,10 +71,10 @@ export default function UserManagementPage() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <School className="h-5 w-5 text-primary" />
-                                Teachers & Tutors
+                                {t('navigation.teachers')}
                             </CardTitle>
                             <CardDescription>
-                                Academic staff who manage classes and curriculum.
+                                {t('navigation.teachersDescription')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -92,10 +92,10 @@ export default function UserManagementPage() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <GraduationCap className="h-5 w-5 text-blue-500" />
-                                Students
+                                {t('navigation.students')}
                             </CardTitle>
                             <CardDescription>
-                                Enrolled learners.
+                                {t('navigation.studentsDescription')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>

@@ -381,7 +381,7 @@ export default function CalendarNewEventDialog() {
 
             <FormField control={form.control} name="description" render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('curriculum.description')}</FormLabel>
+                <FormLabel>{t('common.description')}</FormLabel>
                 <FormControl>
                     <Textarea {...field} placeholder="Add details..." className="resize-none h-20" />
                 </FormControl>

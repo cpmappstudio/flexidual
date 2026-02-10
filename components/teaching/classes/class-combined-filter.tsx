@@ -73,7 +73,7 @@ export function ClassCombinedFilter({
         >
           <Filter className="h-4 w-4" />
           <span className="hidden sm:inline">
-            {hasActiveFilters ? t("common.filtered") : t("common.filter")}
+            {hasActiveFilters ? t("class.filtered") : t("class.filterBy")}
           </span>
           {hasActiveFilters && (
             <>
@@ -94,7 +94,7 @@ export function ClassCombinedFilter({
       <PopoverContent className="w-80 p-0" align="end">
         <Tabs defaultValue="curriculum" className="w-full">
           <div className="p-3 border-b space-y-3">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className={`grid w-full ${isAdmin ? "grid-cols-2" : "grid-cols-1"}`}>
               <TabsTrigger value="curriculum">{t("navigation.curriculum")}</TabsTrigger>
               {isAdmin && <TabsTrigger value="teacher">{t("navigation.teacher")}</TabsTrigger>}
             </TabsList>

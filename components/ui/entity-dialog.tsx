@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useTranslations } from "next-intl"
 
 interface EntityDialogProps {
   trigger?: React.ReactNode
@@ -41,6 +42,7 @@ export function EntityDialog({
   leftActions,
   maxWidth = "sm:max-w-[600px]",
 }: EntityDialogProps) {
+  const t = useTranslations()
   // Internal state for open/close if not controlled externally
   const [internalOpen, setInternalOpen] = React.useState(false)
   const isControlled = open !== undefined
@@ -79,7 +81,7 @@ export function EntityDialog({
                 onClick={() => handleOpenChange(false)}
                 disabled={isSubmitting}
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

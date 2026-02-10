@@ -14,7 +14,7 @@ export default function CurriculumsPage() {
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">{t('navigation.curriculums')}</h1>
                 <p className="text-muted-foreground">
-                    Manage academic programs, course templates, and lesson plans.
+                    {t('navigation.curriculumsDescription')}
                 </p>
             </div>
 
@@ -33,7 +33,7 @@ export default function CurriculumsPage() {
                                 {t('curriculum.activeList')}
                             </CardTitle>
                             <CardDescription>
-                                Currently active curriculums visible to teachers and students.
+                                {t('navigation.curriculumsDescription2')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>

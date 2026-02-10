@@ -223,9 +223,9 @@ export function UserDialog({
     ) : (
         <Button className="gap-2" type="button">
             <UserPlus className="h-4 w-4" />
-            {allowedRoles?.length === 1 
+            {allowedRoles && allowedRoles?.length >= 1 
                 ? `${t('common.add')} ${t(`navigation.${allowedRoles[0]}s`)}`
-                : t('common.add') + " Users"
+                : t('common.newUsers')
             }
         </Button>
     )
@@ -240,8 +240,8 @@ export function UserDialog({
             open={isOpen}
             onOpenChange={setIsOpen}
             trigger={trigger || defaultTrigger}
-            title={isEditing ? t('common.edit') : "Add Users"}
-            description={isEditing ? "Update user details and permissions." : "Add one or more users to the platform."}
+            title={isEditing ? t('common.edit') : t('common.newUsers')}
+            description={isEditing ? "Update user details and permissions." : t('common.newUsersDescription')}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             submitLabel={submitLabel}
@@ -344,7 +344,7 @@ export function UserDialog({
                                 disabled={!formData.email}
                             >
                                 <Plus className="h-4 w-4" />
-                                Add to Queue
+                                {t('common.addToQueue')}
                             </Button>
                         </div>
                     )}
@@ -354,7 +354,7 @@ export function UserDialog({
                 {!isEditing && (
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <Label>Users to Create ({queue.length})</Label>
+                            <Label>{t('common.usersToCreate', { count: queue.length })}</Label>
                             {queue.length > 0 && (
                                 <Button 
                                     variant="ghost" 
@@ -363,7 +363,7 @@ export function UserDialog({
                                     onClick={() => setQueue([])}
                                     type="button"
                                 >
-                                    Clear All
+                                    {t('common.clearAll')}
                                 </Button>
                             )}
                         </div>
@@ -372,7 +372,7 @@ export function UserDialog({
                             {queue.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-4">
                                     <UserPlus className="h-8 w-8 mb-2 opacity-20" />
-                                    <p>Add users above to build your list.</p>
+                                    <p>{t('common.addBatchUsersInstruction')}</p>
                                 </div>
                             ) : (
                                 <div className="divide-y">
