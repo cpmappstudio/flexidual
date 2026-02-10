@@ -27,18 +27,26 @@ interface ClassDialogProps {
   selectedTeacherId?: Id<"users"> | null
   selectedCurriculumId?: Id<"curriculums"> | null
   trigger?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 export function ClassDialog({ 
   classDoc, 
   selectedTeacherId, 
   selectedCurriculumId, 
-  trigger 
+  trigger,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange
 }: ClassDialogProps) {
   const t = useTranslations()
   const { user } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
   
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setIsOpen = controlledOnOpenChange || setInternalOpen
+
   const [isEditing, setIsEditing] = useState(!!classDoc)
   const [currentClassId, setCurrentClassId] = useState<Id<"classes"> | undefined>(classDoc?._id)
 
@@ -50,7 +58,6 @@ export function ClassDialog({
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
   const teachers = useQuery(api.users.getUsers, isAdmin ? { role: "teacher" } : "skip")
 
-  const [isOpen, setIsOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   const [formData, setFormData] = useState({

@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { 
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 import { Plus, Edit, Trash2, X, BookOpen, Layers } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
@@ -34,7 +41,7 @@ type PendingCurriculum = {
 export function CurriculumDialog({ 
     curriculum, 
     trigger, 
-    open: controlledOpen,
+    open: controlledOpen, 
     onOpenChange: controlledOnOpenChange 
 }: CurriculumDialogProps) {
   const t = useTranslations()
@@ -53,7 +60,8 @@ export function CurriculumDialog({
   const [formData, setFormData] = useState({
       title: "",
       code: "",
-      description: ""
+      description: "",
+      isActive: true
   })
 
   useEffect(() => {
@@ -62,11 +70,17 @@ export function CurriculumDialog({
             setFormData({
                 title: curriculum.title,
                 code: curriculum.code || "",
-                description: curriculum.description || ""
+                description: curriculum.description || "",
+                isActive: curriculum.isActive
             })
         } else {
             setQueue([])
-            setFormData({ title: "", code: "", description: "" })
+            setFormData({ 
+                title: "", 
+                code: "", 
+                description: "", 
+                isActive: true 
+            })
         }
     }
   }, [isOpen, isEditing, curriculum])
@@ -83,7 +97,7 @@ export function CurriculumDialog({
     }
 
     setQueue([...queue, newItem])
-    setFormData({ title: "", code: "", description: "" })
+    setFormData({ title: "", code: "", description: "", isActive: true })
   }
 
   const handleRemoveFromQueue = (id: string) => {
@@ -101,11 +115,11 @@ export function CurriculumDialog({
                 title: formData.title,
                 code: formData.code || undefined,
                 description: formData.description || undefined,
+                isActive: formData.isActive, 
             })
             toast.success(t('curriculum.updated'))
             setIsOpen(false)
         } else {
-            // Logic for Batch Create
             const finalQueue = [...queue]
             if (finalQueue.length === 0 && formData.title) {
                 finalQueue.push({
@@ -169,7 +183,6 @@ export function CurriculumDialog({
         ))}
         title={dialogTitle}
         description={dialogDesc}
-        // FIXED: Always wire to handleSubmit
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}
         submitLabel={isEditing ? t('common.save') : createLabel}
@@ -188,8 +201,8 @@ export function CurriculumDialog({
                 </TabsList>
 
                 <TabsContent value="details" className="flex-1 space-y-4">
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="col-span-2 grid gap-2">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2">
                             <Label>{t('curriculum.title')}</Label>
                             <Input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
                         </div>
@@ -198,6 +211,26 @@ export function CurriculumDialog({
                             <Input value={formData.code} onChange={e => setFormData({...formData, code: e.target.value})} />
                         </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                         <div className="grid gap-2">
+                            <Label>{t('common.status')}</Label>
+                            <Select 
+                                value={formData.isActive ? "active" : "inactive"} 
+                                onValueChange={(v) => setFormData({...formData, isActive: v === "active"})}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="active">{t('common.active')}</SelectItem>
+                                    <SelectItem value="inactive">{t('common.inactive')}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {/* Empty spacer or other fields can go here */}
+                    </div>
+
                     <div className="grid gap-2">
                         <Label>{t('curriculum.description')}</Label>
                         <Textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="h-32 resize-none" />

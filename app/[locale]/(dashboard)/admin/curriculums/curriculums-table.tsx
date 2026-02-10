@@ -68,7 +68,7 @@ export function CurriculumsTable({ includeInactive = false }: CurriculumsTablePr
       header: t('common.status'),
       cell: ({ row }) => (
         <Badge variant={row.original.isActive ? "default" : "secondary"}>
-          {row.original.isActive ? t('common.active') : t('common.archived')}
+          {row.original.isActive ? t('common.active') : t('common.inactive')}
         </Badge>
       ),
     },
