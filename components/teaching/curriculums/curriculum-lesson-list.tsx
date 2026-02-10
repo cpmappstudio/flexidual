@@ -50,35 +50,32 @@ function SortableLessonItem({ lesson, curriculumId }: { lesson: any, curriculumI
     } = useSortable({ id: lesson._id });
 
     const style = {
-        // 2. Use Translate instead of Transform for better pixel-snapping/performance
         transform: CSS.Translate.toString(transform),
         transition,
         zIndex: isDragging ? 10 : 1,
-        // Slightly higher opacity for better visibility while dragging
         opacity: isDragging ? 0.8 : 1,
-        position: 'relative' as const, // Ensure z-index works
+        position: 'relative' as const,
     };
 
     return (
         <div 
             ref={setNodeRef} 
             style={style} 
-            className={`group flex items-center gap-3 p-3 bg-card border rounded-lg transition-all shadow-sm mb-2 ${
+            className={`group flex items-center gap-3 p-3 bg-card border rounded-lg transition-all shadow-sm mb-2 max-w-full ${
                 isDragging ? 'border-primary shadow-lg' : 'hover:border-primary/50'
             }`}
         >
-            {/* Drag Handle */}
             <div 
                 {...attributes} 
                 {...listeners} 
-                className="cursor-grab active:cursor-grabbing hover:text-primary touch-none py-1 px-1"
+                className="cursor-grab active:cursor-grabbing hover:text-primary touch-none py-1 px-1 shrink-0"
             >
                 <GripVertical className="h-4 w-4 text-muted-foreground group-hover:text-muted-foreground" />
             </div>
             
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 w-0 text-left">
                 <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium truncate block">{lesson.title}</span>
+                    <span className="font-medium truncate">{lesson.title}</span>
                     {!lesson.isActive && (
                         <Badge variant="secondary" className="text-[10px] h-5 px-1 shrink-0">Draft</Badge>
                     )}
@@ -88,8 +85,8 @@ function SortableLessonItem({ lesson, curriculumId }: { lesson: any, curriculumI
                 </div>
             </div>
 
-            {/* Stop propagation on click so we don't trigger drag when clicking Edit */}
-            <div onPointerDown={(e) => e.stopPropagation()}>
+            {/* Edit Button - Added shrink-0 to protect it */}
+            <div onPointerDown={(e) => e.stopPropagation()} className="shrink-0">
                 <LessonDialog 
                     lesson={lesson}
                     curriculumId={curriculumId}
