@@ -50,7 +50,9 @@
     "createAllNumber": "Create All ({count})",
     "details": "Details",
     "description": "Description",
-    "descriptionPlaceholder": "Add a brief description..."
+    "descriptionPlaceholder": "Add a brief description...",
+    "rowsPerPage": "Rows per page",
+    "pageOfPages": "Page {current} of {total}"
   },
   "days": {
     "sunday": "Sun",

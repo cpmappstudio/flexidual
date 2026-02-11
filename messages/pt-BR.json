@@ -50,7 +50,9 @@
     "createAllNumber": "Criar Tudo ({count})",
     "details": "Detalhes",
     "description": "Descrição",
-    "descriptionPlaceholder": "Adicione uma breve descrição..."
+    "descriptionPlaceholder": "Adicione uma breve descrição...",
+    "rowsPerPage": "Linhas por página",
+    "pageOfPages": "Página {current} de {total}"
   },
   "days": {
     "sunday": "Dom",

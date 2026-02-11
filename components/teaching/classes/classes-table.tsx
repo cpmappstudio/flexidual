@@ -12,9 +12,9 @@ import {
   useReactTable,
   SortingState,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Edit, Users, Calendar, Search } from "lucide-react";
+import { ArrowUpDown, Edit, Users, Calendar, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"; // Import Input
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -24,10 +24,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ClassDialog } from "./class-dialog";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { useCurrentUser } from "@/hooks/use-current-user"; // To check admin status
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 interface ClassesTableProps {
   data: Doc<"classes">[];
@@ -40,7 +41,7 @@ export function ClassesTable({ data, curriculums }: ClassesTableProps) {
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [filter, setFilter] = React.useState(""); // Search state
+  const [filter, setFilter] = React.useState("");
   const [editingClass, setEditingClass] = React.useState<Doc<"classes"> | null>(null);
 
   const getCurriculumName = (id: string) => {
@@ -138,12 +139,17 @@ export function ClassesTable({ data, curriculums }: ClassesTableProps) {
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(), // Enable filtering
+    getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
-    onGlobalFilterChange: setFilter, // Bind filter state
+    onGlobalFilterChange: setFilter,
     state: { 
         sorting,
         globalFilter: filter 
+    },
+    initialState: {
+      pagination: {
+        pageSize: 10,
+      },
     },
   });
 
@@ -159,19 +165,18 @@ export function ClassesTable({ data, curriculums }: ClassesTableProps) {
         />
       )}
 
-      {/* 1. Header with Search and Create Button */}
+      {/* Header with Search and Create Button */}
       <div className="flex items-center justify-between">
         <div className="relative w-72">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder={t('common.search') || "Search classes..."}
+            placeholder={t('common.search')}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="pl-8"
           />
         </div>
         
-        {/* Create Button - Only visible in List View (Table) */}
         {isAdmin && <ClassDialog />}
       </div>
 
@@ -212,6 +217,62 @@ export function ClassesTable({ data, curriculums }: ClassesTableProps) {
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Pagination Controls */}
+      <div className="flex items-center justify-between px-2">
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-muted-foreground">
+            {t('common.rowsPerPage')}
+          </p>
+          <Select
+            value={`${table.getState().pagination.pageSize}`}
+            onValueChange={(value) => {
+              table.setPageSize(Number(value))
+            }}
+          >
+            <SelectTrigger className="h-8 w-[70px]">
+              <SelectValue placeholder={table.getState().pagination.pageSize} />
+            </SelectTrigger>
+            <SelectContent side="top">
+              {[10, 20, 30, 50].map((pageSize) => (
+                <SelectItem key={pageSize} value={`${pageSize}`}>
+                  {pageSize}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-6">
+          <div className="text-sm text-muted-foreground">
+            {t('common.pageOfPages', {
+              current: table.getState().pagination.pageIndex + 1,
+              total: table.getPageCount()
+            })}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              {t('common.previous')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              {t('common.next')}
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

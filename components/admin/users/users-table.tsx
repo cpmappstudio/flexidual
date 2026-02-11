@@ -13,7 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Edit, Search } from "lucide-react";
+import { ArrowUpDown, Edit, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import type { TableSortingState } from "@/lib/types/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { UserDialog } from "./user-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTranslations } from "next-intl";
 import { UserRole } from "@/convex/types";
 
@@ -143,6 +144,11 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     state: { sorting: sorting },
+    initialState: {
+      pagination: {
+        pageSize: 10,
+      },
+    },
   });
 
   if (!users) return <Skeleton className="h-96 w-full" />;
@@ -219,7 +225,61 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
         </Table>
       </div>
       
-      {/* Pagination Controls could go here */}
+      {/* Pagination Controls */}
+      <div className="flex items-center justify-between px-2">
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-muted-foreground">
+            {t('common.rowsPerPage')}
+          </p>
+          <Select
+            value={`${table.getState().pagination.pageSize}`}
+            onValueChange={(value) => {
+              table.setPageSize(Number(value))
+            }}
+          >
+            <SelectTrigger className="h-8 w-[70px]">
+              <SelectValue placeholder={table.getState().pagination.pageSize} />
+            </SelectTrigger>
+            <SelectContent side="top">
+              {[10, 20, 30, 50].map((pageSize) => (
+                <SelectItem key={pageSize} value={`${pageSize}`}>
+                  {pageSize}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-6">
+          <div className="text-sm text-muted-foreground">
+            {t('common.pageOfPages', {
+              current: table.getState().pagination.pageIndex + 1,
+              total: table.getPageCount()
+            })}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              {t('common.previous')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              {t('common.next')}
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
