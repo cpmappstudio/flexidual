@@ -27,6 +27,7 @@ import { UserRole } from "@/convex/types"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { EntityDialog } from "@/components/ui/entity-dialog" // 1. Import Shared Component
+import { useAlert } from "@/components/providers/alert-provider"
 
 interface UserDialogProps {
     user?: {
@@ -63,6 +64,7 @@ export function UserDialog({
     onOpenChange: controlledOnOpenChange
 }: UserDialogProps) {
     const t = useTranslations()
+    const { showAlert } = useAlert()
     const isEditing = !!user
     
     // API Hooks
@@ -195,23 +197,31 @@ export function UserDialog({
                     toast.warning(`${successes} created, ${failures.length} failed`)
                 }
             }
-        } catch (error) {
-            toast.error("Operation failed" + (error instanceof Error ? `: ${error.message}` : ""))
+        } catch {
+            toast.error(t('errors.operationFailed'))
         } finally {
             setIsSubmitting(false)
         }
     }
 
     const handleDelete = async () => {
-        if (!user || !confirm(t('errors.deleteConfirm'))) return
-        
-        try {
-            await deleteUser({ userId: user._id })
-            toast.success(t('common.delete'))
-            setIsOpen(false)
-        } catch (error) {
-            toast.error("Delete failed" + (error instanceof Error ? `: ${error.message}` : ""))
-        }
+        if (!user) return
+        showAlert({
+            title: t('common.delete'),
+            description: t('user.deleteConfirm'),
+            confirmLabel: t('common.delete'),
+            cancelLabel: t('common.cancel'),
+            variant: "destructive",
+            onConfirm: async () => {
+                try {
+                    await deleteUser({ userId: user._id })
+                    toast.success(t('user.deleted'))
+                    setIsOpen(false)
+                } catch {
+                    toast.error(t('errors.operationFailed'))
+                }
+            }
+        })
     }
 
     // Default trigger if none provided

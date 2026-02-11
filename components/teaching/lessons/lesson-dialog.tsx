@@ -16,6 +16,7 @@ import { EntityDialog } from "@/components/ui/entity-dialog"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
+import { useAlert } from "@/components/providers/alert-provider"
 
 interface LessonDialogProps {
   curriculumId?: Id<"curriculums">
@@ -32,6 +33,7 @@ type PendingLesson = {
 
 export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigger }: LessonDialogProps) {
   const t = useTranslations()
+  const { showAlert } = useAlert()
   const isEditing = !!lesson
 
   // API Hooks
@@ -143,22 +145,31 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
             toast.success(`${finalQueue.length} lessons created`)
             setIsOpen(false)
         }
-    } catch (error) {
-        toast.error(t('errors.operationFailed') + (error instanceof Error ? `: ${error.message}` : ""))
+    } catch {
+        toast.error(t('errors.operationFailed'))
     } finally {
         setIsSubmitting(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!lesson || !confirm(t('lesson.deleteConfirm'))) return
-    try {
-      await remove({ id: lesson._id })
-      toast.success(t('lesson.deleted'))
-      setIsOpen(false)
-    } catch {
-      toast.error(t('errors.operationFailed'))
-    }
+    if (!lesson) return
+    showAlert({
+        title: t('common.delete'),
+        description: t('lesson.deleteConfirm'),
+        confirmLabel: t('common.delete'),
+        cancelLabel: t('common.cancel'),
+        variant: "destructive",
+        onConfirm: async () => {
+            try {
+                await remove({ id: lesson._id })
+                toast.success(t('lesson.deleted'))
+                setIsOpen(false) 
+            } catch {
+                toast.error(t('errors.operationFailed'))
+            }
+        }
+    })
   }
 
   const dialogTitle = isEditing ? t('lesson.edit') : "Add Lessons"

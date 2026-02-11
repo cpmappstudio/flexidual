@@ -18,6 +18,7 @@ import { toast } from "sonner"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
+import { useAlert } from "@/components/providers/alert-provider"
 
 interface StudentManagerProps {
   classId: Id<"classes">
@@ -26,19 +27,27 @@ interface StudentManagerProps {
 export function StudentManager({ classId }: StudentManagerProps) {
   const { user } = useCurrentUser()
   const t = useTranslations()
+  const { showAlert } = useAlert()
   const students = useQuery(api.classes.getStudents, { classId })
   const removeStudent = useMutation(api.classes.removeStudent)
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
 
   const handleRemove = async (studentId: Id<"users">, name: string) => {
-    if (!confirm(`Are you sure you want to remove ${name} from this class?`)) return
-    
-    try {
-      await removeStudent({ classId, studentId })
-      toast.success("Student removed")
-    } catch (error) {
-      toast.error("Failed to remove student: " + (error as Error).message)
-    }
+    showAlert({
+      title: t('student.removeFromClass'),
+      description: t('class.removeConfirm', { name }),
+      confirmLabel: t('common.confirm'),
+      cancelLabel: t('common.cancel'),
+      variant: "default",
+      onConfirm: async () => {
+        try {
+          await removeStudent({ classId, studentId })
+          toast.success(t('class.studentRemoved'))
+        } catch {
+          toast.error(t('errors.operationFailed'))
+        }
+      }
+    })
   }
 
   if (students === undefined) {
@@ -58,7 +67,7 @@ export function StudentManager({ classId }: StudentManagerProps) {
       <CardContent>
         {students.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
-            No students enrolled yet.
+            {t("class.noStudents")}
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

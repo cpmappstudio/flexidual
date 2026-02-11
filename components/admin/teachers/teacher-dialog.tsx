@@ -18,6 +18,7 @@ import { EntityDialog } from "@/components/ui/entity-dialog"
 import { UserPlus, Edit, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
+import { useAlert } from "@/components/providers/alert-provider"
 
 interface TeacherDialogProps {
     teacher?: {
@@ -32,6 +33,7 @@ interface TeacherDialogProps {
 
 export function TeacherDialog({ teacher }: TeacherDialogProps) {
     const t = useTranslations()
+    const { showAlert } = useAlert()
     const isEditing = !!teacher
     
     // API Hooks
@@ -79,15 +81,22 @@ export function TeacherDialog({ teacher }: TeacherDialogProps) {
 
     const handleDelete = async () => {
         if (!teacher) return
-        if (!confirm(t('teacher.deleteConfirm'))) return
-        
-        try {
-            await deleteUser({ userId: teacher._id })
-            toast.success(t('teacher.deleted'))
-            setIsOpen(false)
-        } catch (error) {
-            toast.error(t('errors.operationFailed') + ': ' + (error as Error).message)
-        }
+        showAlert({
+            title: t('common.delete'),
+            description: t('teacher.deleteConfirm'),
+            confirmLabel: t('common.delete'),
+            cancelLabel: t('common.cancel'),
+            variant: "destructive",
+            onConfirm: async () => {
+                try {
+                    await deleteUser({ userId: teacher._id })
+                    toast.success(t('teacher.deleted'))
+                    setIsOpen(false)
+                } catch {
+                    toast.error(t('errors.operationFailed'))
+                }
+            }
+        })
     }
 
     // Trigger Button Logic

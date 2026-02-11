@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { CurriculumLessonList } from "./curriculum-lesson-list"
+import { useAlert } from "@/components/providers/alert-provider"
 
 interface CurriculumDialogProps {
   curriculum?: Doc<"curriculums">
@@ -45,6 +46,7 @@ export function CurriculumDialog({
     onOpenChange: controlledOnOpenChange 
 }: CurriculumDialogProps) {
   const t = useTranslations()
+  const { showAlert } = useAlert()
   const isEditing = !!curriculum
   
   const createBatch = useMutation(api.curriculums.createBatch)
@@ -143,22 +145,31 @@ export function CurriculumDialog({
             toast.success(`${finalQueue.length} curriculums created`)
             setIsOpen(false)
         }
-    } catch (error) {
-        toast.error(t('errors.operationFailed') + (error instanceof Error ? `: ${error.message}` : ""))
+    } catch {
+        toast.error(t('errors.operationFailed'))
     } finally {
         setIsSubmitting(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!curriculum || !confirm(t('curriculum.deleteConfirm'))) return
-    try {
-      await remove({ id: curriculum._id })
-      toast.success(t('curriculum.deleted'))
-      setIsOpen(false)
-    } catch {
-      toast.error(t('errors.operationFailed'))
-    }
+    if (!curriculum) return
+    showAlert({
+        title: t('common.delete'),
+        description: t('curriculum.deleteConfirm'),
+        confirmLabel: t('common.delete'),
+        cancelLabel: t('common.cancel'),
+        variant: "destructive",
+        onConfirm: async () => {
+            try {
+                await remove({ id: curriculum._id })
+                toast.success(t('curriculum.deleted'))
+                setIsOpen(false)
+            } catch {
+                toast.error(t('errors.operationFailed'))
+            }
+        }
+    })
   }
 
   const dialogTitle = isEditing ? t('curriculum.edit') : t('curriculum.createCurriculum') + 's'

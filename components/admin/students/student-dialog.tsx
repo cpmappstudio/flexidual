@@ -11,6 +11,7 @@ import { EntityDialog } from "@/components/ui/entity-dialog"
 import { UserPlus, Edit, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
+import { useAlert } from "@/components/providers/alert-provider"
 
 interface StudentDialogProps {
     student?: {
@@ -25,6 +26,7 @@ interface StudentDialogProps {
 
 export function StudentDialog({ student }: StudentDialogProps) {
     const t = useTranslations()
+    const { showAlert } = useAlert()
     const isEditing = !!student
     const createUser = useAction(api.users.createUserWithClerk)
     const updateUser = useAction(api.users.updateUserWithClerk) 
@@ -68,15 +70,25 @@ export function StudentDialog({ student }: StudentDialogProps) {
         }
     }
 
-    const handleDelete = async () => {
-        if (!student || !confirm(t('student.deleteConfirm'))) return
-        try {
-            await deleteUser({ userId: student._id })
-            toast.success(t('student.deleted'))
-            setIsOpen(false)
-        } catch (error) {
-            toast.error(t('errors.operationFailed') + ': ' + (error as Error).message)
-        }
+    const handleDelete = () => {
+        if (!student) return
+        
+        showAlert({
+            title: t('common.delete'),
+            description: t('student.deleteConfirm'),
+            confirmLabel: t('common.delete'),
+            cancelLabel: t('common.cancel'),
+            variant: "destructive",
+            onConfirm: async () => {
+                try {
+                    await deleteUser({ userId: student._id })
+                    toast.success(t('student.deleted'))
+                    setIsOpen(false)
+                } catch{
+                    toast.error(t('errors.operationFailed'))
+                }
+            }
+        })
     }
 
     const trigger = isEditing ? (

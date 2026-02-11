@@ -7,6 +7,10 @@
     "cancel": "Cancelar",
     "create": "Crear",
     "update": "Actualizar",
+    "confirm": "Confirmar",
+    "areYouSure": "¿Estás seguro?",
+    "confirmAction": "Confirmar acción",
+    "warning": "Advertencia",
     "search": "Buscar",
     "filter": "Filtrar",
     "back": "Volver",
@@ -226,7 +230,8 @@
     "selectOptional": "Lección (Opcional)",
     "optionalHelp": "Dejar vacío para sesiones de clase generales",
     "noLesson": "Sin lección específica",
-    "linked": "Lección Vinculada"
+    "linked": "Lección Vinculada",
+    "reorderFailed": "Error al reordenar lecciones"
   },
   "class": {
     "name": "Nombre de la Clase",
@@ -441,8 +446,16 @@
       "month": "Mes"
     }
   },
+  "user": {
+    "deleteConfirm": "¿Estás seguro? Esto eliminará permanentemente la cuenta de este usuario.",
+    "created": "Usuario creado",
+    "updated": "Usuario actualizado",
+    "deleted": "Usuario eliminado"
+  },
   "errors": {
     "operationFailed": "La operación falló",
+    "destructiveAction": "Esta acción no se puede deshacer",
+    "permanentDelete": "Esto eliminará permanentemente este elemento",
     "deleteConfirm": "¿Estás seguro de que quieres eliminar esto?",
     "permissionDenied": "No tienes permiso para realizar esta acción.",
     "curriculumConflict": "El estudiante ya está inscrito en \"{className}\" que utiliza el mismo currículo ({curriculumTitle})",

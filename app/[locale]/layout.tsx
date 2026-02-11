@@ -9,6 +9,7 @@ import { setRequestLocale } from 'next-intl/server';
 import { hasLocale } from 'next-intl';
 import { routing } from '@/i18n/routing';
 import { enUS, esES } from '@clerk/localizations';
+import { AlertProvider } from "@/components/providers/alert-provider";
 
 export default async function LocaleLayout({
     children,
@@ -50,7 +51,9 @@ export default async function LocaleLayout({
             >
                 <ConvexClientProvider>
                     <NextIntlClientProvider messages={messages}>
-                        {children}
+                        <AlertProvider>
+                            {children}
+                        </AlertProvider>
                     </NextIntlClientProvider>
                 </ConvexClientProvider>
             </ClerkProvider>

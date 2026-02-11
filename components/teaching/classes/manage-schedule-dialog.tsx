@@ -19,6 +19,7 @@ import { DateTimePicker } from "@/components/calendar/form/date-time-picker"
 import { RecurrenceType } from "@/lib/types/schedule"
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
 import { getSmartStartDate } from "@/lib/date-utils"
+import { useAlert } from "@/components/providers/alert-provider"
 
 interface ManageScheduleDialogProps {
   classId: Id<"classes">
@@ -50,6 +51,7 @@ export function ManageScheduleDialog({
   initialData
 }: ManageScheduleDialogProps) {
   const t = useTranslations()
+  const { showAlert } = useAlert()
   const locale = useLocale()
   const isEditing = !!scheduleId
   const [open, setOpen] = useState(false)
@@ -241,18 +243,26 @@ export function ManageScheduleDialog({
 
   const handleDelete = async () => {
     if (!scheduleId) return
-    if (!confirm(t("common.confirmDelete") || "Are you sure?")) return
 
-    setIsSubmitting(true)
-    try {
-        await deleteSchedule({ id: scheduleId })
-        toast.success("Schedule deleted")
-        setOpen(false)
-    } catch (e) {
-        toast.error("Failed to delete" + (e instanceof Error ? `: ${e.message}` : ""))
-    } finally {
-        setIsSubmitting(false)
-    }
+    showAlert({
+        title: t('common.delete'),
+        description: t('schedule.deleteConfirm'),
+        confirmLabel: t('common.delete'),
+        cancelLabel: t('common.cancel'),
+        variant: "destructive",
+        onConfirm: async () => {
+            setIsSubmitting(true)
+            try {
+                await deleteSchedule({ id: scheduleId })
+                toast.success(t('schedule.deleted'))
+                setOpen(false)
+            } catch {
+                toast.error(t('schedule.deleteFailed'))
+            } finally {
+                setIsSubmitting(false)
+            }
+        }
+    })
   }
 
   // --- Render Helpers ---

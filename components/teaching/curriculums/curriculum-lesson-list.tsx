@@ -145,8 +145,8 @@ export function CurriculumLessonList({ curriculumId }: CurriculumLessonListProps
       try {
           setIsPending(true)
           await reorderLessons({ updates })
-      } catch (error) {
-          toast.error("Failed to reorder lessons" + (error instanceof Error ? `: ${error.message}` : ""))
+      } catch {
+          toast.error(t('lesson.reorderFailed'))
           setItems(lessons) 
       } finally {
           setIsPending(false)

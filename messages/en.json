@@ -7,6 +7,10 @@
     "cancel": "Cancel",
     "create": "Create",
     "update": "Update",
+    "confirm": "Confirm",
+    "areYouSure": "Are you sure?",
+    "confirmAction": "Confirm Action",
+    "warning": "Warning",
     "search": "Search",
     "filter": "Filter",
     "back": "Back",
@@ -226,7 +230,8 @@
     "selectOptional": "Lesson (Optional)",
     "optionalHelp": "Leave empty for general class sessions",
     "noLesson": "No specific lesson",
-    "linked": "Linked Lesson"
+    "linked": "Linked Lesson",
+    "reorderFailed": "Failed to reorder lessons"
   },
   "class": {
     "name": "Class Name",
@@ -440,8 +445,16 @@
       "month": "Month"
     }
   },
+  "user": {
+    "deleteConfirm": "Are you sure? This will permanently delete this user account.",
+    "created": "User created",
+    "updated": "User updated",
+    "deleted": "User deleted"
+  },
   "errors": {
     "operationFailed": "Operation failed",
+    "destructiveAction": "This action cannot be undone",
+    "permanentDelete": "This will permanently delete this item",
     "deleteConfirm": "Are you sure you want to delete this?",
     "permissionDenied": "You don't have permission to perform this action.",
     "curriculumConflict": "Student is already enrolled in \"{className}\" which uses the same curriculum ({curriculumTitle})",

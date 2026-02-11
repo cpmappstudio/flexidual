@@ -20,6 +20,7 @@ import { useCurrentUser } from "@/hooks/use-current-user"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { UserDialog } from "@/components/admin/users/user-dialog"
 import { StudentManager } from "./student-manager"
+import { useAlert } from "@/components/providers/alert-provider"
 
 interface ClassDialogProps {
   classDoc?: Doc<"classes">
@@ -39,6 +40,7 @@ export function ClassDialog({
   onOpenChange: controlledOnOpenChange
 }: ClassDialogProps) {
   const t = useTranslations()
+  const { showAlert } = useAlert()
   const { user } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
   
@@ -125,22 +127,31 @@ export function ClassDialog({
             toast.success(t('class.created'))
             setIsOpen(false)
         }
-    } catch (error) {
-        toast.error(t('errors.operationFailed') + (error instanceof Error ? `: ${error.message}` : ""))
+    } catch {
+        toast.error(t('errors.operationFailed'))
     } finally {
         setIsSubmitting(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!currentClassId || !confirm(t('class.deleteConfirm'))) return
-    try {
-      await deleteClass({ id: currentClassId })
-      toast.success(t('class.deleted'))
-      setIsOpen(false)
-    } catch {
-      toast.error(t('errors.operationFailed'))
-    }
+    if (!currentClassId) return
+    showAlert({
+        title: t('common.delete'),
+        description: t('class.deleteConfirm'),
+        confirmLabel: t('common.delete'),
+        cancelLabel: t('common.cancel'),
+        variant: "destructive",
+        onConfirm: async () => {
+            try {
+                await deleteClass({ id: currentClassId })
+                toast.success(t('class.deleted'))
+                setIsOpen(false)
+            } catch {
+                toast.error(t('errors.operationFailed'))
+            }
+        }
+    })
   }
 
   const defaultTrigger = isEditing ? (
