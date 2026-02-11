@@ -172,13 +172,13 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
     })
   }
 
-  const dialogTitle = isEditing ? t('lesson.edit') : "Add Lessons"
-  const dialogDesc = isEditing ? "Update lesson details." : "Create one or multiple lessons."
+  const dialogTitle = isEditing ? t('lesson.edit') : t('lesson.addLessons')
+  const dialogDesc = isEditing ? t('lesson.editDescription') : t('lesson.addDescription')
   
   // Calculate button label
   const createLabel = queue.length > 0 
-    ? `Create All (${queue.length})` 
-    : (formData.title ? "Create Lesson" : "Create")
+    ? t('common.createAllNumber', { count: queue.length })
+    : (formData.title ? t('lesson.createLesson') : t('common.create'))
 
   return (
     <EntityDialog
@@ -239,11 +239,14 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
             <div className={`space-y-4 ${!isEditing ? "p-4 border rounded-lg bg-card shadow-sm" : ""}`}>
                  <div className="flex items-center justify-between">
                     <Label className="text-base font-semibold">
-                        {isEditing ? "Lesson Details" : "New Lesson Entry"}
+                      {isEditing ? t('lesson.details') : t('lesson.newEntry')}
                     </Label>
                     {!isEditing && (
                         <Badge variant="outline" className="text-xs">
-                             {defaultCurriculumId ? "Current Curriculum" : (formData.curriculumId ? "Selected Curriculum" : "Pending Selection")}
+                          {defaultCurriculumId 
+                            ? t('lesson.currentCurriculum') 
+                            : (formData.curriculumId ? t('lesson.selectedCurriculum') : t('lesson.pendingSelection'))
+                          }
                         </Badge>
                     )}
                  </div>
@@ -253,17 +256,17 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
                     <Input 
                         value={formData.title} 
                         onChange={e => setFormData({...formData, title: e.target.value})}
-                        placeholder="e.g. Introduction to Physics"
+                        placeholder={t('lesson.titlePlaceholder')}
                         onKeyDown={(e) => { if(e.key === 'Enter') e.preventDefault() }}
                     />
                 </div>
                 
                 <div className="grid gap-2">
-                    <Label>{t('common.descriptionPlaceholder')}</Label>
+                    <Label>{t('common.description')}</Label>
                     <Input 
                         value={formData.description} 
                         onChange={e => setFormData({...formData, description: e.target.value})}
-                        placeholder="Short summary of the lesson"
+                        placeholder={t('lesson.descriptionPlaceholder')}
                         onKeyDown={(e) => { if(e.key === 'Enter') e.preventDefault() }}
                     />
                 </div>
@@ -274,7 +277,7 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
                         value={formData.content} 
                         onChange={e => setFormData({...formData, content: e.target.value})}
                         className="h-24 font-mono text-sm resize-none" 
-                        placeholder="<p>Lesson content goes here...</p>" 
+                        placeholder={t('lesson.contentPlaceholder')}
                     />
                 </div>
 
@@ -288,7 +291,7 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
                             className="gap-2"
                             disabled={!formData.title}
                         >
-                            <Plus className="h-4 w-4" /> Add to Batch
+                            <Plus className="h-4 w-4" /> {t('lesson.addToBatch')}
                         </Button>
                     </div>
                 )}
@@ -297,10 +300,10 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
             {!isEditing && (
                 <div className="space-y-2">
                     <div className="flex items-center justify-between px-1">
-                        <Label className="text-muted-foreground">Queue ({queue.length})</Label>
+                        <Label className="text-muted-foreground">{t('lesson.queue', { count: queue.length })}</Label>
                         {queue.length > 0 && (
                             <Button variant="ghost" size="sm" onClick={() => setQueue([])} className="h-auto px-2 text-xs" type="button">
-                                Clear All
+                                {t('common.clearAll')}
                             </Button>
                         )}
                     </div>
@@ -309,7 +312,7 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
                          {queue.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-4 opacity-70">
                                 <Layers className="h-8 w-8 mb-2 opacity-20" />
-                                <p>Add lessons above to build your list.</p>
+                                <p>{t('lesson.addBatchInstruction')}</p>
                             </div>
                         ) : (
                             <div className="divide-y divide-border/50">
@@ -321,7 +324,7 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
                                                 {q.title}
                                             </div>
                                             <div className="text-muted-foreground text-xs line-clamp-1 pl-7">
-                                                {q.description || "No description"}
+                                                {q.description || t('lesson.noDescription')}
                                             </div>
                                         </div>
                                         <Button 
