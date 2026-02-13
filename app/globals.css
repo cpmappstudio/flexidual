@@ -251,4 +251,38 @@
   .student-week-today {
     @apply bg-gradient-to-r from-pink-100 to-purple-100 dark:from-pink-950/30 dark:to-purple-950/30 border-pink-400 dark:border-pink-600 shadow-md;
   }
+  
+  .scrollbar-student {
+    scrollbar-width: thin;
+    scrollbar-color: #c084fc transparent; /* purple-400 */
+  }
+
+  .scrollbar-student::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-student::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-student::-webkit-scrollbar-thumb {
+    background: #c084fc; /* purple-400 */
+    border-radius: 9999px;
+  }
+
+  .scrollbar-student::-webkit-scrollbar-thumb:hover {
+    background: #e879f9; /* pink-400 */
+  }
+
+  /* Dark mode adjustments */
+  .dark .scrollbar-student {
+    scrollbar-color: #a855f7 transparent; /* purple-500 */
+  }
+  .dark .scrollbar-student::-webkit-scrollbar-thumb {
+    background: #a855f7;
+  }
+  .dark .scrollbar-student::-webkit-scrollbar-thumb:hover {
+    background: #d946ef; /* pink-500 */
+  }
 }

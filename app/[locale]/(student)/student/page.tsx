@@ -231,7 +231,7 @@ export default function StudentHubPage() {
               We use absolute positioning to overlap, but simple conditional is cleaner for this logic.
           */}
           {!isDragging && !activeLesson && (
-            <div className="absolute inset-0 p-2 overflow-y-auto scrollbar-thin">
+            <div className="absolute inset-0 p-2 overflow-y-auto scrollbar-student">
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-3xl font-black text-gray-800 dark:text-white flex items-center gap-3">
                   <GraduationCap className="w-8 h-8 text-purple-600 dark:text-purple-400" />
