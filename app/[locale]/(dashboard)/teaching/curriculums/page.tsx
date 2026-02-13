@@ -46,7 +46,7 @@ export default function MyCurriculumsPage() {
                  {curr.code && <span className="text-xs font-mono bg-muted px-2 py-1 rounded">{curr.code}</span>}
               </div>
               <CardDescription className="line-clamp-2 min-h-[40px]">
-                {curr.description || t('curriculum.noDescription')}
+                {curr.description || t('common.noDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent>

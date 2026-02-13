@@ -52,7 +52,9 @@
     "description": "Description",
     "descriptionPlaceholder": "Add a brief description...",
     "rowsPerPage": "Rows per page",
-    "pageOfPages": "Page {current} of {total}"
+    "pageOfPages": "Page {current} of {total}",
+    "teacher": "Teacher",
+    "noDescription": "No description available"
   },
   "days": {
     "sunday": "Sun",
@@ -197,7 +199,6 @@
     "manageLessons": "Manage Lessons",
     "filterPlaceholder": "Filter curriculums...",
     "manageDescription": "Manage your course templates and lessons.",
-    "noDescription": "No description",
     "unknown": "Unknown Curriculum",
     "allList": "All Curriculums",
     "activeList": "Active Curriculums",
@@ -316,7 +317,7 @@
     "enjoyFreeTime": "Check back later for your schedule 😊",
     "noPast": "No History Yet",
     "historyEmpty": "Your completed classes will appear here",
-    "dragHint": "Drag me to the rocket! 🚀",
+    "dragHint": "Drag me! 🚀",
     "attended": "Attended",
     "missed": "Missed",
     "pending": "Pending",
@@ -329,7 +330,13 @@
     "getReady": "Get ready for an awesome lesson...",
     "partialCreditOnly": "Partial Credit Only",
     "late": "Late",
-    "partial": "Partial"
+    "partial": "Partial",
+    "myClasses": "My Classes",
+    "activeCourses": "Active Courses",
+    "attendance": "Attendance",
+    "totalScheduled": "Total Scheduled",
+    "nextClass": "Next Class",
+    "noClassesEnrolled": "You are not enrolled in any classes yet."
   },
   "teacher": {
     "search": "Search teachers...",

@@ -40,6 +40,7 @@ interface CurriculumLessonListProps {
 
 // Helper Component for Sortable Item
 function SortableLessonItem({ lesson, curriculumId }: { lesson: Doc<"lessons">, curriculumId: Id<"curriculums"> }) {
+    const t = useTranslations()
     const {
         attributes,
         listeners,
@@ -81,7 +82,7 @@ function SortableLessonItem({ lesson, curriculumId }: { lesson: Doc<"lessons">, 
                     )}
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
-                    {lesson.description || "No description"}
+                    {lesson.description || t('common.noDescription')}
                 </div>
             </div>
 

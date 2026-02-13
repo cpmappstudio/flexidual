@@ -52,7 +52,9 @@
     "description": "Descripción",
     "descriptionPlaceholder": "Agrega una breve descripción...",
     "rowsPerPage": "Filas por página",
-    "pageOfPages": "Página {current} de {total}"
+    "pageOfPages": "Página {current} de {total}",
+    "teacher": "Profesor",
+    "noDescription": "Sin descripción disponible"
   },
   "days": {
     "sunday": "Dom",
@@ -197,7 +199,6 @@
     "manageLessons": "Gestionar Lecciones",
     "filterPlaceholder": "Filtrar currículos...",
     "manageDescription": "Gestiona tus plantillas de curso y lecciones.",
-    "noDescription": "Sin descripción",
     "unknown": "Currículo Desconocido",
     "allList": "Todos los Currículos",
     "activeList": "Currículos Activos",
@@ -316,7 +317,7 @@
     "enjoyFreeTime": "Vuelve más tarde para ver tu horario 😊",
     "noPast": "Sin Historial Todavía",
     "historyEmpty": "Tus clases completadas aparecerán aquí",
-    "dragHint": "¡Arrástrame al cohete! 🚀",
+    "dragHint": "¡Arrástrame! 🚀",
     "attended": "Asistido",
     "missed": "Perdido",
     "excused": "Justificado",
@@ -329,7 +330,13 @@
     "getReady": "Prepárate para una lección increíble...",
     "partialCreditOnly": "Solo Crédito Parcial",
     "late": "Tarde",
-    "partial": "Parcial"
+    "partial": "Parcial",
+    "myClasses": "Mis Clases",
+    "activeCourses": "Cursos Activos",
+    "attendance": "Asistencia",
+    "totalScheduled": "Total Programado",
+    "nextClass": "Próxima Clase",
+    "noClassesEnrolled": "Aún no estás inscrito en ninguna clase."
   },
   "teacher": {
     "search": "Buscar profesores...",

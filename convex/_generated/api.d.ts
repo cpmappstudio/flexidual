@@ -21,6 +21,7 @@ import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
 import type * as schedule from "../schedule.js";
 import type * as seed from "../seed.js";
+import type * as student from "../student.js";
 import type * as types from "../types.js";
 import type * as users from "../users.js";
 
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   migration: typeof migration;
   schedule: typeof schedule;
   seed: typeof seed;
+  student: typeof student;
   types: typeof types;
   users: typeof users;
 }>;

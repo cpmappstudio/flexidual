@@ -51,7 +51,7 @@ export default function CurriculumDetailPage() {
           {curriculum.code && <Badge variant="outline" className="text-sm">{curriculum.code}</Badge>}
         </div>
         <p className="text-lg text-muted-foreground max-w-3xl">
-          {curriculum.description || t('curriculum.noDescription')}
+          {curriculum.description || t('common.noDescription')}
         </p>
       </div>
 
