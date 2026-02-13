@@ -73,7 +73,7 @@ export default function CalendarBodyMonth() {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={monthStart.toISOString()}
-          className="grid md:grid-cols-7 flex-1 min-h-0 overflow-y-auto"
+          className="grid md:grid-cols-7 grid-rows-[repeat(auto-fit,minmax(0,1fr))] flex-1 min-h-0"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
