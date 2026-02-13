@@ -59,7 +59,7 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
 
   // 2. IGNITIA RENDER STRATEGY
   if (isIgnitia) {
-    const ignitiaUrl = "https://ignitiumwa.ignitiaschools.com/owsoo/login/auth/true";
+    const ignitiaUrl = "https://centralpointefl.ignitiaschools.com/owsoo/login/auth";
     
     return (
       <main className="w-full h-[calc(100vh-6rem)] rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-white flex flex-col">

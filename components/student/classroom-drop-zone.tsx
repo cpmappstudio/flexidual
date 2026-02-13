@@ -71,7 +71,7 @@ export function ClassroomDropZone({ isDragging, activeLesson, onDrop, onLaunchCo
   }
 
   const isIgnitia = launchedLesson?.sessionType === "ignitia";
-  const ignitiaUrl = "https://ignitiumwa.ignitiaschools.com/owsoo/login/auth/true";
+  const ignitiaUrl = "https://centralpointefl.ignitiaschools.com/owsoo/login/auth";
 
   return (
     <div className="relative h-full w-full rounded-3xl overflow-hidden border-4 border-purple-400 dark:border-purple-600 shadow-2xl">
