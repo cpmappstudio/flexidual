@@ -177,40 +177,50 @@ export const getStudents = query({
  * Search for students to enroll
  */
 export const searchStudents = query({
-  args: { 
-    searchQuery: v.string(),
+  args: {
+    searchQuery: v.optional(v.string()),
     excludeClassId: v.optional(v.id("classes")),
+    gradeCodes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    if (!args.searchQuery || args.searchQuery.length < 2) return [];
-
-    const students = await ctx.db
+    const allStudents = await ctx.db
       .query("users")
       .withIndex("by_role", (q) => 
         q.eq("role", "student").eq("isActive", true)
       )
       .collect();
 
-    const query = args.searchQuery.toLowerCase();
-    let results = students.filter(s => 
-      s.fullName.toLowerCase().includes(query) ||
-      s.email.toLowerCase().includes(query)
-    );
+    let results = allStudents;
 
-    // Exclude students already in the class
+    if (args.gradeCodes && args.gradeCodes.length > 0) {
+      results = results.filter(s => s.grade && args.gradeCodes!.includes(s.grade));
+    }
+
     if (args.excludeClassId) {
       const classData = await ctx.db.get(args.excludeClassId);
-      if (classData) {
-        results = results.filter(s => !classData.students.includes(s._id));
+      if (classData && classData.students) {
+        const enrolledIds = new Set(classData.students);
+        results = results.filter(s => !enrolledIds.has(s._id));
       }
     }
 
-    return results.slice(0, 10).map(s => ({
+    if (args.searchQuery) {
+      const q = args.searchQuery.toLowerCase().trim();
+      if (q.length > 0) {
+        results = results.filter(s => 
+          s.fullName.toLowerCase().includes(q) ||
+          s.email.toLowerCase().includes(q)
+        );
+      }
+    }
+
+    return results.slice(0, 50).map(s => ({
       _id: s._id,
       fullName: s.fullName,
       email: s.email,
       avatarStorageId: s.avatarStorageId,
       imageUrl: s.imageUrl,
+      grade: s.grade,
     }));
   },
 });

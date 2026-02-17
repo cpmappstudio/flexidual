@@ -206,7 +206,10 @@
     "addCurriculums": "Agrega uno o más currículos.",
     "curriculumsToCreate": "Currículos para Crear ({count})",
     "descriptionInputPlaceholder": "Agrega una breve descripción de este currículo, por ejemplo, visión general del curso, público objetivo o temas clave cubiertos.",
-    "addBatchCurriculumsInstruction": "Agrega currículos arriba para construir tu lista."
+    "addBatchCurriculumsInstruction": "Agrega currículos arriba para construir tu lista.",
+    "targetGrades": "Grados Objetivo (Separados por comas)",
+    "targetGradesPlaceholder": "ej. 04, 05",
+    "targetGradesHelp": "Utilizado para filtrar asignaciones de estudiantes"
   },
   "lesson": {
     "title": "Título de la Lección",
@@ -318,6 +321,7 @@
     "noPast": "Sin Historial Todavía",
     "historyEmpty": "Tus clases completadas aparecerán aquí",
     "dragHint": "¡Arrástrame! 🚀",
+    "dragOrTap": "Arrastrame o toca aquí para comenzar 🚀",
     "attended": "Asistido",
     "missed": "Perdido",
     "excused": "Justificado",
@@ -336,7 +340,38 @@
     "attendance": "Asistencia",
     "totalScheduled": "Total Programado",
     "nextClass": "Próxima Clase",
-    "noClassesEnrolled": "Aún no estás inscrito en ninguna clase."
+    "noClassesEnrolled": "Aún no estás inscrito en ninguna clase.",
+    "grade": "Grado",
+    "school": "Escuela",
+    "profile": {
+      "level": "Nivel",
+      "rookie": "Novato",
+      "scout": "Explorador",
+      "captain": "Capitán",
+      "legend": "Leyenda",
+      "attendanceRate": "Puntaje de Asistencia",
+      "activeCourses": "Cursos Activos",
+      "totalSessions": "Total Programado",
+      "sessionsCompleted": "{count} sesiones completadas",
+      "currentLevel": "Nivel Actual"
+    },
+    "grades": {
+      "K": "Kindergarten",
+      "01": "1er Grado",
+      "02": "2do Grado",
+      "03": "3er Grado",
+      "04": "4to Grado",
+      "05": "5to Grado",
+      "06": "6to Grado",
+      "07": "7mo Grado",
+      "08": "8vo Grado",
+      "09": "9no Grado",
+      "10": "10mo Grado",
+      "11": "11vo Grado",
+      "12": "12vo Grado"
+    },
+    "selectGrade": "Seleccionar Grado",
+    "filteringByGrade": "Filtrando por Grado:"
   },
   "teacher": {
     "search": "Buscar profesores...",
@@ -489,6 +524,7 @@
     "invalidStudents": "Uno o más estudiantes inválidos",
     "classNotFound": "Clase no encontrada",
     "classScheduleConflict": "Esta clase ya está programada a las {conflictTime}",
-    "teacherScheduleConflict": "El profesor ya está enseñando \"{className}\" a las {conflictTime}"
+    "teacherScheduleConflict": "El profesor ya está enseñando \"{className}\" a las {conflictTime}",
+    "invalidGrade": "Configuración de grado inválida: {grades}. Por favor, revisa tu selección."
   }
 }

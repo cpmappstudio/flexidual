@@ -13,24 +13,37 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Loader2, Plus, Search, UserPlus } from "lucide-react"
+import { Loader2, Plus, Search, UserPlus, Filter } from "lucide-react"
 import { toast } from "sonner"
 import Image from "next/image"
 import { useLocale, useTranslations } from "next-intl"
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
+import { Badge } from "@/components/ui/badge"
 
 interface AddStudentDialogProps {
   classId: Id<"classes">
+  curriculumId?: Id<"curriculums">
 }
 
-export function AddStudentDialog({ classId }: AddStudentDialogProps) {
+export function AddStudentDialog({ classId, curriculumId }: AddStudentDialogProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const t = useTranslations()
   const locale = useLocale()
-  const searchResults = useQuery(api.classes.searchStudents, 
-    search.length >= 2 ? { searchQuery: search, excludeClassId: classId } : "skip"
+  
+  // 1. Fetch Curriculum to get target grades
+  const curriculum = useQuery(api.curriculums.get, 
+    curriculumId ? { id: curriculumId } : "skip"
   )
+
+  const gradeCodes = curriculum?.gradeCodes || []
+
+  // 2. Search Query - Removed the "length >= 2" check
+  const searchResults = useQuery(api.classes.searchStudents, {
+    searchQuery: search, 
+    excludeClassId: classId,
+    gradeCodes: gradeCodes.length > 0 ? gradeCodes : undefined
+  })
 
   const addStudent = useMutation(api.classes.addStudent)
 
@@ -40,13 +53,10 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
       toast.success(t("class.studentAdded", { name }))
     } catch (error) {
       const parsedError = parseConvexError(error)
-      
       if (parsedError) {
-        const errorMessage = getErrorMessage(parsedError, t, locale)
-        toast.error(errorMessage)
+        toast.error(getErrorMessage(parsedError, t, locale))
       } else {
         toast.error(t("errors.operationFailed"))
-        console.error("Unexpected error:", error)
       }
     }
   }
@@ -59,12 +69,30 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
           {t("class.enrollStudent")}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{t("class.enrollStudent")}</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-4 pt-4">
+          {gradeCodes.length > 0 && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-md flex items-start gap-3 border border-blue-100 dark:border-blue-800">
+                <Filter className="h-4 w-4 text-blue-500 mt-1" />
+                <div className="text-sm">
+                    <p className="font-medium text-blue-700 dark:text-blue-300">
+                        {t('student.filteringByGrade')}
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                        {gradeCodes.map(code => (
+                            <Badge key={code} variant="secondary" className="bg-white/50 text-xs">
+                                {t(`student.grades.${code}`)}
+                            </Badge>
+                        ))}
+                    </div>
+                </div>
+            </div>
+          )}
+
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -75,24 +103,25 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
             />
           </div>
 
-          <div className="min-h-[200px] space-y-2">
-            {search.length < 2 ? (
-              <p className="text-sm text-center text-muted-foreground py-8">
-                {t("student.searchMinChars")}
-              </p>
-            ) : !searchResults ? (
-              <div className="flex justify-center py-8">
+          <div className="min-h-[250px] max-h-[400px] overflow-y-auto space-y-2 pr-1">
+            {!searchResults ? (
+              <div className="flex justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : searchResults.length === 0 ? (
-              <p className="text-sm text-center text-muted-foreground py-8">
-                {t("student.noResults")}
-              </p>
+              <div className="text-center py-12 text-muted-foreground">
+                 <p>{t("student.noResults")}</p>
+                 {gradeCodes.length > 0 && (
+                     <p className="text-xs mt-1 opacity-70">
+                        Try clearing filters or adding students to the platform first.
+                     </p>
+                 )}
+              </div>
             ) : (
               searchResults.map((student) => (
-                <div key={student._id} className="flex items-center justify-between p-2 rounded-lg border hover:bg-muted/50">
+                <div key={student._id} className="flex items-center justify-between p-2 rounded-lg border hover:bg-muted/50 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full border border-border bg-muted">
+                    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-border bg-muted">
                       {student.imageUrl ? (
                         <Image 
                           src={student.imageUrl} 
@@ -109,12 +138,20 @@ export function AddStudentDialog({ classId }: AddStudentDialogProps) {
                     </div>
 
                     <div className="text-sm">
-                      <p className="font-medium">{student.fullName}</p>
+                      <div className="flex items-center gap-2">
+                          <p className="font-medium">{student.fullName}</p>
+                          {student.grade && (
+                              <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-muted-foreground">
+                                  {t(`student.grades.${student.grade}`)}
+                              </Badge>
+                          )}
+                      </div>
                       <p className="text-xs text-muted-foreground">{student.email}</p>
                     </div>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => handleAdd(student._id, student.fullName)}>
-                    <Plus className="h-4 w-4" />
+                  <Button size="sm" variant="secondary" className="h-8" onClick={() => handleAdd(student._id, student.fullName)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    {t('common.add')}
                   </Button>
                 </div>
               ))

@@ -14,6 +14,7 @@ interface DraggableLessonCardProps {
   lesson: StudentScheduleEvent
   onDragStart: (lesson: StudentScheduleEvent) => void
   onDragEnd: () => void
+  onTap?: (lesson: StudentScheduleEvent) => void
   isPast?: boolean
 }
 
@@ -21,6 +22,7 @@ export function DraggableLessonCard({
   lesson, 
   onDragStart, 
   onDragEnd,
+  onTap,
   isPast = false
 }: DraggableLessonCardProps) {
   const t = useTranslations('student')
@@ -113,11 +115,12 @@ export function DraggableLessonCard({
       draggable={canDrag}
       onDragStart={() => canDrag && onDragStart(lesson)}
       onDragEnd={onDragEnd}
+      onClick={() => canDrag && onTap && onTap(lesson)}
       whileHover={canDrag ? { scale: 1.02, y: -2 } : {}}
       whileTap={canDrag ? { scale: 0.98 } : {}}
       className={cn(
-        "relative rounded-2xl border-4 p-4 transition-all", 
-        canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-default",
+        "relative rounded-2xl border-4 p-4 transition-all select-none", 
+        canDrag ? "cursor-pointer active:scale-95 touch-manipulation" : "cursor-default touch-none",
         getCardStyle()
       )}
       style={{ borderColor: !isMissed && !isIgnitia && !lesson.isLive && !isLate && !isUrgent && !isInClass ? lesson.color : undefined }}
@@ -135,7 +138,7 @@ export function DraggableLessonCard({
       )}
 
       {canDrag && (
-        <div className="absolute -left-3 top-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 rounded-full p-1 shadow-md border-2 border-gray-300 dark:border-gray-600 z-20">
+        <div className="absolute -left-3 top-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 rounded-full p-1 shadow-md border-2 border-gray-300 dark:border-gray-600 z-20 lg:block hidden">
           <GripVertical className="w-5 h-5 text-gray-400" />
         </div>
       )}
@@ -262,7 +265,7 @@ export function DraggableLessonCard({
 
       {canDrag && (
         <div className={cn("mt-3 text-center text-xs font-bold animate-bounce relative z-10", isLate ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400")}>
-           {isInClass ? "" : `👆 ${t('dragHint')}`}
+           {isInClass ? "" : `👆 ${t('dragOrTap') || t('dragHint')}`}
         </div>
       )}
     </motion.div>

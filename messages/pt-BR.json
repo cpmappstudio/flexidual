@@ -206,7 +206,10 @@
     "addCurriculums": "Adicione um ou mais currículos.",
     "curriculumsToCreate": "Currículos para Criar ({count})",
     "descriptionInputPlaceholder": "Adicione uma breve descrição deste currículo, por exemplo, visão geral do curso, público-alvo ou tópicos-chave abordados.",
-    "addBatchCurriculumsInstruction": "Adicione currículos acima para construir sua lista."
+    "addBatchCurriculumsInstruction": "Adicione currículos acima para construir sua lista.",
+    "targetGrades": "Séries Alvo (Separadas por vírgula)",
+    "targetGradesPlaceholder": "ex. 04, 05",
+    "targetGradesHelp": "Usado para filtrar atribuições de estudantes"
   },
   "lesson": {
     "title": "Título da Aula",
@@ -318,6 +321,7 @@
     "noPast": "Sem Histórico Ainda",
     "historyEmpty": "Suas aulas concluídas aparecerão aqui",
     "dragHint": "Arraste-me! 🚀",
+    "dragOrTap": "Arraste-me ou toque aqui para começar 🚀",
     "attended": "Participou",
     "missed": "Perdeu",
     "excused": "Justificado",
@@ -336,7 +340,38 @@
     "attendance": "Presença",
     "totalScheduled": "Total Agendado",
     "nextClass": "Próxima Aula",
-    "noClassesEnrolled": "Você ainda não está matriculado em nenhuma turma."
+    "noClassesEnrolled": "Você ainda não está matriculado em nenhuma turma.",
+    "grade": "Série",
+    "school": "Escola",
+    "profile": {
+      "level": "Nível",
+      "rookie": "Novato",
+      "scout": "Explorador",
+      "captain": "Capitão",
+      "legend": "Lenda",
+      "attendanceRate": "Pontuação de Presença",
+      "activeCourses": "Cursos Ativos",
+      "totalSessions": "Total Agendado",
+      "sessionsCompleted": "{count} sessões completadas",
+      "currentLevel": "Nível Atual"
+    },
+    "grades": {
+      "K": "Kindergarten",
+      "01": "1ª Série",
+      "02": "2ª Série",
+      "03": "3ª Série",
+      "04": "4ª Série",
+      "05": "5ª Série",
+      "06": "6ª Série",
+      "07": "7ª Série",
+      "08": "8ª Série",
+      "09": "9ª Série",
+      "10": "10ª Série",
+      "11": "11ª Série",
+      "12": "12ª Série"
+    },
+    "selectGrade": "Selecionar Série",
+    "filteringByGrade": "Filtrando por série:"
   },
   "teacher": {
     "search": "Pesquisar professores...",
@@ -489,6 +524,7 @@
     "invalidStudents": "Um ou mais alunos inválidos",
     "classNotFound": "Turma não encontrada",
     "classScheduleConflict": "Esta turma já está agendada para {conflictTime}",
-    "teacherScheduleConflict": "O professor já está ensinando \"{className}\" em {conflictTime}"
+    "teacherScheduleConflict": "O professor já está ensinando \"{className}\" em {conflictTime}",
+    "invalidGrade": "Configuração de série inválida: {grades}. Por favor, revise sua seleção."
   }
 }

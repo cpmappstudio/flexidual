@@ -1,4 +1,3 @@
-import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { getCurrentUserFromAuth } from "./users";
 
@@ -14,14 +13,14 @@ export const getStudentDashboardStats = query({
 
     const myClasses = allClasses.filter((c) => c.students.includes(user._id));
 
-    const stats = await Promise.all(
+    // --- Per-class stats ---
+    const classStats = await Promise.all(
       myClasses.map(async (classData) => {
         const [teacher, curriculum] = await Promise.all([
           ctx.db.get(classData.teacherId),
           ctx.db.get(classData.curriculumId)
         ]);
         
-        // Get all schedules for this class
         const schedules = await ctx.db
           .query("classSchedule")
           .withIndex("by_class", (q) => q.eq("classId", classData._id))
@@ -29,9 +28,6 @@ export const getStudentDashboardStats = query({
 
         const now = Date.now();
         const pastSchedules = schedules.filter((s) => s.scheduledEnd < now);
-        
-        // Get attendance records for this student in this class
-        // We fetch sessions linked to the schedules of this class
         const scheduleIds = new Set(schedules.map(s => s._id));
         
         const mySessions = await ctx.db
@@ -39,29 +35,18 @@ export const getStudentDashboardStats = query({
           .withIndex("by_student_date", (q) => q.eq("studentId", user._id))
           .collect();
 
-        // Filter sessions relevant to this class
         const classSessions = mySessions.filter(s => scheduleIds.has(s.scheduleId));
-
-        // Calculate Attendance Score
-        // Logic: Count 'present' or 'partial' or significant duration
-        let attendedCount = 0;
         
-        // We map sessions to schedules to handle multiple joins per schedule
+        let attendedCount = 0;
         const processedSchedules = new Set();
-
         classSessions.forEach(session => {
             if (processedSchedules.has(session.scheduleId)) return;
-            
-            // Check manual status
             if (session.attendanceStatus === 'present' || session.attendanceStatus === 'partial') {
                 attendedCount++;
                 processedSchedules.add(session.scheduleId);
                 return;
             }
-
-            // Check automated duration (fallback)
-            // Assuming 30 mins (1800s) is a "presence" if no manual status
-            if ((session.durationSeconds || 0) > 600) { // > 10 mins
+            if ((session.durationSeconds || 0) > 600) { 
                  attendedCount++;
                  processedSchedules.add(session.scheduleId);
             }
@@ -91,6 +76,31 @@ export const getStudentDashboardStats = query({
       })
     );
 
-    return stats;
+    // --- Overall stats ---
+    const totalCourses = classStats.length;
+    const totalSessions = classStats.reduce((acc, c) => acc + c.stats.totalClasses, 0);
+    const totalAttended = classStats.reduce((acc, c) => acc + c.stats.attendedClasses, 0);
+    const totalPastSessions = classStats.reduce((acc, c) => acc + c.stats.completedClasses, 0);
+    
+    const overallAttendance = totalPastSessions === 0 
+        ? 100 
+        : Math.round((totalAttended / totalPastSessions) * 100);
+
+    return {
+        student: {
+            fullName: user.fullName,
+            email: user.email,
+            imageUrl: user.imageUrl,
+            grade: user.grade,
+            school: user.school,
+        },
+        overall: {
+            activeCourses: totalCourses,
+            totalSessions,
+            attendanceRate: overallAttendance,
+            completedSessions: totalPastSessions
+        },
+        classes: classStats
+    };
   },
 });

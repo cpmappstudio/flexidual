@@ -206,7 +206,10 @@
     "addCurriculums": "Add one or more curriculums.",
     "curriculumsToCreate": "Curriculums to Create ({count})",
     "descriptionInputPlaceholder": "Add a brief description of this curriculum, e.g. course overview, target audience, or key topics covered.",
-    "addBatchCurriculumsInstruction": "Add curriculums above to build your list."
+    "addBatchCurriculumsInstruction": "Add curriculums above to build your list.",
+    "targetGrades": "Target Grades (Comma separated)",
+    "targetGradesPlaceholder": "e.g. 04, 05",
+    "targetGradesHelp": "Used for filtering student assignments"
   },
   "lesson": {
     "title": "Lesson Title",
@@ -318,6 +321,7 @@
     "noPast": "No History Yet",
     "historyEmpty": "Your completed classes will appear here",
     "dragHint": "Drag me! 🚀",
+    "dragOrTap": "Drag or tap me! 🚀",
     "attended": "Attended",
     "missed": "Missed",
     "pending": "Pending",
@@ -336,7 +340,38 @@
     "attendance": "Attendance",
     "totalScheduled": "Total Scheduled",
     "nextClass": "Next Class",
-    "noClassesEnrolled": "You are not enrolled in any classes yet."
+    "noClassesEnrolled": "You are not enrolled in any classes yet.",
+    "grade": "Grade",
+    "school": "School",
+    "profile": {
+      "level": "Level",
+      "rookie": "Rookie",
+      "scout": "Scout",
+      "captain": "Captain",
+      "legend": "Legend",
+      "attendanceRate": "Attendance Score",
+      "activeCourses": "Active Courses",
+      "totalSessions": "Total Scheduled",
+      "sessionsCompleted": "{count} sessions completed",
+      "currentLevel": "Current Level"
+    },
+    "grades": {
+      "K": "Kindergarten",
+      "01": "1st Grade",
+      "02": "2nd Grade",
+      "03": "3rd Grade",
+      "04": "4th Grade",
+      "05": "5th Grade",
+      "06": "6th Grade",
+      "07": "7th Grade",
+      "08": "8th Grade",
+      "09": "9th Grade",
+      "10": "10th Grade",
+      "11": "11th Grade",
+      "12": "12th Grade"
+    },
+    "selectGrade": "Select Grade",
+    "filteringByGrade": "Filtering by grade:"
   },
   "teacher": {
     "search": "Search teachers...",
@@ -488,6 +523,7 @@
     "invalidStudents": "One or more invalid students",
     "classNotFound": "Class not found",
     "classScheduleConflict": "This class is already scheduled at {conflictTime}",
-    "teacherScheduleConflict": "Teacher is already teaching \"{className}\" at {conflictTime}"
+    "teacherScheduleConflict": "Teacher is already teaching \"{className}\" at {conflictTime}",
+    "invalidGrade": "Invalid grade configuration: {grades}. Please check your selection."
   }
 }

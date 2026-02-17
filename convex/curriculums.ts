@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
+import { GRADE_VALUES } from "../lib/types/academic";
+import { ConvexError } from "convex/values";
 
 // ============================================================================
 // QUERIES
@@ -88,10 +90,7 @@ export const get = query({
         .filter(q => q.eq(q.field("curriculumId"), args.id))
         .first();
 
-      if (!hasAccess) {
-        // Return null instead of error to fail gracefully in UI (404-like)
-        return null; 
-      }
+      if (!hasAccess) return null; 
       return curriculum;
     }
 
@@ -166,6 +165,7 @@ export const create = mutation({
     description: v.optional(v.string()),
     code: v.optional(v.string()),
     color: v.optional(v.string()),
+    gradeCodes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -184,6 +184,17 @@ export const create = mutation({
       
       if (isAvailable) {
         throw new Error(`Curriculum code "${args.code}" already exists`);
+      }
+    }
+
+    if (args.gradeCodes) {
+      const invalidCodes = args.gradeCodes.filter(g => !(GRADE_VALUES as readonly string[]).includes(g));
+      
+      if (invalidCodes.length > 0) {
+        throw new ConvexError({
+          code: "INVALID_GRADE",
+          grades: invalidCodes.join(", ")
+        });
       }
     }
 
@@ -209,6 +220,7 @@ export const createBatch = mutation({
       title: v.string(),
       description: v.optional(v.string()),
       code: v.optional(v.string()),
+      gradeCodes: v.optional(v.array(v.string())),
     }))
   },
   handler: async (ctx, args) => {
@@ -235,11 +247,21 @@ export const createBatch = mutation({
           }
         }
 
+        if (item.gradeCodes && !item.gradeCodes.every(g => (GRADE_VALUES as readonly string[]).includes(g))) {
+          results.push({ 
+            title: item.title, 
+            status: "error", 
+            reason: `Invalid grade code(s) found. Allowed: ${GRADE_VALUES.join(", ")}` 
+          });
+          continue;
+        }
+
         await ctx.db.insert("curriculums", {
           title: item.title,
           description: item.description,
           code: item.code,
-          color: "#3b82f6", // Default color
+          color: "#3b82f6",
+          gradeCodes: item.gradeCodes,
           isActive: true,
           createdAt: Date.now(),
           createdBy: user._id,
@@ -266,6 +288,7 @@ export const update = mutation({
     code: v.optional(v.string()),
     color: v.optional(v.string()),
     isActive: v.optional(v.boolean()),
+    gradeCodes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -280,7 +303,17 @@ export const update = mutation({
       throw new Error("Curriculum not found");
     }
 
-    // Validate: Code must be unique if changing
+    if (args.gradeCodes) {
+      const invalidCodes = args.gradeCodes.filter(g => !(GRADE_VALUES as readonly string[]).includes(g));
+      
+      if (invalidCodes.length > 0) {
+        throw new ConvexError({
+          code: "INVALID_GRADE",
+          grades: invalidCodes.join(", ")
+        });
+      }
+    }
+
     if (args.code && args.code !== curriculum.code) {
       const existing = await ctx.db
         .query("curriculums")
@@ -304,7 +337,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { 
     id: v.id("curriculums"),
-    force: v.optional(v.boolean()), // Force delete even if classes exist
+    force: v.optional(v.boolean()), 
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);

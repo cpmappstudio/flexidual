@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, QueryCtx, action } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import { GRADE_VALUES } from "../lib/types/academic";
+import { ConvexError } from "convex/values";
 
 // Type for Clerk webhook user data
 type UserJSON = {
@@ -168,6 +170,8 @@ export const updateUser = mutation({
         v.literal("admin"),
         v.literal("superadmin")
       )),
+      grade: v.optional(v.string()),
+      school: v.optional(v.string()),
       isActive: v.optional(v.boolean()),
     }),
   },
@@ -175,6 +179,13 @@ export const updateUser = mutation({
     const user = await ctx.db.get(args.userId);
     if (!user) {
       throw new Error("User not found");
+    }
+
+    if (args.updates.grade && !(GRADE_VALUES as readonly string[]).includes(args.updates.grade)) {
+      throw new ConvexError({
+        code: "INVALID_GRADE",
+        grades: args.updates.grade
+      });
     }
 
     const updates: any = { 
@@ -241,11 +252,20 @@ export const createUser = mutation({
       v.literal("admin"),
       v.literal("superadmin")
     ),
+    grade: v.optional(v.string()),
+    school: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     // Generate temporary Clerk ID (will be replaced on first login)
     const tempClerkId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+
+    if (args.grade && !(GRADE_VALUES as readonly string[]).includes(args.grade)) {
+      throw new ConvexError({
+        code: "INVALID_GRADE",
+        grades: args.grade
+      });
+    }
 
     const userId = await ctx.db.insert("users", {
       clerkId: tempClerkId,
@@ -255,6 +275,8 @@ export const createUser = mutation({
       email: args.email,
       avatarStorageId: args.avatarStorageId,
       role: args.role,
+      grade: args.grade,
+      school: args.school,
       isActive: true,
       createdAt: Date.now(),
       lastLoginAt: Date.now(),
@@ -308,8 +330,13 @@ export const upsertFromClerk = internalMutation({
     // Extract role from public_metadata (default to "student")
     const publicMetadata = data.public_metadata || {};
     const role = publicMetadata.role || "student";
+    const grade = publicMetadata.grade;
+    const school = publicMetadata.school;
 
-    // Check if user exists
+    if (grade && !GRADE_VALUES.includes(grade as any)) {
+      throw new Error(`Invalid grade: ${grade}`);
+    }
+
     const existingUser = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", data.id))
@@ -323,6 +350,8 @@ export const upsertFromClerk = internalMutation({
       fullName: `${firstName} ${lastName}`.trim() || email,
       imageUrl: data.image_url,
       role,
+      grade,
+      school,
       isActive: true,
       lastLoginAt: Date.now(),
     };
@@ -371,7 +400,7 @@ export const deleteFromClerk = internalMutation({
 });
 
 // ============================================================================
-// CLERK INTEGRATION ACTIONS (Optional - for manual user creation in Clerk)
+// CLERK INTEGRATION ACTIONS
 // ============================================================================
 
 /**
@@ -390,6 +419,8 @@ export const createUserWithClerk = action({
       v.literal("admin"),
       v.literal("superadmin")
     ),
+    grade: v.optional(v.string()),
+    school: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
     sendInvitation: v.optional(v.boolean()),
   },
@@ -399,6 +430,12 @@ export const createUserWithClerk = action({
       throw new Error("CLERK_SECRET_KEY not configured");
     }
 
+    if (args.grade && !(GRADE_VALUES as readonly string[]).includes(args.grade)) {
+      throw new ConvexError({
+        code: "INVALID_GRADE",
+        grades: args.grade
+      });
+    }
     try {
       // 1. Create user in Clerk
       const clerkResponse = await fetch("https://api.clerk.com/v1/users", {
@@ -413,6 +450,8 @@ export const createUserWithClerk = action({
           last_name: args.lastName,
           public_metadata: {
             role: args.role,
+            grade: args.grade,
+            school: args.school
           },
           skip_password_checks: true,
           skip_password_requirement: true,
@@ -463,7 +502,11 @@ export const createUserWithClerk = action({
           },
           body: JSON.stringify({
             email_address: args.email,
-            public_metadata: { role: args.role },
+            public_metadata: { 
+                role: args.role,
+                grade: args.grade,
+                school: args.school 
+            },
             redirect_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/sign-in`,
           }),
         });
@@ -498,6 +541,8 @@ export const createUsersWithClerk = action({
         v.literal("admin"),
         v.literal("superadmin")
       ),
+      grade: v.optional(v.string()),
+      school: v.optional(v.string()),
     })),
     sendInvitation: v.optional(v.boolean()),
   },
@@ -513,7 +558,17 @@ export const createUsersWithClerk = action({
     // Using sequential here for safety and clearer error reporting
     for (const user of args.users) {
       try {
-        // 1. Create in Clerk
+        // 1. Validate Grade
+        if (user.grade && !(GRADE_VALUES as readonly string[]).includes(user.grade)) {
+           results.push({ 
+             email: user.email, 
+             status: "error", 
+             reason: `Invalid grade: ${user.grade}. Allowed: ${GRADE_VALUES.join(", ")}` 
+           });
+           continue;
+        }
+
+        // 2. Create in Clerk
         const clerkResponse = await fetch("https://api.clerk.com/v1/users", {
           method: "POST",
           headers: {
@@ -526,6 +581,8 @@ export const createUsersWithClerk = action({
             last_name: user.lastName,
             public_metadata: {
               role: user.role,
+              grade: user.grade,
+              school: user.school
             },
             skip_password_checks: true,
             skip_password_requirement: true,
@@ -554,7 +611,11 @@ export const createUsersWithClerk = action({
             },
             body: JSON.stringify({
               email_address: user.email,
-              public_metadata: { role: user.role },
+              public_metadata: { 
+                  role: user.role,
+                  grade: user.grade,
+                  school: user.school
+              },
               redirect_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/sign-in`,
             }),
           });
@@ -594,6 +655,8 @@ export const updateUserWithClerk = action({
         v.literal("admin"),
         v.literal("superadmin")
       )),
+      grade: v.optional(v.string()),
+      school: v.optional(v.string()),
       isActive: v.optional(v.boolean()),
     }),
   },
@@ -617,17 +680,28 @@ export const updateUserWithClerk = action({
       return;
     }
 
+    if (args.updates.grade && !(GRADE_VALUES as readonly string[]).includes(args.updates.grade)) {
+      throw new ConvexError({
+        code: "INVALID_GRADE",
+        grades: args.updates.grade
+      });
+    }
+
     try {
       const clerkUpdates: any = {};
       
       if (args.updates.firstName) clerkUpdates.first_name = args.updates.firstName;
       if (args.updates.lastName) clerkUpdates.last_name = args.updates.lastName;
       
-      if (args.updates.role) {
-        clerkUpdates.public_metadata = { role: args.updates.role };
+      const metadataUpdates: any = {};
+      if (args.updates.role) metadataUpdates.role = args.updates.role;
+      if (args.updates.grade !== undefined) metadataUpdates.grade = args.updates.grade;
+      if (args.updates.school !== undefined) metadataUpdates.school = args.updates.school;
+
+      if (Object.keys(metadataUpdates).length > 0) {
+        clerkUpdates.public_metadata = metadataUpdates;
       }
 
-      // Update Clerk if there are changes
       if (Object.keys(clerkUpdates).length > 0) {
         const response = await fetch(`https://api.clerk.com/v1/users/${user.clerkId}`, {
           method: "PATCH",

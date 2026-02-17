@@ -22,9 +22,10 @@ import { useAlert } from "@/components/providers/alert-provider"
 
 interface StudentManagerProps {
   classId: Id<"classes">
+  curriculumId?: Id<"curriculums">
 }
 
-export function StudentManager({ classId }: StudentManagerProps) {
+export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
   const { user } = useCurrentUser()
   const t = useTranslations()
   const { showAlert } = useAlert()
@@ -62,7 +63,7 @@ export function StudentManager({ classId }: StudentManagerProps) {
           <CardDescription>{t("class.manageEnrollment")}</CardDescription>
         </div>
         
-        {isAdmin && <AddStudentDialog classId={classId} />}
+        {isAdmin && <AddStudentDialog classId={classId} curriculumId={curriculumId} />}
       </CardHeader>
       <CardContent>
         {students.length === 0 ? (

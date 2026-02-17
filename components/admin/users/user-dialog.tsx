@@ -22,12 +22,14 @@ import {
     X,
 } from "lucide-react"
 import { toast } from "sonner"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { UserRole } from "@/convex/types"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { EntityDialog } from "@/components/ui/entity-dialog" // 1. Import Shared Component
 import { useAlert } from "@/components/providers/alert-provider"
+import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
+import { GRADE_VALUES } from "@/lib/types/academic"
 
 interface UserDialogProps {
     user?: {
@@ -37,6 +39,8 @@ interface UserDialogProps {
         email: string
         role: string
         isActive?: boolean
+        grade?: string
+        school?: string
     }
     defaultRole?: UserRole
     allowedRoles?: UserRole[]
@@ -53,6 +57,8 @@ type PendingUser = {
     lastName: string
     email: string
     role: UserRole
+    grade?: string
+    school?: string
 }
 
 export function UserDialog({ 
@@ -64,6 +70,7 @@ export function UserDialog({
     onOpenChange: controlledOnOpenChange
 }: UserDialogProps) {
     const t = useTranslations()
+    const locale = useLocale()
     const { showAlert } = useAlert()
     const isEditing = !!user
     
@@ -85,7 +92,9 @@ export function UserDialog({
         lastName: "",
         email: "",
         role: defaultRole || "student" as UserRole,
-        status: "active"
+        status: "active",
+        grade: "",
+        school: ""
     })
 
     const rolesToDisplay = allowedRoles || ALL_ROLES
@@ -98,7 +107,9 @@ export function UserDialog({
                     lastName: user.lastName || "",
                     email: user.email,
                     role: user.role as UserRole,
-                    status: user.isActive ? "active" : "inactive"
+                    status: user.isActive ? "active" : "inactive",
+                    grade: user.grade || "",
+                    school: user.school || ""
                 })
             } else {
                 setQueue([])
@@ -107,7 +118,9 @@ export function UserDialog({
                     lastName: "",
                     email: "",
                     role: (defaultRole || rolesToDisplay[0]) as UserRole,
-                    status: "active"
+                    status: "active",
+                    grade: "",
+                    school: ""
                 })
             }
         }
@@ -124,7 +137,9 @@ export function UserDialog({
             firstName: formData.firstName,
             lastName: formData.lastName,
             email: formData.email,
-            role: formData.role
+            role: formData.role,
+            grade: formData.grade,
+            school: formData.school
         }
 
         setQueue([...queue, newUser])
@@ -157,6 +172,8 @@ export function UserDialog({
                         email: formData.email,
                         role: formData.role, 
                         isActive: formData.status === "active",
+                        grade: formData.role === "student" ? formData.grade : undefined,
+                        school: formData.role === "student" ? formData.school : undefined,
                     }
                 })
                 toast.success(t('common.save'))
@@ -171,7 +188,9 @@ export function UserDialog({
                         firstName: formData.firstName,
                         lastName: formData.lastName,
                         email: formData.email,
-                        role: formData.role
+                        role: formData.role,
+                        grade: formData.grade,
+                        school: formData.school
                     })
                 }
 
@@ -182,7 +201,9 @@ export function UserDialog({
                         firstName: u.firstName,
                         lastName: u.lastName,
                         email: u.email,
-                        role: u.role
+                        role: u.role,
+                        grade: u.role === "student" ? u.grade : undefined,
+                        school: u.role === "student" ? u.school : undefined,
                     })),
                     sendInvitation: true
                 })
@@ -197,8 +218,14 @@ export function UserDialog({
                     toast.warning(`${successes} created, ${failures.length} failed`)
                 }
             }
-        } catch {
-            toast.error(t('errors.operationFailed'))
+        } catch (error) {
+            const parsedError = parseConvexError(error)
+            if (parsedError) {
+                toast.error(getErrorMessage(parsedError, t, locale))
+            } else {
+                toast.error(t('errors.operationFailed'))
+                console.error(error)
+            }
         } finally {
             setIsSubmitting(false)
         }
@@ -255,7 +282,7 @@ export function UserDialog({
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             submitLabel={submitLabel}
-            maxWidth={isEditing ? "sm:max-w-[500px]" : "sm:max-w-[700px]"}
+            maxWidth={isEditing ? "sm:max-w-[600px]" : "sm:max-w-[700px]"}
             leftActions={isEditing && (
                 <Button 
                     type="button" 
@@ -277,7 +304,7 @@ export function UserDialog({
                                 id="firstName" 
                                 value={formData.firstName}
                                 onChange={e => setFormData({...formData, firstName: e.target.value})}
-                                required={isEditing} // Only required if submitting immediately
+                                required={isEditing} 
                             />
                         </div>
                         <div className="grid gap-2">
@@ -301,6 +328,38 @@ export function UserDialog({
                             required={isEditing}
                         />
                     </div>
+
+                    {formData.role === "student" && (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="grade">{t('student.grade')}</Label>
+                                <Select 
+                                    value={formData.grade} 
+                                    onValueChange={(v) => setFormData({...formData, grade: v})}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={t('student.selectGrade')} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {GRADE_VALUES.map((code) => (
+                                            <SelectItem key={code} value={code}>
+                                                {t(`student.grades.${code}`)}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="school">{t('student.school')}</Label>
+                                <Input 
+                                    id="school" 
+                                    value={formData.school} 
+                                    onChange={e => setFormData({...formData, school: e.target.value})}
+                                    placeholder="School Name"
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="grid gap-2">
@@ -342,7 +401,7 @@ export function UserDialog({
                         )}
                     </div>
 
-                    {/* Add to Queue Button (Create Mode Only) */}
+                    {/* Add to Queue Button */}
                     {!isEditing && (
                         <div className="flex justify-end mt-2">
                             <Button 
@@ -360,7 +419,7 @@ export function UserDialog({
                     )}
                 </div>
 
-                {/* QUEUE LIST (Create Mode Only) */}
+                {/* QUEUE LIST */}
                 {!isEditing && (
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -394,6 +453,9 @@ export function UserDialog({
                                                     <Badge variant="outline" className="text-[10px] h-5">
                                                         {t(`navigation.${u.role}s`)}
                                                     </Badge>
+                                                    {u.grade && (
+                                                        <Badge variant="secondary" className="text-[10px] h-5">{u.grade}</Badge>
+                                                    )}
                                                 </div>
                                                 <div className="text-muted-foreground text-xs">{u.email}</div>
                                             </div>

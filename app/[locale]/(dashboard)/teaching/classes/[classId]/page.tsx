@@ -330,7 +330,7 @@ export default function ClassDetailPage() {
         </TabsContent>
 
         <TabsContent value="students" className="mt-4">
-          <StudentManager classId={classId} />
+          <StudentManager classId={classId} curriculumId={classData.curriculumId} />
         </TabsContent>
       </Tabs>
     </div>

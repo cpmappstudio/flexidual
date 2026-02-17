@@ -17,13 +17,14 @@ import {
 } from "@/components/ui/select"
 import { Plus, Edit, Trash2, X, BookOpen, Layers } from "lucide-react"
 import { toast } from "sonner"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { EntityDialog } from "@/components/ui/entity-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { CurriculumLessonList } from "./curriculum-lesson-list"
 import { useAlert } from "@/components/providers/alert-provider"
+import { getErrorMessage, parseConvexError } from "@/lib/error-utils"
 
 interface CurriculumDialogProps {
   curriculum?: Doc<"curriculums">
@@ -37,6 +38,7 @@ type PendingCurriculum = {
     title: string
     code: string
     description: string
+    gradeCodes?: string[]
 }
 
 export function CurriculumDialog({ 
@@ -46,6 +48,7 @@ export function CurriculumDialog({
     onOpenChange: controlledOnOpenChange 
 }: CurriculumDialogProps) {
   const t = useTranslations()
+  const locale = useLocale()
   const { showAlert } = useAlert()
   const isEditing = !!curriculum
   
@@ -63,7 +66,8 @@ export function CurriculumDialog({
       title: "",
       code: "",
       description: "",
-      isActive: true
+      isActive: true,
+      gradeCodes: [] as string[]
   })
 
   useEffect(() => {
@@ -73,7 +77,8 @@ export function CurriculumDialog({
                 title: curriculum.title,
                 code: curriculum.code || "",
                 description: curriculum.description || "",
-                isActive: curriculum.isActive
+                isActive: curriculum.isActive,
+                gradeCodes: curriculum.gradeCodes || []
             })
         } else {
             setQueue([])
@@ -81,7 +86,8 @@ export function CurriculumDialog({
                 title: "", 
                 code: "", 
                 description: "", 
-                isActive: true 
+                isActive: true,
+                gradeCodes: [] 
             })
         }
     }
@@ -95,11 +101,12 @@ export function CurriculumDialog({
         id: Math.random().toString(36).substr(2, 9),
         title: formData.title,
         code: formData.code,
-        description: formData.description
+        description: formData.description,
+        gradeCodes: formData.gradeCodes
     }
 
     setQueue([...queue, newItem])
-    setFormData({ title: "", code: "", description: "", isActive: true })
+    setFormData({ title: "", code: "", description: "", isActive: true, gradeCodes: [] })
   }
 
   const handleRemoveFromQueue = (id: string) => {
@@ -117,7 +124,8 @@ export function CurriculumDialog({
                 title: formData.title,
                 code: formData.code || undefined,
                 description: formData.description || undefined,
-                isActive: formData.isActive, 
+                isActive: formData.isActive,
+                gradeCodes: formData.gradeCodes.length > 0 ? formData.gradeCodes : undefined
             })
             toast.success(t('curriculum.updated'))
             setIsOpen(false)
@@ -128,7 +136,8 @@ export function CurriculumDialog({
                     id: "temp",
                     title: formData.title,
                     code: formData.code,
-                    description: formData.description
+                    description: formData.description,
+                    gradeCodes: formData.gradeCodes
                 })
             }
 
@@ -138,19 +147,26 @@ export function CurriculumDialog({
                 curriculums: finalQueue.map(q => ({
                     title: q.title,
                     code: q.code || undefined,
-                    description: q.description || undefined
+                    description: q.description || undefined,
+                    gradeCodes: (q.gradeCodes && q.gradeCodes.length > 0) ? q.gradeCodes : undefined
                 }))
             })
             
             toast.success(`${finalQueue.length} curriculums created`)
             setIsOpen(false)
         }
-    } catch {
-        toast.error(t('errors.operationFailed'))
-    } finally {
-        setIsSubmitting(false)
+    } catch (error) {
+            const parsedError = parseConvexError(error)
+            if (parsedError) {
+                toast.error(getErrorMessage(parsedError, t, locale))
+            } else {
+                toast.error(t('errors.operationFailed'))
+                console.error(error)
+            }
+        } finally {
+            setIsSubmitting(false)
+        }
     }
-  }
 
   const handleDelete = async () => {
     if (!curriculum) return
@@ -239,7 +255,18 @@ export function CurriculumDialog({
                                 </SelectContent>
                             </Select>
                         </div>
-                        {/* Empty spacer or other fields can go here */}
+                        
+                        <div className="grid gap-2">
+                            <Label>{t('curriculum.targetGrades')}</Label> 
+                            <Input 
+                                value={formData.gradeCodes.join(", ")} 
+                                onChange={e => setFormData({...formData, gradeCodes: e.target.value.split(",").map(s => s.trim())})}
+                                placeholder={t('curriculum.targetGradesPlaceholder')}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                {t('curriculum.targetGradesHelp')}
+                            </p>
+                        </div>
                     </div>
 
                     <div className="grid gap-2">

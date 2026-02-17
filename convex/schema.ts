@@ -45,10 +45,14 @@ export default defineSchema({
     // Timestamps
     createdAt: v.number(),
     lastLoginAt: v.optional(v.number()),
+
+    grade: v.optional(v.string()),
+    school: v.optional(v.string()),
   })
     .index("by_clerk_id", ["clerkId"])
     .index("by_email", ["email"])
-    .index("by_role", ["role", "isActive"]),
+    .index("by_role", ["role", "isActive"])
+    .index("by_grade", ["grade"]),
 
   /**
    * CURRICULUMS
@@ -68,6 +72,8 @@ export default defineSchema({
     // Timestamps
     createdAt: v.number(),
     createdBy: v.id("users"),
+
+    gradeCodes: v.optional(v.array(v.string())), // e.g. ["04", "05"]
   })
     .index("by_active", ["isActive"])
     .index("by_code", ["code"]),

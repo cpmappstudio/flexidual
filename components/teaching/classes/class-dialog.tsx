@@ -297,7 +297,10 @@ export function ClassDialog({
                 <TabsContent value="students" className="min-h-[300px]">
                     <div className="space-y-4">
                          <div className="rounded-md border p-4 bg-background">
-                            <StudentManager classId={currentClassId} />
+                            <StudentManager 
+                                classId={currentClassId} 
+                                curriculumId={formData.curriculumId as Id<"curriculums">} 
+                            />
                          </div>
                     </div>
                 </TabsContent>

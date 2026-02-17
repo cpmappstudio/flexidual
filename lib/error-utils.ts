@@ -4,7 +4,8 @@ interface ConvexErrorData {
   code: string
   className?: string
   curriculumTitle?: string
-  conflictTime?: string
+  conflictTime?: string,
+  grades?: string
 }
 
 export function parseConvexError(error: unknown): ConvexErrorData | null {
@@ -78,6 +79,10 @@ export function getErrorMessage(
       return t("errors.invalidStudents")
     case "STUDENT_ALREADY_ENROLLED":
       return t("errors.studentAlreadyEnrolled")
+    case "INVALID_GRADE":
+      return t("errors.invalidGrade", {
+        grades: error.grades || "Unknown"
+      })
     default:
       return t("errors.operationFailed")
   }
