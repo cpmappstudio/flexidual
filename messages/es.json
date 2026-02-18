@@ -196,9 +196,9 @@
     "noResults": "No se encontraron currículos. Crea uno para comenzar.",
     "manage": "Gestionar Currículos",
     "myCurriculums": "Mis Currículos",
-    "manageLessons": "Gestionar Lecciones",
+    "manageLessons": "Lecciones",
     "filterPlaceholder": "Filtrar currículos...",
-    "manageDescription": "Gestiona tus plantillas de curso y lecciones.",
+    "manageDescription": "Gestiona las lecciones de este currículo.",
     "unknown": "Currículo Desconocido",
     "allList": "Todos los Currículos",
     "activeList": "Currículos Activos",
@@ -229,7 +229,7 @@
     "addBatchInstruction": "Agrega lecciones arriba para construir tu lista.",
     "titlePlaceholder": "ej. Introducción a la Física",
     "descriptionPlaceholder": "Resumen corto de la lección",
-    "contentPlaceholder": "<p>El contenido de la lección va aquí...</p>",
+    "contentPlaceholder": "El contenido de la lección va aquí...",
     "addToBatch": "Agregar al Lote",
     "queue": "Cola ({count})",
     "currentCurriculum": "Currículo Actual",
@@ -295,7 +295,11 @@
     "allSchedules": "Todos los Horarios",
     "filterBy": "Filtrar",
     "filtered": "Filtrado",
-    "createClass": "Crear Clase"
+    "createClass": "Crear Clase",
+    "weekOverview": "Resumen de esta Semana",
+    "manageContent": "Acciones de Clase",
+    "addLessonToCurriculum": "Agregar Lección al Currículo",
+    "scheduleSession": "Programar Sesión"
   },
   "student": {
     "name": "Nombre del Estudiante",

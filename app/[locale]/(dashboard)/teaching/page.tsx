@@ -18,6 +18,7 @@ export default function TeachingDashboard() {
   const t = useTranslations()
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
   const events = useQuery(api.schedule.getMySchedule, {})
+  const allClasses = useQuery(api.classes.list, {})
   const { user } = useCurrentUser()
   const isAdmin = user?.role === "admin" || user?.role === "superadmin"
 
@@ -48,7 +49,7 @@ export default function TeachingDashboard() {
       .sort((a, b) => a.start - b.start)
       .slice(0, 5)
 
-    // Week calendar logic (unchanged)
+    // Week calendar logic
     const week = Array.from({ length: 7 }, (_, i) => {
       const date = addDays(new Date(), i)
       const dayStart = startOfDay(date).getTime()
@@ -71,6 +72,12 @@ export default function TeachingDashboard() {
     }
   }, [events, now, todayStart])
 
+  // Find the first class for each curriculum
+  const getClassForCurriculum = (curriculumId: string) => {
+    if (!allClasses) return null
+    return allClasses.find(cls => cls.curriculumId === curriculumId && cls.isActive)
+  }
+
   const getCardStyle = () => {
     if (isLive) {
       if (isIgnitia) {
@@ -81,7 +88,7 @@ export default function TeachingDashboard() {
     return 'border-blue-500 dark:border-blue-600 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30'
   }
 
-  if (curriculums === undefined || events === undefined) {
+  if (curriculums === undefined || events === undefined || allClasses === undefined) {
     return <div className="p-6 space-y-4"><Skeleton className="h-10 w-48"/><Skeleton className="h-64 w-full"/></div>
   }
 
@@ -107,14 +114,12 @@ export default function TeachingDashboard() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-2xl">
-                  {/* Icon Logic */}
                   {isIgnitia ? (
                      <MonitorPlay className={`w-6 h-6 ${isLive ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600'}`} />
                   ) : (
                      <Video className={`w-6 h-6 ${isLive ? 'text-green-600 dark:text-green-400' : 'text-blue-600'}`} />
                   )}
                   
-                  {/* Title Logic */}
                   {isLive 
                     ? (isIgnitia ? "Ignitia Session Active" : t('dashboard.classInSession')) 
                     : t('dashboard.nextClass')
@@ -381,7 +386,7 @@ export default function TeachingDashboard() {
             </CardContent>
           </Card>
 
-          {/* Curriculums Quick Access */}
+          {/* Curriculums Quick Access - Now Routes to Classes */}
           <Card className="dashboard-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -391,23 +396,26 @@ export default function TeachingDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {curriculums?.slice(0, 3).map((curr) => (
-                  <Link 
-                    key={curr._id} 
-                    href={`/curriculums/${curr._id}`}
-                    className="curriculum-link-card"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="font-bold text-sm">{curr.title}</p>
-                        {curr.code && (
-                          <p className="text-xs text-muted-foreground font-mono">{curr.code}</p>
-                        )}
+                {curriculums?.slice(0, 3).map((curr) => {
+                  const relatedClass = getClassForCurriculum(curr._id)
+                  return relatedClass ? (
+                    <Link 
+                      key={curr._id} 
+                      href={`/teaching/classes/${relatedClass._id}`}
+                      className="curriculum-link-card"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-bold text-sm">{curr.title}</p>
+                          {curr.code && (
+                            <p className="text-xs text-muted-foreground font-mono">{curr.code}</p>
+                          )}
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-muted-foreground" />
                       </div>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  ) : null
+                })}
                 {curriculums?.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     {t('dashboard.noCurriculums')}
@@ -416,7 +424,7 @@ export default function TeachingDashboard() {
               </div>
               
               <Button variant="outline" className="w-full mt-3" asChild>
-                <Link href="/teaching/curriculums">
+                <Link href="/teaching/classes">
                   {t('dashboard.viewAllCurriculums')}
                 </Link>
               </Button>

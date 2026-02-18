@@ -135,7 +135,7 @@ export default function MyClassesPage() {
                             <div className="flex gap-2 pt-2 border-t">
                             <Button variant="outline" className="flex-1 group-hover:bg-primary group-hover:text-primary-foreground transition-colors" asChild>
                                 <Link href={`/teaching/classes/${cls._id}`}>
-                                {isAdmin ? t('class.manageClass') : t('class.manageSchedule')}
+                                {t('class.manageClass')}
                                 <ArrowRight className="ml-2 h-4 w-4" />
                                 </Link>
                             </Button>
