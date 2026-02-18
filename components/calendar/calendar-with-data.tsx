@@ -34,9 +34,16 @@ export default function CalendarWithData() {
         id: item.scheduleId,
         _id: item.scheduleId,
         scheduleId: item.scheduleId,
-        lessonId: item.lessonId,
+        
+        // Use lessonIds array instead of single lessonId
+        lessonIds: item.lessonIds,
+        
+        // Include lesson data for display
+        lessons: item.lessons,
+        
         classId: item.classId,
         curriculumId: item.curriculumId,
+        sessionType: item.sessionType || "live",
         
         // Display
         title: item.title,
@@ -60,9 +67,10 @@ export default function CalendarWithData() {
         isRecurring: item.isRecurring,
         recurrenceRule: item.recurrenceRule,
         recurrenceParentId: item.recurrenceParentId,
+        
+        // Teacher info
         teacherName: item.teacherName,
-
-        sessionType: item.sessionType || "live",
+        teacherImageUrl: item.teacherImageUrl,
       }));
 
       setEvents(transformedEvents);

@@ -1,6 +1,6 @@
 // convex/migration.ts
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, internalMutation } from "./_generated/server";
 
 /**
  * Migration helper to insert a curriculum without Auth checks.
@@ -76,5 +76,70 @@ export const importLessonsBatch = mutation({
     }
     
     return { count: args.lessons.length };
+  },
+});
+
+export const migrateLessonIdToArray = internalMutation({
+  handler: async (ctx) => {
+    const schedules = await ctx.db.query("classSchedule").collect();
+    
+    let migratedCount = 0;
+    let skippedCount = 0;
+
+    for (const schedule of schedules) {
+      const doc = schedule as any;
+      
+      // Skip if already has lessonIds array
+      if (doc.lessonIds !== undefined) {
+        skippedCount++;
+        continue;
+      }
+
+      // Migrate old lessonId to lessonIds array
+      if (doc.lessonId !== undefined) {
+        await ctx.db.patch(schedule._id, {
+          lessonIds: [doc.lessonId],
+          // Remove old field by setting to undefined
+          // lessonId: undefined as any,
+        });
+        migratedCount++;
+      } else {
+        // No lesson at all, set empty array
+        await ctx.db.patch(schedule._id, {
+          lessonIds: [],
+        });
+        migratedCount++;
+      }
+    }
+
+    return {
+      success: true,
+      migratedCount,
+      skippedCount,
+      totalProcessed: schedules.length,
+    };
+  },
+});
+
+export const clearLessonsFromRecurring = internalMutation({
+  handler: async (ctx) => {
+    const schedules = await ctx.db
+      .query("classSchedule")
+      .filter((q) => q.eq(q.field("isRecurring"), true))
+      .collect();
+    
+    let clearedCount = 0;
+    
+    for (const schedule of schedules) {
+      if (schedule.lessonIds && schedule.lessonIds.length > 0) {
+        await ctx.db.patch(schedule._id, {
+          lessonIds: undefined,
+          // lessonId: undefined,
+        });
+        clearedCount++;
+      }
+    }
+    
+    return { success: true, clearedCount };
   },
 });

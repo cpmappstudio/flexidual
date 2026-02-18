@@ -98,7 +98,8 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
                   key={event.scheduleId}
                   schedule={{
                     scheduleId: event.scheduleId,
-                    lessonId: event.lessonId,
+                    lessonIds: event.lessonIds,
+                    lessons: event.lessons,
                     classId: event.classId,
                     title: event.title || event.className,
                     description: event.description,
@@ -152,7 +153,7 @@ function CalendarContent() {
       id: e.scheduleId,
       _id: e.scheduleId,
       scheduleId: e.scheduleId,
-      lessonId: e.lessonId,
+      lessonIds: e.lessonIds,
       classId: e.classId,
       curriculumId: e.curriculumId,
       sessionType: e.sessionType,

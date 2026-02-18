@@ -53,7 +53,7 @@ export default function ClassDetailPage() {
   if (!classData) return <div className="p-6">{t('class.notFound')}</div>
 
   // Group schedules by lesson vs non-lesson
-  const lessonSchedules = classSchedule?.filter(s => s.lessonId) || []
+  const lessonSchedules = classSchedule?.filter(s => s.lessonIds && s.lessonIds.length > 0) || []
 
   // Get upcoming and past schedules
   const now = Date.now()
@@ -129,7 +129,9 @@ export default function ClassDetailPage() {
                     )}
 
                     {lessons.map((lesson, index) => {
-                      const scheduledItem = lessonSchedules.find(s => s.lessonId === lesson._id)
+                      const scheduledItem = lessonSchedules.find(s => 
+                        s.lessonIds?.includes(lesson._id)
+                      )
                       const isIgnitia = scheduledItem?.sessionType === "ignitia"
                       
                       return (
@@ -174,12 +176,14 @@ export default function ClassDetailPage() {
                                   classId={classId}
                                   scheduleId={scheduledItem.scheduleId}
                                   initialData={{
-                                    lessonId: lesson._id,
+                                    lessonIds: scheduledItem.lessonIds,
                                     title: scheduledItem.title,
                                     description: scheduledItem.description,
                                     start: scheduledItem.start,
                                     end: scheduledItem.end,
-                                    sessionType: scheduledItem.sessionType || "live"
+                                    sessionType: scheduledItem.sessionType || "live",
+                                    isRecurring: scheduledItem.isRecurring,
+                                    recurrenceParentId: scheduledItem.recurrenceParentId, 
                                   }}
                                 />
 

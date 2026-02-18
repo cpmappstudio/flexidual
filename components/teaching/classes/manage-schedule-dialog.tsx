@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Calendar, Plus, Edit, Loader2, Trash2, CalendarClock } from "lucide-react"
+import { Calendar, Plus, Edit, Loader2, Trash2, CalendarClock, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { useLocale, useTranslations } from "next-intl"
 import { DateTimePicker } from "@/components/calendar/form/date-time-picker"
@@ -32,13 +32,14 @@ interface ManageScheduleDialogProps {
   // Edit Mode Options (if scheduleId is present, we are in Edit Mode)
   scheduleId?: Id<"classSchedule">
   initialData?: {
-    lessonId?: Id<"lessons">
+    lessonIds?: Id<"lessons">[]
     title?: string
     description?: string
     start: number
     end: number
     sessionType: "live" | "ignitia"
     isRecurring?: boolean
+    recurrenceParentId?: Id<"classSchedule">
   }
 }
 
@@ -57,11 +58,17 @@ export function ManageScheduleDialog({
   const [open, setOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // --- Form State ---
-  // If editing, use initialData; otherwise defaults
-  const [lessonId, setLessonId] = useState<Id<"lessons"> | "none" | undefined>(
-    initialData?.lessonId || preselectedLessonId || "none"
-  )
+  // Changed to array for multiple lessons
+  const [lessonIds, setLessonIds] = useState<Id<"lessons">[]>(() => {
+    if (initialData?.lessonIds && initialData.lessonIds.length > 0) {
+      return initialData.lessonIds
+    }
+    if (preselectedLessonId) {
+      return [preselectedLessonId]
+    }
+    return []
+  })
+  
   const [title, setTitle] = useState(initialData?.title || "")
   const [description, setDescription] = useState(initialData?.description || "")
   const [sessionType, setSessionType] = useState<"live" | "ignitia">(
@@ -80,7 +87,6 @@ export function ManageScheduleDialog({
     return date.toISOString()
   })
 
-  // Anchor Date State (to prevent drifting)
   const [anchorDate, setAnchorDate] = useState<Date>(() => new Date(startDate))
 
   const [duration, setDuration] = useState(() => {
@@ -96,10 +102,15 @@ export function ManageScheduleDialog({
   const [occurrences, setOccurrences] = useState(10)
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([])
   const prevDaysRef = useRef<number[]>([])
+  const [updateSeries, setUpdateSeries] = useState(false);
 
   // --- Data & Mutations ---
   const classes = useQuery(api.classes.getSchedulableClasses)
   const selectedClass = classes?.find(c => c._id === classId)
+  const lessons = useQuery(
+    api.lessons.listByCurriculum,
+    selectedClass ? { curriculumId: selectedClass.curriculumId } : "skip"
+  )
   const usedLessonIds = useQuery(api.schedule.getUsedLessons, { classId })
   const createSchedule = useMutation(api.schedule.createSchedule)
   const createRecurring = useMutation(api.schedule.createRecurringSchedule)
@@ -109,7 +120,15 @@ export function ManageScheduleDialog({
   // Reset form when opening
   useEffect(() => {
     if (open) {
-      setLessonId(initialData?.lessonId || preselectedLessonId || "none")
+      // ✅ Updated: Handle both formats
+      if (initialData?.lessonIds && initialData.lessonIds.length > 0) {
+        setLessonIds(initialData.lessonIds)
+      } else if (preselectedLessonId) {
+        setLessonIds([preselectedLessonId])
+      } else {
+        setLessonIds([])
+      }
+      
       setTitle(initialData?.title || "")
       setDescription(initialData?.description || "")
       setSessionType(initialData?.sessionType || "live")
@@ -121,8 +140,8 @@ export function ManageScheduleDialog({
       } else {
         const date = preselectedDate || new Date()
         if (!preselectedDate) {
-            date.setMinutes(0, 0, 0)
-            date.setHours(date.getHours() + 1)
+          date.setMinutes(0, 0, 0)
+          date.setHours(date.getHours() + 1)
         }
         initialStartStr = date.toISOString()
         setDuration(60)
@@ -130,11 +149,19 @@ export function ManageScheduleDialog({
       
       setStartDate(initialStartStr)
       setAnchorDate(new Date(initialStartStr))
-      setIsRecurring(false)
+      setIsRecurring(initialData?.isRecurring || false)
       setDaysOfWeek([])
       prevDaysRef.current = []
+      setUpdateSeries(false)
     }
   }, [open, initialData, preselectedLessonId, preselectedDate])
+
+  useEffect(() => {
+    if (open && isEditing && initialData?.isRecurring) {
+      setLessonIds([])
+      setIsRecurring(true)
+    }
+  }, [open, isEditing, initialData])
 
 
   useEffect(() => {
@@ -167,9 +194,24 @@ export function ManageScheduleDialog({
     }
   }, [daysOfWeek, anchorDate, startDate, t])
 
+  useEffect(() => {
+    if (open && isEditing && initialData?.isRecurring) {
+      setLessonIds([]);
+      setIsRecurring(true);
+    }
+  }, [open, isEditing, initialData]);
+
+
   const handleSubmit = async () => {
-    if (lessonId === "none" && !title.trim()) {
-      toast.error(t("schedule.titleRequired") || "Please enter a title")
+    // Validation: Title required if no lessons
+    if (lessonIds.length === 0 && !title.trim()) {
+      toast.error(t("schedule.titleRequired") || "Please enter a title or select at least one lesson")
+      return
+    }
+
+    // Block recurring with lessons
+    if (isRecurring && lessonIds.length > 0) {
+      toast.error(t("schedule.recurringNoLessons") || "Cannot create recurring schedules with lessons. Create individual schedules instead.")
       return
     }
 
@@ -178,18 +220,19 @@ export function ManageScheduleDialog({
     try {
       const start = new Date(startDate).getTime()
       const end = start + (duration * 60 * 1000)
-      const finalLessonId = lessonId === "none" ? undefined : lessonId as Id<"lessons">
+      const finalLessonIds = lessonIds.length > 0 ? lessonIds : undefined
       const timezoneOffset = new Date().getTimezoneOffset()
 
       if (isEditing && scheduleId) {
         await updateSchedule({
           id: scheduleId,
-          lessonId: finalLessonId === undefined ? null : finalLessonId,
+          lessonIds: finalLessonIds,
           title: title || undefined,
           description: description || undefined,
           scheduledStart: start,
           scheduledEnd: end,
           sessionType,
+          updateSeries,
         })
         toast.success(t("schedule.updated"))
       } else {
@@ -197,7 +240,7 @@ export function ManageScheduleDialog({
           const finalDaysOfWeek = daysOfWeek.length > 0 ? daysOfWeek : undefined;
           await createRecurring({
             classId,
-            lessonId: finalLessonId,
+            lessonIds: undefined, // Always undefined for recurring
             sessionType,
             title: title || undefined,
             description: description || undefined,
@@ -214,7 +257,7 @@ export function ManageScheduleDialog({
         } else {
           await createSchedule({
             classId,
-            lessonId: finalLessonId,
+            lessonIds: finalLessonIds,
             sessionType,
             title: title || undefined,
             description: description || undefined,
@@ -265,10 +308,10 @@ export function ManageScheduleDialog({
     })
   }
 
-  // --- Render Helpers ---
-  const toggleDayOfWeek = (day: number) => {
-    setDaysOfWeek(prev => 
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
+  // Helper to toggle lesson selection
+  const toggleLesson = (id: Id<"lessons">) => {
+    setLessonIds(prev => 
+      prev.includes(id) ? prev.filter(l => l !== id) : [...prev, id]
     )
   }
 
@@ -314,6 +357,50 @@ export function ManageScheduleDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {isEditing && (initialData?.isRecurring || initialData?.recurrenceParentId) && (
+            <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/20 space-y-3">
+              <Label className="text-sm font-medium">
+                {t('schedule.updateScope') || "What do you want to update?"}
+              </Label>
+              
+              <RadioGroup 
+                value={updateSeries ? "series" : "instance"} 
+                onValueChange={(v) => {
+                  const willUpdateSeries = v === "series";
+                  setUpdateSeries(willUpdateSeries);
+                  
+                  if (willUpdateSeries) {
+                    setLessonIds([]);
+                  }
+                }}
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="instance" id="scope-instance" />
+                  <Label htmlFor="scope-instance" className="font-normal cursor-pointer">
+                    {t('schedule.thisEventOnly') || "This event only"}
+                  </Label>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="series" id="scope-series" />
+                  <Label htmlFor="scope-series" className="font-normal cursor-pointer">
+                    {t('schedule.allFutureEvents') || "All future events in this series"}
+                  </Label>
+                </div>
+              </RadioGroup>
+              
+              {updateSeries ? (
+                <p className="text-xs text-blue-600 dark:text-blue-400 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{t('schedule.seriesUpdateNote') || "Changes affect all future occurrences. You cannot add lessons when updating the series."}</span>
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {t('schedule.instanceNote') || "Changes only affect this occurrence. You can add/remove lessons."}
+                </p>
+              )}
+            </div>
+          )}
           
           {/* Session Type */}
           <div className="space-y-3">
@@ -334,46 +421,108 @@ export function ManageScheduleDialog({
             </RadioGroup>
           </div>
 
-          {/* Lesson Selection */}
+          {/* Multi-Select Lesson UI */}
           <div className="space-y-2">
-            <Label>{t("lesson.selectOptional") || "Lesson (Optional)"}</Label>
-            <Select 
-                value={lessonId || "none"} 
-                onValueChange={(value) => setLessonId(value as Id<"lessons"> | "none")}
-            >
-                <SelectTrigger>
-                  <SelectValue placeholder="No specific lesson" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No specific lesson</SelectItem>
-                  {selectedClass?.lessons.map((lesson) => {
-                    const isUsed = usedLessonIds?.includes(lesson._id) && lesson._id !== initialData?.lessonId;
+            <Label>
+              {t("lesson.selectOptional") || "Lessons (Optional)"}
+              {lessonIds.length > 0 && <span className="ml-2 text-xs text-muted-foreground">({lessonIds.length} selected)</span>}
+            </Label>
+
+            {isEditing && updateSeries && (
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
+                <p className="font-medium">⚠️ {t('schedule.seriesLessonsBlocked') || "Cannot add lessons to series"}</p>
+                <p className="text-xs mt-1">{t('schedule.switchToInstance') || "Switch to 'This event only' to add lessons."}</p>
+              </div>
+            )}
+            
+            {/* Warning for recurring + lessons */}
+            {isRecurring && (
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
+                <p className="font-medium">⚠️ {t('schedule.recurringNoLessonsTitle') || "Recurring schedules cannot have lessons"}</p>
+                <p className="text-xs mt-1">{t('schedule.recurringNoLessonsDesc') || "Create individual schedules to assign specific lessons."}</p>
+              </div>
+            )}
+
+            <div className="border rounded-md max-h-48 overflow-y-auto">
+              {!lessons || lessons.length === 0 ? (
+                <div className="p-4 text-center text-sm text-muted-foreground">
+                  {t("lesson.noneAvailable") || "No lessons available for this class"}
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {lessons.map((lesson) => {
+                    const isUsed = usedLessonIds?.includes(lesson._id) && 
+                      !initialData?.lessonIds?.includes(lesson._id);
+                    const isSelected = lessonIds.includes(lesson._id);
+                    const isDisabled = isRecurring || isUsed || (isEditing && updateSeries);
+
                     return (
-                        <SelectItem 
-                            key={lesson._id} 
-                            value={lesson._id} 
-                            disabled={isUsed}
-                            className={isUsed ? "opacity-50" : ""}
-                        >
-                        {lesson.order}. {lesson.title} {isUsed && "(Scheduled)"}
-                        </SelectItem>
+                      <button
+                        key={lesson._id}
+                        type="button"
+                        onClick={() => !isDisabled && toggleLesson(lesson._id)}
+                        disabled={isDisabled}
+                        className={`w-full text-left px-4 py-3 transition-colors ${
+                          isDisabled 
+                            ? "opacity-40 cursor-not-allowed bg-muted/50" 
+                            : "hover:bg-accent cursor-pointer"
+                        } ${isSelected ? "bg-primary/10 border-l-4 border-primary" : ""}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+                              isSelected 
+                                ? "bg-primary border-primary" 
+                                : "border-input"
+                            }`}>
+                              {isSelected && (
+                                <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 12 12" fill="none">
+                                  <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">
+                                {lesson.order}. {lesson.title}
+                              </div>
+                              {/* NOW WORKS: lesson has description property */}
+                              {lesson.description && (
+                                <div className="text-xs text-muted-foreground truncate mt-0.5">
+                                  {lesson.description}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {isUsed && (
+                            <span className="text-xs bg-muted px-2 py-1 rounded">
+                              {t("lesson.scheduled") || "Scheduled"}
+                            </span>
+                          )}
+                        </div>
+                      </button>
                     )
                   })}
-                </SelectContent>
-            </Select>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Title */}
           <div className="space-y-2">
             <Label>
               {t("schedule.title") || "Title"}
-              {lessonId === "none" && <span className="text-destructive ml-1">*</span>}
+              {lessonIds.length === 0 && <span className="text-destructive ml-1">*</span>}
             </Label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={lessonId !== "none" ? "Override lesson title (optional)" : "e.g., Office Hours"}
+              placeholder={lessonIds.length > 0 ? "Override lesson title (optional)" : "e.g., Office Hours"}
             />
+            {lessonIds.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {t("schedule.titleOverrideHint") || "Leave empty to use first lesson's title"}
+              </p>
+            )}
           </div>
 
           {/* Description */}
@@ -383,6 +532,7 @@ export function ManageScheduleDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
+              placeholder={t("schedule.descriptionPlaceholder") || "Optional session notes..."}
             />
           </div>
 
@@ -415,18 +565,28 @@ export function ManageScheduleDialog({
             </div>
           </div>
 
-          {/* Recurring (Only show on create or if already recurring) */}
+          {/* Recurring Toggle */}
           {(!isEditing || isRecurring) && (
              <div className="flex items-center justify-between p-4 border rounded-lg">
                 <div className="space-y-0.5">
-                <Label>Recurring Schedule</Label>
-                <p className="text-sm text-muted-foreground">Create multiple sessions</p>
+                  <Label>Recurring Schedule</Label>
+                  <p className="text-sm text-muted-foreground">Create multiple sessions</p>
                 </div>
-                <Switch checked={isRecurring} onCheckedChange={setIsRecurring} disabled={isEditing} />
+                <Switch 
+                  checked={isRecurring} 
+                  onCheckedChange={(checked) => {
+                    setIsRecurring(checked)
+                    // Clear lessons when enabling recurring
+                    if (checked) {
+                      setLessonIds([])
+                    }
+                  }} 
+                  disabled={isEditing} 
+                />
             </div>
           )}
 
-          {/* Recurrence Options (Only Create Mode for now) */}
+          {/* Recurrence Options */}
           {isRecurring && !isEditing && (
             <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
               <div className="grid grid-cols-2 gap-4">
@@ -435,15 +595,15 @@ export function ManageScheduleDialog({
                   <Select 
                     value={recurrenceType} 
                     onValueChange={(v) => setRecurrenceType(v as RecurrenceType)}
-                >
+                  >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="biweekly">Every 2 Weeks</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="biweekly">Every 2 Weeks</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
                     </SelectContent>
-                </Select>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Occurrences</Label>
@@ -457,6 +617,11 @@ export function ManageScheduleDialog({
                     <div className="flex flex-wrap gap-2">
                         {weekDays.map((day) => {
                             const isStartDay = day.value === currentStartDayIndex
+                            const toggleDayOfWeek = (dayVal: number) => {
+                              setDaysOfWeek(prev => 
+                                prev.includes(dayVal) ? prev.filter(d => d !== dayVal) : [...prev, dayVal].sort()
+                              )
+                            }
 
                             return (
                                 <Button

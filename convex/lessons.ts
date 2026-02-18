@@ -262,11 +262,13 @@ export const remove = mutation({
       throw new Error("Lesson not found");
     }
 
-    // Check if lesson is scheduled
-    const schedules = await ctx.db
+    const allSchedules = await ctx.db
       .query("classSchedule")
-      .filter((q) => q.eq(q.field("lessonId"), args.id))
       .collect();
+    
+    const schedules = allSchedules.filter(schedule => 
+      schedule.lessonIds && schedule.lessonIds.includes(args.id)
+    );
 
     if (schedules.length > 0) {
       throw new Error(

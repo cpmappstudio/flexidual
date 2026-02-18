@@ -2,7 +2,7 @@
 
 import { format } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
-import { CheckCircle2, MonitorPlay, Video, BookOpen, ArrowRight, Users, UserCheck, UserX, Clock } from "lucide-react"
+import { CheckCircle2, MonitorPlay, Video, BookOpen, ArrowRight, Users, UserCheck, UserX, Clock, Link as LinkIcon } from "lucide-react"
 import { useTranslations, useLocale } from "next-intl"
 import Link from "next/link"
 import { Id } from "@/convex/_generated/dataModel"
@@ -21,7 +21,7 @@ const localeMap = {
 interface ScheduleItemProps {
   schedule: {
     scheduleId: Id<"classSchedule">
-    lessonId?: Id<"lessons">
+    lessonIds?: Id<"lessons">[] // ✅ Changed to array
     classId: Id<"classes">
     title: string
     description?: string
@@ -33,12 +33,19 @@ interface ScheduleItemProps {
     status?: "scheduled" | "active" | "cancelled" | "completed"
     className?: string
     curriculumTitle?: string
+    lessons?: {
+      _id: Id<"lessons">
+      title: string
+      order: number
+    }[]
     attendanceSummary?: {
       present: number
       partial: number
       missed: number
       total: number
     }
+    isRecurring?: boolean
+    recurrenceParentId?: Id<"classSchedule">
   }
   classId?: Id<"classes">
   isPast?: boolean
@@ -173,10 +180,15 @@ export function ScheduleItem({
               </Badge>
             )}
 
-            {schedule.lessonId && (
+            {/* ✅ Updated: Show lesson count instead of single lesson indicator */}
+            {schedule.lessonIds && schedule.lessonIds.length > 0 ? (
               <Badge variant="outline" className="shrink-0">
-                <BookOpen className="h-3 w-3 mr-1" />
-                {t('lesson.linked')}
+                <LinkIcon className="h-3 w-3 mr-1" />
+                {schedule.lessonIds.length} {schedule.lessonIds.length === 1 ? t('lesson.linked') : t('lesson.lessonsLinked')}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="shrink-0 border-dashed text-muted-foreground">
+                {t('lesson.noLesson')}
               </Badge>
             )}
             
@@ -203,6 +215,22 @@ export function ScheduleItem({
               </Badge>
             )}
           </div>
+
+          {/* ✅ NEW: Display linked lessons */}
+          {schedule.lessons && schedule.lessons.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {schedule.lessons.map((lesson) => (
+                <Badge 
+                  key={lesson._id} 
+                  variant="secondary" 
+                  className="text-xs font-normal"
+                >
+                  <BookOpen className="h-3 w-3 mr-1" />
+                  {lesson.order}. {lesson.title}
+                </Badge>
+              ))}
+            </div>
+          )}
           
           {showDescription && schedule.description && (
             <p className="text-sm text-muted-foreground line-clamp-2 mt-1.5">
@@ -210,7 +238,7 @@ export function ScheduleItem({
             </p>
           )}
 
-          {/* New Attendance Resume */}
+          {/* Attendance Resume */}
           {renderAttendanceSummary()}
           
           <p className="text-xs text-muted-foreground mt-1.5">
@@ -221,7 +249,7 @@ export function ScheduleItem({
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-        {/* Attendance Button (New) */}
+        {/* Attendance Button */}
         {classId && showEdit && (
             <AttendanceDialog 
               scheduleId={schedule.scheduleId}
@@ -243,12 +271,14 @@ export function ScheduleItem({
                 classId={classId}
                 scheduleId={schedule.scheduleId}
                 initialData={{
-                  lessonId: schedule.lessonId, 
+                  lessonIds: schedule.lessonIds,
                   title: schedule.title,
                   description: schedule.description,
                   start: startDate.getTime(),
                   end: endDate.getTime(),
-                  sessionType: schedule.sessionType || "live"
+                  sessionType: schedule.sessionType || "live",
+                  isRecurring: schedule.isRecurring,
+                  recurrenceParentId: schedule.recurrenceParentId,
                 }}
                 trigger={<Button size="sm" variant="outline">{t('common.edit')}</Button>}
               />

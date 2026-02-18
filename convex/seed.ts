@@ -146,7 +146,7 @@ export const run = mutation({
     // Lesson 1: Active NOW (can join immediately)
     const schedule1Id = await ctx.db.insert("classSchedule", {
       classId,
-      lessonId: lesson1Id,
+      lessonIds: [lesson1Id],
       scheduledStart: now - (10 * 60 * 1000), // Started 10 min ago
       scheduledEnd: now + (50 * 60 * 1000), // Ends in 50 min
       roomName: `class-${classId}-lesson-${lesson1Id}-${now}`,
@@ -163,7 +163,7 @@ export const run = mutation({
     
     await ctx.db.insert("classSchedule", {
       classId,
-      lessonId: lesson2Id,
+      lessonIds: [lesson2Id],
       scheduledStart: tomorrow10AM.getTime(),
       scheduledEnd: tomorrow10AM.getTime() + oneHour,
       roomName: `class-${classId}-lesson-${lesson2Id}-${tomorrow10AM.getTime()}`,
@@ -178,7 +178,7 @@ export const run = mutation({
     
     await ctx.db.insert("classSchedule", {
       classId,
-      lessonId: lesson3Id,
+      lessonIds: [lesson3Id],
       scheduledStart: nextWeek,
       scheduledEnd: nextWeek + oneHour,
       roomName: `class-${classId}-lesson-${lesson3Id}-${nextWeek}`,
@@ -192,7 +192,7 @@ export const run = mutation({
     const yesterday = now - (24 * 60 * 60 * 1000);
     await ctx.db.insert("classSchedule", {
       classId,
-      lessonId: lesson1Id, // Reuse lesson 1
+      lessonIds: [lesson1Id], // Reuse lesson 1
       scheduledStart: yesterday,
       scheduledEnd: yesterday + oneHour,
       roomName: `class-${classId}-lesson-${lesson1Id}-${yesterday}`,

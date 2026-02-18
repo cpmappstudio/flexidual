@@ -169,13 +169,11 @@ export const getMySchedule = query({
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
-    if (!user) {
-      return [];
-    }
+    if (!user) return [];
 
     const isTeacherOrAdmin = ["teacher", "admin", "superadmin", "tutor"].includes(user.role);
 
-    // Step 1: Find classes (role-based logic)
+    // Find classes (role-based logic)
     let myClasses;
     if (user.role === "admin" || user.role === "superadmin") {
       if (args.teacherId) {
@@ -212,7 +210,7 @@ export const getMySchedule = query({
 
     const classIds = myClasses.map(c => c._id);
 
-    // Step 2: Fetch schedules for these classes
+    // Fetch schedules
     const scheduleItems = await Promise.all(
       classIds.map(id => 
         ctx.db
@@ -224,7 +222,7 @@ export const getMySchedule = query({
 
     let flatSchedule = scheduleItems.flat();
 
-    // Step 3: Filter by date/status
+    // Apply filters
     if (args.from) {
       flatSchedule = flatSchedule.filter(s => s.scheduledStart >= args.from!);
     }
@@ -235,30 +233,77 @@ export const getMySchedule = query({
       flatSchedule = flatSchedule.filter(s => s.status === args.status);
     }
 
-    // Step 4: Hydrate with details AND Robust Attendance Logic
+    // Batch load all unique entities
+    const uniqueCurriculumIds = new Set(myClasses.map(c => c.curriculumId));
+    const uniqueTeacherIds = new Set(myClasses.map(c => c.teacherId));
+    const uniqueLessonIds = new Set(
+      flatSchedule.flatMap(s => s.lessonIds || [])
+    );
+
+    const [curriculums, teachers, lessons] = await Promise.all([
+      Promise.all(Array.from(uniqueCurriculumIds).map(id => ctx.db.get(id))),
+      Promise.all(Array.from(uniqueTeacherIds).map(id => ctx.db.get(id))),
+      Promise.all(Array.from(uniqueLessonIds).map(id => ctx.db.get(id))),
+    ]);
+
+    // Create lookup maps for O(1) access
+    const curriculumMap = new Map(curriculums.filter(Boolean).map(c => [c!._id, c!]));
+    const teacherMap = new Map(teachers.filter(Boolean).map(t => [t!._id, t!]));
+    const lessonMap = new Map(lessons.filter(Boolean).map(l => [l!._id, l!]));
+
+    // Batch load attendance sessions once
+    const allSessionsForSchedules = isTeacherOrAdmin || user.role === "student"
+      ? await Promise.all(
+          flatSchedule.map(s =>
+            ctx.db
+              .query("class_sessions")
+              .withIndex("by_schedule", (q) => q.eq("scheduleId", s._id))
+              .collect()
+          )
+        )
+      : [];
+
+    const sessionsBySchedule = new Map(
+      flatSchedule.map((s, idx) => [s._id, allSessionsForSchedules[idx] || []])
+    );
+
+    // Hydrate results
     const results = await Promise.all(
       flatSchedule.map(async (item) => {
         const classData = myClasses.find(c => c._id === item.classId);
         if (!classData) return null;
 
-        const curriculum = await ctx.db.get(classData.curriculumId);
-        const teacher = await ctx.db.get(classData.teacherId);
+        const curriculum = curriculumMap.get(classData.curriculumId);
+        const teacher = teacherMap.get(classData.teacherId);
 
-        let lessonData = null;
-        if (item.lessonId) {
-          lessonData = await ctx.db.get(item.lessonId);
-        }
+        // Handle multiple lessons properly
+        const scheduledLessons = (item.lessonIds || [])
+          .map(id => lessonMap.get(id))
+          .filter(Boolean);
 
+        // Determine title/description priority:
+        // 1. Custom title/description if set
+        // 2. First lesson's title/description
+        // 3. Fallback to generic
+        const title = item.title || 
+                     (scheduledLessons[0]?.title) || 
+                     "Class Session";
+        
+        const description = item.description || 
+                           (scheduledLessons[0]?.description) || 
+                           "";
+
+        // Get recurrence info
         let recurrenceRule = item.recurrenceRule;
         if (item.recurrenceParentId && !recurrenceRule) {
-            const parent = await ctx.db.get(item.recurrenceParentId);
-            recurrenceRule = parent?.recurrenceRule;
+          const parent = await ctx.db.get(item.recurrenceParentId);
+          recurrenceRule = parent?.recurrenceRule;
         }
 
-        const title = lessonData?.title || item.title || "Class Session";
-        const description = lessonData?.description || item.description || "";
-
-        // --- 🧠 ATTENDANCE LOGIC ---
+        // Use pre-loaded sessions
+        const sessions = sessionsBySchedule.get(item._id) || [];
+        
+        // Attendance calculation logic using pre-loaded sessions
         let attendanceStatus: "upcoming" | "present" | "absent" | "partial" | "in-progress" | "late" = "upcoming";
         let timeInClass = 0;
         let isStudentActive = false;
@@ -274,70 +319,46 @@ export const getMySchedule = query({
         const now = Date.now();
 
         if (user.role === "student") {
-          const sessions = await ctx.db
-            .query("class_sessions")
-            .withIndex("by_student_schedule", (q) => 
-              q.eq("studentId", user._id).eq("scheduleId", item._id)
-            )
-            .collect();
-
-          // Check if currently connected (joined but not left)
-          const activeSession = sessions.find(s => s.joinedAt && !s.leftAt);
+          const studentSessions = sessions.filter(s => s.studentId === user._id);
+          const activeSession = studentSessions.find(s => s.joinedAt && !s.leftAt);
           isStudentActive = !!activeSession;
 
-          // Check for manual status first
-          const manualRecord = sessions.find(s => s.attendanceStatus);
+          const manualRecord = studentSessions.find(s => s.attendanceStatus);
           
-          if (manualRecord && manualRecord.attendanceStatus) {
-             // Map stored status to UI status
-             attendanceStatus = manualRecord.attendanceStatus as any;
+          if (manualRecord?.attendanceStatus) {
+            attendanceStatus = manualRecord.attendanceStatus as any;
           } else {
-              // PROTECTED CALCULATION: Only count time WITHIN the schedule window
-              timeInClass = sessions.reduce((sum, s) => {
-                const sessionStart = s.joinedAt;
-                // If they haven't left, calculate up to NOW, but fallback to now if leftAt is missing
-                const sessionEnd = s.leftAt || now;
+            timeInClass = studentSessions.reduce((sum, s) => {
+              const sessionStart = s.joinedAt;
+              const sessionEnd = s.leftAt || now;
+              const effectiveStart = Math.max(sessionStart, item.scheduledStart);
+              const effectiveEnd = Math.min(sessionEnd, item.scheduledEnd);
+              const duration = Math.max(0, (effectiveEnd - effectiveStart) / 1000);
+              return sum + duration;
+            }, 0);
+            
+            const scheduledDuration = (item.scheduledEnd - item.scheduledStart) / 1000;
+            const ratio = scheduledDuration > 0 ? timeInClass / scheduledDuration : 0;
 
-                // Clamp the session time to the schedule's start and end
-                const effectiveStart = Math.max(sessionStart, item.scheduledStart);
-                const effectiveEnd = Math.min(sessionEnd, item.scheduledEnd);
-
-                // If effectiveEnd > effectiveStart, we have valid overlap. 
-                // Math.max(0, ...) handles cases where the session is entirely outside the window.
-                const duration = Math.max(0, (effectiveEnd - effectiveStart) / 1000);
-                
-                return sum + duration;
-              }, 0);
-              
-              const scheduledDuration = (item.scheduledEnd - item.scheduledStart) / 1000;
-              const ratio = scheduledDuration > 0 ? timeInClass / scheduledDuration : 0;
-
-              if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) {
-                attendanceStatus = "present";
-              } else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || timeInClass >= MIN_PARTIAL_SECONDS) {
-                attendanceStatus = "partial";
-              } else if (item.scheduledStart > now && !isStudentActive) {
-                attendanceStatus = "upcoming";
-              } else if (now >= item.scheduledStart && now <= item.scheduledEnd) {
-                 attendanceStatus = isStudentActive ? "in-progress" : "late";
-              } else {
-                 attendanceStatus = "absent";
-              }
+            if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) {
+              attendanceStatus = "present";
+            } else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || timeInClass >= MIN_PARTIAL_SECONDS) {
+              attendanceStatus = "partial";
+            } else if (item.scheduledStart > now && !isStudentActive) {
+              attendanceStatus = "upcoming";
+            } else if (now >= item.scheduledStart && now <= item.scheduledEnd) {
+              attendanceStatus = isStudentActive ? "in-progress" : "late";
+            } else {
+              attendanceStatus = "absent";
+            }
           }
-        } 
+        }
         
         // --- TEACHER SUMMARY LOGIC ---
         if (isTeacherOrAdmin) {
-          // Fetch all sessions for this schedule
-          const allSessions = await ctx.db
-            .query("class_sessions")
-            .withIndex("by_schedule", (q) => q.eq("scheduleId", item._id))
-            .collect();
-            
-          // We need to aggregate by student
           const studentStats = new Map<string, { totalSeconds: number, manualStatus?: string }>();
           
-          allSessions.forEach(s => {
+          sessions.forEach(s => {
             const current = studentStats.get(s.studentId) || { totalSeconds: 0 };
             
             // PROTECTED CALCULATION FOR SUMMARY
@@ -363,11 +384,11 @@ export const getMySchedule = query({
             let status = "absent";
             
             if (stats?.manualStatus) {
-               status = stats.manualStatus;
+              status = stats.manualStatus;
             } else if (stats) {
-               const ratio = scheduledDuration > 0 ? stats.totalSeconds / scheduledDuration : 0;
-               if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) status = "present";
-               else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || stats.totalSeconds >= MIN_PARTIAL_SECONDS) status = "partial";
+              const ratio = scheduledDuration > 0 ? stats.totalSeconds / scheduledDuration : 0;
+              if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) status = "present";
+              else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || stats.totalSeconds >= MIN_PARTIAL_SECONDS) status = "partial";
             }
             
             // Map to summary buckets
@@ -390,7 +411,14 @@ export const getMySchedule = query({
           isLive: item.isLive || false,
           sessionType: item.sessionType || "live",
           status: item.status,
-          lessonId: item.lessonId,
+          
+          lessonIds: item.lessonIds || [],
+          lessons: scheduledLessons.map(l => ({
+            _id: l!._id,
+            title: l!.title,
+            order: l!.order,
+          })),
+          
           classId: classData._id,
           curriculumId: classData.curriculumId,
           isRecurring: item.isRecurring || false,
@@ -434,11 +462,11 @@ export const getWithDetails = query({
     const classData = await ctx.db.get(schedule.classId);
     if (!classData) return null;
 
-    // Lesson is now optional
-    let lesson = null;
-    if (schedule.lessonId) {
-      lesson = await ctx.db.get(schedule.lessonId);
-    }
+    const lessons = schedule.lessonIds && schedule.lessonIds.length > 0
+      ? await Promise.all(schedule.lessonIds.map(id => ctx.db.get(id)))
+      : [];
+
+    const validLessons = lessons.filter(Boolean);
 
     const [curriculum, teacher] = await Promise.all([
       ctx.db.get(classData.curriculumId),
@@ -447,12 +475,13 @@ export const getWithDetails = query({
 
     return {
       ...schedule,
-      lesson: lesson ? {
-        _id: lesson._id,
-        title: lesson.title,
-        description: lesson.description,
-        content: lesson.content,
-      } : null,
+      lessons: validLessons.map(l => ({
+        _id: l!._id,
+        title: l!.title,
+        description: l!.description,
+        content: l!.content,
+        order: l!.order,
+      })),
       class: {
         _id: classData._id,
         name: classData.name,
@@ -544,10 +573,15 @@ export const getUsedLessons = query({
       .withIndex("by_class", (q) => q.eq("classId", args.classId))
       .collect();
 
-    // Return array of lessonIds that are not null/undefined
-    return schedules
-      .map((s) => s.lessonId)
-      .filter((id): id is Id<"lessons"> => !!id);
+    // Flatten all lessonIds arrays
+    const usedLessons = new Set<Id<"lessons">>();
+    schedules.forEach(s => {
+      if (s.lessonIds) {
+        s.lessonIds.forEach(id => usedLessons.add(id));
+      }
+    });
+
+    return Array.from(usedLessons);
   },
 });
 
@@ -638,7 +672,7 @@ export const getAttendanceDetails = query({
 export const createSchedule = mutation({
   args: {
     classId: v.id("classes"),
-    lessonId: v.optional(v.id("lessons")),
+    lessonIds: v.optional(v.array(v.id("lessons"))),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     scheduledStart: v.number(),
@@ -659,12 +693,33 @@ export const createSchedule = mutation({
       throw new Error("Only administrators or the class teacher can create schedules");
     }
 
-    // Validate lesson if provided
-    if (args.lessonId) {
-      const lesson = await ctx.db.get(args.lessonId);
-      if (!lesson) throw new Error("Lesson not found");
-      if (lesson.curriculumId !== classData.curriculumId) {
-        throw new Error("Lesson does not belong to this class's curriculum");
+    // Validate all lessons if provided
+    if (args.lessonIds && args.lessonIds.length > 0) {
+      const usedLessons = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", args.classId))
+        .collect();
+      
+      const allUsedLessonIds = new Set<string>();
+      usedLessons.forEach(s => {
+        if (s.lessonIds) {
+          s.lessonIds.forEach(id => allUsedLessonIds.add(id));
+        }
+      });
+
+      for (const lessonId of args.lessonIds) {
+        if (allUsedLessonIds.has(lessonId)) {
+          throw new ConvexError({
+            code: "LESSON_ALREADY_SCHEDULED",
+            lessonId: lessonId,
+          });
+        }
+
+        const lesson = await ctx.db.get(lessonId);
+        if (!lesson) throw new Error("Lesson not found");
+        if (lesson.curriculumId !== classData.curriculumId) {
+          throw new Error("Lesson does not belong to this class's curriculum");
+        }
       }
     }
 
@@ -685,7 +740,7 @@ export const createSchedule = mutation({
 
     return await ctx.db.insert("classSchedule", {
       classId: args.classId,
-      lessonId: args.lessonId,
+      lessonIds: args.lessonIds,
       title: args.title,
       description: args.description,
       sessionType: args.sessionType || "live",
@@ -708,7 +763,7 @@ export const createSchedule = mutation({
 export const createRecurringSchedule = mutation({
   args: {
     classId: v.id("classes"),
-    lessonId: v.optional(v.id("lessons")),
+    lessonIds: v.optional(v.array(v.id("lessons"))),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     scheduledStart: v.number(), // First occurrence
@@ -740,12 +795,8 @@ export const createRecurringSchedule = mutation({
       throw new Error("Only administrators or the class teacher can create schedules");
     }
 
-    if (args.lessonId) {
-      const lesson = await ctx.db.get(args.lessonId);
-      if (!lesson) throw new Error("Lesson not found");
-      if (lesson.curriculumId !== classData.curriculumId) {
-        throw new Error("Lesson does not belong to this class's curriculum");
-      }
+    if (args.lessonIds && args.lessonIds.length > 0) {
+      throw new Error("Cannot assign lessons to a recurring schedule series. Please schedule lessons to individual sessions after creation.");
     }
 
     if (args.scheduledEnd <= args.scheduledStart) {
@@ -794,7 +845,7 @@ export const createRecurringSchedule = mutation({
 
     const parentId = await ctx.db.insert("classSchedule", {
       classId: args.classId,
-      lessonId: args.lessonId,
+      lessonIds: [],
       title: args.title,
       description: args.description,
       scheduledStart: realEffectiveStart,
@@ -816,7 +867,7 @@ export const createRecurringSchedule = mutation({
       
       const childId = await ctx.db.insert("classSchedule", {
         classId: args.classId,
-        lessonId: args.lessonId,
+        lessonIds: [],
         title: args.title,
         description: args.description,
         scheduledStart: start,
@@ -848,7 +899,7 @@ export const createRecurringSchedule = mutation({
 export const scheduleLesson = mutation({
   args: {
     classId: v.id("classes"),
-    lessonId: v.id("lessons"),
+    lessonIds: v.array(v.id("lessons")),
     scheduledStart: v.number(),
     scheduledEnd: v.number(),
     sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
@@ -871,7 +922,7 @@ export const scheduleLesson = mutation({
     }
 
     // Verify lesson exists and belongs to the class curriculum
-    const lesson = await ctx.db.get(args.lessonId);
+    const lesson = await ctx.db.get(args.lessonIds[0]);
     if (!lesson) {
       throw new Error("Lesson not found");
     }
@@ -894,11 +945,11 @@ export const scheduleLesson = mutation({
     });
 
     // Generate unique room name
-    const roomName = `class-${args.classId}-lesson-${args.lessonId}-${Date.now()}`;
+    const roomName = `class-${args.classId}-lesson-${args.lessonIds[0]}-${Date.now()}`;
 
     return await ctx.db.insert("classSchedule", {
       classId: args.classId,
-      lessonId: args.lessonId,
+      lessonIds: args.lessonIds,
       scheduledStart: args.scheduledStart,
       scheduledEnd: args.scheduledEnd,
       sessionType: args.sessionType || "live",
@@ -918,7 +969,7 @@ export const scheduleLesson = mutation({
 export const updateSchedule = mutation({
   args: {
     id: v.id("classSchedule"),
-    lessonId: v.optional(v.union(v.id("lessons"), v.null())),
+    lessonIds: v.optional(v.array(v.id("lessons"))),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     scheduledStart: v.optional(v.number()),
@@ -948,91 +999,39 @@ export const updateSchedule = mutation({
       throw new Error("Only administrators or the class teacher can update schedules");
     }
 
-    // Validate lesson if changing
-    if (args.lessonId && args.lessonId !== null) {
-      const lesson = await ctx.db.get(args.lessonId);
-      if (!lesson) throw new Error("Lesson not found");
-      if (lesson.curriculumId !== classData.curriculumId) {
-        throw new Error("Lesson does not belong to this class's curriculum");
-      }
+    // Block adding lessons when updating entire series
+    if (args.updateSeries && args.lessonIds && args.lessonIds.length > 0) {
+      throw new Error("Cannot add lessons when updating entire series. Edit individual occurrences instead.");
     }
 
-    // Calculate time delta and new duration
-    const oldStart = schedule.scheduledStart;
-    const newStart = args.scheduledStart ?? oldStart;
-    const timeShiftDelta = newStart - oldStart;
-    
-    const oldEnd = schedule.scheduledEnd;
-    const newEnd = args.scheduledEnd ?? oldEnd;
-    const newDuration = newEnd - newStart;
-
-    // VALIDATE OVERLAP if times are changing
-    // (Only checks the specific item being edited, or the master if updating series)
-    if (args.scheduledStart !== undefined || args.scheduledEnd !== undefined) {
-      await validateScheduleOverlap(ctx, {
-        teacherId: classData.teacherId,
-        classId: classData._id,
-        start: newStart,
-        end: newEnd,
-        excludeScheduleId: args.id
-      });
-    }
-
-    // Prepare metadata updates
-    const metadataUpdates: any = {};
-    if (args.title !== undefined) metadataUpdates.title = args.title;
-    if (args.sessionType !== undefined) metadataUpdates.sessionType = args.sessionType;
-    if (args.description !== undefined) metadataUpdates.description = args.description;
-    if (args.lessonId !== undefined) {
-      metadataUpdates.lessonId = args.lessonId === null ? undefined : args.lessonId;
-    }
-    if (args.status) {
-      metadataUpdates.status = args.status;
-      if (args.status === "completed" && !schedule.completedAt) {
-        metadataUpdates.completedAt = Date.now();
-      }
-    }
-
-    // Update single or series
-    if (args.updateSeries && (schedule.isRecurring || schedule.recurrenceParentId)) {
-      // Find the Master ID (Parent)
-      const masterId = schedule.recurrenceParentId || schedule._id;
-
-      // Collect all items in the series (Master + Children)
-      const itemsToUpdate = [];
-      
-      const parent = await ctx.db.get(masterId);
-      if (parent) itemsToUpdate.push(parent);
-
-      const children = await ctx.db
+    // Validate lessons if updating single occurrence
+    if (args.lessonIds && args.lessonIds.length > 0 && !args.updateSeries) {
+      const usedLessons = await ctx.db
         .query("classSchedule")
-        .withIndex("by_recurrence_parent", (q) => q.eq("recurrenceParentId", masterId))
+        .withIndex("by_class", (q) => q.eq("classId", schedule.classId))
         .collect();
-      itemsToUpdate.push(...children);
+      
+      const allUsedLessonIds = new Set<string>();
+      usedLessons.forEach(s => {
+        if (s._id !== args.id && s.lessonIds) {
+          s.lessonIds.forEach(id => allUsedLessonIds.add(id));
+        }
+      });
 
-      const uniqueItems = Array.from(new Map(itemsToUpdate.map(item => [item._id, item])).values());
+      for (const lessonId of args.lessonIds) {
+        if (allUsedLessonIds.has(lessonId)) {
+          throw new ConvexError({
+            code: "LESSON_ALREADY_SCHEDULED",
+            lessonId: lessonId,
+          });
+        }
 
-      for (const item of uniqueItems) {
-        const updatePatch: any = { ...metadataUpdates };
-
-        // Apply Relative Time Shift
-        const itemNewStart = item.scheduledStart + timeShiftDelta;
-        
-        updatePatch.scheduledStart = itemNewStart;
-        updatePatch.scheduledEnd = itemNewStart + newDuration;
-
-        await ctx.db.patch(item._id, updatePatch);
+        const lesson = await ctx.db.get(lessonId);
+        if (!lesson) throw new Error("Lesson not found");
+        if (lesson.curriculumId !== classData.curriculumId) {
+          throw new Error("Lesson does not belong to this class's curriculum");
+        }
       }
-      
-      return { updated: uniqueItems.length, type: "series" };
-    } else {
-      // Single instance update
-      const singleUpdates = { ...metadataUpdates };
-      if (args.scheduledStart !== undefined) singleUpdates.scheduledStart = newStart;
-      if (args.scheduledEnd !== undefined) singleUpdates.scheduledEnd = newEnd;
-      
-      await ctx.db.patch(args.id, singleUpdates);
-      return { updated: 1, type: "single" };
     }
   },
 });

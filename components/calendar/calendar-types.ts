@@ -34,7 +34,7 @@ export type CalendarEvent = {
   
   // Core scheduling info
   scheduleId: Id<"classSchedule">
-  lessonId?: Id<"lessons">
+  lessonIds?: Id<"lessons">[] // ✅ Changed from lessonId to lessonIds array
   classId: Id<"classes">
   curriculumId: Id<"curriculums">
   sessionType: "live" | "ignitia"
@@ -49,6 +49,13 @@ export type CalendarEvent = {
   // Class/Curriculum context
   className: string
   curriculumTitle: string
+  
+  // ✅ Added: Full lesson data for display
+  lessons?: {
+    _id: Id<"lessons">
+    title: string
+    order: number
+  }[]
   
   // LiveKit room info
   roomName?: string

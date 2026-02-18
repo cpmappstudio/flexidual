@@ -21,9 +21,9 @@ export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
   const mySchedule = useQuery(api.schedule.getMySchedule, {})
 
   // 2. Find if this specific lesson is currently LIVE for me
-  //    We check if we have a schedule item for this lessonId that is marked 'isLive'
+  //    Check if we have a schedule item with this lessonId in the lessonIds array that is marked 'isLive'
   const activeSession = mySchedule?.find(
-    (s) => s.lessonId === lessonId && s.isLive === true
+    (s) => s.lessonIds?.includes(lessonId) && s.isLive === true
   )
 
   const handleJoin = () => {

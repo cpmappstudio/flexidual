@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { useCalendarContext } from "../calendar-context";
 import { DateTimePicker } from "@/components/calendar/form/date-time-picker";
 import {
@@ -58,7 +59,6 @@ function formatRecurrencePattern(
     const rule = JSON.parse(recurrenceRule);
     const details: string[] = [];
     
-    // Get recurrence type label
     const typeLabels = {
       daily: t("schedule.recurrence.daily"),
       weekly: t("schedule.recurrence.weekly"),
@@ -68,7 +68,6 @@ function formatRecurrencePattern(
     
     const summary = typeLabels[rule.type as keyof typeof typeLabels] || rule.type;
     
-    // Add days of week if specified
     if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
       const dayLabels = [
         t("days.sunday"),
@@ -87,12 +86,10 @@ function formatRecurrencePattern(
       details.push(`${t("schedule.repeatOn")}: ${selectedDays}`);
     }
     
-    // Add occurrences
     if (rule.occurrences) {
       details.push(`${rule.occurrences} ${t("schedule.occurrences").toLowerCase()}`);
     }
     
-    // Add end date if specified
     if (rule.endDate) {
       const endDate = new Date(rule.endDate).toLocaleDateString();
       details.push(`${t("schedule.until")}: ${endDate}`);
@@ -110,7 +107,7 @@ const formSchema = z.object({
   description: z.string().optional(),
   start: z.string(),
   duration: z.number().min(15).max(240),
-  lessonId: z.string().optional(),
+  lessonIds: z.array(z.string()).optional(),
   sessionType: z.enum(["live", "ignitia"]),
 });
 
@@ -131,23 +128,20 @@ export default function CalendarManageEventDialog() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   
-  // Track last processed event to prevent double renders
   const lastEventIdRef = useRef<string | null>(null);
 
   // Queries for Edit Mode
-  // 1. Get Class details to know the curriculum
   const classData = useQuery(
     api.classes.get, 
     isEditing && selectedEvent ? { id: selectedEvent.classId } : "skip"
   );
   
-  // 2. Get Lessons for that curriculum
+  // ✅ Fetch full lesson details
   const lessons = useQuery(
     api.lessons.listByCurriculum,
     classData ? { curriculumId: classData.curriculumId } : "skip"
   );
 
-  // 3. Get Used Lessons in this class to prevent duplicates
   const usedLessonIds = useQuery(
     api.schedule.getUsedLessons,
     selectedEvent ? { classId: selectedEvent.classId } : "skip"
@@ -162,9 +156,9 @@ export default function CalendarManageEventDialog() {
       return {
         title: "",
         description: "",
-        start: new Date().toISOString(), // Or appropriate default
+        start: new Date().toISOString(),
         duration: 60,
-        lessonId: "none",
+        lessonIds: [],
         sessionType: "live" as const,
       };
     }
@@ -176,7 +170,7 @@ export default function CalendarManageEventDialog() {
       description: selectedEvent.description || "",
       start: selectedEvent.start.toISOString(),
       duration: Math.round(durationMs / (60 * 1000)),
-      lessonId: selectedEvent.lessonId || "none",
+      lessonIds: selectedEvent.lessonIds || [],
       sessionType: (selectedEvent as CalendarEvent).sessionType || "live",
     };
   }, [selectedEvent]);
@@ -187,7 +181,8 @@ export default function CalendarManageEventDialog() {
     values: defaultValues
   });
 
-  // Calculate duration from event dates
+  const lessonIds = form.watch("lessonIds") || [];
+
   const eventDuration = useMemo(() => {
     if (!selectedEvent) return 60;
     const durationMs = selectedEvent.end.getTime() - selectedEvent.start.getTime();
@@ -208,39 +203,28 @@ export default function CalendarManageEventDialog() {
         description: selectedEvent.description || "",
         start: selectedEvent.start.toISOString(),
         duration: eventDuration,
-        lessonId: selectedEvent.lessonId || "none",
+        lessonIds: selectedEvent.lessonIds || [],
         sessionType: (selectedEvent as CalendarEvent).sessionType || "live",
       });
       setUpdateMode("single");
     }
   }, [manageEventDialogOpen, selectedEvent, form, eventDuration, isEditing]);
 
-  // Transform lessons for dropdown
-  const lessonOptions = useMemo(() => {
-    if (!lessons) return [];
-    
-    const currentLessonId = selectedEvent?.lessonId;
+  useEffect(() => {
+    if (isEditing && selectedEvent?.isRecurring) {
+      form.setValue("lessonIds", []);
+    }
+  }, [isEditing, selectedEvent?.isRecurring, form]);
 
-    const opts = lessons.map(l => {
-      // Disable if used by another schedule, but allow if it's the currently selected one
-      const isUsed = usedLessonIds?.includes(l._id) && l._id !== currentLessonId;
-      
-      return {
-        value: l._id,
-        label: isUsed 
-            ? `${l.order}. ${l.title} (${t("schedule.scheduled")})` 
-            : `${l.order}. ${l.title}`,
-        disabled: isUsed
-      };
-    });
-    
-    return [
-      { value: "none", label: t('lesson.noLesson') || "No linked lesson", disabled: false }, 
-      ...opts
-    ];
-  }, [lessons, t, usedLessonIds, selectedEvent]);
+  // ✅ Helper to toggle lesson selection
+  const toggleLesson = (id: string) => {
+    const current = form.getValues("lessonIds") || [];
+    const updated = current.includes(id)
+      ? current.filter(l => l !== id)
+      : [...current, id];
+    form.setValue("lessonIds", updated);
+  };
 
-  // Get recurrence pattern info - check parent if this is a child occurrence
   const recurrenceInfo = useMemo(() => {
     if (selectedEvent?.recurrenceRule) {
       return formatRecurrencePattern(selectedEvent.recurrenceRule, t);
@@ -251,9 +235,20 @@ export default function CalendarManageEventDialog() {
   async function onSubmit(values: FormValues) {
     if (!selectedEvent?.scheduleId) return;
 
+    // ✅ Block adding lessons when updating entire series
+    if (updateMode === "series" && values.lessonIds && values.lessonIds.length > 0) {
+      toast.error(
+        t("schedule.cannotUpdateSeriesWithLessons") || 
+        "Cannot add lessons when updating entire series. Edit individual occurrences instead."
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const finalLessonId = values.lessonId === "none" ? null : values.lessonId as Id<"lessons">;
+      const finalLessonIds = values.lessonIds && values.lessonIds.length > 0
+        ? values.lessonIds.map(id => id as Id<"lessons">)
+        : undefined;
       const startMs = new Date(values.start).getTime();
 
       await updateSchedule({
@@ -262,7 +257,7 @@ export default function CalendarManageEventDialog() {
         description: values.description,
         scheduledStart: startMs,
         scheduledEnd: startMs + (values.duration * 60 * 1000),
-        lessonId: finalLessonId,
+        lessonIds: finalLessonIds,
         sessionType: values.sessionType,
         updateSeries: updateMode === "series",
       });
@@ -311,15 +306,14 @@ export default function CalendarManageEventDialog() {
   function handleClose() {
     setManageEventDialogOpen(false);
     setTimeout(() => {
-        setSelectedEvent(null);
-        setIsEditing(false);
-        lastEventIdRef.current = null;
+      setSelectedEvent(null);
+      setIsEditing(false);
+      lastEventIdRef.current = null;
     }, 300);
   }
 
   if (!selectedEvent) return null;
 
-  // Check if this is part of a series (either parent or child)
   const isSeries = selectedEvent.isRecurring || !!selectedEvent.recurrenceParentId;
   const duration = Math.round((selectedEvent.end.getTime() - selectedEvent.start.getTime()) / (60 * 1000));
 
@@ -329,334 +323,442 @@ export default function CalendarManageEventDialog() {
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="flex flex-row items-start justify-between space-y-0 pt-2 pr-4">
             <DialogTitle>
-                {isEditing ? t('common.edit') : t('schedule.viewDetails')}
+              {isEditing ? t('common.edit') : t('schedule.viewDetails')}
             </DialogTitle>
             
             {selectedEvent.status !== "cancelled" && (
-                <div className="flex gap-2">
-                    {isEditing ? (
-                        <Button variant="destructive" size="icon" onClick={() => setDeleteDialogOpen(true)}>
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    ) : (
-                        <Button variant="outline" size="icon" onClick={() => setIsEditing(true)}>
-                            <Pencil className="h-4 w-4" />
-                        </Button>
-                    )}
-                </div>
+              <div className="flex gap-2">
+                {isEditing ? (
+                  <Button variant="destructive" size="icon" onClick={() => setDeleteDialogOpen(true)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="icon" onClick={() => setIsEditing(true)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             )}
           </DialogHeader>
 
           {!isEditing ? (
-             /* VIEW MODE */
-             <div className="space-y-6">
-                <div className="flex items-start justify-between">
-                    <div>
-                        <h2 className="text-2xl font-bold">{selectedEvent.title}</h2>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <Badge variant="outline" style={{ borderColor: selectedEvent.color, color: selectedEvent.color }}>
-                                {selectedEvent.curriculumTitle}
-                            </Badge>
+            /* VIEW MODE */
+            <div className="space-y-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">{selectedEvent.title}</h2>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <Badge variant="outline" style={{ borderColor: selectedEvent.color, color: selectedEvent.color }}>
+                      {selectedEvent.curriculumTitle}
+                    </Badge>
 
-                            {(selectedEvent as CalendarEvent).sessionType === "ignitia" ? (
-                                <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200">
-                                    <MonitorPlay className="h-3 w-3 mr-1" />
-                                    {t("schedule.typeIgnitia")}
-                                </Badge>
-                            ) : (
-                                <Badge variant="secondary">
-                                    <Video className="h-3 w-3 mr-1" />
-                                    {t("schedule.typeLive")}
-                                </Badge>
-                            )}
-                            
-                            {(selectedEvent as CalendarEvent).lessonId ? (
-                                <Badge variant="secondary" className="flex items-center gap-1">
-                                    <LinkIcon className="h-3 w-3" />
-                                    {t('lesson.linked')}
-                                </Badge>
-                            ) : (
-                                <Badge variant="outline" className="text-muted-foreground border-dashed">
-                                    {t('lesson.noLesson')}
-                                </Badge>
-                            )}
-
-                            {selectedEvent.isLive && (
-                                <Badge variant="destructive" className="animate-pulse">
-                                    <span className="relative flex h-2 w-2 mr-1">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                                    </span>
-                                    {t('common.live')}
-                                </Badge>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="grid gap-4 text-sm">
-                    {/* Teacher Info */}
-                    <div className="flex gap-3">
-                        <div className="shrink-0">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 border-2 border-white dark:border-gray-800 shadow-lg flex items-center justify-center overflow-hidden">
-                                {selectedEvent.teacherImageUrl ? (
-                                    <Image 
-                                        src={selectedEvent.teacherImageUrl} 
-                                        alt="avatar" 
-                                        width={48}
-                                        height={48}
-                                        className="w-full h-full object-cover" 
-                                    />
-                                ) : (
-                                    <span className="text-lg font-bold text-white">
-                                    {selectedEvent.teacherName?.charAt(0) || 'T'}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                        <div className="flex-1 flex flex-col justify-center">
-                            <p className="font-medium text-lg leading-none">{selectedEvent.className}</p>
-                            {selectedEvent.teacherName && (
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    {t('common.with')} {selectedEvent.teacherName}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Date & Time */}
-                    <div className="flex gap-3">
-                        <CalendarClock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                        <div>
-                            <p className="font-medium">
-                                {selectedEvent.start.toLocaleDateString(locale, { 
-                                    weekday: 'long', 
-                                    month: 'long', 
-                                    day: 'numeric',
-                                    year: 'numeric'
-                                })}
-                            </p>
-                            <p className="text-muted-foreground">
-                                {selectedEvent.start.toLocaleTimeString(locale, {hour: '2-digit', minute:'2-digit'})} - 
-                                {selectedEvent.end.toLocaleTimeString(locale, {hour: '2-digit', minute:'2-digit'})}
-                                <span className="text-xs ml-2">({duration} {t("schedule.minutes")})</span>
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Recurrence Pattern - Show for all occurrences in a series */}
-                    {recurrenceInfo && (
-                        <div className="flex gap-3">
-                            <Repeat className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                            <div>
-                                <p className="font-medium flex items-center gap-2">
-                                    {recurrenceInfo.summary}
-                                    <Badge variant="secondary" className="text-xs">
-                                        {t("schedule.recurring")}
-                                    </Badge>
-                                </p>
-                                {recurrenceInfo.details.length > 0 && (
-                                    <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
-                                        {recurrenceInfo.details.map((detail, idx) => (
-                                            <li key={idx}>• {detail}</li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Description */}
-                    {selectedEvent.description && (
-                        <div className="flex gap-3">
-                            <BookOpen className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                            <p className="text-muted-foreground whitespace-pre-wrap">{selectedEvent.description}</p>
-                        </div>
-                    )}
-                    
-                    {/* Lesson Link */}
-                    {selectedEvent.lessonId && (
-                         <div className="flex gap-3">
-                            <LinkIcon className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                            <Link href={`/lessons/${selectedEvent.lessonId}`} className="text-primary hover:underline font-medium">
-                                {t('schedule.viewLessonContent')}
-                            </Link>
-                        </div>
-                    )}
-                </div>
-                
-                {/* Action Button */}
-                <div className="flex justify-end pt-4">
-                    {selectedEvent.isLive ? (
-                        <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700" asChild>
-                            <Link href={`/classroom/${selectedEvent.roomName}`}>
-                                <Video className="mr-2 h-4 w-4" />
-                                {t('dashboard.enterLive')}
-                            </Link>
-                        </Button>
+                    {(selectedEvent as CalendarEvent).sessionType === "ignitia" ? (
+                      <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200">
+                        <MonitorPlay className="h-3 w-3 mr-1" />
+                        {t("schedule.typeIgnitia")}
+                      </Badge>
                     ) : (
-                        <Button className="w-full sm:w-auto" variant="outline" asChild>
-                            <Link href={`/classroom/${selectedEvent.roomName}`}>
-                                {t('classroom.prepareRoom')}
-                            </Link>
-                        </Button>
+                      <Badge variant="secondary">
+                        <Video className="h-3 w-3 mr-1" />
+                        {t("schedule.typeLive")}
+                      </Badge>
                     )}
+                    
+                    {/* ✅ Show lesson count */}
+                    {selectedEvent.lessonIds && selectedEvent.lessonIds.length > 0 ? (
+                      <Badge variant="secondary" className="flex items-center gap-1">
+                        <LinkIcon className="h-3 w-3" />
+                        {selectedEvent.lessonIds.length} {t('lesson.linked')}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground border-dashed">
+                        {t('lesson.noLesson')}
+                      </Badge>
+                    )}
+
+                    {selectedEvent.isLive && (
+                      <Badge variant="destructive" className="animate-pulse">
+                        <span className="relative flex h-2 w-2 mr-1">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                        </span>
+                        {t('common.live')}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-             </div>
-          ) : (
-             /* EDIT MODE */
-             <Form {...form} key={selectedEvent.scheduleId}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                    
-                    {/* Series vs Single Logic */}
-                    {isSeries && (
-                        <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-md border border-amber-200 dark:border-amber-900">
-                             <FormLabel className="mb-2 block text-amber-900 dark:text-amber-100">
-                                {t('schedule.updateSchedule')}
-                             </FormLabel>
-                             <RadioGroup 
-                                value={updateMode} 
-                                onValueChange={(v) => setUpdateMode(v as "single" | "series")} 
-                                className="flex flex-col sm:flex-row gap-4"
-                             >
-                                <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="single" id="r1" />
-                                    <FormLabel htmlFor="r1" className="font-normal cursor-pointer">
-                                        {t('schedule.editOccurrence')}
-                                    </FormLabel>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="series" id="r2"/>
-                                    <FormLabel htmlFor="r2" className="font-normal cursor-pointer">
-                                        {t('schedule.editSeries')}
-                                    </FormLabel>
-                                </div>
-                             </RadioGroup>
-                        </div>
-                    )}
-                    
-                    {/* Session Type */}
-                    <FormField control={form.control} name="sessionType" render={({ field }) => (
-                        <FormItem className="space-y-2">
-                            <FormLabel>{t("schedule.sessionType")}</FormLabel>
-                            <FormControl>
-                            <RadioGroup
-                                onValueChange={field.onChange}
-                                defaultValue={field.value}
-                                className="flex flex-row space-x-4"
-                            >
-                                <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="live" id="edit-live" />
-                                    <FormLabel htmlFor="edit-live" className="font-normal cursor-pointer">
-                                        {t("schedule.typeLive")}
-                                    </FormLabel>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <RadioGroupItem value="ignitia" id="edit-ignitia" />
-                                    <FormLabel htmlFor="edit-ignitia" className="font-normal cursor-pointer">
-                                        {t("schedule.typeIgnitia")}
-                                    </FormLabel>
-                                </div>
-                            </RadioGroup>
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )} />
+              </div>
 
-                    {/* Lesson Selector */}
-                    <FormField control={form.control} name="lessonId" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>{t('navigation.lessons')}</FormLabel>
-                             <Select 
-                                onValueChange={field.onChange} 
-                                defaultValue={field.value}
-                                disabled={!lessons}
-                             >
-                                <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder={t('lesson.selectOptional')} />
-                                </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                    {lessonOptions.map((opt) => (
-                                        <SelectItem 
-                                            key={opt.value} 
-                                            value={opt.value} 
-                                            disabled={opt.disabled}
-                                            className={opt.disabled ? "opacity-50" : ""}
-                                        >
-                                            {opt.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <FormMessage />
-                        </FormItem>
-                    )} />
-
-                    {/* Title */}
-                    <FormField control={form.control} name="title" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>{t('schedule.title')}</FormLabel>
-                            <FormControl><Input {...field} /></FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )} />
-
-                    {/* Description */}
-                    <FormField control={form.control} name="description" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>{t('common.description')}</FormLabel>
-                            <FormControl>
-                                <Textarea {...field} className="resize-none h-20" />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )} />
-
-                    {/* Start Time & Duration */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="start" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>{t('schedule.dateTime')}</FormLabel>
-                                <DateTimePicker field={field} />
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        
-                        <FormField control={form.control} name="duration" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>{t('schedule.duration')}</FormLabel>
-                                <Select value={field.value.toString()} onValueChange={(v) => field.onChange(Number(v))}>
-                                    <FormControl>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                    <SelectItem value="30">30 min</SelectItem>
-                                    <SelectItem value="45">45 min</SelectItem>
-                                    <SelectItem value="60">1 hour</SelectItem>
-                                    <SelectItem value="90">1.5 hours</SelectItem>
-                                    <SelectItem value="120">2 hours</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
+              <div className="grid gap-4 text-sm">
+                {/* Teacher Info */}
+                <div className="flex gap-3">
+                  <div className="shrink-0">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 border-2 border-white dark:border-gray-800 shadow-lg flex items-center justify-center overflow-hidden">
+                      {selectedEvent.teacherImageUrl ? (
+                        <Image 
+                          src={selectedEvent.teacherImageUrl} 
+                          alt="avatar" 
+                          width={48}
+                          height={48}
+                          className="w-full h-full object-cover" 
+                        />
+                      ) : (
+                        <span className="text-lg font-bold text-white">
+                          {selectedEvent.teacherName?.charAt(0) || 'T'}
+                        </span>
+                      )}
                     </div>
+                  </div>
+                  <div className="flex-1 flex flex-col justify-center">
+                    <p className="font-medium text-lg leading-none">{selectedEvent.className}</p>
+                    {selectedEvent.teacherName && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {t('common.with')} {selectedEvent.teacherName}
+                      </p>
+                    )}
+                  </div>
+                </div>
 
-                    <DialogFooter className="gap-2">
-                        <Button type="button" variant="ghost" onClick={() => setIsEditing(false)}>
-                            {t('common.cancel')}
-                        </Button>
-                        <Button type="submit" disabled={isSubmitting}>
-                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {t('common.save')}
-                        </Button>
-                    </DialogFooter>
-                </form>
-             </Form>
+                {/* Date & Time */}
+                <div className="flex gap-3">
+                  <CalendarClock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium">
+                      {selectedEvent.start.toLocaleDateString(locale, { 
+                        weekday: 'long', 
+                        month: 'long', 
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {selectedEvent.start.toLocaleTimeString(locale, {hour: '2-digit', minute:'2-digit'})} - 
+                      {selectedEvent.end.toLocaleTimeString(locale, {hour: '2-digit', minute:'2-digit'})}
+                      <span className="text-xs ml-2">({duration} {t("schedule.minutes")})</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Recurrence Pattern */}
+                {recurrenceInfo && (
+                  <div className="flex gap-3">
+                    <Repeat className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium flex items-center gap-2">
+                        {recurrenceInfo.summary}
+                        <Badge variant="secondary" className="text-xs">
+                          {t("schedule.recurring")}
+                        </Badge>
+                      </p>
+                      {recurrenceInfo.details.length > 0 && (
+                        <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                          {recurrenceInfo.details.map((detail, idx) => (
+                            <li key={idx}>• {detail}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Description */}
+                {selectedEvent.description && (
+                  <div className="flex gap-3">
+                    <BookOpen className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                    <p className="text-muted-foreground whitespace-pre-wrap">{selectedEvent.description}</p>
+                  </div>
+                )}
+                
+                {/* ✅ List all linked lessons */}
+                {selectedEvent.lessons && selectedEvent.lessons.length > 0 && (
+                  <div className="flex gap-3">
+                    <LinkIcon className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium mb-2">{t('lesson.linkedLessons')}</p>
+                      <div className="space-y-1">
+                        {selectedEvent.lessons.map((lesson) => (
+                          <Link 
+                            key={lesson._id}
+                            href={`/lessons/${lesson._id}`} 
+                            className="block text-primary hover:underline text-sm"
+                          >
+                            {lesson.order}. {lesson.title}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Action Button */}
+              <div className="flex justify-end pt-4">
+                {selectedEvent.isLive ? (
+                  <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700" asChild>
+                    <Link href={`/classroom/${selectedEvent.roomName}`}>
+                      <Video className="mr-2 h-4 w-4" />
+                      {t('dashboard.enterLive')}
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button className="w-full sm:w-auto" variant="outline" asChild>
+                    <Link href={`/classroom/${selectedEvent.roomName}`}>
+                      {t('classroom.prepareRoom')}
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* EDIT MODE */
+            <Form {...form} key={selectedEvent.scheduleId}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                
+                {/* Series vs Single Logic */}
+                {isSeries && (
+                  <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-md border border-amber-200 dark:border-amber-900">
+                    <FormLabel className="mb-2 block text-amber-900 dark:text-amber-100">
+                      {t('schedule.updateSchedule')}
+                    </FormLabel>
+                    
+                    {/* ✅ Different UI based on whether it's parent or child */}
+                    {selectedEvent.isRecurring ? (
+                      // Editing the PARENT template
+                      <div className="space-y-2">
+                        <p className="text-sm text-amber-800 dark:text-amber-200">
+                          {t('schedule.editingSeriesTemplate') || "Editing series template"}
+                        </p>
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          {t('schedule.seriesTemplateNote') || "Changes will affect all future occurrences. Cannot add lessons to series."}
+                        </p>
+                      </div>
+                    ) : (
+                      // Editing a CHILD instance
+                      <RadioGroup 
+                        value={updateMode} 
+                        onValueChange={(v) => {
+                          setUpdateMode(v as "single" | "series");
+                          // ✅ Clear lessons when switching to series
+                          if (v === "series") {
+                            form.setValue("lessonIds", []);
+                          }
+                        }}
+                        className="flex flex-col sm:flex-row gap-4"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="single" id="r1" />
+                          <FormLabel htmlFor="r1" className="font-normal cursor-pointer">
+                            {t('schedule.editOccurrence')}
+                          </FormLabel>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="series" id="r2"/>
+                          <FormLabel htmlFor="r2" className="font-normal cursor-pointer">
+                            {t('schedule.editSeries')}
+                          </FormLabel>
+                        </div>
+                      </RadioGroup>
+                    )}
+                  </div>
+                )}
+                
+                {/* Session Type */}
+                <FormField control={form.control} name="sessionType" render={({ field }) => (
+                  <FormItem className="space-y-2">
+                    <FormLabel>{t("schedule.sessionType")}</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                        className="flex flex-row space-x-4"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="live" id="edit-live" />
+                          <FormLabel htmlFor="edit-live" className="font-normal cursor-pointer">
+                            {t("schedule.typeLive")}
+                          </FormLabel>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="ignitia" id="edit-ignitia" />
+                          <FormLabel htmlFor="edit-ignitia" className="font-normal cursor-pointer">
+                            {t("schedule.typeIgnitia")}
+                          </FormLabel>
+                        </div>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                {/* ✅ Multi-Select Lesson UI */}
+                <div className="space-y-2">
+                  <Label>
+                    {t("lesson.selectOptional") || "Lessons (Optional)"}
+                    {lessonIds.length > 0 && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({lessonIds.length} selected)
+                      </span>
+                    )}
+                  </Label>
+                  
+                  {/* ✅ Warning for series updates */}
+                  {updateMode === "series" && (
+                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
+                      <p className="font-medium">
+                        ⚠️ {t('schedule.cannotUpdateSeriesWithLessonsTitle') || "Cannot modify lessons for series"}
+                      </p>
+                      <p className="text-xs mt-1">
+                        {t('schedule.cannotUpdateSeriesWithLessonsDesc') || "Edit individual occurrences to assign lessons."}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="border rounded-md max-h-48 overflow-y-auto">
+                    {!lessons || lessons.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        {t("lesson.noneAvailable") || "No lessons available"}
+                      </div>
+                    ) : (
+                      <div className="divide-y">
+                        {lessons.map((lesson) => {
+                          const isUsed = usedLessonIds?.includes(lesson._id) && 
+                                        !selectedEvent.lessonIds?.includes(lesson._id);
+                          const isSelected = lessonIds.includes(lesson._id);
+                          const isDisabled = 
+                            updateMode === "series" || 
+                            isUsed || 
+                            (selectedEvent.isRecurring && isEditing);
+
+                          return (
+                            <button
+                              key={lesson._id}
+                              type="button"
+                              onClick={() => !isDisabled && toggleLesson(lesson._id)}
+                              disabled={isDisabled}
+                              className={`w-full text-left px-4 py-3 transition-colors ${
+                                isDisabled 
+                                  ? "opacity-40 cursor-not-allowed bg-muted/50" 
+                                  : "hover:bg-accent cursor-pointer"
+                              } ${isSelected ? "bg-primary/10 border-l-4 border-primary" : ""}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                  <div className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+                                    isSelected 
+                                      ? "bg-primary border-primary" 
+                                      : "border-input"
+                                  }`}>
+                                    {isSelected && (
+                                      <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 12 12" fill="none">
+                                        <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-sm truncate">
+                                      {lesson.order}. {lesson.title}
+                                    </div>
+                                    {lesson.description && (
+                                      <div className="text-xs text-muted-foreground truncate mt-0.5">
+                                        {lesson.description}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                {isUsed && (
+                                  <span className="text-xs bg-muted px-2 py-1 rounded">
+                                    {t("lesson.scheduled") || "Scheduled"}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Title */}
+                <FormField control={form.control} name="title" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('schedule.title') || "Title"}
+                      {lessonIds.length === 0 && <span className="text-destructive ml-1">*</span>}
+                    </FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...field} 
+                        placeholder={
+                          lessonIds.length > 0 
+                            ? "Override lesson title (optional)" 
+                            : "Required"
+                        }
+                      />
+                    </FormControl>
+                    {lessonIds.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("schedule.titleOverrideHint") || "Leave empty to use first lesson's title"}
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                {/* Description */}
+                <FormField control={form.control} name="description" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('common.description')}</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} className="resize-none h-20" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+
+                {/* Start Time & Duration */}
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField control={form.control} name="start" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('schedule.dateTime')}</FormLabel>
+                      <DateTimePicker field={field} />
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  
+                  <FormField control={form.control} name="duration" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('schedule.duration')}</FormLabel>
+                      <Select value={field.value.toString()} onValueChange={(v) => field.onChange(Number(v))}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="30">30 min</SelectItem>
+                          <SelectItem value="45">45 min</SelectItem>
+                          <SelectItem value="60">1 hour</SelectItem>
+                          <SelectItem value="90">1.5 hours</SelectItem>
+                          <SelectItem value="120">2 hours</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+
+                <DialogFooter className="gap-2">
+                  <Button type="button" variant="ghost" onClick={() => setIsEditing(false)}>
+                    {t('common.cancel')}
+                  </Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {t('common.save')}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
           )}
         </DialogContent>
       </Dialog>
@@ -675,25 +777,25 @@ export default function CalendarManageEventDialog() {
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2">
             <AlertDialogCancel disabled={isSubmitting}>
-                {t('common.cancel')}
+              {t('common.cancel')}
             </AlertDialogCancel>
             
             {isSeries ? (
-                <>
-                    <Button variant="destructive" onClick={() => handleDelete(false)} disabled={isSubmitting}>
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {t('schedule.deleteOccurrence')}
-                    </Button>
-                    <Button variant="destructive" onClick={() => handleDelete(true)} disabled={isSubmitting}>
-                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {t('schedule.deleteSeries')}
-                    </Button>
-                </>
-            ) : (
+              <>
                 <Button variant="destructive" onClick={() => handleDelete(false)} disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {t('common.delete')}
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {t('schedule.deleteOccurrence')}
                 </Button>
+                <Button variant="destructive" onClick={() => handleDelete(true)} disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {t('schedule.deleteSeries')}
+                </Button>
+              </>
+            ) : (
+              <Button variant="destructive" onClick={() => handleDelete(false)} disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t('common.delete')}
+              </Button>
             )}
           </AlertDialogFooter>
         </AlertDialogContent>
