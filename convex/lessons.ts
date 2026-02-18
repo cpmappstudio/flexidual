@@ -16,20 +16,24 @@ export const listByCurriculum = query({
     includeInactive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    let lessons;
+    
     if (args.includeInactive) {
-      return await ctx.db
+      lessons = await ctx.db
         .query("lessons")
         .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
         .collect();
+    } else {
+      lessons = await ctx.db
+        .query("lessons")
+        .withIndex("by_curriculum_active", (q) => 
+          q.eq("curriculumId", args.curriculumId).eq("isActive", true)
+        )
+        .collect();
     }
 
-    // Default: only active lessons, sorted by order
-    return await ctx.db
-      .query("lessons")
-      .withIndex("by_curriculum_active", (q) => 
-        q.eq("curriculumId", args.curriculumId).eq("isActive", true)
-      )
-      .collect();
+    // Sort by order field in memory
+    return lessons.sort((a, b) => a.order - b.order);
   },
 });
 

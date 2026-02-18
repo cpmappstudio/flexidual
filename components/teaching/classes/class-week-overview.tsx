@@ -12,7 +12,6 @@ interface ScheduleItem {
   title: string
   start: number
   end: number
-  [key: string]: any
 }
 
 interface ClassWeekOverviewProps {

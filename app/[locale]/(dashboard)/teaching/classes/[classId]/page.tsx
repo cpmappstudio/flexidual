@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
-import { CheckCircle2, ArrowRight, Calendar as CalendarIcon, BookOpen, Plus, MonitorPlay, Edit, Layers, ChevronDown } from "lucide-react"
+import { CheckCircle2, ArrowRight, Calendar as CalendarIcon, Plus, MonitorPlay, Edit } from "lucide-react"
 import { ManageScheduleDialog } from "@/components/teaching/classes/manage-schedule-dialog"
 import { StudentManager } from "@/components/teaching/classes/student-manager"
 import { Button } from "@/components/ui/button"
@@ -21,21 +21,11 @@ import { ClassDialog } from "@/components/teaching/classes/class-dialog"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview"
 import { CurriculumLessonList } from "@/components/teaching/curriculums/curriculum-lesson-list"
-import { LessonDialog } from "@/components/teaching/lessons/lesson-dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 
 export default function ClassDetailPage() {
   const t = useTranslations()
   const params = useParams()
   const classId = params.classId as Id<"classes">
-  const [scheduleView, setScheduleView] = useState<"lessons" | "calendar">("calendar")
   const [visiblePast, setVisiblePast] = useState(10)
   const [activeTab, setActiveTab] = useState("schedule")
   const { user } = useCurrentUser()
@@ -119,201 +109,199 @@ export default function ClassDetailPage() {
             <TabsContent value="schedule" className="space-y-4 mt-0">
 
               {/* CALENDAR VIEW */}
-              {scheduleView === "calendar" && (
-                <div className="space-y-6">
-                  <Card>
-                  <CardHeader>
-                    <CardTitle>{t('class.courseRoadmap')}</CardTitle>
-                    <CardDescription>{t('class.schedulePrompt')}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {lessons.length === 0 && (
-                        <div className="text-center py-6 text-muted-foreground">
-                          {t('lesson.noLessonsForCurriculum')}
-                          <div className="mt-4">
-                            <Button variant="outline" onClick={() => setActiveTab("curriculum")}>
-                              {t('class.addLessonToCurriculum')}
-                            </Button>
-                          </div>
+              <div className="space-y-6">
+                <Card>
+                <CardHeader>
+                  <CardTitle>{t('class.courseRoadmap')}</CardTitle>
+                  <CardDescription>{t('class.schedulePrompt')}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {lessons.length === 0 && (
+                      <div className="text-center py-6 text-muted-foreground">
+                        {t('lesson.noLessonsForCurriculum')}
+                        <div className="mt-4">
+                          <Button variant="outline" onClick={() => setActiveTab("curriculum")}>
+                            {t('class.addLessonToCurriculum')}
+                          </Button>
                         </div>
-                      )}
+                      </div>
+                    )}
 
-                      {lessons.map((lesson, index) => {
-                        const scheduledItem = lessonSchedules.find(s => s.lessonId === lesson._id)
-                        const isIgnitia = scheduledItem?.sessionType === "ignitia"
-                        
-                        return (
-                          <div key={lesson._id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4">
-                            <div className="flex items-start gap-4">
-                              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-sm ${
-                                isIgnitia 
-                                  ? "bg-orange-100 text-orange-700" 
-                                  : "bg-primary/10 text-primary"
-                              }`}>
-                                {index + 1}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-medium">{lesson.title}</p>
-                                  {isIgnitia && (
-                                    <Badge variant="outline" className="text-[10px] h-5 px-1 text-orange-600 border-orange-200 bg-orange-50">
-                                      Ignitia
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-sm text-muted-foreground line-clamp-1">{lesson.description}</p>
-                              </div>
+                    {lessons.map((lesson, index) => {
+                      const scheduledItem = lessonSchedules.find(s => s.lessonId === lesson._id)
+                      const isIgnitia = scheduledItem?.sessionType === "ignitia"
+                      
+                      return (
+                        <div key={lesson._id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4">
+                          <div className="flex items-start gap-4">
+                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-sm ${
+                              isIgnitia 
+                                ? "bg-orange-100 text-orange-700" 
+                                : "bg-primary/10 text-primary"
+                            }`}>
+                              {index + 1}
                             </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{lesson.title}</p>
+                                {isIgnitia && (
+                                  <Badge variant="outline" className="text-[10px] h-5 px-1 text-orange-600 border-orange-200 bg-orange-50">
+                                    Ignitia
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground line-clamp-1">{lesson.description}</p>
+                            </div>
+                          </div>
 
-                            <div className="flex items-center gap-3 shrink-0 ml-12 sm:ml-0">
-                              {scheduledItem ? (
-                                <div className="flex items-center gap-4">
-                                  <div className="text-right">
-                                    <div className={`flex items-center justify-end gap-1.5 text-sm font-medium ${
-                                      isIgnitia ? "text-orange-600" : "text-green-600"
-                                    }`}>
-                                      <CheckCircle2 className="h-4 w-4" />
-                                      {t('lesson.scheduled')}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                      {format(scheduledItem.start, "MMM d, h:mm a")}
-                                    </p>
+                          <div className="flex items-center gap-3 shrink-0 ml-12 sm:ml-0">
+                            {scheduledItem ? (
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <div className={`flex items-center justify-end gap-1.5 text-sm font-medium ${
+                                    isIgnitia ? "text-orange-600" : "text-green-600"
+                                  }`}>
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    {t('lesson.scheduled')}
                                   </div>
-                                  
-                                  <ManageScheduleDialog 
-                                    classId={classId}
-                                    scheduleId={scheduledItem.scheduleId}
-                                    initialData={{
-                                      lessonId: lesson._id,
-                                      title: scheduledItem.title,
-                                      description: scheduledItem.description,
-                                      start: scheduledItem.start,
-                                      end: scheduledItem.end,
-                                      sessionType: scheduledItem.sessionType || "live"
-                                    }}
-                                  />
-
-                                  {scheduledItem.isLive ? (
-                                    <Button 
-                                      size="sm" 
-                                      variant={isIgnitia ? "default" : "destructive"} 
-                                      className={isIgnitia ? "bg-orange-600 hover:bg-orange-700" : ""}
-                                      asChild
-                                    >
-                                      <Link href={`/classroom/${scheduledItem.roomName}`}>
-                                        {isIgnitia ? "Open Active Session" : t('classroom.joinLive')}
-                                      </Link>
-                                    </Button>
-                                  ) : (
-                                    <Button size="sm" variant="outline" asChild>
-                                      <Link href={`/classroom/${scheduledItem.roomName}`}>
-                                        {isIgnitia ? (
-                                          <>
-                                            <MonitorPlay className="mr-2 h-4 w-4 text-orange-600" />
-                                            Open Ignitia
-                                          </>
-                                        ) : (
-                                          <>
-                                            {t('classroom.prepareRoom')}
-                                            <ArrowRight className="ml-2 h-4 w-4" />
-                                          </>
-                                        )}
-                                      </Link>
-                                    </Button>
-                                  )}
+                                  <p className="text-xs text-muted-foreground">
+                                    {format(scheduledItem.start, "MMM d, h:mm a")}
+                                  </p>
                                 </div>
-                              ) : (
+                                
                                 <ManageScheduleDialog 
                                   classId={classId}
-                                  preselectedLessonId={lesson._id}
-                                  trigger={<Button size="sm" variant="outline">{t('class.schedule')}</Button>}
+                                  scheduleId={scheduledItem.scheduleId}
+                                  initialData={{
+                                    lessonId: lesson._id,
+                                    title: scheduledItem.title,
+                                    description: scheduledItem.description,
+                                    start: scheduledItem.start,
+                                    end: scheduledItem.end,
+                                    sessionType: scheduledItem.sessionType || "live"
+                                  }}
                                 />
-                              )}
-                            </div>
+
+                                {scheduledItem.isLive ? (
+                                  <Button 
+                                    size="sm" 
+                                    variant={isIgnitia ? "default" : "destructive"} 
+                                    className={isIgnitia ? "bg-orange-600 hover:bg-orange-700" : ""}
+                                    asChild
+                                  >
+                                    <Link href={`/classroom/${scheduledItem.roomName}`}>
+                                      {isIgnitia ? "Open Active Session" : t('classroom.joinLive')}
+                                    </Link>
+                                  </Button>
+                                ) : (
+                                  <Button size="sm" variant="outline" asChild>
+                                    <Link href={`/classroom/${scheduledItem.roomName}`}>
+                                      {isIgnitia ? (
+                                        <>
+                                          <MonitorPlay className="mr-2 h-4 w-4 text-orange-600" />
+                                          Open Ignitia
+                                        </>
+                                      ) : (
+                                        <>
+                                          {t('classroom.prepareRoom')}
+                                          <ArrowRight className="ml-2 h-4 w-4" />
+                                        </>
+                                      )}
+                                    </Link>
+                                  </Button>
+                                )}
+                              </div>
+                            ) : (
+                              <ManageScheduleDialog 
+                                classId={classId}
+                                preselectedLessonId={lesson._id}
+                                trigger={<Button size="sm" variant="outline">{t('class.schedule')}</Button>}
+                              />
+                            )}
                           </div>
-                        )
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                  {upcomingSchedules.length > 0 && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{t('schedule.upcoming')}</CardTitle>
-                        <CardDescription>
-                          {upcomingSchedules.length} {t('schedule.upcomingSessions')}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {upcomingSchedules.map((schedule) => (
-                            <ScheduleItem 
-                              key={schedule.scheduleId} 
-                              schedule={schedule} 
-                              classId={classId} 
-                            />
-                          ))}
                         </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
 
-                  {pastSchedules.length > 0 && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{t('schedule.past')}</CardTitle>
-                        <CardDescription>
-                          {pastSchedules.length} {t('schedule.pastSessions')}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {pastSchedules.slice(0, visiblePast).map((schedule) => (
-                            <ScheduleItem 
-                              key={schedule.scheduleId} 
-                              schedule={schedule} 
-                              classId={classId} 
-                              isPast 
-                            />
-                          ))}
-                          
-                          {pastSchedules.length > visiblePast && (
-                            <div className="flex flex-col items-center gap-2 pt-4">
-                              <p className="text-sm text-muted-foreground">
-                                {t('schedule.showing', { 
-                                  count: visiblePast, 
-                                  total: pastSchedules.length 
-                                })}
-                              </p>
-                              <Button 
-                                variant="outline" 
-                                onClick={() => setVisiblePast(prev => prev + 10)}
-                              >
-                                {t('common.loadMore')}
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                {upcomingSchedules.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{t('schedule.upcoming')}</CardTitle>
+                      <CardDescription>
+                        {upcomingSchedules.length} {t('schedule.upcomingSessions')}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {upcomingSchedules.map((schedule) => (
+                          <ScheduleItem 
+                            key={schedule.scheduleId} 
+                            schedule={schedule} 
+                            classId={classId} 
+                          />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
-                  {upcomingSchedules.length === 0 && pastSchedules.length === 0 && (
-                    <Card>
-                      <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                        <CalendarIcon className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                        <h3 className="text-lg font-semibold mb-2">{t('schedule.noSchedules')}</h3>
-                        <p className="text-muted-foreground mb-4 max-w-sm">
-                          {t('schedule.createPrompt')}
-                        </p>
-                        <ManageScheduleDialog classId={classId} />
-                      </CardContent>
-                    </Card>
-                  )}
-                </div>
-              )}
+                {pastSchedules.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{t('schedule.past')}</CardTitle>
+                      <CardDescription>
+                        {pastSchedules.length} {t('schedule.pastSessions')}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {pastSchedules.slice(0, visiblePast).map((schedule) => (
+                          <ScheduleItem 
+                            key={schedule.scheduleId} 
+                            schedule={schedule} 
+                            classId={classId} 
+                            isPast 
+                          />
+                        ))}
+                        
+                        {pastSchedules.length > visiblePast && (
+                          <div className="flex flex-col items-center gap-2 pt-4">
+                            <p className="text-sm text-muted-foreground">
+                              {t('schedule.showing', { 
+                                count: visiblePast, 
+                                total: pastSchedules.length 
+                              })}
+                            </p>
+                            <Button 
+                              variant="outline" 
+                              onClick={() => setVisiblePast(prev => prev + 10)}
+                            >
+                              {t('common.loadMore')}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {upcomingSchedules.length === 0 && pastSchedules.length === 0 && (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                      <CalendarIcon className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">{t('schedule.noSchedules')}</h3>
+                      <p className="text-muted-foreground mb-4 max-w-sm">
+                        {t('schedule.createPrompt')}
+                      </p>
+                      <ManageScheduleDialog classId={classId} />
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             </TabsContent>
 
             {/* --- CURRICULUM TAB --- */}
