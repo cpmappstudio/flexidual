@@ -483,7 +483,12 @@
       "updated": "Presença atualizada",
       "updateFailed": "Falha ao atualizar a presença"
     },
-    "showing": "Mostrando {count} de {total} sessões passadas"
+    "showing": "Mostrando {count} de {total} sessões passadas",
+    "editingSeriesTemplate": "Editando plantilla de série",
+    "seriesTemplateNote": "As alterações afetarão todas as ocorrências futuras. Não é possível adicionar lições a uma série.",
+    "cannotUpdateSeriesWithLessons": "Não é possível adicionar lições ao atualizar toda a série.",
+    "cannotUpdateSeriesWithLessonsTitle": "Não é possível modificar as lições de uma série",
+    "cannotUpdateSeriesWithLessonsDesc": "Edite as ocorrências individuais para atribuir lições."
   },
   "calendar": {
     "mySchedule": "Minha Agenda",

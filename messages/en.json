@@ -482,7 +482,12 @@
       "updated": "Attendance updated",
       "updateFailed": "Failed to update attendance"
     },
-    "showing": "Showing {count} of {total} past sessions"
+    "showing": "Showing {count} of {total} past sessions",
+    "editingSeriesTemplate": "Editing series template",
+    "seriesTemplateNote": "Changes will affect all future occurrences. Cannot add lessons to series.",
+    "cannotUpdateSeriesWithLessons": "Cannot add lessons when updating entire series.",
+    "cannotUpdateSeriesWithLessonsTitle": "Cannot modify lessons for series",
+    "cannotUpdateSeriesWithLessonsDesc": "Edit individual occurrences to assign lessons."
   },
   "calendar": {
     "mySchedule": "My Schedule",

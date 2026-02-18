@@ -483,7 +483,12 @@
       "updated": "Asistencia actualizada",
       "updateFailed": "Error al actualizar la asistencia"
     },
-    "showing": "Mostrando {count} de {total} sesiones pasadas"
+    "showing": "Mostrando {count} de {total} sesiones pasadas",
+    "editingSeriesTemplate": "Editando plantilla de serie",
+    "seriesTemplateNote": "Los cambios afectarán todas las ocurrencias futuras. No se pueden agregar lecciones a una serie.",
+    "cannotUpdateSeriesWithLessons": "No se pueden agregar lecciones al actualizar toda la serie.",
+    "cannotUpdateSeriesWithLessonsTitle": "No se puede modificar las lecciones de una serie",
+    "cannotUpdateSeriesWithLessonsDesc": "Edita las ocurrencias individuales para asignar lecciones."
   },
   "calendar": {
     "mySchedule": "Mi Horario",
