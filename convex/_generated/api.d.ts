@@ -14,6 +14,7 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as classes from "../classes.js";
+import type * as cron from "../cron.js";
 import type * as curriculums from "../curriculums.js";
 import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
@@ -35,6 +36,7 @@ import type * as users from "../users.js";
  */
 declare const fullApi: ApiFromModules<{
   classes: typeof classes;
+  cron: typeof cron;
   curriculums: typeof curriculums;
   http: typeof http;
   lessons: typeof lessons;

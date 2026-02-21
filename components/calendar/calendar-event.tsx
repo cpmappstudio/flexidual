@@ -104,9 +104,11 @@ export default function CalendarEvent({
     isEventInCurrentMonth ? "current" : "adjacent"
   }`;
 
+  const isPast = event.end.getTime() < Date.now();
+
   const statusColor = 
     event.status === "active" ? "green" :
-    event.status === "completed" ? "gray" :
+    (event.status === "completed" || isPast) ? "gray" :
     event.status === "cancelled" ? "red" :
     event.color.replace("#", "");
 

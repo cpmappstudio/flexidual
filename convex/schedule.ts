@@ -18,6 +18,9 @@ const PARTIAL_ATTENDANCE_THRESHOLD_PERCENT = 0.10;
 // prevents noise from accidental clicks
 const MIN_PARTIAL_SECONDS = 120; 
 
+// After the scheduled end time + 2 hours, we consider sessions stale for LiveKit cleanup purposes
+const STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours past scheduled end
+
 // ============================================================================
 // HELPERS
 // ============================================================================
@@ -398,6 +401,10 @@ export const getMySchedule = query({
           }
         }
 
+        const isStale = now > (item.scheduledEnd + STALE_THRESHOLD_MS);
+        const effectiveIsLive = item.isLive && !isStale || false;
+        const effectiveStatus = (item.status === "active" && isStale) ? "completed" : item.status;
+
         return {
           scheduleId: item._id,
           title,
@@ -408,17 +415,15 @@ export const getMySchedule = query({
           start: item.scheduledStart,
           end: item.scheduledEnd,
           roomName: item.roomName,
-          isLive: item.isLive || false,
+          isLive: effectiveIsLive,
           sessionType: item.sessionType || "live",
-          status: item.status,
-          
+          status: effectiveStatus,
           lessonIds: item.lessonIds || [],
           lessons: scheduledLessons.map(l => ({
             _id: l!._id,
             title: l!.title,
             order: l!.order,
           })),
-          
           classId: classData._id,
           curriculumId: classData.curriculumId,
           isRecurring: item.isRecurring || false,
@@ -548,7 +553,9 @@ export const getSessionStatus = query({
     const joinWindowEnd = schedule.scheduledEnd + (5 * 60 * 1000); // 5 min after
 
     const isTimeWindowActive = now >= joinWindowStart && now <= joinWindowEnd;
-    const isExplicitlyActive = schedule.status === "active";
+    const isStale = now > (schedule.scheduledEnd + STALE_THRESHOLD_MS);
+
+    const isExplicitlyActive = schedule.status === "active" && !isStale;
 
     return {
       scheduleId: schedule._id,
@@ -1384,6 +1391,50 @@ export const updateAttendance = mutation({
         manualMarkedBy: user._id,
         manualMarkedAt: Date.now()
       });
+    }
+  }
+});
+
+/**
+ * Auto-cleans sessions that were left "active" due to ungraceful disconnects.
+ * Intended to be run via a Convex Cron Job.
+ */
+export const cleanupStaleSessions = mutation({
+  handler: async (ctx) => {
+    const now = Date.now();
+    const STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours after scheduled end
+
+    // Find all sessions currently stuck in "active"
+    const activeSchedules = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .collect();
+
+    for (const schedule of activeSchedules) {
+      if (now > schedule.scheduledEnd + STALE_THRESHOLD_MS) {
+        // 1. Mark schedule as officially completed
+        await ctx.db.patch(schedule._id, {
+          status: "completed",
+          isLive: false,
+          completedAt: schedule.scheduledEnd, // Retroactively complete it at expected end time
+        });
+        
+        // 2. Auto-close any student sessions stuck "open" in this room
+        const openSessions = await ctx.db
+          .query("class_sessions")
+          .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+          .filter(q => q.eq(q.field("leftAt"), undefined))
+          .collect();
+          
+        for (const os of openSessions) {
+           // Cap their attendance at the scheduled end time
+           const duration = (schedule.scheduledEnd - os.joinedAt) / 1000;
+           await ctx.db.patch(os._id, {
+             leftAt: schedule.scheduledEnd,
+             durationSeconds: Math.max(0, duration)
+           });
+        }
+      }
     }
   }
 });
