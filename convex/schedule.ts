@@ -1084,17 +1084,32 @@ export const updateSchedule = mutation({
       itemsToUpdate.push(...children);
 
       const uniqueItems = Array.from(new Map(itemsToUpdate.map(item => [item._id, item])).values());
+      const DAY_MS = 24 * 60 * 60 * 1000; // Base constant for calendar day calculation
 
       for (const item of uniqueItems) {
         const updatePatch: any = { ...metadataUpdates };
 
-        // Apply Relative Time Shift
-        const itemNewStart = item.scheduledStart + timeShiftDelta;
-        
-        updatePatch.scheduledStart = itemNewStart;
-        updatePatch.scheduledEnd = itemNewStart + newDuration;
+        // 1. Calculate how many calendar days apart this item was from the edited schedule's OLD time
+        // Using Math.round() neutralizes any existing time-of-day discrepancies
+        const timeDiffMs = item.scheduledStart - oldStart;
+        const daysDifference = Math.round(timeDiffMs / DAY_MS);
 
-        await ctx.db.patch(item._id, updatePatch);
+        // 2. Force the item to inherit the exact time-of-day of newStart while preserving its calendar day
+        const itemNewStart = newStart + (daysDifference * DAY_MS);
+        const itemNewEnd = itemNewStart + newDuration;
+
+        // 3. Determine if this specific item actually needs a time adjustment
+        const needsTimeUpdate = item.scheduledStart !== itemNewStart || item.scheduledEnd !== itemNewEnd;
+
+        if (needsTimeUpdate) {
+          updatePatch.scheduledStart = itemNewStart;
+          updatePatch.scheduledEnd = itemNewEnd;
+        }
+
+        // 4. Selectively patch ONLY if there are time changes or other metadata updates
+        if (needsTimeUpdate || Object.keys(metadataUpdates).length > 0) {
+          await ctx.db.patch(item._id, updatePatch);
+        }
       }
       
       return { updated: uniqueItems.length, type: "series" };
