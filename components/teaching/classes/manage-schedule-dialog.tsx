@@ -529,7 +529,7 @@ export function ManageScheduleDialog({
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={lessonIds.length > 0 ? "Override lesson title (optional)" : "e.g., Office Hours"}
+              placeholder={lessonIds.length > 0 ? t('schedule.overrideTitle') : t('schedule.enterTitle')}
             />
             {lessonIds.length > 0 && (
               <p className="text-xs text-muted-foreground">

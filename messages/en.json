@@ -253,6 +253,7 @@
     "optionalHelp": "Leave empty for general class sessions",
     "noLesson": "No specific lesson",
     "linked": "Linked Lesson",
+    "lessonsLinked": "Lessons linked",
     "reorderFailed": "Failed to reorder lessons"
   },
   "class": {

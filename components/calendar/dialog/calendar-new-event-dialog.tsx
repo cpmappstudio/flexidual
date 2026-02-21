@@ -448,8 +448,8 @@ export default function CalendarNewEventDialog() {
                     {...field} 
                     placeholder={
                       lessonIds.length > 0 
-                        ? "Override lesson title (optional)" 
-                        : "e.g., Office Hours"
+                        ? t('schedule.overrideTitle')
+                        : t('schedule.enterTitle')
                     } 
                   />
                 </FormControl>
@@ -467,7 +467,7 @@ export default function CalendarNewEventDialog() {
               <FormItem>
                 <FormLabel>{t('common.description')}</FormLabel>
                 <FormControl>
-                  <Textarea {...field} placeholder="Add details..." className="resize-none h-20" />
+                  <Textarea {...field} placeholder={t('schedule.descriptionPlaceholder')} className="resize-none h-20" />
                 </FormControl>
               </FormItem>
             )} />

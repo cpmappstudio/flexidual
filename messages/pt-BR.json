@@ -253,6 +253,7 @@
     "optionalHelp": "Deixe vazio para sessões de aula gerais",
     "noLesson": "Sem aula específica",
     "linked": "Aula Vinculada",
+    "lessonsLinked": "Aulas vinculadas",
     "reorderFailed": "Falha ao reordenar aulas"
   },
   "class": {
