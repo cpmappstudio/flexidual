@@ -618,12 +618,21 @@ export const getAttendanceDetails = query({
       .collect();
 
     // 4. Compute Status Per Student
+    const now = Date.now();
     const results = validStudents.map(student => {
       const studentSessions = sessions.filter(s => s.studentId === student!._id);
       
-      // Calculate derived stats
+      // Calculate derived stats ALIGNED strictly with getMySchedule
       const totalSeconds = studentSessions.reduce((sum, s) => {
-         return sum + (s.durationSeconds || 0);
+         const sessionStart = s.joinedAt;
+         const sessionEnd = s.leftAt || now; // Accounts for currently active sessions!
+         
+         // Clamp time to strictly within the scheduled class window
+         const effectiveStart = Math.max(sessionStart, schedule.scheduledStart);
+         const effectiveEnd = Math.min(sessionEnd, schedule.scheduledEnd);
+         const duration = Math.max(0, (effectiveEnd - effectiveStart) / 1000);
+         
+         return sum + duration;
       }, 0);
       
       // Check for manual override
