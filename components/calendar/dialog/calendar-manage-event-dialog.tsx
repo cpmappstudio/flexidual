@@ -473,7 +473,7 @@ export default function CalendarManageEventDialog() {
                         {t('schedule.linkedLessons') || 'Linked Lessons'}
                       </p>
                       <div className="space-y-2">
-                        {selectedEvent.lessonIds.map((lessonId, idx) => {
+                        {selectedEvent.lessonIds.map((lessonId) => {
                           // Find lesson details from the lessons query
                           const lesson = lessons?.find(l => l._id === lessonId);
                           
@@ -760,11 +760,11 @@ export default function CalendarManageEventDialog() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="30">30 min</SelectItem>
-                          <SelectItem value="45">45 min</SelectItem>
-                          <SelectItem value="60">1 hour</SelectItem>
-                          <SelectItem value="90">1.5 hours</SelectItem>
-                          <SelectItem value="120">2 hours</SelectItem>
+                          <SelectItem value="30">30 {t('schedule.minutes')}</SelectItem>
+                          <SelectItem value="45">45 {t('schedule.minutes')}</SelectItem>
+                          <SelectItem value="60">1 {t('schedule.hour')}</SelectItem>
+                          <SelectItem value="90">1.5 {t('schedule.hours')}</SelectItem>
+                          <SelectItem value="120">2 {t('schedule.hours')}</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
