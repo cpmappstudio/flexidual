@@ -54,7 +54,8 @@
     "rowsPerPage": "Rows per page",
     "pageOfPages": "Page {current} of {total}",
     "teacher": "Teacher",
-    "noDescription": "No description available"
+    "noDescription": "No description available",
+    "close": "Close"
   },
   "days": {
     "sunday": "Sun",

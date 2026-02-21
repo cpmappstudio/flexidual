@@ -315,8 +315,8 @@ export default function CalendarManageEventDialog() {
   return (
     <>
       <Dialog open={manageEventDialogOpen} onOpenChange={handleClose}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader className="flex flex-row items-start justify-between space-y-0 pt-2 pr-4">
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto" showCloseButton={false}>
+          <DialogHeader className="flex flex-row items-start justify-between space-y-0">
             <DialogTitle>
               {isEditing ? t('common.edit') : t('schedule.viewDetails')}
             </DialogTitle>
@@ -516,22 +516,25 @@ export default function CalendarManageEventDialog() {
               </div>
               
               {/* Action Button */}
-              <div className="flex justify-end pt-4">
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={handleClose}>
+                  {t('common.close')}
+                </Button>
                 {selectedEvent.isLive ? (
-                  <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700" asChild>
+                  <Button className="bg-green-600 hover:bg-green-700" asChild>
                     <Link href={`/classroom/${selectedEvent.roomName}`}>
                       <Video className="mr-2 h-4 w-4" />
                       {t('dashboard.enterLive')}
                     </Link>
                   </Button>
                 ) : (
-                  <Button className="w-full sm:w-auto" variant="outline" asChild>
+                  <Button asChild>
                     <Link href={`/classroom/${selectedEvent.roomName}`}>
                       {t('classroom.prepareRoom')}
                     </Link>
                   </Button>
                 )}
-              </div>
+              </DialogFooter>
             </div>
           ) : (
             /* EDIT MODE */

@@ -54,7 +54,8 @@
     "rowsPerPage": "Linhas por página",
     "pageOfPages": "Página {current} de {total}",
     "teacher": "Professor",
-    "noDescription": "Sem descrição disponível"
+    "noDescription": "Sem descrição disponível",
+    "close": "Fechar"
   },
   "days": {
     "sunday": "Dom",
