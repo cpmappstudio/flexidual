@@ -156,13 +156,6 @@ export function ManageScheduleDialog({
     }
   }, [open, initialData, preselectedLessonId, preselectedDate])
 
-  useEffect(() => {
-    if (open && isEditing && initialData?.isRecurring) {
-      setLessonIds([])
-      setIsRecurring(true)
-    }
-  }, [open, isEditing, initialData])
-
 
   useEffect(() => {
     if (!daysOfWeek || daysOfWeek.length === 0) return
@@ -234,7 +227,7 @@ export function ManageScheduleDialog({
           sessionType,
           updateSeries,
         })
-        toast.success(t("schedule.updated"))
+        toast.success(t("schedule.scheduleUpdated"))
       } else {
         if (isRecurring) {
           const finalDaysOfWeek = daysOfWeek.length > 0 ? daysOfWeek : undefined;
@@ -358,8 +351,8 @@ export function ManageScheduleDialog({
 
         <div className="space-y-4 py-4">
           {isEditing && (initialData?.isRecurring || initialData?.recurrenceParentId) && (
-            <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950/20 space-y-3">
-              <Label className="text-sm font-medium">
+            <div className="p-4 border-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 space-y-3">
+              <Label className="text-base font-semibold text-blue-900 dark:text-blue-100">
                 {t('schedule.updateScope') || "What do you want to update?"}
               </Label>
               
@@ -373,32 +366,32 @@ export function ManageScheduleDialog({
                     setLessonIds([]);
                   }
                 }}
+                className="flex flex-col gap-3"
               >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="instance" id="scope-instance" />
-                  <Label htmlFor="scope-instance" className="font-normal cursor-pointer">
-                    {t('schedule.thisEventOnly') || "This event only"}
-                  </Label>
+                <div className="flex items-start space-x-3 p-3 rounded-md border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-900 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors">
+                  <RadioGroupItem value="instance" id="scope-instance" className="mt-0.5" />
+                  <div className="flex-1">
+                    <Label htmlFor="scope-instance" className="font-medium cursor-pointer">
+                      {t('schedule.thisEventOnly') || "Just this event"}
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t('schedule.instanceNote') || "Changes only affect this occurrence. You can add/remove lessons."}
+                    </p>
+                  </div>
                 </div>
                 
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="series" id="scope-series" />
-                  <Label htmlFor="scope-series" className="font-normal cursor-pointer">
-                    {t('schedule.allFutureEvents') || "All future events in this series"}
-                  </Label>
+                <div className="flex items-start space-x-3 p-3 rounded-md border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-900 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors">
+                  <RadioGroupItem value="series" id="scope-series" className="mt-0.5" />
+                  <div className="flex-1">
+                    <Label htmlFor="scope-series" className="font-medium cursor-pointer">
+                      {t('schedule.allFutureEvents') || "All future events"}
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t('schedule.seriesUpdateNote') || "Changes affect all future occurrences. Cannot add/remove lessons."}
+                    </p>
+                  </div>
                 </div>
               </RadioGroup>
-              
-              {updateSeries ? (
-                <p className="text-xs text-blue-600 dark:text-blue-400 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{t('schedule.seriesUpdateNote') || "Changes affect all future occurrences. You cannot add lessons when updating the series."}</span>
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {t('schedule.instanceNote') || "Changes only affect this occurrence. You can add/remove lessons."}
-                </p>
-              )}
             </div>
           )}
           
@@ -429,17 +422,34 @@ export function ManageScheduleDialog({
             </Label>
 
             {isEditing && updateSeries && (
-              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
-                <p className="font-medium">⚠️ {t('schedule.seriesLessonsBlocked') || "Cannot add lessons to series"}</p>
-                <p className="text-xs mt-1">{t('schedule.switchToInstance') || "Switch to 'This event only' to add lessons."}</p>
+              <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-300 dark:border-amber-700 rounded-md p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-sm text-amber-900 dark:text-amber-100">
+                      {t('schedule.seriesLessonsBlocked') || "Lessons locked for series updates"}
+                    </p>
+                    <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                      {t('schedule.switchToInstance') || "Switch to 'Just this event' to add lessons to this specific occurrence."}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
             
-            {/* Warning for recurring + lessons */}
-            {isRecurring && (
-              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
-                <p className="font-medium">⚠️ {t('schedule.recurringNoLessonsTitle') || "Recurring schedules cannot have lessons"}</p>
-                <p className="text-xs mt-1">{t('schedule.recurringNoLessonsDesc') || "Create individual schedules to assign specific lessons."}</p>
+            {!isEditing && isRecurring && (
+              <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-300 dark:border-amber-700 rounded-md p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-sm text-amber-900 dark:text-amber-100">
+                      {t('schedule.recurringNoLessonsTitle') || "Recurring schedules cannot have lessons at creation"}
+                    </p>
+                    <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                      {t('schedule.recurringNoLessonsDesc') || "You can add lessons to individual occurrences after creation by editing them."}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -454,7 +464,10 @@ export function ManageScheduleDialog({
                     const isUsed = usedLessonIds?.includes(lesson._id) && 
                       !initialData?.lessonIds?.includes(lesson._id);
                     const isSelected = lessonIds.includes(lesson._id);
-                    const isDisabled = isRecurring || isUsed || (isEditing && updateSeries);
+                    const isDisabled = 
+                      isUsed || 
+                      (!isEditing && isRecurring) ||
+                      (isEditing && updateSeries);
 
                     return (
                       <button

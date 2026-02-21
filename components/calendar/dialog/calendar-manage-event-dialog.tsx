@@ -38,7 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, Link as LinkIcon, MonitorPlay, Repeat } from "lucide-react";
+import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, Link as LinkIcon, MonitorPlay, Repeat, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
@@ -133,18 +133,19 @@ export default function CalendarManageEventDialog() {
   // Queries for Edit Mode
   const classData = useQuery(
     api.classes.get, 
-    isEditing && selectedEvent ? { id: selectedEvent.classId } : "skip"
+    selectedEvent ? { id: selectedEvent.classId } : "skip" // ✅ Removed isEditing check
   );
-  
-  // ✅ Fetch full lesson details
+
+  // Fetch lessons for both view and edit mode
   const lessons = useQuery(
     api.lessons.listByCurriculum,
     classData ? { curriculumId: classData.curriculumId } : "skip"
   );
 
+  // Only fetch usedLessons when in edit mode (optimization)
   const usedLessonIds = useQuery(
     api.schedule.getUsedLessons,
-    selectedEvent ? { classId: selectedEvent.classId } : "skip"
+    selectedEvent && isEditing ? { classId: selectedEvent.classId } : "skip"
   );
 
   // Convex mutations
@@ -209,12 +210,6 @@ export default function CalendarManageEventDialog() {
       setUpdateMode("single");
     }
   }, [manageEventDialogOpen, selectedEvent, form, eventDuration, isEditing]);
-
-  useEffect(() => {
-    if (isEditing && selectedEvent?.isRecurring) {
-      form.setValue("lessonIds", []);
-    }
-  }, [isEditing, selectedEvent?.isRecurring, form]);
 
   // ✅ Helper to toggle lesson selection
   const toggleLesson = (id: string) => {
@@ -470,21 +465,50 @@ export default function CalendarManageEventDialog() {
                 )}
                 
                 {/* ✅ List all linked lessons */}
-                {selectedEvent.lessons && selectedEvent.lessons.length > 0 && (
+                {selectedEvent.lessonIds && selectedEvent.lessonIds.length > 0 && (
                   <div className="flex gap-3">
                     <LinkIcon className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <p className="font-medium mb-2">{t('lesson.linkedLessons')}</p>
-                      <div className="space-y-1">
-                        {selectedEvent.lessons.map((lesson) => (
-                          <Link 
-                            key={lesson._id}
-                            href={`/lessons/${lesson._id}`} 
-                            className="block text-primary hover:underline text-sm"
-                          >
-                            {lesson.order}. {lesson.title}
-                          </Link>
-                        ))}
+                      <p className="font-medium mb-2">
+                        {t('schedule.linkedLessons') || 'Linked Lessons'}
+                      </p>
+                      <div className="space-y-2">
+                        {selectedEvent.lessonIds.map((lessonId, idx) => {
+                          // Find lesson details from the lessons query
+                          const lesson = lessons?.find(l => l._id === lessonId);
+                          
+                          if (!lesson) {
+                            return (
+                              <div key={lessonId} className="text-sm text-muted-foreground italic">
+                                {t('schedule.loadingLessons') || 'Loading lesson...'}
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <Link 
+                              key={lessonId}
+                              href={`/lessons/${lessonId}`} 
+                              className="block p-2 rounded-md border hover:bg-accent transition-colors group"
+                            >
+                              <div className="flex items-start gap-2">
+                                <span className="font-semibold text-primary shrink-0">
+                                  {lesson.order}.
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-sm group-hover:text-primary transition-colors">
+                                    {lesson.title}
+                                  </p>
+                                  {lesson.description && (
+                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                                      {lesson.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </Link>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -516,49 +540,47 @@ export default function CalendarManageEventDialog() {
                 
                 {/* Series vs Single Logic */}
                 {isSeries && (
-                  <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-md border border-amber-200 dark:border-amber-900">
-                    <FormLabel className="mb-2 block text-amber-900 dark:text-amber-100">
-                      {t('schedule.updateSchedule')}
+                  <div className="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-md border border-amber-200 dark:border-amber-900 space-y-3">
+                    <FormLabel className="text-base font-semibold text-amber-900 dark:text-amber-100">
+                      {t('schedule.updateSchedule') || "Update Scope"}
                     </FormLabel>
                     
-                    {/* ✅ Different UI based on whether it's parent or child */}
-                    {selectedEvent.isRecurring ? (
-                      // Editing the PARENT template
-                      <div className="space-y-2">
-                        <p className="text-sm text-amber-800 dark:text-amber-200">
-                          {t('schedule.editingSeriesTemplate') || "Editing series template"}
-                        </p>
-                        <p className="text-xs text-amber-600 dark:text-amber-400">
-                          {t('schedule.seriesTemplateNote') || "Changes will affect all future occurrences. Cannot add lessons to series."}
-                        </p>
+                    <RadioGroup 
+                      value={updateMode} 
+                      onValueChange={(v) => {
+                        const newMode = v as "single" | "series";
+                        setUpdateMode(newMode);
+                        // Clear lessons when switching to series mode
+                        if (newMode === "series") {
+                          form.setValue("lessonIds", []);
+                        }
+                      }}
+                      className="flex flex-col gap-3"
+                    >
+                      <div className="flex items-start space-x-3 p-3 rounded-md border border-amber-200 dark:border-amber-800 bg-white dark:bg-gray-900 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors">
+                        <RadioGroupItem value="single" id="r1" className="mt-0.5" />
+                        <div className="flex-1">
+                          <FormLabel htmlFor="r1" className="font-medium cursor-pointer">
+                            {t('schedule.editOccurrence') || "Just this event"}
+                          </FormLabel>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {t('schedule.editOccurrenceDesc') || "Changes only affect this occurrence. You can add/remove lessons."}
+                          </p>
+                        </div>
                       </div>
-                    ) : (
-                      // Editing a CHILD instance
-                      <RadioGroup 
-                        value={updateMode} 
-                        onValueChange={(v) => {
-                          setUpdateMode(v as "single" | "series");
-                          // ✅ Clear lessons when switching to series
-                          if (v === "series") {
-                            form.setValue("lessonIds", []);
-                          }
-                        }}
-                        className="flex flex-col sm:flex-row gap-4"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="single" id="r1" />
-                          <FormLabel htmlFor="r1" className="font-normal cursor-pointer">
-                            {t('schedule.editOccurrence')}
+                      
+                      <div className="flex items-start space-x-3 p-3 rounded-md border border-amber-200 dark:border-amber-800 bg-white dark:bg-gray-900 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors">
+                        <RadioGroupItem value="series" id="r2" className="mt-0.5" />
+                        <div className="flex-1">
+                          <FormLabel htmlFor="r2" className="font-medium cursor-pointer">
+                            {t('schedule.editSeries') || "All future events"}
                           </FormLabel>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {t('schedule.editSeriesDesc') || "Changes affect all future occurrences. Cannot add/remove lessons."}
+                          </p>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="series" id="r2"/>
-                          <FormLabel htmlFor="r2" className="font-normal cursor-pointer">
-                            {t('schedule.editSeries')}
-                          </FormLabel>
-                        </div>
-                      </RadioGroup>
-                    )}
+                      </div>
+                    </RadioGroup>
                   </div>
                 )}
                 
@@ -603,13 +625,18 @@ export default function CalendarManageEventDialog() {
                   
                   {/* ✅ Warning for series updates */}
                   {updateMode === "series" && (
-                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
-                      <p className="font-medium">
-                        ⚠️ {t('schedule.cannotUpdateSeriesWithLessonsTitle') || "Cannot modify lessons for series"}
-                      </p>
-                      <p className="text-xs mt-1">
-                        {t('schedule.cannotUpdateSeriesWithLessonsDesc') || "Edit individual occurrences to assign lessons."}
-                      </p>
+                    <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-300 dark:border-amber-700 rounded-md p-3 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-sm text-amber-900 dark:text-amber-100">
+                            {t('schedule.cannotEditSeriesLessons') || "Lessons locked for series updates"}
+                          </p>
+                          <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                            {t('schedule.cannotEditSeriesLessonsDesc') || "To add lessons, switch to 'Just this event' mode. Lessons must be assigned individually to prevent repetition conflicts."}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -624,10 +651,7 @@ export default function CalendarManageEventDialog() {
                           const isUsed = usedLessonIds?.includes(lesson._id) && 
                                         !selectedEvent.lessonIds?.includes(lesson._id);
                           const isSelected = lessonIds.includes(lesson._id);
-                          const isDisabled = 
-                            updateMode === "series" || 
-                            isUsed || 
-                            (selectedEvent.isRecurring && isEditing);
+                          const isDisabled = updateMode === "series" || isUsed;
 
                           return (
                             <button
@@ -647,7 +671,7 @@ export default function CalendarManageEventDialog() {
                                     isSelected 
                                       ? "bg-primary border-primary" 
                                       : "border-input"
-                                  }`}>
+                                  } ${isDisabled ? "opacity-50" : ""}`}>
                                     {isSelected && (
                                       <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 12 12" fill="none">
                                         <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>

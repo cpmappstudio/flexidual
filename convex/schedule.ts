@@ -1033,6 +1033,80 @@ export const updateSchedule = mutation({
         }
       }
     }
+
+    const oldStart = schedule.scheduledStart;
+    const newStart = args.scheduledStart ?? oldStart;
+    const timeShiftDelta = newStart - oldStart;
+    
+    const oldEnd = schedule.scheduledEnd;
+    const newEnd = args.scheduledEnd ?? oldEnd;
+    const newDuration = newEnd - newStart;
+
+    // VALIDATE OVERLAP if times are changing
+    // (Only checks the specific item being edited, or the master if updating series)
+    if (args.scheduledStart !== undefined || args.scheduledEnd !== undefined) {
+      await validateScheduleOverlap(ctx, {
+        teacherId: classData.teacherId,
+        classId: classData._id,
+        start: newStart,
+        end: newEnd,
+        excludeScheduleId: args.id
+      });
+    }
+
+    const metadataUpdates: any = {};
+    if (args.title !== undefined) metadataUpdates.title = args.title;
+    if (args.sessionType !== undefined) metadataUpdates.sessionType = args.sessionType;
+    if (args.description !== undefined) metadataUpdates.description = args.description;
+    if (args.lessonIds !== undefined) metadataUpdates.lessonIds = args.lessonIds;
+    if (args.status) {
+      metadataUpdates.status = args.status;
+      if (args.status === "completed" && !schedule.completedAt) {
+        metadataUpdates.completedAt = Date.now();
+      }
+    }
+
+    // Update single or series
+    if (args.updateSeries && (schedule.isRecurring || schedule.recurrenceParentId)) {
+      // Find the Master ID (Parent)
+      const masterId = schedule.recurrenceParentId || schedule._id;
+
+      // Collect all items in the series (Master + Children)
+      const itemsToUpdate = [];
+      
+      const parent = await ctx.db.get(masterId);
+      if (parent) itemsToUpdate.push(parent);
+
+      const children = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_recurrence_parent", (q) => q.eq("recurrenceParentId", masterId))
+        .collect();
+      itemsToUpdate.push(...children);
+
+      const uniqueItems = Array.from(new Map(itemsToUpdate.map(item => [item._id, item])).values());
+
+      for (const item of uniqueItems) {
+        const updatePatch: any = { ...metadataUpdates };
+
+        // Apply Relative Time Shift
+        const itemNewStart = item.scheduledStart + timeShiftDelta;
+        
+        updatePatch.scheduledStart = itemNewStart;
+        updatePatch.scheduledEnd = itemNewStart + newDuration;
+
+        await ctx.db.patch(item._id, updatePatch);
+      }
+      
+      return { updated: uniqueItems.length, type: "series" };
+    } else {
+      // Single instance update
+      const singleUpdates = { ...metadataUpdates };
+      if (args.scheduledStart !== undefined) singleUpdates.scheduledStart = newStart;
+      if (args.scheduledEnd !== undefined) singleUpdates.scheduledEnd = newEnd;
+      
+      await ctx.db.patch(args.id, singleUpdates);
+      return { updated: 1, type: "single" };
+    }
   },
 });
 
