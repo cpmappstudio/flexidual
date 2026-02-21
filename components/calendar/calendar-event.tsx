@@ -111,8 +111,8 @@ export default function CalendarEvent({
     event.color.replace("#", "");
 
   const tooltipText = month 
-    ? `${event.className} - ${format(event.start, "h:mm a")}`
-    : `${event.className}\n${event.title}\n${event.curriculumTitle}\n${format(event.start, "h:mm a")} - ${format(event.end, "h:mm a")}`;
+    ? `${event.curriculumTitle} - ${event.teacherName} - ${format(event.start, "h:mm a")}`
+    : `${event.curriculumTitle}\n${event.title}\n${event.className}\n${format(event.start, "h:mm a")} - ${format(event.end, "h:mm a")}`;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -177,7 +177,7 @@ export default function CalendarEvent({
               )}
             >
               <p className={cn("font-bold truncate", month && "text-xs")}>
-                {event.className}
+                {event.curriculumTitle}
               </p>
               
               <p
@@ -195,7 +195,7 @@ export default function CalendarEvent({
                   month && "hidden",
                 )}
               >
-                {event.curriculumTitle}
+                {event.className}
               </p>
 
               {event.isLive && (
