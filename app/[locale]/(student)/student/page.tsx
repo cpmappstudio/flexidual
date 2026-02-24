@@ -10,7 +10,7 @@ import { ScrollIndicator } from "@/components/student/scroll-indicator"
 import { FlexidualLogo } from "@/components/ui/flexidual-logo"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { LogOut, History, Calendar as CalendarIcon, Settings, BellRing, BookOpen, GraduationCap, TrendingUp, Menu, X } from "lucide-react"
+import { LogOut, History, Calendar as CalendarIcon, Settings, BellRing, BookOpen, GraduationCap, Menu, X } from "lucide-react"
 import { useTranslations, useLocale } from "next-intl"
 import { enUS, es, ptBR } from "date-fns/locale"
 import { SignOutButton } from "@clerk/nextjs"
@@ -28,9 +28,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import Image from "next/image"
 import { toast } from "sonner"
-import { Progress } from "@/components/ui/progress"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 
 export default function StudentHubPage() {

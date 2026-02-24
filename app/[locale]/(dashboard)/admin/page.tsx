@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { Users, School, BookOpen, GraduationCap, Activity } from "lucide-react"
+import { Users, School, BookOpen, GraduationCap, Activity, LucideIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { AdminClassTrackingCard } from "@/components/admin/admin-class-tracking-card"
 
@@ -128,7 +128,7 @@ export default function AdminPage() {
     )
 }
 
-function StatCard({ title, value, icon: Icon, colorClass, bgClass }: { title: string, value: number | string, icon: any, colorClass: string, bgClass: string }) {
+function StatCard({ title, value, icon: Icon, colorClass, bgClass }: { title: string, value: number | string, icon: LucideIcon, colorClass: string, bgClass: string }) {
     return (
         <Card className="dashboard-card hover:-translate-y-1 transition-transform duration-200">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">

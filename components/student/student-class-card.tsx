@@ -2,13 +2,32 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BookOpen, CheckCircle2, XCircle, Calendar, CalendarClock } from "lucide-react"
-import { format } from "date-fns"
+import { format, Locale } from "date-fns"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
+import { Id } from "@/convex/_generated/dataModel"
+
+interface ClassStat {
+  classId: Id<"classes">
+  className: string
+  curriculumTitle: string
+  description: string | undefined
+  teacher: {
+    fullName: string
+    imageUrl: string | undefined
+  }
+  stats: {
+    totalClasses: number
+    completedClasses: number
+    attendedClasses: number
+    progressPercentage: number
+  }
+  nextSession: number | undefined
+}
 
 interface StudentClassCardProps {
-  stat: any; // You can strongly type this based on your API return type if preferred
-  currentDateLocale: any;
+  stat: ClassStat
+  currentDateLocale: Locale
 }
 
 export function StudentClassCard({ stat, currentDateLocale }: StudentClassCardProps) {
