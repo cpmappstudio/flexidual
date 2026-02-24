@@ -18,6 +18,7 @@ import { StudentScheduleEvent } from "@/lib/types/student"
 import { ModeToggle } from "@/components/mode-toggle"
 import { LangToggle } from "@/components/lang-toggle"
 import { StudentProfileHero } from "@/components/student/student-profile-hero"
+import { StudentClassCard } from "@/components/student/student-class-card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -319,80 +320,11 @@ export default function StudentHubPage() {
                 </div>
 
                 {classStats?.map((stat) => (
-                  <Card key={stat.classId} className="group overflow-hidden border-2 hover:border-purple-400 dark:hover:border-purple-600 transition-all duration-300 hover:shadow-xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
-                    {/* Header with Color Accent */}
-                    <div className="h-2 w-full bg-gradient-to-r from-purple-500 to-pink-500" />
-                    
-                    <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2 p-3 sm:p-4 lg:p-6">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs sm:text-sm font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider mb-1">
-                          {stat.curriculumTitle}
-                        </p>
-                        
-                        <CardTitle className="text-base sm:text-lg font-bold line-clamp-1 text-gray-900 dark:text-gray-100 group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors">
-                          {stat.className}
-                        </CardTitle>
-
-                        <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-2">
-                          {stat.description || t('common.noDescription')}
-                        </p>
-                      </div>
-                      
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center ml-2 border-2 border-white dark:border-gray-700 shadow-sm shrink-0">
-                        <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 dark:text-purple-400" />
-                      </div>
-                    </CardHeader>
-
-                    <CardContent className="space-y-4 sm:space-y-6 pt-2 sm:pt-4 p-3 sm:p-4 lg:p-6">
-                      {/* Teacher Info */}
-                      <div className="flex items-center gap-2 sm:gap-3 bg-gray-50 dark:bg-gray-800/50 p-2 sm:p-3 rounded-lg border border-gray-100 dark:border-gray-800">
-                        {stat.teacher.imageUrl ? (
-                          <Image 
-                            src={stat.teacher.imageUrl} 
-                            alt={stat.teacher.fullName} 
-                            width={48} 
-                            height={48} 
-                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-white dark:border-gray-700 shadow-sm"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600 font-bold border-2 border-white dark:border-gray-700 text-sm">
-                             {stat.teacher.fullName.charAt(0)}
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('common.teacher')}</p>
-                          <p className="font-medium text-xs sm:text-sm truncate">{stat.teacher.fullName}</p>
-                        </div>
-                      </div>
-
-                      {/* Stats & Progress */}
-                      <div className="space-y-2 sm:space-y-3">
-                         <div className="flex justify-between items-end text-xs sm:text-sm">
-                            <span className="flex items-center gap-1 sm:gap-2 font-semibold text-gray-700 dark:text-gray-300">
-                               <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
-                               <span className="text-xs sm:text-sm">{t('student.attendance')}</span>
-                            </span>
-                            <span className="font-bold text-purple-600 dark:text-purple-400 text-base sm:text-lg">
-                               {stat.stats.progressPercentage}%
-                            </span>
-                         </div>
-                         <Progress value={stat.stats.progressPercentage} className="h-2 sm:h-3 bg-gray-200 dark:bg-gray-700" />
-                         <div className="flex justify-between text-[10px] sm:text-xs text-muted-foreground">
-                            <span>{stat.stats.attendedClasses} {t('student.attended')}</span>
-                            <span>{stat.stats.totalClasses} {t('student.totalScheduled')}</span>
-                         </div>
-                      </div>
-
-                      {/* Next Session */}
-                      {stat.nextSession && (
-                        <div className="pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
-                            <p className="text-[10px] sm:text-xs text-center text-purple-600 dark:text-purple-400 font-medium bg-purple-50 dark:bg-purple-900/20 py-1 rounded-md capitalize">
-                                {t('student.nextClass')}: {format(stat.nextSession, "EEE, MMM d @ h:mm a", { locale: currentDateLocale })}
-                            </p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <StudentClassCard 
+                    key={stat.classId} 
+                    stat={stat} 
+                    currentDateLocale={currentDateLocale} 
+                  />
                 ))}
 
                 {/* Empty State if no classes */}

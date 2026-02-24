@@ -75,29 +75,29 @@ export function DraggableLessonCard({
 
   // --- 🎨 VISUAL STYLES ---
   const getCardStyle = () => {
-    if (isInClass) return 'bg-green-50 dark:bg-green-950/50 border-green-500 ring-2 ring-green-400 ring-offset-2 dark:ring-offset-gray-900 animate-pulse-slow';
+    if (isInClass) return 'bg-green-50 dark:bg-green-950/50 border-green-500 border-b-[6px] ring-2 ring-green-400 ring-offset-2 dark:ring-offset-gray-900 animate-pulse-slow';
     
     if (isLate) {
-        if (!canStillPass) return 'bg-red-50/50 dark:bg-red-950/20 border-red-300 dark:border-red-900 border-dashed';
-        return 'bg-red-50 dark:bg-red-950/40 border-red-500 dark:border-red-700 shadow-xl shadow-red-200 dark:shadow-none';
+        if (!canStillPass) return 'bg-red-50/50 dark:bg-red-950/20 border-red-300 border-b-[6px] dark:border-red-900 border-dashed';
+        return 'bg-red-50 dark:bg-red-950/40 border-red-500 border-b-[6px] dark:border-red-700 shadow-xl shadow-red-200 dark:shadow-none';
     }
 
     if (isIgnitia) {
         if (lesson.isLive || (now >= lesson.start && now <= lesson.end)) {
-            return 'bg-gradient-to-br from-orange-100 via-amber-100 to-yellow-100 dark:from-orange-950 dark:via-amber-950 dark:to-yellow-950 border-orange-400 dark:border-orange-500';
+            return 'bg-gradient-to-br from-orange-100 via-amber-100 to-yellow-100 dark:from-orange-950 dark:via-amber-950 dark:to-yellow-950 border-orange-400 border-b-[6px] dark:border-orange-500';
         }
-        return 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-orange-300 dark:border-orange-800 shadow-lg';
+        return 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-orange-300 border-b-[6px] dark:border-orange-800 shadow-sm';
     }
 
-    if (isMissed) return 'bg-gray-100 dark:bg-gray-900/50 border-gray-300 dark:border-gray-800 opacity-60 grayscale';
+    if (isMissed) return 'bg-gray-100 dark:bg-gray-900/50 border-gray-300 border-b-4 dark:border-gray-800 opacity-60 grayscale';
 
-    if (isPresent || isPartialFinal) return 'bg-white dark:bg-gray-900 border-green-200 dark:border-green-900 opacity-80';
+    if (isPresent || isPartialFinal) return 'bg-white dark:bg-gray-900 border-green-200 border-b-4 dark:border-green-900 opacity-80';
 
-    if (isUrgent) return 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 shadow-lg shadow-amber-200 dark:shadow-none';
+    if (isUrgent) return 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 border-b-[6px] shadow-lg shadow-amber-200 dark:shadow-none';
     
-    if (lesson.isLive) return 'bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-950 dark:to-emerald-950 border-green-400 dark:border-green-600 shadow-lg';
+    if (lesson.isLive) return 'bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-950 dark:to-emerald-950 border-green-400 border-b-[6px] dark:border-green-600 shadow-md';
 
-    return 'bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950 border-blue-400 dark:border-purple-500 shadow-lg hover:shadow-xl transition-shadow';
+    return 'bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950 border-blue-400 border-b-[6px] dark:border-purple-500 shadow-sm hover:shadow-md transition-shadow';
   }
 
   const getTextColor = () => {
@@ -116,11 +116,10 @@ export function DraggableLessonCard({
       onDragStart={() => canDrag && onDragStart(lesson)}
       onDragEnd={onDragEnd}
       onClick={() => canDrag && onTap && onTap(lesson)}
-      whileHover={canDrag ? { scale: 1.02, y: -2 } : {}}
-      whileTap={canDrag ? { scale: 0.98 } : {}}
+      whileHover={canDrag ? { scale: 1.01, y: -2 } : {}}
       className={cn(
-        "relative rounded-2xl border-4 p-4 transition-all select-none", 
-        canDrag ? "cursor-pointer active:scale-95 touch-manipulation" : "cursor-default touch-none",
+        "relative rounded-2xl border-2 p-4 transition-all duration-150 select-none", 
+        canDrag ? "cursor-pointer touch-manipulation active:border-b-2 active:translate-y-[4px]" : "cursor-default touch-none",
         getCardStyle()
       )}
       style={{ borderColor: !isMissed && !isIgnitia && !lesson.isLive && !isLate && !isUrgent && !isInClass ? lesson.color : undefined }}
@@ -263,9 +262,13 @@ export function DraggableLessonCard({
         </div>
       </div>
 
-      {canDrag && (
+      {canDrag && !isInClass && (
         <div className={cn("mt-3 text-center text-xs font-bold animate-bounce relative z-10", isLate ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400")}>
-           {isInClass ? "" : `👆 ${t('dragOrTap') || t('dragHint')}`}
+           {/* Shows on mobile and tablet, hides on desktop */}
+           <span className="lg:hidden">👆 {t('tapHint') || 'Tap me! 🚀'}</span>
+           
+           {/* Hides on mobile and tablet, shows on desktop */}
+           <span className="hidden lg:inline">👆 {t('dragHint') || 'Drag me! 🚀'}</span>
         </div>
       )}
     </motion.div>
