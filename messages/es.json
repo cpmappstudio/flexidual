@@ -68,7 +68,8 @@
   },
   "admin": {
     "title": "Administración Académica",
-    "description": "Centro de administración y herramientas de gestión académica."
+    "description": "Centro de administración y herramientas de gestión académica.",
+    "classTracking": "Seguimiento de Clases y Profesores"
   },
   "navigation": {
     "dashboard": "Panel",

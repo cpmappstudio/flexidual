@@ -405,6 +405,35 @@ export const getMySchedule = query({
         const effectiveIsLive = item.isLive && !isStale || false;
         const effectiveStatus = (item.status === "active" && isStale) ? "completed" : item.status;
 
+        let teacherAttendanceStatus = "upcoming";
+        let teacherTimeInClass = 0;
+
+        if (isTeacherOrAdmin) {
+            const teacherSessions = sessions.filter(s => s.studentId === classData.teacherId);
+            if (teacherSessions.length > 0) {
+                teacherTimeInClass = teacherSessions.reduce((sum, s) => {
+                    const sessionStart = s.joinedAt;
+                    const sessionEnd = s.leftAt || now;
+                    const effectiveStart = Math.max(sessionStart, item.scheduledStart);
+                    const effectiveEnd = Math.min(sessionEnd, item.scheduledEnd);
+                    const duration = Math.max(0, (effectiveEnd - effectiveStart) / 1000);
+                    return sum + duration;
+                }, 0);
+                
+                const scheduledDuration = (item.scheduledEnd - item.scheduledStart) / 1000;
+                const ratio = scheduledDuration > 0 ? teacherTimeInClass / scheduledDuration : 0;
+                
+                if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) teacherAttendanceStatus = "present";
+                else if (ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT || teacherTimeInClass >= MIN_PARTIAL_SECONDS) teacherAttendanceStatus = "partial";
+                else teacherAttendanceStatus = "absent";
+            } else if (item.scheduledEnd < now) {
+                // Fallback for sessions without explicit LiveKit session records
+                if (effectiveStatus === "completed") teacherAttendanceStatus = "present";
+                else if (effectiveStatus === "cancelled") teacherAttendanceStatus = "excused";
+                else teacherAttendanceStatus = "absent";
+            }
+        }
+
         return {
           scheduleId: item._id,
           title,
@@ -431,6 +460,10 @@ export const getMySchedule = query({
           recurrenceParentId: item.recurrenceParentId,
           teacherName: teacher?.fullName || "Unknown",
           teacherImageUrl: teacher?.imageUrl,
+          teacherAttendance: isTeacherOrAdmin ? {
+            status: teacherAttendanceStatus,
+            minutes: Math.round(teacherTimeInClass / 60)
+          } : undefined,
           attendance: attendanceStatus,
           minutesAttended: Math.round(timeInClass / 60),
           isStudentActive: isStudentActive,
