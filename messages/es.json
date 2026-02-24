@@ -55,7 +55,8 @@
     "pageOfPages": "Página {current} de {total}",
     "teacher": "Profesor",
     "noDescription": "Sin descripción disponible",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "optional": "Opcional"
   },
   "days": {
     "sunday": "Dom",
@@ -303,7 +304,9 @@
     "weekOverview": "Resumen de esta Semana",
     "manageContent": "Acciones de Clase",
     "addLessonToCurriculum": "Agregar Lección al Currículo",
-    "scheduleSession": "Programar Sesión"
+    "scheduleSession": "Programar Sesión",
+    "autoNameHint": "Dejar vacío para generar automáticamente",
+    "autoNamePattern": "Formato automático: Currículo - Profesor - Año (Sec #)"
   },
   "student": {
     "name": "Nombre del Estudiante",

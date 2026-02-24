@@ -271,8 +271,8 @@ export const checkStudentCurriculumEnrollment = internalQuery({
  */
 export const create = mutation({
   args: {
-    name: v.string(),
-    description: v.optional(v.string()), // Added description
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
     curriculumId: v.id("curriculums"),
     teacherId: v.id("users"),
     tutorId: v.optional(v.id("users")),
@@ -297,8 +297,26 @@ export const create = mutation({
     const teacher = await ctx.db.get(args.teacherId);
     if (!teacher || teacher.role !== "teacher") throw new Error("Invalid teacher");
 
+    // --- SMART AUTO-NAMING LOGIC ---
+    let className = args.name?.trim();
+    if (!className) {
+      const year = args.academicYear || new Date().getFullYear().toString();
+      const teacherName = teacher.lastName || teacher.firstName || "Teacher";
+      
+      // Count existing classes with the exact same setup to increment sections
+      const existing = await ctx.db
+        .query("classes")
+        .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
+        .collect();
+        
+      const similar = existing.filter(c => c.teacherId === args.teacherId && c.academicYear === args.academicYear);
+      const sectionStr = similar.length > 0 ? ` (Sec ${similar.length + 1})` : "";
+      
+      className = `${curriculum.title} - ${teacherName} - ${year}${sectionStr}`;
+    }
+
     return await ctx.db.insert("classes", {
-      name: args.name,
+      name: className,
       description: args.description,
       curriculumId: args.curriculumId,
       teacherId: args.teacherId,
@@ -352,6 +370,11 @@ export const update = mutation({
     const cleanUpdates: any = { ...updates };
     if (cleanUpdates.tutorId === null) {
       cleanUpdates.tutorId = undefined;
+    }
+
+    // Protect against accidentally clearing the class name during edits
+    if (cleanUpdates.name !== undefined && cleanUpdates.name.trim() === "") {
+      delete cleanUpdates.name; 
     }
 
     await ctx.db.patch(id, cleanUpdates);

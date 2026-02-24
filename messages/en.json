@@ -55,7 +55,8 @@
     "pageOfPages": "Page {current} of {total}",
     "teacher": "Teacher",
     "noDescription": "No description available",
-    "close": "Close"
+    "close": "Close",
+    "optional": "Optional"
   },
   "days": {
     "sunday": "Sun",
@@ -303,7 +304,9 @@
     "weekOverview": "This Week's Overview",
     "manageContent": "Class Actions",
     "addLessonToCurriculum": "Add Lesson to Curriculum",
-    "scheduleSession": "Schedule Session"
+    "scheduleSession": "Schedule Session",
+    "autoNameHint": "Leave empty to auto-generate",
+    "autoNamePattern": "Auto-format: Curriculum - Teacher - Year (Sec #)"
   },
   "student": {
     "name": "Student Name",
