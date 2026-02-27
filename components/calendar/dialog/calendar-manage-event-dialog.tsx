@@ -315,7 +315,7 @@ export default function CalendarManageEventDialog() {
   return (
     <>
       <Dialog open={manageEventDialogOpen} onOpenChange={handleClose}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto" showCloseButton={false}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto overflow-x-hidden" showCloseButton={false}>
           <DialogHeader className="flex flex-row items-start justify-between space-y-0">
             <DialogTitle>
               {isEditing ? t('common.edit') : t('schedule.viewDetails')}
@@ -338,7 +338,7 @@ export default function CalendarManageEventDialog() {
 
           {!isEditing ? (
             /* VIEW MODE */
-            <div className="space-y-6">
+            <div className="space-y-6 w-full min-w-0">
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-2xl font-bold">{selectedEvent.title}</h2>
@@ -539,7 +539,7 @@ export default function CalendarManageEventDialog() {
           ) : (
             /* EDIT MODE */
             <Form {...form} key={selectedEvent.scheduleId}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 w-full min-w-0">
                 
                 {/* Series vs Single Logic */}
                 {isSeries && (
@@ -662,7 +662,7 @@ export default function CalendarManageEventDialog() {
                               type="button"
                               onClick={() => !isDisabled && toggleLesson(lesson._id)}
                               disabled={isDisabled}
-                              className={`w-full text-left px-4 py-3 transition-colors ${
+                              className={`w-full text-left px-4 py-3 transition-colors overflow-hidden ${
                                 isDisabled 
                                   ? "opacity-40 cursor-not-allowed bg-muted/50" 
                                   : "hover:bg-accent cursor-pointer"
@@ -670,7 +670,7 @@ export default function CalendarManageEventDialog() {
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  <div className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+                                  <div className={`flex shrink-0 h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
                                     isSelected 
                                       ? "bg-primary border-primary" 
                                       : "border-input"

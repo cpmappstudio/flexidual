@@ -538,6 +538,7 @@
     "events": "eventos",
     "eventsThisWeek": "Eventos Desta Semana",
     "noEventsThisWeek": "Nenhum evento nesta semana...",
+    "noEventsDay": "Nenhum evento",
     "eventsToday": "Eventos de Hoje",
     "noEventsToday": "Nenhum evento hoje...",
     "moreEvents": "+{count} mais",

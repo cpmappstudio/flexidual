@@ -289,13 +289,13 @@ export default function CalendarNewEventDialog() {
 
   return (
     <Dialog open={newEventDialogOpen} onOpenChange={setNewEventDialogOpen}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>{t('schedule.create')}</DialogTitle>
         </DialogHeader>
         
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 w-full min-w-0">
             
             {/* Class Selection */}
             <FormField control={form.control} name="classId" render={({ field }) => (
@@ -392,7 +392,7 @@ export default function CalendarNewEventDialog() {
                           type="button"
                           onClick={() => !isDisabled && toggleLesson(lesson._id)}
                           disabled={isDisabled}
-                          className={`w-full text-left px-4 py-3 transition-colors ${
+                          className={`w-full text-left px-4 py-3 transition-colors overflow-hidden ${
                             isDisabled 
                               ? "opacity-40 cursor-not-allowed bg-muted/50" 
                               : "hover:bg-accent cursor-pointer"
@@ -400,7 +400,7 @@ export default function CalendarNewEventDialog() {
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <div className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+                              <div className={`flex shrink-0 h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
                                 isSelected 
                                   ? "bg-primary border-primary" 
                                   : "border-input"

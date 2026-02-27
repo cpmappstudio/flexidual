@@ -7,7 +7,7 @@ import { api } from "@/convex/_generated/api"
 import { useCurrentUser } from "@/hooks/use-current-user"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, BookOpen, Calendar, ArrowRight, School, Edit, LayoutGrid, List as ListIcon } from "lucide-react"
-import { format } from "date-fns"
+import { format, startOfWeek, addDays} from "date-fns"
 import { ClassDialog } from "@/components/teaching/classes/class-dialog"
 import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter"
 import { ClassesTable } from "@/components/teaching/classes/classes-table"
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview"
 
 export default function MyClassesPage() {
   const t = useTranslations()
@@ -31,6 +32,17 @@ export default function MyClassesPage() {
 
   const allClasses = useQuery(api.classes.list, queryArgs)
   const curriculums = useQuery(api.curriculums.list, {})
+
+  const startOfCurrentWeek = startOfWeek(new Date(), { weekStartsOn: 0 })
+  const endOfCurrentWeek = addDays(startOfCurrentWeek, 7)
+  
+  const scheduleArgs = queryArgs === "skip" ? "skip" : {
+    ...queryArgs,
+    from: startOfCurrentWeek.getTime(),
+    to: endOfCurrentWeek.getTime()
+  }
+
+  const weekSchedules = useQuery(api.schedule.getMySchedule, scheduleArgs)
 
   const classes = useMemo(() => {
     if (!allClasses) return undefined
@@ -53,6 +65,13 @@ export default function MyClassesPage() {
     return curriculums?.find(c => c._id === id)?.title || t('curriculum.unknown')
   }
 
+  const renderWeekOverview = () => {
+    if (isAdmin) return null
+    if (weekSchedules === undefined) return <Skeleton className="h-16 w-full rounded-xl" />
+    if (weekSchedules.length > 0) return <ClassWeekOverview schedules={weekSchedules} variant="compact" />
+    return null
+  }
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -65,6 +84,8 @@ export default function MyClassesPage() {
           </p>
         </div>
       </div>
+
+      {renderWeekOverview()}
 
       <Tabs defaultValue={isAdmin ? "list" : "grid"} className="w-full space-y-6">
         {/* Controls Row */}

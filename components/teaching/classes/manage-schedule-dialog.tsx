@@ -332,7 +332,7 @@ export function ManageScheduleDialog({
           )
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isEditing ? <Edit className="h-5 w-5" /> : <Calendar className="h-5 w-5" />}
@@ -349,7 +349,7 @@ export function ManageScheduleDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 w-full min-w-0">
           {isEditing && (initialData?.isRecurring || initialData?.recurrenceParentId) && (
             <div className="p-4 border-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 space-y-3">
               <Label className="text-base font-semibold text-blue-900 dark:text-blue-100">
@@ -475,7 +475,7 @@ export function ManageScheduleDialog({
                         type="button"
                         onClick={() => !isDisabled && toggleLesson(lesson._id)}
                         disabled={isDisabled}
-                        className={`w-full text-left px-4 py-3 transition-colors ${
+                        className={`w-full text-left px-4 py-3 transition-colors overflow-hidden ${
                           isDisabled 
                             ? "opacity-40 cursor-not-allowed bg-muted/50" 
                             : "hover:bg-accent cursor-pointer"
@@ -483,7 +483,7 @@ export function ManageScheduleDialog({
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+                            <div className={`flex shrink-0 h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
                               isSelected 
                                 ? "bg-primary border-primary" 
                                 : "border-input"
@@ -498,7 +498,6 @@ export function ManageScheduleDialog({
                               <div className="font-medium text-sm truncate">
                                 {lesson.order}. {lesson.title}
                               </div>
-                              {/* NOW WORKS: lesson has description property */}
                               {lesson.description && (
                                 <div className="text-xs text-muted-foreground truncate mt-0.5">
                                   {lesson.description}
