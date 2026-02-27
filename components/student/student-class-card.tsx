@@ -93,7 +93,7 @@ export function StudentClassCard({ stat, currentDateLocale }: StudentClassCardPr
         <div className="space-y-1.5">
           <div className="flex justify-between items-end">
             <span className="text-xs sm:text-sm font-bold text-gray-700 dark:text-gray-300">
-              Class Mastery
+              {t('student.profile.classMastery')}
             </span>
             <span className="font-black text-purple-600 dark:text-purple-400 text-sm sm:text-base">
               {stat.stats.progressPercentage}%

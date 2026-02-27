@@ -366,7 +366,15 @@
       "activeCourses": "Active Courses",
       "totalSessions": "Total Scheduled",
       "sessionsCompleted": "{count} sessions completed",
-      "currentLevel": "Current Level"
+      "currentLevel": "Current Level",
+      "overallProgress": "Overall Progress",
+      "behindTarget": "% Behind Target",
+      "actualProgress": "% Actual",
+      "targetProgress": "% Target",
+      "attended": "Attended",
+      "missed": "Missed",
+      "upcoming": "Upcoming",
+      "classMastery": "Class Mastery"
     },
     "grades": {
       "K": "Kindergarten",

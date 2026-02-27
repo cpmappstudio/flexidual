@@ -23,7 +23,12 @@ interface StudentProfileHeroProps {
 
 export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) {
     const t = useTranslations('student.profile')
-    
+    const tGrades = useTranslations('student.grades')
+
+    const gradeLabel = student.grade
+        ? tGrades(student.grade as string)
+        : null
+
     // Calculate exact numbers from the rate
     const attendedSessions = Math.round((stats.attendanceRate / 100) * stats.completedSessions)
     const missedSessions = stats.completedSessions - attendedSessions
@@ -76,7 +81,7 @@ export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) 
                     {student.grade && (
                         <span className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full border-2 border-gray-200 dark:border-gray-700">
                             <GraduationCap className="w-3.5 h-3.5" />
-                            {student.grade}th Grade
+                            {gradeLabel}
                         </span>
                     )}
                 </div>
@@ -114,11 +119,11 @@ export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) 
                 <div className="space-y-2">
                     <div className="flex justify-between items-end px-1">
                         <span className="text-[10px] sm:text-xs font-black text-gray-500 uppercase tracking-wider">
-                            Course Progress
+                            {t('overallProgress') || 'Overall Progress'}
                         </span>
                         {isBehind && (
                             <span className="text-[10px] sm:text-xs font-bold text-red-500 bg-red-100 dark:bg-red-900/40 px-2 py-0.5 rounded-md animate-pulse">
-                                {expectedProgressPct - actualProgressPct}% Behind Target
+                                {expectedProgressPct - actualProgressPct}{t('behindTarget')}
                             </span>
                         )}
                     </div>
@@ -152,8 +157,8 @@ export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) 
                     </div>
                     
                     <div className="flex justify-between text-[10px] sm:text-xs font-bold text-gray-400 px-1">
-                        <span>{actualProgressPct}% Actual</span>
-                        <span>{expectedProgressPct}% Target</span>
+                        <span>{actualProgressPct}{t('actualProgress')}</span>
+                        <span>{expectedProgressPct}{t('targetProgress')}</span>
                     </div>
                 </div>
 
@@ -162,19 +167,19 @@ export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) 
                     <div className="flex flex-col items-center justify-center bg-green-50 dark:bg-green-950/30 rounded-2xl p-3 border-2 border-b-4 border-green-200 dark:border-green-900/50 text-green-700 dark:text-green-400">
                         <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 mb-1" />
                         <span className="text-xl sm:text-2xl font-black leading-none">{attendedSessions}</span>
-                        <span className="text-[10px] sm:text-xs font-bold uppercase mt-1">Attended</span>
+                        <span className="text-[10px] sm:text-xs font-bold uppercase mt-1">{t('attended')}</span>
                     </div>
 
                     <div className="flex flex-col items-center justify-center bg-red-50 dark:bg-red-950/30 rounded-2xl p-3 border-2 border-b-4 border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400">
                         <XCircle className="w-5 h-5 sm:w-6 sm:h-6 mb-1" />
                         <span className="text-xl sm:text-2xl font-black leading-none">{missedSessions}</span>
-                        <span className="text-[10px] sm:text-xs font-bold uppercase mt-1">Missed</span>
+                        <span className="text-[10px] sm:text-xs font-bold uppercase mt-1">{t('missed')}</span>
                     </div>
 
                     <div className="flex flex-col items-center justify-center bg-blue-50 dark:bg-blue-950/30 rounded-2xl p-3 border-2 border-b-4 border-blue-200 dark:border-blue-900/50 text-blue-700 dark:text-blue-400">
                         <Calendar className="w-5 h-5 sm:w-6 sm:h-6 mb-1" />
                         <span className="text-xl sm:text-2xl font-black leading-none">{upcomingSessions}</span>
-                        <span className="text-[10px] sm:text-xs font-bold uppercase mt-1">Upcoming</span>
+                        <span className="text-[10px] sm:text-xs font-bold uppercase mt-1">{t('upcoming')}</span>
                     </div>
                 </div>
 
