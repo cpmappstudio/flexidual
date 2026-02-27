@@ -50,10 +50,10 @@ export function ClassWeekOverview({ schedules, variant = "vertical" }: ClassWeek
     const activeDays = weekDays.filter(d => d.events.length > 0)
 
     return (
-      <Card className={`shadow-none border bg-muted/20 py-0 ${isHorizontal ? 'w-full' : 'w-full lg:max-w-xs'}`}>
+      <Card className={`overflow-hidden shadow-none border bg-muted/20 py-0 w-full`}>
         <div
           onClick={() => setIsExpanded(!isExpanded)}
-          className={`flex items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors ${isHorizontal ? 'px-4 py-3' : 'px-4 py-3'}`}
+          className="flex items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors px-4 py-3"
         >
           <CardTitle className="text-sm font-medium flex items-center gap-2 text-foreground">
             <CalendarIcon className="h-4 w-4 text-muted-foreground" />
@@ -128,7 +128,7 @@ export function ClassWeekOverview({ schedules, variant = "vertical" }: ClassWeek
 
   // --- VERTICAL / HORIZONTAL VARIANTS (unchanged) ---
   return (
-    <Card className={`shadow-none border bg-muted/20 ${isHorizontal ? 'w-full' : 'w-full lg:max-w-xs'}`}>
+    <Card className={`shadow-none border bg-muted/20 w-full lg:max-w-xs py-0 overflow-hidden`}>
       <div
         onClick={() => setIsExpanded(!isExpanded)}
         className={`flex items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors ${isHorizontal ? 'p-4' : 'p-4 pb-3'}`}
@@ -147,7 +147,7 @@ export function ClassWeekOverview({ schedules, variant = "vertical" }: ClassWeek
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
           >
-            <CardContent className={`${isHorizontal ? 'px-4 pt-0 pb-4' : 'px-3 pt-0 pb-3'}`}>
+            <CardContent className={`${isHorizontal ? 'pt-0 pb-4' : 'p-3 pt-0'}`}>
               {!hasEvents ? (
                 <div className="text-xs text-muted-foreground text-center py-2 italic">
                   {t('calendar.noEventsThisWeek')}

@@ -121,7 +121,7 @@ export default function ClassDetailPage() {
 
               {/* CALENDAR VIEW */}
               <div className="space-y-6">
-                <Card className="overflow-hidden">
+                <Card className="overflow-hidden py-0">
                   <div 
                     onClick={() => setRoadmapExpanded(!roadmapExpanded)}
                     className="flex items-center justify-between p-6 cursor-pointer hover:bg-muted/50 transition-colors"
@@ -286,7 +286,7 @@ export default function ClassDetailPage() {
                 </Card>
 
                 {upcomingSchedules.length > 0 && (
-                  <Card className="overflow-hidden">
+                  <Card className="overflow-hidden py-0">
                     <div 
                       onClick={() => setUpcomingExpanded(!upcomingExpanded)}
                       className="flex items-center justify-between p-6 cursor-pointer hover:bg-muted/50 transition-colors"
@@ -325,7 +325,7 @@ export default function ClassDetailPage() {
                 )}
 
                 {pastSchedules.length > 0 && (
-                  <Card className="overflow-hidden">
+                  <Card className="overflow-hidden py-0">
                     <div 
                       onClick={() => setPastExpanded(!pastExpanded)}
                       className="flex items-center justify-between p-6 cursor-pointer hover:bg-muted/50 transition-colors"
