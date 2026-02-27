@@ -60,31 +60,38 @@ const isConvexId = (segment: string): boolean => {
 
 // Helper to detect if a segment is a room name
 const isRoomName = (segment: string): boolean => {
-    return segment.startsWith('class-') && (segment.includes('-lesson-') || segment.includes('-series-'))
+    return segment.startsWith('class-')
 }
 
 // Extract IDs from room name (handles both lesson and series)
 const parseRoomName = (roomName: string): { classId: string; lessonId?: string; seriesId?: string } | null => {
-    // Try lesson pattern first
-    let match = roomName.match(/class-([a-z0-9]+)-lesson-([a-z0-9]+)/)
+    // Try lesson pattern: class-{classId}-lesson-{lessonId}
+    let match = roomName.match(/^class-([a-z0-9]+)-lesson-([a-z0-9]+)/)
     if (match) {
-        return {
-            classId: match[1],
-            lessonId: match[2],
-        }
+        return { classId: match[1], lessonId: match[2] }
     }
     
-    // Try series pattern (for recurring schedules without lessons)
-    match = roomName.match(/class-([a-z0-9]+)-series-(\d+)/)
+    // Try series pattern: class-{classId}-series-{number}
+    match = roomName.match(/^class-([a-z0-9]+)-series-(\d+)/)
     if (match) {
-        return {
-            classId: match[1],
-            seriesId: match[2],
-        }
+        return { classId: match[1], seriesId: match[2] }
     }
-    
+
+    // Try timestamp pattern: class-{classId}-{timestamp}
+    match = roomName.match(/^class-([a-z0-9]+)-(\d{10,})$/)
+    if (match) {
+        return { classId: match[1], seriesId: match[2] }
+    }
+
+    // Fallback: anything starting with class- try to extract classId
+    match = roomName.match(/^class-([a-z0-9]+)/)
+    if (match) {
+        return { classId: match[1] }
+    }
+
     return null
 }
+
 
 export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
     const pathname = usePathname()
