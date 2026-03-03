@@ -2,17 +2,9 @@
 
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { AccessToken } from "livekit-server-sdk";
 
-// Roles for token permissions
-type LiveKitRole = "student" | "teacher" | "tutor" | "admin" | "superadmin"; 
-
-/**
- * Generates an access token for LiveKit. This is called by the client (frontend).
- * It uses the LIVEKIT_API_KEY/SECRET environment variables.
- * Role is fetched from the database (single source of truth).
- */
 export const getToken = action({
   args: {
     roomName: v.string(), 
@@ -25,7 +17,15 @@ export const getToken = action({
     const user = await ctx.runQuery(api.users.getCurrentUser, { clerkId: identity.subject });
     if (!user) throw new Error("User not found");
 
-    const userRole: LiveKitRole = (user.role as LiveKitRole) || "student";
+    // Call the internal query from schedule.ts!
+    const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, { 
+      userId: user._id, 
+      roomName: args.roomName 
+    });
+
+    if (!access || !access.authorized) {
+      throw new Error("You are not authorized to join this session.");
+    }
     
     const sessionStatus = await ctx.runQuery(api.schedule.getSessionStatus, { 
       sessionId: args.roomName 
@@ -35,20 +35,15 @@ export const getToken = action({
       throw new Error("Session not found");
     }
 
-    // Allow Teachers/Admins to join early to set up the room
-    const canJoinEarly = ["teacher", "admin", "superadmin", "tutor"].includes(userRole);
-
-    if (!sessionStatus.isActive && !canJoinEarly) {
+    if (!sessionStatus.isActive && !access.canJoinEarly) {
       throw new Error("Class has not started yet. Please wait for your teacher.");
     }
 
-    // Additional check: Even teachers can't join if session is cancelled
     if (sessionStatus.status === "cancelled") {
       throw new Error("This session has been cancelled");
     }
 
-    // Additional check: Don't allow joining completed sessions
-    if (sessionStatus.status === "completed" && !canJoinEarly) {
+    if (sessionStatus.status === "completed" && !access.canJoinEarly) {
       throw new Error("This session has already ended");
     }
     
@@ -58,13 +53,11 @@ export const getToken = action({
       throw new Error("LiveKit credentials not configured");
     }
 
-    const roomAdmin = ["teacher", "tutor", "admin", "superadmin"].includes(userRole);
-
     const at = new AccessToken(apiKey, apiSecret, {
       identity: identity.subject,
       name: args.participantName,
       metadata: JSON.stringify({
-        role: userRole,
+        role: access.computedRole,
         userId: identity.subject,
         fullName: user.fullName,
       })
@@ -76,7 +69,7 @@ export const getToken = action({
       canPublish: true,
       canSubscribe: true,
       canPublishData: true,
-      roomAdmin, 
+      roomAdmin: access.roomAdmin, 
     });
     
     return at.toJwt();

@@ -1,11 +1,10 @@
 // convex/migration.ts
 import { v } from "convex/values";
-import { mutation, internalMutation } from "./_generated/server";
+import { mutation, internalMutation, internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 
-/**
- * Migration helper to insert a curriculum without Auth checks.
- * Returns the new ID.
- */
+// --- YOUR ORIGINAL MIGRATIONS ---
+
 export const importCurriculum = mutation({
   args: {
     title: v.string(),
@@ -15,9 +14,6 @@ export const importCurriculum = mutation({
     createdAt: v.number(),
   },
   handler: async (ctx, args) => {
-    // You might want to assign a system user ID here if you don't have one, 
-    // or pass it in. For now, we'll try to find an admin or leave it null/placeholder
-    // if your schema allows. Ideally, fetch your own user ID here.
     const admin = await ctx.db.query("users").withIndex("by_role", q => q.eq("role", "admin").eq("isActive", true)).first();
     const createdBy = admin?._id ?? (await ctx.db.query("users").first())!._id;
 
@@ -25,7 +21,7 @@ export const importCurriculum = mutation({
       title: args.title,
       description: args.description,
       code: args.code,
-      color: "#3b82f6", // Default blue
+      color: "#3b82f6",
       isActive: args.isActive,
       createdAt: args.createdAt,
       createdBy: createdBy,
@@ -33,10 +29,6 @@ export const importCurriculum = mutation({
   },
 });
 
-/**
- * Batch insert lessons for a specific curriculum.
- * We assume the input 'lessons' array is ALREADY sorted by the client.
- */
 export const importLessonsBatch = mutation({
   args: {
     curriculumId: v.id("curriculums"),
@@ -52,7 +44,6 @@ export const importLessonsBatch = mutation({
     const admin = await ctx.db.query("users").withIndex("by_role", q => q.eq("role", "admin").eq("isActive", true)).first();
     const createdBy = admin?._id ?? (await ctx.db.query("users").first())!._id;
 
-    // 1. Get current max order to append correctly (starting at 1 if empty)
     const existingLessons = await ctx.db
       .query("lessons")
       .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
@@ -60,7 +51,6 @@ export const importLessonsBatch = mutation({
     
     let currentOrder = existingLessons.reduce((max, l) => Math.max(max, l.order), 0);
 
-    // 2. Insert sequentially
     for (const item of args.lessons) {
       currentOrder++;
       await ctx.db.insert("lessons", {
@@ -68,7 +58,7 @@ export const importLessonsBatch = mutation({
         title: item.title,
         description: item.description,
         content: item.content,
-        order: currentOrder, // Linear order based on the sorted array passed in
+        order: currentOrder, 
         isActive: item.isActive,
         createdAt: item.createdAt,
         createdBy: createdBy,
@@ -82,42 +72,24 @@ export const importLessonsBatch = mutation({
 export const migrateLessonIdToArray = internalMutation({
   handler: async (ctx) => {
     const schedules = await ctx.db.query("classSchedule").collect();
-    
     let migratedCount = 0;
     let skippedCount = 0;
 
     for (const schedule of schedules) {
       const doc = schedule as any;
-      
-      // Skip if already has lessonIds array
       if (doc.lessonIds !== undefined) {
         skippedCount++;
         continue;
       }
-
-      // Migrate old lessonId to lessonIds array
       if (doc.lessonId !== undefined) {
-        await ctx.db.patch(schedule._id, {
-          lessonIds: [doc.lessonId],
-          // Remove old field by setting to undefined
-          // lessonId: undefined as any,
-        });
+        await ctx.db.patch(schedule._id, { lessonIds: [doc.lessonId] });
         migratedCount++;
       } else {
-        // No lesson at all, set empty array
-        await ctx.db.patch(schedule._id, {
-          lessonIds: [],
-        });
+        await ctx.db.patch(schedule._id, { lessonIds: [] });
         migratedCount++;
       }
     }
-
-    return {
-      success: true,
-      migratedCount,
-      skippedCount,
-      totalProcessed: schedules.length,
-    };
+    return { success: true, migratedCount, skippedCount, totalProcessed: schedules.length };
   },
 });
 
@@ -127,19 +99,122 @@ export const clearLessonsFromRecurring = internalMutation({
       .query("classSchedule")
       .filter((q) => q.eq(q.field("isRecurring"), true))
       .collect();
-    
     let clearedCount = 0;
-    
     for (const schedule of schedules) {
       if (schedule.lessonIds && schedule.lessonIds.length > 0) {
-        await ctx.db.patch(schedule._id, {
-          lessonIds: undefined,
-          // lessonId: undefined,
-        });
+        await ctx.db.patch(schedule._id, { lessonIds: undefined });
         clearedCount++;
       }
     }
-    
     return { success: true, clearedCount };
+  },
+});
+
+// --- NEW MULTI-TENANT MIGRATIONS ---
+
+export const runMultiTenantMigration = internalMutation({
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    if (users.length === 0) throw new Error("No users found to migrate.");
+
+    // 1. Create a Default School
+    const schoolId = await ctx.db.insert("schools", {
+      name: "Default Academy",
+      slug: "default-academy",
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: users[0]._id,
+    });
+
+    // 2. Create a Default Campus
+    const campusId = await ctx.db.insert("campuses", {
+      schoolId: schoolId,
+      name: "Main Campus",
+      slug: "main-campus",
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: users[0]._id,
+    });
+
+    // 3. Migrate Users to Role Assignments
+    for (const user of users) {
+      if (user.role) {
+        const existing = await ctx.db.query("roleAssignments").withIndex("by_user", q => q.eq("userId", user._id)).first();
+        if (existing) continue;
+
+        if (user.role === "superadmin") {
+          await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "system", role: "superadmin", assignedAt: Date.now() });
+        } else if (user.role === "admin") {
+          await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "school", orgId: schoolId, role: "admin", assignedAt: Date.now() });
+        } else {
+          await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "campus", orgId: campusId, role: user.role, assignedAt: Date.now() });
+        }
+      }
+    }
+
+    // 4. Attach Curriculums to the School
+    const curriculums = await ctx.db.query("curriculums").collect();
+    for (const curr of curriculums) {
+      if (!curr.schoolId) await ctx.db.patch(curr._id, { schoolId });
+    }
+
+    // 5. Attach Classes to the Campus
+    const classes = await ctx.db.query("classes").collect();
+    for (const cls of classes) {
+      if (!cls.campusId) await ctx.db.patch(cls._id, { campusId });
+    }
+
+    return { success: true, message: "Database migrated! Next step: Run syncAllUsersToClerk action." };
+  },
+});
+
+export const syncAllUsersToClerk = internalAction({
+  handler: async (ctx) => {
+    // Requires an internal query in users.ts: 
+    // export const getAllUsersInternal = internalQuery({ handler: async (ctx) => await ctx.db.query("users").collect() });
+    const users = await ctx.runQuery(internal.users.getAllUsersInternal); 
+    
+    for (const user of users) {
+      if (!user.clerkId.startsWith("temp_")) {
+        await ctx.runAction(internal.roleAssignments.syncRolesToClerk, {
+          userId: user._id,
+          clerkId: user.clerkId,
+        });
+      }
+    }
+  }
+});
+
+export const elevateToSuperadmin = internalMutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    // 1. Find your user record
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+
+    if (!user) throw new Error(`User with email ${args.email} not found. Please log in first.`);
+
+    // 2. Check if already superadmin
+    const existing = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) => q.eq(q.field("orgType"), "system"))
+      .first();
+
+    if (existing && existing.role === "superadmin") {
+      return "User is already a Superadmin!";
+    }
+
+    // 3. Grant system-wide Superadmin access
+    await ctx.db.insert("roleAssignments", {
+      userId: user._id,
+      orgType: "system",
+      role: "superadmin",
+      assignedAt: Date.now(),
+    });
+
+    return `Success! ${args.email} is now a Superadmin. Next: Run syncAllUsersToClerk.`;
   },
 });

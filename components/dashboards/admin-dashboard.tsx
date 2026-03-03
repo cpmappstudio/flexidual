@@ -7,7 +7,7 @@ import { Users, School, BookOpen, GraduationCap, Activity, LucideIcon } from "lu
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { AdminClassTrackingCard } from "@/components/admin/admin-class-tracking-card"
 
-export default function AdminPage() {
+export default function AdminDashboard() {
     const t = useTranslations()
     
     const teachers = useQuery(api.users.getUsers, { role: "teacher", isActive: true })

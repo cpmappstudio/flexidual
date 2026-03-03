@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Id, Doc } from "@/convex/_generated/dataModel";
 import {
   ColumnDef,
   flexRender,
@@ -33,17 +33,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useTranslations } from "next-intl";
 import { UserRole } from "@/convex/types";
 
-// User type definition
-export type User = {
-  _id: Id<"users">;
-  fullName: string;
-  firstName?: string;
-  lastName?: string;
-  email: string;
-  avatarStorageId?: Id<"_storage">;
-  role: string;
-  isActive: boolean;
-};
+export type User = Doc<"users">;
 
 // Props to configure the table for different views (e.g. "Teachers Only" vs "Admins")
 interface UsersTableProps {

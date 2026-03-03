@@ -1,86 +1,63 @@
 "use client"
 
-import { useEffect } from "react"
-import {
-  BookOpen,
-  Calendar,
-  LayoutDashboard,
-  Users,
-  School,
-} from "lucide-react"
+import { useEffect, useMemo } from "react"
+import { useParams } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
+import { BookOpen, Calendar, LayoutDashboard, Users, School } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/navigation"
-import {
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar"
-import { useCurrentUser } from "@/hooks/use-current-user"
+import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { useTranslations } from "next-intl"
+import { getRoleForOrg } from "@/lib/rbac" 
 
 export function NavMain() {
-  // Call ALL hooks unconditionally at the top
-  const { user, isLoading } = useCurrentUser()
   const t = useTranslations()
   const pathname = usePathname()
-  const router = useRouter()
+  const params = useParams()
+  
+  // Extract context
+  const orgSlug = params.orgSlug as string
+  const { sessionClaims, isLoaded } = useAuth()
 
-  // Role helpers
-  const isTeacher = user?.role === "teacher"
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
+  // Evaluate role for THIS specific organization
+  const role = useMemo(() => getRoleForOrg(sessionClaims, orgSlug), [sessionClaims, orgSlug])
+  
+  const isTeacher = role === "teacher" || role === "tutor"
+  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
 
-  // Redirect effect
-  useEffect(() => {
-    if (!user) return
-    
-    const isDashboardRoute = 
-      pathname.includes("/teaching") || 
-      pathname.includes("/admin") ||
-      pathname.includes("/calendar")
+  if (!isLoaded || role === "student") return null
 
-    if (isDashboardRoute && !(isTeacher || isAdmin)) {
-      router.replace("/")
-    }
-  }, [pathname, router, isTeacher, isAdmin, user])
-
-  // Conditional rendering AFTER all hooks
-  if (isLoading) return null
-  if (user?.role === "student") return null
+  // Base URL for all links in this tenant
+  const basePath = `/${orgSlug}`
 
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{t('navigation.platform')}</SidebarGroupLabel>
       <SidebarMenu>
         
-        {/* 1. DASHBOARD (Everyone) */}
         <SidebarMenuItem>
-          <SidebarMenuButton asChild isActive={pathname.endsWith("/")}>
-            <Link href="/">
+          <SidebarMenuButton asChild isActive={pathname === basePath}>
+            <Link href={basePath}>
               <LayoutDashboard />
               <span>{t('navigation.dashboard')}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
 
-        {/* 2. CALENDAR (Everyone - The Core Feature) */}
         <SidebarMenuItem>
-          <SidebarMenuButton asChild isActive={pathname.includes("/calendar")}>
-            <Link href="/calendar">
+          <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/calendar`)}>
+            <Link href={`${basePath}/calendar`}>
               <Calendar />
               <span>{t('navigation.schedule')}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
 
-        {/* 3. TEACHING TOOLS (Teachers/Admins) */}
         {isTeacher && (
           <>
             <SidebarGroupLabel className="mt-4">{t('navigation.teaching')}</SidebarGroupLabel>
-            
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/teaching/classes")}>
-                <Link href="/teaching/classes">
+              <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/classes`)}>
+                <Link href={`${basePath}/classes`}>
                   <School />
                   <span>{isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}</span>
                 </Link>
@@ -89,32 +66,12 @@ export function NavMain() {
           </>
         )}
 
-        {/* 4. ADMIN TOOLS (Admins Only) */}
         {isAdmin && (
           <>
             <SidebarGroupLabel className="mt-4">{t('navigation.administration')}</SidebarGroupLabel>
-            
-            {/* <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/admin/teachers")}>
-                <Link href="/admin/teachers">
-                  <Users />
-                  <span>{t('navigation.teachers')}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/admin/students")}>
-                <Link href="/admin/students">
-                  <GraduationCap />
-                  <span>{t('navigation.students')}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem> */}
-
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/admin/users")}>
-                <Link href="/admin/users">
+              <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/users`)}>
+                <Link href={`${basePath}/users`}>
                   <Users />
                   <span>{t('navigation.allUsers')}</span>
                 </Link>
@@ -122,8 +79,8 @@ export function NavMain() {
             </SidebarMenuItem>
             
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/admin/curriculums")}>
-                <Link href="/admin/curriculums">
+              <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/curriculums`)}>
+                <Link href={`${basePath}/curriculums`}>
                   <BookOpen />
                   <span>{t('navigation.allCurriculums')}</span>
                 </Link>
@@ -131,16 +88,15 @@ export function NavMain() {
             </SidebarMenuItem>
 
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes("/teaching/classes")}>
-                <Link href="/teaching/classes">
+              <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/classes`)}>
+                <Link href={`${basePath}/classes`}>
                   <School />
-                  <span>{isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}</span>
+                  <span>{t('navigation.allClasses')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </>
         )}
-
       </SidebarMenu>
     </SidebarGroup>
   )

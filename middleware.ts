@@ -3,22 +3,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import createIntlMiddleware from 'next-intl/middleware'
 import { routing } from './i18n/routing'
 import { getLocaleFromPathname } from './lib/locale-setup'
-import { roleFromSessionClaims, checkRoleAccess, getDefaultDashboard } from './lib/rbac'
+import { getRolesFromClaims, isSuperAdmin, getRoleForOrg, getRoleBasePath } from './lib/rbac'
 
 const intlMiddleware = createIntlMiddleware(routing)
 
-// Only keep Public and Root matchers here for special handling
 const isPublicRoute = createRouteMatcher([
   '/:locale/sign-in(.*)',
   '/:locale/sign-up(.*)',
   '/sign-in(.*)',
   '/:locale/pending-role',
   '/pending-role',
-])
-
-const isRootRoute = createRouteMatcher([
-  '/:locale',
-  '/',
 ])
 
 export default clerkMiddleware(async (auth, req: NextRequest) => {
@@ -36,40 +30,10 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     return intlMiddleware(req)
   }
 
-  // 3. Handle root routes (Login redirects)
-  if (isRootRoute(req)) {
-    try {
-      const authObject = await auth()
-
-      if (!authObject.userId) {
-        const signInUrl = new URL(`/${locale}/sign-in`, req.url)
-        return NextResponse.redirect(signInUrl)
-      }
-
-      const userRole = roleFromSessionClaims(authObject.sessionClaims)
-
-      if (!userRole) {
-        const pendingUrl = new URL(`/${locale}/pending-role`, req.url)
-        return NextResponse.redirect(pendingUrl)
-      }
-
-      // Call centralized dashboard logic
-      const targetPath = getDefaultDashboard(userRole, locale)
-      return NextResponse.redirect(new URL(targetPath, req.url))
-      
-    } catch (error) {
-      console.error('[Middleware] Root route error:', error)
-      const errorUrl = new URL(`/${locale}/sign-in`, req.url)
-      errorUrl.searchParams.set('error', 'auth_error')
-      return NextResponse.redirect(errorUrl)
-    }
-  }
-
-  // 4. Protected Routes - Unified RBAC Check
   try {
     const authObject = await auth()
 
-    // Redirect unauthenticated users
+    // 3. Redirect unauthenticated users
     if (!authObject.userId) {
       const signInUrl = new URL(`/${locale}/sign-in`, req.url)
       const isInternalPath = pathname.startsWith('/') && !pathname.startsWith('//') && !pathname.includes('@')
@@ -79,20 +43,63 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
       return NextResponse.redirect(signInUrl)
     }
 
-    const userRole = roleFromSessionClaims(authObject.sessionClaims)
+    const roles = getRolesFromClaims(authObject.sessionClaims)
+    const userIsSuperAdmin = isSuperAdmin(authObject.sessionClaims)
 
-    if (!userRole) {
-      const pendingUrl = new URL(`/${locale}/pending-role`, req.url)
-      return NextResponse.redirect(pendingUrl)
+    // Check if they have ANY roles at all
+    if (!roles || Object.keys(roles).length === 0) {
+      if (!pathname.includes('pending-role')) {
+        return NextResponse.redirect(new URL(`/${locale}/pending-role`, req.url))
+      }
+      return intlMiddleware(req)
     }
 
-    // Check permissions using RBAC
-    const accessResult = checkRoleAccess(req, userRole)
+    // Strip locale from path to analyze the route structure cleanly
+    const pathWithoutLocale = pathname.replace(new RegExp(`^/${locale}`), '') || '/'
 
-    if (accessResult === 'denied') {
-      // Redirect to appropriate dashboard
-      const dashboardPath = getDefaultDashboard(userRole, locale)
-      return NextResponse.redirect(new URL(dashboardPath, req.url))
+    // 4. Root Routing (Log in -> Where do I go?)
+    if (pathWithoutLocale === '/') {
+      if (userIsSuperAdmin) {
+        return NextResponse.redirect(new URL(`/${locale}/admin`, req.url))
+      }
+
+      const firstOrgSlug = Object.keys(roles).find(k => k !== "system")
+      if (firstOrgSlug) {
+        const targetPath = getRoleBasePath(locale, firstOrgSlug, roles[firstOrgSlug])
+        return NextResponse.redirect(new URL(targetPath, req.url))
+      }
+      return intlMiddleware(req)
+    }
+
+    // 5. Protect System Admin Routes
+    if (pathWithoutLocale.startsWith('/admin')) {
+      if (userIsSuperAdmin) return intlMiddleware(req)
+      return NextResponse.redirect(new URL(`/${locale}`, req.url))
+    }
+
+    // 6. Dynamic Context Routing (/[locale]/[orgSlug]/...)
+    const orgMatch = pathWithoutLocale.match(/^\/([^\/]+)(\/.*)?$/)
+    
+    if (orgMatch) {
+      const orgSlug = orgMatch[1]
+      const subPath = orgMatch[2] || ""
+
+      // Ignore standard Next.js / structural folders
+      if (["api", "_next", "sign-in", "pending-role", "admin"].includes(orgSlug)) {
+        return intlMiddleware(req)
+      }
+
+      const orgRole = getRoleForOrg(authObject.sessionClaims, orgSlug)
+
+      // If they don't have a role in this org, and aren't a superadmin, kick them out
+      if (!orgRole && !userIsSuperAdmin) {
+        return NextResponse.redirect(new URL(`/${locale}`, req.url))
+      }
+
+      // Base org routing (e.g. they typed /boston-public but no sub-path)
+      if (!subPath || subPath === "/") {
+         return intlMiddleware(req) // Let it render the org dashboard
+      }
     }
 
     // Access granted or unknown route -> Allow

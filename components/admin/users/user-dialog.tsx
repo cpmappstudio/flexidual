@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useAction } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { Id } from "@/convex/_generated/dataModel"
+import { Id, Doc } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -26,22 +26,15 @@ import { useTranslations, useLocale } from "next-intl"
 import { UserRole } from "@/convex/types"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { EntityDialog } from "@/components/ui/entity-dialog" // 1. Import Shared Component
+import { EntityDialog } from "@/components/ui/entity-dialog"
 import { useAlert } from "@/components/providers/alert-provider"
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
 import { GRADE_VALUES } from "@/lib/types/academic"
+import { useParams } from "next/navigation"
+import { useQuery } from "convex/react"
 
 interface UserDialogProps {
-    user?: {
-        _id: Id<"users">
-        firstName?: string
-        lastName?: string
-        email: string
-        role: string
-        isActive?: boolean
-        grade?: string
-        school?: string
-    }
+    user?: Doc<"users">
     defaultRole?: UserRole
     allowedRoles?: UserRole[]
     trigger?: React.ReactNode
@@ -98,6 +91,10 @@ export function UserDialog({
     })
 
     const rolesToDisplay = allowedRoles || ALL_ROLES
+
+    const params = useParams()
+    const orgSlug = (params.orgSlug as string) || "system"
+    const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
 
     useEffect(() => {
         if (isOpen) {
@@ -159,6 +156,12 @@ export function UserDialog({
     // This is the main submit handler called by EntityDialog footer button
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        
+        if (!orgContext) {
+            toast.error("Loading organization context... Please wait.")
+            return
+        }
+
         setIsSubmitting(true)
 
         try {
@@ -174,13 +177,15 @@ export function UserDialog({
                         isActive: formData.status === "active",
                         grade: formData.role === "student" ? formData.grade : undefined,
                         school: formData.role === "student" ? formData.school : undefined,
-                    }
+                    },
+                    // Pass the context!
+                    orgType: orgContext.type,
+                    orgId: orgContext._id,
                 })
                 toast.success(t('common.save'))
                 setIsOpen(false)
             } else {
                 // BATCH CREATE MODE
-                // If queue is empty but form has data, treat as single create
                 const finalQueue = [...queue]
                 if (finalQueue.length === 0 && formData.email) {
                     finalQueue.push({
@@ -194,7 +199,10 @@ export function UserDialog({
                     })
                 }
 
-                if (finalQueue.length === 0) return
+                if (finalQueue.length === 0) {
+                    setIsSubmitting(false)
+                    return
+                }
 
                 const results = await createUsers({
                     users: finalQueue.map(u => ({
@@ -205,6 +213,8 @@ export function UserDialog({
                         grade: u.role === "student" ? u.grade : undefined,
                         school: u.role === "student" ? u.school : undefined,
                     })),
+                    orgType: orgContext.type,
+                    orgId: orgContext._id,
                     sendInvitation: true
                 })
 

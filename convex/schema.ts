@@ -31,13 +31,13 @@ export default defineSchema({
     avatarStorageId: v.optional(v.id("_storage")),
     
     // Role-based access
-    role: v.union(
+    role: v.optional(v.union(
       v.literal("student"),
       v.literal("teacher"),
       v.literal("tutor"),
       v.literal("admin"),
       v.literal("superadmin")
-    ),
+    )),
     
     // Status
     isActive: v.boolean(),
@@ -74,9 +74,12 @@ export default defineSchema({
     createdBy: v.id("users"),
 
     gradeCodes: v.optional(v.array(v.string())), // e.g. ["04", "05"]
+
+    schoolId: v.optional(v.id("schools")),
   })
     .index("by_active", ["isActive"])
-    .index("by_code", ["code"]),
+    .index("by_code", ["code"])
+    .index("by_school", ["schoolId"]),
 
   /**
    * LESSONS
@@ -132,10 +135,13 @@ export default defineSchema({
     // Timestamps
     createdAt: v.number(),
     createdBy: v.id("users"),
+
+    campusId: v.optional(v.id("campuses")),
   })
     .index("by_teacher", ["teacherId", "isActive"])
     .index("by_curriculum", ["curriculumId"])
-    .index("by_active", ["isActive"]),
+    .index("by_active", ["isActive"])
+    .index("by_campus", ["campusId"]),
 
   /**
    * CLASS_SCHEDULE
@@ -221,6 +227,82 @@ export default defineSchema({
     .index("by_student_date", ["studentId", "sessionDate"])
     .index("by_student_schedule", ["studentId", "scheduleId"])
     .index("by_room_active", ["roomName", "leftAt"]),
+
+  /**
+   * SCHOOLS (Top-Level Tenant)
+   * The overarching educational institution or district.
+   * Managed by: Admins (and Superadmins)
+   */
+  schools: defineTable({
+    name: v.string(),
+    slug: v.string(), // URL-safe identifier (e.g., "boston-public")
+    logoStorageId: v.optional(v.id("_storage")),
+    
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_active", ["isActive"]),
+
+  /**
+   * CAMPUSES (Second-Level Tenant)
+   * Physical or logical branches of a school.
+   * Managed by: Principals
+   */
+  campuses: defineTable({
+    schoolId: v.id("schools"),
+    name: v.string(),
+    slug: v.string(), // e.g., "north-campus"
+    code: v.optional(v.string()), // Internal reference code
+    
+    address: v.optional(v.object({
+      street: v.optional(v.string()),
+      city: v.optional(v.string()),
+      state: v.optional(v.string()),
+      zipCode: v.optional(v.string()),
+      country: v.optional(v.string()),
+    })),
+    
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId", "isActive"])
+    .index("by_slug", ["slug"]),
+  
+  /**
+   * ROLE ASSIGNMENTS (The Security Junction)
+   * Decouples identity from access. Determines who can do what, and where.
+   */
+  roleAssignments: defineTable({
+    userId: v.id("users"),
+    
+    // The Context
+    orgId: v.optional(v.string()), // ID of the School or Campus (null if system-wide)
+    orgType: v.union(
+      v.literal("system"), 
+      v.literal("school"), 
+      v.literal("campus")
+    ),
+    
+    // The Permission
+    role: v.union(
+      v.literal("superadmin"), // System level
+      v.literal("admin"),      // School level
+      v.literal("principal"),  // Campus level
+      v.literal("teacher"),    // Campus level
+      v.literal("tutor"),      // Campus level
+      v.literal("student")     // Campus level
+    ),
+    
+    // Audit Trail
+    assignedAt: v.number(),
+    assignedBy: v.optional(v.id("users")), // Who granted this access
+  })
+    .index("by_user", ["userId"])
+    .index("by_org", ["orgId", "orgType"])
+    .index("by_user_org", ["userId", "orgId", "orgType"]),
 });
 
 /**

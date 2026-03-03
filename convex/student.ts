@@ -4,7 +4,7 @@ import { getCurrentUserFromAuth } from "./users";
 export const getStudentDashboardStats = query({
   handler: async (ctx) => {
     const user = await getCurrentUserFromAuth(ctx);
-    if (!user || user.role !== "student") return null;
+    if (!user) return null;
 
     const allClasses = await ctx.db
       .query("classes")
@@ -12,6 +12,10 @@ export const getStudentDashboardStats = query({
       .collect();
 
     const myClasses = allClasses.filter((c) => c.students.includes(user._id));
+
+    if (myClasses.length === 0) {
+      return null; 
+    }
 
     // --- Per-class stats ---
     const classStats = await Promise.all(

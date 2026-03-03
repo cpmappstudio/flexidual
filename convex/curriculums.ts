@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { GRADE_VALUES } from "../lib/types/academic";
 import { ConvexError } from "convex/values";
+import { hasSystemRole, hasOrgRole, canManageCurriculums } from "./permissions";
 
 // ============================================================================
 // QUERIES
@@ -10,8 +11,9 @@ import { ConvexError } from "convex/values";
 
 /**
  * List curriculums with strict role-based access
- * - Admins: See all
- * - Teachers/Tutors: Only see curriculums for classes they are assigned to
+ * - Superadmins: See all
+ * - School Admins: See curriculums for their schools
+ * - Teachers/Tutors: Only see curriculums for active classes they teach
  */
 export const list = query({
   args: { 
@@ -21,8 +23,10 @@ export const list = query({
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return null;
 
-    // 1. ADMINS: Full Access
-    if (["admin", "superadmin"].includes(user.role)) {
+    const isSuperAdmin = await hasSystemRole(ctx, user._id, ["superadmin"]);
+
+    // 1. SUPERADMINS: Full Access
+    if (isSuperAdmin) {
       if (args.includeInactive) {
         return await ctx.db.query("curriculums").order("desc").collect();
       }
@@ -33,68 +37,71 @@ export const list = query({
         .collect();
     }
 
-    // 2. TEACHERS/TUTORS: Restricted Access
-    if (["teacher", "tutor"].includes(user.role)) {
-      // Find all active classes assigned to this teacher
-      const myClasses = await ctx.db
-        .query("classes")
-        .withIndex("by_teacher", (q) => 
-          q.eq("teacherId", user._id).eq("isActive", true)
-        )
-        .collect();
+    // 2. Resolve Contextual Access (Admin of Schools & Taught Classes)
+    
+    // Find schools where they are an admin
+    const adminAssignments = await ctx.db.query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) => q.and(q.eq(q.field("orgType"), "school"), q.eq(q.field("role"), "admin")))
+      .collect();
+    const adminSchoolIds = adminAssignments.map((a) => a.orgId);
+
+    // Find curriculums tied to active classes they teach
+    const myClasses = await ctx.db
+      .query("classes")
+      .withIndex("by_teacher", (q) => q.eq("teacherId", user._id).eq("isActive", true))
+      .collect();
+    const taughtCurriculumIds = myClasses.map((c) => c.curriculumId);
+
+    // Fetch all curriculums and filter in memory based on contextual access
+    const allCurriculums = await ctx.db.query("curriculums").order("desc").collect();
+
+    return allCurriculums.filter((c) => {
+      // Respect inactive filter
+      if (!args.includeInactive && !c.isActive) return false;
       
-      // Extract unique curriculum IDs
-      const myCurriculumIds = Array.from(new Set(myClasses.map(c => c.curriculumId)));
-
-      if (myCurriculumIds.length === 0) return [];
-
-      // Fetch the actual curriculum documents
-      const curriculums = await Promise.all(
-        myCurriculumIds.map(id => ctx.db.get(id))
-      );
-
-      // Filter nulls and strictly respect isActive unless specifically asked otherwise (though teachers usually shouldn't see inactive)
-      return curriculums
-        .filter((c): c is NonNullable<typeof c> => c !== null && (args.includeInactive || c.isActive))
-        .sort((a, b) => b.createdAt - a.createdAt);
-    }
-
-    // Students/Others: No access by default (or implement student logic if needed)
-    return [];
+      // Allow if they are an admin of the curriculum's school
+      if (c.schoolId && adminSchoolIds.includes(c.schoolId)) return true;
+      
+      // Allow if they actively teach this curriculum
+      if (taughtCurriculumIds.some(id => id === c._id)) return true;
+      
+      return false;
+    });
   },
 });
 
 /**
- * Get single curriculum by ID with ownership check
+ * Get single curriculum by ID with contextual ownership check
  */
 export const get = query({
   args: { id: v.id("curriculums") },
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return null;
+    
     const curriculum = await ctx.db.get(args.id);
-
     if (!curriculum) return null;
 
-    // 1. ADMINS: Allow
-    if (["admin", "superadmin"].includes(user.role)) {
-      return curriculum;
+    // 1. Check Superadmin
+    if (await hasSystemRole(ctx, user._id, ["superadmin"])) return curriculum;
+
+    // 2. Check School Admin
+    if (curriculum.schoolId) {
+      const isSchoolAdmin = await hasOrgRole(ctx, user._id, curriculum.schoolId, "school", ["admin"]);
+      if (isSchoolAdmin) return curriculum;
     }
 
-    // 2. TEACHERS: Check assignment
-    if (["teacher", "tutor"].includes(user.role)) {
-      // Check if they have ANY active class with this curriculum
-      const hasAccess = await ctx.db
-        .query("classes")
-        .withIndex("by_teacher", (q) => q.eq("teacherId", user._id).eq("isActive", true))
-        .filter(q => q.eq(q.field("curriculumId"), args.id))
-        .first();
+    // 3. Check Teacher Assignment
+    const isTeachingCurriculum = await ctx.db
+      .query("classes")
+      .withIndex("by_teacher", (q) => q.eq("teacherId", user._id).eq("isActive", true))
+      .filter((q) => q.eq(q.field("curriculumId"), args.id))
+      .first();
 
-      if (!hasAccess) return null; 
-      return curriculum;
-    }
+    if (isTeachingCurriculum) return curriculum;
 
-    return null;
+    return null; // Access denied
   },
 });
 
@@ -110,9 +117,7 @@ export const getWithStats = query({
 
     const lessons = await ctx.db
       .query("lessons")
-      .withIndex("by_curriculum_active", (q) => 
-        q.eq("curriculumId", args.id).eq("isActive", true)
-      )
+      .withIndex("by_curriculum_active", (q) => q.eq("curriculumId", args.id).eq("isActive", true))
       .collect();
 
     const classes = await ctx.db
@@ -162,6 +167,7 @@ export const isCodeAvailable = query({
 export const create = mutation({
   args: {
     title: v.string(),
+    schoolId: v.optional(v.id("schools")), // NEW: Required for contextual RBAC, optional to not break legacy UI instantly
     description: v.optional(v.string()),
     code: v.optional(v.string()),
     color: v.optional(v.string()),
@@ -170,39 +176,33 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    // Validate: Only admins can create curriculums
-    if (!["admin", "superadmin"].includes(user.role)) {
-      throw new Error("Only administrators can create curriculums");
+    const isAuthorized = await canManageCurriculums(ctx, user._id, args.schoolId);
+    if (!isAuthorized) {
+      throw new Error("Only administrators can create curriculums for this school");
     }
 
-    // Validate: Code must be unique if provided
     if (args.code) {
       const isAvailable = await ctx.db
         .query("curriculums")
         .withIndex("by_code", (q) => q.eq("code", args.code))
         .first();
       
-      if (isAvailable) {
-        throw new Error(`Curriculum code "${args.code}" already exists`);
-      }
+      if (isAvailable) throw new Error(`Curriculum code "${args.code}" already exists`);
     }
 
     if (args.gradeCodes) {
       const invalidCodes = args.gradeCodes.filter(g => !(GRADE_VALUES as readonly string[]).includes(g));
-      
       if (invalidCodes.length > 0) {
-        throw new ConvexError({
-          code: "INVALID_GRADE",
-          grades: invalidCodes.join(", ")
-        });
+        throw new ConvexError({ code: "INVALID_GRADE", grades: invalidCodes.join(", ") });
       }
     }
 
     return await ctx.db.insert("curriculums", {
       title: args.title,
+      schoolId: args.schoolId,
       description: args.description,
       code: args.code,
-      color: args.color || "#3b82f6", // Default blue
+      color: args.color || "#3b82f6",
       isActive: true,
       createdAt: Date.now(),
       createdBy: user._id,
@@ -216,6 +216,7 @@ export const create = mutation({
  */
 export const createBatch = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     curriculums: v.array(v.object({
       title: v.string(),
       description: v.optional(v.string()),
@@ -226,15 +227,15 @@ export const createBatch = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    if (!["admin", "superadmin"].includes(user.role)) {
-      throw new Error("Only administrators can create curriculums");
+    const isAuthorized = await canManageCurriculums(ctx, user._id, args.schoolId);
+    if (!isAuthorized) {
+      throw new Error("Only administrators can create curriculums for this school");
     }
 
     const results = [];
 
     for (const item of args.curriculums) {
       try {
-        // Uniqueness check for code
         if (item.code) {
           const existing = await ctx.db
             .query("curriculums")
@@ -248,16 +249,13 @@ export const createBatch = mutation({
         }
 
         if (item.gradeCodes && !item.gradeCodes.every(g => (GRADE_VALUES as readonly string[]).includes(g))) {
-          results.push({ 
-            title: item.title, 
-            status: "error", 
-            reason: `Invalid grade code(s) found. Allowed: ${GRADE_VALUES.join(", ")}` 
-          });
+          results.push({ title: item.title, status: "error", reason: `Invalid grade code(s) found.` });
           continue;
         }
 
         await ctx.db.insert("curriculums", {
           title: item.title,
+          schoolId: args.schoolId,
           description: item.description,
           code: item.code,
           color: "#3b82f6",
@@ -293,25 +291,17 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    // Validate: Only admins can update curriculums
-    if (!["admin", "superadmin"].includes(user.role)) {
-      throw new Error("Only administrators can update curriculums");
-    }
-
     const curriculum = await ctx.db.get(args.id);
-    if (!curriculum) {
-      throw new Error("Curriculum not found");
+    if (!curriculum) throw new Error("Curriculum not found");
+
+    const isAuthorized = await canManageCurriculums(ctx, user._id, curriculum.schoolId);
+    if (!isAuthorized) {
+      throw new Error("Only administrators can update curriculums");
     }
 
     if (args.gradeCodes) {
       const invalidCodes = args.gradeCodes.filter(g => !(GRADE_VALUES as readonly string[]).includes(g));
-      
-      if (invalidCodes.length > 0) {
-        throw new ConvexError({
-          code: "INVALID_GRADE",
-          grades: invalidCodes.join(", ")
-        });
-      }
+      if (invalidCodes.length > 0) throw new ConvexError({ code: "INVALID_GRADE" });
     }
 
     if (args.code && args.code !== curriculum.code) {
@@ -319,10 +309,7 @@ export const update = mutation({
         .query("curriculums")
         .withIndex("by_code", (q) => q.eq("code", args.code))
         .first();
-      
-      if (existing && existing._id !== args.id) {
-        throw new Error(`Curriculum code "${args.code}" already exists`);
-      }
+      if (existing && existing._id !== args.id) throw new Error(`Curriculum code already exists`);
     }
 
     const { id, ...updates } = args;
@@ -342,12 +329,11 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    // Validate: Only superadmins can delete curriculums
-    if (user.role !== "superadmin") {
-      throw new Error("Only superadmins can delete curriculums");
+    // Strict Superadmin-only for hard deletes
+    if (!(await hasSystemRole(ctx, user._id, ["superadmin"]))) {
+      throw new Error("Only system superadmins can delete curriculums");
     }
 
-    // Check for active classes
     const classes = await ctx.db
       .query("classes")
       .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.id))
@@ -356,13 +342,9 @@ export const remove = mutation({
     const activeClasses = classes.filter(c => c.isActive);
     
     if (activeClasses.length > 0 && !args.force) {
-      throw new Error(
-        `Cannot delete curriculum with ${activeClasses.length} active class(es). ` +
-        `Deactivate classes first or use force=true.`
-      );
+      throw new Error(`Cannot delete curriculum with ${activeClasses.length} active class(es).`);
     }
 
-    // Delete the curriculum
     await ctx.db.delete(args.id);
     
     // Cascade delete lessons
@@ -372,17 +354,11 @@ export const remove = mutation({
       .collect();
       
     for (const lesson of lessons) {
-      // Delete lesson resources from storage
       if (lesson.resourceStorageIds) {
         for (const storageId of lesson.resourceStorageIds) {
-          try {
-            await ctx.storage.delete(storageId);
-          } catch (error) {
-            console.warn(`Failed to delete resource ${storageId}:`, error);
-          }
+          try { await ctx.storage.delete(storageId); } catch (e) {}
         }
       }
-      
       await ctx.db.delete(lesson._id);
     }
   },
@@ -396,7 +372,11 @@ export const archive = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    if (!["admin", "superadmin"].includes(user.role)) {
+    const curriculum = await ctx.db.get(args.id);
+    if (!curriculum) throw new Error("Curriculum not found");
+
+    const isAuthorized = await canManageCurriculums(ctx, user._id, curriculum.schoolId);
+    if (!isAuthorized) {
       throw new Error("Only administrators can archive curriculums");
     }
 

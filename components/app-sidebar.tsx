@@ -14,6 +14,7 @@ import { ModeToggle } from "./mode-toggle"
 import { LangToggle } from "./lang-toggle"
 import { UserButtonWrapper } from "./user-button-wrapper"
 import { FlexidualLogo } from "./ui/flexidual-logo"
+import { OrgSwitcher } from "./org-switcher"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { state } = useSidebar()
@@ -27,6 +28,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {/* 1. Header: User Profile */}
       <SidebarHeader>
         <FlexidualLogo size={collapsed ? "sm" : "md"} className={collapsed ? "justify-center" : ""} stacked={collapsed} />
+        <OrgSwitcher />
       </SidebarHeader>
 
       {/* 2. Content: The Main Menu (Logic is inside NavMain now) */}
