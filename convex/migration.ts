@@ -168,6 +168,22 @@ export const runMultiTenantMigration = internalMutation({
   },
 });
 
+export const scrubLegacyRoles = internalMutation({
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    let scrubbedCount = 0;
+
+    for (const user of users) {
+      if (user.role !== undefined) {
+        // In Convex, setting a field to undefined physically removes it from the document
+        await ctx.db.patch(user._id, { role: undefined });
+        scrubbedCount++;
+      }
+    }
+    return { success: true, scrubbedCount };
+  },
+});
+
 export const syncAllUsersToClerk = internalAction({
   handler: async (ctx) => {
     // Requires an internal query in users.ts: 
