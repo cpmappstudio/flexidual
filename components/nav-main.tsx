@@ -3,7 +3,8 @@
 import { useMemo } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import { BookOpen, Calendar, LayoutDashboard, Users, School } from "lucide-react"
+// ADDED Building2 and MapPin for the new Superadmin links
+import { BookOpen, Calendar, LayoutDashboard, Users, School, Building2, MapPin } from "lucide-react"
 import { Link, usePathname } from "@/i18n/navigation"
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { useTranslations } from "next-intl"
@@ -14,20 +15,25 @@ export function NavMain() {
   const pathname = usePathname()
   const params = useParams()
   
-  // Extract context
-  const orgSlug = params.orgSlug as string
+  // 1. Extract context AND normalize the URL
+  let currentSlug = params.orgSlug as string
+  if (currentSlug === "admin" || pathname.startsWith("/admin")) {
+    currentSlug = "system"
+  }
+
   const { sessionClaims, isLoaded } = useAuth()
 
-  // Evaluate role for THIS specific organization
-  const role = useMemo(() => getRoleForOrg(sessionClaims, orgSlug), [sessionClaims, orgSlug])
+  // 2. Evaluate role for THIS specific context
+  const role = useMemo(() => getRoleForOrg(sessionClaims, currentSlug), [sessionClaims, currentSlug])
   
   const isTeacher = role === "teacher" || role === "tutor"
   const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
+  const isGlobalSystem = currentSlug === "system"
 
   if (!isLoaded || role === "student") return null
 
   // Base URL for all links in this tenant
-  const basePath = `/${orgSlug}`
+  const basePath = isGlobalSystem ? "/admin" : `/${currentSlug}`
 
   return (
     <SidebarGroup>
@@ -60,6 +66,30 @@ export function NavMain() {
                 <Link href={`${basePath}/classes`}>
                   <School />
                   <span>{isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </>
+        )}
+
+        {/* Global Superadmin Exclusive Links */}
+        {isGlobalSystem && role === "superadmin" && (
+          <>
+            <SidebarGroupLabel className="mt-4">Network</SidebarGroupLabel>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname.includes(`/admin/schools`)}>
+                <Link href={`/admin/schools`}>
+                  <Building2 />
+                  <span>Schools</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname.includes(`/admin/campuses`)}>
+                <Link href={`/admin/campuses`}>
+                  <MapPin />
+                  <span>Campuses</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

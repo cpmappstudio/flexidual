@@ -3,7 +3,7 @@
 import * as React from "react"
 import { ChevronsUpDown, Building2, Shield } from "lucide-react"
 import { useAuth } from "@clerk/nextjs"
-import { useParams } from "next/navigation"
+import { useParams, usePathname } from "next/navigation" // <-- Added usePathname
 import { useRouter } from "@/i18n/navigation"
 import { getRolesFromClaims } from "@/lib/rbac"
 import {
@@ -30,9 +30,9 @@ export function OrgSwitcher() {
   const { isMobile } = useSidebar()
   const { sessionClaims } = useAuth()
   const params = useParams()
+  const pathname = usePathname()
   const router = useRouter()
   
-  const currentOrgSlug = params.orgSlug as string | undefined
   const roles = getRolesFromClaims(sessionClaims)
 
   if (!roles || Object.keys(roles).length === 0) return null
@@ -44,6 +44,11 @@ export function OrgSwitcher() {
     role: role,
     icon: slug === "system" ? Shield : Building2,
   }))
+
+  let currentOrgSlug = params.orgSlug as string | undefined;
+  if (currentOrgSlug === "admin" || (!currentOrgSlug && pathname.includes("/admin"))) {
+      currentOrgSlug = "system";
+  }
 
   const activeOrg = organizations.find(org => org.slug === currentOrgSlug) || organizations[0]
 
