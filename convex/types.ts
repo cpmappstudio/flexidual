@@ -6,9 +6,14 @@
 // ################################################################################
 
 /**
+ * Organization level type for multi-tenant hierarchy
+ */
+export type OrganizationType = "system" | "school" | "campus";
+
+/**
  * User role type for the application
  */
-export type UserRole = "teacher" | "admin" | "superadmin" | "student" | "tutor";
+export type UserRole = "teacher" | "admin" | "superadmin" | "student" | "tutor" | "principal";
 
 /**
  * User status type

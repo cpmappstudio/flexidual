@@ -1,6 +1,7 @@
 "use client"
 
 import { useTranslations } from "next-intl"
+import { useParams } from "next/navigation"
 import { UsersTable } from "@/components/admin/users/users-table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,6 +9,10 @@ import { ShieldCheck, GraduationCap, Users, School } from "lucide-react"
 
 export default function UsersPageLayout() {
     const t = useTranslations()
+
+    const params = useParams()
+    const orgSlug = (params.orgSlug as string) || "system"
+    const isSystemDashboard = orgSlug === "system" || orgSlug === "admin"
 
     return (
         <div className="container mx-auto p-6 space-y-6">
@@ -100,8 +105,8 @@ export default function UsersPageLayout() {
                         </CardHeader>
                         <CardContent>
                             <UsersTable 
-                                roleFilter="student" 
-                                allowedRoles={["student"]} 
+                                roleFilter="admin" 
+                                allowedRoles={isSystemDashboard ? ["admin", "superadmin"] : ["admin"]} 
                             />
                         </CardContent>
                     </Card>

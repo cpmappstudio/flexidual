@@ -36,6 +36,7 @@ export default defineSchema({
       v.literal("teacher"),
       v.literal("tutor"),
       v.literal("admin"),
+      v.literal("principal"),
       v.literal("superadmin")
     )),
     

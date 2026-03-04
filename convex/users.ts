@@ -58,6 +58,7 @@ export const getUsers = query({
     orgId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // 1. Fetch Role Assignments scoped to the requested organization
     let assignmentQuery = ctx.db.query("roleAssignments");
 
     if (args.orgType && args.orgType !== "system") {
@@ -67,6 +68,8 @@ export const getUsers = query({
           q.eq(q.field("orgType"), args.orgType)
         )
       );
+    } else if (args.orgType === "system") {
+      assignmentQuery = assignmentQuery.filter(q => q.eq(q.field("orgType"), "system"));
     }
 
     if (args.role) {
@@ -80,17 +83,30 @@ export const getUsers = query({
       return [];
     }
 
+    // 2. Fetch Users
     let users = await ctx.db.query("users").collect();
 
-    if (args.orgType && args.orgType !== "system" || args.role) {
-      users = users.filter(u => validUserIds.has(u._id));
-    }
-
+    // 3. Filter by active status
     if (args.isActive !== undefined) {
       users = users.filter(u => u.isActive === args.isActive);
     }
 
-    return users;
+    // 4. Filter and Inject the Role!
+    if (args.orgType && args.orgType !== "system" || args.role) {
+      // Return only users that belong to this org, and inject their specific role
+      return users
+        .filter(u => validUserIds.has(u._id))
+        .map(u => {
+           const specificRole = assignments.find(a => a.userId === u._id)?.role;
+           return { ...u, role: specificRole || u.role };
+        });
+    }
+
+    // If global fallback, just try to inject any assignment they have
+    return users.map(u => {
+        const anyAssignment = assignments.find(a => a.userId === u._id);
+        return { ...u, role: anyAssignment?.role || u.role };
+    });
   },
 });
 
