@@ -196,7 +196,6 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
       ))}
       title={dialogTitle}
       description={dialogDesc}
-      // FIXED: Always use handleSubmit, even for Batch
       onSubmit={handleSubmit}
       isSubmitting={isSubmitting}
       submitLabel={isEditing ? t('common.save') : createLabel}

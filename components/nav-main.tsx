@@ -3,7 +3,6 @@
 import { useMemo } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-// ADDED Building2 and MapPin for the new Superadmin links
 import { BookOpen, Calendar, LayoutDashboard, Users, School, Building2, MapPin } from "lucide-react"
 import { Link, usePathname } from "@/i18n/navigation"
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"

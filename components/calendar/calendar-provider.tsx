@@ -38,12 +38,9 @@ export default function CalendarProvider({
   onCurriculumChange,
   children,
 }: CalendarProviderProps) {
-  // Dialog States
   const [newEventDialogOpen, setNewEventDialogOpen] = useState(false);
   const [manageEventDialogOpen, setManageEventDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  
-  // FIXED: Use proper Id type instead of string
   const [preselectedLessonId, setPreselectedLessonId] = useState<Id<"lessons"> | null>(null);
 
   return (
