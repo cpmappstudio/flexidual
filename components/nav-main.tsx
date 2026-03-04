@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { useMemo } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { BookOpen, Calendar, LayoutDashboard, Users, School } from "lucide-react"
-import { Link, usePathname, useRouter } from "@/i18n/navigation"
+import { Link, usePathname } from "@/i18n/navigation"
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { useTranslations } from "next-intl"
 import { getRoleForOrg } from "@/lib/rbac" 

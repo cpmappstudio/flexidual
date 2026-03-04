@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useMutation } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Doc } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,9 @@ import { Badge } from "@/components/ui/badge"
 import { CurriculumLessonList } from "./curriculum-lesson-list"
 import { useAlert } from "@/components/providers/alert-provider"
 import { getErrorMessage, parseConvexError } from "@/lib/error-utils"
+
+// Multi-tenant imports
+import { useParams } from "next/navigation"
 
 interface CurriculumDialogProps {
   curriculum?: Doc<"curriculums">
@@ -51,6 +54,11 @@ export function CurriculumDialog({
   const locale = useLocale()
   const { showAlert } = useAlert()
   const isEditing = !!curriculum
+  
+  // 1. Resolve Multi-Tenant Context
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
+  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
   
   const createBatch = useMutation(api.curriculums.createBatch)
   const update = useMutation(api.curriculums.update)
@@ -115,6 +123,12 @@ export function CurriculumDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!orgContext) {
+        toast.error("Loading context... please wait.")
+        return
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -143,7 +157,10 @@ export function CurriculumDialog({
 
             if (finalQueue.length === 0) return
 
+            // 2. Pass context so the backend links it to the right School!
             await createBatch({
+                orgType: orgContext.type,
+                orgId: orgContext._id,
                 curriculums: finalQueue.map(q => ({
                     title: q.title,
                     code: q.code || undefined,
@@ -155,13 +172,12 @@ export function CurriculumDialog({
             toast.success(`${finalQueue.length} curriculums created`)
             setIsOpen(false)
         }
-    } catch (error) {
+    } catch (error: unknown) { // Fixed linting 'any' -> 'unknown'
             const parsedError = parseConvexError(error)
             if (parsedError) {
                 toast.error(getErrorMessage(parsedError, t, locale))
             } else {
-                toast.error(t('errors.operationFailed'))
-                console.error(error)
+                toast.error(error instanceof Error ? error.message : t('errors.operationFailed'))
             }
         } finally {
             setIsSubmitting(false)

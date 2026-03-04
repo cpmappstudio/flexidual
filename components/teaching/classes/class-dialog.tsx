@@ -29,6 +29,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 
+// Multi-tenant imports
+import { useParams } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
+import { getRoleForOrg } from "@/lib/rbac"
+
 // Interconnections
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { UserDialog } from "@/components/admin/users/user-dialog"
@@ -54,8 +59,18 @@ export function ClassDialog({
 }: ClassDialogProps) {
   const t = useTranslations()
   const { showAlert } = useAlert()
+  
+  // 1. Resolve Multi-Tenant Context
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
+  const { sessionClaims } = useAuth()
+  const role = getRoleForOrg(sessionClaims, orgSlug)
+  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
+  
+  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
+
+  // Still need the local Convex user ID for assigning the teacher automatically if not admin
   const { user } = useCurrentUser()
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
   
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen
@@ -70,7 +85,13 @@ export function ClassDialog({
   const deleteClass = useMutation(api.classes.remove)
   
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
-  const teachers = useQuery(api.users.getUsers, isAdmin ? { role: "teacher" } : "skip")
+  
+  // 2. Securely scoped teacher query (Only fetches teachers for THIS campus/school)
+  const teachers = useQuery(api.users.getUsers, isAdmin && orgContext ? { 
+      role: "teacher",
+      orgType: orgContext.type,
+      orgId: orgContext._id
+  } : "skip")
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [openCurriculum, setOpenCurriculum] = useState(false)
@@ -113,7 +134,7 @@ export function ClassDialog({
             setCurrentClassId(undefined)
         }
     }
-  }, [isOpen, classDoc, selectedCurriculumId, selectedTeacherId, user, currentClassId])
+  }, [isOpen, classDoc, selectedCurriculumId, selectedTeacherId, user, currentClassId, isAdmin])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -122,7 +143,7 @@ export function ClassDialog({
     try {
         if (isEditing && currentClassId) {
             await updateClass({
-                id: currentClassId,
+                classId: currentClassId,
                 name: formData.name,
                 description: formData.description || undefined,
                 academicYear: formData.academicYear || undefined,
@@ -138,6 +159,7 @@ export function ClassDialog({
                 academicYear: formData.academicYear || undefined,
                 curriculumId: formData.curriculumId as Id<"curriculums">,
                 teacherId: (isAdmin ? formData.teacherId : user?._id) as Id<"users">,
+                campusId: orgContext?.type === "campus" ? orgContext._id as Id<"campuses"> : undefined,
             })
             toast.success(t('class.created'))
             setIsOpen(false)

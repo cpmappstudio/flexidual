@@ -52,32 +52,42 @@ export const checkEmailExists = query({
 
 export const getUsers = query({
   args: {
-    role: v.optional(v.union(
-      v.literal("student"),
-      v.literal("teacher"),
-      v.literal("tutor"),
-      v.literal("admin"),
-      v.literal("principal"),
-      v.literal("superadmin")
-    )),
+    role: v.optional(v.string()),
     isActive: v.optional(v.boolean()),
+    orgType: v.optional(v.union(v.literal("system"), v.literal("school"), v.literal("campus"))),
+    orgId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let users = await ctx.db.query("users").collect();
+    let assignmentQuery = ctx.db.query("roleAssignments");
 
-    // 1. Filter by active status if provided
-    if (args.isActive !== undefined) {
-      users = users.filter(u => u.isActive === args.isActive);
+    if (args.orgType && args.orgType !== "system") {
+      assignmentQuery = assignmentQuery.filter(q => 
+        q.and(
+          q.eq(q.field("orgId"), args.orgId),
+          q.eq(q.field("orgType"), args.orgType)
+        )
+      );
     }
 
-    // 2. Filter by the new RBAC role assignments if requested
     if (args.role) {
-      const assignments = await ctx.db.query("roleAssignments")
-        .filter(q => q.eq(q.field("role"), args.role))
-        .collect();
-      
-      const userIdsWithRole = new Set(assignments.map(a => a.userId));
-      users = users.filter(u => userIdsWithRole.has(u._id));
+      assignmentQuery = assignmentQuery.filter(q => q.eq(q.field("role"), args.role));
+    }
+
+    const assignments = await assignmentQuery.collect();
+    const validUserIds = new Set(assignments.map(a => a.userId));
+
+    if ((args.orgType && args.orgType !== "system" || args.role) && validUserIds.size === 0) {
+      return [];
+    }
+
+    let users = await ctx.db.query("users").collect();
+
+    if (args.orgType && args.orgType !== "system" || args.role) {
+      users = users.filter(u => validUserIds.has(u._id));
+    }
+
+    if (args.isActive !== undefined) {
+      users = users.filter(u => u.isActive === args.isActive);
     }
 
     return users;

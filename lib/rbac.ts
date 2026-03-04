@@ -3,17 +3,17 @@
 type ClaimsWithMetadata = {
   metadata?: {
     roles?: Record<string, string>;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   publicMetadata?: {
     roles?: Record<string, string>;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   public_metadata?: {
     roles?: Record<string, string>;
-    [key: string]: any;
+    [key: string]: unknown;
   };
-  [key: string]: any;
+  [key: string]: unknown;
 } | null | undefined;
 
 export function getRolesFromClaims(claims: ClaimsWithMetadata): Record<string, string> | null {
@@ -32,6 +32,6 @@ export function getRoleForOrg(claims: ClaimsWithMetadata, orgSlug: string): stri
   return roles?.[orgSlug] || null;
 }
 
-export function getRoleBasePath(locale: string, orgSlug: string, role: string): string {
+export function getRoleBasePath(locale: string, orgSlug: string): string {
   return `/${locale}/${orgSlug}`; 
 }

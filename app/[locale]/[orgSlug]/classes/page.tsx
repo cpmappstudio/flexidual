@@ -5,6 +5,9 @@ import { useQuery } from "convex/react"
 import { Id } from "@/convex/_generated/dataModel"
 import { api } from "@/convex/_generated/api"
 import { useCurrentUser } from "@/hooks/use-current-user"
+import { useParams } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
+import { getRoleForOrg } from "@/lib/rbac"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, BookOpen, Calendar, ArrowRight, School, Edit, LayoutGrid, List as ListIcon } from "lucide-react"
 import { format, startOfWeek, addDays} from "date-fns"
@@ -22,7 +25,11 @@ import { ClassWeekOverview } from "@/components/teaching/classes/class-week-over
 export default function MyClassesPage() {
   const t = useTranslations()
   const { user, isLoading: isUserLoading } = useCurrentUser()
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
+  const { sessionClaims } = useAuth()
+  const role = getRoleForOrg(sessionClaims, orgSlug)
+  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
   const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null)
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null)
   

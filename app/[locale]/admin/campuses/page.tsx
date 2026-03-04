@@ -2,16 +2,16 @@
 
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { useTranslations } from "next-intl"
+// import { useTranslations } from "next-intl"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { MapPin, Plus, Edit } from "lucide-react"
+import { MapPin } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CampusDialog } from "@/components/admin/campuses/campus-dialog"
 
 export default function CampusesPage() {
-    const t = useTranslations()
+    // const t = useTranslations()
     const campuses = useQuery(api.campuses.list, {})
     const schools = useQuery(api.schools.list, {})
 
@@ -27,10 +27,7 @@ export default function CampusesPage() {
                         Manage physical or logical branches of your schools.
                     </p>
                 </div>
-                <Button>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Campus
-                </Button>
+                <CampusDialog />
             </div>
 
             <Card>
@@ -85,9 +82,7 @@ export default function CampusesPage() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button variant="ghost" size="icon">
-                                                        <Edit className="h-4 w-4 text-muted-foreground" />
-                                                    </Button>
+                                                    <CampusDialog campus={campus} />
                                                 </TableCell>
                                             </TableRow>
                                         ))

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useAction } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { Id, Doc } from "@/convex/_generated/dataModel"
+import { Doc } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"

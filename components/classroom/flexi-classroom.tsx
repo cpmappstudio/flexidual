@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useUser } from "@clerk/nextjs";
 import { useAction, useQuery, useMutation } from "convex/react";
 import { LiveKitRoom } from "@livekit/components-react";
 import { api } from "@/convex/_generated/api";
@@ -10,8 +9,11 @@ import { StudentClassroomUI } from "./student-classroom-ui";
 import { Loader2, CalendarClock, School, LogOut, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useAuth } from "@clerk/nextjs";
+import { getRoleForOrg } from "@/lib/rbac";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -22,7 +24,6 @@ interface FlexiClassroomProps {
 
 export default function FlexiClassroom({ roomName, className, isStudentView = false, onLeave }: FlexiClassroomProps) {
   const t = useTranslations();
-  const { user } = useUser();
   const router = useRouter();
   const [token, setToken] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -30,12 +31,17 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   // Timer State
   const [now, setNow] = useState(Date.now());
 
-  // Mutation for logging presence
-  const logPresence = useMutation(api.schedule.logStudentPresence);
+  // 1. Resolve Context-Aware Role via Clerk Claims
+  const params = useParams();
+  const orgSlug = (params.orgSlug as string) || "system";
+  const { sessionClaims } = useAuth();
+  const role = getRoleForOrg(sessionClaims, orgSlug) || "student"; // Fallback to student safely
 
-  const convexUser = useQuery(api.users.getCurrentUser, 
-    user?.id ? { clerkId: user.id } : "skip"
-  );
+  // 2. Fetch Convex User via our custom hook
+  const { user: convexUser } = useCurrentUser();
+
+  // 3. API Hooks
+  const logPresence = useMutation(api.schedule.logStudentPresence);
 
   const sessionStatus = useQuery(api.schedule.getSessionStatus, { 
     sessionId: roomName 
@@ -48,7 +54,8 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   const getToken = useAction(api.livekit.getToken);
 
-  const canJoinEarly = ["teacher", "admin", "superadmin", "tutor"].includes(convexUser?.role || "");
+  // 4. Permission & Connection Logic
+  const canJoinEarly = ["teacher", "admin", "superadmin", "tutor", "principal"].includes(role);
   const isClassLive = sessionStatus?.isActive || false;
   const shouldConnect = (isClassLive || canJoinEarly) && !!convexUser;
 
@@ -59,7 +66,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   const lessonTitles = scheduleDetails?.lessons && scheduleDetails.lessons.length > 0
     ? scheduleDetails.lessons.length === 1
       ? scheduleDetails.lessons[0].title
-      : `${scheduleDetails.lessons.length} Lessons` // Multiple lessons
+      : `${scheduleDetails.lessons.length} Lessons`
     : undefined;
 
   // Timer Effect
@@ -83,14 +90,15 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   }, [token, sessionStatus?.scheduleId, isStudentView, logPresence]);
 
   useEffect(() => {
-    if (!user || !roomName || !shouldConnect) return;
+    if (!convexUser || !roomName || !shouldConnect) return;
 
     const fetchToken = async () => {
       try {
-        const participantName = user.fullName || user.username || "Unknown";
+        const participantName = convexUser.fullName || convexUser.firstName || "Unknown";
         const jwt = await getToken({
           roomName,
-          participantName
+          participantName,
+          role
         });
         setToken(jwt);
       } catch (err) {
@@ -104,11 +112,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
     };
 
     fetchToken();
-  }, [user, roomName, getToken, shouldConnect, t]);
+  }, [convexUser, roomName, getToken, shouldConnect, t]);
 
   // Handle disconnect (leave)
   const handleDisconnect = async () => {
-    // 1. Log leave to DB
     if (isStudentView && sessionStatus?.scheduleId) {
       try {
         await logPresence({
@@ -120,15 +127,13 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
       }
     }
 
-    // 2. Clear token & UI state
     setToken("");
     hasLoggedJoin.current = false;
 
-    // 3. Navigation
     if (isStudentView && onLeave) {
       onLeave();
     } else if (!isStudentView) {
-      router.push("/dashboard");
+      router.push(`/${params.locale}/${orgSlug}`);
     }
   };
   
@@ -181,14 +186,13 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   // Waiting Room
   if (!shouldConnect && !token) {
     const timeDiff = sessionStatus.start - now;
-    const isUrgent = timeDiff > 0 && timeDiff <= 15 * 60 * 1000; // 15 mins
+    const isUrgent = timeDiff > 0 && timeDiff <= 15 * 60 * 1000;
     const isLate = timeDiff <= 0;
 
     return (
       <div className={`flex h-full w-full items-center justify-center ${isStudentView ? 'bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950' : 'bg-blue-50/50'} rounded-lg ${className}`}>
         <div className="text-center p-8 max-w-md bg-white dark:bg-gray-900 shadow-xl rounded-2xl border-4 border-purple-400 dark:border-purple-600 animate-in fade-in zoom-in duration-500">
           
-          {/* Icon Badge */}
           <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${
             isLate ? 'bg-orange-100 dark:bg-orange-900 animate-pulse' : 'bg-purple-100 dark:bg-purple-900 animate-bounce'
           }`}>
@@ -204,7 +208,6 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
           </h2>
           
           <div className="space-y-4 my-6">
-            {/* Enhanced Time Display */}
             <div className={`p-4 rounded-lg border flex flex-col items-center justify-center ${
               isUrgent 
                 ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800' 
@@ -246,7 +249,6 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             </p>
           </div>
 
-          {/* Leave Button for Students */}
           {isStudentView && onLeave && (
             <Button 
               variant="outline" 
@@ -317,7 +319,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
       >
         {isStudentView ? (
           <StudentClassroomUI 
-            currentUserRole={convexUser.role} 
+            currentUserRole={role}
             roomName={roomName}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
@@ -325,7 +327,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
           />
         ) : (
           <ActiveClassroomUI 
-            currentUserRole={convexUser.role} 
+            currentUserRole={role}
             roomName={roomName}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}

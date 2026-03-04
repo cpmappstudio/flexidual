@@ -28,7 +28,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ClassDialog } from "./class-dialog";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { useCurrentUser } from "@/hooks/use-current-user";
+import { useParams } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
+import { getRoleForOrg } from "@/lib/rbac"
 
 interface ClassesTableProps {
   data: Doc<"classes">[];
@@ -37,8 +39,11 @@ interface ClassesTableProps {
 
 export function ClassesTable({ data, curriculums }: ClassesTableProps) {
   const t = useTranslations();
-  const { user } = useCurrentUser();
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
+  const { sessionClaims } = useAuth()
+  const role = getRoleForOrg(sessionClaims, orgSlug)
+  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [filter, setFilter] = React.useState("");

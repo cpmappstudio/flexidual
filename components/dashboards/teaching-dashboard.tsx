@@ -9,7 +9,9 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Video, Calendar as CalendarIcon, Clock, BookOpen, MonitorPlay } from "lucide-react"
 import { Link } from "@/i18n/navigation"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
-import { useCurrentUser } from "@/hooks/use-current-user"
+import { useParams } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
+import { getRoleForOrg } from "@/lib/rbac"
 import { format, isToday, isTomorrow, startOfDay, addDays } from "date-fns"
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
@@ -19,8 +21,11 @@ export default function TeachingDashboard() {
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
   const events = useQuery(api.schedule.getMySchedule, {})
   const allClasses = useQuery(api.classes.list, {})
-  const { user } = useCurrentUser()
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
+  const { sessionClaims } = useAuth()
+  const role = getRoleForOrg(sessionClaims, orgSlug)
+  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
 
   const now = Date.now()
   const todayStart = startOfDay(new Date()).getTime()

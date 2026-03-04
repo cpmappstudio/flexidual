@@ -65,7 +65,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
 
       const firstOrgSlug = Object.keys(roles).find(k => k !== "system")
       if (firstOrgSlug) {
-        const targetPath = getRoleBasePath(locale, firstOrgSlug, roles[firstOrgSlug])
+        const targetPath = getRoleBasePath(locale, firstOrgSlug)
         return NextResponse.redirect(new URL(targetPath, req.url))
       }
       return intlMiddleware(req)

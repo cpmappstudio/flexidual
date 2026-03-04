@@ -19,7 +19,8 @@ import { useTranslations } from "next-intl"
 import { useState } from "react"
 import { ScheduleItem } from "@/components/schedule/schedule-item"
 import { ClassDialog } from "@/components/teaching/classes/class-dialog"
-import { useCurrentUser } from "@/hooks/use-current-user"
+import { useAuth } from "@clerk/nextjs"
+import { getRoleForOrg } from "@/lib/rbac"
 import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview"
 import { CurriculumLessonList } from "@/components/teaching/curriculums/curriculum-lesson-list"
 
@@ -31,8 +32,10 @@ export default function ClassDetailPage() {
   const classId = params.classId as Id<"classes">
   const [visiblePast, setVisiblePast] = useState(10)
   const [activeTab, setActiveTab] = useState("schedule")
-  const { user } = useCurrentUser()
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
+  const orgSlug = (params.orgSlug as string) || "system"
+  const { sessionClaims } = useAuth()
+  const role = getRoleForOrg(sessionClaims, orgSlug)
+  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
 
   const [roadmapExpanded, setRoadmapExpanded] = useState(true)
   const [upcomingExpanded, setUpcomingExpanded] = useState(true)

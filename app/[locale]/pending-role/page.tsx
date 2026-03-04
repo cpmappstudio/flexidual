@@ -1,11 +1,11 @@
-import { useTranslations } from "next-intl";
+// import { useTranslations } from "next-intl";
 import { SignOutButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, LogOut } from "lucide-react";
 import { FlexidualLogo } from "@/components/ui/flexidual-logo";
 
 export default function PendingRolePage() {
-  const t = useTranslations();
+//   const t = useTranslations();
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-muted/30 p-4">

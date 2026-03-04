@@ -4,6 +4,7 @@ import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { GRADE_VALUES } from "../lib/types/academic";
 import { ConvexError } from "convex/values";
 import { hasSystemRole, hasOrgRole, canManageCurriculums } from "./permissions";
+import { Id } from "./_generated/dataModel";
 
 // ============================================================================
 // QUERIES
@@ -216,62 +217,44 @@ export const create = mutation({
  */
 export const createBatch = mutation({
   args: {
-    schoolId: v.optional(v.id("schools")),
+    orgType: v.optional(v.union(v.literal("system"), v.literal("school"), v.literal("campus"))),
+    orgId: v.optional(v.string()),
     curriculums: v.array(v.object({
       title: v.string(),
       description: v.optional(v.string()),
       code: v.optional(v.string()),
       gradeCodes: v.optional(v.array(v.string())),
-    }))
+    })),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    const isAuthorized = await canManageCurriculums(ctx, user._id, args.schoolId);
-    if (!isAuthorized) {
-      throw new Error("Only administrators can create curriculums for this school");
+    let targetSchoolId: Id<"schools"> | undefined = undefined;
+
+    if (args.orgType === "school" && args.orgId) {
+        targetSchoolId = args.orgId as Id<"schools">;
+    } else if (args.orgType === "campus" && args.orgId) {
+        const campus = await ctx.db.get(args.orgId as Id<"campuses">);
+        targetSchoolId = campus?.schoolId;
     }
 
-    const results = [];
-
+    const createdIds = [];
     for (const item of args.curriculums) {
-      try {
-        if (item.code) {
-          const existing = await ctx.db
-            .query("curriculums")
-            .withIndex("by_code", (q) => q.eq("code", item.code))
-            .first();
-          
-          if (existing) {
-            results.push({ title: item.title, status: "error", reason: `Code '${item.code}' already taken` });
-            continue;
-          }
-        }
-
-        if (item.gradeCodes && !item.gradeCodes.every(g => (GRADE_VALUES as readonly string[]).includes(g))) {
-          results.push({ title: item.title, status: "error", reason: `Invalid grade code(s) found.` });
-          continue;
-        }
-
-        await ctx.db.insert("curriculums", {
-          title: item.title,
-          schoolId: args.schoolId,
-          description: item.description,
-          code: item.code,
-          color: "#3b82f6",
-          gradeCodes: item.gradeCodes,
-          isActive: true,
-          createdAt: Date.now(),
-          createdBy: user._id,
-        });
-
-        results.push({ title: item.title, status: "success" });
-      } catch (e) {
-        results.push({ title: item.title, status: "error", reason: (e as Error).message });
-      }
+      const id = await ctx.db.insert("curriculums", {
+        title: item.title,
+        description: item.description,
+        code: item.code,
+        gradeCodes: item.gradeCodes,
+        color: "#3b82f6",
+        schoolId: targetSchoolId,
+        isActive: true,
+        createdAt: Date.now(),
+        createdBy: user._id,
+      });
+      createdIds.push(id);
     }
-
-    return results;
+    
+    return { count: createdIds.length, ids: createdIds };
   },
 });
 

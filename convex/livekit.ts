@@ -9,6 +9,7 @@ export const getToken = action({
   args: {
     roomName: v.string(), 
     participantName: v.string(),
+    role: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<string> => {
     const identity = await ctx.auth.getUserIdentity();
@@ -17,7 +18,7 @@ export const getToken = action({
     const user = await ctx.runQuery(api.users.getCurrentUser, { clerkId: identity.subject });
     if (!user) throw new Error("User not found");
 
-    // Call the internal query from schedule.ts!
+    // Check backend authorization to join this specific room
     const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, { 
       userId: user._id, 
       roomName: args.roomName 
@@ -53,11 +54,14 @@ export const getToken = action({
       throw new Error("LiveKit credentials not configured");
     }
 
+    // Determine the final role (Prefer the tenant context passed from the frontend)
+    const finalRole = args.role || access.computedRole || "student";
+
     const at = new AccessToken(apiKey, apiSecret, {
       identity: identity.subject,
       name: args.participantName,
       metadata: JSON.stringify({
-        role: access.computedRole,
+        role: finalRole,
         userId: identity.subject,
         fullName: user.fullName,
       })

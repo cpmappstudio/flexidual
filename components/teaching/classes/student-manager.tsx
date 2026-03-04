@@ -14,7 +14,9 @@ import {
 import { AddStudentDialog } from "./add-student-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { useCurrentUser } from "@/hooks/use-current-user"
+import { useParams } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
+import { getRoleForOrg } from "@/lib/rbac"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
 import { useAlert } from "@/components/providers/alert-provider"
@@ -25,12 +27,15 @@ interface StudentManagerProps {
 }
 
 export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
-  const { user } = useCurrentUser()
   const t = useTranslations()
   const { showAlert } = useAlert()
   const students = useQuery(api.classes.getStudents, { classId })
   const removeStudent = useMutation(api.classes.removeStudent)
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin"
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
+  const { sessionClaims } = useAuth()
+  const role = getRoleForOrg(sessionClaims, orgSlug)
+  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
 
   const handleRemove = async (studentId: Id<"users">, name: string) => {
     showAlert({

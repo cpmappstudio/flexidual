@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Id, Doc } from "@/convex/_generated/dataModel";
+import type { Doc } from "@/convex/_generated/dataModel";
 import {
   ColumnDef,
   flexRender,
@@ -32,6 +32,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTranslations } from "next-intl";
 import { UserRole } from "@/convex/types";
+import { useParams } from "next/navigation"
 
 export type User = Doc<"users">;
 
@@ -58,8 +59,16 @@ function UserAvatar({ user }: { user: User }) {
 export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
   const t = useTranslations();
   
-  // Fetch users (filtered by role if provided)
-  const users = useQuery(api.users.getUsers, roleFilter ? { role: roleFilter } : {});
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
+  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
+
+  const users = useQuery(api.users.getUsers, orgContext ? { 
+    role: roleFilter,
+    orgType: orgContext.type,
+    orgId: orgContext._id
+  } : "skip");
+
   const [sorting, setSorting] = React.useState<TableSortingState>([]);
   const [editingUser, setEditingUser] = React.useState<User | null>(null);
   

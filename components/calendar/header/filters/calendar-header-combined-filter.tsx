@@ -13,19 +13,29 @@ import { api } from "@/convex/_generated/api"
 import { useState } from "react"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useCurrentUser } from "@/hooks/use-current-user"
 import { useCalendarContext } from "../../calendar-context"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 
+// Multi-tenant imports
+import { useParams } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
+import { getRoleForOrg } from "@/lib/rbac"
+
 export default function CalendarHeaderCombinedFilter() {
   const { selectedTeacherId, onTeacherChange, selectedCurriculumId, onCurriculumChange } = useCalendarContext()
-  const { user } = useCurrentUser()
   const t = useTranslations()
   const [open, setOpen] = useState(false)
   const [teacherSearch, setTeacherSearch] = useState("")
   const [curriculumSearch, setCurriculumSearch] = useState("")
+
+  // Resolve Context & Role
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
+  const { sessionClaims } = useAuth()
+  const role = getRoleForOrg(sessionClaims, orgSlug)
+  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
 
   const teachers = useQuery(api.users.getTeachers)
   const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
@@ -33,7 +43,6 @@ export default function CalendarHeaderCombinedFilter() {
   const selectedTeacher = teachers?.find(t => t._id === selectedTeacherId)
   const selectedCurriculum = curriculums?.find(c => c._id === selectedCurriculumId)
 
-  const isAdmin = user && ["admin", "superadmin"].includes(user.role)
   const hasActiveFilters = selectedTeacherId || selectedCurriculumId
 
   const filteredTeachers = teachers?.filter(teacher =>
