@@ -70,7 +70,8 @@
   "admin": {
     "title": "Painel geral",
     "description": "Consulte as principais métricas e a atividade da plataforma",
-    "classTracking": "Acompanhamento de Turmas e Professores"
+    "classTracking": "Acompanhamento de Classes",
+    "classTrackingDescription": "Monitore o progresso e verifique o registro de presença"
   },
   "navigation": {
     "dashboard": "Painel geral",
@@ -89,8 +90,8 @@
     "tutors": "Tutores",
     "superadmins": "Super Administradores",
     "curriculums": "Currículos",
-    "curriculumsDescription": "Gerencie programas acadêmicos, modelos de cursos e planos de aulas.",
-    "curriculumsDescription2": "Currículos ativos atualmente visíveis para professores e alunos.",
+    "curriculumsDescription": "Gerencie os currículos e seu conteúdo",
+    "curriculumsDescription2": "Currículos que estão atualmente em andamento ou disponíveis",
     "curriculumEditDescription": "Gerencie os detalhes deste currículo e suas aulas associadas.",
     "lessons": "Aulas",
     "classes": "Turmas",
@@ -129,7 +130,7 @@
     "myCurriculums": "Meus Currículos",
     "noCurriculums": "Nenhum currículo ainda",
     "viewAllCurriculums": "Ver Todos os Currículos",
-    "usersSummary": "Gerencie o acesso ao sistema, funções e permissões.",
+    "usersSummary": "Gerencie o acesso ao sistema, funções e permissões",
     "curriculumSummary": "Gerencie programas acadêmicos, modelos de cursos e planos de aulas."
   },
   "classroom": {
@@ -202,9 +203,9 @@
     "manageLessons": "Aulas",
     "filterPlaceholder": "Filtrar currículos...",
     "manageDescription": "Gerencie as aulas deste currículo.",
-    "unknown": "Currículo Desconhecido",
-    "allList": "Todos os Currículos",
-    "activeList": "Currículos Ativos",
+    "unknown": "Currículo desconhecido",
+    "activeList": "Currículos ativos",
+    "allList": "Todos os currículos",
     "createCurriculum": "Criar Currículo",
     "addCurriculums": "Adicione um ou mais currículos.",
     "curriculumsToCreate": "Currículos para Criar ({count})",
@@ -524,6 +525,8 @@
     "editSeriesDesc": "As alterações afetam todas as ocorrências futuras. Não é possível adicionar/remover lições."
   },
   "calendar": {
+    "title": "Calendário",
+    "description": "Gerencie as turmas e eventos programados",
     "mySchedule": "Minha Agenda",
     "classSchedule": "Agenda da Turma",
     "filtering": "Filtrando: {className}",

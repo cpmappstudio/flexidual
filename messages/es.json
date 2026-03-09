@@ -70,7 +70,8 @@
   "admin": {
     "title": "Panel general",
     "description": "Consulta las métricas clave y la actividad de la plataforma",
-    "classTracking": "Seguimiento de Clases y Profesores"
+    "classTracking": "Seguimiento de Clases",
+    "classTrackingDescription": "Monitorea el progreso y verifica el registro de asistencia"
   },
   "navigation": {
     "dashboard": "Panel general",
@@ -89,8 +90,8 @@
     "tutors": "Tutores",
     "superadmins": "Super Administradores",
     "curriculums": "Currículos",
-    "curriculumsDescription": "Gestiona programas académicos, plantillas de cursos y planes de lecciones.",
-    "curriculumsDescription2": "Currículos activos actualmente visibles para profesores y estudiantes.",
+    "curriculumsDescription": "Gestiona currículos y su contenido",
+    "curriculumsDescription2": "Currículos que están actualmente activos o disponibles",
     "curriculumEditDescription": "Gestiona los detalles de este currículo y sus lecciones asociadas.",
     "lessons": "Lecciones",
     "classes": "Clases",
@@ -129,7 +130,7 @@
     "myCurriculums": "Mis Currículos",
     "noCurriculums": "Aún no hay currículos",
     "viewAllCurriculums": "Ver Todos los Currículos",
-    "usersSummary": "Gestiona el acceso al sistema, roles y permisos.",
+    "usersSummary": "Gestiona el acceso al sistema, roles y permisos",
     "curriculumSummary": "Gestiona programas académicos, plantillas de cursos y planes de lecciones."
   },
   "classroom": {
@@ -203,8 +204,8 @@
     "filterPlaceholder": "Filtrar currículos...",
     "manageDescription": "Gestiona las lecciones de este currículo.",
     "unknown": "Currículo Desconocido",
-    "allList": "Todos los Currículos",
-    "activeList": "Currículos Activos",
+    "allList": "Todos los currículos",
+    "activeList": "Currículos activos",
     "createCurriculum": "Crear Currículo",
     "addCurriculums": "Agrega uno o más currículos.",
     "curriculumsToCreate": "Currículos para Crear ({count})",
@@ -523,6 +524,8 @@
     "editSeriesDesc": "Los cambios afectan todas las ocurrencias futuras. No se pueden agregar/eliminar lecciones."
   },
   "calendar": {
+    "title": "Calendario",
+    "description": "Gestionar clases y eventos programados",
     "mySchedule": "Mi Horario",
     "classSchedule": "Horario de Clase",
     "filtering": "Filtrando: {className}",

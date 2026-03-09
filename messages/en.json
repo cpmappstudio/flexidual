@@ -70,7 +70,8 @@
   "admin": {
     "title": "Dashboard",
     "description": "Check key metrics and platform activity",
-    "classTracking": "Class & Teacher Tracking"
+    "classTracking": "Class Tracking",
+    "classTrackingDescription": "Monitor progress and verify attendance records"
   },
   "navigation": {
     "dashboard": "Dashboard",
@@ -89,9 +90,9 @@
     "tutors": "Tutors",
     "superadmins": "Super Admins",
     "curriculums": "Curriculums",
-    "curriculumsDescription": "Manage academic programs, course templates, and lesson plans.",
-    "curriculumsDescription2": "Currently active curriculums visible to teachers and students.",
-    "curriculumEditDescription": "Manage the details of this curriculum and its associated lessons.",
+    "curriculumsDescription": "Manage curriculums and their content",
+    "curriculumsDescription2": "Curriculums that are currently active or available",
+    "curriculumEditDescription": "Manage the details of this curriculum and its associated lessons",
     "lessons": "Lessons",
     "classes": "Classes",
     "classesDescription": "Manage all classes, assignments, and schedules across the platform.",
@@ -129,7 +130,7 @@
     "myCurriculums": "My Curriculums",
     "noCurriculums": "No curriculums yet",
     "viewAllCurriculums": "View All Curriculums",
-    "usersSummary": "Manage system access, roles, and permissions.",
+    "usersSummary": "Manage system access, roles, and permissions",
     "curriculumSummary": "Manage academic programs, course templates, and lesson plans."
   },
   "classroom": {
@@ -202,9 +203,9 @@
     "manageLessons": "Lessons",
     "filterPlaceholder": "Filter curriculums...",
     "manageDescription": "Manage your curriculum's lessons.",
-    "unknown": "Unknown Curriculum",
-    "allList": "All Curriculums",
-    "activeList": "Active Curriculums",
+    "unknown": "Unknown curriculum",
+    "allList": "All curriculums",
+    "activeList": "Active curriculums",
     "createCurriculum": "Create Curriculum",
     "addCurriculums": "Add one or more curriculums.",
     "curriculumsToCreate": "Curriculums to Create ({count})",
@@ -523,6 +524,8 @@
     "editSeriesDesc": "Changes affect all future occurrences. Cannot add/remove lessons."
   },
   "calendar": {
+    "title": "Calendar",
+    "description": "Manage scheduled classes and events",
     "mySchedule": "My Schedule",
     "classSchedule": "Class Schedule",
     "filtering": "Filtering: {className}",
