@@ -26,8 +26,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {...props}
     >
       {/* 1. Header: User Profile */}
-      <SidebarHeader>
-        <FlexidualLogo size={collapsed ? "sm" : "md"} className={collapsed ? "justify-center" : ""} stacked={collapsed} />
+      <SidebarHeader className="flex items-center justify-center pt-6">
+        <FlexidualLogo stacked={collapsed} />
         <OrgSwitcher />
       </SidebarHeader>
 

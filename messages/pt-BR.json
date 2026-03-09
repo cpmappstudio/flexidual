@@ -68,12 +68,12 @@
     "saturday": "Sáb"
   },
   "admin": {
-    "title": "Administração Acadêmica",
-    "description": "Central de administração acadêmica e ferramentas de gestão.",
+    "title": "Painel geral",
+    "description": "Consulte as principais métricas e a atividade da plataforma",
     "classTracking": "Acompanhamento de Turmas e Professores"
   },
   "navigation": {
-    "dashboard": "Painel",
+    "dashboard": "Painel geral",
     "calendar": "Calendário",
     "schedule": "Agenda",
     "teaching": "Ensino",

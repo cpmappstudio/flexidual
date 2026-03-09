@@ -1,53 +1,38 @@
-import React from "react";
+import Image from "next/image";
 
 interface FlexidualLogoProps {
   className?: string;
-  size?: "sm" | "md" | "lg";
   stacked?: boolean;
 }
 
+const sizeMap = {
+  icon: { width: 40, height: 40 },
+  wide: { width: 160, height: 40 },
+};
+
 export function FlexidualLogo({
   className = "",
-  size = "md",
   stacked = false,
 }: FlexidualLogoProps) {
-  const base =
-    size === "sm" ? "text-lg" : size === "lg" ? "text-3xl" : "text-2xl";
-  const layout = /* stacked ? "flex-col leading-tight" : */ "items-center";
+  if (stacked) {
+    return (
+      <Image
+        src="/flexidual-icon.png"
+        alt="Flexidual"
+        width={sizeMap.icon.width}
+        height={sizeMap.icon.height}
+        className={`object-contain ${className}`}
+      />
+    );
+  }
 
   return (
-    <div className={`flex ${layout} ${className} transition-all`}>
-        { !stacked ? (
-          <>
-            <span
-              className={`${base} font-logo font-black tracking-tight text-orange-500`}
-              style={{ fontVariationSettings: '"SOFT" 100' }}
-            >
-              Flexi
-            </span>
-            <span
-              className={`${base} font-logo font-black tracking-tight text-yellow-500`}
-              style={{ fontVariationSettings: '"SOFT" 100' }}
-            >
-              Dual
-            </span>
-          </>
-        ) : (
-          <div className="flex items-end -space-x-0.5">
-            <span
-              className={`${base} font-logo font-black tracking-tight inline-block text-orange-500 rotate-12`}
-              style={{ fontVariationSettings: '"SOFT" 100' }}
-            >
-              F
-            </span>
-            <span
-              className={`${base} font-logo font-black tracking-tight text-yellow-500 inline-block rotate-12 translate-y-1.5`}
-              style={{ fontVariationSettings: '"SOFT" 100' }}
-            >
-              D
-            </span>
-          </div>
-        )}
-    </div>
+    <Image
+      src="/flexidual-icon-wide.png"
+      alt="Flexidual"
+      width={sizeMap.wide.width}
+      height={sizeMap.wide.height}
+      className={`object-contain ${className}`}
+    />
   );
 }

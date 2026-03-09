@@ -52,7 +52,7 @@ export function NavMain() {
           <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/calendar`)}>
             <Link href={`${basePath}/calendar`}>
               <Calendar />
-              <span>{t('navigation.schedule')}</span>
+              <span>{t('navigation.calendar')}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
