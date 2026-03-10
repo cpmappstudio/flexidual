@@ -48,7 +48,9 @@ type PendingUser = {
     id: string
     firstName: string
     lastName: string
-    email: string
+    email?: string
+    username?: string
+    password?: string
     role: UserRole
     grade?: string
     school?: string
@@ -84,6 +86,8 @@ export function UserDialog({
         firstName: "",
         lastName: "",
         email: "",
+        username: "",
+        password: "",
         role: defaultRole || "student" as UserRole,
         status: "active",
         grade: "",
@@ -117,7 +121,9 @@ export function UserDialog({
                 setFormData({
                     firstName: user.firstName || "",
                     lastName: user.lastName || "",
-                    email: user.email,
+                    email: user.email || "",
+                    username: user.username || "",
+                    password: user.externalPassword || "", 
                     role: (user.role as UserRole) ?? (defaultRole || rolesToDisplay[0]),
                     status: user.isActive ? "active" : "inactive",
                     grade: user.grade || "",
@@ -140,6 +146,8 @@ export function UserDialog({
                     firstName: "",
                     lastName: "",
                     email: "",
+                    username: "",
+                    password: "",
                     role: (defaultRole || rolesToDisplay[0]) as UserRole,
                     status: "active",
                     grade: "",
@@ -155,13 +163,20 @@ export function UserDialog({
 
     const handleAddToQueue = (e: React.FormEvent) => {
         e.preventDefault()
-        if (!formData.email || !formData.firstName || !formData.lastName) return
+        
+        const hasName = formData.firstName.trim() && formData.lastName.trim();
+        const hasValidEmail = formData.email.trim().length > 0;
+        const hasValidUsername = formData.username.trim().length > 0 && formData.password.trim().length > 0;
+        
+        if (!hasName || (!hasValidEmail && !hasValidUsername)) return;
 
         const newUser: PendingUser = {
             id: Math.random().toString(36).substr(2, 9),
             firstName: formData.firstName,
             lastName: formData.lastName,
-            email: formData.email,
+            email: formData.email.trim() || undefined,
+            username: formData.username.trim() || undefined,
+            password: formData.password.trim() || undefined,
             role: formData.role,
             grade: formData.grade,
             school: formData.school
@@ -173,7 +188,9 @@ export function UserDialog({
             ...prev,
             firstName: "",
             lastName: "",
-            email: ""
+            email: "",
+            username: "",
+            password: ""
         }))
     }
 
@@ -219,13 +236,15 @@ export function UserDialog({
                         firstName: formData.firstName,
                         lastName: formData.lastName,
                         email: formData.email,
+                        username: formData.username,
+                        password: formData.password,
                         role: formData.role, 
                         isActive: formData.status === "active",
                         grade: formData.role === "student" ? formData.grade : undefined,
                         school: formData.role === "student" ? formData.school : undefined,
                     },
-                    orgType: finalOrgType,
-                    orgId: finalOrgId,
+                    orgType: finalOrgType, 
+                    orgId: finalOrgId,     
                 })
                 toast.success(t('common.save'))
                 setIsOpen(false)
@@ -254,6 +273,8 @@ export function UserDialog({
                         firstName: u.firstName,
                         lastName: u.lastName,
                         email: u.email,
+                        username: u.username,
+                        password: u.password,
                         role: u.role,
                         grade: u.role === "student" ? u.grade : undefined,
                         school: u.role === "student" ? u.school : undefined,
@@ -373,15 +394,45 @@ export function UserDialog({
                         </div>
                     </div>
 
-                    <div className="grid gap-2">
-                        <Label htmlFor="email">{t('teacher.email')}</Label>
-                        <Input 
-                            id="email" 
-                            type="email"
-                            value={formData.email}
-                            onChange={e => setFormData({...formData, email: e.target.value})}
-                            required={isEditing}
-                        />
+                    {/* AUTHENTICATION DETAILS */}
+                    <div className="grid gap-4 p-4 border rounded-md bg-muted/10">
+                        <Label className="text-primary font-semibold">Authentication (Provide at least one)</Label>
+                        
+                        <div className="grid gap-2">
+                            <Label htmlFor="email">{t('teacher.email')} (Optional if using Username)</Label>
+                            <Input 
+                                id="email" 
+                                type="email"
+                                value={formData.email}
+                                onChange={e => setFormData({...formData, email: e.target.value})}
+                                required={isEditing && !formData.username} // Require if no username in edit mode
+                            />
+                        </div>
+
+                        {/* Optional Username/Password flow (Usually for students) */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="username">Username (Optional)</Label>
+                                <Input 
+                                    id="username" 
+                                    value={formData.username}
+                                    onChange={e => setFormData({...formData, username: e.target.value})}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="password">
+                                    Password {formData.username && <span className="text-destructive">*</span>}
+                                </Label>
+                                <Input 
+                                    id="password" 
+                                    type="text"
+                                    value={formData.password}
+                                    onChange={e => setFormData({...formData, password: e.target.value})}
+                                    placeholder={formData.username ? "Required with username" : ""}
+                                    disabled={!formData.username} 
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     {formData.role === "student" && (
@@ -506,7 +557,10 @@ export function UserDialog({
                                 variant="secondary" 
                                 size="sm" 
                                 className="gap-2"
-                                disabled={!formData.email}
+                                disabled={
+                                    (!formData.firstName || !formData.lastName) || 
+                                    (!formData.email && (!formData.username || !formData.password))
+                                }
                             >
                                 <Plus className="h-4 w-4" />
                                 {t('common.addToQueue')}

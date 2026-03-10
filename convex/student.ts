@@ -94,6 +94,7 @@ export const getStudentDashboardStats = query({
         student: {
             fullName: user.fullName,
             email: user.email,
+            username: user.username,
             imageUrl: user.imageUrl,
             grade: user.grade,
             school: user.school,

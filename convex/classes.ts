@@ -214,7 +214,8 @@ export const searchStudents = query({
       if (q.length > 0) {
         results = results.filter(s => 
           s.fullName.toLowerCase().includes(q) ||
-          s.email.toLowerCase().includes(q)
+          (s.email || "").toLowerCase().includes(q) ||
+          (s.username || "").toLowerCase().includes(q)
         );
       }
     }
@@ -223,6 +224,7 @@ export const searchStudents = query({
       _id: s._id,
       fullName: s.fullName,
       email: s.email,
+      username: s.username,
       avatarStorageId: s.avatarStorageId,
       imageUrl: s.imageUrl,
       grade: s.grade,

@@ -31,7 +31,7 @@ export function ClassTeacherFilter({ selectedTeacherId, onSelectTeacher }: Class
 
   const filteredTeachers = teachers?.filter(teacher =>
     teacher.fullName.toLowerCase().includes(search.toLowerCase()) ||
-    teacher.email.toLowerCase().includes(search.toLowerCase())
+    teacher.email?.toLowerCase().includes(search.toLowerCase())
   )
 
   return (

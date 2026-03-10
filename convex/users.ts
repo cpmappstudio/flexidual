@@ -9,6 +9,7 @@ type UserJSON = {
   email_addresses?: Array<{ email_address: string }>;
   first_name?: string;
   last_name?: string;
+  username?: string;
   image_url?: string;
   public_metadata?: Record<string, any>;
   [key: string]: any;
@@ -159,6 +160,8 @@ export const updateUser = mutation({
       firstName: v.optional(v.string()),
       lastName: v.optional(v.string()),
       email: v.optional(v.string()),
+      username: v.optional(v.string()),
+      externalPassword: v.optional(v.string()),
       avatarStorageId: v.optional(v.union(v.id("_storage"), v.null())),
       grade: v.optional(v.string()),
       school: v.optional(v.string()),
@@ -226,7 +229,8 @@ export const deleteUser = mutation({
 export const upsertFromClerk = internalMutation({
   args: { data: v.any() },
   handler: async (ctx, { data }: { data: UserJSON }) => {
-    const email = data.email_addresses?.[0]?.email_address || `user_${data.id}@temp.clerk`;
+    const email = data.email_addresses?.[0]?.email_address;
+    const username = data.username;
     const firstName = data.first_name || "";
     const lastName = data.last_name || "";
     
@@ -241,10 +245,11 @@ export const upsertFromClerk = internalMutation({
 
     const userData = {
       clerkId: data.id,
-      email,
+      email: email || "",
+      username: username,
       firstName,
       lastName,
-      fullName: `${firstName} ${lastName}`.trim() || email,
+      fullName: `${firstName} ${lastName}`.trim() || email || username || "Unknown User",
       imageUrl: data.image_url,
       grade,
       school,
@@ -287,12 +292,13 @@ export const createUsersWithClerk = action({
     users: v.array(v.object({
       firstName: v.string(),
       lastName: v.string(),
-      email: v.string(),
+      email: v.optional(v.string()),
+      username: v.optional(v.string()),
+      password: v.optional(v.string()),
       role: v.string(),
       grade: v.optional(v.string()),
       school: v.optional(v.string()),
     })),
-    // NEW: Multi-tenant context required for creation
     orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
     orgId: v.optional(v.string()),
     sendInvitation: v.optional(v.boolean()),
@@ -310,21 +316,26 @@ export const createUsersWithClerk = action({
            continue;
         }
 
-        // 1. Create in Clerk (Leave role blank in Clerk metadata, we map it via dictionary!)
+        // 1. Create in Clerk
+        const clerkPayload: any = {
+            first_name: user.firstName,
+            last_name: user.lastName,
+            public_metadata: { grade: user.grade, school: user.school },
+            skip_password_checks: true,
+            skip_password_requirement: true,
+        };
+
+        if (user.email) clerkPayload.email_address = [user.email];
+        if (user.username) clerkPayload.username = user.username;
+        if (user.password) clerkPayload.password = user.password; // Sets their Flexidual password!
+
         const clerkResponse = await fetch("https://api.clerk.com/v1/users", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${clerkSecretKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            email_address: [user.email],
-            first_name: user.firstName,
-            last_name: user.lastName,
-            public_metadata: { grade: user.grade, school: user.school },
-            skip_password_checks: true,
-            skip_password_requirement: true,
-          }),
+          body: JSON.stringify(clerkPayload),
         });
 
         if (!clerkResponse.ok) {
@@ -349,8 +360,18 @@ export const createUsersWithClerk = action({
           role: user.role as any,
         });
 
+        if (user.password || user.username) {
+            await ctx.runMutation(api.users.updateUser, {
+                userId: newConvexUser._id,
+                updates: {
+                    username: user.username,
+                    externalPassword: user.password 
+                }
+            });
+        }
+
         // 5. Send Invite
-        if (args.sendInvitation) {
+        if (args.sendInvitation && user.email) {
           await fetch("https://api.clerk.com/v1/invitations", {
             method: "POST",
             headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
@@ -378,7 +399,9 @@ export const updateUserWithClerk = action({
       firstName: v.optional(v.string()),
       lastName: v.optional(v.string()),
       email: v.optional(v.string()),
-      role: v.optional(v.string()), // The local role to update
+      username: v.optional(v.string()),
+      password: v.optional(v.string()),
+      role: v.optional(v.string()),
       grade: v.optional(v.string()),
       school: v.optional(v.string()),
       isActive: v.optional(v.boolean()),
@@ -419,6 +442,11 @@ export const updateUserWithClerk = action({
       const clerkUpdates: any = {};
       if (args.updates.firstName) clerkUpdates.first_name = args.updates.firstName;
       if (args.updates.lastName) clerkUpdates.last_name = args.updates.lastName;
+      if (args.updates.username) clerkUpdates.username = args.updates.username;
+      if (args.updates.password) {
+        clerkUpdates.password = args.updates.password;
+        clerkUpdates.skip_password_checks = true;
+      }
       
       const metadataUpdates: any = {};
       if (args.updates.grade !== undefined) metadataUpdates.grade = args.updates.grade;

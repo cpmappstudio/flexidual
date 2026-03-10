@@ -8,7 +8,8 @@ import { useTranslations } from "next-intl"
 interface StudentProfileHeroProps {
     student: {
         fullName: string
-        email: string
+        email?: string
+        username?: string
         imageUrl?: string
         grade?: string
         school?: string
@@ -70,6 +71,12 @@ export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) 
                 <h2 className="text-xl sm:text-2xl font-black text-center text-gray-800 dark:text-gray-100 leading-tight mb-2">
                     {student.fullName}
                 </h2>
+                
+                {(student.username || student.email) && (
+                    <p className="text-sm font-bold text-purple-600 dark:text-purple-400 mb-3 bg-purple-100 dark:bg-purple-900/40 px-3 py-1 rounded-full">
+                        @{student.username || student.email?.split('@')[0]}
+                    </p>
+                )}
                 
                 <div className="flex flex-col items-center gap-1.5 text-xs font-bold text-gray-500 dark:text-gray-400">
                     {student.school && (

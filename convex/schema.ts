@@ -21,7 +21,9 @@ export default defineSchema({
   users: defineTable({
     // Auth
     clerkId: v.string(),
-    email: v.string(),
+    email: v.optional(v.string()),
+    username: v.optional(v.string()),
+    externalPassword: v.optional(v.string()),
     
     // Profile
     firstName: v.string(),

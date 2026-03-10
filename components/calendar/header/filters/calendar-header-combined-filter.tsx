@@ -47,7 +47,7 @@ export default function CalendarHeaderCombinedFilter() {
 
   const filteredTeachers = teachers?.filter(teacher =>
     teacher.fullName.toLowerCase().includes(teacherSearch.toLowerCase()) ||
-    teacher.email.toLowerCase().includes(teacherSearch.toLowerCase())
+    teacher.email?.toLowerCase().includes(teacherSearch.toLowerCase())
   )
 
   const filteredCurriculums = curriculums?.filter(curriculum =>

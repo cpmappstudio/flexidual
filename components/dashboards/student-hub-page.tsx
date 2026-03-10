@@ -166,7 +166,7 @@ export default function StudentHubPage() {
         <div className="flex items-center gap-2 lg:gap-4">
           <div className="hidden xl:block text-right">
             <p className="text-lg font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              {t('student.welcome', { name: user?.firstName || 'Student' })}
+              {t('student.welcome', { name: user?.firstName || user?.username || 'Student' })}
             </p>
             <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
               {t('student.welcomeMessage')}
@@ -192,7 +192,9 @@ export default function StudentHubPage() {
             {user?.imageUrl ? (
               <Image src={user.imageUrl} alt="avatar" width={56} height={56} className="w-full h-full object-cover" />
             ) : (
-              <span className="text-lg lg:text-2xl font-bold text-white">{user?.firstName?.charAt(0) || 'S'}</span>
+              <span className="text-lg lg:text-2xl font-bold text-white">
+                {(user?.firstName || user?.username || 'S').charAt(0).toUpperCase()}
+              </span>
             )}
           </div>
 
