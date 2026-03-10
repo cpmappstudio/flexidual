@@ -105,7 +105,8 @@
     "teacher": "Professor",
     "users": "Usuários",
     "allUsers": "Usuários",
-    "allUsersDescription": "Visão geral de todos os usuários registrados na plataforma."
+    "allUsersDescription": "Visão geral de todos os usuários registrados na plataforma.",
+    "principals": "Diretores"
   },
   "dashboard": {
     "today": "Hoje",

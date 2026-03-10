@@ -3,6 +3,7 @@ import { mutation, query, internalMutation, QueryCtx, action, internalQuery } fr
 import { api, internal } from "./_generated/api";
 import { GRADE_VALUES } from "../lib/types/academic";
 import { ConvexError } from "convex/values";
+import { Id } from "./_generated/dataModel";
 
 type UserJSON = {
   id: string;
@@ -59,23 +60,48 @@ export const getUsers = query({
     orgId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let assignmentQuery = ctx.db.query("roleAssignments");
+    let assignments = [];
 
-    if (args.orgType && args.orgType !== "system") {
-      assignmentQuery = assignmentQuery.filter(q => 
-        q.and(
-          q.eq(q.field("orgId"), args.orgId),
-          q.eq(q.field("orgType"), args.orgType)
+    // 1. Hierarchical Role Fetching using Indexes
+    if (args.orgType === "campus" && args.orgId) {
+      assignments = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_org", (q) => q.eq("orgId", args.orgId).eq("orgType", "campus"))
+        .collect();
+    } else if (args.orgType === "school" && args.orgId) {
+      // Get users assigned directly to the school (e.g., School Admins)
+      const schoolAssignments = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_org", (q) => q.eq("orgId", args.orgId).eq("orgType", "school"))
+        .collect();
+
+      // Get all campuses for this school to find campus-level users (e.g., Teachers, Students)
+      const campuses = await ctx.db
+        .query("campuses")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.orgId as Id<"schools">))
+        .collect();
+
+      const campusAssignments = await Promise.all(
+        campuses.map((c) =>
+          ctx.db
+            .query("roleAssignments")
+            .withIndex("by_org", (q) => q.eq("orgId", c._id).eq("orgType", "campus"))
+            .collect()
         )
       );
-    } 
 
-    if (args.role) {
-      assignmentQuery = assignmentQuery.filter(q => q.eq(q.field("role"), args.role));
+      assignments = [...schoolAssignments, ...campusAssignments.flat()];
+    } else {
+      // System level or no specific org filter
+      assignments = await ctx.db.query("roleAssignments").collect();
     }
 
-    const assignments = await assignmentQuery.collect();
-    const validUserIds = new Set(assignments.map(a => a.userId));
+    // 2. Apply Role Filter
+    if (args.role) {
+      assignments = assignments.filter((a) => a.role === args.role);
+    }
+
+    const validUserIds = new Set(assignments.map((a) => a.userId));
 
     let users = await ctx.db.query("users").collect();
 

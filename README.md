@@ -263,6 +263,7 @@ flexidual
 │  ├─ schema.ts
 │  ├─ schools.ts
 │  ├─ seed.ts
+│  ├─ seedCPCA.ts
 │  ├─ student.ts
 │  ├─ tsconfig.json
 │  ├─ types.ts
@@ -315,7 +316,8 @@ flexidual
 │  └─ flexidual-icon.png
 ├─ README.md
 ├─ scripts
-│  └─ migrate.ts
+│  ├─ migrate.ts
+│  └─ seedUsers.ts
 ├─ tsconfig.json
 └─ typings
    └─ recharts.d.ts

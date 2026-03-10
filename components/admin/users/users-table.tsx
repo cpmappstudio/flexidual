@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import {
   ColumnDef,
   flexRender,
@@ -63,14 +63,41 @@ function UserAvatar({ user }: { user: User }) {
 export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
   const t = useTranslations();
   
-  const params = useParams()
-  const orgSlug = (params.orgSlug as string) || "system"
-  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
+  const params = useParams();
+  const orgSlug = (params.orgSlug as string) || "system";
+  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
+  const isSystemDashboard = orgContext?.type === "system";
+
+  // Superadmin filtering state
+  const [selectedSchoolId, setSelectedSchoolId] = React.useState<string>("all");
+  const [selectedCampusId, setSelectedCampusId] = React.useState<string>("all");
+
+  const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip");
+  const campuses = useQuery(
+    api.campuses.list,
+    isSystemDashboard && selectedSchoolId !== "all"
+      ? { schoolId: selectedSchoolId as Id<"schools"> }
+      : "skip"
+  );
+
+  // Compute effective scope for the users query
+  let queryOrgType = orgContext?.type;
+  let queryOrgId = orgContext?._id;
+
+  if (isSystemDashboard) {
+    if (selectedCampusId !== "all") {
+      queryOrgType = "campus";
+      queryOrgId = selectedCampusId as Id<"campuses">;
+    } else if (selectedSchoolId !== "all") {
+      queryOrgType = "school";
+      queryOrgId = selectedSchoolId as Id<"schools">;
+    }
+  }
 
   const users = useQuery(api.users.getUsers, orgContext ? { 
     role: roleFilter,
-    orgType: orgContext.type,
-    orgId: orgContext._id
+    orgType: queryOrgType,
+    orgId: queryOrgId
   } : "skip");
 
   const [sorting, setSorting] = React.useState<TableSortingState>([]);
@@ -170,14 +197,59 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
         )}
 
       <div className="flex items-center justify-between">
-        <div className="relative w-72">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t('common.search')}
-            value={(table.getColumn("fullName")?.getFilterValue() as string) ?? ""}
-            onChange={(event) => table.getColumn("fullName")?.setFilterValue(event.target.value)}
-            className="pl-8"
-          />
+        <div className="flex items-center gap-4">
+          <div className="relative w-72">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t('common.search')}
+              value={(table.getColumn("fullName")?.getFilterValue() as string) ?? ""}
+              onChange={(event) => table.getColumn("fullName")?.setFilterValue(event.target.value)}
+              className="pl-8"
+            />
+          </div>
+
+          {/* Superadmin Filters */}
+          {isSystemDashboard && (
+            <>
+              <Select
+                value={selectedSchoolId}
+                onValueChange={(val) => {
+                  setSelectedSchoolId(val);
+                  setSelectedCampusId("all"); // Reset campus when school changes
+                }}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All Schools" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Schools</SelectItem>
+                  {schools?.map((school) => (
+                    <SelectItem key={school._id} value={school._id}>
+                      {school.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={selectedCampusId}
+                onValueChange={setSelectedCampusId}
+                disabled={selectedSchoolId === "all"}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All Campuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Campuses</SelectItem>
+                  {campuses?.map((campus) => (
+                    <SelectItem key={campus._id} value={campus._id}>
+                      {campus.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
         </div>
         
         {/* Create Button with context-aware configuration */}
