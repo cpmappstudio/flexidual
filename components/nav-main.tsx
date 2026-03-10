@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import { BookMarked, Calendar, LayoutDashboard, Users, School, Building2, MapPin } from "lucide-react"
+import { BookMarked, Calendar, LayoutDashboard, Users, School, Building2, MapPin, Presentation } from "lucide-react"
 import { Link, usePathname } from "@/i18n/navigation"
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { useTranslations } from "next-intl"
@@ -119,7 +119,7 @@ export function NavMain() {
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/classes`)}>
                 <Link href={`${basePath}/classes`}>
-                  <School />
+                  <Presentation/>
                   <span>{t('navigation.allClasses')}</span>
                 </Link>
               </SidebarMenuButton>

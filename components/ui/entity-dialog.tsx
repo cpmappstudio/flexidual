@@ -23,6 +23,7 @@ interface EntityDialogProps {
   onOpenChange?: (open: boolean) => void
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
   isSubmitting?: boolean
+  submitDisabled?: boolean
   submitLabel?: string
   children: React.ReactNode
   leftActions?: React.ReactNode
@@ -37,6 +38,7 @@ export function EntityDialog({
   onOpenChange,
   onSubmit,
   isSubmitting = false,
+  submitDisabled = false,
   submitLabel = "Save",
   children,
   leftActions,
@@ -61,7 +63,7 @@ export function EntityDialog({
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className={`${maxWidth} flex flex-col max-h-[90vh] gap-0 p-0`}>
         <DialogHeader className="p-6 pb-4 border-b">
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="text-center">{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
 
@@ -83,7 +85,7 @@ export function EntityDialog({
               >
                 {t('common.cancel')}
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || submitDisabled}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {submitLabel}
               </Button>

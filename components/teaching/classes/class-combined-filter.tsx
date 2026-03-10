@@ -1,247 +1,222 @@
-"use client"
+"use client";
 
-import { Button } from "@/components/ui/button"
+import * as React from "react";
+import { ListFilter, X, Check } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { useTranslations } from "next-intl";
+
+import { Button } from "@/components/ui/button";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Filter, X } from "lucide-react"
-import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import { useState } from "react"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Id } from "@/convex/_generated/dataModel"
-import Image from "next/image"
-import { useTranslations } from "next-intl"
-import { Badge } from "@/components/ui/badge"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import Image from "next/image";
 
 interface ClassCombinedFilterProps {
-  selectedTeacherId: Id<"users"> | null
-  onSelectTeacher: (id: Id<"users"> | null) => void
-  selectedCurriculumId: Id<"curriculums"> | null
-  onSelectCurriculum: (id: Id<"curriculums"> | null) => void
-  isAdmin: boolean
+  selectedTeacherId: Id<"users"> | null;
+  onSelectTeacher: (id: Id<"users"> | null) => void;
+  selectedCurriculumId: Id<"curriculums"> | null;
+  onSelectCurriculum: (id: Id<"curriculums"> | null) => void;
+  isAdmin: boolean;
 }
 
-export function ClassCombinedFilter({ 
-  selectedTeacherId, 
+export function ClassCombinedFilter({
+  selectedTeacherId,
   onSelectTeacher,
   selectedCurriculumId,
   onSelectCurriculum,
-  isAdmin 
+  isAdmin,
 }: ClassCombinedFilterProps) {
-  const t = useTranslations()
-  const [open, setOpen] = useState(false)
-  const [teacherSearch, setTeacherSearch] = useState("")
-  const [curriculumSearch, setCurriculumSearch] = useState("")
+  const t = useTranslations();
 
-  const teachers = useQuery(api.users.getTeachers)
-  const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
-  
-  const selectedTeacher = teachers?.find(t => t._id === selectedTeacherId)
-  const selectedCurriculum = curriculums?.find(c => c._id === selectedCurriculumId)
+  const teachers = useQuery(api.users.getTeachers);
+  const curriculums = useQuery(api.curriculums.list, {
+    includeInactive: false,
+  });
 
-  const hasActiveFilters = selectedTeacherId || selectedCurriculumId
+  const hasActiveFilters = !!(selectedTeacherId || selectedCurriculumId);
 
-  const filteredTeachers = teachers?.filter(teacher =>
-    teacher.fullName.toLowerCase().includes(teacherSearch.toLowerCase()) ||
-    teacher.email.toLowerCase().includes(teacherSearch.toLowerCase())
-  )
-
-  const filteredCurriculums = curriculums?.filter(curriculum =>
-    curriculum.title.toLowerCase().includes(curriculumSearch.toLowerCase()) ||
-    curriculum.code?.toLowerCase().includes(curriculumSearch.toLowerCase())
-  )
-
-  const clearAllFilters = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
-    onSelectTeacher(null)
-    onSelectCurriculum(null)
-  }
+  const clearAllFilters = () => {
+    onSelectTeacher(null);
+    onSelectCurriculum(null);
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <Button
-          variant={hasActiveFilters ? "secondary" : "outline"}
-          size="sm"
-          className="gap-2 group"
-        >
-          <Filter className="h-4 w-4" />
-          <span className="hidden sm:inline">
-            {hasActiveFilters ? t("class.filtered") : t("class.filterBy")}
-          </span>
-          {hasActiveFilters && (
-            <>
-              <Badge variant="outline" className="ml-1 px-1.5 py-0 h-5">
-                {(selectedTeacherId ? 1 : 0) + (selectedCurriculumId ? 1 : 0)}
-              </Badge>
-              <div
-                role="button"
-                className="ml-1 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/20 cursor-pointer relative z-50"
-                onClick={clearAllFilters}
-              >
-                <X className="h-3 w-3" />
-              </div>
-            </>
+          variant="outline"
+          size="icon"
+          className={cn(
+            "cursor-pointer relative",
+            hasActiveFilters && "border-2 border-primary",
           )}
+        >
+          <ListFilter className="size-3.5" />
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
-        <Tabs defaultValue="curriculum" className="w-full">
-          <div className="p-3 border-b space-y-3">
-            <TabsList className={`grid w-full ${isAdmin ? "grid-cols-2" : "grid-cols-1"}`}>
-              <TabsTrigger value="curriculum">{t("navigation.curriculum")}</TabsTrigger>
-              {isAdmin && <TabsTrigger value="teacher">{t("navigation.teacher")}</TabsTrigger>}
-            </TabsList>
-            
-            {/* Active Filters Display */}
-            {hasActiveFilters && (
-              <div className="space-y-2">
-                {selectedTeacher && (
-                  <div className="flex items-center justify-between text-xs bg-muted px-2 py-1.5 rounded">
-                    <span className="truncate">{selectedTeacher.fullName}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onSelectTeacher(null)
-                      }}
-                      className="ml-2 hover:bg-background rounded-full p-0.5"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
-                {selectedCurriculum && (
-                  <div className="flex items-center justify-between text-xs bg-muted px-2 py-1.5 rounded">
-                    <span className="truncate">{selectedCurriculum.title}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onSelectCurriculum(null)
-                      }}
-                      className="ml-2 hover:bg-background rounded-full p-0.5"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
-              </div>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end" className="w-[200px]">
+        <DropdownMenuLabel>{t("table.filters")}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+
+        {/* Curriculum filter */}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="flex items-center justify-between">
+            <span>{t("navigation.curriculum")}</span>
+            {selectedCurriculumId && (
+              <Badge color="zinc" className="ml-2 h-5 px-1.5">
+                1
+              </Badge>
             )}
-          </div>
-
-          <TabsContent value="curriculum" className="m-0">
-            <div className="p-3 border-b">
-              <Input
-                placeholder={t("curriculum.search")}
-                value={curriculumSearch}
-                onChange={(e) => setCurriculumSearch(e.target.value)}
-                className="h-9"
-              />
-            </div>
-            <ScrollArea className="h-[300px]">
-              <div className="p-2">
-                {filteredCurriculums?.map((curriculum) => (
-                  <button
-                    key={curriculum._id}
-                    onClick={() => {
-                      onSelectCurriculum(curriculum._id)
-                      setOpen(false)
-                      setCurriculumSearch("")
-                    }}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-2 rounded-md text-left
-                      hover:bg-muted transition-colors
-                      ${selectedCurriculumId === curriculum._id ? "bg-muted" : ""}
-                    `}
-                  >
-                    <div 
-                      className="w-3 h-3 rounded-full shrink-0"
-                      style={{ backgroundColor: curriculum.color }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{curriculum.title}</p>
-                      {curriculum.code && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {curriculum.code}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                ))}
-                {filteredCurriculums?.length === 0 && (
-                  <p className="text-center text-muted-foreground py-4">
-                    {t("curriculum.noResults")}
-                  </p>
-                )}
-              </div>
-            </ScrollArea>
-          </TabsContent>
-
-          {isAdmin && (
-            <TabsContent value="teacher" className="m-0">
-              <div className="p-3 border-b">
-                <Input
-                  placeholder={t("teacher.search")}
-                  value={teacherSearch}
-                  onChange={(e) => setTeacherSearch(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-              <ScrollArea className="h-[300px]">
-                <div className="p-2">
-                  {filteredTeachers?.map((teacher) => (
-                    <button
-                      key={teacher._id}
-                      onClick={() => {
-                        onSelectTeacher(teacher._id)
-                        setOpen(false)
-                        setTeacherSearch("")
-                      }}
-                      className={`
-                        w-full flex items-center gap-3 px-3 py-2 rounded-md text-left
-                        hover:bg-muted transition-colors
-                        ${selectedTeacherId === teacher._id ? "bg-muted" : ""}
-                      `}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-[260px] p-0" sideOffset={8}>
+            <Command>
+              <CommandInput placeholder={t("curriculum.search")} />
+              <CommandList className="max-h-[220px]">
+                <CommandEmpty>{t("curriculum.noResults")}</CommandEmpty>
+                <CommandGroup>
+                  {curriculums?.map((curriculum) => (
+                    <CommandItem
+                      key={curriculum._id}
+                      value={`${curriculum.title} ${curriculum.code ?? ""}`}
+                      onSelect={() =>
+                        onSelectCurriculum(
+                          selectedCurriculumId === curriculum._id
+                            ? null
+                            : curriculum._id,
+                        )
+                      }
+                      className="flex items-center gap-2"
                     >
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 border border-white dark:border-gray-800 shadow-sm flex items-center justify-center overflow-hidden shrink-0">
-                        {teacher.imageUrl ? (
-                          <Image 
-                            src={teacher.imageUrl} 
-                            alt={teacher.fullName}
-                            width={32}
-                            height={32}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-xs font-bold text-white">
-                            {teacher.fullName.charAt(0)}
-                          </span>
+                      <Check
+                        className={cn(
+                          "size-4 shrink-0",
+                          selectedCurriculumId === curriculum._id
+                            ? "opacity-100"
+                            : "opacity-0",
+                        )}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate text-sm">
+                          {curriculum.title}
+                        </p>
+                        {curriculum.code && (
+                          <p className="text-xs text-muted-foreground truncate">
+                            {curriculum.code}
+                          </p>
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{teacher.fullName}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {teacher.email}
-                        </p>
-                      </div>
-                    </button>
+                    </CommandItem>
                   ))}
-                  {filteredTeachers?.length === 0 && (
-                    <p className="text-center text-muted-foreground py-4">
-                      {t("teacher.noResults")}
-                    </p>
-                  )}
-                </div>
-              </ScrollArea>
-            </TabsContent>
-          )}
-        </Tabs>
-      </PopoverContent>
-    </Popover>
-  )
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+
+        {/* Teacher filter (admin only) */}
+        {isAdmin && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="flex items-center justify-between">
+              <span>{t("navigation.teacher")}</span>
+              {selectedTeacherId && (
+                <Badge color="zinc" className="ml-2 h-5 px-1.5">
+                  1
+                </Badge>
+              )}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-[260px] p-0" sideOffset={8}>
+              <Command>
+                <CommandInput placeholder={t("teacher.search")} />
+                <CommandList className="max-h-[220px]">
+                  <CommandEmpty>{t("teacher.noResults")}</CommandEmpty>
+                  <CommandGroup>
+                    {teachers?.map((teacher) => (
+                      <CommandItem
+                        key={teacher._id}
+                        value={`${teacher.fullName}`}
+                        onSelect={() =>
+                          onSelectTeacher(
+                            selectedTeacherId === teacher._id
+                              ? null
+                              : teacher._id,
+                          )
+                        }
+                        className="flex items-center gap-2"
+                      >
+                        <Check
+                          className={cn(
+                            "size-4 shrink-0",
+                            selectedTeacherId === teacher._id
+                              ? "opacity-100"
+                              : "opacity-0",
+                          )}
+                        />
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden shrink-0">
+                          {teacher.imageUrl ? (
+                            <Image
+                              src={teacher.imageUrl}
+                              alt={teacher.fullName}
+                              width={32}
+                              height={32}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-xs font-bold text-white">
+                              {teacher.fullName.charAt(0)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate text-sm">
+                            {teacher.fullName}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {teacher.email}
+                          </p>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
+
+        {hasActiveFilters && (
+          <>
+            <DropdownMenuSeparator />
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-sm font-normal"
+              onClick={clearAllFilters}
+            >
+              <X className="mr-2 h-4 w-4" />
+              {t("table.clearFilters")}
+            </Button>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }

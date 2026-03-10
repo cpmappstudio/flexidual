@@ -4,42 +4,28 @@ import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-import { ArrowUpDown, Edit, Search, ChevronLeft, ChevronRight } from "lucide-react";
-import type { TableSortingState } from "@/lib/types/table";
+import { ColumnDef } from "@tanstack/react-table";
+import { Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { UserDialog } from "./user-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTranslations } from "next-intl";
 import { UserRole } from "@/convex/types";
 import { useParams } from "next/navigation"
+import { useAction } from "convex/react";
+import { toast } from "sonner";
+import { useAlert } from "@/components/providers/alert-provider";
+import { DataTable } from "@/components/table/data-table";
+import { createSortableHeader, createSearchColumn } from "@/components/table/column-helpers";
+import type { FilterConfig } from "@/lib/table/types";
 
 export type User = Doc<"users">;
 
 // Props to configure the table for different views (e.g. "Teachers Only" vs "Admins")
 interface UsersTableProps {
-  roleFilter?: UserRole;
-  allowedRoles?: UserRole[]; // Passed to dialog to limit creation options
+  allowedRoles?: UserRole[];
 }
 
 function UserAvatar({ user }: { user: User }) {
@@ -56,30 +42,62 @@ function UserAvatar({ user }: { user: User }) {
   );
 }
 
-export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
+const ROLE_OPTIONS = ["superadmin", "admin", "principal", "teacher", "tutor", "student"] as const;
+
+export function UsersTable({ allowedRoles }: UsersTableProps) {
   const t = useTranslations();
-  
+
   const params = useParams()
   const orgSlug = (params.orgSlug as string) || "system"
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
 
-  const users = useQuery(api.users.getUsers, orgContext ? { 
+  const [roleFilter, setRoleFilter] = React.useState<UserRole | undefined>(undefined);
+
+  const users = useQuery(api.users.getUsers, orgContext ? {
     role: roleFilter,
     orgType: orgContext.type,
     orgId: orgContext._id
   } : "skip");
 
-  const [sorting, setSorting] = React.useState<TableSortingState>([]);
   const [editingUser, setEditingUser] = React.useState<User | null>(null);
+
+  const deleteUser = useAction(api.users.deleteUserWithClerk);
+  const { showAlert } = useAlert();
+
+  const handleDelete = (user: User) => {
+    showAlert({
+      title: t("user.deleteTitle"),
+      description: t("user.deleteDescription", { name: user.fullName }),
+      confirmLabel: t("common.delete"),
+      cancelLabel: t("common.cancel"),
+      variant: "destructive",
+      onConfirm: async () => {
+        try {
+          await deleteUser({ userId: user._id });
+          toast.success(t("user.deleted"));
+        } catch {
+          toast.error(t("errors.operationFailed"));
+        }
+      },
+    });
+  };
   
-  const columns: ColumnDef<User>[] = [
+  const filterConfigs: FilterConfig[] = [
+    {
+      id: "role",
+      label: t('teacher.role'),
+      options: ROLE_OPTIONS.map(role => ({
+        value: role,
+        label: t(`navigation.${role}s`)
+      }))
+    }
+  ];
+
+  const columns: ColumnDef<User, unknown>[] = [
+    createSearchColumn<User>(["fullName", "email"]),
     {
       accessorKey: "fullName",
-      header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          {t('common.name')} <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
+      header: createSortableHeader(t('common.name')),
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
           <UserAvatar user={row.original} />
@@ -89,22 +107,26 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
     },
     {
       accessorKey: "email",
-      header: t('teacher.email'),
+      header: createSortableHeader(t('teacher.email')),
     },
     {
       accessorKey: "role",
-      header: t('teacher.role'),
+      header: createSortableHeader(t('teacher.role')),
+      filterFn: (row, id, filterValues: string[]) => {
+        return filterValues.includes(row.getValue(id) as string);
+      },
       cell: ({ row }) => {
         const role = row.getValue("role") as string;
         // Map role to badge variant
-        const variant = role === "admin" || role === "superadmin" ? "destructive" : 
-                        role === "teacher" ? "default" : "secondary";
+        const variant = role === "superadmin" ? "destructive" :
+                        role === "admin" || role === "principal" ? "default" :
+                        role === "teacher" || role === "tutor" ? "secondary" : "outline";
         return <Badge variant={variant}>{t(`navigation.${role}s`)}</Badge>;
       },
     },
     {
       accessorKey: "isActive",
-      header: t('common.status'),
+      header: createSortableHeader(t('common.status')),
       cell: ({ row }) => (
         <Badge variant={row.original.isActive ? "outline" : "secondary"}>
           {row.original.isActive ? t('common.active') : t('common.inactive')}
@@ -113,12 +135,13 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
     },
     {
       id: "actions",
+      enableSorting: false,
       cell: ({ row }) => {
         return (
-          <div className="flex justify-end">
-            <Button 
-                variant="ghost" 
-                size="sm" 
+          <div className="flex justify-end gap-1">
+            <Button
+                variant="ghost"
+                size="sm"
                 className="h-8 w-8 p-0"
                 onClick={(e) => {
                     e.stopPropagation();
@@ -128,27 +151,23 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
                 <Edit className="h-4 w-4 text-muted-foreground" />
                 <span className="sr-only">{t('common.edit')}</span>
             </Button>
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(row.original);
+                }}
+            >
+                <Trash2 className="h-4 w-4 text-destructive" />
+                <span className="sr-only">{t('common.delete')}</span>
+            </Button>
           </div>
         )
       },
     },
   ];
-
-  const table = useReactTable({
-    data: users || [],
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    state: { sorting: sorting },
-    initialState: {
-      pagination: {
-        pageSize: 10,
-      },
-    },
-  });
 
   if (!users) return <Skeleton className="h-96 w-full" />;
 
@@ -166,119 +185,22 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
             />
         )}
 
-      <div className="flex items-center justify-between">
-        <div className="relative w-72">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t('common.search')}
-            value={(table.getColumn("fullName")?.getFilterValue() as string) ?? ""}
-            onChange={(event) => table.getColumn("fullName")?.setFilterValue(event.target.value)}
-            className="pl-8"
+      <DataTable
+        data={users}
+        columns={columns}
+        filterColumn="search"
+        filterPlaceholder={t('common.searchUser')}
+        emptyMessage={t('common.noResults')}
+        filterConfigs={filterConfigs}
+        createAction={
+          <UserDialog
+            defaultRole={roleFilter}
+            allowedRoles={allowedRoles}
           />
-        </div>
-        
-        {/* Create Button with context-aware configuration */}
-        <UserDialog 
-            defaultRole={roleFilter} 
-            allowedRoles={allowedRoles} 
-        />
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow 
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => setEditingUser(row.original)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  {t('common.noResults')}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      
-      {/* Pagination Controls */}
-      <div className="flex items-center justify-between px-2">
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-muted-foreground">
-            {t('common.rowsPerPage')}
-          </p>
-          <Select
-            value={`${table.getState().pagination.pageSize}`}
-            onValueChange={(value) => {
-              table.setPageSize(Number(value))
-            }}
-          >
-            <SelectTrigger className="h-8 w-[70px]">
-              <SelectValue placeholder={table.getState().pagination.pageSize} />
-            </SelectTrigger>
-            <SelectContent side="top">
-              {[10, 20, 30, 50].map((pageSize) => (
-                <SelectItem key={pageSize} value={`${pageSize}`}>
-                  {pageSize}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-6">
-          <div className="text-sm text-muted-foreground">
-            {t('common.pageOfPages', {
-              current: table.getState().pagination.pageIndex + 1,
-              total: table.getPageCount()
-            })}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              {t('common.previous')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              {t('common.next')}
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
+        }
+        pageSize={10}
+        onRowClick={(user) => setEditingUser(user)}
+      />
     </div>
   );
 }

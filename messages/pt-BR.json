@@ -37,6 +37,7 @@
     "live": "Ao Vivo",
     "creating": "Criando...",
     "all": "Todos",
+    "searchUser": "Buscar por nome...",
     "newUsers": "Adicionar Usuários",
     "newUsersDescription": "Adicione novos usuários à plataforma.",
     "title": "Título",
@@ -88,6 +89,7 @@
     "admins": "Administradores",
     "adminsDescription": "Usuários com acesso completo ao sistema e privilégios de configuração.",
     "tutors": "Tutores",
+    "principals": "Diretores",
     "superadmins": "Super Administradores",
     "curriculums": "Currículos",
     "curriculumsDescription": "Gerencie os currículos e seu conteúdo",
@@ -261,6 +263,7 @@
     "reorderFailed": "Falha ao reordenar aulas"
   },
   "class": {
+    "title": "Turmas",
     "name": "Nome da Turma",
     "academicYear": "Ano Acadêmico",
     "namePlaceholder": "ex., Ciências 101 - Outono 2024",
@@ -291,7 +294,7 @@
     "manageSchedule": "Gerenciar Agenda",
     "myClasses": "Minhas Turmas",
     "allClasses": "Todas as Turmas",
-    "manageAllDescription": "Gerencie todas as turmas, atribuições e agendas da plataforma.",
+    "manageAllDescription": "Gerencie turmas e seu conteúdo",
     "manageMyDescription": "Gerencie seus grupos de alunos ativos e agendas.",
     "noDate": "Sem data",
     "selectClass": "Selecionar Turma",
@@ -552,10 +555,22 @@
     }
   },
   "user": {
+    "deleteTitle": "Excluir este usuário?",
+    "deleteDescription": "Tem certeza que deseja excluir {name}?\nEsta ação não pode ser desfeita.",
     "deleteConfirm": "Tem certeza? Isso excluirá permanentemente a conta deste usuário.",
     "created": "Usuário criado",
     "updated": "Usuário atualizado",
     "deleted": "Usuário excluído"
+  },
+  "userDialog": {
+    "addToList": "Adicionar à lista",
+    "usersToAdd": "Usuários a adicionar ({count})",
+    "clearList": "Limpar lista",
+    "emptyListInstruction": "Preencha os dados acima. Você pode adicionar vários usuários a esta lista e adicioná-los todos de uma vez.",
+    "createMultiple": "Adicionar {count} usuários",
+    "createSingle": "Adicionar usuário",
+    "successBatch": "{count} usuários adicionados com sucesso.",
+    "warningBatch": "{success} adicionados, {failed} falharam."
   },
   "errors": {
     "operationFailed": "Operação falhou",
@@ -572,5 +587,13 @@
     "classScheduleConflict": "Esta turma já está agendada para {conflictTime}",
     "teacherScheduleConflict": "O professor já está ensinando \"{className}\" em {conflictTime}",
     "invalidGrade": "Configuração de série inválida: {grades}. Por favor, revise sua seleção."
+  },
+  "table": {
+    "columns": "Colunas",
+    "filters": "Filtros",
+    "pageInfo": "Página {current} de {total}",
+    "clearFilters": "Limpar filtros",
+    "noResults": "Sem resultados",
+    "selectedRows": "{selected} de {total} linha(s) selecionada(s)"
   }
 }

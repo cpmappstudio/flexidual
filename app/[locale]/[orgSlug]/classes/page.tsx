@@ -21,6 +21,7 @@ import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview"
+import FlexidualHeader from "@/components/flexidual-header"
 
 export default function MyClassesPage() {
   const t = useTranslations()
@@ -80,31 +81,18 @@ export default function MyClassesPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {isAdmin ? t('class.allClasses') : t('class.myClasses')}
-          </h1>
-          <p className="text-muted-foreground">
-            {isAdmin ? t('class.manageAllDescription') : t('class.manageMyDescription')}
-          </p>
-        </div>
-      </div>
+    <>
+      <FlexidualHeader
+        title={isAdmin ? t('class.title') : t('class.myClasses')}
+        subtitle={isAdmin ? t('class.manageAllDescription') : t('class.manageMyDescription')}
+      />
+      <div className="container mx-auto p-4 sm:p-6 space-y-6">
 
       {renderWeekOverview()}
 
       <Tabs defaultValue={isAdmin ? "list" : "grid"} className="w-full space-y-6">
         {/* Controls Row */}
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <ClassCombinedFilter 
-                selectedTeacherId={selectedTeacherId}
-                onSelectTeacher={setSelectedTeacherId}
-                selectedCurriculumId={selectedCurriculumId}
-                onSelectCurriculum={setSelectedCurriculumId}
-                isAdmin={isAdmin}
-            />
-            
             <TabsList>
                 <TabsTrigger value="grid" className="gap-2">
                     <LayoutGrid className="h-4 w-4" />
@@ -118,11 +106,16 @@ export default function MyClassesPage() {
         {/* GRID VIEW */}
         <TabsContent value="grid">
             <div className="space-y-4">
-                {isAdmin && (
-                    <div className="flex justify-end">
-                        <ClassDialog selectedTeacherId={selectedTeacherId} />
-                    </div>
-                )}
+                <div className="flex items-center justify-end gap-2">
+                    <ClassCombinedFilter 
+                        selectedTeacherId={selectedTeacherId}
+                        onSelectTeacher={setSelectedTeacherId}
+                        selectedCurriculumId={selectedCurriculumId}
+                        onSelectCurriculum={setSelectedCurriculumId}
+                        isAdmin={isAdmin}
+                    />
+                    {isAdmin && <ClassDialog selectedTeacherId={selectedTeacherId} />}
+                </div>
 
                 {classes.length === 0 ? (
                     <EmptyState isAdmin={isAdmin} />
@@ -187,34 +180,29 @@ export default function MyClassesPage() {
             </div>
         </TabsContent>
 
-        {/* LIST VIEW - Wrapped in Card for Visual Consistency */}
+        {/* LIST VIEW */}
         <TabsContent value="list" className="mt-6">
-             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <School className="h-5 w-5 text-primary" />
-                        {isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}
-                    </CardTitle>
-                    <CardDescription>
-                        {isAdmin 
-                            ? t('navigation.adminClassesDescription2') 
-                            : t('navigation.classesDescription2')}
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {classes.length === 0 ? (
-                        <EmptyState isAdmin={isAdmin} />
-                    ) : (
-                        <ClassesTable 
-                            data={classes} 
-                            curriculums={curriculums ?? undefined} 
+            {classes.length === 0 ? (
+                <EmptyState isAdmin={isAdmin} />
+            ) : (
+                <ClassesTable 
+                    data={classes} 
+                    curriculums={curriculums ?? undefined}
+                    customFilter={
+                        <ClassCombinedFilter 
+                            selectedTeacherId={selectedTeacherId}
+                            onSelectTeacher={setSelectedTeacherId}
+                            selectedCurriculumId={selectedCurriculumId}
+                            onSelectCurriculum={setSelectedCurriculumId}
+                            isAdmin={isAdmin}
                         />
-                    )}
-                </CardContent>
-             </Card>
+                    }
+                />
+            )}
         </TabsContent>
       </Tabs>
     </div>
+    </>
   )
 }
 

@@ -37,6 +37,7 @@
     "live": "LIVE",
     "creating": "Creating...",
     "all": "All",
+    "searchUser": "Search by name...",
     "newUsers": "Add Users",
     "newUsersDescription": "Add new users to the platform.",
     "title": "Title",
@@ -88,6 +89,7 @@
     "admins": "Admins",
     "adminsDescription": "Users with full system access and configuration privileges.",
     "tutors": "Tutors",
+    "principals": "Principals",
     "superadmins": "Super Admins",
     "curriculums": "Curriculums",
     "curriculumsDescription": "Manage curriculums and their content",
@@ -261,6 +263,7 @@
     "reorderFailed": "Failed to reorder lessons"
   },
   "class": {
+    "title": "Classes",
     "name": "Class Name",
     "academicYear": "Academic Year",
     "namePlaceholder": "e.g. Science 101 - Fall 2024",
@@ -291,7 +294,7 @@
     "manageSchedule": "Manage Schedule",
     "myClasses": "My Classes",
     "allClasses": "All Classes",
-    "manageAllDescription": "Manage all classes, assignments, and schedules across the platform.",
+    "manageAllDescription": "Manage classes and their content",
     "manageMyDescription": "Manage your active student groups and schedules.",
     "noDate": "No date",
     "selectClass": "Select Class",
@@ -551,10 +554,22 @@
     }
   },
   "user": {
+    "deleteTitle": "Delete this user?",
+    "deleteDescription": "Are you sure you want to delete {name}?\n This action cannot be undone.",
     "deleteConfirm": "Are you sure? This will permanently delete this user account.",
     "created": "User created",
     "updated": "User updated",
     "deleted": "User deleted"
+  },
+  "userDialog": {
+    "addToList": "Add to list",
+    "usersToAdd": "Users to add ({count})",
+    "clearList": "Clear list",
+    "emptyListInstruction": "Fill in the details above. You can add multiple users to this list and add them all at once.",
+    "createMultiple": "Add {count} users",
+    "createSingle": "Add user",
+    "successBatch": "{count} users added successfully.",
+    "warningBatch": "{success} added, {failed} failed."
   },
   "errors": {
     "operationFailed": "Operation failed",
@@ -571,5 +586,13 @@
     "classScheduleConflict": "This class is already scheduled at {conflictTime}",
     "teacherScheduleConflict": "Teacher is already teaching \"{className}\" at {conflictTime}",
     "invalidGrade": "Invalid grade configuration: {grades}. Please check your selection."
+  },
+  "table": {
+    "columns": "Columns",
+    "filters": "Filters",
+    "pageInfo": "Page {current} of {total}",
+    "clearFilters": "Clear filters",
+    "noResults": "No results",
+    "selectedRows": "{selected} of {total} row(s) selected"
   }
 }

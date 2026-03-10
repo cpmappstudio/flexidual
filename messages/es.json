@@ -37,6 +37,7 @@
     "live": "EN VIVO",
     "creating": "Creando...",
     "all": "Todos",
+    "searchUser": "Buscar por nombre...",
     "newUsers": "Agregar Usuarios",
     "newUsersDescription": "Agrega nuevos usuarios a la plataforma.",
     "title": "Título",
@@ -88,6 +89,7 @@
     "admins": "Administradores",
     "adminsDescription": "Usuarios con acceso completo al sistema y privilegios de configuración.",
     "tutors": "Tutores",
+    "principals": "Directores",
     "superadmins": "Super Administradores",
     "curriculums": "Currículos",
     "curriculumsDescription": "Gestiona currículos y su contenido",
@@ -261,6 +263,7 @@
     "reorderFailed": "Error al reordenar lecciones"
   },
   "class": {
+    "title": "Clases",
     "name": "Nombre de la Clase",
     "academicYear": "Año Académico",
     "namePlaceholder": "ej., Ciencia 101 - Otoño 2024",
@@ -291,7 +294,7 @@
     "manageSchedule": "Gestionar Horario",
     "myClasses": "Mis Clases",
     "allClasses": "Todas las Clases",
-    "manageAllDescription": "Gestiona todas las clases, asignaciones y horarios de la plataforma.",
+    "manageAllDescription": "Gestiona clases y su contenido",
     "manageMyDescription": "Gestiona tus grupos de estudiantes activos y horarios.",
     "noDate": "Sin fecha",
     "selectClass": "Seleccionar Clase",
@@ -551,10 +554,22 @@
     }
   },
   "user": {
+    "deleteTitle": "¿Eliminar este usuario?",
+    "deleteDescription": "¿Estás seguro de que quieres eliminar a {name}?\nEsta acción no se puede deshacer.",
     "deleteConfirm": "¿Estás seguro? Esto eliminará permanentemente la cuenta de este usuario.",
     "created": "Usuario creado",
     "updated": "Usuario actualizado",
     "deleted": "Usuario eliminado"
+  },
+  "userDialog": {
+    "addToList": "Añadir a la lista",
+    "usersToAdd": "Usuarios por agregar ({count})",
+    "clearList": "Limpiar lista",
+    "emptyListInstruction": "Completa los datos arriba. Puedes añadir varios usuarios a esta lista para agregarlos todos a la vez.",
+    "createMultiple": "Agregar {count} usuarios",
+    "createSingle": "Agregar usuario",
+    "successBatch": "{count} usuarios agregados con éxito.",
+    "warningBatch": "{success} agregados, {failed} fallaron."
   },
   "errors": {
     "operationFailed": "La operación falló",
@@ -571,5 +586,13 @@
     "classScheduleConflict": "Esta clase ya está programada a las {conflictTime}",
     "teacherScheduleConflict": "El profesor ya está enseñando \"{className}\" a las {conflictTime}",
     "invalidGrade": "Configuración de grado inválida: {grades}. Por favor, revisa tu selección."
+  },
+    "table": {
+    "columns": "Columnas",
+    "filters": "Filtros",
+    "pageInfo": "Página {current} de {total}",
+    "clearFilters": "Limpiar filtros",
+    "noResults": "Sin resultados",
+    "selectedRows": "{selected} de {total} fila(s) seleccionada(s)"
   }
 }
