@@ -230,7 +230,7 @@ export const upsertFromClerk = internalMutation({
   args: { data: v.any() },
   handler: async (ctx, { data }: { data: UserJSON }) => {
     const email = data.email_addresses?.[0]?.email_address;
-    const username = data.username;
+    const username = data.username ?? undefined;
     const firstName = data.first_name || "";
     const lastName = data.last_name || "";
     
@@ -250,7 +250,7 @@ export const upsertFromClerk = internalMutation({
       firstName,
       lastName,
       fullName: `${firstName} ${lastName}`.trim() || email || username || "Unknown User",
-      imageUrl: data.image_url,
+      imageUrl: data.image_url ?? undefined,
       grade,
       school,
       isActive: true,
@@ -312,7 +312,7 @@ export const createUsersWithClerk = action({
     for (const user of args.users) {
       try {
         if (user.grade && !(GRADE_VALUES as readonly string[]).includes(user.grade)) {
-           results.push({ email: user.email, status: "error", reason: `Invalid grade` });
+           results.push({ identifier: user.email || user.username, status: "error", reason: `Invalid grade: ${user.grade}` });
            continue;
         }
 
@@ -353,7 +353,7 @@ export const createUsersWithClerk = action({
         if (!newConvexUser) throw new Error("Failed to sync identity to database");
 
         // 4. Create the Role Assignment (This triggers the syncRolesToClerk background job automatically!)
-        await ctx.runMutation(api.roleAssignments.assignRole, {
+        await ctx.runMutation(internal.roleAssignments.assignRoleInternal, {
           userId: newConvexUser._id,
           orgType: args.orgType,
           orgId: args.orgId,
@@ -384,7 +384,7 @@ export const createUsersWithClerk = action({
 
         results.push({ email: user.email, status: "success" });
       } catch (error) {
-        results.push({ email: user.email, status: "error", reason: (error as Error).message });
+        results.push({ identifier: user.email || user.username, status: "error", reason: (error as Error).message });
       }
     }
 
@@ -429,7 +429,7 @@ export const updateUserWithClerk = action({
 
     // 2. Update Role Assignment if role changed
     if (args.updates.role) {
-      await ctx.runMutation(api.roleAssignments.assignRole, {
+      await ctx.runMutation(internal.roleAssignments.assignRoleInternal, {
         userId: args.userId,
         orgType: args.orgType,
         orgId: args.orgId,

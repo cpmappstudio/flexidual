@@ -251,12 +251,17 @@ export function UserDialog({
             } else {
                 // BATCH CREATE MODE
                 const finalQueue = [...queue]
-                if (finalQueue.length === 0 && formData.email) {
+                
+                const hasValidSingleAuth = formData.email || (formData.username && formData.password);
+                
+                if (finalQueue.length === 0 && hasValidSingleAuth) {
                     finalQueue.push({
                         id: "temp",
                         firstName: formData.firstName,
                         lastName: formData.lastName,
                         email: formData.email,
+                        username: formData.username,
+                        password: formData.password,
                         role: formData.role,
                         grade: formData.grade,
                         school: formData.school

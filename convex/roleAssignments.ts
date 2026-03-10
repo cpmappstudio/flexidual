@@ -152,3 +152,45 @@ export const getUserRoleInOrg = query({
     return match?.role ?? null;
   },
 });
+
+export const assignRoleInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
+    orgId: v.optional(v.string()), 
+    role: v.union(
+      v.literal("superadmin"), v.literal("admin"), v.literal("principal"), 
+      v.literal("teacher"), v.literal("tutor"), v.literal("student")
+    ),
+  },
+  handler: async (ctx, args) => {
+    // No auth check needed here since it's an internal mutation
+    
+    const existing = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user_org", (q) => 
+        q.eq("userId", args.userId).eq("orgId", args.orgId).eq("orgType", args.orgType)
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, { role: args.role, assignedAt: Date.now() });
+    } else {
+      await ctx.db.insert("roleAssignments", {
+        userId: args.userId,
+        orgType: args.orgType,
+        orgId: args.orgId,
+        role: args.role,
+        assignedAt: Date.now(),
+      });
+    }
+
+    const user = await ctx.db.get(args.userId);
+    if (user && !user.clerkId.startsWith("temp_")) {
+      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncRolesToClerk, {
+        userId: args.userId,
+        clerkId: user.clerkId,
+      });
+    }
+  },
+});

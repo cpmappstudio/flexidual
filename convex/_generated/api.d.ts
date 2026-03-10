@@ -27,6 +27,7 @@ import type * as roleAssignments from "../roleAssignments.js";
 import type * as schedule from "../schedule.js";
 import type * as schools from "../schools.js";
 import type * as seed from "../seed.js";
+import type * as seedCPCA from "../seedCPCA.js";
 import type * as student from "../student.js";
 import type * as types from "../types.js";
 import type * as users from "../users.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   schedule: typeof schedule;
   schools: typeof schools;
   seed: typeof seed;
+  seedCPCA: typeof seedCPCA;
   student: typeof student;
   types: typeof types;
   users: typeof users;
