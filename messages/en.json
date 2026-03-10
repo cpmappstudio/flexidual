@@ -1,5 +1,6 @@
 {
   "common": {
+    "user": "User",
     "add": "Add",
     "edit": "Edit",
     "delete": "Delete",
@@ -37,7 +38,7 @@
     "live": "LIVE",
     "creating": "Creating...",
     "all": "All",
-    "searchUser": "Search by name...",
+    "searchByName": "Search by name...",
     "newUsers": "Add Users",
     "newUsersDescription": "Add new users to the platform.",
     "title": "Title",
@@ -190,6 +191,7 @@
     "shouldHaveStarted": "Class should have started"
   },
   "curriculum": {
+    "curriculum": "Curriculum",
     "search": "Search curriculums...",
     "title": "Curriculum Title",
     "code": "Code",
@@ -263,9 +265,11 @@
     "reorderFailed": "Failed to reorder lessons"
   },
   "class": {
+    "class": "Class",
     "title": "Classes",
     "name": "Class Name",
-    "academicYear": "Academic Year",
+    "year": "Year",
+    "academicYear": "Academic year",
     "namePlaceholder": "e.g. Science 101 - Fall 2024",
     "new": "Create New Class",
     "description": "Create a student group that will follow a specific curriculum.",

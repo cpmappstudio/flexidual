@@ -1,5 +1,6 @@
 {
   "common": {
+    "user": "Usuario",
     "add": "Agregar",
     "edit": "Editar",
     "delete": "Eliminar",
@@ -12,6 +13,7 @@
     "confirmAction": "Confirmar acción",
     "warning": "Advertencia",
     "search": "Buscar",
+    "searchByName": "Buscar por nombre...",
     "filter": "Filtrar",
     "back": "Volver",
     "next": "Siguiente",
@@ -190,6 +192,7 @@
     "shouldHaveStarted": "La clase debería haber comenzado"
   },
   "curriculum": {
+    "curriculum": "Currículo",
     "search": "Buscar currículos...",
     "title": "Título del currículo",
     "code": "Código",
@@ -263,6 +266,7 @@
     "reorderFailed": "Error al reordenar lecciones"
   },
   "class": {
+    "class": "Clase",
     "title": "Clases",
     "name": "Nombre de la Clase",
     "academicYear": "Año Académico",
@@ -587,7 +591,7 @@
     "teacherScheduleConflict": "El profesor ya está enseñando \"{className}\" a las {conflictTime}",
     "invalidGrade": "Configuración de grado inválida: {grades}. Por favor, revisa tu selección."
   },
-    "table": {
+  "table": {
     "columns": "Columnas",
     "filters": "Filtros",
     "pageInfo": "Página {current} de {total}",

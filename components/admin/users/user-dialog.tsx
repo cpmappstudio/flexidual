@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Edit, Plus, X } from "lucide-react";
+import { UserPlus, Edit, Plus, X, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations, useLocale } from "next-intl";
 import { UserRole } from "@/convex/types";
@@ -69,6 +69,8 @@ export function UserDialog({
   // API Hooks
   const createUsers = useAction(api.users.createUsersWithClerk);
   const updateUser = useAction(api.users.updateUserWithClerk);
+  const deleteUser = useAction(api.users.deleteUserWithClerk);
+  const { showAlert } = useAlert();
 
   // State
   const [internalOpen, setInternalOpen] = useState(false);
@@ -244,6 +246,26 @@ export function UserDialog({
     }
   };
 
+  const handleDelete = () => {
+    if (!user) return;
+    showAlert({
+      title: t("user.deleteTitle"),
+      description: t("user.deleteDescription", { name: user.fullName }),
+      confirmLabel: t("common.delete"),
+      cancelLabel: t("common.cancel"),
+      variant: "destructive",
+      onConfirm: async () => {
+        try {
+          await deleteUser({ userId: user._id });
+          toast.success(t("user.deleted"));
+          setIsOpen(false);
+        } catch {
+          toast.error(t("errors.operationFailed"));
+        }
+      },
+    });
+  };
+
   // Default trigger if none provided
   const defaultTrigger = isEditing ? (
     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" type="button">
@@ -274,6 +296,18 @@ export function UserDialog({
       isSubmitting={isSubmitting}
       submitLabel={submitLabel}
       maxWidth={isEditing ? "sm:max-w-[600px]" : "sm:max-w-[700px]"}
+      leftActions={
+        isEditing && (
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+            className="mr-auto"
+          >
+            <Trash2 className="h-4 w-4 mr-2" /> {t("common.delete")}
+          </Button>
+        )
+      }
     >
       <div className="grid gap-6">
         {/* INPUT FORM */}

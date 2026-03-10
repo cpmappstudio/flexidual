@@ -1,223 +1,164 @@
-"use client"
+"use client";
 
-import { useState, useMemo } from "react"
-import { useQuery } from "convex/react"
-import { Id } from "@/convex/_generated/dataModel"
-import { api } from "@/convex/_generated/api"
-import { useCurrentUser } from "@/hooks/use-current-user"
-import { useParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
-import { getRoleForOrg } from "@/lib/rbac"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, BookOpen, Calendar, ArrowRight, School, Edit, LayoutGrid, List as ListIcon } from "lucide-react"
-import { format, startOfWeek, addDays} from "date-fns"
-import { ClassDialog } from "@/components/teaching/classes/class-dialog"
-import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter"
-import { ClassesTable } from "@/components/teaching/classes/classes-table"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
-import { useTranslations } from "next-intl"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview"
-import FlexidualHeader from "@/components/flexidual-header"
+import { useState, useMemo } from "react";
+import { useQuery } from "convex/react";
+import { Id } from "@/convex/_generated/dataModel";
+import { api } from "@/convex/_generated/api";
+import { useCurrentUser } from "@/hooks/use-current-user";
+import { useParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
+import { getRoleForOrg } from "@/lib/rbac";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Users,
+  BookOpen,
+  Calendar,
+  ArrowRight,
+  School,
+  Edit,
+  LayoutGrid,
+  List as ListIcon,
+} from "lucide-react";
+import { format, startOfWeek, addDays } from "date-fns";
+import { ClassDialog } from "@/components/teaching/classes/class-dialog";
+import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter";
+import { ClassesTable } from "@/components/teaching/classes/classes-table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview";
+import FlexidualHeader from "@/components/flexidual-header";
 
 export default function MyClassesPage() {
-  const t = useTranslations()
-  const { user, isLoading: isUserLoading } = useCurrentUser()
-  const params = useParams()
-  const orgSlug = (params.orgSlug as string) || "system"
-  const { sessionClaims } = useAuth()
-  const role = getRoleForOrg(sessionClaims, orgSlug)
-  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
-  const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null)
-  const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null)
-  
-  const queryArgs = isAdmin 
-    ? (selectedTeacherId ? { teacherId: selectedTeacherId } : {}) 
-    : (user ? { teacherId: user._id } : "skip")
+  const t = useTranslations();
+  const { user, isLoading: isUserLoading } = useCurrentUser();
+  const params = useParams();
+  const orgSlug = (params.orgSlug as string) || "system";
+  const { sessionClaims } = useAuth();
+  const role = getRoleForOrg(sessionClaims, orgSlug);
+  const isAdmin =
+    role === "admin" || role === "principal" || role === "superadmin";
+  const [selectedTeacherId, setSelectedTeacherId] =
+    useState<Id<"users"> | null>(null);
+  const [selectedCurriculumId, setSelectedCurriculumId] =
+    useState<Id<"curriculums"> | null>(null);
 
-  const allClasses = useQuery(api.classes.list, queryArgs)
-  const curriculums = useQuery(api.curriculums.list, {})
+  const queryArgs = isAdmin
+    ? selectedTeacherId
+      ? { teacherId: selectedTeacherId }
+      : {}
+    : user
+      ? { teacherId: user._id }
+      : "skip";
 
-  const startOfCurrentWeek = startOfWeek(new Date(), { weekStartsOn: 0 })
-  const endOfCurrentWeek = addDays(startOfCurrentWeek, 7)
-  
-  const scheduleArgs = queryArgs === "skip" ? "skip" : {
-    ...queryArgs,
-    from: startOfCurrentWeek.getTime(),
-    to: endOfCurrentWeek.getTime()
-  }
+  const allClasses = useQuery(api.classes.list, queryArgs);
+  const curriculums = useQuery(api.curriculums.list, {});
 
-  const weekSchedules = useQuery(api.schedule.getMySchedule, scheduleArgs)
+  const startOfCurrentWeek = startOfWeek(new Date(), { weekStartsOn: 0 });
+  const endOfCurrentWeek = addDays(startOfCurrentWeek, 7);
+
+  const scheduleArgs =
+    queryArgs === "skip"
+      ? "skip"
+      : {
+          ...queryArgs,
+          from: startOfCurrentWeek.getTime(),
+          to: endOfCurrentWeek.getTime(),
+        };
+
+  const weekSchedules = useQuery(api.schedule.getMySchedule, scheduleArgs);
 
   const classes = useMemo(() => {
-    if (!allClasses) return undefined
-    if (!selectedCurriculumId) return allClasses
-    return allClasses.filter(cls => cls.curriculumId === selectedCurriculumId)
-  }, [allClasses, selectedCurriculumId])
+    if (!allClasses) return undefined;
+    if (!selectedCurriculumId) return allClasses;
+    return allClasses.filter(
+      (cls) => cls.curriculumId === selectedCurriculumId,
+    );
+  }, [allClasses, selectedCurriculumId]);
 
   if (isUserLoading || classes === undefined) {
     return (
       <div className="container mx-auto p-6 space-y-6">
         <Skeleton className="h-12 w-48" />
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-[200px] w-full" />)}
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-[200px] w-full" />
+          ))}
         </div>
       </div>
-    )
+    );
   }
 
   const getCurriculumTitle = (id: string) => {
-    return curriculums?.find(c => c._id === id)?.title || t('curriculum.unknown')
-  }
+    return (
+      curriculums?.find((c) => c._id === id)?.title || t("curriculum.unknown")
+    );
+  };
 
   const renderWeekOverview = () => {
-    if (isAdmin) return null
-    if (weekSchedules === undefined) return <Skeleton className="h-16 w-full rounded-xl" />
-    if (weekSchedules.length > 0) return <ClassWeekOverview schedules={weekSchedules} variant="compact" />
-    return null
-  }
+    if (isAdmin) return null;
+    if (weekSchedules === undefined)
+      return <Skeleton className="h-16 w-full rounded-xl" />;
+    if (weekSchedules.length > 0)
+      return <ClassWeekOverview schedules={weekSchedules} variant="compact" />;
+    return null;
+  };
 
   return (
     <>
       <FlexidualHeader
-        title={isAdmin ? t('class.title') : t('class.myClasses')}
-        subtitle={isAdmin ? t('class.manageAllDescription') : t('class.manageMyDescription')}
+        title={isAdmin ? t("class.title") : t("class.myClasses")}
+        subtitle={
+          isAdmin
+            ? t("class.manageAllDescription")
+            : t("class.manageMyDescription")
+        }
       />
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
-
-      {renderWeekOverview()}
-
-      <Tabs defaultValue={isAdmin ? "list" : "grid"} className="w-full space-y-6">
-        {/* Controls Row */}
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-            <TabsList>
-                <TabsTrigger value="grid" className="gap-2">
-                    <LayoutGrid className="h-4 w-4" />
-                </TabsTrigger>
-                <TabsTrigger value="list" className="gap-2">
-                    <ListIcon className="h-4 w-4" />
-                </TabsTrigger>
-            </TabsList>
-        </div>
-
-        {/* GRID VIEW */}
-        <TabsContent value="grid">
-            <div className="space-y-4">
-                <div className="flex items-center justify-end gap-2">
-                    <ClassCombinedFilter 
-                        selectedTeacherId={selectedTeacherId}
-                        onSelectTeacher={setSelectedTeacherId}
-                        selectedCurriculumId={selectedCurriculumId}
-                        onSelectCurriculum={setSelectedCurriculumId}
-                        isAdmin={isAdmin}
-                    />
-                    {isAdmin && <ClassDialog selectedTeacherId={selectedTeacherId} />}
-                </div>
-
-                {classes.length === 0 ? (
-                    <EmptyState isAdmin={isAdmin} />
-                ) : (
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {classes.map((cls) => (
-                        <Card key={cls._id} className="group relative overflow-hidden transition-all hover:shadow-md flex flex-col">
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                            <Badge variant={cls.isActive ? "default" : "secondary"}>
-                                {cls.isActive ? t('common.active') : t('common.archived')}
-                            </Badge>
-                            {cls.academicYear && (
-                                <Badge variant="outline" className="text-xs">
-                                    {cls.academicYear}
-                                </Badge>
-                            )}
-                            </div>
-                            <CardTitle className="line-clamp-1 mt-2">{cls.name}</CardTitle>
-                            <CardDescription className="flex items-center gap-2">
-                            <BookOpen className="h-3.5 w-3.5" />
-                            <span className="line-clamp-1">{getCurriculumTitle(cls.curriculumId)}</span>
-                            </CardDescription>
-                        </CardHeader>
-                        
-                        <CardContent className="flex flex-col gap-4 mt-auto">
-                            <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                <div className="flex items-center gap-2">
-                                <Users className="h-4 w-4" />
-                                <span>{cls.students?.length || 0} {t('navigation.students')}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                <Calendar className="h-4 w-4" />
-                                <span>{cls.startDate ? format(cls.startDate, "MMM yyyy") : t('class.noDate')}</span>
-                                </div>
-                            </div>
-                            
-                            <div className="flex gap-2 pt-2 border-t">
-                            <Button variant="outline" className="flex-1 group-hover:bg-primary group-hover:text-primary-foreground transition-colors" asChild>
-                                <Link href={`/teaching/classes/${cls._id}`}>
-                                {t('class.manageClass')}
-                                <ArrowRight className="ml-2 h-4 w-4" />
-                                </Link>
-                            </Button>
-                            
-                            {isAdmin && (
-                                <ClassDialog 
-                                classDoc={cls}
-                                trigger={
-                                    <Button variant="secondary" size="icon" className="shrink-0" title={t('class.edit')}>
-                                        <Edit className="h-4 w-4" />
-                                    </Button>
-                                }
-                                />
-                            )}
-                            </div>
-                        </CardContent>
-                        </Card>
-                    ))}
-                    </div>
-                )}
-            </div>
-        </TabsContent>
-
-        {/* LIST VIEW */}
-        <TabsContent value="list" className="mt-6">
-            {classes.length === 0 ? (
-                <EmptyState isAdmin={isAdmin} />
-            ) : (
-                <ClassesTable 
-                    data={classes} 
-                    curriculums={curriculums ?? undefined}
-                    customFilter={
-                        <ClassCombinedFilter 
-                            selectedTeacherId={selectedTeacherId}
-                            onSelectTeacher={setSelectedTeacherId}
-                            selectedCurriculumId={selectedCurriculumId}
-                            onSelectCurriculum={setSelectedCurriculumId}
-                            isAdmin={isAdmin}
-                        />
-                    }
-                />
-            )}
-        </TabsContent>
-      </Tabs>
-    </div>
+        {renderWeekOverview()}
+        {classes.length === 0 ? (
+          <EmptyState isAdmin={isAdmin} />
+        ) : (
+          <ClassesTable
+            data={classes}
+            curriculums={curriculums ?? undefined}
+            customFilter={
+              <ClassCombinedFilter
+                selectedTeacherId={selectedTeacherId}
+                onSelectTeacher={setSelectedTeacherId}
+                selectedCurriculumId={selectedCurriculumId}
+                onSelectCurriculum={setSelectedCurriculumId}
+                isAdmin={isAdmin}
+              />
+            }
+          />
+        )}
+      </div>
     </>
-  )
+  );
 }
 
 function EmptyState({ isAdmin }: { isAdmin: boolean }) {
-    const t = useTranslations();
-    return (
-        <Card className="flex flex-col items-center justify-center p-8 text-center border-dashed">
-            <div className="rounded-full bg-primary/10 p-4 mb-4">
-                <School className="h-8 w-8 text-primary" />
-            </div>
-            <h3 className="text-lg font-semibold">{t('class.noActive')}</h3>
-            <p className="text-muted-foreground mb-4 max-w-sm">
-                {isAdmin ? t('class.createPrompt') : t('class.notAssigned')}
-            </p>
-            {isAdmin && <ClassDialog />}
-        </Card>
-    )
+  const t = useTranslations();
+  return (
+    <Card className="flex flex-col items-center justify-center p-8 text-center border-dashed">
+      <div className="rounded-full bg-primary/10 p-4 mb-4">
+        <School className="h-8 w-8 text-primary" />
+      </div>
+      <h3 className="text-lg font-semibold">{t("class.noActive")}</h3>
+      <p className="text-muted-foreground mb-4 max-w-sm">
+        {isAdmin ? t("class.createPrompt") : t("class.notAssigned")}
+      </p>
+      {isAdmin && <ClassDialog />}
+    </Card>
+  );
 }

@@ -44,6 +44,11 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-neutral-status: var(--neutral-status);
+  --color-neutral-status-foreground: var(--neutral-status-foreground);
+
   --color-fuzzy-wuzzy: oklch(0.7 0 80);
   --color-deep-koamaru: oklch(0.3 0 80);
   --color-radio-button-fill: var(--radio-button-fill);
@@ -69,6 +74,10 @@
   --border: oklch(0.9096 0.0157 58.1228);
   --input: oklch(0.9096 0.0157 58.1228);
   --ring: oklch(0.7251 0.1734 54.0757);
+  --success: oklch(0.62 0.15 145);
+  --success-foreground: oklch(1.0 0 0);
+  --neutral-status: oklch(0.58 0.01 230);
+  --neutral-status-foreground: oklch(1.0 0 0);
   --chart-1: oklch(0.7251 0.1734 54.0757);
   --chart-2: oklch(0.6945 0.1457 74.6462);
   --chart-3: oklch(0.6259 0.1978 36.8325);
@@ -124,6 +133,10 @@
   --border: oklch(0.3100 0.0408 56.1258);
   --input: oklch(0.3100 0.0408 56.1258);
   --ring: oklch(0.7251 0.1734 54.0757);
+  --success: oklch(0.52 0.13 145);
+  --success-foreground: oklch(1.0 0 0);
+  --neutral-status: oklch(0.50 0.01 230);
+  --neutral-status-foreground: oklch(0.9 0.01 230);
   --chart-1: oklch(0.7251 0.1734 54.0757);
   --chart-2: oklch(0.6945 0.1457 74.6462);
   --chart-3: oklch(0.6839 0.1618 38.7730);
@@ -169,6 +182,7 @@
 
 /* Dashboard Component Styles - DRY approach */
 @layer components {
+
   /* Header */
   .dashboard-header {
     @apply bg-card p-6 rounded-xl shadow-sm border border-border;
@@ -288,10 +302,11 @@
   .student-week-today {
     @apply bg-gradient-to-r from-pink-100 to-purple-100 dark:from-pink-950/30 dark:to-purple-950/30 border-pink-400 dark:border-pink-600 shadow-md;
   }
-  
+
   .scrollbar-student {
     scrollbar-width: thin;
-    scrollbar-color: #c084fc transparent; /* purple-400 */
+    scrollbar-color: #c084fc transparent;
+    /* purple-400 */
   }
 
   .scrollbar-student::-webkit-scrollbar {
@@ -304,22 +319,28 @@
   }
 
   .scrollbar-student::-webkit-scrollbar-thumb {
-    background: #c084fc; /* purple-400 */
+    background: #c084fc;
+    /* purple-400 */
     border-radius: 9999px;
   }
 
   .scrollbar-student::-webkit-scrollbar-thumb:hover {
-    background: #e879f9; /* pink-400 */
+    background: #e879f9;
+    /* pink-400 */
   }
 
   /* Dark mode adjustments */
   .dark .scrollbar-student {
-    scrollbar-color: #a855f7 transparent; /* purple-500 */
+    scrollbar-color: #a855f7 transparent;
+    /* purple-500 */
   }
+
   .dark .scrollbar-student::-webkit-scrollbar-thumb {
     background: #a855f7;
   }
+
   .dark .scrollbar-student::-webkit-scrollbar-thumb:hover {
-    background: #d946ef; /* pink-500 */
+    background: #d946ef;
+    /* pink-500 */
   }
 }

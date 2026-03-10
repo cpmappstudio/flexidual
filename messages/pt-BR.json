@@ -1,5 +1,6 @@
 {
   "common": {
+    "user": "Usuário",
     "add": "Adicionar",
     "edit": "Editar",
     "delete": "Excluir",
@@ -12,6 +13,7 @@
     "confirmAction": "Confirmar ação",
     "warning": "Aviso",
     "search": "Pesquisar",
+    "searchByName": "Pesquisar por nome...",
     "filter": "Filtrar",
     "back": "Voltar",
     "next": "Próximo",
@@ -190,6 +192,7 @@
     "shouldHaveStarted": "A aula deveria ter começado"
   },
   "curriculum": {
+    "curriculum": "Currículo",
     "search": "Pesquisar currículos...",
     "title": "Título do Currículo",
     "code": "Código",
@@ -263,6 +266,7 @@
     "reorderFailed": "Falha ao reordenar aulas"
   },
   "class": {
+    "class": "Turma",
     "title": "Turmas",
     "name": "Nome da Turma",
     "academicYear": "Ano Acadêmico",
