@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { useAction } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { Doc } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,9 +31,10 @@ import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
 import { GRADE_VALUES } from "@/lib/types/academic"
 import { useParams } from "next/navigation"
 import { useQuery } from "convex/react"
+import { User } from "./users-table";
 
 interface UserDialogProps {
-    user?: Doc<"users">
+    user?: User
     defaultRole?: UserRole
     allowedRoles?: UserRole[]
     trigger?: React.ReactNode
@@ -87,7 +87,9 @@ export function UserDialog({
         role: defaultRole || "student" as UserRole,
         status: "active",
         grade: "",
-        school: ""
+        school: "",
+        targetSchoolId: "",
+        targetCampusId: ""
     })
 
     const rolesToDisplay = allowedRoles || ALL_ROLES
@@ -95,20 +97,44 @@ export function UserDialog({
     const params = useParams()
     const orgSlug = (params.orgSlug as string) || "system"
     const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
+    const schools = useQuery(api.schools.list, { isActive: true })
+    const campuses = useQuery(api.campuses.list, { isActive: true })
 
     useEffect(() => {
         if (isOpen) {
             if (isEditing && user) {
+                // Safely resolve the existing school and campus IDs for Superadmin edit mode
+                let editSchoolId = "";
+                let editCampusId = "";
+                
+                if (user.orgType === "school") {
+                    editSchoolId = user.orgId || "";
+                } else if (user.orgType === "campus") {
+                    editCampusId = user.orgId || "";
+                    editSchoolId = campuses?.find(c => c._id === editCampusId)?.schoolId || "";
+                }
+
                 setFormData({
                     firstName: user.firstName || "",
                     lastName: user.lastName || "",
                     email: user.email,
-                    role: user.role as UserRole,
+                    role: (user.role as UserRole) ?? (defaultRole || rolesToDisplay[0]),
                     status: user.isActive ? "active" : "inactive",
                     grade: user.grade || "",
-                    school: user.school || ""
+                    school: user.school || "",
+                    targetSchoolId: editSchoolId,
+                    targetCampusId: editCampusId
                 })
             } else {
+                let defaultSchoolName = "";
+                if (orgContext?.type === "school") {
+                    defaultSchoolName = orgContext.name;
+                } else if (orgContext?.type === "campus" && campuses && schools) {
+                    const campus = campuses.find(c => c._id === orgContext._id);
+                    const parentSchool = schools.find(s => s._id === campus?.schoolId);
+                    if (parentSchool) defaultSchoolName = parentSchool.name;
+                }
+
                 setQueue([])
                 setFormData({
                     firstName: "",
@@ -117,11 +143,13 @@ export function UserDialog({
                     role: (defaultRole || rolesToDisplay[0]) as UserRole,
                     status: "active",
                     grade: "",
-                    school: ""
+                    school: defaultSchoolName,
+                    targetSchoolId: "",
+                    targetCampusId: ""
                 })
             }
         }
-    }, [isOpen, user, isEditing, defaultRole, rolesToDisplay])
+    }, [isOpen, user, isEditing, defaultRole, rolesToDisplay, orgContext, schools, campuses])
 
     // --- HANDLERS ---
 
@@ -156,10 +184,28 @@ export function UserDialog({
     // This is the main submit handler called by EntityDialog footer button
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        
         if (!orgContext) {
             toast.error("Loading organization context... Please wait.")
             return
+        }
+
+        // --- DETERMINE FINAL ORGANIZATION CONTEXT ---
+        let finalOrgType = orgContext.type;
+        let finalOrgId: string | undefined = orgContext._id;
+
+        if (orgContext.type === "system") {
+            if (formData.role === "superadmin") {
+                finalOrgType = "system";
+                finalOrgId = undefined;
+            } else if (formData.role === "admin") {
+                if (!formData.targetSchoolId) return toast.error(t('Please select a school for this admin'));
+                finalOrgType = "school";
+                finalOrgId = formData.targetSchoolId;
+            } else {
+                if (!formData.targetCampusId) return toast.error(t('Please select a campus for this user'));
+                finalOrgType = "campus";
+                finalOrgId = formData.targetCampusId;
+            }
         }
 
         setIsSubmitting(true)
@@ -178,9 +224,8 @@ export function UserDialog({
                         grade: formData.role === "student" ? formData.grade : undefined,
                         school: formData.role === "student" ? formData.school : undefined,
                     },
-                    // Pass the context!
-                    orgType: orgContext.type,
-                    orgId: orgContext._id,
+                    orgType: finalOrgType,
+                    orgId: finalOrgId,
                 })
                 toast.success(t('common.save'))
                 setIsOpen(false)
@@ -213,8 +258,8 @@ export function UserDialog({
                         grade: u.role === "student" ? u.grade : undefined,
                         school: u.role === "student" ? u.school : undefined,
                     })),
-                    orgType: orgContext.type,
-                    orgId: orgContext._id,
+                    orgType: finalOrgType,
+                    orgId: finalOrgId,
                     sendInvitation: true
                 })
 
@@ -410,6 +455,47 @@ export function UserDialog({
                             </div>
                         )}
                     </div>
+
+                    {orgContext?.type === "system" && formData.role !== "superadmin" && (
+                        <div className="grid grid-cols-2 gap-4 border-t pt-4 mt-2 border-dashed border-muted-foreground/30">
+                            <div className="grid gap-2">
+                                <Label className="text-primary flex items-center gap-1">Assign to School</Label>
+                                <Select 
+                                    value={formData.targetSchoolId} 
+                                    onValueChange={(v) => {
+                                        const schoolName = schools?.find(s => s._id === v)?.name || "";
+                                        setFormData({...formData, targetSchoolId: v, targetCampusId: "", school: schoolName});
+                                    }}
+                                >
+                                    <SelectTrigger><SelectValue placeholder="Select School" /></SelectTrigger>
+                                    <SelectContent>
+                                        {schools?.map(s => (
+                                            <SelectItem key={s._id} value={s._id}>{s.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Only show Campus if the role demands it (Principal, Teacher, Tutor, Student) */}
+                            {formData.role !== "admin" && (
+                                <div className="grid gap-2">
+                                    <Label className="text-primary flex items-center gap-1">Assign to Campus</Label>
+                                    <Select 
+                                        value={formData.targetCampusId} 
+                                        onValueChange={(v) => setFormData({...formData, targetCampusId: v})}
+                                        disabled={!formData.targetSchoolId}
+                                    >
+                                        <SelectTrigger><SelectValue placeholder="Select Campus" /></SelectTrigger>
+                                        <SelectContent>
+                                            {campuses?.filter(c => c.schoolId === formData.targetSchoolId).map(c => (
+                                                <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Add to Queue Button */}
                     {!isEditing && (

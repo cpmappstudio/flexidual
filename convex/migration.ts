@@ -12,10 +12,18 @@ export const importCurriculum = mutation({
     code: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
+    schoolId: v.optional(v.id("schools")),
+    gradeCodes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const admin = await ctx.db.query("users").withIndex("by_role", q => q.eq("role", "admin").eq("isActive", true)).first();
-    const createdBy = admin?._id ?? (await ctx.db.query("users").first())!._id;
+    const adminAssignment = await ctx.db
+      .query("roleAssignments")
+      .filter(q => q.or(
+        q.eq(q.field("role"), "superadmin"),
+        q.eq(q.field("role"), "admin")
+      ))
+      .first();
+    const createdBy = adminAssignment?.userId ?? (await ctx.db.query("users").first())!._id;
 
     return await ctx.db.insert("curriculums", {
       title: args.title,
@@ -24,7 +32,9 @@ export const importCurriculum = mutation({
       color: "#3b82f6",
       isActive: args.isActive,
       createdAt: args.createdAt,
-      createdBy: createdBy,
+      createdBy,
+      schoolId: args.schoolId,
+      gradeCodes: args.gradeCodes,
     });
   },
 });
@@ -41,8 +51,14 @@ export const importLessonsBatch = mutation({
     })),
   },
   handler: async (ctx, args) => {
-    const admin = await ctx.db.query("users").withIndex("by_role", q => q.eq("role", "admin").eq("isActive", true)).first();
-    const createdBy = admin?._id ?? (await ctx.db.query("users").first())!._id;
+    const adminAssignment = await ctx.db
+      .query("roleAssignments")
+      .filter(q => q.or(
+        q.eq(q.field("role"), "superadmin"),
+        q.eq(q.field("role"), "admin")
+      ))
+      .first();
+    const createdBy = adminAssignment?.userId ?? (await ctx.db.query("users").first())!._id;
 
     const existingLessons = await ctx.db
       .query("lessons")
@@ -112,77 +128,77 @@ export const clearLessonsFromRecurring = internalMutation({
 
 // --- NEW MULTI-TENANT MIGRATIONS ---
 
-export const runMultiTenantMigration = internalMutation({
-  handler: async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    if (users.length === 0) throw new Error("No users found to migrate.");
+// export const runMultiTenantMigration = internalMutation({
+//   handler: async (ctx) => {
+//     const users = await ctx.db.query("users").collect();
+//     if (users.length === 0) throw new Error("No users found to migrate.");
 
-    // 1. Create a Default School
-    const schoolId = await ctx.db.insert("schools", {
-      name: "Default Academy",
-      slug: "default-academy",
-      isActive: true,
-      createdAt: Date.now(),
-      createdBy: users[0]._id,
-    });
+//     // 1. Create a Default School
+//     const schoolId = await ctx.db.insert("schools", {
+//       name: "Default Academy",
+//       slug: "default-academy",
+//       isActive: true,
+//       createdAt: Date.now(),
+//       createdBy: users[0]._id,
+//     });
 
-    // 2. Create a Default Campus
-    const campusId = await ctx.db.insert("campuses", {
-      schoolId: schoolId,
-      name: "Main Campus",
-      slug: "main-campus",
-      isActive: true,
-      createdAt: Date.now(),
-      createdBy: users[0]._id,
-    });
+//     // 2. Create a Default Campus
+//     const campusId = await ctx.db.insert("campuses", {
+//       schoolId: schoolId,
+//       name: "Main Campus",
+//       slug: "main-campus",
+//       isActive: true,
+//       createdAt: Date.now(),
+//       createdBy: users[0]._id,
+//     });
 
-    // 3. Migrate Users to Role Assignments
-    for (const user of users) {
-      if (user.role) {
-        const existing = await ctx.db.query("roleAssignments").withIndex("by_user", q => q.eq("userId", user._id)).first();
-        if (existing) continue;
+//     // 3. Migrate Users to Role Assignments
+//     for (const user of users) {
+//       if (user.role) {
+//         const existing = await ctx.db.query("roleAssignments").withIndex("by_user", q => q.eq("userId", user._id)).first();
+//         if (existing) continue;
 
-        if (user.role === "superadmin") {
-          await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "system", role: "superadmin", assignedAt: Date.now() });
-        } else if (user.role === "admin") {
-          await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "school", orgId: schoolId, role: "admin", assignedAt: Date.now() });
-        } else {
-          await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "campus", orgId: campusId, role: user.role, assignedAt: Date.now() });
-        }
-      }
-    }
+//         if (user.role === "superadmin") {
+//           await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "system", role: "superadmin", assignedAt: Date.now() });
+//         } else if (user.role === "admin") {
+//           await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "school", orgId: schoolId, role: "admin", assignedAt: Date.now() });
+//         } else {
+//           await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "campus", orgId: campusId, role: user.role, assignedAt: Date.now() });
+//         }
+//       }
+//     }
 
-    // 4. Attach Curriculums to the School
-    const curriculums = await ctx.db.query("curriculums").collect();
-    for (const curr of curriculums) {
-      if (!curr.schoolId) await ctx.db.patch(curr._id, { schoolId });
-    }
+//     // 4. Attach Curriculums to the School
+//     const curriculums = await ctx.db.query("curriculums").collect();
+//     for (const curr of curriculums) {
+//       if (!curr.schoolId) await ctx.db.patch(curr._id, { schoolId });
+//     }
 
-    // 5. Attach Classes to the Campus
-    const classes = await ctx.db.query("classes").collect();
-    for (const cls of classes) {
-      if (!cls.campusId) await ctx.db.patch(cls._id, { campusId });
-    }
+//     // 5. Attach Classes to the Campus
+//     const classes = await ctx.db.query("classes").collect();
+//     for (const cls of classes) {
+//       if (!cls.campusId) await ctx.db.patch(cls._id, { campusId });
+//     }
 
-    return { success: true, message: "Database migrated! Next step: Run syncAllUsersToClerk action." };
-  },
-});
+//     return { success: true, message: "Database migrated! Next step: Run syncAllUsersToClerk action." };
+//   },
+// });
 
-export const scrubLegacyRoles = internalMutation({
-  handler: async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    let scrubbedCount = 0;
+// export const scrubLegacyRoles = internalMutation({
+//   handler: async (ctx) => {
+//     const users = await ctx.db.query("users").collect();
+//     let scrubbedCount = 0;
 
-    for (const user of users) {
-      if (user.role !== undefined) {
-        // In Convex, setting a field to undefined physically removes it from the document
-        await ctx.db.patch(user._id, { role: undefined });
-        scrubbedCount++;
-      }
-    }
-    return { success: true, scrubbedCount };
-  },
-});
+//     for (const user of users) {
+//       if (user.role !== undefined) {
+//         // In Convex, setting a field to undefined physically removes it from the document
+//         await ctx.db.patch(user._id, { role: undefined });
+//         scrubbedCount++;
+//       }
+//     }
+//     return { success: true, scrubbedCount };
+//   },
+// });
 
 export const syncAllUsersToClerk = internalAction({
   handler: async (ctx) => {

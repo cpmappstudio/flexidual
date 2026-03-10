@@ -114,3 +114,27 @@ export async function canManageCurriculums(
   
   return false;
 }
+
+export async function hasAnyOrgRole(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  allowedRoles: string[]
+): Promise<boolean> {
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .filter((q) => q.neq(q.field("orgType"), "system"))
+    .collect();
+
+  return assignments.some(a => allowedRoles.includes(a.role));
+}
+
+export async function getUserIdsByRole(
+  ctx: QueryCtx,
+  allowedRoles: string[]
+): Promise<Set<Id<"users">>> {
+  const assignments = await ctx.db.query("roleAssignments").collect();
+  return new Set(
+    assignments.filter(a => allowedRoles.includes(a.role)).map(a => a.userId)
+  );
+}

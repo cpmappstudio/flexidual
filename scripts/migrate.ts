@@ -20,12 +20,17 @@ if (!convexUrl) {
 
 const client = new ConvexHttpClient(convexUrl);
 
-// ... rest of your types ...
+const schoolId = process.env.SCHOOL_ID as Id<"schools"> | undefined;
+
 type OldCurriculum = {
   _id: string; // Use string for source data to avoid type mismatches
   name: string;
   createdAt: number;
   isActive: boolean;
+  campusAssignments?: {
+    campusId: string;
+    gradeCodes: string[];
+  }[];
 };
 
 type OldLesson = {
@@ -56,14 +61,20 @@ async function main() {
   for (const oldCurr of curriculumsRaw as OldCurriculum[]) {
     try {
       // Map Old Name -> New Title & Code
-      const code = oldCurr.name.toUpperCase().replace(/[^A-Z0-9]/g, "-").slice(0, 10);
-      
+      const gradeCodes = [
+        ...new Set(
+          (oldCurr.campusAssignments ?? []).flatMap(ca => ca.gradeCodes)
+        ),
+      ];
+
       const newId = await client.mutation(api.migration.importCurriculum, {
         title: oldCurr.name,
-        description: `Imported from legacy system.`, 
-        code: code,
+        description: `Imported from legacy system.`,
+        code: oldCurr.name.toUpperCase().replace(/[^A-Z0-9]/g, "-").slice(0, 10),
         isActive: oldCurr.isActive,
         createdAt: oldCurr.createdAt,
+        schoolId: schoolId || undefined,   // NEW
+        gradeCodes: gradeCodes.length > 0 ? gradeCodes : undefined, // NEW
       });
 
       curriculumIdMap.set(oldCurr._id, newId);

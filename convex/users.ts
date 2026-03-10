@@ -58,7 +58,6 @@ export const getUsers = query({
     orgId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // 1. Fetch Role Assignments scoped to the requested organization
     let assignmentQuery = ctx.db.query("roleAssignments");
 
     if (args.orgType && args.orgType !== "system") {
@@ -68,9 +67,7 @@ export const getUsers = query({
           q.eq(q.field("orgType"), args.orgType)
         )
       );
-    } else if (args.orgType === "system") {
-      assignmentQuery = assignmentQuery.filter(q => q.eq(q.field("orgType"), "system"));
-    }
+    } 
 
     if (args.role) {
       assignmentQuery = assignmentQuery.filter(q => q.eq(q.field("role"), args.role));
@@ -79,33 +76,38 @@ export const getUsers = query({
     const assignments = await assignmentQuery.collect();
     const validUserIds = new Set(assignments.map(a => a.userId));
 
-    if ((args.orgType && args.orgType !== "system" || args.role) && validUserIds.size === 0) {
-      return [];
-    }
-
-    // 2. Fetch Users
     let users = await ctx.db.query("users").collect();
 
-    // 3. Filter by active status
     if (args.isActive !== undefined) {
       users = users.filter(u => u.isActive === args.isActive);
     }
 
-    // 4. Filter and Inject the Role!
-    if (args.orgType && args.orgType !== "system" || args.role) {
-      // Return only users that belong to this org, and inject their specific role
+    // If we specified an orgType (not system) OR a role filter, strictly return only valid users
+    if ((args.orgType && args.orgType !== "system") || args.role) {
       return users
         .filter(u => validUserIds.has(u._id))
         .map(u => {
-           const specificRole = assignments.find(a => a.userId === u._id)?.role;
-           return { ...u, role: specificRole || u.role };
+           const specificAssignment = assignments.find(a => a.userId === u._id);
+           return { 
+             ...u, 
+             role: specificAssignment?.role,
+             orgId: specificAssignment?.orgId,
+             orgType: specificAssignment?.orgType
+           };
         });
     }
 
-    // If global fallback, just try to inject any assignment they have
+    // Global fallback (System Dashboard, All Users tab)
     return users.map(u => {
-        const anyAssignment = assignments.find(a => a.userId === u._id);
-        return { ...u, role: anyAssignment?.role || u.role };
+        const userAssignments = assignments.filter(a => a.userId === u._id);
+        // Prefer their system assignment if they have one, else pick their first org assignment
+        const bestAssignment = userAssignments.find(a => a.orgType === "system") || userAssignments[0];
+        return { 
+            ...u, 
+            role: bestAssignment?.role,
+            orgId: bestAssignment?.orgId,
+            orgType: bestAssignment?.orgType
+        };
     });
   },
 });

@@ -34,7 +34,11 @@ import { useTranslations } from "next-intl";
 import { UserRole } from "@/convex/types";
 import { useParams } from "next/navigation"
 
-export type User = Doc<"users">;
+export type User = Doc<"users"> & { 
+  role?: string; 
+  orgId?: string; 
+  orgType?: string 
+};
 
 // Props to configure the table for different views (e.g. "Teachers Only" vs "Admins")
 interface UsersTableProps {
@@ -96,10 +100,9 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
       header: t('teacher.role'),
       cell: ({ row }) => {
         const role = row.getValue("role") as string;
-        // Map role to badge variant
         const variant = role === "admin" || role === "superadmin" ? "destructive" : 
                         role === "teacher" ? "default" : "secondary";
-        return <Badge variant={variant}>{t(`navigation.${role}s`)}</Badge>;
+        return <Badge variant={variant}>{role ? t(`navigation.${role}s`) : "No Role"}</Badge>;
       },
     },
     {

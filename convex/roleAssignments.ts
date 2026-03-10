@@ -131,3 +131,24 @@ export const assignRole = mutation({
     }
   },
 });
+
+export const getUserRoleInOrg = query({
+  args: {
+    userId: v.id("users"),
+    orgId: v.optional(v.string()),
+    orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
+  },
+  handler: async (ctx, args) => {
+    const assignments = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("orgType"), args.orgType))
+      .collect();
+
+    const match = args.orgId
+      ? assignments.find(a => a.orgId === args.orgId)
+      : assignments.find(a => !a.orgId); // system level has no orgId
+
+    return match?.role ?? null;
+  },
+});

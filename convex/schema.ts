@@ -31,14 +31,14 @@ export default defineSchema({
     avatarStorageId: v.optional(v.id("_storage")),
     
     // Role-based access
-    role: v.optional(v.union(
-      v.literal("student"),
-      v.literal("teacher"),
-      v.literal("tutor"),
-      v.literal("admin"),
-      v.literal("principal"),
-      v.literal("superadmin")
-    )),
+    // role: v.optional(v.union(
+    //   v.literal("student"),
+    //   v.literal("teacher"),
+    //   v.literal("tutor"),
+    //   v.literal("admin"),
+    //   v.literal("principal"),
+    //   v.literal("superadmin")
+    // )),
     
     // Status
     isActive: v.boolean(),
@@ -52,7 +52,7 @@ export default defineSchema({
   })
     .index("by_clerk_id", ["clerkId"])
     .index("by_email", ["email"])
-    .index("by_role", ["role", "isActive"])
+    // .index("by_role", ["role", "isActive"])
     .index("by_grade", ["grade"]),
 
   /**

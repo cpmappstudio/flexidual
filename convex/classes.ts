@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
-import { hasSystemRole, canManageClasses } from "./permissions";
+import { hasSystemRole, canManageClasses, hasAnyOrgRole } from "./permissions";
 
 // ============================================================================
 // QUERIES
@@ -188,12 +188,12 @@ export const searchStudents = query({
     gradeCodes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const allStudents = await ctx.db
-      .query("users")
-      .withIndex("by_role", (q) => 
-        q.eq("role", "student").eq("isActive", true)
-      )
-      .collect();
+    const studentAssignments = await ctx.db.query("roleAssignments").collect();
+    const studentIds = [...new Set(
+      studentAssignments.filter(a => a.role === "student").map(a => a.userId)
+    )];
+    const allUsersRaw = await Promise.all(studentIds.map(id => ctx.db.get(id)));
+    const allStudents = allUsersRaw.filter((s): s is NonNullable<typeof s> => s !== null && s.isActive);
 
     let results = allStudents;
 
@@ -372,7 +372,9 @@ export const update = mutation({
     // Validate new teacher if changing
     if (args.teacherId) {
       const teacher = await ctx.db.get(args.teacherId);
-      if (!teacher || teacher.role !== "teacher") throw new Error("Invalid teacher");
+      if (!teacher) throw new Error("Invalid teacher");
+      const isTeacher = await hasAnyOrgRole(ctx, args.teacherId, ["teacher"]);
+      if (!isTeacher) throw new Error("Invalid teacher");
     }
 
     const { classId, ...updates } = args;
@@ -416,9 +418,9 @@ export const addStudent = mutation({
 
     // Verify student exists
     const student = await ctx.db.get(args.studentId);
-    if (!student || student.role !== "student") {
-      throw new ConvexError("INVALID_STUDENT");
-    }
+    if (!student) throw new ConvexError("INVALID_STUDENT");
+    const isStudent = await hasAnyOrgRole(ctx, args.studentId, ["student"]);
+    if (!isStudent) throw new ConvexError("INVALID_STUDENT");
 
     // Check if already enrolled
     if (classData.students.includes(args.studentId)) {
@@ -498,15 +500,13 @@ export const addStudents = mutation({
       throw new ConvexError("PERMISSION_DENIED: Only administrators can add students to this class.");
     }
 
-    // Verify all students exist
-    const students = await Promise.all(
-      args.studentIds.map(id => ctx.db.get(id))
-    );
+    const students = await Promise.all(args.studentIds.map(id => ctx.db.get(id)));
+    if (students.some(s => !s)) throw new ConvexError("INVALID_STUDENTS");
 
-    const invalidStudents = students.filter(s => !s || s.role !== "student");
-    if (invalidStudents.length > 0) {
-      throw new ConvexError("INVALID_STUDENTS");
-    }
+    const roleChecks = await Promise.all(
+      args.studentIds.map(id => hasAnyOrgRole(ctx, id, ["student"]))
+    );
+    if (roleChecks.some(isStudent => !isStudent)) throw new ConvexError("INVALID_STUDENTS");
 
     // Add only new students (avoid duplicates)
     const newStudents = args.studentIds.filter(
