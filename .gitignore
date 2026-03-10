@@ -49,3 +49,6 @@ package-lock.json
 
 # migration data
 /scripts/data/
+
+# convex generated files
+/convex/_generated/
