@@ -65,7 +65,7 @@ export function EntityDialog({
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="flex flex-col flex-1 overflow-hidden">
+        <form onSubmit={onSubmit} className="flex flex-col flex-1 overflow-auto">
           <ScrollArea className="flex-1 p-6">
             {children}
           </ScrollArea>

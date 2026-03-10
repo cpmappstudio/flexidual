@@ -70,7 +70,17 @@
   "admin": {
     "title": "Administração Acadêmica",
     "description": "Central de administração acadêmica e ferramentas de gestão.",
-    "classTracking": "Acompanhamento de Turmas e Professores"
+    "classTracking": "Acompanhamento de Turmas e Professores",
+    "campuses": "Campi",
+    "campusesDescription": "Gerencie os campi da sua instituição, atribua professores e organize suas turmas.",
+    "activeCampuses": "Campi Ativos",
+    "activeCampusesDescription": "Sedes atualmente ativas e visíveis para professores e estudantes.",
+    "allSchools": "Todas as Escolas",
+    "parentSchool": "Escola Pai",
+    "campusName": "Nome do Campus",
+    "urlSlug": "Slug de URL",
+    "noCampusesFound": "Nenhum campus encontrado.",
+    "addCampus": "Adicionar Campus"
   },
   "navigation": {
     "dashboard": "Painel",

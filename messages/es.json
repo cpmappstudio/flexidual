@@ -70,7 +70,16 @@
   "admin": {
     "title": "Administración Académica",
     "description": "Centro de administración y herramientas de gestión académica.",
-    "classTracking": "Seguimiento de Clases y Profesores"
+    "campuses": "Campuses",
+    "campusesDescription": "Gestiona las sedes de tu institución, asigna profesores y organiza tus clases.",
+    "activeCampuses": "Campuses Activos",
+    "activeCampusesDescription": "Sedes actualmente activas y visibles para profesores y estudiantes.",
+    "allSchools": "Todas las Escuelas",
+    "parentSchool": "Escuela Padre",
+    "campusName": "Nombre del Campus",
+    "urlSlug": "Slug de URL",
+    "noCampusesFound": "No se encontraron campuses.",
+    "addCampus": "Agregar Campus"
   },
   "navigation": {
     "dashboard": "Panel",
