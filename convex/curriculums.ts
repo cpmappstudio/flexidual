@@ -18,7 +18,8 @@ import { Id } from "./_generated/dataModel";
  */
 export const list = query({
   args: { 
-    includeInactive: v.optional(v.boolean()) 
+    includeInactive: v.optional(v.boolean()),
+    schoolId: v.optional(v.id("schools")),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
@@ -26,16 +27,24 @@ export const list = query({
 
     const isSuperAdmin = await hasSystemRole(ctx, user._id, ["superadmin"]);
 
-    // 1. SUPERADMINS: Full Access
+    // 1. SUPERADMINS: Full Access (with optional school filter)
     if (isSuperAdmin) {
-      if (args.includeInactive) {
-        return await ctx.db.query("curriculums").order("desc").collect();
+      if (args.schoolId) {
+        const q = ctx.db.query("curriculums")
+          .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId!));
+        if (!args.includeInactive) {
+          return await q.filter((q) => q.eq(q.field("isActive"), true)).order("desc").collect();
+        }
+        return await q.order("desc").collect();
       }
-      return await ctx.db
-        .query("curriculums")
-        .withIndex("by_active", (q) => q.eq("isActive", true))
-        .order("desc")
-        .collect();
+
+      if (!args.includeInactive) {
+        return await ctx.db.query("curriculums")
+          .withIndex("by_active", (q) => q.eq("isActive", true))
+          .order("desc").collect();
+      }
+
+      return await ctx.db.query("curriculums").order("desc").collect();
     }
 
     // 2. Resolve Contextual Access (Admin of Schools & Taught Classes)

@@ -38,10 +38,10 @@ export default function CampusesPage() {
                 <div className="flex items-center gap-4 w-full sm:w-auto">
                     {/* School Filter Dropdown */}
                     <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
-                        <SelectTrigger className="w-full sm:w-[200px]">
-                            <div className="flex items-center gap-2">
-                                <Building2 className="w-4 h-4 text-muted-foreground" />
-                                <SelectValue placeholder={t("admin.allSchools")} />
+                        <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[400px]">
+                            <div className="flex items-center gap-2 truncate">
+                                <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                                <span className="truncate"><SelectValue placeholder={t("admin.allSchools")} /></span>
                             </div>
                         </SelectTrigger>
                         <SelectContent>

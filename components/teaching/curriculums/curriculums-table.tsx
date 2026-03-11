@@ -3,6 +3,9 @@
 import * as React from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import { useParams } from "next/navigation"
+import { Building2 } from "lucide-react"
+import { Id } from "@/convex/_generated/dataModel"
 import {
   ColumnDef,
   flexRender,
@@ -30,7 +33,30 @@ interface CurriculumsTableProps {
 
 export function CurriculumsTable({ includeInactive = false }: CurriculumsTableProps) {
   const t = useTranslations()
-  const data = useQuery(api.curriculums.list, { includeInactive })
+  const params = useParams()
+  
+  const orgSlug = (params.orgSlug as string) || "system"
+  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
+  const isSystemDashboard = orgContext?.type === "system"
+
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("all")
+  const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip")
+
+  // Determine effective school ID for the query
+  let querySchoolId = undefined
+  if (isSystemDashboard && selectedSchoolId !== "all") {
+    querySchoolId = selectedSchoolId as Id<"schools">
+  } else if (orgContext?.type === "school") {
+    querySchoolId = orgContext._id as Id<"schools">
+  } else if (orgContext?.type === "campus") {
+    // If we're on a campus dashboard, we might want to fetch the parent school's curriculums.
+    // For now, if the user is a campus admin, the backend handles their access.
+  }
+
+  const data = useQuery(api.curriculums.list, { 
+    includeInactive,
+    schoolId: querySchoolId 
+  })
   
   const [filter, setFilter] = useState("")
   const [sorting, setSorting] = React.useState([])
@@ -126,14 +152,35 @@ export function CurriculumsTable({ includeInactive = false }: CurriculumsTablePr
       )}
 
       <div className="flex items-center justify-between">
-        <div className="relative w-72">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t('curriculum.filterPlaceholder')}
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="pl-8"
-          />
+        <div className="flex items-center gap-4">
+          <div className="relative w-72">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t('curriculum.filterPlaceholder')}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+
+          {isSystemDashboard && (
+            <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
+              <SelectTrigger className="w-[200px]">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-muted-foreground" />
+                  <SelectValue placeholder="All Schools" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Schools</SelectItem>
+                {schools?.map((school) => (
+                  <SelectItem key={school._id} value={school._id}>
+                    {school.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
         
         <CurriculumDialog />

@@ -9,7 +9,7 @@ import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { getRoleForOrg } from "@/lib/rbac"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, BookOpen, Calendar, ArrowRight, School, Edit, LayoutGrid, List as ListIcon } from "lucide-react"
+import { Users, BookOpen, Calendar, ArrowRight, School, Edit, LayoutGrid, List as ListIcon, MapPin, Building2 } from "lucide-react"
 import { format, startOfWeek, addDays} from "date-fns"
 import { ClassDialog } from "@/components/teaching/classes/class-dialog"
 import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter"
@@ -17,6 +17,7 @@ import { ClassesTable } from "@/components/teaching/classes/classes-table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -26,15 +27,50 @@ export default function MyClassesPage() {
   const t = useTranslations()
   const { user, isLoading: isUserLoading } = useCurrentUser()
   const params = useParams()
-  const orgSlug = (params.orgSlug as string) || "system"
+  
+  let currentSlug = (params.orgSlug as string) || "system"
+  if (currentSlug === "admin") currentSlug = "system"
+
+  const orgContext = useQuery(api.organizations.resolveSlug, { slug: currentSlug })
+  const isSystemDashboard = orgContext?.type === "system"
+  
   const { sessionClaims } = useAuth()
-  const role = getRoleForOrg(sessionClaims, orgSlug)
+  const role = getRoleForOrg(sessionClaims, currentSlug)
   const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
+  
   const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null)
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null)
   
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("all")
+  const [selectedCampusId, setSelectedCampusId] = useState<string>("all")
+
+  const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip")
+  const campuses = useQuery(
+    api.campuses.list,
+    isSystemDashboard && selectedSchoolId !== "all"
+      ? { schoolId: selectedSchoolId as Id<"schools"> }
+      : "skip"
+  )
+
+  let querySchoolId = undefined;
+  let queryCampusId = undefined;
+
+  if (isSystemDashboard) {
+    if (selectedCampusId !== "all") queryCampusId = selectedCampusId;
+    if (selectedSchoolId !== "all") querySchoolId = selectedSchoolId;
+  } else if (orgContext?.type === "school") {
+    querySchoolId = orgContext._id;
+  } else if (orgContext?.type === "campus") {
+    queryCampusId = orgContext._id;
+  }
+  
+  // UPDATE: Inject the new parameters into the queryArgs
   const queryArgs = isAdmin 
-    ? (selectedTeacherId ? { teacherId: selectedTeacherId } : {}) 
+    ? { 
+        teacherId: selectedTeacherId || undefined,
+        schoolId: querySchoolId as Id<"schools"> | undefined,
+        campusId: queryCampusId as Id<"campuses"> | undefined,
+      } 
     : (user ? { teacherId: user._id } : "skip")
 
   const allClasses = useQuery(api.classes.list, queryArgs)
@@ -43,7 +79,7 @@ export default function MyClassesPage() {
   const startOfCurrentWeek = startOfWeek(new Date(), { weekStartsOn: 0 })
   const endOfCurrentWeek = addDays(startOfCurrentWeek, 7)
   
-  const scheduleArgs = queryArgs === "skip" ? "skip" : {
+  const scheduleArgs = (queryArgs === "skip" || isAdmin) ? "skip" : {
     ...queryArgs,
     from: startOfCurrentWeek.getTime(),
     to: endOfCurrentWeek.getTime()
@@ -95,7 +131,57 @@ export default function MyClassesPage() {
       {renderWeekOverview()}
 
       <Tabs defaultValue={isAdmin ? "list" : "grid"} className="w-full space-y-6">
-        {/* Controls Row */}
+        
+        {/* Superadmin Org Filters */}
+        {isSystemDashboard && (
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-4 bg-muted/30 rounded-lg border">
+            <Select
+              value={selectedSchoolId}
+              onValueChange={(val) => {
+                setSelectedSchoolId(val);
+                setSelectedCampusId("all");
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
+                <div className="flex items-center gap-2 truncate">
+                  <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="truncate"><SelectValue placeholder="All Schools" /></span>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Schools</SelectItem>
+                {schools?.map((school) => (
+                  <SelectItem key={school._id} value={school._id}>
+                    {school.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={selectedCampusId}
+              onValueChange={setSelectedCampusId}
+              disabled={selectedSchoolId === "all"}
+            >
+              <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
+                <div className="flex items-center gap-2 truncate">
+                  <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="truncate"><SelectValue placeholder="All Campuses" /></span>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Campuses</SelectItem>
+                {campuses?.map((campus) => (
+                  <SelectItem key={campus._id} value={campus._id}>
+                    {campus.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Existing Content Filters */}
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
             <ClassCombinedFilter 
                 selectedTeacherId={selectedTeacherId}

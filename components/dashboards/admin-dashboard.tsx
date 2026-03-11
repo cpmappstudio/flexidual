@@ -3,23 +3,51 @@
 import { useTranslations } from "next-intl"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import { useState } from "react"
+import { useParams } from "next/navigation"
+import { Building2 } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { Id } from "@/convex/_generated/dataModel"
 import { Users, School, BookOpen, GraduationCap, Activity, LucideIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { AdminClassTrackingCard } from "@/components/admin/admin-class-tracking-card"
 
 export default function AdminDashboard() {
     const t = useTranslations()
+    const params = useParams()
     
-    const teachers = useQuery(api.users.getUsers, { role: "teacher", isActive: true })
-    const students = useQuery(api.users.getUsers, { role: "student", isActive: true })
-    const activeClasses = useQuery(api.classes.list, { isActive: true })
-    const curriculums = useQuery(api.curriculums.list, { includeInactive: false })
+    // Resolve context
+    let currentSlug = (params.orgSlug as string) || "system"
+    if (currentSlug === "admin") currentSlug = "system"
+
+    const orgContext = useQuery(api.organizations.resolveSlug, { slug: currentSlug })
+    const isSystemDashboard = orgContext?.type === "system"
+
+    // Superadmin filter state
+    const [selectedSchoolId, setSelectedSchoolId] = useState<string>("all")
+    const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip")
+
+    // Calculate effective query arguments
+    let queryOrgType = orgContext?.type;
+    let queryOrgId = orgContext?._id;
+    let querySchoolId = undefined;
+
+    if (isSystemDashboard && selectedSchoolId !== "all") {
+        queryOrgType = "school";
+        queryOrgId = selectedSchoolId as Id<"schools">;
+        querySchoolId = selectedSchoolId as Id<"schools">;
+    } else if (orgContext?.type === "school") {
+        querySchoolId = orgContext._id as Id<"schools">;
+    }
+
+    // Pass the calculated arguments to the queries
+    const teachers = useQuery(api.users.getUsers, orgContext ? { role: "teacher", isActive: true, orgType: queryOrgType, orgId: queryOrgId } : "skip")
+    const students = useQuery(api.users.getUsers, orgContext ? { role: "student", isActive: true, orgType: queryOrgType, orgId: queryOrgId } : "skip")
+    const activeClasses = useQuery(api.classes.list, orgContext ? { isActive: true, schoolId: querySchoolId } : "skip")
+    const curriculums = useQuery(api.curriculums.list, orgContext ? { includeInactive: false, schoolId: querySchoolId } : "skip")
     
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
-    const todayEnd = new Date(todayStart)
-    todayEnd.setDate(todayEnd.getDate() + 1)
-    
+    // We intentionally leave this as {} so we don't trigger the Validator error. 
+    // The rendered schedules are filtered automatically below because they only map to the activeClasses!
     const allSchedules = useQuery(api.schedule.getMySchedule, {})
 
     const isLoading = teachers === undefined || students === undefined || activeClasses === undefined || curriculums === undefined || allSchedules === undefined
@@ -38,8 +66,7 @@ export default function AdminDashboard() {
     return (
         <div className="container mx-auto p-4 sm:p-6 space-y-6">
             
-            {/* Header utilizing globals.css classes */}
-            <div className="dashboard-header flex justify-between items-center">
+            <div className="dashboard-header flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h1 className="text-2xl sm:text-3xl font-black text-foreground mb-1">
                         {t('admin.title') || 'Admin Overview'}
@@ -48,8 +75,32 @@ export default function AdminDashboard() {
                         {t('admin.description') || 'Platform activity and quick statistics.'}
                     </p>
                 </div>
-                <div className="hidden sm:flex items-center justify-center w-14 h-14 bg-primary/10 rounded-2xl border border-primary/20">
-                    <Activity className="w-7 h-7 text-primary" />
+                
+                <div className="flex items-center gap-4 w-full sm:w-auto">
+                    {isSystemDashboard && (
+                        <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
+                            <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
+                                <div className="flex items-center gap-2 truncate">
+                                    <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                                    <span className="truncate">
+                                        {selectedSchoolId === "all" ? "All Schools" : schools?.find(s => s._id === selectedSchoolId)?.name || "Select School"}
+                                    </span>
+                                </div>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Schools</SelectItem>
+                                {schools?.map((school) => (
+                                    <SelectItem key={school._id} value={school._id}>
+                                        {school.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                    
+                    <div className="hidden sm:flex items-center justify-center w-14 h-14 bg-primary/10 rounded-2xl border border-primary/20 shrink-0">
+                        <Activity className="w-7 h-7 text-primary" />
+                    </div>
                 </div>
             </div>
 

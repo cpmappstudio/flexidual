@@ -1,7 +1,7 @@
 "use client"
 
 import { useTranslations } from "next-intl"
-import { CurriculumsTable } from "./curriculums-table"
+import { CurriculumsTable } from "@/components/teaching/curriculums/curriculums-table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { BookOpen, Library } from "lucide-react"

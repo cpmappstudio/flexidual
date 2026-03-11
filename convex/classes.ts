@@ -16,8 +16,24 @@ export const list = query({
     teacherId: v.optional(v.id("users")),
     curriculumId: v.optional(v.id("curriculums")),
     isActive: v.optional(v.boolean()),
+    schoolId: v.optional(v.id("schools")),
+    campusId: v.optional(v.id("campuses")),
   },
   handler: async (ctx, args) => {
+    // 1. Resolve hierarchical constraints first
+    let validCampusIds: Set<string> | null = null;
+    
+    if (args.campusId) {
+      validCampusIds = new Set([args.campusId]);
+    } else if (args.schoolId) {
+      const campuses = await ctx.db
+        .query("campuses")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId!))
+        .collect();
+      validCampusIds = new Set(campuses.map(c => c._id));
+    }
+
+    // 2. Fetch using the most optimized existing index
     let classes;
 
     if (args.teacherId) {
@@ -44,6 +60,11 @@ export const list = query({
         .collect();
       
       classes = allClasses;
+    }
+
+    // 3. Apply the organizational filter in-memory if requested
+    if (validCampusIds) {
+      classes = classes.filter(c => c.campusId && validCampusIds!.has(c.campusId));
     }
 
     return classes;

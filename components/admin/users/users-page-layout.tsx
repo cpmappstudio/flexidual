@@ -105,7 +105,7 @@ export default function UsersPageLayout() {
                         </CardHeader>
                         <CardContent>
                             <UsersTable 
-                                roleFilter="admin" 
+                                roleFilter="student" 
                                 allowedRoles={isSystemDashboard ? ["admin", "superadmin"] : ["admin"]} 
                             />
                         </CardContent>
