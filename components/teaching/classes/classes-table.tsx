@@ -46,7 +46,7 @@ export function ClassesTable({
 
   const classHeader = (
     <>
-      <span className="hidden lg:block">{t("class.name")}</span>
+      <span className="hidden lg:block">{t("common.name")}</span>
       <span className="lg:hidden">{t("class.class")}</span>
     </>
   );

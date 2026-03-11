@@ -40,7 +40,9 @@
     "creating": "Creando...",
     "all": "Todos",
     "searchUser": "Buscar por nombre...",
-    "newUsers": "Agregar Usuarios",
+    "newUsers": "Agregar usuarios",
+    "editUser": "Editar usuario",
+    "saveChanges": "Guardar cambios",
     "newUsersDescription": "Agrega nuevos usuarios a la plataforma.",
     "title": "Título",
     "code": "Código",
@@ -314,15 +316,16 @@
     "addLessonToCurriculum": "Agregar Lección al Currículo",
     "scheduleSession": "Programar Sesión",
     "autoNameHint": "Dejar vacío para generar automáticamente",
-    "autoNamePattern": "Formato automático: Currículo - Profesor - Año (Sec #)"
+    "autoNamePattern": "Formato automático: Currículo - Profesor - Año (Sec #)",
+    "deleteConfirm": "¿Eliminar esta clase? Todos los estudiantes inscritos serán desvinculados."
   },
   "student": {
-    "name": "Nombre del Estudiante",
+    "name": "Nombre del estudiante",
     "firstName": "Nombre",
     "lastName": "Apellido",
-    "email": "Correo Electrónico",
-    "new": "Agregar Nuevo Estudiante",
-    "edit": "Editar Estudiante",
+    "email": "Correo electrónico",
+    "new": "Agregar estudiante",
+    "edit": "Editar estudiante",
     "deleteConfirm": "¿Eliminar esta cuenta de estudiante?",
     "created": "Estudiante creado",
     "updated": "Estudiante actualizado",
@@ -406,7 +409,7 @@
     "search": "Buscar profesores...",
     "firstName": "Nombre",
     "lastName": "Apellido",
-    "email": "Correo Electrónico",
+    "email": "Correo electrónico",
     "role": "Rol",
     "new": "Agregar Nuevo Profesor",
     "edit": "Editar Profesor",
@@ -566,6 +569,14 @@
     "deleted": "Usuario eliminado"
   },
   "userDialog": {
+    "placeholders": {
+      "firstName": "ej. Juan",
+      "lastName": "ej. Pérez",
+      "email": "juan.perez@ejemplo.com",
+      "school": "ej. Instituto Educativo Central",
+      "selectRole": "Selecciona un rol",
+      "selectGrade": "Selecciona el grado"
+    },
     "addToList": "Añadir a la lista",
     "usersToAdd": "Usuarios por agregar ({count})",
     "clearList": "Limpiar lista",
@@ -574,6 +585,31 @@
     "createSingle": "Agregar usuario",
     "successBatch": "{count} usuarios agregados con éxito.",
     "warningBatch": "{success} agregados, {failed} fallaron."
+  },
+  "curriculumDialog": {
+    "placeholders": {
+      "title": "ej. Ciencias 101",
+      "code": "ej. CIE-101",
+      "description": "ej. Temas de biología celular y genética",
+      "targetGrades": "ej. 04, 05"
+    },
+    "addToList": "Añadir a la lista",
+    "curriculumsToAdd": "Currículos por agregar ({count})",
+    "clearList": "Limpiar lista",
+    "emptyListInstruction": "Completa los datos arriba. Puedes añadir varios currículos a esta lista para crearlos todos a la vez.",
+    "createMultiple": "Agregar {count} currículos",
+    "createSingle": "Agregar currículo",
+    "successBatch": "{count} currículos creados con éxito."
+  },
+  "classDialog": {
+    "placeholders": {
+      "name": "Dejar vacío para generar automáticamente",
+      "academicYear": "ej. 2025-2026",
+      "description": "Agrega una breve descripción...",
+      "searchCurriculum": "Buscar por nombre...",
+      "searchTeacher": "Buscar profesores..."
+    },
+    "createSingle": "Agregar clase"
   },
   "errors": {
     "operationFailed": "La operación falló",

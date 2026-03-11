@@ -39,7 +39,10 @@
     "creating": "Creating...",
     "all": "All",
     "searchByName": "Search by name...",
-    "newUsers": "Add Users",
+    "newUsers": "Add users",
+    "editUser": "Edit user",
+    "newCurriculums": "Add curriculums",
+    "saveChanges": "Save changes",
     "newUsersDescription": "Add new users to the platform.",
     "title": "Title",
     "code": "Code",
@@ -314,7 +317,8 @@
     "addLessonToCurriculum": "Add Lesson to Curriculum",
     "scheduleSession": "Schedule Session",
     "autoNameHint": "Leave empty to auto-generate",
-    "autoNamePattern": "Auto-format: Curriculum - Teacher - Year (Sec #)"
+    "autoNamePattern": "Auto-format: Curriculum - Teacher - Year (Sec #)",
+    "deleteConfirm": "Delete this class? All enrolled students will be unenrolled."
   },
   "student": {
     "name": "Student Name",
@@ -566,6 +570,14 @@
     "deleted": "User deleted"
   },
   "userDialog": {
+    "placeholders": {
+      "firstName": "e.g. John",
+      "lastName": "e.g. Doe",
+      "email": "john.doe@example.com",
+      "school": "e.g. Springfield High School",
+      "selectRole": "Select a role",
+      "selectGrade": "Select a grade"
+    },
     "addToList": "Add to list",
     "usersToAdd": "Users to add ({count})",
     "clearList": "Clear list",
@@ -574,6 +586,31 @@
     "createSingle": "Add user",
     "successBatch": "{count} users added successfully.",
     "warningBatch": "{success} added, {failed} failed."
+  },
+  "curriculumDialog": {
+    "placeholders": {
+      "title": "e.g. Science 101",
+      "code": "e.g. SCI-101",
+      "description": "e.g. Topics of cell biology and genetics",
+      "targetGrades": "e.g. 04, 05"
+    },
+    "addToList": "Add to list",
+    "curriculumsToAdd": "Curriculums to add ({count})",
+    "clearList": "Clear list",
+    "emptyListInstruction": "Fill in the details above. You can add multiple curriculums to this list and create them all at once.",
+    "createMultiple": "Add {count} curriculums",
+    "createSingle": "Add curriculum",
+    "successBatch": "{count} curriculums created successfully."
+  },
+  "classDialog": {
+    "placeholders": {
+      "name": "Leave empty to auto-generate",
+      "academicYear": "e.g. 2025-2026",
+      "description": "Add a brief description...",
+      "searchCurriculum": "Search by name...",
+      "searchTeacher": "Search teachers..."
+    },
+    "createSingle": "Add class"
   },
   "errors": {
     "operationFailed": "Operation failed",

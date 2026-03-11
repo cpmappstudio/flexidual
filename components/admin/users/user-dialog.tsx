@@ -26,6 +26,7 @@ import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 import { GRADE_VALUES } from "@/lib/types/academic";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface UserDialogProps {
   user?: Doc<"users">;
@@ -65,6 +66,7 @@ export function UserDialog({
   const t = useTranslations();
   const locale = useLocale();
   const isEditing = !!user;
+  const isMobile = useIsMobile();
 
   // API Hooks
   const createUsers = useAction(api.users.createUsersWithClerk);
@@ -281,7 +283,7 @@ export function UserDialog({
 
   // Calculate dynamic label for the submit button
   const submitLabel = isEditing
-    ? t("common.save")
+    ? t("common.saveChanges")
     : queue.length > 0
       ? t("userDialog.createMultiple", { count: queue.length })
       : t("userDialog.createSingle");
@@ -291,7 +293,7 @@ export function UserDialog({
       open={isOpen}
       onOpenChange={setIsOpen}
       trigger={trigger || defaultTrigger}
-      title={isEditing ? t("common.edit") : t("common.newUsers")}
+      title={isEditing ? t("common.editUser") : t("common.newUsers")}
       onSubmit={handleSubmit}
       isSubmitting={isSubmitting}
       submitLabel={submitLabel}
@@ -300,81 +302,169 @@ export function UserDialog({
         isEditing && (
           <Button
             type="button"
-            variant="destructive"
+            variant="ghost"
             onClick={handleDelete}
-            className="mr-auto"
+            className="text-destructive border border-destructive hover:text-destructive hover:bg-destructive/10"
           >
-            <Trash2 className="h-4 w-4 mr-2" /> {t("common.delete")}
+            <Trash2 className="h-4 w-4" /> {t("common.delete")}
           </Button>
         )
       }
     >
-      <div className="grid gap-6">
+      <div className="grid gap-2">
         {/* INPUT FORM */}
-        <div className={`grid gap-4 ${!isEditing ? "p-4" : ""}`}>
+        <div
+          className={`grid gap-4 ${!isEditing ? "rounded-lg md:border md:border-border/60 md:p-4" : ""}`}
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="firstName">{t("teacher.firstName")}</Label>
+              <Label htmlFor="firstName">
+                {t("teacher.firstName")}{" "}
+                <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="firstName"
+                placeholder={t("userDialog.placeholders.firstName")}
                 value={formData.firstName}
                 onChange={(e) =>
                   setFormData({ ...formData, firstName: e.target.value })
                 }
-                required={isEditing}
+                required={isEditing || isMobile}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="lastName">{t("teacher.lastName")}</Label>
+              <Label htmlFor="lastName">
+                {t("teacher.lastName")}
+                <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="lastName"
+                placeholder={t("userDialog.placeholders.lastName")}
                 value={formData.lastName}
                 onChange={(e) =>
                   setFormData({ ...formData, lastName: e.target.value })
                 }
-                required={isEditing}
+                required={isEditing || isMobile}
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="email">{t("teacher.email")}</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-                required={isEditing}
-              />
+          {isEditing ? (
+            <div className="grid grid-cols-1 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="email">
+                  {t("teacher.email")}
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder={t("userDialog.placeholders.email")}
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                  required={isEditing || isMobile}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="role">
+                    {t("teacher.role")}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={formData.role}
+                    onValueChange={(v) =>
+                      setFormData({ ...formData, role: v as UserRole })
+                    }
+                    disabled={isEditing || rolesToDisplay.length === 1}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t("teacher.selectRole")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rolesToDisplay.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {t(`navigation.${role}s`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="status">
+                    {t("common.status")}{" "}
+                    <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(v) =>
+                      setFormData({ ...formData, status: v })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">
+                        {t("common.active")}
+                      </SelectItem>
+                      <SelectItem value="inactive">
+                        {t("common.inactive")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="role">{t("teacher.role")}</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, role: v as UserRole })
-                }
-                disabled={isEditing || rolesToDisplay.length === 1}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t("teacher.selectRole")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {rolesToDisplay.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {t(`navigation.${role}s`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="email">
+                  {t("teacher.email")}
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder={t("userDialog.placeholders.email")}
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                  required={isEditing || isMobile}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="role">
+                  {t("teacher.role")}
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(v) =>
+                    setFormData({ ...formData, role: v as UserRole })
+                  }
+                  disabled={isEditing || rolesToDisplay.length === 1}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("teacher.selectRole")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rolesToDisplay.map((role) => (
+                      <SelectItem key={role} value={role}>
+                        {t(`navigation.${role}s`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
+          )}
 
           {formData.role === "student" && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="school">{t("student.school")}</Label>
                 <Input
@@ -383,7 +473,7 @@ export function UserDialog({
                   onChange={(e) =>
                     setFormData({ ...formData, school: e.target.value })
                   }
-                  placeholder="School Name"
+                  placeholder={t("userDialog.placeholders.school")}
                 />
               </div>
               <div className="grid gap-2">
@@ -407,31 +497,9 @@ export function UserDialog({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            {isEditing && (
-              <div className="grid gap-2">
-                <Label htmlFor="status">{t("common.status")}</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(v) => setFormData({ ...formData, status: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">{t("common.active")}</SelectItem>
-                    <SelectItem value="inactive">
-                      {t("common.inactive")}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
           {/* Add to Queue Button */}
           {!isEditing && (
-            <div className="flex justify-end">
+            <div className="justify-end hidden md:flex">
               <Button
                 type="button"
                 onClick={handleAddToQueue}
@@ -448,7 +516,7 @@ export function UserDialog({
 
         {/* QUEUE LIST */}
         {!isEditing && (
-          <div className="space-y-2">
+          <div className="space-y-2 hidden md:block">
             <div className="flex items-center justify-between">
               <Label>
                 {t("userDialog.usersToAdd", { count: queue.length })}
@@ -466,11 +534,15 @@ export function UserDialog({
               )}
             </div>
 
-            <ScrollArea className="h-[150px] border rounded-md">
+            <ScrollArea className="h-fit border rounded-md">
               {queue.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-4">
-                  <UserPlus className="h-8 w-8 mb-2 opacity-20" />
-                  <p>{t("userDialog.emptyListInstruction")}</p>
+                <div className="flex flex-col items-center justify-center h-[160px] text-muted-foreground text-sm gap-2">
+                  <div className="rounded-full bg-muted p-3">
+                    <UserPlus className="h-5 w-5 opacity-40" />
+                  </div>
+                  <p className="text-xs">
+                    {t("userDialog.emptyListInstruction")}
+                  </p>
                 </div>
               ) : (
                 <div className="divide-y">

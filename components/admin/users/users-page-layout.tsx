@@ -2,14 +2,6 @@
 
 import { useTranslations } from "next-intl";
 import { UsersTable } from "@/components/admin/users/users-table";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import { Users } from "lucide-react";
 import FlexidualHeader from "@/components/flexidual-header";
 
 export default function UsersPageLayout() {

@@ -40,7 +40,9 @@
     "creating": "Criando...",
     "all": "Todos",
     "searchUser": "Buscar por nome...",
-    "newUsers": "Adicionar Usuários",
+    "newUsers": "Adicionar usuários",
+    "editUser": "Editar usuário",
+    "saveChanges": "Salvar alterações",
     "newUsersDescription": "Adicione novos usuários à plataforma.",
     "title": "Título",
     "code": "Código",
@@ -314,7 +316,8 @@
     "addLessonToCurriculum": "Adicionar Lição ao Currículo",
     "scheduleSession": "Agendar Sessão",
     "autoNameHint": "Deixe vazio para gerar automaticamente",
-    "autoNamePattern": "Formato automático: Currículo - Professor - Ano (Sec #)"
+    "autoNamePattern": "Formato automático: Currículo - Professor - Ano (Sec #)",
+    "deleteConfirm": "Excluir esta turma? Todos os alunos matriculados serão desvinculados."
   },
   "student": {
     "name": "Nome do Estudante",
@@ -567,14 +570,47 @@
     "deleted": "Usuário excluído"
   },
   "userDialog": {
+    "placeholders": {
+      "firstName": "ex: João",
+      "lastName": "ex: Silva",
+      "email": "joao.silva@exemplo.com",
+      "school": "ex: Escola Estadual Marechal",
+      "selectRole": "Selecione um perfil",
+      "selectGrade": "Selecione a série"
+    },
     "addToList": "Adicionar à lista",
     "usersToAdd": "Usuários a adicionar ({count})",
     "clearList": "Limpar lista",
-    "emptyListInstruction": "Preencha os dados acima. Você pode adicionar vários usuários a esta lista e adicioná-los todos de uma vez.",
+    "emptyListInstruction": "Preencha os detalhes acima. Você pode adicionar vários usuários a esta lista e criá-los todos de uma vez.",
     "createMultiple": "Adicionar {count} usuários",
     "createSingle": "Adicionar usuário",
     "successBatch": "{count} usuários adicionados com sucesso.",
     "warningBatch": "{success} adicionados, {failed} falharam."
+  },
+  "curriculumDialog": {
+    "placeholders": {
+      "title": "ex: Ciências 101",
+      "code": "ex: CIE-101",
+      "description": "ex: Tópicos de biologia celular e genética",
+      "targetGrades": "ex. 04, 05"
+    },
+    "addToList": "Adicionar à lista",
+    "curriculumsToAdd": "Currículos a adicionar ({count})",
+    "clearList": "Limpar lista",
+    "emptyListInstruction": "Preencha os detalhes acima. Você pode adicionar vários currículos a esta lista e criá-los todos de uma vez.",
+    "createMultiple": "Adicionar {count} currículos",
+    "createSingle": "Adicionar currículo",
+    "successBatch": "{count} currículos criados com sucesso."
+  },
+  "classDialog": {
+    "placeholders": {
+      "name": "Deixe vazio para gerar automaticamente",
+      "academicYear": "ex: 2025-2026",
+      "description": "Adicione uma breve descrição...",
+      "searchCurriculum": "Buscar por nome...",
+      "searchTeacher": "Buscar professores..."
+    },
+    "createSingle": "Adicionar turma"
   },
   "errors": {
     "operationFailed": "Operação falhou",

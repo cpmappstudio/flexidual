@@ -245,22 +245,19 @@ export function ClassDialog({
       onOpenChange={setIsOpen}
       trigger={trigger || defaultTrigger}
       title={isEditing ? t("class.edit") : t("class.new")}
-      description={
-        isEditing ? t("class.editDescription") : t("class.description")
-      }
       onSubmit={handleSubmit}
       isSubmitting={isSubmitting}
-      submitLabel={isEditing ? t("common.save") : t("class.createClass")}
+      submitLabel={isEditing ? t("common.saveChanges") : t("classDialog.createSingle")}
       maxWidth="sm:max-w-[700px]"
       leftActions={
         isEditing && (
           <Button
             type="button"
-            variant="destructive"
+            variant="ghost"
             onClick={handleDelete}
-            className="mr-auto"
+            className="text-destructive border border-destructive hover:text-destructive hover:bg-destructive/10"
           >
-            <Trash2 className="h-4 w-4 mr-2" /> {t("common.delete")}
+            <Trash2 className="h-4 w-4" /> {t("common.delete")}
           </Button>
         )
       }
@@ -279,8 +276,8 @@ export function ClassDialog({
 
         <TabsContent value="details" className="space-y-4">
           <div className="grid gap-4 py-2">
-            <div className="grid grid-cols-2 gap-4 items-start">
-              <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+              <div className="flex flex-col gap-2">
                 <Label className="flex items-center">
                   {t("class.name")}
                   <span className="text-xs text-muted-foreground ml-2 font-normal">
@@ -292,16 +289,14 @@ export function ClassDialog({
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
                   }
-                  placeholder={
-                    t("class.autoNameHint") || "Leave empty to auto-generate"
-                  }
+                  placeholder={t("classDialog.placeholders.name")}
                 />
                 <p className="text-[10px] text-muted-foreground leading-tight">
                   {t("class.autoNamePattern") ||
                     "Auto-format: Curriculum - Teacher - Year (Sec #)"}
                 </p>
               </div>
-              <div className="flex flex-col gap-2 col-span-2 sm:col-span-1 mt-0.5">
+              <div className="flex flex-col gap-2 mt-0.5">
                 <Label>{t("class.academicYear")}</Label>
                 <div className="relative">
                   <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -311,7 +306,7 @@ export function ClassDialog({
                     onChange={(e) =>
                       setFormData({ ...formData, academicYear: e.target.value })
                     }
-                    placeholder="e.g. 2025-2026"
+                    placeholder={t("classDialog.placeholders.academicYear")}
                   />
                 </div>
               </div>
@@ -324,7 +319,7 @@ export function ClassDialog({
                 onChange={(e) =>
                   setFormData({ ...formData, description: e.target.value })
                 }
-                placeholder={t("common.descriptionPlaceholder")}
+                placeholder={t("classDialog.placeholders.description")}
                 className="h-20 resize-none"
               />
             </div>
@@ -356,7 +351,7 @@ export function ClassDialog({
                   </PopoverTrigger>
                   <PopoverContent className="w-[400px] p-0" align="start">
                     <Command>
-                      <CommandInput placeholder={t("common.searchByName")} />
+                      <CommandInput placeholder={t("classDialog.placeholders.searchCurriculum")} />
                       <CommandList>
                         <CommandEmpty>
                           {t("common.noResults") || "No curriculums found."}
@@ -456,9 +451,7 @@ export function ClassDialog({
                     <PopoverContent className="w-[400px] p-0" align="start">
                       <Command>
                         <CommandInput
-                          placeholder={
-                            t("common.search") || "Search teachers..."
-                          }
+                          placeholder={t("classDialog.placeholders.searchTeacher")}
                         />
                         <CommandList>
                           <CommandEmpty>

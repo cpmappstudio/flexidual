@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { CurriculumLessonList } from "./curriculum-lesson-list";
 import { useAlert } from "@/components/providers/alert-provider";
 import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Multi-tenant imports
 import { useParams } from "next/navigation";
@@ -54,6 +55,7 @@ export function CurriculumDialog({
   const locale = useLocale();
   const { showAlert } = useAlert();
   const isEditing = !!curriculum;
+  const isMobile = useIsMobile();
 
   // 1. Resolve Multi-Tenant Context
   const params = useParams();
@@ -226,10 +228,8 @@ export function CurriculumDialog({
 
   const createLabel =
     queue.length > 0
-      ? t("common.createAllNumber", { count: queue.length })
-      : formData.title
-        ? t("curriculum.createCurriculum")
-        : t("common.create");
+      ? t("curriculumDialog.createMultiple", { count: queue.length })
+      : t("curriculumDialog.createSingle");
 
   return (
     <EntityDialog
@@ -253,20 +253,19 @@ export function CurriculumDialog({
         ))
       }
       title={dialogTitle}
-      description={dialogDesc}
       onSubmit={handleSubmit}
       isSubmitting={isSubmitting}
-      submitLabel={isEditing ? t("common.save") : createLabel}
+      submitLabel={isEditing ? t("common.saveChanges") : createLabel}
       maxWidth={isEditing ? "sm:max-w-[800px]" : "sm:max-w-[700px]"}
       leftActions={
         isEditing && (
           <Button
             type="button"
-            variant="destructive"
+            variant="ghost"
             onClick={handleDelete}
-            className="mr-auto"
+            className="text-destructive border border-destructive hover:text-destructive hover:bg-destructive/10"
           >
-            <Trash2 className="h-4 w-4 mr-2" /> {t("common.delete")}
+            <Trash2 className="h-4 w-4" /> {t("common.delete")}
           </Button>
         )
       }
@@ -283,14 +282,18 @@ export function CurriculumDialog({
           </TabsList>
 
           <TabsContent value="details" className="flex-1 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label>{t("curriculum.title")}</Label>
+                <Label>
+                  {t("curriculum.title")}{" "}
+                  <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   value={formData.title}
                   onChange={(e) =>
                     setFormData({ ...formData, title: e.target.value })
                   }
+                  placeholder={t("curriculumDialog.placeholders.title")}
                   required
                 />
               </div>
@@ -301,11 +304,12 @@ export function CurriculumDialog({
                   onChange={(e) =>
                     setFormData({ ...formData, code: e.target.value })
                   }
+                  placeholder={t("curriculumDialog.placeholders.code")}
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>{t("common.status")}</Label>
                 <Select
@@ -338,7 +342,7 @@ export function CurriculumDialog({
                         .map((s) => s.trim()),
                     })
                   }
-                  placeholder={t("curriculum.targetGradesPlaceholder")}
+                  placeholder={t("curriculumDialog.placeholders.targetGrades")}
                 />
                 <p className="text-xs text-muted-foreground">
                   {t("curriculum.targetGradesHelp")}
@@ -354,6 +358,7 @@ export function CurriculumDialog({
                   setFormData({ ...formData, description: e.target.value })
                 }
                 className="h-32 resize-none"
+                placeholder={t("curriculumDialog.placeholders.description")}
               />
             </div>
           </TabsContent>
@@ -365,17 +370,22 @@ export function CurriculumDialog({
           </TabsContent>
         </Tabs>
       ) : (
-        <div className="space-y-6">
-          <div className="grid gap-4 p-4 border rounded-lg bg-muted/30">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="col-span-2 grid gap-2">
-                <Label>{t("curriculum.title")}</Label>
+        <div className="grid gap-2">
+          {/* INPUT FORM */}
+          <div className="grid gap-4 rounded-lg md:border md:border-border/60 md:p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="col-span-1 sm:col-span-2 grid gap-2">
+                <Label>
+                  {t("curriculum.title")}{" "}
+                  <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   value={formData.title}
                   onChange={(e) =>
                     setFormData({ ...formData, title: e.target.value })
                   }
-                  placeholder="e.g. Science 101"
+                  placeholder={t("curriculumDialog.placeholders.title")}
+                  required={isMobile}
                 />
               </div>
               <div className="grid gap-2">
@@ -385,7 +395,7 @@ export function CurriculumDialog({
                   onChange={(e) =>
                     setFormData({ ...formData, code: e.target.value })
                   }
-                  placeholder="SCI-101"
+                  placeholder={t("curriculumDialog.placeholders.code")}
                 />
               </div>
             </div>
@@ -397,43 +407,53 @@ export function CurriculumDialog({
                   setFormData({ ...formData, description: e.target.value })
                 }
                 className="h-20 resize-none"
-                placeholder={t("curriculum.descriptionInputPlaceholder")}
+                placeholder={t("curriculumDialog.placeholders.description")}
               />
             </div>
-            <div className="flex justify-end">
+
+            {/* Add to Queue Button — desktop only */}
+            <div className="justify-end hidden md:flex">
               <Button
                 type="button"
                 onClick={handleAddToQueue}
                 variant="secondary"
                 size="sm"
                 className="gap-2"
+                disabled={!formData.title}
               >
-                <Plus className="h-4 w-4" /> {t("common.addToQueue")}
+                {t("curriculumDialog.addToList")}
               </Button>
             </div>
           </div>
 
-          <div className="space-y-2">
+          {/* QUEUE LIST — desktop only */}
+          <div className="space-y-2 hidden md:block">
             <div className="flex items-center justify-between">
               <Label>
-                {t("curriculum.curriculumsToCreate", { count: queue.length })}
+                {t("curriculumDialog.curriculumsToAdd", { count: queue.length })}
               </Label>
               {queue.length > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="text-muted-foreground h-auto p-0"
                   onClick={() => setQueue([])}
                   type="button"
                 >
-                  {t("common.clearAll")}
+                  {t("curriculumDialog.clearList")}
                 </Button>
               )}
             </div>
-            <ScrollArea className="h-[200px] border rounded-md bg-background">
+
+            <ScrollArea className="h-fit border rounded-md">
               {queue.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-4">
-                  <BookOpen className="h-8 w-8 mb-2 opacity-20" />
-                  <p>{t("curriculum.addBatchCurriculumsInstruction")}</p>
+                <div className="flex flex-col items-center justify-center h-[160px] text-muted-foreground text-sm gap-2">
+                  <div className="rounded-full bg-muted p-3">
+                    <BookOpen className="h-5 w-5 opacity-40" />
+                  </div>
+                  <p className="text-xs">
+                    {t("curriculumDialog.emptyListInstruction")}
+                  </p>
                 </div>
               ) : (
                 <div className="divide-y">
@@ -461,6 +481,7 @@ export function CurriculumDialog({
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
                         onClick={() => handleRemoveFromQueue(q.id)}
                         type="button"
                       >
