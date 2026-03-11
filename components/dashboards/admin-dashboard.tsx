@@ -31,6 +31,7 @@ export default function AdminDashboard() {
     let queryOrgType = orgContext?.type;
     let queryOrgId = orgContext?._id;
     let querySchoolId = undefined;
+    let queryCampusId = undefined;
 
     if (isSystemDashboard && selectedSchoolId !== "all") {
         queryOrgType = "school";
@@ -38,12 +39,14 @@ export default function AdminDashboard() {
         querySchoolId = selectedSchoolId as Id<"schools">;
     } else if (orgContext?.type === "school") {
         querySchoolId = orgContext._id as Id<"schools">;
+    } else if (orgContext?.type === "campus") {
+        queryCampusId = orgContext._id as Id<"campuses">;
     }
 
     // Pass the calculated arguments to the queries
     const teachers = useQuery(api.users.getUsers, orgContext ? { role: "teacher", isActive: true, orgType: queryOrgType, orgId: queryOrgId } : "skip")
     const students = useQuery(api.users.getUsers, orgContext ? { role: "student", isActive: true, orgType: queryOrgType, orgId: queryOrgId } : "skip")
-    const activeClasses = useQuery(api.classes.list, orgContext ? { isActive: true, schoolId: querySchoolId } : "skip")
+    const activeClasses = useQuery(api.classes.list, orgContext ? { isActive: true, schoolId: querySchoolId, campusId: queryCampusId } : "skip")
     const curriculums = useQuery(api.curriculums.list, orgContext ? { includeInactive: false, schoolId: querySchoolId } : "skip")
     
     // We intentionally leave this as {} so we don't trigger the Validator error. 

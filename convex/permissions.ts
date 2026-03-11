@@ -64,9 +64,12 @@ export async function canModifyCurriculumContent(
   // If curriculum has no school, only superadmins can touch it
   if (!curriculum.schoolId) return false;
 
-  // 2. School Admins can do anything within their school
+  // 2. School Admins AND Campus Principals can do anything within their school network
   const isSchoolAdmin = await hasOrgRole(ctx, userId, curriculum.schoolId, "school", ["admin"]);
   if (isSchoolAdmin) return true;
+  
+  const isPrincipal = await isPrincipalOfSchool(ctx, userId, curriculum.schoolId);
+  if (isPrincipal) return true;
 
   // 3. Teachers can only modify if they are assigned to a class using it
   const isTeacher = await hasOrgRole(ctx, userId, curriculum.schoolId, "school", ["teacher"]);
@@ -109,8 +112,11 @@ export async function canManageCurriculums(
   // 1. Superadmin override
   if (await hasSystemRole(ctx, userId, ["superadmin"])) return true;
   
-  // 2. School Admin check (Only school admins manage curriculum templates)
-  if (schoolId && await hasOrgRole(ctx, userId, schoolId, "school", ["admin"])) return true;
+  // 2. School Admin & Principal check
+  if (schoolId) {
+      if (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"])) return true;
+      if (await isPrincipalOfSchool(ctx, userId, schoolId)) return true;
+  }
   
   return false;
 }
@@ -137,4 +143,25 @@ export async function getUserIdsByRole(
   return new Set(
     assignments.filter(a => allowedRoles.includes(a.role)).map(a => a.userId)
   );
+}
+
+export async function isPrincipalOfSchool(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  schoolId: Id<"schools">
+): Promise<boolean> {
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .filter((q) => q.and(q.eq(q.field("role"), "principal"), q.eq(q.field("orgType"), "campus")))
+    .collect();
+
+  if (assignments.length === 0) return false;
+
+  // Resolve the campuses to find their parent schoolId
+  const campuses = await Promise.all(
+    assignments.map((a) => ctx.db.get(a.orgId as Id<"campuses">))
+  );
+
+  return campuses.some((c) => c?.schoolId === schoolId);
 }

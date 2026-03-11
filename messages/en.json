@@ -116,7 +116,8 @@
     "users": "Users",
     "allUsers": "Users",
     "allUsersDescription": "Overview of all registered users in the platform.",
-    "principals": "Principals"
+    "principals": "Principals",
+    "principalsDescription": "Manage campus-level administrators."
   },
   "dashboard": {
     "today": "Today",

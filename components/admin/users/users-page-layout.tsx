@@ -24,9 +24,10 @@ export default function UsersPageLayout() {
             </div>
 
             <Tabs defaultValue="all" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 lg:w-[400px]">
+                <TabsList className="grid w-full grid-cols-5 lg:w-[500px]">
                     <TabsTrigger value="all">{t('common.all') || "All"}</TabsTrigger>
-                    <TabsTrigger value="admins">{t('navigation.admin')}</TabsTrigger>
+                    <TabsTrigger value="admins">{t('navigation.admins')}</TabsTrigger>
+                    <TabsTrigger value="principals">{t('navigation.principals') || "Principals"}</TabsTrigger>
                     <TabsTrigger value="teachers">{t('navigation.teachers')}</TabsTrigger>
                     <TabsTrigger value="students">{t('navigation.students')}</TabsTrigger>
                 </TabsList>
@@ -64,7 +65,28 @@ export default function UsersPageLayout() {
                         <CardContent>
                             <UsersTable 
                                 roleFilter="admin" 
-                                allowedRoles={["admin", "superadmin"]} // Limit creation to Admin/Superadmin
+                                allowedRoles={isSystemDashboard ? ["admin", "superadmin"] : ["admin"]}
+                            />
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* PRINCIPALS TAB */}
+                <TabsContent value="principals" className="mt-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <ShieldCheck className="h-5 w-5 text-indigo-500" />
+                                {t('navigation.principals') || "Principals"}
+                            </CardTitle>
+                            <CardDescription>
+                                {t('navigation.principalsDescription')}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <UsersTable 
+                                roleFilter="principal" 
+                                allowedRoles={["principal"]} 
                             />
                         </CardContent>
                     </Card>
@@ -85,7 +107,7 @@ export default function UsersPageLayout() {
                         <CardContent>
                             <UsersTable 
                                 roleFilter="teacher" 
-                                allowedRoles={["teacher", "tutor"]} // STRICT LIMIT: Only Teacher/Tutor options
+                                allowedRoles={["teacher", "tutor"]}
                             />
                         </CardContent>
                     </Card>
@@ -106,7 +128,7 @@ export default function UsersPageLayout() {
                         <CardContent>
                             <UsersTable 
                                 roleFilter="student" 
-                                allowedRoles={isSystemDashboard ? ["admin", "superadmin"] : ["admin"]} 
+                                allowedRoles={["student"]} 
                             />
                         </CardContent>
                     </Card>

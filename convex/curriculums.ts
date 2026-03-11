@@ -3,7 +3,7 @@ import { mutation, query } from "./_generated/server";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { GRADE_VALUES } from "../lib/types/academic";
 import { ConvexError } from "convex/values";
-import { hasSystemRole, hasOrgRole, canManageCurriculums } from "./permissions";
+import { hasSystemRole, hasOrgRole, canManageCurriculums, isPrincipalOfSchool } from "./permissions";
 import { Id } from "./_generated/dataModel";
 
 // ============================================================================
@@ -56,6 +56,20 @@ export const list = query({
       .collect();
     const adminSchoolIds = adminAssignments.map((a) => a.orgId);
 
+    // Find schools where they are a principal
+    const principalAssignments = await ctx.db.query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .filter((q) => q.and(q.eq(q.field("orgType"), "campus"), q.eq(q.field("role"), "principal")))
+      .collect();
+    
+    const principalCampuses = await Promise.all(
+        principalAssignments.map(a => ctx.db.get(a.orgId as Id<"campuses">))
+    );
+    const principalSchoolIds = principalCampuses.map(c => c?.schoolId).filter(Boolean);
+
+    // Combine all valid school IDs for this user
+    const validSchoolIds = [...new Set([...adminSchoolIds, ...principalSchoolIds])];
+
     // Find curriculums tied to active classes they teach
     const myClasses = await ctx.db
       .query("classes")
@@ -70,8 +84,8 @@ export const list = query({
       // Respect inactive filter
       if (!args.includeInactive && !c.isActive) return false;
       
-      // Allow if they are an admin of the curriculum's school
-      if (c.schoolId && adminSchoolIds.includes(c.schoolId)) return true;
+      // Allow if they are an admin or principal of the curriculum's school network
+      if (c.schoolId && validSchoolIds.includes(c.schoolId)) return true;
       
       // Allow if they actively teach this curriculum
       if (taughtCurriculumIds.some(id => id === c._id)) return true;
@@ -100,6 +114,9 @@ export const get = query({
     if (curriculum.schoolId) {
       const isSchoolAdmin = await hasOrgRole(ctx, user._id, curriculum.schoolId, "school", ["admin"]);
       if (isSchoolAdmin) return curriculum;
+      
+      const isPrincipal = await isPrincipalOfSchool(ctx, user._id, curriculum.schoolId);
+      if (isPrincipal) return curriculum;
     }
 
     // 3. Check Teacher Assignment

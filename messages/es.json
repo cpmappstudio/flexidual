@@ -115,7 +115,8 @@
     "users": "Usuarios",
     "allUsers": "Usuarios",
     "allUsersDescription": "Resumen de todos los usuarios registrados en la plataforma.",
-    "principals": "Directores"
+    "principals": "Directores",
+    "principalsDescription": "Gestiona los administradores a nivel de campus."
   },
   "dashboard": {
     "today": "Hoy",
