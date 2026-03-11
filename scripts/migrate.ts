@@ -8,7 +8,9 @@ import { Id } from "../convex/_generated/dataModel";
 import JSON5 from "json5";
 
 // Load environment variables
-dotenv.config({ path: ".env.local" });
+const isProd = process.argv.includes("--prod");
+const envFile = isProd ? ".env.production" : ".env.local";
+dotenv.config({ path: envFile });
 
 // CHECK: Ensure the URL exists before creating the client
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || process.env.CONVEX_URL;

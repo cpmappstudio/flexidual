@@ -5,7 +5,9 @@ import path from "path";
 import { api } from "../convex/_generated/api";
 
 // Load environment variables
-dotenv.config({ path: ".env.local" });
+const isProd = process.argv.includes("--prod");
+const envFile = isProd ? ".env.production" : ".env.local";
+dotenv.config({ path: envFile });
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || process.env.CONVEX_URL;
 
