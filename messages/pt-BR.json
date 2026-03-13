@@ -1,5 +1,6 @@
 {
   "common": {
+    "user": "Usuário",
     "add": "Adicionar",
     "edit": "Editar",
     "delete": "Excluir",
@@ -12,6 +13,7 @@
     "confirmAction": "Confirmar ação",
     "warning": "Aviso",
     "search": "Pesquisar",
+    "searchByName": "Pesquisar por nome...",
     "filter": "Filtrar",
     "back": "Voltar",
     "next": "Próximo",
@@ -37,7 +39,10 @@
     "live": "Ao Vivo",
     "creating": "Criando...",
     "all": "Todos",
-    "newUsers": "Adicionar Usuários",
+    "searchUser": "Buscar por nome...",
+    "newUsers": "Adicionar usuários",
+    "editUser": "Editar usuário",
+    "saveChanges": "Salvar alterações",
     "newUsersDescription": "Adicione novos usuários à plataforma.",
     "title": "Título",
     "code": "Código",
@@ -80,10 +85,11 @@
     "campusName": "Nome do Campus",
     "urlSlug": "Slug de URL",
     "noCampusesFound": "Nenhum campus encontrado.",
-    "addCampus": "Adicionar Campus"
+    "addCampus": "Adicionar Campus",
+    "classTrackingDescription": "Monitore o progresso e verifique o registro de presença"
   },
   "navigation": {
-    "dashboard": "Painel",
+    "dashboard": "Painel geral",
     "calendar": "Calendário",
     "schedule": "Agenda",
     "teaching": "Ensino",
@@ -97,10 +103,11 @@
     "admins": "Administradores",
     "adminsDescription": "Usuários com acesso completo ao sistema e privilégios de configuração.",
     "tutors": "Tutores",
+    "principals": "Diretores",
     "superadmins": "Super Administradores",
     "curriculums": "Currículos",
-    "curriculumsDescription": "Gerencie programas acadêmicos, modelos de cursos e planos de aulas.",
-    "curriculumsDescription2": "Currículos ativos atualmente visíveis para professores e alunos.",
+    "curriculumsDescription": "Gerencie os currículos e seu conteúdo",
+    "curriculumsDescription2": "Currículos que estão atualmente em andamento ou disponíveis",
     "curriculumEditDescription": "Gerencie os detalhes deste currículo e suas aulas associadas.",
     "lessons": "Aulas",
     "classes": "Turmas",
@@ -141,7 +148,7 @@
     "myCurriculums": "Meus Currículos",
     "noCurriculums": "Nenhum currículo ainda",
     "viewAllCurriculums": "Ver Todos os Currículos",
-    "usersSummary": "Gerencie o acesso ao sistema, funções e permissões.",
+    "usersSummary": "Gerencie o acesso ao sistema, funções e permissões",
     "curriculumSummary": "Gerencie programas acadêmicos, modelos de cursos e planos de aulas."
   },
   "classroom": {
@@ -199,6 +206,7 @@
     "shouldHaveStarted": "A aula deveria ter começado"
   },
   "curriculum": {
+    "curriculum": "Currículo",
     "search": "Pesquisar currículos...",
     "title": "Título do Currículo",
     "code": "Código",
@@ -214,9 +222,9 @@
     "manageLessons": "Aulas",
     "filterPlaceholder": "Filtrar currículos...",
     "manageDescription": "Gerencie as aulas deste currículo.",
-    "unknown": "Currículo Desconhecido",
-    "allList": "Todos os Currículos",
-    "activeList": "Currículos Ativos",
+    "unknown": "Currículo desconhecido",
+    "activeList": "Currículos ativos",
+    "allList": "Todos os currículos",
     "createCurriculum": "Criar Currículo",
     "addCurriculums": "Adicione um ou mais currículos.",
     "curriculumsToCreate": "Currículos para Criar ({count})",
@@ -272,6 +280,8 @@
     "reorderFailed": "Falha ao reordenar aulas"
   },
   "class": {
+    "class": "Turma",
+    "title": "Turmas",
     "name": "Nome da Turma",
     "academicYear": "Ano Acadêmico",
     "namePlaceholder": "ex., Ciências 101 - Outono 2024",
@@ -302,7 +312,7 @@
     "manageSchedule": "Gerenciar Agenda",
     "myClasses": "Minhas Turmas",
     "allClasses": "Todas as Turmas",
-    "manageAllDescription": "Gerencie todas as turmas, atribuições e agendas da plataforma.",
+    "manageAllDescription": "Gerencie turmas e seu conteúdo",
     "manageMyDescription": "Gerencie seus grupos de alunos ativos e agendas.",
     "noDate": "Sem data",
     "selectClass": "Selecionar Turma",
@@ -318,7 +328,8 @@
     "addLessonToCurriculum": "Adicionar Lição ao Currículo",
     "scheduleSession": "Agendar Sessão",
     "autoNameHint": "Deixe vazio para gerar automaticamente",
-    "autoNamePattern": "Formato automático: Currículo - Professor - Ano (Sec #)"
+    "autoNamePattern": "Formato automático: Currículo - Professor - Ano (Sec #)",
+    "deleteConfirm": "Excluir esta turma? Todos os alunos matriculados serão desvinculados."
   },
   "student": {
     "name": "Nome do Estudante",
@@ -536,6 +547,8 @@
     "editSeriesDesc": "As alterações afetam todas as ocorrências futuras. Não é possível adicionar/remover lições."
   },
   "calendar": {
+    "title": "Calendário",
+    "description": "Gerencie as turmas e eventos programados",
     "mySchedule": "Minha Agenda",
     "classSchedule": "Agenda da Turma",
     "filtering": "Filtrando: {className}",
@@ -561,10 +574,55 @@
     }
   },
   "user": {
+    "deleteTitle": "Excluir este usuário?",
+    "deleteDescription": "Tem certeza que deseja excluir {name}?\nEsta ação não pode ser desfeita.",
     "deleteConfirm": "Tem certeza? Isso excluirá permanentemente a conta deste usuário.",
     "created": "Usuário criado",
     "updated": "Usuário atualizado",
     "deleted": "Usuário excluído"
+  },
+  "userDialog": {
+    "placeholders": {
+      "firstName": "ex: João",
+      "lastName": "ex: Silva",
+      "email": "joao.silva@exemplo.com",
+      "school": "ex: Escola Estadual Marechal",
+      "selectRole": "Selecione um perfil",
+      "selectGrade": "Selecione a série"
+    },
+    "addToList": "Adicionar à lista",
+    "usersToAdd": "Usuários a adicionar ({count})",
+    "clearList": "Limpar lista",
+    "emptyListInstruction": "Preencha os detalhes acima. Você pode adicionar vários usuários a esta lista e criá-los todos de uma vez.",
+    "createMultiple": "Adicionar {count} usuários",
+    "createSingle": "Adicionar usuário",
+    "successBatch": "{count} usuários adicionados com sucesso.",
+    "warningBatch": "{success} adicionados, {failed} falharam."
+  },
+  "curriculumDialog": {
+    "placeholders": {
+      "title": "ex: Ciências 101",
+      "code": "ex: CIE-101",
+      "description": "ex: Tópicos de biologia celular e genética",
+      "targetGrades": "ex. 04, 05"
+    },
+    "addToList": "Adicionar à lista",
+    "curriculumsToAdd": "Currículos a adicionar ({count})",
+    "clearList": "Limpar lista",
+    "emptyListInstruction": "Preencha os detalhes acima. Você pode adicionar vários currículos a esta lista e criá-los todos de uma vez.",
+    "createMultiple": "Adicionar {count} currículos",
+    "createSingle": "Adicionar currículo",
+    "successBatch": "{count} currículos criados com sucesso."
+  },
+  "classDialog": {
+    "placeholders": {
+      "name": "Deixe vazio para gerar automaticamente",
+      "academicYear": "ex: 2025-2026",
+      "description": "Adicione uma breve descrição...",
+      "searchCurriculum": "Buscar por nome...",
+      "searchTeacher": "Buscar professores..."
+    },
+    "createSingle": "Adicionar turma"
   },
   "errors": {
     "operationFailed": "Operação falhou",
@@ -581,5 +639,13 @@
     "classScheduleConflict": "Esta turma já está agendada para {conflictTime}",
     "teacherScheduleConflict": "O professor já está ensinando \"{className}\" em {conflictTime}",
     "invalidGrade": "Configuração de série inválida: {grades}. Por favor, revise sua seleção."
+  },
+  "table": {
+    "columns": "Colunas",
+    "filters": "Filtros",
+    "pageInfo": "Página {current} de {total}",
+    "clearFilters": "Limpar filtros",
+    "noResults": "Sem resultados",
+    "selectedRows": "{selected} de {total} linha(s) selecionada(s)"
   }
 }

@@ -1,5 +1,6 @@
 {
   "common": {
+    "user": "User",
     "add": "Add",
     "edit": "Edit",
     "delete": "Delete",
@@ -37,7 +38,11 @@
     "live": "LIVE",
     "creating": "Creating...",
     "all": "All",
-    "newUsers": "Add Users",
+    "searchByName": "Search by name...",
+    "newUsers": "Add users",
+    "editUser": "Edit user",
+    "newCurriculums": "Add curriculums",
+    "saveChanges": "Save changes",
     "newUsersDescription": "Add new users to the platform.",
     "title": "Title",
     "code": "Code",
@@ -80,7 +85,8 @@
     "campusName": "Campus Name",
     "urlSlug": "URL Slug",
     "noCampusesFound": "No campuses found.",
-    "addCampus": "Add Campus"
+    "addCampus": "Add Campus",
+    "classTrackingDescription": "Monitor progress and verify attendance records"
   },
   "navigation": {
     "dashboard": "Dashboard",
@@ -97,11 +103,12 @@
     "admins": "Admins",
     "adminsDescription": "Users with full system access and configuration privileges.",
     "tutors": "Tutors",
+    "principals": "Principals",
     "superadmins": "Super Admins",
     "curriculums": "Curriculums",
-    "curriculumsDescription": "Manage academic programs, course templates, and lesson plans.",
-    "curriculumsDescription2": "Currently active curriculums visible to teachers and students.",
-    "curriculumEditDescription": "Manage the details of this curriculum and its associated lessons.",
+    "curriculumsDescription": "Manage curriculums and their content",
+    "curriculumsDescription2": "Curriculums that are currently active or available",
+    "curriculumEditDescription": "Manage the details of this curriculum and its associated lessons",
     "lessons": "Lessons",
     "classes": "Classes",
     "classesDescription": "Manage all classes, assignments, and schedules across the platform.",
@@ -141,7 +148,7 @@
     "myCurriculums": "My Curriculums",
     "noCurriculums": "No curriculums yet",
     "viewAllCurriculums": "View All Curriculums",
-    "usersSummary": "Manage system access, roles, and permissions.",
+    "usersSummary": "Manage system access, roles, and permissions",
     "curriculumSummary": "Manage academic programs, course templates, and lesson plans."
   },
   "classroom": {
@@ -199,6 +206,7 @@
     "shouldHaveStarted": "Class should have started"
   },
   "curriculum": {
+    "curriculum": "Curriculum",
     "search": "Search curriculums...",
     "title": "Curriculum Title",
     "code": "Code",
@@ -214,9 +222,9 @@
     "manageLessons": "Lessons",
     "filterPlaceholder": "Filter curriculums...",
     "manageDescription": "Manage your curriculum's lessons.",
-    "unknown": "Unknown Curriculum",
-    "allList": "All Curriculums",
-    "activeList": "Active Curriculums",
+    "unknown": "Unknown curriculum",
+    "allList": "All curriculums",
+    "activeList": "Active curriculums",
     "createCurriculum": "Create Curriculum",
     "addCurriculums": "Add one or more curriculums.",
     "curriculumsToCreate": "Curriculums to Create ({count})",
@@ -272,8 +280,11 @@
     "reorderFailed": "Failed to reorder lessons"
   },
   "class": {
+    "class": "Class",
+    "title": "Classes",
     "name": "Class Name",
-    "academicYear": "Academic Year",
+    "year": "Year",
+    "academicYear": "Academic year",
     "namePlaceholder": "e.g. Science 101 - Fall 2024",
     "new": "Create New Class",
     "description": "Create a student group that will follow a specific curriculum.",
@@ -302,7 +313,7 @@
     "manageSchedule": "Manage Schedule",
     "myClasses": "My Classes",
     "allClasses": "All Classes",
-    "manageAllDescription": "Manage all classes, assignments, and schedules across the platform.",
+    "manageAllDescription": "Manage classes and their content",
     "manageMyDescription": "Manage your active student groups and schedules.",
     "noDate": "No date",
     "selectClass": "Select Class",
@@ -318,7 +329,8 @@
     "addLessonToCurriculum": "Add Lesson to Curriculum",
     "scheduleSession": "Schedule Session",
     "autoNameHint": "Leave empty to auto-generate",
-    "autoNamePattern": "Auto-format: Curriculum - Teacher - Year (Sec #)"
+    "autoNamePattern": "Auto-format: Curriculum - Teacher - Year (Sec #)",
+    "deleteConfirm": "Delete this class? All enrolled students will be unenrolled."
   },
   "student": {
     "name": "Student Name",
@@ -535,6 +547,8 @@
     "editSeriesDesc": "Changes affect all future occurrences. Cannot add/remove lessons."
   },
   "calendar": {
+    "title": "Calendar",
+    "description": "Manage scheduled classes and events",
     "mySchedule": "My Schedule",
     "classSchedule": "Class Schedule",
     "filtering": "Filtering: {className}",
@@ -560,10 +574,55 @@
     }
   },
   "user": {
+    "deleteTitle": "Delete this user?",
+    "deleteDescription": "Are you sure you want to delete {name}?\n This action cannot be undone.",
     "deleteConfirm": "Are you sure? This will permanently delete this user account.",
     "created": "User created",
     "updated": "User updated",
     "deleted": "User deleted"
+  },
+  "userDialog": {
+    "placeholders": {
+      "firstName": "e.g. John",
+      "lastName": "e.g. Doe",
+      "email": "john.doe@example.com",
+      "school": "e.g. Springfield High School",
+      "selectRole": "Select a role",
+      "selectGrade": "Select a grade"
+    },
+    "addToList": "Add to list",
+    "usersToAdd": "Users to add ({count})",
+    "clearList": "Clear list",
+    "emptyListInstruction": "Fill in the details above. You can add multiple users to this list and add them all at once.",
+    "createMultiple": "Add {count} users",
+    "createSingle": "Add user",
+    "successBatch": "{count} users added successfully.",
+    "warningBatch": "{success} added, {failed} failed."
+  },
+  "curriculumDialog": {
+    "placeholders": {
+      "title": "e.g. Science 101",
+      "code": "e.g. SCI-101",
+      "description": "e.g. Topics of cell biology and genetics",
+      "targetGrades": "e.g. 04, 05"
+    },
+    "addToList": "Add to list",
+    "curriculumsToAdd": "Curriculums to add ({count})",
+    "clearList": "Clear list",
+    "emptyListInstruction": "Fill in the details above. You can add multiple curriculums to this list and create them all at once.",
+    "createMultiple": "Add {count} curriculums",
+    "createSingle": "Add curriculum",
+    "successBatch": "{count} curriculums created successfully."
+  },
+  "classDialog": {
+    "placeholders": {
+      "name": "Leave empty to auto-generate",
+      "academicYear": "e.g. 2025-2026",
+      "description": "Add a brief description...",
+      "searchCurriculum": "Search by name...",
+      "searchTeacher": "Search teachers..."
+    },
+    "createSingle": "Add class"
   },
   "errors": {
     "operationFailed": "Operation failed",
@@ -580,5 +639,13 @@
     "classScheduleConflict": "This class is already scheduled at {conflictTime}",
     "teacherScheduleConflict": "Teacher is already teaching \"{className}\" at {conflictTime}",
     "invalidGrade": "Invalid grade configuration: {grades}. Please check your selection."
+  },
+  "table": {
+    "columns": "Columns",
+    "filters": "Filters",
+    "pageInfo": "Page {current} of {total}",
+    "clearFilters": "Clear filters",
+    "noResults": "No results",
+    "selectedRows": "{selected} of {total} row(s) selected"
   }
 }

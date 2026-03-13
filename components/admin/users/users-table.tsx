@@ -4,35 +4,19 @@ import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-import { ArrowUpDown, Edit, Search, ChevronLeft, ChevronRight } from "lucide-react";
-import type { TableSortingState } from "@/lib/types/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { UserDialog } from "./user-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Building2, MapPin } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { UserRole } from "@/convex/types";
-import { useParams } from "next/navigation"
+import { useParams } from "next/navigation";
+import { DataTable } from "@/components/table/data-table";
+import { createSortableHeader, createSearchColumn } from "@/components/table/column-helpers";
+import type { FilterConfig } from "@/lib/table/types";
 
 export type User = Doc<"users"> & { 
   role?: string; 
@@ -40,10 +24,9 @@ export type User = Doc<"users"> & {
   orgType?: string 
 };
 
-// Props to configure the table for different views (e.g. "Teachers Only" vs "Admins")
 interface UsersTableProps {
   roleFilter?: UserRole;
-  allowedRoles?: UserRole[]; // Passed to dialog to limit creation options
+  allowedRoles?: UserRole[];
 }
 
 function UserAvatar({ user }: { user: User }) {
@@ -55,14 +38,25 @@ function UserAvatar({ user }: { user: User }) {
   return (
     <Avatar className="h-8 w-8">
       {avatarUrl && <AvatarImage src={avatarUrl} alt={user.fullName} />}
-      <AvatarFallback>{user.fullName.substring(0, 2).toUpperCase()}</AvatarFallback>
+      <AvatarFallback>
+        {user.fullName.substring(0, 2).toUpperCase()}
+      </AvatarFallback>
     </Avatar>
   );
 }
 
+const ROLE_OPTIONS = [
+  "superadmin",
+  "admin",
+  "principal",
+  "teacher",
+  "tutor",
+  "student",
+] as const;
+
 export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
   const t = useTranslations();
-  
+
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
@@ -100,260 +94,157 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
     orgId: queryOrgId
   } : "skip");
 
-  const [sorting, setSorting] = React.useState<TableSortingState>([]);
   const [editingUser, setEditingUser] = React.useState<User | null>(null);
-  
-  const columns: ColumnDef<User>[] = [
+
+  const filterConfigs: FilterConfig[] = [
     {
-      accessorKey: "fullName",
-      header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          {t('common.name')} <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
-      cell: ({ row }) => (
-        <div className="flex items-center gap-3">
-          <UserAvatar user={row.original} />
-          <span className="font-medium">{row.getValue("fullName")}</span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "email",
-      header: t('teacher.email'),
-    },
-    {
-      accessorKey: "role",
-      header: t('teacher.role'),
-      cell: ({ row }) => {
-        const role = row.getValue("role") as string;
-        const variant = role === "admin" || role === "superadmin" ? "destructive" : 
-                        role === "teacher" ? "default" : "secondary";
-        return <Badge variant={variant}>{role ? t(`navigation.${role}s`) : "No Role"}</Badge>;
-      },
-    },
-    {
-      accessorKey: "isActive",
-      header: t('common.status'),
-      cell: ({ row }) => (
-        <Badge variant={row.original.isActive ? "outline" : "secondary"}>
-          {row.original.isActive ? t('common.active') : t('common.inactive')}
-        </Badge>
-      ),
-    },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        return (
-          <div className="flex justify-end">
-            <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-8 w-8 p-0"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingUser(row.original);
-                }}
-            >
-                <Edit className="h-4 w-4 text-muted-foreground" />
-                <span className="sr-only">{t('common.edit')}</span>
-            </Button>
-          </div>
-        )
-      },
+      id: "role",
+      label: t("teacher.role"),
+      options: ROLE_OPTIONS.map((role) => ({
+        value: role,
+        label: t(`navigation.${role}s`),
+      })),
     },
   ];
 
-  const table = useReactTable({
-    data: users || [],
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    state: { sorting: sorting },
-    initialState: {
-      pagination: {
-        pageSize: 10,
+  const userHeader = (
+    <>
+      <span className="hidden lg:block">{t("common.name")}</span>
+      <span className="lg:hidden">{t("common.user")}</span>
+    </>
+  );
+
+  const columns: ColumnDef<User, unknown>[] = [
+    createSearchColumn<User>(["fullName", "email"]),
+    {
+      accessorKey: "fullName",
+      header: createSortableHeader(userHeader),
+      cell: ({ row }) => {
+        return (
+          <div className="flex items-center gap-3">
+            <div className="hidden lg:block">
+              <UserAvatar user={row.original} />
+            </div>
+            <div className="flex flex-col">
+              <div className="flex">
+                <span className="font-medium">{row.getValue("fullName")}</span>
+                <Badge variant="role" className="ml-2 lg:hidden">
+                  {row.getValue("role")}
+                </Badge>
+              </div>
+              <div className="lg:hidden">
+                <span className="font-mono">{t("teacher.email")}:</span>
+                <span className="text-muted-foreground">
+                  {row.original.email || "-"}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
       },
     },
-  });
+    {
+      accessorKey: "email",
+      header: createSortableHeader(t("teacher.email")),
+      meta: { className: "hidden lg:table-cell" },
+    },
+    {
+      accessorKey: "role",
+      header: createSortableHeader(t("teacher.role")),
+      meta: { className: "hidden lg:table-cell" },
+      filterFn: (row, id, filterValues: string[]) => {
+        return filterValues.includes(row.getValue(id) as string);
+      },
+      cell: ({ row }) => <Badge variant="role">{row.getValue("role")}</Badge>,
+    },
+    {
+      accessorKey: "isActive",
+      header: createSortableHeader(t("common.status")),
+      cell: ({ row }) => (
+        <Badge variant={row.original.isActive ? "active" : "inactive"}>
+          {row.original.isActive ? t("common.active") : t("common.inactive")}
+        </Badge>
+      ),
+    },
+  ];
 
   if (!users) return <Skeleton className="h-96 w-full" />;
 
   return (
     <div className="space-y-4">
       {editingUser && (
-            <UserDialog 
-                user={editingUser}
-                allowedRoles={allowedRoles}
-                open={true}
-                onOpenChange={(open) => {
-                    if (!open) setEditingUser(null);
-                }}
-                trigger={<span className="hidden" />} 
-            />
-        )}
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="relative w-72">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t('common.search')}
-              value={(table.getColumn("fullName")?.getFilterValue() as string) ?? ""}
-              onChange={(event) => table.getColumn("fullName")?.setFilterValue(event.target.value)}
-              className="pl-8"
-            />
-          </div>
-
-          {/* Superadmin Filters */}
-          {isSystemDashboard && (
-            <>
-              <Select
-                value={selectedSchoolId}
-                onValueChange={(val) => {
-                  setSelectedSchoolId(val);
-                  setSelectedCampusId("all"); // Reset campus when school changes
-                }}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="All Schools" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Schools</SelectItem>
-                  {schools?.map((school) => (
-                    <SelectItem key={school._id} value={school._id}>
-                      {school.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={selectedCampusId}
-                onValueChange={setSelectedCampusId}
-                disabled={selectedSchoolId === "all"}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="All Campuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Campuses</SelectItem>
-                  {campuses?.map((campus) => (
-                    <SelectItem key={campus._id} value={campus._id}>
-                      {campus.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
-          )}
-        </div>
-        
-        {/* Create Button with context-aware configuration */}
-        <UserDialog 
-            defaultRole={roleFilter} 
-            allowedRoles={allowedRoles} 
+        <UserDialog
+          user={editingUser}
+          allowedRoles={allowedRoles}
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setEditingUser(null);
+          }}
+          trigger={<span className="hidden" />}
         />
-      </div>
+      )}
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow 
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => setEditingUser(row.original)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  {t('common.noResults')}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      
-      {/* Pagination Controls */}
-      <div className="flex items-center justify-between px-2">
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-muted-foreground">
-            {t('common.rowsPerPage')}
-          </p>
-          <Select
-            value={`${table.getState().pagination.pageSize}`}
-            onValueChange={(value) => {
-              table.setPageSize(Number(value))
+      {isSystemDashboard && (
+        <div className="flex flex-col sm:flex-row gap-4 mb-4">
+            <Select
+            value={selectedSchoolId}
+            onValueChange={(val) => {
+                setSelectedSchoolId(val);
+                setSelectedCampusId("all");
             }}
-          >
-            <SelectTrigger className="h-8 w-[70px]">
-              <SelectValue placeholder={table.getState().pagination.pageSize} />
+            >
+            <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
+                <div className="flex items-center gap-2 truncate">
+                <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="truncate"><SelectValue placeholder="All Schools" /></span>
+                </div>
             </SelectTrigger>
-            <SelectContent side="top">
-              {[10, 20, 30, 50].map((pageSize) => (
-                <SelectItem key={pageSize} value={`${pageSize}`}>
-                  {pageSize}
+            <SelectContent>
+                <SelectItem value="all">All Schools</SelectItem>
+                {schools?.map((school) => (
+                <SelectItem key={school._id} value={school._id}>
+                    {school.name}
                 </SelectItem>
-              ))}
+                ))}
             </SelectContent>
-          </Select>
-        </div>
+            </Select>
 
-        <div className="flex items-center gap-6">
-          <div className="text-sm text-muted-foreground">
-            {t('common.pageOfPages', {
-              current: table.getState().pagination.pageIndex + 1,
-              total: table.getPageCount()
-            })}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+            <Select
+            value={selectedCampusId}
+            onValueChange={setSelectedCampusId}
+            disabled={selectedSchoolId === "all"}
             >
-              <ChevronLeft className="h-4 w-4" />
-              {t('common.previous')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              {t('common.next')}
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+            <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
+                <div className="flex items-center gap-2 truncate">
+                <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="truncate"><SelectValue placeholder="All Campuses" /></span>
+                </div>
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value="all">All Campuses</SelectItem>
+                {campuses?.map((campus) => (
+                <SelectItem key={campus._id} value={campus._id}>
+                    {campus.name}
+                </SelectItem>
+                ))}
+            </SelectContent>
+            </Select>
         </div>
-      </div>
+      )}
+
+      <DataTable
+        data={users}
+        columns={columns}
+        filterColumn="search"
+        filterPlaceholder={t("common.searchByName")}
+        emptyMessage={t("common.noResults")}
+        filterConfigs={filterConfigs}
+        createAction={
+          <UserDialog defaultRole={roleFilter} allowedRoles={allowedRoles} />
+        }
+        pageSize={10}
+        onRowClick={(user) => setEditingUser(user)}
+      />
     </div>
   );
 }

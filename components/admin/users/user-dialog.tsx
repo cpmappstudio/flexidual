@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
 import { useState, useEffect } from "react"
-import { useAction } from "convex/react"
+import { useAction, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,7 +30,7 @@ import { useAlert } from "@/components/providers/alert-provider"
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
 import { GRADE_VALUES } from "@/lib/types/academic"
 import { useParams } from "next/navigation"
-import { useQuery } from "convex/react"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { User } from "./users-table";
 
 interface UserDialogProps {
@@ -42,7 +42,13 @@ interface UserDialogProps {
     onOpenChange?: (open: boolean) => void
 }
 
-const ALL_ROLES: UserRole[] = ["student", "teacher", "tutor", "admin", "superadmin"]
+const ALL_ROLES: UserRole[] = [
+    "student",
+    "teacher",
+    "tutor",
+    "admin",
+    "superadmin",
+];
 
 type PendingUser = {
     id: string
@@ -56,23 +62,24 @@ type PendingUser = {
     school?: string
 }
 
-export function UserDialog({ 
-    user, 
-    defaultRole, 
-    allowedRoles, 
-    trigger, 
+export function UserDialog({
+    user,
+    defaultRole,
+    allowedRoles,
+    trigger,
     open: controlledOpen,
-    onOpenChange: controlledOnOpenChange
+    onOpenChange: controlledOnOpenChange,
 }: UserDialogProps) {
     const t = useTranslations()
     const locale = useLocale()
-    const { showAlert } = useAlert()
     const isEditing = !!user
-    
+    const isMobile = useIsMobile()
+
     // API Hooks
     const createUsers = useAction(api.users.createUsersWithClerk)
     const updateUser = useAction(api.users.updateUserWithClerk)
     const deleteUser = useAction(api.users.deleteUserWithClerk)
+    const { showAlert } = useAlert()
 
     // State
     const [internalOpen, setInternalOpen] = useState(false)
@@ -82,6 +89,8 @@ export function UserDialog({
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [queue, setQueue] = useState<PendingUser[]>([])
     
+    const rolesToDisplay = allowedRoles || ALL_ROLES;
+
     const [formData, setFormData] = useState({
         firstName: "",
         lastName: "",
@@ -95,8 +104,6 @@ export function UserDialog({
         targetSchoolId: "",
         targetCampusId: ""
     })
-
-    const rolesToDisplay = allowedRoles || ALL_ROLES
 
     const params = useParams()
     const orgSlug = (params.orgSlug as string) || "system"
@@ -174,13 +181,13 @@ export function UserDialog({
             id: Math.random().toString(36).substr(2, 9),
             firstName: formData.firstName,
             lastName: formData.lastName,
-            email: formData.email.trim() || undefined,
-            username: formData.username.trim() || undefined,
-            password: formData.password.trim() || undefined,
+            email: formData.email,
+            username: formData.username,
+            password: formData.password,
             role: formData.role,
             grade: formData.grade,
-            school: formData.school
-        }
+            school: formData.school,
+        };
 
         setQueue([...queue, newUser])
         
@@ -215,11 +222,11 @@ export function UserDialog({
                 finalOrgType = "system";
                 finalOrgId = undefined;
             } else if (formData.role === "admin") {
-                if (!formData.targetSchoolId) return toast.error(t('Please select a school for this admin'));
+                if (!formData.targetSchoolId) return toast.error('Please select a school for this admin');
                 finalOrgType = "school";
                 finalOrgId = formData.targetSchoolId;
             } else {
-                if (!formData.targetCampusId) return toast.error(t('Please select a campus for this user'));
+                if (!formData.targetCampusId) return toast.error('Please select a campus for this user');
                 finalOrgType = "campus";
                 finalOrgId = formData.targetCampusId;
             }
@@ -293,10 +300,10 @@ export function UserDialog({
                 const failures = results.filter(r => r.status === "error")
 
                 if (failures.length === 0) {
-                    toast.success(`${successes} users created successfully`)
+                    toast.success(t("userDialog.successBatch", { count: successes }) || `${successes} users created successfully`)
                     setIsOpen(false)
                 } else {
-                    toast.warning(`${successes} created, ${failures.length} failed`)
+                    toast.warning(t("userDialog.warningBatch", { success: successes, failed: failures.length }) || `${successes} created, ${failures.length} failed`)
                 }
             }
         } catch (error) {
@@ -312,89 +319,97 @@ export function UserDialog({
         }
     }
 
-    const handleDelete = async () => {
-        if (!user) return
+    const handleDelete = () => {
+        if (!user) return;
         showAlert({
-            title: t('common.delete'),
-            description: t('user.deleteConfirm'),
-            confirmLabel: t('common.delete'),
-            cancelLabel: t('common.cancel'),
+            title: t("user.deleteTitle") || "Delete User",
+            description: t("user.deleteDescription", { name: user.fullName }) || "Are you sure you want to delete this user?",
+            confirmLabel: t("common.delete"),
+            cancelLabel: t("common.cancel"),
             variant: "destructive",
             onConfirm: async () => {
                 try {
-                    await deleteUser({ userId: user._id })
-                    toast.success(t('user.deleted'))
-                    setIsOpen(false)
+                    await deleteUser({ userId: user._id });
+                    toast.success(t("user.deleted"));
+                    setIsOpen(false);
                 } catch {
-                    toast.error(t('errors.operationFailed'))
+                    toast.error(t("errors.operationFailed"));
                 }
-            }
-        })
-    }
+            },
+        });
+    };
 
     // Default trigger if none provided
     const defaultTrigger = isEditing ? (
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0" type="button">
             <Edit className="h-4 w-4 text-muted-foreground" />
-            <span className="sr-only">{t('common.edit')}</span>
+            <span className="sr-only">{t("common.edit")}</span>
         </Button>
     ) : (
         <Button className="gap-2" type="button">
-            <UserPlus className="h-4 w-4" />
-            {allowedRoles && allowedRoles?.length >= 1 
-                ? `${t('common.add')} ${t(`navigation.${allowedRoles[0]}s`)}`
-                : t('common.newUsers')
-            }
+            <Plus className="h-4 w-4" />
+            {t("common.add")}
         </Button>
-    )
+    );
 
     // Calculate dynamic label for the submit button
-    const submitLabel = isEditing 
-        ? t('common.save') 
-        : (queue.length > 0 ? `Create All (${queue.length})` : t('common.create'))
+    const submitLabel = isEditing
+        ? t("common.saveChanges") || "Save Changes"
+        : queue.length > 0
+            ? t("userDialog.createMultiple", { count: queue.length }) || `Create All (${queue.length})`
+            : t("userDialog.createSingle") || "Create User";
 
     return (
         <EntityDialog
             open={isOpen}
             onOpenChange={setIsOpen}
             trigger={trigger || defaultTrigger}
-            title={isEditing ? t('common.edit') : t('common.newUsers')}
-            description={isEditing ? "Update user details and permissions." : t('common.newUsersDescription')}
+            title={isEditing ? t("common.editUser") || "Edit User" : t("common.newUsers")}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             submitLabel={submitLabel}
             maxWidth={isEditing ? "sm:max-w-[600px]" : "sm:max-w-[700px]"}
-            leftActions={isEditing && (
-                <Button 
-                    type="button" 
-                    variant="destructive" 
+            leftActions={
+                isEditing && (
+                <Button
+                    type="button"
+                    variant="ghost"
                     onClick={handleDelete}
-                    className="mr-auto"
+                    className="text-destructive border border-destructive hover:text-destructive hover:bg-destructive/10"
                 >
-                    <Trash2 className="h-4 w-4 mr-2" /> {t('common.delete')}
+                    <Trash2 className="h-4 w-4" /> {t("common.delete")}
                 </Button>
-            )}
+                )
+            }
         >
-            <div className="grid gap-6">
-                {/* INPUT FORM */}
+            <div className="grid gap-2">
                 <div className={`grid gap-4 ${!isEditing ? "p-4 border rounded-lg bg-muted/30" : ""}`}>
+                    {/* NAMES */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="firstName">{t('teacher.firstName')}</Label>
+                            <Label htmlFor="firstName">
+                                {t('teacher.firstName')}
+                                <span className="text-destructive">*</span>
+                            </Label>
                             <Input 
                                 id="firstName" 
+                                placeholder={t("userDialog.placeholders.firstName") || "e.g. Jane"}
                                 value={formData.firstName}
                                 onChange={e => setFormData({...formData, firstName: e.target.value})}
-                                required={isEditing} 
+                                required={isEditing || isMobile} 
                             />
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="lastName">{t('teacher.lastName')}</Label>
+                            <Label htmlFor="lastName">
+                                {t('teacher.lastName')}
+                                <span className="text-destructive">*</span>
+                            </Label>
                             <Input 
                                 id="lastName" 
+                                placeholder={t("userDialog.placeholders.lastName") || "e.g. Doe"}
                                 value={formData.lastName}
                                 onChange={e => setFormData({...formData, lastName: e.target.value})}
-                                required={isEditing}
+                                required={isEditing || isMobile}
                             />
                         </div>
                     </div>
@@ -408,14 +423,15 @@ export function UserDialog({
                             <Input 
                                 id="email" 
                                 type="email"
+                                placeholder={t("userDialog.placeholders.email") || "jane.doe@example.com"}
                                 value={formData.email}
                                 onChange={e => setFormData({...formData, email: e.target.value})}
-                                required={isEditing && !formData.username} // Require if no username in edit mode
+                                required={isEditing && !formData.username} 
                             />
                         </div>
 
                         {/* Optional Username/Password flow (Usually for students) */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="grid gap-2">
                                 <Label htmlFor="username">Username (Optional)</Label>
                                 <Input 
@@ -440,8 +456,18 @@ export function UserDialog({
                         </div>
                     </div>
 
+                    {/* STUDENT FIELDS */}
                     {formData.role === "student" && (
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="school">{t('student.school')}</Label>
+                                <Input 
+                                    id="school" 
+                                    value={formData.school} 
+                                    onChange={e => setFormData({...formData, school: e.target.value})}
+                                    placeholder={t("userDialog.placeholders.school") || "School Name"}
+                                />
+                            </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="grade">{t('student.grade')}</Label>
                                 <Select 
@@ -460,21 +486,16 @@ export function UserDialog({
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="school">{t('student.school')}</Label>
-                                <Input 
-                                    id="school" 
-                                    value={formData.school} 
-                                    onChange={e => setFormData({...formData, school: e.target.value})}
-                                    placeholder="School Name"
-                                />
-                            </div>
                         </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* ROLE & STATUS */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="grid gap-2">
-                            <Label htmlFor="role">{t('teacher.role')}</Label>
+                            <Label htmlFor="role">
+                                {t('teacher.role')}
+                                <span className="text-destructive">*</span>
+                            </Label>
                             <Select 
                                 value={formData.role} 
                                 onValueChange={(v) => setFormData({...formData, role: v as UserRole})}
@@ -495,7 +516,10 @@ export function UserDialog({
                         
                         {isEditing && (
                             <div className="grid gap-2">
-                                <Label htmlFor="status">{t('common.status')}</Label>
+                                <Label htmlFor="status">
+                                    {t('common.status')}
+                                    <span className="text-destructive">*</span>
+                                </Label>
                                 <Select 
                                     value={formData.status}
                                     onValueChange={(v) => setFormData({...formData, status: v})}
@@ -512,8 +536,9 @@ export function UserDialog({
                         )}
                     </div>
 
+                    {/* MULTI-TENANT SYSTEM ASSIGNMENT */}
                     {orgContext?.type === "system" && formData.role !== "superadmin" && (
-                        <div className="grid grid-cols-2 gap-4 border-t pt-4 mt-2 border-dashed border-muted-foreground/30">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4 mt-2 border-dashed border-muted-foreground/30">
                             <div className="grid gap-2">
                                 <Label className="text-primary flex items-center gap-1">Assign to School</Label>
                                 <Select 
@@ -553,9 +578,9 @@ export function UserDialog({
                         </div>
                     )}
 
-                    {/* Add to Queue Button */}
+                    {/* Add to Queue Button (Hidden on Mobile) */}
                     {!isEditing && (
-                        <div className="flex justify-end mt-2">
+                        <div className="justify-end mt-2 hidden md:flex">
                             <Button 
                                 type="button" 
                                 onClick={handleAddToQueue} 
@@ -568,17 +593,17 @@ export function UserDialog({
                                 }
                             >
                                 <Plus className="h-4 w-4" />
-                                {t('common.addToQueue')}
+                                {t("userDialog.addToList") || "Add to List"}
                             </Button>
                         </div>
                     )}
                 </div>
 
-                {/* QUEUE LIST */}
+                {/* QUEUE LIST (Hidden on Mobile) */}
                 {!isEditing && (
-                    <div className="space-y-2">
+                    <div className="space-y-2 hidden md:block">
                         <div className="flex items-center justify-between">
-                            <Label>{t('common.usersToCreate', { count: queue.length })}</Label>
+                            <Label>{t("userDialog.usersToAdd", { count: queue.length }) || `Users to Create (${queue.length})`}</Label>
                             {queue.length > 0 && (
                                 <Button 
                                     variant="ghost" 
@@ -587,16 +612,20 @@ export function UserDialog({
                                     onClick={() => setQueue([])}
                                     type="button"
                                 >
-                                    {t('common.clearAll')}
+                                    {t("userDialog.clearList") || "Clear All"}
                                 </Button>
                             )}
                         </div>
                         
-                        <ScrollArea className="h-[150px] border rounded-md">
+                        <ScrollArea className="h-fit border rounded-md">
                             {queue.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-4">
-                                    <UserPlus className="h-8 w-8 mb-2 opacity-20" />
-                                    <p>{t('common.addBatchUsersInstruction')}</p>
+                                <div className="flex flex-col items-center justify-center h-[160px] text-muted-foreground text-sm gap-2">
+                                    <div className="rounded-full bg-muted p-3">
+                                        <UserPlus className="h-5 w-5 opacity-40" />
+                                    </div>
+                                    <p className="text-xs">
+                                        {t("userDialog.emptyListInstruction") || "Add users above to build your list."}
+                                    </p>
                                 </div>
                             ) : (
                                 <div className="divide-y">
@@ -612,7 +641,7 @@ export function UserDialog({
                                                         <Badge variant="secondary" className="text-[10px] h-5">{u.grade}</Badge>
                                                     )}
                                                 </div>
-                                                <div className="text-muted-foreground text-xs">{u.email}</div>
+                                                <div className="text-muted-foreground text-xs">{u.email || u.username}</div>
                                             </div>
                                             <Button 
                                                 variant="ghost" 

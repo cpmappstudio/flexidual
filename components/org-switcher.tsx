@@ -99,7 +99,6 @@ export function OrgSwitcher() {
                 </div>
               </DropdownMenuItem>
             ))}
-            <DropdownMenuSeparator />
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

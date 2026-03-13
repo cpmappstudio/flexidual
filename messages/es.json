@@ -1,5 +1,6 @@
 {
   "common": {
+    "user": "Usuario",
     "add": "Agregar",
     "edit": "Editar",
     "delete": "Eliminar",
@@ -12,6 +13,7 @@
     "confirmAction": "Confirmar acción",
     "warning": "Advertencia",
     "search": "Buscar",
+    "searchByName": "Buscar por nombre...",
     "filter": "Filtrar",
     "back": "Volver",
     "next": "Siguiente",
@@ -37,7 +39,10 @@
     "live": "EN VIVO",
     "creating": "Creando...",
     "all": "Todos",
-    "newUsers": "Agregar Usuarios",
+    "searchUser": "Buscar por nombre...",
+    "newUsers": "Agregar usuarios",
+    "editUser": "Editar usuario",
+    "saveChanges": "Guardar cambios",
     "newUsersDescription": "Agrega nuevos usuarios a la plataforma.",
     "title": "Título",
     "code": "Código",
@@ -79,10 +84,11 @@
     "campusName": "Nombre del Campus",
     "urlSlug": "Slug de URL",
     "noCampusesFound": "No se encontraron campuses.",
-    "addCampus": "Agregar Campus"
+    "addCampus": "Agregar Campus",
+    "classTrackingDescription": "Monitorea el progreso y verifica el registro de asistencia"
   },
   "navigation": {
-    "dashboard": "Panel",
+    "dashboard": "Panel general",
     "calendar": "Calendario",
     "schedule": "Horario",
     "teaching": "Enseñanza",
@@ -96,10 +102,11 @@
     "admins": "Administradores",
     "adminsDescription": "Usuarios con acceso completo al sistema y privilegios de configuración.",
     "tutors": "Tutores",
+    "principals": "Directores",
     "superadmins": "Super Administradores",
     "curriculums": "Currículos",
-    "curriculumsDescription": "Gestiona programas académicos, plantillas de cursos y planes de lecciones.",
-    "curriculumsDescription2": "Currículos activos actualmente visibles para profesores y estudiantes.",
+    "curriculumsDescription": "Gestiona currículos y su contenido",
+    "curriculumsDescription2": "Currículos que están actualmente activos o disponibles",
     "curriculumEditDescription": "Gestiona los detalles de este currículo y sus lecciones asociadas.",
     "lessons": "Lecciones",
     "classes": "Clases",
@@ -140,7 +147,7 @@
     "myCurriculums": "Mis Currículos",
     "noCurriculums": "Aún no hay currículos",
     "viewAllCurriculums": "Ver Todos los Currículos",
-    "usersSummary": "Gestiona el acceso al sistema, roles y permisos.",
+    "usersSummary": "Gestiona el acceso al sistema, roles y permisos",
     "curriculumSummary": "Gestiona programas académicos, plantillas de cursos y planes de lecciones."
   },
   "classroom": {
@@ -198,6 +205,7 @@
     "shouldHaveStarted": "La clase debería haber comenzado"
   },
   "curriculum": {
+    "curriculum": "Currículo",
     "search": "Buscar currículos...",
     "title": "Título del currículo",
     "code": "Código",
@@ -214,8 +222,8 @@
     "filterPlaceholder": "Filtrar currículos...",
     "manageDescription": "Gestiona las lecciones de este currículo.",
     "unknown": "Currículo Desconocido",
-    "allList": "Todos los Currículos",
-    "activeList": "Currículos Activos",
+    "allList": "Todos los currículos",
+    "activeList": "Currículos activos",
     "createCurriculum": "Crear Currículo",
     "addCurriculums": "Agrega uno o más currículos.",
     "curriculumsToCreate": "Currículos para Crear ({count})",
@@ -271,6 +279,8 @@
     "reorderFailed": "Error al reordenar lecciones"
   },
   "class": {
+    "class": "Clase",
+    "title": "Clases",
     "name": "Nombre de la Clase",
     "academicYear": "Año Académico",
     "namePlaceholder": "ej., Ciencia 101 - Otoño 2024",
@@ -301,7 +311,7 @@
     "manageSchedule": "Gestionar Horario",
     "myClasses": "Mis Clases",
     "allClasses": "Todas las Clases",
-    "manageAllDescription": "Gestiona todas las clases, asignaciones y horarios de la plataforma.",
+    "manageAllDescription": "Gestiona clases y su contenido",
     "manageMyDescription": "Gestiona tus grupos de estudiantes activos y horarios.",
     "noDate": "Sin fecha",
     "selectClass": "Seleccionar Clase",
@@ -317,15 +327,16 @@
     "addLessonToCurriculum": "Agregar Lección al Currículo",
     "scheduleSession": "Programar Sesión",
     "autoNameHint": "Dejar vacío para generar automáticamente",
-    "autoNamePattern": "Formato automático: Currículo - Profesor - Año (Sec #)"
+    "autoNamePattern": "Formato automático: Currículo - Profesor - Año (Sec #)",
+    "deleteConfirm": "¿Eliminar esta clase? Todos los estudiantes inscritos serán desvinculados."
   },
   "student": {
-    "name": "Nombre del Estudiante",
+    "name": "Nombre del estudiante",
     "firstName": "Nombre",
     "lastName": "Apellido",
-    "email": "Correo Electrónico",
-    "new": "Agregar Nuevo Estudiante",
-    "edit": "Editar Estudiante",
+    "email": "Correo electrónico",
+    "new": "Agregar estudiante",
+    "edit": "Editar estudiante",
     "deleteConfirm": "¿Eliminar esta cuenta de estudiante?",
     "created": "Estudiante creado",
     "updated": "Estudiante actualizado",
@@ -409,7 +420,7 @@
     "search": "Buscar profesores...",
     "firstName": "Nombre",
     "lastName": "Apellido",
-    "email": "Correo Electrónico",
+    "email": "Correo electrónico",
     "role": "Rol",
     "new": "Agregar Nuevo Profesor",
     "edit": "Editar Profesor",
@@ -534,6 +545,8 @@
     "editSeriesDesc": "Los cambios afectan todas las ocurrencias futuras. No se pueden agregar/eliminar lecciones."
   },
   "calendar": {
+    "title": "Calendario",
+    "description": "Gestionar clases y eventos programados",
     "mySchedule": "Mi Horario",
     "classSchedule": "Horario de Clase",
     "filtering": "Filtrando: {className}",
@@ -559,10 +572,55 @@
     }
   },
   "user": {
+    "deleteTitle": "¿Eliminar este usuario?",
+    "deleteDescription": "¿Estás seguro de que quieres eliminar a {name}?\nEsta acción no se puede deshacer.",
     "deleteConfirm": "¿Estás seguro? Esto eliminará permanentemente la cuenta de este usuario.",
     "created": "Usuario creado",
     "updated": "Usuario actualizado",
     "deleted": "Usuario eliminado"
+  },
+  "userDialog": {
+    "placeholders": {
+      "firstName": "ej. Juan",
+      "lastName": "ej. Pérez",
+      "email": "juan.perez@ejemplo.com",
+      "school": "ej. Instituto Educativo Central",
+      "selectRole": "Selecciona un rol",
+      "selectGrade": "Selecciona el grado"
+    },
+    "addToList": "Añadir a la lista",
+    "usersToAdd": "Usuarios por agregar ({count})",
+    "clearList": "Limpiar lista",
+    "emptyListInstruction": "Completa los datos arriba. Puedes añadir varios usuarios a esta lista para agregarlos todos a la vez.",
+    "createMultiple": "Agregar {count} usuarios",
+    "createSingle": "Agregar usuario",
+    "successBatch": "{count} usuarios agregados con éxito.",
+    "warningBatch": "{success} agregados, {failed} fallaron."
+  },
+  "curriculumDialog": {
+    "placeholders": {
+      "title": "ej. Ciencias 101",
+      "code": "ej. CIE-101",
+      "description": "ej. Temas de biología celular y genética",
+      "targetGrades": "ej. 04, 05"
+    },
+    "addToList": "Añadir a la lista",
+    "curriculumsToAdd": "Currículos por agregar ({count})",
+    "clearList": "Limpiar lista",
+    "emptyListInstruction": "Completa los datos arriba. Puedes añadir varios currículos a esta lista para crearlos todos a la vez.",
+    "createMultiple": "Agregar {count} currículos",
+    "createSingle": "Agregar currículo",
+    "successBatch": "{count} currículos creados con éxito."
+  },
+  "classDialog": {
+    "placeholders": {
+      "name": "Dejar vacío para generar automáticamente",
+      "academicYear": "ej. 2025-2026",
+      "description": "Agrega una breve descripción...",
+      "searchCurriculum": "Buscar por nombre...",
+      "searchTeacher": "Buscar profesores..."
+    },
+    "createSingle": "Agregar clase"
   },
   "errors": {
     "operationFailed": "La operación falló",
@@ -579,5 +637,13 @@
     "classScheduleConflict": "Esta clase ya está programada a las {conflictTime}",
     "teacherScheduleConflict": "El profesor ya está enseñando \"{className}\" a las {conflictTime}",
     "invalidGrade": "Configuración de grado inválida: {grades}. Por favor, revisa tu selección."
+  },
+  "table": {
+    "columns": "Columnas",
+    "filters": "Filtros",
+    "pageInfo": "Página {current} de {total}",
+    "clearFilters": "Limpiar filtros",
+    "noResults": "Sin resultados",
+    "selectedRows": "{selected} de {total} fila(s) seleccionada(s)"
   }
 }

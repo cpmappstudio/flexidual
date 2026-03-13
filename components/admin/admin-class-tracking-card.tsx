@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronDown, ChevronUp, CheckCircle2, XCircle, Users, CalendarCheck } from "lucide-react"
+import { ChevronDown, ChevronUp, CheckCircle2, XCircle, GraduationCap, CalendarCheck } from "lucide-react"
 import { format } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
 import { useLocale } from "next-intl"
@@ -54,22 +54,19 @@ export function AdminClassTrackingCard({ classData, schedules }: AdminClassTrack
                 className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:bg-muted/50 transition-colors"
             >
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                            {classData.curriculumTitle || "Unknown Curriculum"}
-                        </p>
-                    </div>
-                    <h3 className="text-lg font-semibold text-foreground truncate">
+                    <p className="text-[11px] font-semibold text-primary/70 uppercase tracking-widest mb-0.5">
+                        {classData.curriculumTitle || "Unknown Curriculum"}
+                    </p>
+                    <h3 className="text-base font-bold text-foreground truncate leading-snug">
                         {classData.name}
                     </h3>
-                    <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1.5">
-                            <Users className="w-4 h-4" /> 
-                            {classData.students?.length || 0} Enrolled
+                    <div className="flex items-center gap-3 mt-1.5">
+                        <span className="text-xs text-muted-foreground">
+                            <span className="font-semibold text-foreground">{classData.students?.length || 0}</span> students
                         </span>
-                        <span className="flex items-center gap-1.5">
-                            <CalendarCheck className="w-4 h-4" /> 
-                            {totalPast} Sessions
+                        <span className="text-border select-none">|</span>
+                        <span className="text-xs text-muted-foreground">
+                            <span className="font-semibold text-foreground">{totalPast}</span> sessions
                         </span>
                     </div>
                 </div>
@@ -126,7 +123,7 @@ export function AdminClassTrackingCard({ classData, schedules }: AdminClassTrack
                                                     <div className="flex flex-col items-end sm:items-start">
                                                         <span className="text-[10px] font-medium text-muted-foreground uppercase mb-0.5">Students</span>
                                                         <div className="flex items-center gap-1.5 text-sm">
-                                                            <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                                                            <GraduationCap className="w-3.5 h-3.5 text-muted-foreground" />
                                                             <span className="font-medium text-foreground">
                                                                 {schedule.attendanceSummary.present}
                                                                 <span className="text-muted-foreground">/{schedule.attendanceSummary.total}</span>

@@ -57,19 +57,19 @@ export function ReusableAlertDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
+      <AlertDialogContent className="flex flex-col items-center justify-center">
+        <AlertDialogHeader className="flex items-center justify-center">
           <AlertDialogTitle>{config.title}</AlertDialogTitle>
-          <AlertDialogDescription>{config.description}</AlertDialogDescription>
+          <AlertDialogDescription className="whitespace-pre-line text-center">{config.description}</AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="gap-6">
           <AlertDialogCancel onClick={handleCancel} disabled={isLoading}>
             {config.cancelLabel || t("common.cancel")}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isLoading}
-            className={config.variant === "destructive" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+            className={config.variant === "destructive" ? "bg-destructive text-white hover:bg-destructive/90" : ""}
           >
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {config.confirmLabel || t("common.delete")}

@@ -1,174 +1,134 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import { useParams } from "next/navigation"
-import { Building2 } from "lucide-react"
-import { Id } from "@/convex/_generated/dataModel"
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  getPaginationRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-} from "@tanstack/react-table"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
-import { Doc } from "@/convex/_generated/dataModel"
-import { useState } from "react"
-import { useTranslations } from "next-intl"
-import { ArrowUpDown, Edit, Search, ChevronLeft, ChevronRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import * as React from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useParams } from "next/navigation";
+import { Building2 } from "lucide-react";
+import { Id, Doc } from "@/convex/_generated/dataModel";
+import { ColumnDef } from "@tanstack/react-table";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog";
+import { useState } from "react";
+import { useTranslations } from "next-intl";
+import { DataTable } from "@/components/table/data-table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { createSearchColumn, createSortableHeader } from "@/components/table/column-helpers";
+import type { FilterConfig } from "@/lib/table/types";
 
-interface CurriculumsTableProps {
-  includeInactive?: boolean
-}
-
-export function CurriculumsTable({ includeInactive = false }: CurriculumsTableProps) {
-  const t = useTranslations()
-  const params = useParams()
+export function CurriculumsTable() {
+  const t = useTranslations();
+  const params = useParams();
   
-  const orgSlug = (params.orgSlug as string) || "system"
-  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
-  const isSystemDashboard = orgContext?.type === "system"
+  const orgSlug = (params.orgSlug as string) || "system";
+  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
+  const isSystemDashboard = orgContext?.type === "system";
 
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("all")
-  const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip")
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("all");
+  const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip");
 
   // Determine effective school ID for the query
-  let querySchoolId = undefined
+  let querySchoolId = undefined;
   if (isSystemDashboard && selectedSchoolId !== "all") {
-    querySchoolId = selectedSchoolId as Id<"schools">
+    querySchoolId = selectedSchoolId as Id<"schools">;
   } else if (orgContext?.type === "school") {
-    querySchoolId = orgContext._id as Id<"schools">
-  } else if (orgContext?.type === "campus") {
-    // If we're on a campus dashboard, we might want to fetch the parent school's curriculums.
-    // For now, if the user is a campus admin, the backend handles their access.
+    querySchoolId = orgContext._id as Id<"schools">;
   }
 
+  // The DataTable now handles the active/inactive filtering via filterConfigs
   const data = useQuery(api.curriculums.list, { 
-    includeInactive,
+    includeInactive: true,
     schoolId: querySchoolId 
-  })
-  
-  const [filter, setFilter] = useState("")
-  const [sorting, setSorting] = React.useState([])
-  const [editingCurriculum, setEditingCurriculum] = useState<Doc<"curriculums"> | null>(null)
+  });
 
-  const columns: ColumnDef<Doc<"curriculums">>[] = [
+  const [editingCurriculum, setEditingCurriculum] = useState<Doc<"curriculums"> | null>(null);
+
+  const filterConfigs: FilterConfig[] = [
+    {
+      id: "isActive",
+      label: t("common.status"),
+      options: [
+        { value: "true", label: t("common.active") },
+        { value: "false", label: t("common.inactive") },
+      ],
+    },
+  ];
+
+  const curriculumHeader = (
+    <>
+      <span className="hidden lg:block">{t("common.title")}</span>
+      <span className="lg:hidden">{t("curriculum.curriculum")}</span>
+    </>
+  );
+
+  const columns: ColumnDef<Doc<"curriculums">, unknown>[] = [
+    createSearchColumn<Doc<"curriculums">>(["title", "code"]),
     {
       accessorKey: "title",
-      header: ({ column }) => (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          {t('common.title')} <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
-      cell: ({ row }) => (
-        <div>
-          <div className="font-medium text-base">{row.getValue("title")}</div>
-          <div className="text-xs text-muted-foreground line-clamp-1 max-w-[300px]">
-            {row.original.description}
+      header: createSortableHeader(curriculumHeader),
+      cell: ({ row }) => {
+        const code = row.original.code as string;
+        return (
+          <div>
+            <div className="font-medium">{row.getValue("title")}</div>
+            {code && (
+              <div className="lg:hidden">
+                <span className="font-mono">{t("common.code")}:</span>
+                <span className="text-muted-foreground">
+                  {code || "-"}
+                </span>
+              </div>
+            )}
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       accessorKey: "code",
-      header: t('common.code'),
+      header: createSortableHeader(t("common.code")),
+      meta: { className: "hidden lg:table-cell" },
       cell: ({ row }) => {
-        const code = row.getValue("code") as string
-        return code ? <Badge variant="outline">{code}</Badge> : <span className="text-muted-foreground text-xs">-</span>
+        const code = row.getValue("code") as string;
+        return code ? <span>{code}</span> : <span>-</span>;
       },
     },
     {
       accessorKey: "isActive",
-      header: t('common.status'),
+      header: createSortableHeader(t("common.status")),
+      filterFn: (row, id, filterValues: string[]) => {
+        return filterValues.includes(String(row.getValue(id)));
+      },
       cell: ({ row }) => (
-        <Badge variant={row.original.isActive ? "default" : "secondary"}>
-          {row.original.isActive ? t('common.active') : t('common.inactive')}
+        <Badge variant={row.original.isActive ? "active" : "inactive"}>
+          {row.original.isActive ? t("common.active") : t("common.inactive")}
         </Badge>
       ),
     },
-    {
-      id: "actions",
-      cell: ({ row }) => (
-        <div className="flex justify-end">
-            <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-8 w-8 p-0"
-                onClick={(e) => {
-                    e.stopPropagation()
-                    setEditingCurriculum(row.original)
-                }}
-            >
-                <Edit className="h-4 w-4 text-muted-foreground" />
-                <span className="sr-only">{t('common.edit')}</span>
-            </Button>
-        </div>
-      ),
-    },
-  ]
+  ];
 
-  const table = useReactTable({
-    data: data || [],
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    state: { 
-        globalFilter: filter,
-        sorting 
-    },
-    // @ts-expect-error - tanstack table typing issue
-    onSortingChange: setSorting,
-    onGlobalFilterChange: setFilter,
-    initialState: {
-      pagination: {
-        pageSize: 10,
-      },
-    },
-  })
-
-  if (!data) return <Skeleton className="h-96 w-full" />
+  if (!data) return <Skeleton className="h-96 w-full" />;
 
   return (
     <div className="space-y-4">
       {editingCurriculum && (
-        <CurriculumDialog 
-            curriculum={editingCurriculum}
-            open={true}
-            onOpenChange={(open) => !open && setEditingCurriculum(null)}
-            trigger={<span className="hidden" />}
+        <CurriculumDialog
+          curriculum={editingCurriculum}
+          open={true}
+          onOpenChange={(open) => !open && setEditingCurriculum(null)}
+          trigger={<span className="hidden" />}
         />
       )}
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="relative w-72">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t('curriculum.filterPlaceholder')}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="pl-8"
-            />
-          </div>
-
-          {isSystemDashboard && (
+      {isSystemDashboard && (
+        <div className="flex mb-4">
             <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
-              <SelectTrigger className="w-[200px]">
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-muted-foreground" />
-                  <SelectValue placeholder="All Schools" />
+              <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
+                <div className="flex items-center gap-2 truncate">
+                  <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="truncate">
+                    {selectedSchoolId === "all" ? "All Schools" : schools?.find(s => s._id === selectedSchoolId)?.name || "Select School"}
+                  </span>
                 </div>
               </SelectTrigger>
               <SelectContent>
@@ -180,106 +140,20 @@ export function CurriculumsTable({ includeInactive = false }: CurriculumsTablePr
                 ))}
               </SelectContent>
             </Select>
-          )}
         </div>
-        
-        <CurriculumDialog />
-      </div>
+      )}
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow 
-                  key={row.id}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => setEditingCurriculum(row.original)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  {t('common.noResults')}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Pagination Controls */}
-      <div className="flex items-center justify-between px-2">
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-muted-foreground">
-            {t('common.rowsPerPage')}
-          </p>
-          <Select
-            value={`${table.getState().pagination.pageSize}`}
-            onValueChange={(value) => {
-              table.setPageSize(Number(value))
-            }}
-          >
-            <SelectTrigger className="h-8 w-[70px]">
-              <SelectValue placeholder={table.getState().pagination.pageSize} />
-            </SelectTrigger>
-            <SelectContent side="top">
-              {[10, 20, 30, 50].map((pageSize) => (
-                <SelectItem key={pageSize} value={`${pageSize}`}>
-                  {pageSize}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-6">
-          <div className="text-sm text-muted-foreground">
-            {t('common.pageOfPages', {
-              current: table.getState().pagination.pageIndex + 1,
-              total: table.getPageCount()
-            })}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              {t('common.previous')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              {t('common.next')}
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
+      <DataTable
+        data={data}
+        columns={columns}
+        filterColumn="search"
+        filterPlaceholder={t("common.searchByName")}
+        emptyMessage={t("common.noResults")}
+        filterConfigs={filterConfigs}
+        createAction={<CurriculumDialog />}
+        pageSize={10}
+        onRowClick={(curriculum) => setEditingCurriculum(curriculum)}
+      />
     </div>
-  )
+  );
 }
