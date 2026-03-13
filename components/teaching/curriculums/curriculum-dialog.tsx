@@ -222,9 +222,6 @@ export function CurriculumDialog({
   const dialogTitle = isEditing
     ? t("curriculum.edit")
     : t("curriculum.createCurriculum") + "s";
-  const dialogDesc = isEditing
-    ? t("navigation.curriculumEditDescription")
-    : t("curriculum.addCurriculums");
 
   const createLabel =
     queue.length > 0

@@ -13,7 +13,7 @@ import {
   GraduationCap, 
   LucideIcon 
 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Id } from "@/convex/_generated/dataModel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminClassTrackingCard } from "@/components/admin/admin-class-tracking-card";

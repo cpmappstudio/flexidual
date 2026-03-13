@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronDown, ChevronUp, CheckCircle2, XCircle, GraduationCap, CalendarCheck } from "lucide-react"
+import { ChevronDown, ChevronUp, CheckCircle2, XCircle, GraduationCap } from "lucide-react"
 import { format } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
 import { useLocale } from "next-intl"

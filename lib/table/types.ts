@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import type { ColumnDef, ColumnFiltersState, SortingState } from "@tanstack/react-table";
 
 export interface FilterOption {

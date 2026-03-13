@@ -10,34 +10,19 @@ import { useAuth } from "@clerk/nextjs";
 import { getRoleForOrg } from "@/lib/rbac";
 import {
   Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
-  Users,
-  BookOpen,
-  Calendar,
-  ArrowRight,
   School,
-  Edit,
-  LayoutGrid,
-  List as ListIcon,
   MapPin,
   Building2,
 } from "lucide-react";
-import { format, startOfWeek, addDays } from "date-fns";
+import { startOfWeek, addDays } from "date-fns";
 import { ClassDialog } from "@/components/teaching/classes/class-dialog";
 import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter";
 import { ClassesTable } from "@/components/teaching/classes/classes-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview";
 import FlexidualHeader from "@/components/flexidual-header";
 

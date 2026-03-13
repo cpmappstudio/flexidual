@@ -13,7 +13,7 @@ import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-d
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { DataTable } from "@/components/table/data-table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { createSearchColumn, createSortableHeader } from "@/components/table/column-helpers";
 import type { FilterConfig } from "@/lib/table/types";
 

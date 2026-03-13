@@ -37,7 +37,7 @@ export const createSortableHeader = (
   label: ReactNode,
   options?: SortableHeaderOptions,
 ) => {
-  return ({ column }: { column: SortableHeaderColumn }) => {
+  const SortableHeader = ({ column }: { column: SortableHeaderColumn }) => {
     const sortState = column.getIsSorted();
     const SortIcon =
       sortState === "asc"
@@ -60,6 +60,9 @@ export const createSortableHeader = (
       </Button>
     );
   };
+
+  SortableHeader.displayName = "SortableHeader";
+  return SortableHeader;
 };
 
 export const createTextColumn = <T extends Record<string, unknown>>(

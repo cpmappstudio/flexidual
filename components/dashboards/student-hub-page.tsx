@@ -160,8 +160,8 @@ export default function StudentHubPage() {
           {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </Button>
 
-        <FlexidualLogo size="lg" className="hidden sm:block" />
-        <FlexidualLogo size="sm" className="sm:hidden" />
+        <FlexidualLogo className="hidden sm:block" />
+        <FlexidualLogo className="sm:hidden" />
         
         <div className="flex items-center gap-2 lg:gap-4">
           <div className="hidden xl:block text-right">

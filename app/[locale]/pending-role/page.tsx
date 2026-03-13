@@ -11,7 +11,7 @@ export default function PendingRolePage() {
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-muted/30 p-4">
       <div className="max-w-md w-full bg-card rounded-2xl shadow-lg border p-8 text-center space-y-6">
         <div className="flex justify-center mb-6">
-          <FlexidualLogo size="lg" />
+          <FlexidualLogo />
         </div>
         
         <div className="bg-orange-100 dark:bg-orange-950/50 p-4 rounded-full w-20 h-20 mx-auto flex items-center justify-center">

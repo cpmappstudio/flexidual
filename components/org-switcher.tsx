@@ -3,7 +3,7 @@
 import * as React from "react"
 import { ChevronsUpDown, Building2, Shield } from "lucide-react"
 import { useAuth } from "@clerk/nextjs"
-import { useParams, usePathname } from "next/navigation" // <-- Added usePathname
+import { useParams, usePathname } from "next/navigation"
 import { useRouter } from "@/i18n/navigation"
 import { getRolesFromClaims } from "@/lib/rbac"
 import {
@@ -11,7 +11,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
