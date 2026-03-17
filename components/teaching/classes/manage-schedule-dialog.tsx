@@ -37,7 +37,7 @@ interface ManageScheduleDialogProps {
     description?: string
     start: number
     end: number
-    sessionType: "live" | "ignitia"
+    sessionType: "live" | "ignitia" | "abeka"
     isRecurring?: boolean
     recurrenceParentId?: Id<"classSchedule">
   }
@@ -71,7 +71,7 @@ export function ManageScheduleDialog({
   
   const [title, setTitle] = useState(initialData?.title || "")
   const [description, setDescription] = useState(initialData?.description || "")
-  const [sessionType, setSessionType] = useState<"live" | "ignitia">(
+  const [sessionType, setSessionType] = useState<"live" | "ignitia" | "abeka">(
     initialData?.sessionType || "live"
   )
   
@@ -400,7 +400,7 @@ export function ManageScheduleDialog({
             <Label>{t('schedule.sessionType') || "Session Type"}</Label>
             <RadioGroup
               value={sessionType}
-              onValueChange={(v) => setSessionType(v as "live" | "ignitia")}
+              onValueChange={(v) => setSessionType(v as "live" | "ignitia" | "abeka")}
               className="flex flex-row space-x-4"
             >
               <div className="flex items-center space-x-2">
@@ -410,6 +410,10 @@ export function ManageScheduleDialog({
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="ignitia" id="st-ignitia" />
                 <Label htmlFor="st-ignitia" className="font-normal cursor-pointer">Ignitia Lesson</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="abeka" id="st-abeka" />
+                <Label htmlFor="st-abeka" className="font-normal cursor-pointer">Abeka Lesson</Label>
               </div>
             </RadioGroup>
           </div>

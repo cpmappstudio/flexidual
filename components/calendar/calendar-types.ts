@@ -34,10 +34,10 @@ export type CalendarEvent = {
   
   // Core scheduling info
   scheduleId: Id<"classSchedule">
-  lessonIds?: Id<"lessons">[] // ✅ Changed from lessonId to lessonIds array
+  lessonIds?: Id<"lessons">[]
   classId: Id<"classes">
   curriculumId: Id<"curriculums">
-  sessionType: "live" | "ignitia"
+  sessionType: "live" | "ignitia" | "abeka"
   
   // Display fields
   title: string

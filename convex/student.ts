@@ -21,7 +21,7 @@ export const getStudentDashboardStats = query({
     const classStats = await Promise.all(
       myClasses.map(async (classData) => {
         const [teacher, curriculum] = await Promise.all([
-          ctx.db.get(classData.teacherId),
+          classData.teacherId ? ctx.db.get(classData.teacherId) : null,
           ctx.db.get(classData.curriculumId)
         ]);
         
@@ -62,11 +62,16 @@ export const getStudentDashboardStats = query({
         return {
           classId: classData._id,
           className: classData.name,
-          curriculumTitle: curriculum?.title || "Unknown Course",
+          curriculumTitle: curriculum?.title || classData.classType === "abeka" ? "Abeka Curriculum" : classData.classType === "ignitia" ? "Ignitia Curriculum" : "Curriculum",
           description: classData.description,
           teacher: teacher
             ? { fullName: teacher.fullName, imageUrl: teacher.imageUrl }
-            : { fullName: "Unknown", imageUrl: undefined },
+            : { 
+                fullName: classData.classType === "abeka" ? "Abeka Virtual" 
+                        : classData.classType === "ignitia" ? "Ignitia Virtual" 
+                        : "System", 
+                imageUrl: undefined 
+              },
           stats: {
             totalClasses: schedules.length,
             completedClasses: pastSchedules.length,

@@ -123,7 +123,8 @@ export default defineSchema({
     curriculumId: v.id("curriculums"), // What curriculum are we following?
     
     // People
-    teacherId: v.id("users"), // Who teaches this?
+    teacherId: v.optional(v.id("users")), // Optional teacher as we are supporting ignitia and abeka virtual asynchronous classes
+    classType: v.optional(v.union(v.literal("standard"), v.literal("ignitia"), v.literal("abeka"))),
     tutorId: v.optional(v.id("users")), // Optional live tutor
     students: v.array(v.id("users")), // Who's enrolled?
     
@@ -155,7 +156,7 @@ export default defineSchema({
     classId: v.id("classes"),
     // lessonId: v.optional(v.id("lessons")),
     lessonIds: v.optional(v.array(v.id("lessons"))),
-    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka"))),
     
     // Basic info (for schedules without lessons)
     title: v.optional(v.string()), // Custom title if no lesson

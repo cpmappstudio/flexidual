@@ -31,7 +31,7 @@ const formSchema = z.object({
   description: z.string().optional(),
   start: z.string(),
   duration: z.number().min(15).max(240),
-  sessionType: z.enum(["live", "ignitia"]),
+  sessionType: z.enum(["live", "ignitia", "abeka"]),
   isRecurring: z.boolean(),
   recurrenceType: z.enum(["daily", "weekly", "biweekly", "monthly"]),
   occurrences: z.number().min(1).max(52),
@@ -215,7 +215,7 @@ export default function CalendarNewEventDialog() {
         await createRecurring({
           classId: values.classId as Id<"classes">,
           lessonIds: undefined, // ✅ Always undefined for recurring
-          sessionType: values.sessionType as "live" | "ignitia",
+          sessionType: values.sessionType as "live" | "ignitia" | "abeka",
           title: values.title || undefined,
           description: values.description || undefined,
           scheduledStart: startMs,
@@ -232,7 +232,7 @@ export default function CalendarNewEventDialog() {
         await createSchedule({
           classId: values.classId as Id<"classes">,
           lessonIds: finalLessonIds,
-          sessionType: values.sessionType as "live" | "ignitia",
+          sessionType: values.sessionType as "live" | "ignitia" | "abeka",
           title: values.title || undefined,
           description: values.description || undefined,
           scheduledStart: startMs,
@@ -343,6 +343,14 @@ export default function CalendarNewEventDialog() {
                       </FormControl>
                       <FormLabel className="font-normal cursor-pointer">
                         {t('schedule.typeIgnitia')}
+                      </FormLabel>
+                    </FormItem>
+                    <FormItem className="flex items-center space-x-2 space-y-0">
+                      <FormControl>
+                        <RadioGroupItem value="abeka" />
+                      </FormControl>
+                      <FormLabel className="font-normal cursor-pointer">
+                        {t('schedule.typeAbeka')}
                       </FormLabel>
                     </FormItem>
                   </RadioGroup>

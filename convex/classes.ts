@@ -98,7 +98,7 @@ export const getWithDetails = query({
     const classData = await ctx.db.get(args.id);
     if (!classData) return null;
 
-    const teacher = await ctx.db.get(classData.teacherId);
+    const teacher = classData.teacherId ? await ctx.db.get(classData.teacherId) : null;
     const curriculum = await ctx.db.get(classData.curriculumId);
     
     // Handle optional tutor
@@ -303,7 +303,8 @@ export const create = mutation({
     description: v.optional(v.string()),
     curriculumId: v.id("curriculums"),
     campusId: v.optional(v.id("campuses")),
-    teacherId: v.id("users"),
+    teacherId: v.optional(v.id("users")),
+    classType: v.optional(v.union(v.literal("standard"), v.literal("ignitia"), v.literal("abeka"))),
     tutorId: v.optional(v.id("users")),
     students: v.optional(v.array(v.id("users"))),
     academicYear: v.optional(v.string()),
@@ -323,15 +324,23 @@ export const create = mutation({
       throw new Error("Only administrators or principals can create classes for this campus.");
     }
 
-    // Verify teacher exists
-    const teacher = await ctx.db.get(args.teacherId);
-    if (!teacher) throw new Error("Invalid teacher");
+    if (!args.teacherId && (!args.classType || args.classType === "standard")) {
+      throw new Error("Standard classes require an assigned teacher.");
+    }
+
+    let teacher = null;
+    if (args.teacherId) {
+      teacher = await ctx.db.get(args.teacherId);
+      if (!teacher) throw new Error("Invalid teacher");
+    }
 
     // --- SMART AUTO-NAMING LOGIC ---
     let className = args.name?.trim();
     if (!className) {
       const year = args.academicYear || new Date().getFullYear().toString();
-      const teacherName = teacher.lastName || teacher.firstName || "Teacher";
+      const teacherName = teacher 
+        ? (teacher.lastName || teacher.firstName || "Teacher") 
+        : (args.classType === "abeka" ? "Abeka" : "Ignitia");
       
       const existing = await ctx.db
         .query("classes")
@@ -377,6 +386,7 @@ export const update = mutation({
     startDate: v.optional(v.number()),
     endDate: v.optional(v.number()),
     isActive: v.optional(v.boolean()),
+    classType: v.optional(v.union(v.literal("standard"), v.literal("ignitia"), v.literal("abeka"))),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -406,6 +416,12 @@ export const update = mutation({
     const cleanUpdates: any = { ...updates };
     if (cleanUpdates.tutorId === null) {
       cleanUpdates.tutorId = undefined;
+    }
+
+    if (cleanUpdates.classType === "ignitia" || cleanUpdates.classType === "abeka") {
+      cleanUpdates.teacherId = undefined;
+    } else if (cleanUpdates.classType === "standard" && !cleanUpdates.teacherId && !classData.teacherId) {
+      throw new ConvexError("Standard classes require an assigned teacher.");
     }
 
     // Protect against accidentally clearing the class name during edits

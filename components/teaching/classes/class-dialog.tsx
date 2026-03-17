@@ -50,6 +50,7 @@ import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-d
 import { UserDialog } from "@/components/admin/users/user-dialog";
 import { StudentManager } from "./student-manager";
 import { useAlert } from "@/components/providers/alert-provider";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface ClassDialogProps {
   classDoc?: Doc<"classes">;
@@ -124,6 +125,7 @@ export function ClassDialog({
     academicYear: "",
     curriculumId: selectedCurriculumId ? selectedCurriculumId.toString() : "",
     teacherId: selectedTeacherId ? selectedTeacherId.toString() : "",
+    classType: classDoc?.classType || "standard",
   });
 
   useEffect(() => {
@@ -137,6 +139,7 @@ export function ClassDialog({
           academicYear: classDoc.academicYear || "",
           curriculumId: classDoc.curriculumId,
           teacherId: classDoc.teacherId || "",
+          classType: classDoc.classType || "standard",
         });
       } else {
         if (!currentClassId) {
@@ -152,6 +155,7 @@ export function ClassDialog({
               : isAdmin
                 ? ""
                 : user?._id || "",
+            classType: "standard",
           });
         }
       }
@@ -183,7 +187,10 @@ export function ClassDialog({
           description: formData.description || undefined,
           academicYear: formData.academicYear || undefined,
           curriculumId: formData.curriculumId as Id<"curriculums">,
-          teacherId: formData.teacherId as Id<"users">,
+          teacherId: formData.classType === "standard" && formData.teacherId 
+            ? (formData.teacherId as Id<"users">) 
+            : undefined,
+          classType: formData.classType as "standard" | "ignitia" | "abeka"
         });
         toast.success(t("class.updated"));
         setIsOpen(false);
@@ -193,11 +200,14 @@ export function ClassDialog({
           description: formData.description || undefined,
           academicYear: formData.academicYear || undefined,
           curriculumId: formData.curriculumId as Id<"curriculums">,
-          teacherId: (isAdmin ? formData.teacherId : user?._id) as Id<"users">,
+          teacherId: formData.classType === "standard" && formData.teacherId 
+            ? ((isAdmin ? formData.teacherId : user?._id) as Id<"users">)
+            : undefined,
           campusId:
             orgContext?.type === "campus"
               ? (orgContext._id as Id<"campuses">)
               : undefined,
+          classType: formData.classType as "standard" | "ignitia" | "abeka"
         });
         toast.success(t("class.created"));
         setIsOpen(false);
@@ -324,6 +334,36 @@ export function ClassDialog({
               />
             </div>
 
+            {/* ADD THIS NEW BLOCK for Class Type */}
+            <div className="grid gap-2">
+              <Label>{t("class.type") || "Class Type"}</Label>
+              <RadioGroup
+                value={formData.classType}
+                onValueChange={(v: "standard" | "ignitia" | "abeka") => {
+                  setFormData({ 
+                    ...formData, 
+                    classType: v,
+                    // Auto-clear teacher if switching to virtual
+                    teacherId: v === "standard" ? formData.teacherId : "" 
+                  })
+                }}
+                className="flex flex-row space-x-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="standard" id="ct-standard" />
+                  <Label htmlFor="ct-standard" className="font-normal cursor-pointer">Standard (Teacher)</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="ignitia" id="ct-ignitia" />
+                  <Label htmlFor="ct-ignitia" className="font-normal cursor-pointer">Ignitia</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="abeka" id="ct-abeka" />
+                  <Label htmlFor="ct-abeka" className="font-normal cursor-pointer">Abeka</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
             <div className="grid gap-2">
               <Label>
                 {t("class.curriculum")}{" "}
@@ -424,7 +464,7 @@ export function ClassDialog({
               </div>
             </div>
 
-            {isAdmin && (
+            {isAdmin && formData.classType === "standard" && (
               <div className="grid gap-2">
                 <Label>
                   {t("class.assignTeacher")}{" "}

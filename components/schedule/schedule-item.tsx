@@ -28,7 +28,7 @@ interface ScheduleItemProps {
     start: number | Date
     end: number | Date
     roomName: string
-    sessionType?: "live" | "ignitia"
+    sessionType?: "live" | "ignitia" | "abeka"
     isLive?: boolean
     status?: "scheduled" | "active" | "cancelled" | "completed"
     className?: string

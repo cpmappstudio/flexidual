@@ -108,7 +108,7 @@ const formSchema = z.object({
   start: z.string(),
   duration: z.number().min(15).max(240),
   lessonIds: z.array(z.string()).optional(),
-  sessionType: z.enum(["live", "ignitia"]),
+  sessionType: z.enum(["live", "ignitia", "abeka"]),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -351,6 +351,11 @@ export default function CalendarManageEventDialog() {
                       <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200">
                         <MonitorPlay className="h-3 w-3 mr-1" />
                         {t("schedule.typeIgnitia")}
+                      </Badge>
+                    ) : (selectedEvent as CalendarEvent).sessionType === "abeka" ? (
+                      <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">
+                        <BookOpen className="h-3 w-3 mr-1" />
+                        {t("schedule.typeAbeka")}
                       </Badge>
                     ) : (
                       <Badge variant="secondary">
@@ -607,6 +612,12 @@ export default function CalendarManageEventDialog() {
                           <RadioGroupItem value="ignitia" id="edit-ignitia" />
                           <FormLabel htmlFor="edit-ignitia" className="font-normal cursor-pointer">
                             {t("schedule.typeIgnitia")}
+                          </FormLabel>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="abeka" id="edit-abeka" />
+                          <FormLabel htmlFor="edit-abeka" className="font-normal cursor-pointer">
+                            {t("schedule.typeAbeka")}
                           </FormLabel>
                         </div>
                       </RadioGroup>

@@ -65,7 +65,14 @@ export function ClassroomDropZone({
   }
 
   const isIgnitia = activeLesson?.sessionType === "ignitia"
+  const isAbeka = activeLesson?.sessionType === "abeka"
+  const isVirtual = isIgnitia || isAbeka
+  
   const ignitiaUrl = "https://centralpointefl.ignitiaschools.com/owsoo/login/auth"
+  const abekaUrl = "https://login.abeka.com/abekab2c.onmicrosoft.com/b2c_1a_signin_legacy/oauth2/v2.0/authorize?client_id=39dfdf7d-fa0c-41dc-ae8f-a7f2ead1e645&response_type=id_token&scope=openid%20profile&state=OpenIdConnect.AuthenticationProperties%3DTmtO36sXdnSSdnF5m0ICSuO0TiIc6mkpqMBYNRvFoE8zqfGTp9mR1wLWNVXb-FznJRpV18nEgJh44lBGQ1L7HpfdPU57UCQ92L4AF9wxYSF52KxGZ9RFKs9tB5FETopSF_3i0I469pko6gDsKSSIGw&response_mode=form_post&nonce=639084289217533065.OTEyYzk1NjAtY2U1Mi00N2Y2LWE5OWItZWM3MTY2NDhhZmRmZDQ2NGI4ZTAtY2EzZC00NTMwLWI0ZjgtYmQyNGFhNTg5ZGE5&redirect_uri=https%3A%2F%2Fathome.abeka.com%2Flogin.aspx&x-client-SKU=ID_NET472&x-client-ver=6.29.0.0"
+
+  const platformUrl = isAbeka ? abekaUrl : ignitiaUrl;
+  const platformName = isAbeka ? "Abeka" : "Ignitia";
 
   return (
     <div className="relative h-full w-full rounded-3xl overflow-hidden border-4 border-purple-400 dark:border-purple-600 shadow-2xl">
@@ -152,24 +159,24 @@ export function ClassroomDropZone({
             animate={{ opacity: 1, scale: 1 }}
             className="h-full w-full relative"
           >
-            {isIgnitia ? (
+            {isVirtual ? (
               <div className="h-full w-full flex flex-col bg-white dark:bg-gray-900">
-                {/* Header for Ignitia Frame */}
+                {/* Header for Virtual Frame */}
                 <div className="h-12 sm:h-14 bg-gray-100 dark:bg-gray-800 border-b flex items-center justify-between px-3 sm:px-4 shrink-0 gap-2">
                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className="font-bold text-gray-700 dark:text-gray-200 text-sm sm:text-base truncate">
-                        Ignitia: {activeLesson.title}
+                        {platformName}: {activeLesson.title}
                       </span>
                    </div>
                    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                       <Button variant="ghost" size="sm" asChild className="hidden sm:flex">
-                        <a href={ignitiaUrl} target="_blank" rel="noopener noreferrer" className="text-xs">
+                        <a href={platformUrl} target="_blank" rel="noopener noreferrer" className="text-xs">
                            <ExternalLink className="w-4 h-4 mr-1" />
                            Open in new tab
                         </a>
                       </Button>
                       <Button variant="ghost" size="icon" asChild className="sm:hidden">
-                        <a href={ignitiaUrl} target="_blank" rel="noopener noreferrer">
+                        <a href={platformUrl} target="_blank" rel="noopener noreferrer">
                            <ExternalLink className="w-4 h-4" />
                         </a>
                       </Button>
@@ -182,10 +189,10 @@ export function ClassroomDropZone({
                 
                 {/* The Iframe */}
                 <iframe 
-                  src={ignitiaUrl}
+                  src={platformUrl}
                   className="flex-1 w-full h-full border-0"
                   allow="microphone; camera; fullscreen; display-capture"
-                  title="Ignitia Lesson"
+                  title={`${platformName} Lesson`}
                 />
               </div>
             ) : (

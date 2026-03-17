@@ -41,30 +41,31 @@ export function DraggableLessonCard({
   const canStillPass = timeToEnd >= requiredTimeMs;
 
   const isIgnitia = lesson.sessionType === "ignitia"
+  const isAbeka = lesson.sessionType === "abeka"
+  const isVirtual = isIgnitia || isAbeka
   
   // Update timer
   useEffect(() => {
-    if (now > lesson.end + 1000 && !isIgnitia && !lesson.isStudentActive) return; 
+    if (now > lesson.end + 1000 && !isVirtual && !lesson.isStudentActive) return; 
 
     const interval = setInterval(() => {
       setNow(Date.now())
     }, 1000)
     return () => clearInterval(interval)
-  }, [lesson.end, isIgnitia, lesson.isStudentActive, now])
+  }, [lesson.end, isVirtual, lesson.isStudentActive, now])
 
   // --- 🧠 STATE LOGIC ---
   const isInClass = lesson.isStudentActive;
   const isPresent = lesson.attendance === "present" || lesson.attendance === "excused";
   const isPartialFinal = lesson.attendance === "partial";
   const isLiveWindow = now >= lesson.start && now < lesson.end;
-  const isLate = !isIgnitia && isLiveWindow && !isInClass && !isPresent;
-  const isMissed = !isIgnitia && now >= lesson.end && !isPresent && !isPartialFinal && !isInClass;
+  const isLate = !isVirtual && isLiveWindow && !isInClass && !isPresent;
+  const isMissed = !isVirtual && now >= lesson.end && !isPresent && !isPartialFinal && !isInClass;
   const isUrgent = timeToStart > 0 && timeToStart <= 5 * 60 * 1000;
   
-  // Ignitia Pending Logic
-  const isIgnitiaPending = isIgnitia && (isPast || now > lesson.end) && !isPresent && !isPartialFinal;
+  const isVirtualPending = isVirtual && (isPast || now > lesson.end) && !isPresent && !isPartialFinal;
 
-  const canDrag = (isIgnitia && !isPresent) || isInClass || isLiveWindow || (now < lesson.start);
+  const canDrag = (isVirtual && !isPresent) || isInClass || isLiveWindow || (now < lesson.start);
 
   const formatCountdown = (ms: number) => {
     const absMs = Math.abs(ms)
@@ -82,19 +83,20 @@ export function DraggableLessonCard({
         return 'bg-red-50 dark:bg-red-950/40 border-red-500 border-b-[6px] dark:border-red-700 shadow-xl shadow-red-200 dark:shadow-none';
     }
 
-    if (isIgnitia) {
+    if (isVirtual) {
         if (lesson.isLive || (now >= lesson.start && now <= lesson.end)) {
-            return 'bg-gradient-to-br from-orange-100 via-amber-100 to-yellow-100 dark:from-orange-950 dark:via-amber-950 dark:to-yellow-950 border-orange-400 border-b-[6px] dark:border-orange-500';
+            return isAbeka 
+              ? 'bg-gradient-to-br from-blue-100 via-sky-100 to-cyan-100 dark:from-blue-950 dark:via-sky-950 dark:to-cyan-950 border-blue-400 border-b-[6px] dark:border-blue-500'
+              : 'bg-gradient-to-br from-orange-100 via-amber-100 to-yellow-100 dark:from-orange-950 dark:via-amber-950 dark:to-yellow-950 border-orange-400 border-b-[6px] dark:border-orange-500';
         }
-        return 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-orange-300 border-b-[6px] dark:border-orange-800 shadow-sm';
+        return isAbeka
+          ? 'bg-gradient-to-br from-sky-50 to-blue-50 dark:from-sky-950/40 dark:to-blue-950/40 border-blue-300 border-b-[6px] dark:border-blue-800 shadow-sm'
+          : 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-orange-300 border-b-[6px] dark:border-orange-800 shadow-sm';
     }
 
     if (isMissed) return 'bg-gray-100 dark:bg-gray-900/50 border-gray-300 border-b-4 dark:border-gray-800 opacity-60 grayscale';
-
     if (isPresent || isPartialFinal) return 'bg-white dark:bg-gray-900 border-green-200 border-b-4 dark:border-green-900 opacity-80';
-
     if (isUrgent) return 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 border-b-[6px] shadow-lg shadow-amber-200 dark:shadow-none';
-    
     if (lesson.isLive) return 'bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-950 dark:to-emerald-950 border-green-400 border-b-[6px] dark:border-green-600 shadow-md';
 
     return 'bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950 border-blue-400 border-b-[6px] dark:border-purple-500 shadow-sm hover:shadow-md transition-shadow';
@@ -103,12 +105,12 @@ export function DraggableLessonCard({
   const getTextColor = () => {
       if (isMissed) return "text-gray-500 dark:text-gray-500";
       if (isLate) return "text-gray-800 dark:text-red-100";
+      if (isAbeka) return "text-gray-800 dark:text-blue-100";
       if (isIgnitia) return "text-gray-800 dark:text-orange-100";
       return "text-gray-800 dark:text-gray-100";
   }
 
-  // Determine if we show the trailing badge
-  const showTrailingBadge = (isMissed || isPresent || isPartialFinal || isIgnitiaPending) && !isInClass;
+  const showTrailingBadge = (isMissed || isPresent || isPartialFinal || isVirtualPending) && !isInClass;
 
   return (
     <motion.div
@@ -230,12 +232,12 @@ export function DraggableLessonCard({
         <div className={cn("flex-1 min-w-0", isMissed && "opacity-60")}>
           <div className="flex items-center gap-2 mb-1">
              <h3 className={cn("text-lg font-black truncate", getTextColor())}>{lesson.title}</h3>
-             {isIgnitia && (
-                <div className="bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-200 p-1 rounded-md">
+             {isVirtual && (
+                <div className={cn("p-1 rounded-md", isAbeka ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200" : "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-200")}>
                     <MonitorPlay className="w-4 h-4" />
                 </div>
              )}
-             {!isIgnitia && !isMissed && (
+             {!isVirtual && !isMissed && (
                 <div className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 p-1 rounded-md">
                     <Video className="w-4 h-4" />
                 </div>

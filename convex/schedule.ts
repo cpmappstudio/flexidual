@@ -21,13 +21,13 @@ const STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 async function validateScheduleOverlap(
   ctx: any,
   {
-    teacherId,
+    teacherId, // Now it naturally accepts undefined
     classId,
     start,
     end,
     excludeScheduleId
   }: {
-    teacherId: Id<"users">,
+    teacherId?: Id<"users">, // <-- Make optional here
     classId: Id<"classes">,
     start: number,
     end: number,
@@ -62,39 +62,42 @@ async function validateScheduleOverlap(
     });
   }
   
-  const teacherClasses = await ctx.db
-    .query("classes")
-    .withIndex("by_teacher", (q: any) => q.eq("teacherId", teacherId).eq("isActive", true))
-    .collect();
-  
-  const teacherClassIds = new Set(teacherClasses.map((c: any) => c._id));
-
-  if (teacherClassIds.size === 0) return;
-
-  const potentialOverlaps = await ctx.db
-    .query("classSchedule")
-    .withIndex("by_date_range", (q: any) => q.gte("scheduledStart", start - 24 * 60 * 60 * 1000))
-    .filter((q: any) => 
-      q.and(
-        q.neq(q.field("status"), "cancelled"),
-        q.lt(q.field("scheduledStart"), end),
-        q.gt(q.field("scheduledEnd"), start)
-      )
-    )
-    .collect();
-
-  const teacherConflict = potentialOverlaps.find((s: any) => 
-    teacherClassIds.has(s.classId) && s._id !== excludeScheduleId
-  );
-
-  if (teacherConflict) {
-    const conflictClass = teacherClasses.find((c: any) => c._id === teacherConflict.classId);
+  // 2. ONLY check teacher overlap if a teacher is actually assigned
+  if (teacherId) {
+    const teacherClasses = await ctx.db
+      .query("classes")
+      .withIndex("by_teacher", (q: any) => q.eq("teacherId", teacherId).eq("isActive", true))
+      .collect();
     
-    throw new ConvexError({
-      code: "TEACHER_SCHEDULE_CONFLICT",
-      className: conflictClass?.name || "another class",
-      conflictTime: teacherConflict.scheduledStart.toString(),
-    });
+    const teacherClassIds = new Set(teacherClasses.map((c: any) => c._id));
+
+    if (teacherClassIds.size > 0) {
+      const potentialOverlaps = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_date_range", (q: any) => q.gte("scheduledStart", start - 24 * 60 * 60 * 1000))
+        .filter((q: any) => 
+          q.and(
+            q.neq(q.field("status"), "cancelled"),
+            q.lt(q.field("scheduledStart"), end),
+            q.gt(q.field("scheduledEnd"), start)
+          )
+        )
+        .collect();
+
+      const teacherConflict = potentialOverlaps.find((s: any) => 
+        teacherClassIds.has(s.classId) && s._id !== excludeScheduleId
+      );
+
+      if (teacherConflict) {
+        const conflictClass = teacherClasses.find((c: any) => c._id === teacherConflict.classId);
+        
+        throw new ConvexError({
+          code: "TEACHER_SCHEDULE_CONFLICT",
+          className: conflictClass?.name || "another class",
+          conflictTime: teacherConflict.scheduledStart.toString(),
+        });
+      }
+    }
   }
 }
 
@@ -217,7 +220,7 @@ export const getMySchedule = query({
     if (args.status) flatSchedule = flatSchedule.filter(s => s.status === args.status);
 
     const uniqueCurriculumIds = new Set(myClasses.map(c => c.curriculumId));
-    const uniqueTeacherIds = new Set(myClasses.map(c => c.teacherId));
+    const uniqueTeacherIds = new Set(myClasses.map(c => c.teacherId).filter(Boolean));
     const uniqueLessonIds = new Set(flatSchedule.flatMap(s => s.lessonIds || []));
 
     const [curriculums, teachers, lessons] = await Promise.all([
@@ -433,7 +436,7 @@ export const getWithDetails = query({
 
     const [curriculum, teacher] = await Promise.all([
       ctx.db.get(classData.curriculumId),
-      ctx.db.get(classData.teacherId),
+      classData.teacherId ? ctx.db.get(classData.teacherId) : null,
     ]);
 
     return {
@@ -612,7 +615,7 @@ export const createSchedule = mutation({
     description: v.optional(v.string()),
     scheduledStart: v.number(),
     scheduledEnd: v.number(),
-    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka"))),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -678,7 +681,7 @@ export const createRecurringSchedule = mutation({
     description: v.optional(v.string()),
     scheduledStart: v.number(), 
     scheduledEnd: v.number(),
-    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka"))),
     timezoneOffset: v.number(),
     recurrence: v.object({
       type: v.union(v.literal("daily"), v.literal("weekly"), v.literal("biweekly"), v.literal("monthly")),
@@ -793,7 +796,7 @@ export const scheduleLesson = mutation({
     lessonIds: v.array(v.id("lessons")),
     scheduledStart: v.number(),
     scheduledEnd: v.number(),
-    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka"))),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -848,7 +851,7 @@ export const updateSchedule = mutation({
     scheduledStart: v.optional(v.number()),
     scheduledEnd: v.optional(v.number()),
     status: v.optional(v.union(v.literal("scheduled"), v.literal("active"), v.literal("completed"), v.literal("cancelled"))),
-    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"))),
+    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka"))),
     updateSeries: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
