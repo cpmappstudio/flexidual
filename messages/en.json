@@ -203,7 +203,17 @@
     "liveTutor": "Live Tutor",
     "online": "Online",
     "chatWithTutor": "Chat with Tutor",
-    "shouldHaveStarted": "Class should have started"
+    "shouldHaveStarted": "Class should have started",
+    "secureLoginRequired": "Secure Login Required",
+    "abekaStudentSecurityMsg": "For security reasons, Abeka requires you to log in through their official, secure page. Please launch the lesson in a new tab.",
+    "launchAbeka": "Launch Abeka Lesson",
+    "openInNewTab": "Open in new tab",
+    "closeSession": "Close Session",
+    "abekaTeacherAccess": "Abeka Teacher Access",
+    "abekaTeacherSecurityMsg": "Abeka's security policies prevent their platform from being embedded directly into Flexidual. You must open the portal in a new tab.",
+    "openAbekaPortal": "Open Abeka Portal",
+    "teacherView": "Teacher View",
+    "platformAccess": "{platform} Access"
   },
   "curriculum": {
     "curriculum": "Curriculum",

@@ -26,6 +26,7 @@ export function ClassroomDropZone({
   onLeaveClassroom 
 }: ClassroomDropZoneProps) {
   const t = useTranslations('student')
+  const tClassroom = useTranslations('classroom')
   const [isHovering, setIsHovering] = useState(false)
 
   // Generate stable star positions (only once, not on every render)
@@ -172,7 +173,7 @@ export function ClassroomDropZone({
                       <Button variant="ghost" size="sm" asChild className="hidden sm:flex">
                         <a href={platformUrl} target="_blank" rel="noopener noreferrer" className="text-xs">
                            <ExternalLink className="w-4 h-4 mr-1" />
-                           Open in new tab
+                           {tClassroom('openInNewTab')}
                         </a>
                       </Button>
                       <Button variant="ghost" size="icon" asChild className="sm:hidden">
@@ -181,23 +182,23 @@ export function ClassroomDropZone({
                         </a>
                       </Button>
                       <Button variant="destructive" size="sm" onClick={onLeaveClassroom} className="text-xs sm:text-sm">
-                        <span className="hidden sm:inline">Close Session</span>
-                        <span className="sm:hidden">Close</span>
+                        <span className="hidden sm:inline">{tClassroom('closeSession')}</span>
+                        <span className="sm:hidden">{t('common.close') || 'Close'}</span>
                       </Button>
                    </div>
                 </div>
                 
-                {/* The Iframe */}
+                {/* The Content Area: Iframe OR External Launch */}
                 {isAbeka ? (
                   <div className="flex-1 w-full h-full flex flex-col items-center justify-center bg-blue-50/50 dark:bg-blue-900/10 p-6 text-center">
                     <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
                       <ExternalLink className="w-10 h-10 text-blue-600 dark:text-blue-400" />
                     </div>
                     <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
-                      Secure Login Required
+                      {tClassroom('secureLoginRequired')}
                     </h3>
                     <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md">
-                      For security reasons, Abeka requires you to log in through their official, secure page. Please launch the lesson in a new tab.
+                      {tClassroom('abekaStudentSecurityMsg')}
                     </p>
                     <Button 
                       size="lg" 
@@ -205,7 +206,7 @@ export function ClassroomDropZone({
                       asChild
                     >
                       <a href={platformUrl} target="_blank" rel="noopener noreferrer">
-                        Launch Abeka Lesson
+                        {tClassroom('launchAbeka')}
                         <ExternalLink className="w-5 h-5 ml-2" />
                       </a>
                     </Button>

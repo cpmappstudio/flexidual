@@ -4,6 +4,7 @@ import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, MonitorPlay } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
+import { getTranslations } from "next-intl/server";
 
 interface ClassroomPageProps {
   params: Promise<{
@@ -50,6 +51,7 @@ export async function generateMetadata(props: ClassroomPageProps) {
 }
 
 export default async function ClassroomPage(props: ClassroomPageProps) {
+  const t = await getTranslations('classroom');
   const params = await props.params; 
   const roomName = decodeURIComponent(params.roomName);
 
@@ -77,19 +79,19 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
                <MonitorPlay className="w-5 h-5" />
              </div>
              <div>
-               <h1 className="font-bold text-gray-800">{platformName} Access</h1>
-               <p className="text-xs text-muted-foreground">Teacher View</p>
+               <h1 className="font-bold text-gray-800">{t('platformAccess', { platform: platformName })}</h1>
+               <p className="text-xs text-muted-foreground">{t('teacherView')}</p>
              </div>
           </div>
           <Button variant="outline" size="sm" asChild>
             <a href={platformUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="w-4 h-4 mr-2" />
-              Open in New Tab
+              {t('openInNewTab')}
             </a>
           </Button>
         </div>
 
-        {/* The Iframe */}
+        {/* The Content Area: Iframe OR External Launch */}
         <div className="flex-1 relative bg-gray-100 flex flex-col">
           {isAbeka ? (
             <div className="flex-1 w-full h-full flex flex-col items-center justify-center bg-white p-6 text-center">
@@ -97,14 +99,14 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
                 <ExternalLink className="w-10 h-10 text-blue-500" />
               </div>
               <h3 className="text-2xl font-bold text-gray-800 mb-2">
-                Abeka Teacher Access
+                {t('abekaTeacherAccess')}
               </h3>
               <p className="text-gray-500 mb-8 max-w-md">
-                Abeka`&apos;`s security policies prevent their platform from being embedded directly into Flexidual. You must open the portal in a new tab.
+                {t('abekaTeacherSecurityMsg')}
               </p>
               <Button size="lg" className="px-8" asChild>
                 <a href={platformUrl} target="_blank" rel="noopener noreferrer">
-                  Open Abeka Portal
+                  {t('openAbekaPortal')}
                   <ExternalLink className="w-4 h-4 ml-2" />
                 </a>
               </Button>

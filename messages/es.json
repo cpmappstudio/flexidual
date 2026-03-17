@@ -122,7 +122,6 @@
     "users": "Usuarios",
     "allUsers": "Usuarios",
     "allUsersDescription": "Resumen de todos los usuarios registrados en la plataforma.",
-    "principals": "Directores",
     "principalsDescription": "Gestiona los administradores a nivel de campus."
   },
   "dashboard": {
@@ -202,7 +201,17 @@
     "liveTutor": "Tutor en Vivo",
     "online": "En Línea",
     "chatWithTutor": "Chatear con Tutor",
-    "shouldHaveStarted": "La clase debería haber comenzado"
+    "shouldHaveStarted": "La clase debería haber comenzado",
+    "secureLoginRequired": "Inicio de sesión seguro requerido",
+    "abekaStudentSecurityMsg": "Por razones de seguridad, Abeka requiere que inicies sesión a través de su página oficial y segura. Por favor, abre la lección en una nueva pestaña.",
+    "launchAbeka": "Lanzar Lección de Abeka",
+    "openInNewTab": "Abrir en nueva pestaña",
+    "closeSession": "Cerrar Sesión",
+    "abekaTeacherAccess": "Acceso para Maestros de Abeka",
+    "abekaTeacherSecurityMsg": "Por razones de seguridad, Abeka requiere que los maestros inicien sesión a través de su portal oficial y seguro. Por favor, haz clic abajo para acceder al portal de maestros de Abeka.",
+    "openAbekaPortal": "Abrir Portal de Abeka",
+    "teacherView": "Vista del Profesor",
+    "platformAccess": "Acceso a {platform}"
   },
   "curriculum": {
     "curriculum": "Currículo",
