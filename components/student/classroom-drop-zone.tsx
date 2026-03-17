@@ -188,12 +188,36 @@ export function ClassroomDropZone({
                 </div>
                 
                 {/* The Iframe */}
-                <iframe 
-                  src={platformUrl}
-                  className="flex-1 w-full h-full border-0"
-                  allow="microphone; camera; fullscreen; display-capture"
-                  title={`${platformName} Lesson`}
-                />
+                {isAbeka ? (
+                  <div className="flex-1 w-full h-full flex flex-col items-center justify-center bg-blue-50/50 dark:bg-blue-900/10 p-6 text-center">
+                    <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                      <ExternalLink className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+                      Secure Login Required
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md">
+                      For security reasons, Abeka requires you to log in through their official, secure page. Please launch the lesson in a new tab.
+                    </p>
+                    <Button 
+                      size="lg" 
+                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all" 
+                      asChild
+                    >
+                      <a href={platformUrl} target="_blank" rel="noopener noreferrer">
+                        Launch Abeka Lesson
+                        <ExternalLink className="w-5 h-5 ml-2" />
+                      </a>
+                    </Button>
+                  </div>
+                ) : (
+                  <iframe 
+                    src={platformUrl}
+                    className="flex-1 w-full h-full border-0"
+                    allow="microphone; camera; fullscreen; display-capture"
+                    title={`${platformName} Lesson`}
+                  />
+                )}
               </div>
             ) : (
               /* Standard LiveKit Classroom */

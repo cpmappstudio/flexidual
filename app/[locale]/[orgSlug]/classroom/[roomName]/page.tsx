@@ -90,13 +90,33 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
         </div>
 
         {/* The Iframe */}
-        <div className="flex-1 relative bg-gray-100">
-           <iframe 
-              src={platformUrl}
-              className="w-full h-full border-0"
-              allow="microphone; camera; fullscreen; display-capture"
-              title={`${platformName} Teacher View`}
-           />
+        <div className="flex-1 relative bg-gray-100 flex flex-col">
+          {isAbeka ? (
+            <div className="flex-1 w-full h-full flex flex-col items-center justify-center bg-white p-6 text-center">
+              <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 border border-blue-100">
+                <ExternalLink className="w-10 h-10 text-blue-500" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                Abeka Teacher Access
+              </h3>
+              <p className="text-gray-500 mb-8 max-w-md">
+                Abeka`&apos;`s security policies prevent their platform from being embedded directly into Flexidual. You must open the portal in a new tab.
+              </p>
+              <Button size="lg" className="px-8" asChild>
+                <a href={platformUrl} target="_blank" rel="noopener noreferrer">
+                  Open Abeka Portal
+                  <ExternalLink className="w-4 h-4 ml-2" />
+                </a>
+              </Button>
+            </div>
+          ) : (
+             <iframe 
+                src={platformUrl}
+                className="w-full h-full border-0"
+                allow="microphone; camera; fullscreen; display-capture"
+                title={`${platformName} Teacher View`}
+             />
+          )}
         </div>
       </main>
     );
