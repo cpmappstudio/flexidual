@@ -86,7 +86,12 @@
     "urlSlug": "URL Slug",
     "noCampusesFound": "No campuses found.",
     "addCampus": "Add Campus",
-    "classTrackingDescription": "Monitor progress and verify attendance records"
+    "classTrackingDescription": "Monitor progress and verify attendance records",
+    "allCampuses": "All Campuses",
+    "globalSystem": "Global System",
+    "yourOrganizations": "Your Organizations",
+    "schoolFilter": "School Filter",
+    "filterBySchool": "Filter all pages by school"
   },
   "navigation": {
     "dashboard": "Dashboard",
@@ -291,6 +296,7 @@
   },
   "class": {
     "class": "Class",
+    "type": "Class Type",
     "title": "Classes",
     "name": "Class Name",
     "year": "Year",
@@ -517,6 +523,7 @@
     "sessionType": "Session Type",
     "typeLive": "Live Class",
     "typeIgnitia": "Ignitia Lesson",
+    "typeAbeka": "Abeka Lesson",
     "classStartingSoon": "Class starting soon",
     "dateAdjusted": "Start Date Auto-Adjusted",
     "dateAdjustedDesc": "We moved the start date to {date} to match your selected days.",

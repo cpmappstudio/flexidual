@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import { getRoleForOrg } from "@/lib/rbac"
+import { getRoleForOrg, isSuperAdmin } from "@/lib/rbac"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
 import { useAlert } from "@/components/providers/alert-provider"
@@ -35,7 +35,7 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
   const orgSlug = (params.orgSlug as string) || "system"
   const { sessionClaims } = useAuth()
   const role = getRoleForOrg(sessionClaims, orgSlug)
-  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
+  const isAdmin = isSuperAdmin(sessionClaims) || role === "admin" || role === "principal"
 
   const handleRemove = async (studentId: Id<"users">, name: string) => {
     showAlert({

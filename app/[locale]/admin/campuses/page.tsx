@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
@@ -8,18 +7,21 @@ import { useTranslations } from "next-intl"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { MapPin, Building2 } from "lucide-react"
+import { MapPin } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CampusDialog } from "@/components/admin/campuses/campus-dialog"
+import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider"
 
 export default function CampusesPage() {
     const t = useTranslations()
-    const [selectedSchoolId, setSelectedSchoolId] = useState<string>("all")
 
+    // Global school filter from sidebar context
+    const { selectedSchoolId } = useAdminSchoolFilter()
+
+    // Still needed to render the "Parent School" column
     const schools = useQuery(api.schools.list, {})
-    
-    const campuses = useQuery(api.campuses.list, 
+
+    const campuses = useQuery(api.campuses.list,
         selectedSchoolId === "all" ? {} : { schoolId: selectedSchoolId as Id<"schools"> }
     )
 
@@ -34,28 +36,7 @@ export default function CampusesPage() {
                         {t("admin.campusesDescription")}
                     </p>
                 </div>
-                
-                <div className="flex items-center gap-4 w-full sm:w-auto">
-                    {/* School Filter Dropdown */}
-                    <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
-                        <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[400px]">
-                            <div className="flex items-center gap-2 truncate">
-                                <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
-                                <span className="truncate"><SelectValue placeholder={t("admin.allSchools")} /></span>
-                            </div>
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">{t("admin.allSchools")}</SelectItem>
-                            {schools?.map(school => (
-                                <SelectItem key={school._id} value={school._id}>
-                                    {school.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    
-                    <CampusDialog />
-                </div>
+                <CampusDialog />
             </div>
 
             <Card>

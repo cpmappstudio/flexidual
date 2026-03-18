@@ -4,16 +4,16 @@ import * as React from "react";
 import { Doc } from "@/convex/_generated/dataModel";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ClassDialog } from "./class-dialog";
 import { useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { getRoleForOrg } from "@/lib/rbac";
 import { DataTable } from "@/components/table/data-table";
-import {
-  createSearchColumn,
-  createSortableHeader,
-} from "@/components/table/column-helpers";
+import { createSearchColumn, createSortableHeader } from "@/components/table/column-helpers";
+import { useRouter } from "@/i18n/navigation";
+import { Edit } from "lucide-react";
 
 interface ClassesTableProps {
   data: Doc<"classes">[];
@@ -21,27 +21,19 @@ interface ClassesTableProps {
   customFilter?: React.ReactNode;
 }
 
-export function ClassesTable({
-  data,
-  curriculums,
-  customFilter,
-}: ClassesTableProps) {
+export function ClassesTable({ data, curriculums, customFilter }: ClassesTableProps) {
   const t = useTranslations();
   const params = useParams();
+  const router = useRouter();
   const orgSlug = (params.orgSlug as string) || "system";
   const { sessionClaims } = useAuth();
   const role = getRoleForOrg(sessionClaims, orgSlug);
-  const isAdmin =
-    role === "admin" || role === "principal" || role === "superadmin";
+  const isAdmin = role === "admin" || role === "principal" || role === "superadmin";
 
-  const [editingClass, setEditingClass] = React.useState<Doc<"classes"> | null>(
-    null,
-  );
+  const [editingClass, setEditingClass] = React.useState<Doc<"classes"> | null>(null);
 
   const getCurriculumName = (id: string) => {
-    return (
-      curriculums?.find((c) => c._id === id)?.title || "Unknown Curriculum"
-    );
+    return curriculums?.find((c) => c._id === id)?.title || "Unknown Curriculum";
   };
 
   const classHeader = (
@@ -123,11 +115,29 @@ export function ClassesTable({
         </Badge>
       ),
     },
+    // Edit action column — admins only
+    ...(isAdmin ? [{
+      id: "actions",
+      cell: ({ row }: { row: { original: Doc<"classes"> } }) => (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="icon"
+            title={t("class.edit")}
+            onClick={(e) => {
+              e.stopPropagation(); // prevent row click from also firing
+              setEditingClass(row.original);
+            }}
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    }] as ColumnDef<Doc<"classes">, unknown>[] : []),
   ];
 
   return (
     <div className="space-y-4">
-      {/* Shared Dialog for Editing */}
       {editingClass && (
         <ClassDialog
           classDoc={editingClass}
@@ -146,7 +156,7 @@ export function ClassesTable({
         customFilter={customFilter}
         createAction={isAdmin ? <ClassDialog /> : undefined}
         pageSize={10}
-        onRowClick={isAdmin ? (cls) => setEditingClass(cls) : undefined}
+        onRowClick={(cls) => router.push(`/${orgSlug}/classes/${cls._id}`)}
       />
     </div>
   );

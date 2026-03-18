@@ -85,7 +85,12 @@
     "urlSlug": "Slug de URL",
     "noCampusesFound": "No se encontraron campuses.",
     "addCampus": "Agregar Campus",
-    "classTrackingDescription": "Monitorea el progreso y verifica el registro de asistencia"
+    "classTrackingDescription": "Monitorea el progreso y verifica el registro de asistencia",
+    "allCampuses": "Todos los Campuses",
+    "globalSystem": "Sistema Global",
+    "yourOrganizations": "Tus Organizaciones",
+    "schoolFilter": "Filtro de Escuela",
+    "filterBySchool": "Filtrar todas las páginas por escuela"
   },
   "navigation": {
     "dashboard": "Panel general",
@@ -289,6 +294,7 @@
   },
   "class": {
     "class": "Clase",
+    "type": "Tipo de Clase",
     "title": "Clases",
     "name": "Nombre de la Clase",
     "academicYear": "Año Académico",
@@ -514,6 +520,7 @@
     "sessionType": "Tipo de Sesión",
     "typeLive": "Clase en Vivo",
     "typeIgnitia": "Lección Ignitia",
+    "typeAbeka": "Lección Abeka",
     "classStartingSoon": "La clase comenzará pronto",
     "dateAdjusted": "Fecha de inicio ajustada automáticamente",
     "dateAdjustedDesc": "Hemos movido la fecha de inicio a {date} para que coincida con los días seleccionados.",

@@ -21,6 +21,7 @@ import CalendarHeaderCombinedFilter from "@/components/calendar/header/filters/c
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types";
 import { ScheduleItem } from "@/components/schedule/schedule-item";
 import FlexidualHeader from "@/components/flexidual-header";
+import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 const localeMap = {
   en: enUS,
@@ -137,10 +138,8 @@ function CalendarContent() {
   const [mode, setMode] = useState<Mode>("month");
   const [date, setDate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState("month");
-  const [selectedTeacherId, setSelectedTeacherId] =
-    useState<Id<"users"> | null>(null);
-  const [selectedCurriculumId, setSelectedCurriculumId] =
-    useState<Id<"curriculums"> | null>(null);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null);
+  const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null);
 
   const { user } = useCurrentUser();
   const t = useTranslations();
@@ -148,8 +147,16 @@ function CalendarContent() {
   const searchParams = useSearchParams();
   const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
 
+  // Global school/campus filter
+  const { selectedSchoolId, selectedCampusId, isAvailable } = useAdminSchoolFilter();
+
   const scheduleData = useQuery(api.schedule.getMySchedule, {
     teacherId: selectedTeacherId ?? undefined,
+    ...(isAvailable && selectedCampusId !== "all"
+      ? { campusId: selectedCampusId as Id<"campuses"> }
+      : isAvailable && selectedSchoolId !== "all"
+      ? { schoolId: selectedSchoolId as Id<"schools"> }
+      : {}),
   });
 
   const allEvents = useMemo(() => {

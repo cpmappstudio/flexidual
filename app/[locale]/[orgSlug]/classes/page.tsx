@@ -8,30 +8,23 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { getRoleForOrg } from "@/lib/rbac";
-import {
-  Card,
-} from "@/components/ui/card";
-import {
-  School,
-  MapPin,
-  Building2,
-} from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { School } from "lucide-react";
 import { startOfWeek, addDays } from "date-fns";
 import { ClassDialog } from "@/components/teaching/classes/class-dialog";
 import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter";
 import { ClassesTable } from "@/components/teaching/classes/classes-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTranslations } from "next-intl";
 import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview";
 import FlexidualHeader from "@/components/flexidual-header";
+import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 export default function MyClassesPage() {
   const t = useTranslations();
   const { user, isLoading: isUserLoading } = useCurrentUser();
   const params = useParams();
   
-  // Normalize slug for context mapping
   let currentSlug = (params.orgSlug as string) || "system";
   if (currentSlug === "admin") currentSlug = "system";
 
@@ -44,18 +37,9 @@ export default function MyClassesPage() {
   
   const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null);
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null);
-  
-  // Superadmin filtering state
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("all");
-  const [selectedCampusId, setSelectedCampusId] = useState<string>("all");
 
-  const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip");
-  const campuses = useQuery(
-    api.campuses.list,
-    isSystemDashboard && selectedSchoolId !== "all"
-      ? { schoolId: selectedSchoolId as Id<"schools"> }
-      : "skip"
-  );
+  // School comes from global sidebar context; campus stays page-scoped
+  const { selectedSchoolId, selectedCampusId } = useAdminSchoolFilter();
 
   let querySchoolId = undefined;
   let queryCampusId = undefined;
@@ -69,7 +53,6 @@ export default function MyClassesPage() {
     queryCampusId = orgContext._id;
   }
   
-  // Inject the parameters into the queryArgs
   const queryArgs = isAdmin 
     ? { 
         teacherId: selectedTeacherId || undefined,
@@ -84,7 +67,6 @@ export default function MyClassesPage() {
   const startOfCurrentWeek = startOfWeek(new Date(), { weekStartsOn: 0 });
   const endOfCurrentWeek = addDays(startOfCurrentWeek, 7);
 
-  // Prevent Validator crash by skipping the schedule query for Admins
   const scheduleArgs = (queryArgs === "skip" || isAdmin) ? "skip" : {
     ...queryArgs,
     from: startOfCurrentWeek.getTime(),
@@ -96,9 +78,7 @@ export default function MyClassesPage() {
   const classes = useMemo(() => {
     if (!allClasses) return undefined;
     if (!selectedCurriculumId) return allClasses;
-    return allClasses.filter(
-      (cls) => cls.curriculumId === selectedCurriculumId,
-    );
+    return allClasses.filter((cls) => cls.curriculumId === selectedCurriculumId);
   }, [allClasses, selectedCurriculumId]);
 
   if (isUserLoading || classes === undefined) {
@@ -127,62 +107,9 @@ export default function MyClassesPage() {
     <>
       <FlexidualHeader
         title={isAdmin ? t("class.allClasses") : t("class.myClasses")}
-        subtitle={
-          isAdmin
-            ? t("class.manageAllDescription")
-            : t("class.manageMyDescription")
-        }
+        subtitle={isAdmin ? t("class.manageAllDescription") : t("class.manageMyDescription")}
       />
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
-        
-        {/* Superadmin Org Filters */}
-        {isSystemDashboard && (
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center p-4 bg-muted/30 rounded-lg border">
-            <Select
-              value={selectedSchoolId}
-              onValueChange={(val) => {
-                setSelectedSchoolId(val);
-                setSelectedCampusId("all");
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
-                <div className="flex items-center gap-2 truncate">
-                  <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="truncate"><SelectValue placeholder="All Schools" /></span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Schools</SelectItem>
-                {schools?.map((school) => (
-                  <SelectItem key={school._id} value={school._id}>
-                    {school.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={selectedCampusId}
-              onValueChange={setSelectedCampusId}
-              disabled={selectedSchoolId === "all"}
-            >
-              <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
-                <div className="flex items-center gap-2 truncate">
-                  <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="truncate"><SelectValue placeholder="All Campuses" /></span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Campuses</SelectItem>
-                {campuses?.map((campus) => (
-                  <SelectItem key={campus._id} value={campus._id}>
-                    {campus.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
 
         {renderWeekOverview()}
         

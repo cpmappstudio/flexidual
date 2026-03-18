@@ -4,7 +4,6 @@ import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
-import { Building2 } from "lucide-react";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +12,9 @@ import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-d
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { DataTable } from "@/components/table/data-table";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { createSearchColumn, createSortableHeader } from "@/components/table/column-helpers";
 import type { FilterConfig } from "@/lib/table/types";
+import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 export function CurriculumsTable() {
   const t = useTranslations();
@@ -25,8 +24,8 @@ export function CurriculumsTable() {
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
   const isSystemDashboard = orgContext?.type === "system";
 
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("all");
-  const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip");
+  // Global school filter from sidebar context
+  const { selectedSchoolId } = useAdminSchoolFilter();
 
   // Determine effective school ID for the query
   let querySchoolId = undefined;
@@ -36,7 +35,6 @@ export function CurriculumsTable() {
     querySchoolId = orgContext._id as Id<"schools">;
   }
 
-  // The DataTable now handles the active/inactive filtering via filterConfigs
   const data = useQuery(api.curriculums.list, { 
     includeInactive: true,
     schoolId: querySchoolId 
@@ -118,29 +116,6 @@ export function CurriculumsTable() {
           onOpenChange={(open) => !open && setEditingCurriculum(null)}
           trigger={<span className="hidden" />}
         />
-      )}
-
-      {isSystemDashboard && (
-        <div className="flex mb-4">
-            <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
-              <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
-                <div className="flex items-center gap-2 truncate">
-                  <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="truncate">
-                    {selectedSchoolId === "all" ? "All Schools" : schools?.find(s => s._id === selectedSchoolId)?.name || "Select School"}
-                  </span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Schools</SelectItem>
-                {schools?.map((school) => (
-                  <SelectItem key={school._id} value={school._id}>
-                    {school.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-        </div>
       )}
 
       <DataTable

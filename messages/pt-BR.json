@@ -86,7 +86,12 @@
     "urlSlug": "Slug de URL",
     "noCampusesFound": "Nenhum campus encontrado.",
     "addCampus": "Adicionar Campus",
-    "classTrackingDescription": "Monitore o progresso e verifique o registro de presença"
+    "classTrackingDescription": "Monitore o progresso e verifique o registro de presença",
+    "allCampuses": "Todos os Campi",
+    "globalSystem": "Sistema Global",
+    "yourOrganizations": "Suas Organizações",
+    "schoolFilter": "Filtro de Escola",
+    "filterBySchool": "Filtrar todas as páginas por escola"
   },
   "navigation": {
     "dashboard": "Painel geral",
@@ -290,6 +295,7 @@
   },
   "class": {
     "class": "Turma",
+    "type": "Tipo de Turma",
     "title": "Turmas",
     "name": "Nome da Turma",
     "academicYear": "Ano Acadêmico",
@@ -515,6 +521,7 @@
     "sessionType": "Tipo de Sessão",
     "typeLive": "Aula ao Vivo",
     "typeIgnitia": "Lição Ignitia",
+    "typeAbeka": "Lição Abeka",
     "classStartingSoon": "A aula começará em breve",
     "dateAdjusted": "Data de Início Ajustada",
     "dateAdjustedDesc": "Nós movemos a data de início para {date} para corresponder aos dias selecionados.",

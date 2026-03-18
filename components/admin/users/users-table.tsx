@@ -9,14 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { UserDialog } from "./user-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, MapPin } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { UserRole } from "@/convex/types";
 import { useParams } from "next/navigation";
 import { DataTable } from "@/components/table/data-table";
 import { createSortableHeader, createSearchColumn } from "@/components/table/column-helpers";
 import type { FilterConfig } from "@/lib/table/types";
+import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 export type User = Doc<"users"> & { 
   role?: string; 
@@ -63,16 +62,7 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
   const isSystemDashboard = orgContext?.type === "system";
 
   // Superadmin filtering state
-  const [selectedSchoolId, setSelectedSchoolId] = React.useState<string>("all");
-  const [selectedCampusId, setSelectedCampusId] = React.useState<string>("all");
-
-  const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip");
-  const campuses = useQuery(
-    api.campuses.list,
-    isSystemDashboard && selectedSchoolId !== "all"
-      ? { schoolId: selectedSchoolId as Id<"schools"> }
-      : "skip"
-  );
+  const { selectedSchoolId, selectedCampusId } = useAdminSchoolFilter();
 
   // Compute effective scope for the users query
   let queryOrgType = orgContext?.type;
@@ -182,54 +172,6 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
           }}
           trigger={<span className="hidden" />}
         />
-      )}
-
-      {isSystemDashboard && (
-        <div className="flex flex-col sm:flex-row gap-4 mb-4">
-            <Select
-            value={selectedSchoolId}
-            onValueChange={(val) => {
-                setSelectedSchoolId(val);
-                setSelectedCampusId("all");
-            }}
-            >
-            <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
-                <div className="flex items-center gap-2 truncate">
-                <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
-                <span className="truncate"><SelectValue placeholder="All Schools" /></span>
-                </div>
-            </SelectTrigger>
-            <SelectContent>
-                <SelectItem value="all">All Schools</SelectItem>
-                {schools?.map((school) => (
-                <SelectItem key={school._id} value={school._id}>
-                    {school.name}
-                </SelectItem>
-                ))}
-            </SelectContent>
-            </Select>
-
-            <Select
-            value={selectedCampusId}
-            onValueChange={setSelectedCampusId}
-            disabled={selectedSchoolId === "all"}
-            >
-            <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
-                <div className="flex items-center gap-2 truncate">
-                <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
-                <span className="truncate"><SelectValue placeholder="All Campuses" /></span>
-                </div>
-            </SelectTrigger>
-            <SelectContent>
-                <SelectItem value="all">All Campuses</SelectItem>
-                {campuses?.map((campus) => (
-                <SelectItem key={campus._id} value={campus._id}>
-                    {campus.name}
-                </SelectItem>
-                ))}
-            </SelectContent>
-            </Select>
-        </div>
       )}
 
       <DataTable

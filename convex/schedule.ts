@@ -140,6 +140,8 @@ export const getMySchedule = query({
       v.literal("cancelled")
     )),
     teacherId: v.optional(v.id("users")),
+    schoolId: v.optional(v.id("schools")),
+    campusId: v.optional(v.id("campuses")),
   },
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
@@ -179,6 +181,17 @@ export const getMySchedule = query({
             const curr = await ctx.db.get(c.curriculumId);
             if (curr?.schoolId && adminSchoolIds.includes(curr.schoolId)) { myClasses.push(c); }
          }
+      }
+      
+      if (args.campusId) {
+        myClasses = myClasses.filter(c => c.campusId === args.campusId);
+      } else if (args.schoolId) {
+        const schoolCampuses = await ctx.db
+          .query("campuses")
+          .withIndex("by_school", q => q.eq("schoolId", args.schoolId!))
+          .collect();
+        const campusIdSet = new Set(schoolCampuses.map(c => c._id));
+        myClasses = myClasses.filter(c => c.campusId && campusIdSet.has(c.campusId));
       }
     } else {
       const teachingClasses = await ctx.db.query("classes")

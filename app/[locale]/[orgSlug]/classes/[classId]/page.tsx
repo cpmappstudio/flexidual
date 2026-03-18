@@ -20,7 +20,7 @@ import { useState } from "react"
 import { ScheduleItem } from "@/components/schedule/schedule-item"
 import { ClassDialog } from "@/components/teaching/classes/class-dialog"
 import { useAuth } from "@clerk/nextjs"
-import { getRoleForOrg } from "@/lib/rbac"
+import { getRoleForOrg, isSuperAdmin } from "@/lib/rbac"
 import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview"
 import { CurriculumLessonList } from "@/components/teaching/curriculums/curriculum-lesson-list"
 
@@ -35,7 +35,7 @@ export default function ClassDetailPage() {
   const orgSlug = (params.orgSlug as string) || "system"
   const { sessionClaims } = useAuth()
   const role = getRoleForOrg(sessionClaims, orgSlug)
-  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
+  const isAdmin = isSuperAdmin(sessionClaims) || role === "admin" || role === "principal"
 
   const [roadmapExpanded, setRoadmapExpanded] = useState(true)
   const [upcomingExpanded, setUpcomingExpanded] = useState(true)

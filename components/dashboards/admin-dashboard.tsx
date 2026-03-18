@@ -3,21 +3,19 @@
 import { useTranslations } from "next-intl";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useState } from "react";
 import { useParams } from "next/navigation";
 import { 
-  Building2, 
   SquareUserRound, 
   Presentation, 
   BookMarked, 
   GraduationCap, 
   LucideIcon 
 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Id } from "@/convex/_generated/dataModel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminClassTrackingCard } from "@/components/admin/admin-class-tracking-card";
 import FlexidualHeader from "../flexidual-header";
+import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 export default function AdminDashboard() {
   const t = useTranslations();
@@ -30,32 +28,34 @@ export default function AdminDashboard() {
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: currentSlug });
   const isSystemDashboard = orgContext?.type === "system";
 
-  // Superadmin filter state
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("all");
-  const schools = useQuery(api.schools.list, isSystemDashboard ? {} : "skip");
+  // Global school filter from sidebar context
+  const { selectedSchoolId, selectedCampusId } = useAdminSchoolFilter();
 
-  // Calculate effective query arguments
   let queryOrgType = orgContext?.type;
   let queryOrgId = orgContext?._id;
   let querySchoolId = undefined;
   let queryCampusId = undefined;
 
-  if (isSystemDashboard && selectedSchoolId !== "all") {
-    queryOrgType = "school";
-    queryOrgId = selectedSchoolId as Id<"schools">;
-    querySchoolId = selectedSchoolId as Id<"schools">;
+  if (isSystemDashboard) {
+    if (selectedCampusId !== "all") {
+      queryOrgType = "campus";
+      queryOrgId = selectedCampusId as Id<"campuses">;
+      queryCampusId = selectedCampusId as Id<"campuses">;
+    } else if (selectedSchoolId !== "all") {
+      queryOrgType = "school";
+      queryOrgId = selectedSchoolId as Id<"schools">;
+      querySchoolId = selectedSchoolId as Id<"schools">;
+    }
   } else if (orgContext?.type === "school") {
     querySchoolId = orgContext._id as Id<"schools">;
   } else if (orgContext?.type === "campus") {
     queryCampusId = orgContext._id as Id<"campuses">;
   }
 
-  // Pass the calculated arguments to the queries
   const teachers = useQuery(api.users.getUsers, orgContext ? { role: "teacher", isActive: true, orgType: queryOrgType, orgId: queryOrgId } : "skip");
   const students = useQuery(api.users.getUsers, orgContext ? { role: "student", isActive: true, orgType: queryOrgType, orgId: queryOrgId } : "skip");
   const activeClasses = useQuery(api.classes.list, orgContext ? { isActive: true, schoolId: querySchoolId, campusId: queryCampusId } : "skip");
   const curriculums = useQuery(api.curriculums.list, orgContext ? { includeInactive: false, schoolId: querySchoolId } : "skip");
-  
   const allSchedules = useQuery(api.schedule.getMySchedule, {});
 
   const isLoading =
@@ -86,30 +86,6 @@ export default function AdminDashboard() {
       />
       
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
-        {/* Superadmin School Filter */}
-        {isSystemDashboard && (
-          <div className="flex justify-end">
-            <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
-              <SelectTrigger className="w-full sm:w-auto min-w-[200px] max-w-[350px]">
-                <div className="flex items-center gap-2 truncate">
-                  <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="truncate">
-                    {selectedSchoolId === "all" ? "All Schools" : schools?.find(s => s._id === selectedSchoolId)?.name || "Select School"}
-                  </span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Schools</SelectItem>
-                {schools?.map((school) => (
-                  <SelectItem key={school._id} value={school._id}>
-                    {school.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <StatCard title={t("navigation.teachers") || "Active Teachers"} value={teachers?.length || 0} icon={SquareUserRound} />
