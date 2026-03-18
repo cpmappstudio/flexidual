@@ -448,9 +448,13 @@ export const updateUserWithClerk = action({
     }
 
     // 1. Update Core Identity in Convex
+    const { password, role, ...convexUpdates } = args.updates;
     await ctx.runMutation(api.users.updateUser, { 
       userId: args.userId, 
-      updates: args.updates 
+      updates: {
+        ...convexUpdates,
+        ...(password ? { externalPassword: password } : {}),
+      }
     });
 
     // 2. Update Role Assignment if role changed
@@ -486,6 +490,47 @@ export const updateUserWithClerk = action({
           headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
           body: JSON.stringify(clerkUpdates),
         });
+      }
+
+      // 4. Sync email change with Clerk (requires create → set primary → delete old)
+      if (args.updates.email && args.updates.email !== user.email) {
+        // Step 1: Create the new email address (pre-verified)
+        const createRes = await fetch(`https://api.clerk.com/v1/email_addresses`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: user.clerkId,
+            email_address: args.updates.email,
+            verified: true,
+          }),
+        });
+        if (!createRes.ok) {
+          const err = await createRes.json();
+          throw new Error(`Failed to create Clerk email: ${JSON.stringify(err)}`);
+        }
+        const newEmailData = await createRes.json();
+
+        // Step 2: Set it as the primary email
+        await fetch(`https://api.clerk.com/v1/users/${user.clerkId}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ primary_email_address_id: newEmailData.id }),
+        });
+
+        // Step 3: Remove old email addresses (clean up)
+        const clerkUserRes = await fetch(`https://api.clerk.com/v1/users/${user.clerkId}`, {
+          headers: { Authorization: `Bearer ${clerkSecretKey}` },
+        });
+        const clerkUser = await clerkUserRes.json();
+        const oldEmails = (clerkUser.email_addresses ?? []).filter(
+          (e: any) => e.id !== newEmailData.id
+        );
+        for (const old of oldEmails) {
+          await fetch(`https://api.clerk.com/v1/email_addresses/${old.id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${clerkSecretKey}` },
+          });
+        }
       }
     }
   },
