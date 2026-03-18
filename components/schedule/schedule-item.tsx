@@ -4,7 +4,8 @@ import { format } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
 import { CheckCircle2, MonitorPlay, Video, BookOpen, ArrowRight, Users, UserCheck, UserX, Clock, Link as LinkIcon } from "lucide-react"
 import { useTranslations, useLocale } from "next-intl"
-import Link from "next/link"
+import { useParams } from "next/navigation"
+import { Link } from "@/i18n/navigation" 
 import { Id } from "@/convex/_generated/dataModel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -67,6 +68,7 @@ export function ScheduleItem({
   const t = useTranslations()
   const locale = useLocale()
   const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
+  const { orgSlug } = useParams<{ orgSlug: string }>()
   const isIgnitia = schedule.sessionType === "ignitia"
   
   // Convert to Date if needed
@@ -292,13 +294,13 @@ export function ScheduleItem({
                 className={isIgnitia ? "bg-orange-600 hover:bg-orange-700" : ""}
                 asChild
               >
-                <Link href={`/classroom/${schedule.roomName}`}>
+                <Link href={`/${orgSlug}/classroom/${schedule.roomName}`}>
                   {isIgnitia ? "Open Session" : t('classroom.joinLive')}
                 </Link>
               </Button>
             ) : (
               <Button size="sm" variant="outline" asChild>
-                <Link href={`/classroom/${schedule.roomName}`}>
+                <Link href={`/${orgSlug}/classroom/${schedule.roomName}`}>
                   {isIgnitia ? (
                     <>
                       <MonitorPlay className="mr-2 h-4 w-4 text-orange-600" />

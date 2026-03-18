@@ -184,6 +184,8 @@
     "deny": "Denegar",
     "allow": "Permitir",
     "classroom": "Aula",
+    "startsIn": "Comienza en",
+    "teacherRunningLate": "Tu profesor está llegando un poco tarde. ¡Por favor, espera!",
     "live": "En Vivo",
     "waiting": "Esperando",
     "loadingShare": "Cargando Pantalla Compartida...",

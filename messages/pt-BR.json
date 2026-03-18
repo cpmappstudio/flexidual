@@ -185,6 +185,8 @@
     "deny": "Negar",
     "allow": "Permitir",
     "classroom": "Sala de Aula",
+    "startsIn": "Começa em",
+    "teacherRunningLate": "Seu professor está chegando um pouco tarde. Por favor, aguarde!",
     "live": "AO VIVO",
     "waiting": "Aguardando",
     "loadingShare": "Carregando Compartilhamento de Tela...",

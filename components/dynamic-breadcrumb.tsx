@@ -161,7 +161,7 @@ export const DynamicBreadcrumb = memo(function DynamicBreadcrumb() {
 
             segments.push({
                 title,
-                href: isLast ? undefined : fullPath,
+                href: isLast ? undefined : (part === 'classroom' ? `/${pathParts[0]}/classes` : fullPath),
                 isCurrentPage: isLast
             })
         })

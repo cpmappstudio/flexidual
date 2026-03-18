@@ -3,7 +3,6 @@
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
-import { useParams } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -14,7 +13,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { ManageScheduleDialog } from "@/components/teaching/classes/manage-schedule-dialog"
 import { StudentManager } from "@/components/teaching/classes/student-manager"
 import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { useParams } from "next/navigation"
+import { Link } from "@/i18n/navigation"  
 import { useTranslations } from "next-intl"
 import { useState } from "react"
 import { ScheduleItem } from "@/components/schedule/schedule-item"
@@ -223,13 +223,13 @@ export default function ClassDetailPage() {
                                             className={isIgnitia ? "bg-orange-600 hover:bg-orange-700" : ""}
                                             asChild
                                           >
-                                            <Link href={`/classroom/${scheduledItem.roomName}`}>
+                                            <Link href={`/${orgSlug}/classroom/${scheduledItem.roomName}`}>
                                               {isIgnitia ? "Open Active Session" : t('classroom.joinLive')}
                                             </Link>
                                           </Button>
                                         ) : (
                                           <Button size="sm" variant="outline" asChild>
-                                            <Link href={`/classroom/${scheduledItem.roomName}`}>
+                                            <Link href={`/${orgSlug}/classroom/${scheduledItem.roomName}`}>
                                               {isIgnitia ? (
                                                 <>
                                                   <MonitorPlay className="mr-2 h-4 w-4 text-orange-600" />
