@@ -129,6 +129,49 @@ export const deleteCoreCampusData = internalMutation({
   },
 });
 
+export const deleteClassSchedulesChunk = internalMutation({
+  args: { campusId: v.id("campuses") },
+  handler: async (ctx, args) => {
+    const CHUNK_SIZE = 500;
+    const classes = await ctx.db
+      .query("classes")
+      .withIndex("by_campus", (q) => q.eq("campusId", args.campusId))
+      .collect();
+
+    let count = 0;
+    for (const cls of classes) {
+      const schedules = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", cls._id))
+        .take(CHUNK_SIZE - count);
+
+      for (const s of schedules) {
+        await ctx.db.delete(s._id);
+        count++;
+      }
+      if (count >= CHUNK_SIZE) break;
+    }
+    return count;
+  },
+});
+
+// 2c. Helper to safely delete classes in batches of 500
+export const deleteClassesChunk = internalMutation({
+  args: { campusId: v.id("campuses") },
+  handler: async (ctx, args) => {
+    const CHUNK_SIZE = 500;
+    const classes = await ctx.db
+      .query("classes")
+      .withIndex("by_campus", (q) => q.eq("campusId", args.campusId))
+      .take(CHUNK_SIZE);
+
+    for (const cls of classes) {
+      await ctx.db.delete(cls._id);
+    }
+    return classes.length;
+  },
+});
+
 // 4. The main Action that orchestrates the batching
 export const wipeCampusData = internalAction({
   args: {
@@ -137,6 +180,28 @@ export const wipeCampusData = internalAction({
   },
   handler: async (ctx, args): Promise<{ totalLessonsDeleted: number; deletedUsers: number; deletedCurriculums: number }> => {
     let totalLessonsDeleted = 0;
+
+    if (args.campusId) {
+      console.log("Starting classSchedule deletion in chunks...");
+      let keepDeleting = true;
+      while (keepDeleting) {
+        const count = await ctx.runMutation(internal.seedCPCA.deleteClassSchedulesChunk, {
+          campusId: args.campusId,
+        });
+        console.log(`Deleted ${count} class schedules...`);
+        if (count === 0) keepDeleting = false;
+      }
+
+      console.log("Starting class deletion in chunks...");
+      keepDeleting = true;
+      while (keepDeleting) {
+        const count = await ctx.runMutation(internal.seedCPCA.deleteClassesChunk, {
+          campusId: args.campusId,
+        });
+        console.log(`Deleted ${count} classes...`);
+        if (count === 0) keepDeleting = false;
+      }
+    }
 
     if (args.schoolId) {
       console.log("Starting lesson deletion in chunks...");
@@ -147,7 +212,7 @@ export const wipeCampusData = internalAction({
         });
         totalLessonsDeleted += count;
         console.log(`Deleted ${totalLessonsDeleted} lessons so far...`);
-        if (count === 0) keepDeleting = false; 
+        if (count === 0) keepDeleting = false;
       }
     }
 
@@ -175,10 +240,10 @@ export const wipeCampusData = internalAction({
     }
 
     console.log("Wipe complete! Ready for a fresh migration.");
-    return { 
-      totalLessonsDeleted, 
-      deletedUsers: coreResults.deletedUsers, 
-      deletedCurriculums: coreResults.deletedCurriculums 
+    return {
+      totalLessonsDeleted,
+      deletedUsers: coreResults.deletedUsers,
+      deletedCurriculums: coreResults.deletedCurriculums,
     };
   },
 });
