@@ -201,6 +201,7 @@
     "class": "Clase",
     "waitingForTeacher": "Esperando al profesor...",
     "you": "Tú ({role})",
+    "youShort": "Tú",
     "waitingForApproval": "Esperando aprobación",
     "shareScreen": "Compartir Pantalla",
     "leave": "Salir",
@@ -220,7 +221,9 @@
     "abekaTeacherSecurityMsg": "Por razones de seguridad, Abeka requiere que los maestros inicien sesión a través de su portal oficial y seguro. Por favor, haz clic abajo para acceder al portal de maestros de Abeka.",
     "openAbekaPortal": "Abrir Portal de Abeka",
     "teacherView": "Vista del Profesor",
-    "platformAccess": "Acceso a {platform}"
+    "platformAccess": "Acceso a {platform}",
+    "screenShareAudioNotSupported": "Compartir pantalla con audio no es compatible en este navegador.",
+    "screenShareFailed": "Error al iniciar compartir pantalla. Por favor, inténtalo de nuevo."
   },
   "curriculum": {
     "curriculum": "Currículo",

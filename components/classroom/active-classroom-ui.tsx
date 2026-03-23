@@ -286,16 +286,31 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   };
 
   const handleShareClick = async () => {
-    if (isSharingLocally) {
-      await localParticipant?.setScreenShareEnabled(false);
-      return;
-    }
-    if (amITeacher) {
+  if (isSharingLocally) {
+    await localParticipant?.setScreenShareEnabled(false);
+    return;
+  }
+  if (amITeacher) {
+    try {
       await localParticipant?.setScreenShareEnabled(true, { audio: true });
-    } else {
-      requestPermission();
+    } catch (error) {
+      if ((error as Error)?.name === "NotAllowedError" || (error as Error)?.message?.includes("Permission denied")) {
+         console.log("Screen share cancelled by user.");
+         return; 
+      }
+      
+      console.warn("Screen share with audio failed, trying video only...", error);
+      try {
+         await localParticipant?.setScreenShareEnabled(true, { audio: false });
+         toast.warning(t('classroom.screenShareAudioNotSupported')); 
+      } catch {
+         toast.error(t('classroom.screenShareFailed')); 
+      }
     }
-  };
+  } else {
+    requestPermission();
+  }
+};
 
   const handleZoom = (delta: number) => setZoom(prev => Math.min(Math.max(prev + delta, 1), 3));
 
@@ -452,36 +467,38 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           )}
         </div>
 
-        <div className="h-20 bg-white rounded-2xl shadow-sm border border-slate-200 px-6 flex items-center justify-center gap-6 relative">
-           <div className="absolute left-6 flex items-center gap-3">
+        <div className="h-20 bg-white rounded-2xl shadow-sm border border-slate-200 px-6 flex items-center justify-center relative">
+          <div className="absolute left-6 flex items-center gap-3">
               <div className="w-16 h-10 rounded overflow-hidden border border-slate-300 relative shadow-sm">
-                 {localParticipant && <ParticipantTile participant={localParticipant} variant="mini" className="w-full h-full" showLabel={false} />}
+                {localParticipant && <ParticipantTile participant={localParticipant} variant="mini" className="w-full h-full" showLabel={false} />}
               </div>
-              <span className="text-sm font-bold text-slate-600">{t('classroom.you', { role: currentUserRole || 'student' })}</span>
-           </div>
+              <span className="hidden md:inline xl:hidden text-sm font-bold text-slate-600">{t('classroom.youShort')}</span>
+              <span className="hidden xl:inline text-sm font-bold text-slate-600">{t('classroom.you', { role: currentUserRole || 'student' })}</span>
+          </div>
 
-           <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
-           <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
+          <div className="flex items-center gap-2 xl:gap-6">
+              <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
+              <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
+              <button 
+                onClick={handleShareClick}
+                disabled={waitingForApproval}
+                className={`
+                  w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border relative
+                  ${isSharingLocally
+                    ? 'bg-green-100 hover:bg-green-200 text-green-700 border-green-300' 
+                    : waitingForApproval 
+                        ? 'bg-yellow-100 text-yellow-600 border-yellow-300 cursor-wait'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'}
+                `}
+                title={waitingForApproval ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
+              >
+                {waitingForApproval ? <div className="animate-pulse"><Hand className="w-5 h-5" /></div> : <MonitorUp className="w-5 h-5" />}
+              </button>
+          </div>
 
-           <button 
-              onClick={handleShareClick}
-              disabled={waitingForApproval}
-              className={`
-                w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border relative
-                ${isSharingLocally
-                  ? 'bg-green-100 hover:bg-green-200 text-green-700 border-green-300' 
-                  : waitingForApproval 
-                     ? 'bg-yellow-100 text-yellow-600 border-yellow-300 cursor-wait'
-                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'}
-              `}
-              title={waitingForApproval ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
-           >
-              {waitingForApproval ? <div className="animate-pulse"><Hand className="w-5 h-5" /></div> : <MonitorUp className="w-5 h-5" />}
-           </button>
-
-           <button onClick={() => router.back()} className="ml-4 px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold text-sm flex items-center gap-2 shadow-md">
-             <LogOut className="w-4 h-4" /> {t('classroom.leave')}
-           </button>
+          <button onClick={() => router.back()} className="absolute right-6 px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold text-sm flex items-center gap-2 shadow-md">
+            <LogOut className="w-4 h-4" /> {t('classroom.leave')}
+          </button>
         </div>
       </div>
 

@@ -374,39 +374,41 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
         </div>
 
         {/* Controls */}
-        <div className="h-24 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md rounded-3xl shadow-lg border-2 border-purple-300 dark:border-purple-700 px-6 flex items-center justify-center gap-6 relative">
-           <div className="absolute left-6 flex items-center gap-3">
+        <div className="h-24 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md rounded-3xl shadow-lg border-2 border-purple-300 dark:border-purple-700 px-6 flex items-center justify-center relative">
+          <div className="absolute left-6 flex items-center gap-3">
               <div className="w-16 h-10 rounded overflow-hidden border-2 border-purple-400 shadow-md">
-                 {localParticipant && <ParticipantTile participant={localParticipant} variant="mini" className="w-full h-full" showLabel={false} />}
+                {localParticipant && <ParticipantTile participant={localParticipant} variant="mini" className="w-full h-full" showLabel={false} />}
               </div>
-              <span className="text-sm font-bold text-gray-700 dark:text-gray-300">👋 {t('classroom.you', { role: 'Student' })}</span>
-           </div>
+              <span className="hidden md:inline xl:hidden text-sm font-bold text-gray-700 dark:text-gray-300">👋 {t('classroom.youShort')}</span>
+              <span className="hidden xl:inline text-sm font-bold text-gray-700 dark:text-gray-300">👋 {t('classroom.you', { role: 'Student' })}</span>
+          </div>
 
-           <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-6 h-6" />} iconOff={<MicOff className="w-6 h-6" />} />
-           <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-6 h-6" />} iconOff={<VideoOff className="w-6 h-6" />} />
+          <div className="flex items-center gap-2 xl:gap-6">
+              <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-6 h-6" />} iconOff={<MicOff className="w-6 h-6" />} />
+              <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-6 h-6" />} iconOff={<VideoOff className="w-6 h-6" />} />
+              <button 
+                onClick={requestPermission}
+                disabled={waitingForApproval || isSharingLocally}
+                className={`
+                  w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg border-2
+                  ${isSharingLocally
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-300 dark:border-green-600' 
+                    : waitingForApproval 
+                        ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 border-yellow-300 dark:border-yellow-600 cursor-wait'
+                        : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-600'}
+                `}
+                title={waitingForApproval ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
+              >
+                {waitingForApproval ? <MonitorUp className="w-6 h-6 animate-bounce" /> : <MonitorUp className="w-6 h-6" />}
+              </button>
+          </div>
 
-           <button 
-              onClick={requestPermission}
-              disabled={waitingForApproval || isSharingLocally}
-              className={`
-                w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg border-2
-                ${isSharingLocally
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-300 dark:border-green-600' 
-                  : waitingForApproval 
-                     ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 border-yellow-300 dark:border-yellow-600 cursor-wait'
-                     : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-600'}
-              `}
-              title={waitingForApproval ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
-           >
-              {waitingForApproval ? <MonitorUp className="w-6 h-6 animate-bounce" /> : <MonitorUp className="w-6 h-6" />}
-           </button>
-
-           <button 
-             onClick={handleLeave} 
-             className="ml-4 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold text-sm flex items-center gap-2 shadow-lg border-2 border-red-300"
-           >
-             <LogOut className="w-4 h-4" /> {t('classroom.leave')}
-           </button>
+          <button 
+            onClick={handleLeave} 
+            className="absolute right-6 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold text-sm flex items-center gap-2 shadow-lg border-2 border-red-300"
+          >
+            <LogOut className="w-4 h-4" /> {t('classroom.leave')}
+          </button>
         </div>
       </div>
 

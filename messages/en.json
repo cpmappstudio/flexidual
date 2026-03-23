@@ -202,6 +202,7 @@
     "class": "Class",
     "waitingForTeacher": "Waiting for teacher...",
     "you": "You ({role})",
+    "youShort": "You",
     "waitingForApproval": "Waiting for approval",
     "shareScreen": "Share Screen",
     "leave": "Leave",
@@ -221,7 +222,9 @@
     "abekaTeacherSecurityMsg": "Abeka's security policies prevent their platform from being embedded directly into Flexidual. You must open the portal in a new tab.",
     "openAbekaPortal": "Open Abeka Portal",
     "teacherView": "Teacher View",
-    "platformAccess": "{platform} Access"
+    "platformAccess": "{platform} Access",
+    "screenShareAudioNotSupported": "Screen sharing with audio is not supported on this browser.",
+    "screenShareFailed": "Failed to start screen share. Please try again."
   },
   "curriculum": {
     "curriculum": "Curriculum",

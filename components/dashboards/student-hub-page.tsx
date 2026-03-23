@@ -68,6 +68,13 @@ export default function StudentHubPage() {
     return { upcomingLessons: upcoming, pastLessons: past }
   }, [events, now])
 
+  const needsAttention = upcomingLessons.some(l => {
+    const timeToStart = l.start - now;
+    const isUrgent = timeToStart > 0 && timeToStart <= 5 * 60 * 1000;
+    const isLate = now >= l.start && now < l.end && !l.isStudentActive && l.attendance !== "present";
+    return isUrgent || isLate;
+  });
+
   // Notification System
   useEffect(() => {
     if (upcomingLessons.length === 0) return;
@@ -154,10 +161,18 @@ export default function StudentHubPage() {
         <Button
           variant="ghost"
           size="icon"
-          className="lg:hidden rounded-full hover:bg-purple-100 dark:hover:bg-purple-900/50"
+          className="xl:hidden rounded-full hover:bg-purple-100 dark:hover:bg-purple-900/50 relative"
           onClick={() => setSidebarOpen(!sidebarOpen)}
         >
           {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          
+          {/* The Indicator Badge */}
+          {!sidebarOpen && needsAttention && (
+            <span className="absolute top-1 right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border-2 border-white dark:border-gray-900"></span>
+            </span>
+          )}
         </Button>
 
         <FlexidualLogo className="hidden sm:block" />
@@ -212,19 +227,19 @@ export default function StudentHubPage() {
         {/* Overlay for mobile */}
         {sidebarOpen && (
           <div 
-            className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+            className="fixed inset-0 bg-black/50 z-30 xl:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
 
         {/* Left Sidebar - Schedule */}
         <div className={cn(
-          "fixed lg:relative z-40 w-80 sm:w-96 lg:w-80 xl:w-96",
+          "fixed xl:relative z-40 w-80 xl:w-96",
           "bg-white/90 dark:bg-gray-900/90 backdrop-blur-md",
-          "lg:rounded-3xl border-r-4 lg:border-4 border-purple-400 dark:border-purple-600 shadow-2xl",
+          "xl:rounded-3xl border-r-4 xl:border-4 border-purple-400 dark:border-purple-600 shadow-2xl",
           "flex flex-col overflow-hidden flex-shrink-0 transition-transform duration-300",
-          "top-16 lg:top-0 bottom-0 lg:inset-y-0 left-0",
-          !sidebarOpen && "-translate-x-full lg:translate-x-0"
+          "top-16 lg:top-20 xl:top-0 bottom-0 xl:inset-y-0 left-0 z-100",
+          !sidebarOpen && "-translate-x-full xl:translate-x-0"
         )}>
           <Tabs defaultValue="upcoming" className="flex-1 flex flex-col min-h-0">
             <div className="p-3 lg:p-4 border-b-2 border-purple-200 dark:border-purple-800 flex-shrink-0">
