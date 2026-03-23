@@ -107,6 +107,19 @@ export const assignRole = mutation({
       )
       .first();
 
+    if (args.role === "superadmin") {
+      const existingAssignments = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .collect();
+        
+      for (const e of existingAssignments) {
+        if (e.orgType !== "system" || e.role !== "superadmin") {
+           await ctx.db.delete(e._id);
+        }
+      }
+    }
+
     if (existing) {
       // Update existing role
       await ctx.db.patch(existing._id, { role: args.role, assignedAt: Date.now() });
@@ -173,6 +186,19 @@ export const assignRoleInternal = internalMutation({
       )
       .first();
 
+    if (args.role === "superadmin") {
+      const existingAssignments = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .collect();
+        
+      for (const e of existingAssignments) {
+        if (e.orgType !== "system" || e.role !== "superadmin") {
+           await ctx.db.delete(e._id);
+        }
+      }
+    }
+
     if (existing) {
       await ctx.db.patch(existing._id, { role: args.role, assignedAt: Date.now() });
     } else {
@@ -189,6 +215,35 @@ export const assignRoleInternal = internalMutation({
     if (user && !user.clerkId.startsWith("temp_")) {
       await ctx.scheduler.runAfter(0, internal.roleAssignments.syncRolesToClerk, {
         userId: args.userId,
+        clerkId: user.clerkId,
+      });
+    }
+  },
+});
+
+export const getUserRoles = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+  },
+});
+
+export const removeRole = mutation({
+  args: { assignmentId: v.id("roleAssignments") },
+  handler: async (ctx, args) => {
+    const assignment = await ctx.db.get(args.assignmentId);
+    if (!assignment) return;
+
+    await ctx.db.delete(args.assignmentId);
+
+    // Sync to Clerk immediately
+    const user = await ctx.db.get(assignment.userId);
+    if (user && !user.clerkId.startsWith("temp_")) {
+      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncRolesToClerk, {
+        userId: user._id,
         clerkId: user.clerkId,
       });
     }

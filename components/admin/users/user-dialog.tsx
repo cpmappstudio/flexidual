@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react"
-import { useAction, useQuery } from "convex/react"
+import { useState, useEffect, useRef } from "react"
+import { useAction, useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +19,7 @@ import {
     Trash2, 
     Plus, 
     X,
+    Camera,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslations, useLocale } from "next-intl"
@@ -32,6 +33,7 @@ import { GRADE_VALUES } from "@/lib/types/academic"
 import { useParams } from "next/navigation"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { User } from "./users-table";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface UserDialogProps {
     user?: User
@@ -60,6 +62,7 @@ type PendingUser = {
     role: UserRole
     grade?: string
     school?: string
+    imageBase64?: string
 }
 
 export function UserDialog({
@@ -79,6 +82,9 @@ export function UserDialog({
     const createUsers = useAction(api.users.createUsersWithClerk)
     const updateUser = useAction(api.users.updateUserWithClerk)
     const deleteUser = useAction(api.users.deleteUserWithClerk)
+    const revokeRoleMutation = useMutation(api.roleAssignments.removeRole)
+    const activeRoles = useQuery(api.roleAssignments.getUserRoles, isEditing && user ? { userId: user._id } : "skip");
+
     const { showAlert } = useAlert()
 
     // State
@@ -88,6 +94,7 @@ export function UserDialog({
     const setIsOpen = isControlled ? controlledOnOpenChange! : setInternalOpen
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [queue, setQueue] = useState<PendingUser[]>([])
+    const fileInputRef = useRef<HTMLInputElement>(null);
     
     const rolesToDisplay = allowedRoles || ALL_ROLES;
 
@@ -102,7 +109,8 @@ export function UserDialog({
         grade: "",
         school: "",
         targetSchoolId: "",
-        targetCampusId: ""
+        targetCampusId: "",
+        imageBase64: ""
     })
 
     const params = useParams()
@@ -136,7 +144,8 @@ export function UserDialog({
                     grade: user.grade || "",
                     school: user.school || "",
                     targetSchoolId: editSchoolId,
-                    targetCampusId: editCampusId
+                    targetCampusId: editCampusId,
+                    imageBase64: user.imageUrl || ""
                 })
             } else {
                 let defaultSchoolName = "";
@@ -160,7 +169,8 @@ export function UserDialog({
                     grade: "",
                     school: defaultSchoolName,
                     targetSchoolId: "",
-                    targetCampusId: ""
+                    targetCampusId: "",
+                    imageBase64: ""
                 })
             }
         }
@@ -187,6 +197,7 @@ export function UserDialog({
             role: formData.role,
             grade: formData.grade,
             school: formData.school,
+            imageBase64: formData.imageBase64?.startsWith("data:image") ? formData.imageBase64 : undefined,
         };
 
         setQueue([...queue, newUser])
@@ -197,8 +208,13 @@ export function UserDialog({
             lastName: "",
             email: "",
             username: "",
-            password: ""
+            password: "",
+            imageBase64: ""
         }))
+
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     }
 
     const handleRemoveFromQueue = (id: string) => {
@@ -249,11 +265,18 @@ export function UserDialog({
                         isActive: formData.status === "active",
                         grade: formData.role === "student" ? formData.grade : undefined,
                         school: formData.role === "student" ? formData.school : undefined,
+                        imageBase64: formData.imageBase64?.startsWith("data:image") ? formData.imageBase64 : undefined,
                     },
                     orgType: finalOrgType, 
                     orgId: finalOrgId,     
                 })
-                toast.success(t('common.save'))
+                
+                const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+                toast.success(
+                    t('userDialog.updateSuccess', { name: fullName }) || 
+                    `${fullName} updated successfully`
+                );
+                
                 setIsOpen(false)
             } else {
                 // BATCH CREATE MODE
@@ -271,7 +294,8 @@ export function UserDialog({
                         password: formData.password,
                         role: formData.role,
                         grade: formData.grade,
-                        school: formData.school
+                        school: formData.school,
+                        imageBase64: formData.imageBase64?.startsWith("data:image") ? formData.imageBase64 : undefined
                     })
                 }
 
@@ -290,6 +314,7 @@ export function UserDialog({
                         role: u.role,
                         grade: u.role === "student" ? u.grade : undefined,
                         school: u.role === "student" ? u.school : undefined,
+                        imageBase64: u.imageBase64,
                     })),
                     orgType: finalOrgType,
                     orgId: finalOrgId,
@@ -300,10 +325,24 @@ export function UserDialog({
                 const failures = results.filter(r => r.status === "error")
 
                 if (failures.length === 0) {
-                    toast.success(t("userDialog.successBatch", { count: successes }) || `${successes} users created successfully`)
+                    if (successes === 1) {
+                        const createdName = `${finalQueue[0].firstName} ${finalQueue[0].lastName}`.trim();
+                        toast.success(
+                            t("userDialog.createSuccess", { name: createdName }) || 
+                            `${createdName} created successfully`
+                        );
+                    } else {
+                        toast.success(
+                            t("userDialog.successBatch", { count: successes }) || 
+                            `${successes} users created successfully`
+                        );
+                    }
                     setIsOpen(false)
                 } else {
-                    toast.warning(t("userDialog.warningBatch", { success: successes, failed: failures.length }) || `${successes} created, ${failures.length} failed`)
+                    toast.warning(
+                        t("userDialog.warningBatch", { success: successes, failed: failures.length }) || 
+                        `${successes} created, ${failures.length} failed`
+                    )
                 }
             }
         } catch (error) {
@@ -339,6 +378,17 @@ export function UserDialog({
         });
     };
 
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setFormData(prev => ({ ...prev, imageBase64: reader.result as string }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     // Default trigger if none provided
     const defaultTrigger = isEditing ? (
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0" type="button">
@@ -358,6 +408,20 @@ export function UserDialog({
         : queue.length > 0
             ? t("userDialog.createMultiple", { count: queue.length }) || `Create All (${queue.length})`
             : t("userDialog.createSingle") || "Create User";
+
+    const getOrgName = (orgId?: string, orgType?: string) => {
+        if (orgType === "system") return t('common.system') || "System";
+        if (orgType === "school") return schools?.find(s => s._id === orgId)?.name || "Unknown School";
+        if (orgType === "campus") {
+            const campus = campuses?.find(c => c._id === orgId);
+            const school = schools?.find(s => s._id === campus?.schoolId);
+            if (school && campus) {
+                return `${school.name} • ${campus.name}`;
+            }
+            return campus?.name || "Unknown Campus";
+        }
+        return orgType || "";
+    };
 
     return (
         <EntityDialog
@@ -384,6 +448,45 @@ export function UserDialog({
         >
             <div className="grid gap-2">
                 <div className={`grid gap-4 ${!isEditing ? "p-4 border rounded-lg bg-muted/30" : ""}`}>
+                    <div className="grid gap-2 mb-4">
+                        <Label>{t("userDialog.profileImage") || "Profile Image"}</Label>
+                        <div className="flex items-center gap-4">
+                            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border shadow-sm group">
+                                <Avatar className="h-full w-full rounded-none">
+                                    <AvatarImage 
+                                        src={formData.imageBase64 || undefined} 
+                                        alt="Profile preview" 
+                                        className="object-cover"
+                                    />
+                                    <AvatarFallback className="bg-muted rounded-none text-lg">
+                                        {formData.firstName?.charAt(0)?.toUpperCase() || "U"}
+                                    </AvatarFallback>
+                                </Avatar>
+
+                                <label 
+                                    htmlFor="profileImage"
+                                    className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                    title="Upload picture"
+                                >
+                                    <Camera className="h-5 w-5 text-white" />
+                                </label>
+                            </div>
+
+                            <input 
+                                id="profileImage" 
+                                type="file" 
+                                accept="image/*"
+                                onChange={handleImageChange}
+                                className="hidden"
+                                ref={fileInputRef}
+                            />
+                            
+                            <div className="text-xs text-muted-foreground">
+                                <p>Click the avatar to upload a picture.</p>
+                                <p>Recommended size: 256x256px</p>
+                            </div>
+                        </div>
+                    </div>
                     {/* NAMES */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="grid gap-2">
@@ -466,7 +569,12 @@ export function UserDialog({
                                     value={formData.school} 
                                     onChange={e => setFormData({...formData, school: e.target.value})}
                                     placeholder={t("userDialog.placeholders.school") || "School Name"}
+                                    disabled
+                                    className="bg-muted/50"
                                 />
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                    Assigned via organization context.
+                                </p>
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="grade">{t('student.grade')}</Label>
@@ -489,94 +597,157 @@ export function UserDialog({
                         </div>
                     )}
 
-                    {/* ROLE & STATUS */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="role">
-                                {t('teacher.role')}
-                                <span className="text-destructive">*</span>
-                            </Label>
-                            <Select 
-                                value={formData.role} 
-                                onValueChange={(v) => setFormData({...formData, role: v as UserRole})}
-                                disabled={isEditing || rolesToDisplay.length === 1}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder={t('teacher.selectRole')} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {rolesToDisplay.map(role => (
-                                        <SelectItem key={role} value={role}>
-                                            {t(`navigation.${role}s`)}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                    {isEditing && activeRoles && activeRoles.length > 0 && (
+                        <div className="grid gap-3 p-4 border border-primary/20 bg-primary/5 rounded-md">
+                            <Label className="text-primary font-semibold">{t("userDialog.revokeRoleSectionTitle")}</Label>
+                            <div className="flex flex-wrap gap-2">
+                                {activeRoles.map(ar => (
+                                    <Badge 
+                                        key={ar._id} 
+                                        variant={ar.role === "superadmin" ? "destructive" : "secondary"} 
+                                        className="flex items-center justify-between py-1 px-2 text-xs max-w-[calc(50%-0.25rem)] w-fit overflow-hidden"
+                                    >
+                                        <div className="flex items-center truncate mr-1.5">
+                                            <span className="capitalize shrink-0">{t(`navigation.${ar.role}`)}</span> 
+                                            <span 
+                                                className="opacity-60 text-[10px] uppercase ml-1 truncate"
+                                                title={getOrgName(ar.orgId, ar.orgType)}
+                                            >
+                                                ({getOrgName(ar.orgId, ar.orgType)})
+                                            </span>
+                                        </div>
+                                        
+                                        <button
+                                            type="button"
+                                            className="shrink-0 rounded-full p-0.5 hover:bg-destructive/20 focus:outline-none"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                
+                                                showAlert({
+                                                    title: t("userDialog.revokeRole") || "Revoke Access",
+                                                    description: `${t("userDialog.revokeRoleDescription", { role: ar.role, name: `${user.firstName} ${user.lastName}` }) || `Are you sure you want to revoke ${ar.role} access for ${user.firstName} ${user.lastName}? This action cannot be undone.`}`,
+                                                    confirmLabel: t("userDialog.revoke") || "Revoke",
+                                                    cancelLabel: t("common.cancel") || "Cancel",
+                                                    variant: "destructive",
+                                                    onConfirm: async () => {
+                                                        try {
+                                                            await revokeRoleMutation({ assignmentId: ar._id });
+                                                            toast.success(t("userDialog.revokeRoleSuccess") || "Role revoked successfully");
+                                                        } catch {
+                                                            toast.error(t("userDialog.revokeRoleError") || "Failed to revoke role");
+                                                        }
+                                                    }
+                                                });
+                                            }}
+                                        >
+                                            <X className="h-3 w-3 text-current hover:text-destructive transition-colors" />
+                                        </button>
+                                        
+                                    </Badge>
+                                ))}
+                            </div>
                         </div>
+                    )}
+
+                    {/* UNIFIED ACCESS & ASSIGNMENT SECTION */}
+                    <div className="grid gap-4 p-4 border rounded-md bg-muted/10">
+                        <Label className="text-primary font-semibold">
+                            {isEditing ? "Add New Role / Update Assignment" : "Role & Organization"}
+                        </Label>
                         
-                        {isEditing && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="grid gap-2">
-                                <Label htmlFor="status">
-                                    {t('common.status')}
+                                <Label htmlFor="role">
+                                    {t('teacher.role')}
                                     <span className="text-destructive">*</span>
                                 </Label>
                                 <Select 
-                                    value={formData.status}
-                                    onValueChange={(v) => setFormData({...formData, status: v})}
+                                    value={formData.role} 
+                                    onValueChange={(v) => setFormData({...formData, role: v as UserRole})}
+                                    disabled={!isEditing && rolesToDisplay.length === 1}
                                 >
                                     <SelectTrigger>
-                                        <SelectValue />
+                                        <SelectValue placeholder={t('teacher.selectRole')} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="active">{t('common.active')}</SelectItem>
-                                        <SelectItem value="inactive">{t('common.inactive')}</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* MULTI-TENANT SYSTEM ASSIGNMENT */}
-                    {orgContext?.type === "system" && formData.role !== "superadmin" && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4 mt-2 border-dashed border-muted-foreground/30">
-                            <div className="grid gap-2">
-                                <Label className="text-primary flex items-center gap-1">Assign to School</Label>
-                                <Select 
-                                    value={formData.targetSchoolId} 
-                                    onValueChange={(v) => {
-                                        const schoolName = schools?.find(s => s._id === v)?.name || "";
-                                        setFormData({...formData, targetSchoolId: v, targetCampusId: "", school: schoolName});
-                                    }}
-                                >
-                                    <SelectTrigger><SelectValue placeholder="Select School" /></SelectTrigger>
-                                    <SelectContent>
-                                        {schools?.map(s => (
-                                            <SelectItem key={s._id} value={s._id}>{s.name}</SelectItem>
+                                        {rolesToDisplay.map(role => (
+                                            <SelectItem key={role} value={role}>
+                                                {t(`navigation.${role}s`)}
+                                            </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
-
-                            {/* Only show Campus if the role demands it (Principal, Teacher, Tutor, Student) */}
-                            {formData.role !== "admin" && (
+                            
+                            {isEditing && (
                                 <div className="grid gap-2">
-                                    <Label className="text-primary flex items-center gap-1">Assign to Campus</Label>
+                                    <Label htmlFor="status">
+                                        {t('common.status')}
+                                        <span className="text-destructive">*</span>
+                                    </Label>
                                     <Select 
-                                        value={formData.targetCampusId} 
-                                        onValueChange={(v) => setFormData({...formData, targetCampusId: v})}
-                                        disabled={!formData.targetSchoolId}
+                                        value={formData.status}
+                                        onValueChange={(v) => setFormData({...formData, status: v})}
                                     >
-                                        <SelectTrigger><SelectValue placeholder="Select Campus" /></SelectTrigger>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
                                         <SelectContent>
-                                            {campuses?.filter(c => c.schoolId === formData.targetSchoolId).map(c => (
-                                                <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
-                                            ))}
+                                            <SelectItem value="active">{t('common.active')}</SelectItem>
+                                            <SelectItem value="inactive">{t('common.inactive')}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
                             )}
                         </div>
-                    )}
+
+                        {/* MULTI-TENANT SYSTEM ASSIGNMENT */}
+                        {orgContext?.type === "system" && formData.role !== "superadmin" && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4 mt-2 border-dashed border-muted-foreground/30">
+                                <div className="grid gap-2 min-w-0">
+                                    <Label className="text-primary flex items-center gap-1">Assign to School</Label>
+                                    <Select 
+                                        value={formData.targetSchoolId} 
+                                        onValueChange={(v) => {
+                                            const schoolName = schools?.find(s => s._id === v)?.name || "";
+                                            setFormData({...formData, targetSchoolId: v, targetCampusId: "", school: schoolName});
+                                        }}
+                                    >
+                                        <SelectTrigger className="w-full [&>span]:truncate">
+                                            <SelectValue placeholder="Select School" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {schools?.map(s => (
+                                                <SelectItem key={s._id} value={s._id}>{s.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Only show Campus if the role demands it */}
+                                {formData.role !== "admin" && (
+                                    <div className="grid gap-2 min-w-0">
+                                        <Label className="text-primary flex items-center gap-1">Assign to Campus</Label>
+                                        <Select 
+                                            value={formData.targetCampusId} 
+                                            onValueChange={(v) => setFormData({...formData, targetCampusId: v})}
+                                            disabled={!formData.targetSchoolId}
+                                        >
+                                            <SelectTrigger className="w-full [&>span]:truncate">
+                                                <SelectValue placeholder="Select Campus" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {campuses?.filter(c => c.schoolId === formData.targetSchoolId).map(c => (
+                                                    <SelectItem key={c._id} value={c._id}>{c.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
 
                     {/* Add to Queue Button (Hidden on Mobile) */}
                     {!isEditing && (

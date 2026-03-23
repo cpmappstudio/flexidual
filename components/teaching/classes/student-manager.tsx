@@ -1,10 +1,10 @@
 "use client"
 
-import { useQuery, useMutation } from "convex/react"
+import { useQuery, useMutation, useAction } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
-import { Trash2, MoreVertical } from "lucide-react"
+import { Trash2, MoreVertical, Camera, Loader2 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +20,7 @@ import { getRoleForOrg, isSuperAdmin } from "@/lib/rbac"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
 import { useAlert } from "@/components/providers/alert-provider"
+import { useState } from "react"
 
 interface StudentManagerProps {
   classId: Id<"classes">
@@ -31,11 +32,15 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
   const { showAlert } = useAlert()
   const students = useQuery(api.classes.getStudents, { classId })
   const removeStudent = useMutation(api.classes.removeStudent)
+  const updateUser = useAction(api.users.updateUserWithClerk)
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
+
   const params = useParams()
   const orgSlug = (params.orgSlug as string) || "system"
   const { sessionClaims } = useAuth()
   const role = getRoleForOrg(sessionClaims, orgSlug)
   const isAdmin = isSuperAdmin(sessionClaims) || role === "admin" || role === "principal"
+  const canEditProfile = isAdmin || role === "teacher" || role === "tutor"
 
   const handleRemove = async (studentId: Id<"users">, name: string) => {
     showAlert({
@@ -54,6 +59,32 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
       }
     })
   }
+
+  const handleImageUpload = async (studentId: Id<"users">, file: File) => {
+    if (!file) return;
+    setUploadingId(studentId);
+    
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        await updateUser({
+          userId: studentId,
+          updates: {
+            imageBase64: base64.startsWith("data:image") ? base64 : undefined,
+          },
+          orgType: "campus",
+        });
+        toast.success(t("userDialog.updateSuccess", { name: "Profile picture" }) || "Picture updated successfully");
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error(error);
+      toast.error(t("userDialog.failedUpload") || "Failed to upload picture");
+    } finally {
+      setUploadingId(null);
+    }
+  };
 
   if (students === undefined) {
     return <Skeleton className="h-[300px] w-full" />
@@ -76,7 +107,7 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
           {students.map((student) => (
             <div key={student._id} className="flex items-center justify-between p-4 border rounded-lg bg-card shadow-sm">
               <div className="flex items-center gap-3 overflow-hidden">
-                <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full border border-border bg-muted">
+                <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-border bg-muted group">
                   {student.imageUrl ? (
                     <Image 
                       src={student.imageUrl} 
@@ -89,6 +120,31 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
                     <div className="flex h-full w-full items-center justify-center text-xs font-medium text-muted-foreground">
                       {student.fullName.substring(0, 2)}
                     </div>
+                  )}
+
+                  {canEditProfile && (
+                    <label 
+                      className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      title={student.imageUrl ? t("userDialog.updatePicture") : t("userDialog.addPicture")}
+                    >
+                      {uploadingId === student._id ? (
+                        <Loader2 className="h-4 w-4 text-white animate-spin" />
+                      ) : (
+                        <Camera className="h-4 w-4 text-white" />
+                      )}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden"
+                        disabled={uploadingId === student._id}
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) {
+                            handleImageUpload(student._id, e.target.files[0]);
+                            e.target.value = ""; 
+                          }
+                        }}
+                      />
+                    </label>
                   )}
                 </div>
 

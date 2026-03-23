@@ -126,6 +126,12 @@ export const createStatusColumn = <T extends Record<string, unknown>>(
     );
   },
   filterFn: (row, id, value: string[]) => {
-    return value.includes(row.getValue(id));
+    const rowValue = row.getValue(id) as string;
+    
+    if (value.includes("admin") && rowValue === "superadmin") {
+        return true;
+    }
+    
+    return value.includes(rowValue);
   },
 });

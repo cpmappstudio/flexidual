@@ -47,6 +47,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Image from "next/image";
 import { CalendarEvent } from "../calendar-types";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
+import { useParams } from "next/navigation"
 
 // Helper function to format recurrence pattern
 function formatRecurrencePattern(
@@ -129,6 +130,9 @@ export default function CalendarManageEventDialog() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   
   const lastEventIdRef = useRef<string | null>(null);
+
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
 
   // Queries for Edit Mode
   const classData = useQuery(
@@ -527,14 +531,14 @@ export default function CalendarManageEventDialog() {
                 </Button>
                 {selectedEvent.isLive ? (
                   <Button className="bg-green-600 hover:bg-green-700" asChild>
-                    <Link href={`/classroom/${selectedEvent.roomName}`}>
+                    <Link href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}>
                       <Video className="mr-2 h-4 w-4" />
                       {t('dashboard.enterLive')}
                     </Link>
                   </Button>
                 ) : (
                   <Button asChild>
-                    <Link href={`/classroom/${selectedEvent.roomName}`}>
+                    <Link href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}>
                       {t('classroom.prepareRoom')}
                     </Link>
                   </Button>

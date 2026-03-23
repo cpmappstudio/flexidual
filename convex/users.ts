@@ -96,9 +96,27 @@ export const getUsers = query({
       assignments = await ctx.db.query("roleAssignments").collect();
     }
 
+    if (args.role === "admin") {
+      const superadminAssignments = await ctx.db
+        .query("roleAssignments")
+        .filter((q) => 
+          q.and(
+            q.eq(q.field("orgType"), "system"),
+            q.eq(q.field("role"), "superadmin")
+          )
+        )
+        .collect();
+        
+      assignments = [...assignments, ...superadminAssignments];
+    }
+
     // 2. Apply Role Filter
     if (args.role) {
-      assignments = assignments.filter((a) => a.role === args.role);
+      if (args.role === "admin") {
+        assignments = assignments.filter((a) => a.role === "admin" || a.role === "superadmin");
+      } else {
+        assignments = assignments.filter((a) => a.role === args.role);
+      }
     }
 
     const validUserIds = new Set(assignments.map((a) => a.userId));
@@ -324,6 +342,7 @@ export const createUsersWithClerk = action({
       role: v.string(),
       grade: v.optional(v.string()),
       school: v.optional(v.string()),
+      imageBase64: v.optional(v.string()),
     })),
     orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
     orgId: v.optional(v.string()),
@@ -370,6 +389,26 @@ export const createUsersWithClerk = action({
         }
 
         const clerkUser = await clerkResponse.json();
+
+        if (user.imageBase64) {
+            const base64Data = user.imageBase64.split(',')[1];
+            const mimeType = user.imageBase64.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
+            
+            const byteString = atob(base64Data);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) { ia[i] = byteString.charCodeAt(i); }
+            const blob = new Blob([ab], { type: mimeType });
+
+            const formData = new FormData();
+            formData.append('file', blob, `profile.${mimeType.split('/')[1]}`);
+
+            await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}/profile_image`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${clerkSecretKey}` },
+                body: formData
+            });
+        }
 
         // 2. Sync Identity to Convex
         await ctx.runMutation(internal.users.upsertFromClerk, { data: clerkUser });
@@ -431,6 +470,7 @@ export const updateUserWithClerk = action({
       grade: v.optional(v.string()),
       school: v.optional(v.string()),
       isActive: v.optional(v.boolean()),
+      imageBase64: v.optional(v.string()),
     }),
     // Context required to update the correct role assignment
     orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
@@ -448,7 +488,7 @@ export const updateUserWithClerk = action({
     }
 
     // 1. Update Core Identity in Convex
-    const { password, role, ...convexUpdates } = args.updates;
+    const { password, role, imageBase64, ...convexUpdates } = args.updates;
     await ctx.runMutation(api.users.updateUser, { 
       userId: args.userId, 
       updates: {
@@ -490,6 +530,26 @@ export const updateUserWithClerk = action({
           headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
           body: JSON.stringify(clerkUpdates),
         });
+      }
+
+      if (args.updates.imageBase64) {
+          const base64Data = args.updates.imageBase64.split(',')[1];
+          const mimeType = args.updates.imageBase64.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
+          
+          const byteString = atob(base64Data);
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) { ia[i] = byteString.charCodeAt(i); }
+          const blob = new Blob([ab], { type: mimeType });
+
+          const formData = new FormData();
+          formData.append('file', blob, `profile.${mimeType.split('/')[1]}`);
+
+          await fetch(`https://api.clerk.com/v1/users/${user.clerkId}/profile_image`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${clerkSecretKey}` },
+              body: formData
+          });
       }
 
       // 4. Sync email change with Clerk (requires create → set primary → delete old)

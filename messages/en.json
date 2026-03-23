@@ -101,6 +101,7 @@
     "admin": "Admin",
     "administration": "Administration",
     "platform": "Platform",
+    "student": "Student",
     "students": "Students",
     "studentsDescription": "Enrolled learners.",
     "teachers": "Teachers",
@@ -108,6 +109,7 @@
     "admins": "Admins",
     "adminsDescription": "Users with full system access and configuration privileges.",
     "tutors": "Tutors",
+    "superadmin": "Super Admin",
     "superadmins": "Super Admins",
     "curriculums": "Curriculums",
     "curriculumsDescription": "Manage curriculums and their content",
@@ -615,7 +617,21 @@
     "createMultiple": "Add {count} users",
     "createSingle": "Add user",
     "successBatch": "{count} users added successfully.",
-    "warningBatch": "{success} added, {failed} failed."
+    "warningBatch": "{success} added, {failed} failed.",
+    "profileImage": "Profile Image",
+    "revokeRole": "Revoke Access",
+    "revoke": "Revoke role",
+    "revokeRoleDescription": "Are you sure you want to revoke {role} access for {name}?\n This action cannot be undone.",
+    "revokeRoleSuccess": "Role revoked successfully",
+    "revokeRoleError": "Failed to revoke role",
+    "revokeRoleSectionTitle": "Active Roles & Access",
+    "createSuccess": "{name} created successfully",
+    "updateSuccess": "{name} updated successfully",
+    "addPicture": "Add Profile Picture",
+    "updatePicture": "Update Profile Picture",
+    "failedUpload": "Failed to upload picture",
+    "clickToUpload": "Click the avatar to upload a picture.",
+    "recommendedDimensions": "Recommended size: 256x256px"
   },
   "curriculumDialog": {
     "placeholders": {

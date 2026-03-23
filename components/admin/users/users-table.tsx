@@ -20,7 +20,7 @@ import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter
 export type User = Doc<"users"> & { 
   role?: string; 
   orgId?: string; 
-  orgType?: string 
+  orgType?: string; 
 };
 
 interface UsersTableProps {
@@ -34,11 +34,13 @@ function UserAvatar({ user }: { user: User }) {
     user.avatarStorageId ? { storageId: user.avatarStorageId } : "skip",
   );
 
+  const finalSrc = avatarUrl || user.imageUrl;
+
   return (
     <Avatar className="h-8 w-8">
-      {avatarUrl && <AvatarImage src={avatarUrl} alt={user.fullName} />}
+      {finalSrc && <AvatarImage className="object-cover" src={finalSrc} alt={user.fullName} />}
       <AvatarFallback>
-        {user.fullName.substring(0, 2).toUpperCase()}
+        {user.fullName?.substring(0, 2).toUpperCase() || "U"}
       </AvatarFallback>
     </Avatar>
   );

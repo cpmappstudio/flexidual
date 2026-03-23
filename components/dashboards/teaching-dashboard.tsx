@@ -181,7 +181,7 @@ export default function TeachingDashboard() {
                     }`}
                     asChild
                   >
-                    <Link href={`/classroom/${nextLesson.roomName}`}>
+                    <Link href={`/${orgSlug}/classroom/${nextLesson.roomName}`}>
                       {isLive ? (
                          isIgnitia ? (
                             <><MonitorPlay className="mr-2 w-5 h-5" /> Open Ignitia Access</>
@@ -307,7 +307,7 @@ export default function TeachingDashboard() {
                 </div>
                 
                 <Button variant="outline" className="w-full mt-4" asChild>
-                  <Link href="/calendar">
+                  <Link href={`/${orgSlug}/calendar`}>
                     {t('dashboard.viewFullCalendar')}
                   </Link>
                 </Button>
@@ -406,7 +406,7 @@ export default function TeachingDashboard() {
                   return relatedClass ? (
                     <Link 
                       key={curr._id} 
-                      href={`/teaching/classes/${relatedClass._id}`}
+                      href={`/${orgSlug}/teaching/classes/${relatedClass._id}`}
                       className="curriculum-link-card"
                     >
                       <div className="flex items-center justify-between">
@@ -429,7 +429,7 @@ export default function TeachingDashboard() {
               </div>
               
               <Button variant="outline" className="w-full mt-3" asChild>
-                <Link href="/teaching/classes">
+                <Link href={`/${orgSlug}/teaching/classes`}>
                   {t('dashboard.viewAllCurriculums')}
                 </Link>
               </Button>

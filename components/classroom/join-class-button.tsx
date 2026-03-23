@@ -5,7 +5,7 @@ import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import { Loader2, Video } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 
@@ -16,6 +16,8 @@ interface JoinClassButtonProps {
 export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
   const t = useTranslations()
   const router = useRouter()
+  const params = useParams()
+  const orgSlug = (params.orgSlug as string) || "system"
   
   // 1. Get my entire schedule (Universal Query)
   const mySchedule = useQuery(api.schedule.getMySchedule, {})
@@ -28,7 +30,7 @@ export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
 
   const handleJoin = () => {
     if (activeSession?.roomName) {
-      router.push(`/classroom/${activeSession.roomName}`)
+      router.push(`/${orgSlug}/classroom/${activeSession.roomName}`)
     } else {
       toast.error(t('classroom.notActive'))
     }

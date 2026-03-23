@@ -101,6 +101,7 @@
     "admin": "Admin",
     "administration": "Administração",
     "platform": "Plataforma",
+    "student": "Aluno",
     "students": "Alunos",
     "studentsDescription": "Aprendizes inscritos.",
     "teachers": "Professores",
@@ -109,6 +110,7 @@
     "adminsDescription": "Usuários com acesso completo ao sistema e privilégios de configuração.",
     "tutors": "Tutores",
     "principals": "Diretores",
+    "superadmin": "Super Admin",
     "superadmins": "Super Administradores",
     "curriculums": "Currículos",
     "curriculumsDescription": "Gerencie os currículos e seu conteúdo",
@@ -615,7 +617,21 @@
     "createMultiple": "Adicionar {count} usuários",
     "createSingle": "Adicionar usuário",
     "successBatch": "{count} usuários adicionados com sucesso.",
-    "warningBatch": "{success} adicionados, {failed} falharam."
+    "warningBatch": "{success} adicionados, {failed} falharam.",
+    "profileImage": "Imagem de Perfil",
+    "revokeRole": "Revogar Acesso",
+    "revoke": "Revogar função",
+    "revokeRoleDescription": "Tem certeza de que deseja revogar o acesso de {role} para {name}?\n Esta ação não pode ser desfeita.",
+    "revokeRoleSuccess": "Função revogada com sucesso",
+    "revokeRoleError": "Falha ao revogar função",
+    "revokeRoleSectionTitle": "Funções e Acessos Ativos",
+    "createSuccess": "{name} criado com sucesso",
+    "updateSuccess": "{name} atualizado com sucesso",
+    "addPicture": "Adicionar Imagem de Perfil",
+    "updatePicture": "Atualizar Imagem de Perfil",
+    "failedUpload": "Falha ao enviar a imagem",
+    "clickToUpload": "Clique no avatar para enviar uma imagem.",
+    "recommendedDimensions": "Tamanho recomendado: 256x256px"
   },
   "curriculumDialog": {
     "placeholders": {
