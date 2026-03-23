@@ -225,7 +225,7 @@ export function UserDialog({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!orgContext) {
-            toast.error("Loading organization context... Please wait.")
+            toast.error(t("userDialog.loadingOrgContext"))
             return
         }
 
@@ -238,11 +238,11 @@ export function UserDialog({
                 finalOrgType = "system";
                 finalOrgId = undefined;
             } else if (formData.role === "admin") {
-                if (!formData.targetSchoolId) return toast.error('Please select a school for this admin');
+                if (!formData.targetSchoolId) return toast.error(t("userDialog.selectSchoolForAdmin"));
                 finalOrgType = "school";
                 finalOrgId = formData.targetSchoolId;
             } else {
-                if (!formData.targetCampusId) return toast.error('Please select a campus for this user');
+                if (!formData.targetCampusId) return toast.error(t("userDialog.selectCampusForUser"));
                 finalOrgType = "campus";
                 finalOrgId = formData.targetCampusId;
             }
@@ -482,8 +482,8 @@ export function UserDialog({
                             />
                             
                             <div className="text-xs text-muted-foreground">
-                                <p>Click the avatar to upload a picture.</p>
-                                <p>Recommended size: 256x256px</p>
+                                <p>{t("userDialog.clickToUpload")}</p>
+                                <p>{t("userDialog.recommendedDimensions")}</p>
                             </div>
                         </div>
                     </div>
@@ -519,10 +519,10 @@ export function UserDialog({
 
                     {/* AUTHENTICATION DETAILS */}
                     <div className="grid gap-4 p-4 border rounded-md bg-muted/10">
-                        <Label className="text-primary font-semibold">Authentication (Provide at least one)</Label>
+                        <Label className="text-primary font-semibold">{t("userDialog.authSection")}</Label>
                         
                         <div className="grid gap-2">
-                            <Label htmlFor="email">{t('teacher.email')} (Optional if using Username)</Label>
+                            <Label htmlFor="email">{`${t('teacher.email')} (${t("userDialog.emailOptionalHint")})`}</Label>
                             <Input 
                                 id="email" 
                                 type="email"
@@ -536,7 +536,7 @@ export function UserDialog({
                         {/* Optional Username/Password flow (Usually for students) */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="grid gap-2">
-                                <Label htmlFor="username">Username (Optional)</Label>
+                                <Label htmlFor="username">{t("userDialog.usernameLabel")}</Label>
                                 <Input 
                                     id="username" 
                                     value={formData.username}
@@ -545,14 +545,14 @@ export function UserDialog({
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="password">
-                                    Password {formData.username && <span className="text-destructive">*</span>}
+                                    {t("userDialog.passwordLabel")} {formData.username && <span className="text-destructive">*</span>}
                                 </Label>
                                 <Input 
                                     id="password" 
                                     type="text"
                                     value={formData.password}
                                     onChange={e => setFormData({...formData, password: e.target.value})}
-                                    placeholder={formData.username ? "Required with username" : ""}
+                                    placeholder={formData.username ? t("userDialog.passwordRequiredHint") : ""}
                                     disabled={!formData.username} 
                                 />
                             </div>
@@ -573,10 +573,10 @@ export function UserDialog({
                                     className="bg-muted/50"
                                 />
                                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                                    Assigned via organization context.
+                                    {t("userDialog.orgContextHint")}
                                 </p>
                             </div>
-                            <div className="grid gap-2">
+                            <div className="grid gap-2 pb-6">
                                 <Label htmlFor="grade">{t('student.grade')}</Label>
                                 <Select 
                                     value={formData.grade} 
@@ -653,7 +653,7 @@ export function UserDialog({
                     {/* UNIFIED ACCESS & ASSIGNMENT SECTION */}
                     <div className="grid gap-4 p-4 border rounded-md bg-muted/10">
                         <Label className="text-primary font-semibold">
-                            {isEditing ? "Add New Role / Update Assignment" : "Role & Organization"}
+                            {isEditing ? t("userDialog.addNewRole") : t("userDialog.roleAndOrg")}
                         </Label>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -706,7 +706,7 @@ export function UserDialog({
                         {orgContext?.type === "system" && formData.role !== "superadmin" && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4 mt-2 border-dashed border-muted-foreground/30">
                                 <div className="grid gap-2 min-w-0">
-                                    <Label className="text-primary flex items-center gap-1">Assign to School</Label>
+                                    <Label className="text-primary flex items-center gap-1">{t("userDialog.assignToSchool")}</Label>
                                     <Select 
                                         value={formData.targetSchoolId} 
                                         onValueChange={(v) => {
@@ -715,7 +715,7 @@ export function UserDialog({
                                         }}
                                     >
                                         <SelectTrigger className="w-full [&>span]:truncate">
-                                            <SelectValue placeholder="Select School" />
+                                            <SelectValue placeholder={t("userDialog.selectSchool")} />
                                         </SelectTrigger>
                                         <SelectContent>
                                             {schools?.map(s => (
@@ -728,14 +728,14 @@ export function UserDialog({
                                 {/* Only show Campus if the role demands it */}
                                 {formData.role !== "admin" && (
                                     <div className="grid gap-2 min-w-0">
-                                        <Label className="text-primary flex items-center gap-1">Assign to Campus</Label>
+                                        <Label className="text-primary flex items-center gap-1">{t("userDialog.assignToCampus")}</Label>
                                         <Select 
                                             value={formData.targetCampusId} 
                                             onValueChange={(v) => setFormData({...formData, targetCampusId: v})}
                                             disabled={!formData.targetSchoolId}
                                         >
                                             <SelectTrigger className="w-full [&>span]:truncate">
-                                                <SelectValue placeholder="Select Campus" />
+                                                <SelectValue placeholder={t("userDialog.selectCampus")} />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {campuses?.filter(c => c.schoolId === formData.targetSchoolId).map(c => (

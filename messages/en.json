@@ -631,7 +631,22 @@
     "updatePicture": "Update Profile Picture",
     "failedUpload": "Failed to upload picture",
     "clickToUpload": "Click the avatar to upload a picture.",
-    "recommendedDimensions": "Recommended size: 256x256px"
+    "recommendedDimensions": "Recommended size: 256x256px",
+    "authSection": "Authentication (Provide at least one)",
+    "emailOptionalHint": "(Optional if using Username)",
+    "usernameLabel": "Username (Optional)",
+    "passwordLabel": "Password",
+    "passwordRequiredHint": "Required with username",
+    "orgContextHint": "Assigned via organization context.",
+    "addNewRole": "Add New Role / Update Assignment",
+    "roleAndOrg": "Role & Organization",
+    "assignToSchool": "Assign to School",
+    "selectSchool": "Select School",
+    "assignToCampus": "Assign to Campus",
+    "selectCampus": "Select Campus",
+    "loadingOrgContext": "Loading organization context... Please wait.",
+    "selectSchoolForAdmin": "Please select a school for this admin",
+    "selectCampusForUser": "Please select a campus for this user"
   },
   "curriculumDialog": {
     "placeholders": {
