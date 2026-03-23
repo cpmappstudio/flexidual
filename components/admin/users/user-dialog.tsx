@@ -802,22 +802,34 @@ export function UserDialog({
                                 <div className="divide-y">
                                     {queue.map((u) => (
                                         <div key={u.id} className="flex items-center justify-between p-3 text-sm hover:bg-muted/50">
-                                            <div className="grid gap-0.5">
-                                                <div className="font-medium flex items-center gap-2">
-                                                    {u.firstName} {u.lastName}
-                                                    <Badge variant="outline" className="text-[10px] h-5">
-                                                        {t(`navigation.${u.role}s`)}
-                                                    </Badge>
-                                                    {u.grade && (
-                                                        <Badge variant="secondary" className="text-[10px] h-5">{u.grade}</Badge>
-                                                    )}
+                                            <div className="flex items-center gap-3">
+                                                <Avatar className="h-8 w-8 border shadow-sm">
+                                                    <AvatarImage 
+                                                        src={u.imageBase64 || undefined} 
+                                                        className="object-cover" 
+                                                    />
+                                                    <AvatarFallback className="bg-muted text-xs font-medium">
+                                                        {u.firstName.charAt(0).toUpperCase()}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div className="grid gap-0.5">
+                                                    <div className="font-medium flex items-center gap-2">
+                                                        {u.firstName} {u.lastName}
+                                                        <Badge variant="outline" className="text-[10px] h-5">
+                                                            {t(`navigation.${u.role}s`)}
+                                                        </Badge>
+                                                        {u.grade && (
+                                                            <Badge variant="secondary" className="text-[10px] h-5">{u.grade}</Badge>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-muted-foreground text-xs">{u.email || u.username}</div>
                                                 </div>
-                                                <div className="text-muted-foreground text-xs">{u.email || u.username}</div>
                                             </div>
+
                                             <Button 
                                                 variant="ghost" 
                                                 size="icon" 
-                                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                                className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
                                                 onClick={() => handleRemoveFromQueue(u.id)}
                                                 type="button"
                                             >

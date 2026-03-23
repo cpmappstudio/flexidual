@@ -497,7 +497,7 @@ export default function CalendarManageEventDialog() {
                           return (
                             <Link 
                               key={lessonId}
-                              href={`/lessons/${lessonId}`} 
+                              href={`/${orgSlug}/lessons/${lessonId}`} 
                               className="block p-2 rounded-md border hover:bg-accent transition-colors group"
                             >
                               <div className="flex items-start gap-2">
