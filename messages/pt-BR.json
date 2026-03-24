@@ -61,7 +61,9 @@
     "teacher": "Professor",
     "noDescription": "Sem descrição disponível",
     "close": "Fechar",
-    "optional": "Opcional"
+    "optional": "Opcional",
+    "soundAlerts": "Alertas de Som",
+    "muteAlarm": "Silenciar Alarme"
   },
   "days": {
     "sunday": "Dom",

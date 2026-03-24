@@ -10,7 +10,7 @@ import { ScrollIndicator } from "@/components/student/scroll-indicator"
 import { FlexidualLogo } from "@/components/ui/flexidual-logo"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { LogOut, History, Calendar as CalendarIcon, Settings, BellRing, BookOpen, GraduationCap, Menu, X } from "lucide-react"
+import { LogOut, History, Calendar as CalendarIcon, Settings, BellRing, BookOpen, GraduationCap, Menu, X, Volume2, VolumeX } from "lucide-react"
 import { useTranslations, useLocale } from "next-intl"
 import { enUS, es, ptBR } from "date-fns/locale"
 import { SignOutButton } from "@clerk/nextjs"
@@ -30,6 +30,84 @@ import Image from "next/image"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
+function CountdownToast({
+  lesson,
+  onStop,
+  onGoToClass,
+  title,
+  stopLabel,
+  goToClassLabel
+}: {
+  lesson: StudentScheduleEvent
+  onStop: () => void
+  onGoToClass: () => void
+  title: string
+  stopLabel: string
+  goToClassLabel: string
+}) {
+  const [timeLeft, setTimeLeft] = useState(() => lesson.start - Date.now())
+
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const remaining = lesson.start - Date.now()
+      setTimeLeft(remaining)
+      if (remaining <= 0) clearInterval(tick)
+    }, 1000)
+    return () => clearInterval(tick)
+  }, [lesson.start])
+
+  const formatted = () => {
+    if (timeLeft <= 0) return '🔔 Now!'
+    const m = Math.floor(timeLeft / 60000)
+    const s = Math.floor((timeLeft % 60000) / 1000)
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border-2 border-orange-200 dark:border-orange-800 overflow-hidden w-[340px]">
+      {/* Header strip */}
+      <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 flex items-center gap-2">
+        <BellRing className="w-4 h-4 text-white animate-bounce flex-shrink-0" />
+        <p className="text-white font-bold text-sm truncate flex-1">{title}</p>
+        <span className={cn(
+          "font-mono font-black text-white text-lg tabular-nums",
+          timeLeft <= 0 && "animate-pulse"
+        )}>
+          {formatted()}
+        </span>
+      </div>
+
+      {/* Body */}
+      <div className="px-4 py-3">
+        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
+          🚀 {lesson.title}
+        </p>
+        {lesson.className && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+            📚 {lesson.className}
+          </p>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="px-4 pb-4 flex gap-2">
+        <button
+          onClick={onStop}
+          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 transition-colors"
+        >
+          🔕 {stopLabel}
+        </button>
+        <button
+          onClick={onGoToClass}
+          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 rounded-xl px-3 py-2 transition-all shadow-sm shadow-orange-200 dark:shadow-none"
+        >
+          🚀 {goToClassLabel}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function StudentHubPage() {
   const t = useTranslations()
   const locale = useLocale()
@@ -41,17 +119,50 @@ export default function StudentHubPage() {
   const [activeLesson, setActiveLesson] = useState<StudentScheduleEvent | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLaunching, setIsLaunching] = useState(false)
+  const [now, setNow] = useState(Date.now)
 
   const upcomingScrollRef = useRef<HTMLDivElement>(null)
   const pastScrollRef = useRef<HTMLDivElement>(null)
 
   const [notifiedLessons, setNotifiedLessons] = useState<Set<string>>(new Set())
 
+  const [soundEnabled, setSoundEnabled] = useState(false)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const soundEnabledRef = useRef(soundEnabled)
+
   // Queries
   const events = useQuery(api.schedule.getMySchedule, {})
   const dashboardData = useQuery(api.student.getStudentDashboardStats)
-  
-  const now = Date.now()
+
+  useEffect(() => {
+    const stored = localStorage.getItem('flexidual_sound_alerts');
+    if (stored !== 'true') return;
+    setSoundEnabled(true);
+    soundEnabledRef.current = true;
+
+    // Create AudioContext on first interaction (satisfies autoplay policy)
+    const unlock = () => {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext()
+      }
+      window.removeEventListener('click', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+    window.addEventListener('click', unlock)
+    window.addEventListener('keydown', unlock)
+    return () => {
+      window.removeEventListener('click', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+  }, [])
+
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(tick)
+  }, [])
+
+  useEffect(() => { soundEnabledRef.current = soundEnabled }, [soundEnabled])
 
   const { upcomingLessons, pastLessons } = useMemo(() => {
     if (!events) return { upcomingLessons: [], pastLessons: [] }
@@ -86,16 +197,35 @@ export default function StudentHubPage() {
             const minutesLeft = timeDiff / 60000;
 
             if (minutesLeft <= 5 && minutesLeft > 0 && !notifiedLessons.has(lesson.scheduleId)) {
-                toast(t('schedule.classStartingSoon'), {
-                    description: `${lesson.title} starts in 5 minutes!`,
-                    icon: <BellRing className="w-5 h-5 text-orange-500 animate-bounce" />,
-                    duration: 10000,
-                    action: {
-                        label: "Go",
-                        onClick: () => {}
-                    }
-                });
-                setNotifiedLessons(prev => new Set(prev).add(lesson.scheduleId));
+              if (soundEnabledRef.current) {
+                startAlarm()
+              }
+
+              toast.custom(
+                () => (
+                  <CountdownToast
+                    lesson={lesson}
+                    onStop={() => {
+                      stopAlarm()
+                      toast.dismiss(lesson.scheduleId)
+                    }}
+                    onGoToClass={() => {
+                      handleLessonTap(lesson)
+                      toast.dismiss(lesson.scheduleId)
+                    }}
+                    title={t('schedule.classStartingSoon')}
+                    stopLabel={t('common.muteAlarm') || 'Stop'}
+                    goToClassLabel={t('dashboard.goToClassroom') || 'Go to Class'}
+                  />
+                ),
+                {
+                  id: lesson.scheduleId,
+                  duration: 30000,
+                  onDismiss: stopAlarm,
+                  onAutoClose: stopAlarm,
+                }
+              )
+              setNotifiedLessons(prev => new Set(prev).add(lesson.scheduleId));
             }
         });
     };
@@ -126,6 +256,7 @@ export default function StudentHubPage() {
 
   // Mobile tap handler - triggers launch animation
   const handleLessonTap = (lesson: StudentScheduleEvent) => {
+    stopAlarm()
     console.log('📱 Tap detected:', lesson.title)
     setDraggedLesson(lesson)
     setSidebarOpen(false)
@@ -133,6 +264,7 @@ export default function StudentHubPage() {
   }
 
   const handleLaunchComplete = () => {
+    stopAlarm()
     console.log('🚀 Launch Complete, setting active lesson:', draggedLesson?.title)
     if (draggedLesson) {
       setIsLaunching(false)
@@ -147,6 +279,54 @@ export default function StudentHubPage() {
     setDraggedLesson(null)
     setIsLaunching(false)
     setIsDragging(false)
+  }
+
+  const playChime = async (invert: boolean = false) => {
+    const ctx = audioCtxRef.current
+    if (!ctx) return
+    if (ctx.state === 'suspended') await ctx.resume()
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(invert ? 440 : 1000, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(invert ? 1000 : 440, ctx.currentTime + 0.3)
+    gain.gain.setValueAtTime(0.2, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.6)
+  }
+
+  const startAlarm = () => {
+    if (alarmIntervalRef.current) return
+    playChime()
+    alarmIntervalRef.current = setInterval(playChime, 1000)
+  }
+
+  const stopAlarm = () => {
+    if (alarmIntervalRef.current) {
+      clearInterval(alarmIntervalRef.current)
+      alarmIntervalRef.current = null
+    }
+  }
+
+  const toggleSound = () => {
+    const nextState = !soundEnabled
+    setSoundEnabled(nextState)
+    soundEnabledRef.current = nextState
+    localStorage.setItem('flexidual_sound_alerts', String(nextState))
+
+    if (nextState) {
+      // AudioContext must be created/resumed inside a user gesture
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext()
+      }
+      audioCtxRef.current.resume().then(() => playChime(true)) // confirmation chime
+    } else {
+      stopAlarm()
+    }
   }
 
   const classStats = dashboardData?.classes
@@ -187,6 +367,19 @@ export default function StudentHubPage() {
               {t('student.welcomeMessage')}
             </p>
           </div>
+
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={toggleSound}
+            className={`rounded-full h-9 w-9 lg:h-10 lg:w-10 border-2 transition-colors ${
+              soundEnabled 
+                ? 'bg-green-100 border-green-300 text-green-600 dark:bg-green-900/40 dark:border-green-700 dark:text-green-400' 
+                : 'bg-gray-100 border-gray-200 text-gray-400 dark:bg-gray-800 dark:border-gray-700'
+            }`}
+          >
+            {soundEnabled ? <Volume2 className="w-4 h-4 lg:w-5 lg:h-5" /> : <VolumeX className="w-4 h-4 lg:w-5 lg:h-5" />}
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -247,7 +440,6 @@ export default function StudentHubPage() {
                 <TabsTrigger 
                   value="upcoming" 
                   className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white data-[state=active]:shadow-md transition-all text-xs sm:text-sm"
-                  onClick={() => setSidebarOpen(true)}
                 >
                   <CalendarIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">{t('student.upcoming')}</span>
@@ -256,7 +448,6 @@ export default function StudentHubPage() {
                 <TabsTrigger 
                   value="past" 
                   className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-gray-500 data-[state=active]:to-gray-600 data-[state=active]:text-white transition-all text-xs sm:text-sm"
-                  onClick={() => setSidebarOpen(true)}
                 >
                   <History className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">{t('student.history')}</span>
