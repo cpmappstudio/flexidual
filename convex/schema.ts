@@ -233,6 +233,19 @@ export default defineSchema({
     .index("by_room_active", ["roomName", "leftAt"]),
 
   /**
+   * STUDENT CLASS PREFERENCES
+   * Personalized UI settings (like custom icons) for a student's enrolled classes.
+   */
+  studentClassPreferences: defineTable({
+    studentId: v.id("users"),
+    classId: v.id("classes"),
+    icon: v.string(), // e.g., "calculator", "beaker", "book"
+    updatedAt: v.number(),
+  })
+    .index("by_student", ["studentId"])
+    .index("by_student_class", ["studentId", "classId"]),
+
+  /**
    * SCHOOLS (Top-Level Tenant)
    * The overarching educational institution or district.
    * Managed by: Admins (and Superadmins)

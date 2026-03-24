@@ -443,7 +443,7 @@ export default function StudentHubPage() {
                 >
                   <CalendarIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">{t('student.upcoming')}</span>
-                  <span className="sm:hidden">Up</span>
+                  <span className="sm:hidden">{t('schedule.upcoming')}</span>
                 </TabsTrigger>
                 <TabsTrigger 
                   value="past" 
@@ -451,7 +451,7 @@ export default function StudentHubPage() {
                 >
                   <History className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">{t('student.history')}</span>
-                  <span className="sm:hidden">Past</span>
+                  <span className="sm:hidden">{t('schedule.past')}</span>
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -514,6 +514,8 @@ export default function StudentHubPage() {
                     <StudentProfileHero 
                         student={studentProfile}
                         stats={overallStats}
+                        classes={classStats}
+                        disableCamera={!!activeLesson || isLaunching}
                     />
                 )}
 

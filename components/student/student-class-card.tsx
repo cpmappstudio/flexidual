@@ -1,13 +1,20 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BookOpen, CheckCircle2, XCircle, Calendar, CalendarClock } from "lucide-react"
+import { BookOpen, CheckCircle2, XCircle, Calendar, CalendarClock, type LucideIcon } from "lucide-react"
+import * as LucideIcons from "lucide-react"
 import { format, Locale } from "date-fns"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
 import { Id } from "@/convex/_generated/dataModel"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useState } from "react"
+import { useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
 
-interface ClassStat {
+type LucideIconKey = keyof typeof LucideIcons;
+
+export interface ClassStat {
   classId: Id<"classes">
   className: string
   curriculumTitle: string
@@ -23,6 +30,7 @@ interface ClassStat {
     progressPercentage: number
   }
   nextSession: number | undefined
+  icon?: string | null
 }
 
 interface StudentClassCardProps {
@@ -32,6 +40,20 @@ interface StudentClassCardProps {
 
 export function StudentClassCard({ stat, currentDateLocale }: StudentClassCardProps) {
   const t = useTranslations()
+
+  const updateIcon = useMutation(api.student.updateClassIcon)
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
+
+  // A curated list of fun, school-appropriate icons
+  const AVAILABLE_ICONS: LucideIconKey[] = [
+    "BookOpen", "Calculator", "Microscope", "Globe2", 
+    "Palette", "Music", "Laptop", "Rocket", 
+    "Star", "Atom", "Trophy", "Gamepad2"
+  ]
+
+  const IconComponent: LucideIcon = stat.icon && stat.icon in LucideIcons
+    ? LucideIcons[stat.icon as LucideIconKey] as LucideIcon
+    : BookOpen;
 
   // Derive explicit performance stats
   const missedClasses = stat.stats.completedClasses - stat.stats.attendedClasses
@@ -59,9 +81,40 @@ export function StudentClassCard({ stat, currentDateLocale }: StudentClassCardPr
           </p>
         </div>
         
-        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center ml-2 border-2 border-b-4 border-purple-200 dark:border-purple-800 shrink-0 transform rotate-3">
-          <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 dark:text-purple-400" />
-        </div>
+        <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
+          <PopoverTrigger asChild title={t('student.chooseIconTitle') || 'Choose Icon'}>
+            <button className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center ml-2 border-2 border-b-4 border-purple-200 dark:border-purple-800 shrink-0 transform hover:rotate-0 hover:scale-105 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2">
+              <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 dark:text-purple-400" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-3 rounded-2xl border-2 border-purple-200 dark:border-purple-800 shadow-xl" align="end">
+            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider text-center">
+              {t('student.chooseIcon') || 'Choose Icon'}
+            </p>
+            <div className="grid grid-cols-4 gap-2">
+              {AVAILABLE_ICONS.map((iconName: LucideIconKey) => {
+                 const GridIcon = LucideIcons[iconName] as LucideIcon;
+                 const isSelected = stat.icon === iconName;
+                 return (
+                   <button
+                     key={iconName}
+                     onClick={() => {
+                        updateIcon({ classId: stat.classId, icon: iconName });
+                        setIsPickerOpen(false);
+                     }}
+                     className={`p-2 rounded-xl flex items-center justify-center border-2 transition-all hover:scale-110 ${
+                       isSelected 
+                        ? 'bg-purple-100 border-purple-400 text-purple-600 dark:bg-purple-900/50 dark:text-purple-300' 
+                        : 'bg-gray-50 border-gray-100 text-gray-500 hover:border-purple-200 hover:text-purple-500 dark:bg-gray-800 dark:border-gray-700'
+                     }`}
+                   >
+                     <GridIcon className="w-5 h-5" />
+                   </button>
+                 )
+              })}
+            </div>
+          </PopoverContent>
+        </Popover>
       </CardHeader>
 
       <CardContent className="space-y-5 p-4 sm:p-5 pt-0">

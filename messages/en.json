@@ -422,7 +422,11 @@
       "attended": "Attended",
       "missed": "Missed",
       "upcoming": "Upcoming",
-      "classMastery": "Class Mastery"
+      "classMastery": "Class Mastery",
+      "turnOnCamera": "Turn on camera",
+      "turnOffCamera": "Turn off camera",
+      "compareClasses": "Compare Classes",
+      "hideComparison": "Hide Details"
     },
     "grades": {
       "K": "Kindergarten",
@@ -440,7 +444,9 @@
       "12": "12th Grade"
     },
     "selectGrade": "Select Grade",
-    "filteringByGrade": "Filtering by grade:"
+    "filteringByGrade": "Filtering by grade:",
+    "chooseIcon": "Choose Icon",
+    "chooseIconTitle": "Choose an icon for this class"
   },
   "teacher": {
     "search": "Search teachers...",

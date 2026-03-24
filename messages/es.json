@@ -420,7 +420,11 @@
       "attended": "Asistido",
       "missed": "Perdido",
       "upcoming": "Próximas",
-      "classMastery": "Dominio de Clase"
+      "classMastery": "Dominio de Clase",
+      "turnOnCamera": "Enciende tu cámara",
+      "turnOffCamera": "Apaga tu cámara",
+      "compareClasses": "Comparar Clases",
+      "hideComparison": "Ocultar Detalles"
     },
     "grades": {
       "K": "Kindergarten",
@@ -438,7 +442,9 @@
       "12": "12vo Grado"
     },
     "selectGrade": "Seleccionar Grado",
-    "filteringByGrade": "Filtrando por Grado:"
+    "filteringByGrade": "Filtrando por Grado:",
+    "chooseIcon": "Elige un ícono",
+    "chooseIconTitle": "Elige un ícono para esta clase"
   },
   "teacher": {
     "search": "Buscar profesores...",

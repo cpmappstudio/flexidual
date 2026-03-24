@@ -421,7 +421,11 @@
       "attended": "Assistido",
       "missed": "Perdido",
       "upcoming": "Próximas",
-      "classMastery": "Dominio de Classe"
+      "classMastery": "Dominio de Classe",
+      "turnOnCamera": "Ligue sua câmera",
+      "turnOffCamera": "Desligue sua câmera",
+      "compareClasses": "Comparar Turmas",
+      "hideComparison": "Ocultar Detalhes"
     },
     "grades": {
       "K": "Kindergarten",
@@ -439,7 +443,9 @@
       "12": "12ª Série"
     },
     "selectGrade": "Selecionar Série",
-    "filteringByGrade": "Filtrando por série:"
+    "filteringByGrade": "Filtrando por série:",
+    "chooseIcon": "Escolha um ícone",
+    "chooseIconTitle": "Escolha um ícone para esta turma"
   },
   "teacher": {
     "search": "Pesquisar professores...",

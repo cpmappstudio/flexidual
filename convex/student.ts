@@ -1,5 +1,6 @@
-import { query } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
 import { getCurrentUserFromAuth } from "./users";
+import { v } from "convex/values";
 
 export const getStudentDashboardStats = query({
   handler: async (ctx) => {
@@ -24,6 +25,13 @@ export const getStudentDashboardStats = query({
           classData.teacherId ? ctx.db.get(classData.teacherId) : null,
           ctx.db.get(classData.curriculumId)
         ]);
+
+        const userPreference = await ctx.db
+          .query("studentClassPreferences")
+          .withIndex("by_student_class", (q) => 
+            q.eq("studentId", user._id).eq("classId", classData._id)
+          )
+          .unique();
         
         const schedules = await ctx.db
           .query("classSchedule")
@@ -78,6 +86,7 @@ export const getStudentDashboardStats = query({
             attendedClasses: attendedCount,
             progressPercentage: Math.min(progress, 100),
           },
+          icon: userPreference?.icon || null,
           nextSession: schedules
             .filter(s => s.scheduledStart > now)
             .sort((a, b) => a.scheduledStart - b.scheduledStart)[0]?.scheduledStart
@@ -112,5 +121,37 @@ export const getStudentDashboardStats = query({
         },
         classes: classStats
     };
+  },
+});
+
+export const updateClassIcon = mutation({
+  args: {
+    classId: v.id("classes"),
+    icon: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) throw new Error("Unauthorized");
+
+    const existingPref = await ctx.db
+      .query("studentClassPreferences")
+      .withIndex("by_student_class", (q) =>
+        q.eq("studentId", user._id).eq("classId", args.classId)
+      )
+      .unique();
+
+    if (existingPref) {
+      await ctx.db.patch(existingPref._id, {
+        icon: args.icon,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("studentClassPreferences", {
+        studentId: user._id,
+        classId: args.classId,
+        icon: args.icon,
+        updatedAt: Date.now(),
+      });
+    }
   },
 });

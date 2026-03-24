@@ -1,9 +1,14 @@
 "use client"
 
 import { Card } from "@/components/ui/card"
-import { GraduationCap, School, CheckCircle2, XCircle, Calendar, Trophy, Crown, Medal, Star } from "lucide-react"
+import { GraduationCap, School, CheckCircle2, XCircle, Calendar, Trophy, Crown, Medal, Star, Camera, CameraOff, ChevronRight, ChevronLeft, type LucideIcon } from "lucide-react"
+import * as LucideIcons from "lucide-react"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
+import { useEffect, useRef, useState } from "react"
+import { ClassStat } from "@/components/student/student-class-card"
+
+type LucideIconKey = keyof typeof LucideIcons;
 
 interface StudentProfileHeroProps {
     student: {
@@ -20,11 +25,57 @@ interface StudentProfileHeroProps {
         attendanceRate: number
         completedSessions: number
     }
+    classes?: ClassStat[];
+    disableCamera?: boolean;
 }
 
-export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) {
+export function StudentProfileHero({ student, stats, disableCamera, classes }: StudentProfileHeroProps) {
     const t = useTranslations('student.profile')
     const tGrades = useTranslations('student.grades')
+
+    const [isCameraOn, setIsCameraOn] = useState(false)
+    const [isSidebarExpanded, setIsSidebarExpanded] = useState(false) // New Sidebar State
+    const videoRef = useRef<HTMLVideoElement>(null)
+    const streamRef = useRef<MediaStream | null>(null)
+    
+    const stopCamera = () => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop())
+            streamRef.current = null
+        }
+        setIsCameraOn(false)
+    }
+
+    const toggleCamera = async () => {
+        if (isCameraOn) {
+            stopCamera()
+        } else {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+                streamRef.current = stream
+                setIsCameraOn(true)
+            } catch (err) {
+                console.error("Failed to access camera", err)
+            }
+        }
+    }
+
+    useEffect(() => {
+        if (isCameraOn && videoRef.current && streamRef.current) {
+            videoRef.current.srcObject = streamRef.current
+        }
+    }, [isCameraOn])
+    
+    useEffect(() => {
+        if (disableCamera && isCameraOn) {
+            stopCamera()
+        }
+    }, [disableCamera, isCameraOn])
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => stopCamera()
+    }, [])
 
     const gradeLabel = student.grade
         ? tGrades(student.grade as string)
@@ -51,8 +102,16 @@ export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) 
         <Card className="col-span-1 lg:col-span-2 overflow-hidden border-2 border-b-[6px] border-purple-200 dark:border-purple-900 shadow-sm bg-white dark:bg-gray-900 relative group flex flex-col sm:flex-row rounded-3xl transition-transform hover:-translate-y-1">
             {/* LEFT: Image & Basic Info Container */}
             <div className="relative p-4 sm:p-6 flex flex-col items-center justify-center sm:w-1/3 xl:w-1/4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border-r-2 border-dashed border-purple-100 dark:border-purple-900/50">
-                <div className="relative w-28 h-28 sm:w-32 sm:h-32 mb-4 rounded-full shadow-lg border-4 border-white dark:border-gray-800 overflow-hidden transform transition-transform duration-500 hover:scale-105">
-                    {student.imageUrl ? (
+                <div className="relative w-28 h-28 sm:w-32 sm:h-32 lg:w-48 lg:h-48 mb-4 rounded-full shadow-lg border-4 border-white dark:border-gray-800 overflow-hidden transform transition-transform duration-500 hover:scale-105 group/avatar">
+                    {isCameraOn ? (
+                        <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="w-full h-full object-cover scale-x-[-1]" // Mirrors the camera naturally
+                        />
+                    ) : student.imageUrl ? (
                         <Image 
                             src={student.imageUrl} 
                             alt={student.fullName}
@@ -66,6 +125,19 @@ export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) 
                             </span>
                         </div>
                     )}
+
+                    {/* Interactive Hover Overlay */}
+                    <div 
+                        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity cursor-pointer z-10"
+                        onClick={toggleCamera}
+                        title={isCameraOn ? t('turnOffCamera') : t('turnOnCamera')}
+                    >
+                        {isCameraOn ? (
+                            <CameraOff className="w-8 h-8 text-white drop-shadow-md" />
+                        ) : (
+                            <Camera className="w-8 h-8 text-white drop-shadow-md" />
+                        )}
+                    </div>
                 </div>
                 
                 <h2 className="text-xl sm:text-2xl font-black text-center text-gray-800 dark:text-gray-100 leading-tight mb-2">
@@ -191,6 +263,139 @@ export function StudentProfileHero({ student, stats }: StudentProfileHeroProps) 
                 </div>
 
             </div>
+
+            {classes && classes.length > 0 && (
+                <div className={`relative transition-all duration-300 ease-in-out border-t-2 sm:border-t-0 sm:border-l-2 border-dashed border-purple-100 dark:border-purple-900/50 bg-purple-50/30 dark:bg-purple-950/10 flex flex-col ${isSidebarExpanded ? 'w-full sm:w-64 p-4' : 'w-full sm:w-[88px] p-2 sm:p-4'}`}>
+                    
+                    {/* Desktop Toggle Button */}
+                    <button 
+                        onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+                        className="absolute top-1/2 -left-3 sm:-translate-y-1/2 bg-white dark:bg-gray-800 border-2 border-purple-200 dark:border-purple-800 rounded-full p-0.5 text-purple-600 hover:bg-purple-50 z-10 hidden sm:flex items-center justify-center shadow-sm hover:scale-110 transition-transform"
+                    >
+                        {isSidebarExpanded ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                    </button>
+                    
+                    {/* Mobile Toggle */}
+                    <button 
+                        onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+                        className="sm:hidden w-full flex items-center justify-center py-2 mb-2 text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 border-2 border-dashed border-purple-200 dark:border-purple-800 rounded-xl bg-white/50 dark:bg-gray-800/50"
+                    >
+                        {isSidebarExpanded ? t('hideComparison') : t('compareClasses')}
+                    </button>
+
+                    <div className="flex-1 overflow-y-auto scrollbar-student space-y-4 sm:space-y-5 mt-1 pr-2">
+                        {classes.map((cls) => {
+                            // Resolve dynamic icon
+                            const IconComponent: LucideIcon = cls.icon && cls.icon in LucideIcons
+                                ? LucideIcons[cls.icon as LucideIconKey] as LucideIcon
+                                : LucideIcons.BookOpen;
+                            
+                            // 1. Calculate Target vs Actual for this specific class
+                            const expectedPct = cls.stats.totalClasses > 0 
+                                ? Math.round((cls.stats.completedClasses / cls.stats.totalClasses) * 100) 
+                                : 0;
+                            const actualPct = cls.stats.totalClasses > 0 
+                                ? Math.round((cls.stats.attendedClasses / cls.stats.totalClasses) * 100) 
+                                : 0;
+                            
+                            const isBehind = actualPct < expectedPct;
+                            const isPerfect = cls.stats.completedClasses > 0 && cls.stats.attendedClasses === cls.stats.completedClasses;
+
+                            // 2. SVG Ring Math
+                            const radius = 20;
+                            const circumference = 2 * Math.PI * radius;
+                            const actualOffset = circumference - (actualPct / 100) * circumference;
+                            const targetOffset = circumference - (expectedPct / 100) * circumference;
+
+                            // 3. Dynamic Glow & Color States
+                            const glowClass = isBehind 
+                                ? "shadow-[0_0_12px_rgba(244,63,94,0.6)] animate-pulse border-rose-400 dark:border-rose-500" 
+                                : isPerfect
+                                    ? "shadow-[0_0_10px_rgba(168,85,247,0.4)] border-purple-400 dark:border-purple-500"
+                                    : "border-purple-200 dark:border-purple-800 shadow-sm";
+
+                            const iconColor = isBehind ? 'text-rose-500 dark:text-rose-400' : 'text-purple-600 dark:text-purple-400';
+                            const ringColor = isBehind ? 'stroke-rose-500' : 'stroke-purple-500';
+
+                            return (
+                                <div key={cls.classId} className="flex items-center gap-3 group/sidebar-item" title={cls.curriculumTitle}>
+                                    
+                                    {/* COLLAPSED STATE: Circular Progress Ring Avatar */}
+                                    <div className="relative w-14 h-14 flex items-center justify-center shrink-0 mx-auto sm:mx-0">
+                                        {/* Background Track + Rings */}
+                                        <svg className="w-14 h-14 transform -rotate-90 absolute" viewBox="0 0 48 48">
+                                            {/* Track */}
+                                            <circle 
+                                                cx="24" cy="24" r={radius} 
+                                                className="stroke-gray-200 dark:stroke-gray-800 fill-none" 
+                                                strokeWidth="4" 
+                                            />
+                                            {/* Target Marker (Ghost Ring) */}
+                                            {expectedPct > 0 && (
+                                                <circle 
+                                                    cx="24" cy="24" r={radius} 
+                                                    className="stroke-gray-300 dark:stroke-gray-600 fill-none transition-all duration-1000" 
+                                                    strokeWidth="4"
+                                                    strokeDasharray={circumference}
+                                                    strokeDashoffset={targetOffset}
+                                                    strokeLinecap="round"
+                                                />
+                                            )}
+                                            {/* Actual Progress Ring */}
+                                            <circle 
+                                                cx="24" cy="24" r={radius} 
+                                                className={`fill-none transition-all duration-1000 ease-out ${ringColor}`}
+                                                strokeWidth="4"
+                                                strokeDasharray={circumference}
+                                                strokeDashoffset={actualOffset}
+                                                strokeLinecap="round"
+                                            />
+                                        </svg>
+                                        
+                                        {/* Inner Icon Container with Glow */}
+                                        <div className={`w-9 h-9 rounded-full bg-white dark:bg-gray-900 border-2 flex items-center justify-center z-10 transition-all ${glowClass} group-hover/sidebar-item:scale-110`}>
+                                            <IconComponent className={`w-4 h-4 ${iconColor}`} />
+                                        </div>
+                                    </div>
+                                    
+                                    {/* EXPANDED STATE: Title & Dual Track Bar */}
+                                    {isSidebarExpanded && (
+                                        <div className="flex-1 min-w-0 animate-in fade-in slide-in-from-left-2 duration-300">
+                                            <div className="flex justify-between items-end mb-1">
+                                                <p className="text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 uppercase truncate pr-2">
+                                                    {cls.curriculumTitle}
+                                                </p>
+                                                <span className={`text-[10px] sm:text-xs font-black tabular-nums ${iconColor}`}>
+                                                    {actualPct}%
+                                                </span>
+                                            </div>
+                                            
+                                            {/* Dual Track Bar (Matching Hero Style) */}
+                                            <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full relative overflow-hidden border border-gray-200 dark:border-gray-700">
+                                                {/* Ghost Target Bar */}
+                                                <div 
+                                                    className="absolute left-0 top-0 h-full bg-gray-300 dark:bg-gray-600 rounded-full transition-all duration-1000"
+                                                    style={{ width: `${expectedPct}%` }}
+                                                />
+                                                {/* Actual Solid Bar */}
+                                                <div 
+                                                    className={`absolute left-0 top-0 h-full rounded-full transition-all duration-1000 ${isBehind ? 'bg-gradient-to-r from-rose-400 to-orange-500' : 'bg-gradient-to-r from-purple-400 to-pink-500'}`}
+                                                    style={{ width: `${actualPct}%` }}
+                                                />
+                                                {/* Target Marker Pin */}
+                                                <div 
+                                                    className="absolute -top-0.5 -bottom-0.5 w-1 bg-gray-500 dark:bg-gray-400 rounded-full shadow-sm z-10"
+                                                    style={{ left: `calc(${expectedPct}% - 2px)` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            )}
         </Card>
     )
 }
