@@ -12,7 +12,9 @@ export default async function OrgDashboardPage({
   const { orgSlug } = await params;
   const { sessionClaims } = await auth();
   
-  const role = getRoleForOrg(sessionClaims, orgSlug);
+  const effectiveOrgSlug = orgSlug === "admin" ? "system" : orgSlug;
+  
+  const role = getRoleForOrg(sessionClaims, effectiveOrgSlug);
   const superAdmin = isSuperAdmin(sessionClaims);
 
   // Serve the exact UI based on their context
@@ -24,7 +26,7 @@ export default async function OrgDashboardPage({
     return <TeachingDashboard />;
   }
 
-  if (role === "admin" || role === "principal" || superAdmin) {
+  if (role === "admin" || role === "superadmin" || role === "principal" || superAdmin) {
     return <AdminDashboard />;
   }
 

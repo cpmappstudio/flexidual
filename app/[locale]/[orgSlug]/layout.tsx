@@ -21,7 +21,9 @@ export default async function OrgLayout({
   const { sessionClaims, userId } = await auth();
   if (!userId) redirect(`/${locale}/sign-in`);
 
-  const role = getRoleForOrg(sessionClaims, orgSlug);
+  const effectiveOrgSlug = orgSlug === "admin" ? "system" : orgSlug;
+
+  const role = getRoleForOrg(sessionClaims, effectiveOrgSlug);
   const superAdmin = isSuperAdmin(sessionClaims);
 
   if (!role && !superAdmin) {

@@ -31,11 +31,9 @@ export default function SignInPage() {
                   maxWidth: "460px",
                 },
                 card: {
-                  // Mobile: fondo oscuro para integrarse con el gradiente de abajo
-                  // Desktop: fondo blanco cálido de siempre
-                  backgroundColor: "oklch(0.99 0.008 60)",
+                  backgroundColor: "var(--card)", 
                   boxShadow:
-                    "0 12px 28px -14px rgba(60, 25, 5, 0.48), 0 22px 36px -24px rgba(50, 20, 4, 0.42), 0 0 0 1px rgba(200, 130, 60, 0.18)",
+                    "0 12px 28px -14px rgba(0, 0, 0, 0.48), 0 22px 36px -24px rgba(0, 0, 0, 0.42), 0 0 0 1px var(--border)",
                   borderRadius: "1rem",
                   "@media (max-width: 1023px)": {
                     backgroundColor: "transparent",
@@ -60,7 +58,7 @@ export default function SignInPage() {
                 },
                 headerTitle: {
                   marginTop: "0.625rem",
-                  color: "oklch(0.18 0.04 45)",
+                  color: "var(--card-foreground)",
                   fontWeight: "750",
                   letterSpacing: "-0.025em",
                   "@media (max-width: 1023px)": {
@@ -68,17 +66,21 @@ export default function SignInPage() {
                   },
                 },
                 headerSubtitle: {
-                  color: "oklch(0.52 0.04 53)",
+                  color: "var(--muted-foreground)",
                   "@media (max-width: 1023px)": {
                     color: "oklch(0.72 0.04 60)",
                   },
                 },
                 formFieldLabel: {
+                  color: "var(--card-foreground)", 
                   "@media (max-width: 1023px)": {
                     color: "oklch(0.82 0.03 60)",
                   },
                 },
                 formFieldInput: {
+                  color: "var(--foreground)",
+                  backgroundColor: "var(--background)",
+                  borderColor: "var(--border)",
                   "@media (max-width: 1023px)": {
                     backgroundColor: "rgba(255,255,255,0.08)",
                     borderColor: "rgba(255,255,255,0.15)",
@@ -86,7 +88,8 @@ export default function SignInPage() {
                   },
                 },
                 formButtonPrimary: {
-                  backgroundColor: "oklch(72.47% 0.17389 53.878)",
+                  backgroundColor: "var(--primary)",
+                  color: "var(--primary-foreground)",
                   boxShadow:
                     "0 6px 14px rgba(160, 80, 15, 0.25), 0 1px 2px rgba(160, 80, 15, 0.16)",
                   transition: "all 0.15s ease",
@@ -110,8 +113,6 @@ export default function SignInPage() {
                 },
                 footer: {
                   display: "none",
-                  backgroundColor: "oklch(0.96 0.015 55)",
-                  borderTop: "1px solid oklch(0.9 0.025 58)",
                 },
                 footerAction: {
                   display: "none",
