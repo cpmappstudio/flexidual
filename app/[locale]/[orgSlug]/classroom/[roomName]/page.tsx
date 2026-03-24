@@ -126,7 +126,7 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
 
   // 3. LIVEKIT RENDER STRATEGY (Standard)
   return (
-    <main className="w-full h-[calc(100vh-6rem)] rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
+    <main className="w-full h-[calc(100vh-6rem)] rounded-2xl overflow-hidden border border-border shadow-sm">
       <FlexiClassroom roomName={roomName} />
     </main>
   );

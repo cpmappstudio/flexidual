@@ -152,10 +152,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   // Loading State
   if (!convexUser || sessionStatus === undefined) {
     return (
-      <div className={`flex h-full w-full items-center justify-center ${isStudentView ? 'bg-white/90 dark:bg-gray-900/90 backdrop-blur-md' : 'bg-slate-50'} rounded-lg ${className}`}>
+      <div className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}>
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-400 animate-pulse">{t('classroom.checkingStatus')}</p>
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          <p className="text-sm font-medium text-muted-foreground animate-pulse">{t('classroom.checkingStatus')}</p>
         </div>
       </div>
     );
@@ -164,14 +164,14 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   // Room Not Found
   if (!sessionStatus) {
     return (
-      <div className={`flex h-full w-full items-center justify-center ${isStudentView ? 'bg-white/90 dark:bg-gray-900/90 backdrop-blur-md' : 'bg-slate-50'} rounded-lg ${className}`}>
+      <div className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}>
         <div className="text-center p-8 max-w-md">
-          <School className="w-16 h-16 text-gray-300 dark:text-gray-700 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200">{t('classroom.notFound')}</h3>
-          <p className="text-gray-500 dark:text-gray-400 mt-2">{t('classroom.notFoundDescription')}</p>
+          <School className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-foreground">{t('classroom.notFound')}</h3>
+          <p className="text-muted-foreground mt-2">{t('classroom.notFoundDescription')}</p>
           
           {isStudentView && onLeave ? (
-            <Button variant="outline" className="mt-6 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={onLeave}>
+            <Button variant="outline" className="mt-6 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onLeave}>
               <LogOut className="w-4 h-4 mr-2" />
               {t('classroom.leave')}
             </Button>
@@ -190,50 +190,50 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
     const isLate = timeDiff <= 0;
 
     return (
-      <div className={`flex h-full w-full items-center justify-center ${isStudentView ? 'bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950' : 'bg-blue-50/50'} rounded-lg ${className}`}>
-        <div className="text-center p-8 max-w-md bg-white dark:bg-gray-900 shadow-xl rounded-2xl border-4 border-purple-400 dark:border-purple-600 animate-in fade-in zoom-in duration-500">
+      <div className={`flex h-full w-full items-center justify-center bg-muted/30 rounded-lg ${className}`}>
+        <div className="text-center p-8 max-w-md bg-card shadow-xl rounded-2xl border-4 border-primary/20 animate-in fade-in zoom-in duration-500">
           
           <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${
-            isLate ? 'bg-orange-100 dark:bg-orange-900 animate-pulse' : 'bg-purple-100 dark:bg-purple-900 animate-bounce'
+            isLate ? 'bg-destructive/10 animate-pulse' : 'bg-primary/10 animate-bounce'
           }`}>
             {isLate ? (
-              <AlertCircle className="w-10 h-10 text-orange-600 dark:text-orange-400" />
+              <AlertCircle className="w-10 h-10 text-destructive" />
             ) : (
-              <CalendarClock className="w-10 h-10 text-purple-600 dark:text-purple-400" />
+              <CalendarClock className="w-10 h-10 text-primary" />
             )}
           </div>
           
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">
+          <h2 className="text-2xl font-bold text-card-foreground mb-2">
             {isLate ? t('classroom.waitingForTeacher') : t('classroom.waitingTitle')}
           </h2>
           
           <div className="space-y-4 my-6">
             <div className={`p-4 rounded-lg border flex flex-col items-center justify-center ${
               isUrgent 
-                ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800' 
-                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+                ? 'bg-accent border-accent-foreground/20' 
+                : 'bg-muted border-border'
             }`}>
               {isLate ? (
                 <>
-                  <p className="text-xs font-bold text-orange-600 uppercase tracking-wider mb-1">
+                  <p className="text-xs font-bold text-destructive uppercase tracking-wider mb-1">
                     {t('classroom.shouldHaveStarted')}
                   </p>
-                  <p className="text-2xl font-mono font-bold text-orange-700 dark:text-orange-400">
+                  <p className="text-2xl font-mono font-bold text-destructive">
                     {format(sessionStatus.start, "h:mm a")}
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
                     {isUrgent ? t('classroom.startsIn') : t('classroom.scheduledStart')}
                   </p>
                   <p className={`text-3xl font-mono font-bold ${
-                    isUrgent ? 'text-amber-600 dark:text-amber-400' : 'text-gray-700 dark:text-gray-300'
+                    isUrgent ? 'text-accent-foreground' : 'text-foreground'
                   }`}>
                     {isUrgent ? getCountdown(sessionStatus.start) : format(sessionStatus.start, "h:mm a")}
                   </p>
                   {!isUrgent && (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       {format(sessionStatus.start, "EEEE, MMMM do")}
                     </p>
                   )}
@@ -241,7 +241,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
               )}
             </div>
             
-            <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+            <p className="text-muted-foreground text-sm leading-relaxed">
               {isLate 
                 ? t('classroom.teacherRunningLate') 
                 : t('classroom.waitingMessage')
@@ -253,7 +253,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             <Button 
               variant="outline" 
               onClick={onLeave} 
-              className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900 dark:hover:bg-red-950 dark:text-red-400"
+              className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               <LogOut className="w-4 h-4 mr-2" />
               {t('classroom.leave')}
@@ -273,17 +273,17 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   // Error State
   if (error) {
     return (
-      <div className={`flex h-full w-full items-center justify-center ${isStudentView ? 'bg-red-50 dark:bg-red-950/20' : 'bg-red-50'} rounded-lg ${className}`}>
-        <div className="text-center p-6">
-          <div className="text-red-500 font-bold mb-2">{t('classroom.connectionError')}</div>
-          <div className="text-gray-600 dark:text-gray-400 text-sm mb-4">{error}</div>
+      <div className={`flex h-full w-full items-center justify-center bg-destructive/5 rounded-lg ${className}`}>
+        <div className="text-center p-6 bg-card border border-destructive/20 rounded-xl shadow-sm">
+          <div className="text-destructive font-bold mb-2">{t('classroom.connectionError')}</div>
+          <div className="text-muted-foreground text-sm mb-4">{error}</div>
           
           <div className="flex gap-2 justify-center">
             <Button variant="outline" onClick={() => window.location.reload()}>
               {t('classroom.tryAgain')}
             </Button>
             {isStudentView && onLeave && (
-              <Button variant="ghost" onClick={onLeave} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+              <Button variant="ghost" onClick={onLeave} className="text-destructive hover:text-destructive hover:bg-destructive/10">
                 {t('classroom.leave')}
               </Button>
             )}
@@ -296,10 +296,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   // Connecting
   if (!token) {
     return (
-      <div className={`flex h-full w-full items-center justify-center ${isStudentView ? 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500' : 'bg-slate-900/90'} backdrop-blur-sm rounded-lg ${className}`}>
+      <div className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-sm rounded-lg ${className}`}>
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-10 h-10 text-white animate-spin" />
-          <p className="text-white font-medium">{t('classroom.entering')}</p>
+          <Loader2 className="w-10 h-10 text-primary animate-spin" />
+          <p className="text-foreground font-medium">{t('classroom.entering')}</p>
         </div>
       </div>
     );

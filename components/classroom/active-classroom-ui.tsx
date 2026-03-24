@@ -61,10 +61,10 @@ function CustomMediaToggle({ source, iconOn, iconOff }: {
       onClick={() => toggle()}
       disabled={pending}
       className={`
-        w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md
+        w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border
         ${enabled 
-          ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300' 
-          : 'bg-red-100 text-red-500 border border-red-200'}
+          ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border' 
+          : 'bg-destructive/10 text-destructive border-destructive/20'}
         ${pending ? 'opacity-50 cursor-wait' : ''}
       `}
     >
@@ -91,14 +91,14 @@ function ParticipantTile({
   const borderSize = variant === "mini" ? "border-2" : "border-4";
 
   return (
-    <div className={`relative bg-slate-900 overflow-hidden ${className}`}>
+    <div className={`relative bg-muted overflow-hidden ${className}`}>
       {isVideoEnabled ? (
         <VideoTrack 
           trackRef={{ participant, source: Track.Source.Camera, publication: cameraTrack as TrackPublication }} 
           className="w-full h-full object-cover"
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
+        <div className="w-full h-full flex items-center justify-center bg-secondary">
            <div className={`${avatarSize} rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center font-bold text-white ${borderSize} border-white/10 shadow-xl transition-all`}>
               {participant.name?.charAt(0).toUpperCase() || participant.identity?.charAt(0).toUpperCase() || "?"}
            </div>
@@ -145,12 +145,12 @@ function DraggablePip({ children, initialPos = { x: 20, y: 20 } }: { children: R
   return (
     <div 
       style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-      className="absolute z-50 w-48 h-36 bg-black rounded-lg shadow-2xl overflow-hidden border-2 border-slate-700 cursor-move"
+      className="absolute z-50 w-48 h-36 bg-card rounded-lg shadow-2xl overflow-hidden border-2 border-border cursor-move"
       onMouseDown={handleMouseDown}
     >
       {children}
-      <div className="absolute top-1 right-1 p-1 bg-black/50 rounded-full hover:bg-white/10 transition-colors">
-        <Move className="w-3 h-3 text-white/70" />
+      <div className="absolute top-1 right-1 p-1 bg-background/50 rounded-full hover:bg-foreground/10 transition-colors">
+        <Move className="w-3 h-3 text-foreground/70" />
       </div>
     </div>
   );
@@ -347,51 +347,51 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   }, [currentUserRole, roomName, markLive]);
 
   return (
-    <div className="flex h-full w-full bg-[#faf8f9] overflow-hidden font-sans text-slate-800 relative">
+    <div className="flex h-full w-full bg-background overflow-hidden font-sans text-foreground relative">
       <RoomAudioRenderer />
       
       {needsClick && (
         <div className="absolute inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
+            <div className="bg-card text-card-foreground rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl border border-border">
                 <VolumeX className="w-12 h-12 text-orange-500 mx-auto mb-4" />
                 <h3 className="text-xl font-bold mb-2">{t('classroom.enableAudio')}</h3>
-                <button onClick={async () => { await room.startAudio(); setNeedsClick(false); }} className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold">{t('classroom.startClass')}</button>
+                <button onClick={async () => { await room.startAudio(); setNeedsClick(false); }} className="w-full py-3 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors rounded-lg font-bold">{t('classroom.startClass')}</button>
             </div>
         </div>
       )}
 
       {pendingRequest && amITeacher && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-white rounded-xl shadow-2xl border border-slate-200 p-4 w-80 animate-in slide-in-from-top-4">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-card text-card-foreground rounded-xl shadow-2xl border border-border p-4 w-80 animate-in slide-in-from-top-4">
            <div className="flex items-start gap-3">
-              <div className="bg-blue-100 p-2 rounded-full"><Hand className="w-5 h-5 text-blue-600" /></div>
+              <div className="bg-primary/10 p-2 rounded-full"><Hand className="w-5 h-5 text-primary" /></div>
               <div>
                  <h4 className="font-bold text-sm text-slate-800">{t('classroom.shareRequest', { name: pendingRequest.name })}</h4>
                  <p className="text-xs text-muted-foreground mt-1">{t('classroom.shareRequestDescription')}</p>
               </div>
            </div>
            <div className="flex gap-2 mt-4">
-              <button onClick={() => grantPermission(false)} className="flex-1 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg">{t('classroom.deny')}</button>
-              <button onClick={() => grantPermission(true)} className="flex-1 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">{t('classroom.allow')}</button>
+              <button onClick={() => grantPermission(false)} className="flex-1 py-2 text-xs font-bold text-secondary-foreground bg-secondary hover:bg-secondary/80 rounded-lg">{t('classroom.deny')}</button>
+              <button onClick={() => grantPermission(true)} className="flex-1 py-2 text-xs font-bold text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg">{t('classroom.allow')}</button>
            </div>
         </div>
       )}
 
       <div className="flex-1 flex flex-col p-4 gap-4">
-        <div className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+        <div className="flex justify-between items-center bg-card p-3 rounded-xl shadow-sm border border-border">
           <div className="flex items-center gap-3">
             <FlexidualLogo />
             <div className="flex flex-col">
-              <h2 className="text-sm font-bold text-slate-800">{className || t('classroom.classroom')}</h2>
+              <h2 className="text-sm font-bold text-card-foreground">{className || t('classroom.classroom')}</h2>
               {lessonTitle && <p className="text-xs text-muted-foreground">{lessonTitle}</p>}
             </div>
           </div>
-          <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
-            <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-green-500 animate-pulse' : 'bg-orange-400'}`} />
-            <span className="text-xs font-bold text-blue-700 uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
+          <div className="flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+            <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-chart-4'}`} />
+            <span className="text-xs font-bold text-primary uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
           </div>
         </div>
 
-        <div className="flex-1 bg-[#2d3748] rounded-2xl shadow-xl overflow-hidden relative border-4 border-[#4a5568] flex items-center justify-center group">
+        <div className="flex-1 bg-muted rounded-2xl shadow-xl overflow-hidden relative border-4 border-border flex items-center justify-center group">
           {isScreenSharingActive ? (
             <>
               <div 
@@ -416,10 +416,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                 )}
               </div>
 
-              <div className="absolute bottom-4 right-4 flex gap-2 z-40 bg-black/60 p-1.5 rounded-lg backdrop-blur-sm">
-                <button onClick={() => handleZoom(-0.25)} className="p-2 hover:bg-white/20 rounded text-white"><ZoomOut className="w-4 h-4" /></button>
-                <span className="text-white text-xs font-mono py-2 min-w-[3ch] text-center">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => handleZoom(0.25)} className="p-2 hover:bg-white/20 rounded text-white"><ZoomIn className="w-4 h-4" /></button>
+              <div className="absolute bottom-4 right-4 flex gap-2 z-40 bg-background/60 p-1.5 rounded-lg backdrop-blur-sm border border-border/50">
+                <button onClick={() => handleZoom(-0.25)} className="p-2 hover:bg-foreground/20 rounded text-foreground"><ZoomOut className="w-4 h-4" /></button>
+                <span className="text-foreground text-xs font-mono py-2 min-w-[3ch] text-center">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => handleZoom(0.25)} className="p-2 hover:bg-foreground/20 rounded text-foreground"><ZoomIn className="w-4 h-4" /></button>
               </div>
 
               {teacher && isTeacherVideoOn && (
@@ -467,13 +467,13 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           )}
         </div>
 
-        <div className="h-20 bg-white rounded-2xl shadow-sm border border-slate-200 px-6 flex items-center justify-center relative">
+        <div className="h-20 bg-card rounded-2xl shadow-sm border border-border px-6 flex items-center justify-center relative">
           <div className="absolute left-6 flex items-center gap-3">
-              <div className="w-16 h-10 rounded overflow-hidden border border-slate-300 relative shadow-sm">
+              <div className="w-16 h-10 rounded overflow-hidden border border-border relative shadow-sm">
                 {localParticipant && <ParticipantTile participant={localParticipant} variant="mini" className="w-full h-full" showLabel={false} />}
               </div>
-              <span className="hidden md:inline xl:hidden text-sm font-bold text-slate-600">{t('classroom.youShort')}</span>
-              <span className="hidden xl:inline text-sm font-bold text-slate-600">{t('classroom.you', { role: currentUserRole || 'student' })}</span>
+              <span className="hidden md:inline xl:hidden text-sm font-bold text-muted-foreground">{t('classroom.youShort')}</span>
+              <span className="hidden xl:inline text-sm font-bold text-muted-foreground">{t('classroom.you', { role: currentUserRole || 'student' })}</span>
           </div>
 
           <div className="flex items-center gap-2 xl:gap-6">
@@ -485,10 +485,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                 className={`
                   w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border relative
                   ${isSharingLocally
-                    ? 'bg-green-100 hover:bg-green-200 text-green-700 border-green-300' 
+                    ? 'bg-success/20 hover:bg-success/30 text-success border-success/50' 
                     : waitingForApproval 
-                        ? 'bg-yellow-100 text-yellow-600 border-yellow-300 cursor-wait'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'}
+                        ? 'bg-accent text-accent-foreground border-border cursor-wait'
+                        : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border'}
                 `}
                 title={waitingForApproval ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
               >
@@ -496,28 +496,28 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               </button>
           </div>
 
-          <button onClick={() => router.back()} className="absolute right-6 px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold text-sm flex items-center gap-2 shadow-md">
+          <button onClick={() => router.back()} className="absolute right-6 px-6 py-2.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-full font-bold text-sm flex items-center gap-2 shadow-md">
             <LogOut className="w-4 h-4" /> {t('classroom.leave')}
           </button>
         </div>
       </div>
 
-      <div className="w-72 bg-white border-l border-slate-200 flex flex-col shadow-xl z-10">
-        <div className="p-4 bg-blue-600 text-white text-center">
+      <div className="w-72 bg-card border-l border-border flex flex-col shadow-xl z-10">
+        <div className="p-4 bg-primary text-primary-foreground text-center border-b border-border">
           <h3 className="text-xs font-bold uppercase tracking-widest">{t('classroom.classmates', { count: students.length })}</h3>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 bg-blue-50/50">
+        <div className="flex-1 overflow-y-auto p-2 bg-muted/30">
           <div className="grid grid-cols-2 gap-2">
-            {students.length === 0 && <div className="col-span-2 text-center py-10 text-slate-400 text-xs italic">{amITeacher ? t('classroom.waitingForStudents') : t('classroom.youAreFirst')}</div>}
-            {students.map((p) => <ParticipantTile key={p.identity} variant="grid" participant={p} className="aspect-square rounded-lg border-2 border-blue-300" />)}
+            {students.length === 0 && <div className="col-span-2 text-center py-10 text-muted-foreground text-xs italic">{amITeacher ? t('classroom.waitingForStudents') : t('classroom.youAreFirst')}</div>}
+            {students.map((p) => <ParticipantTile key={p.identity} variant="grid" participant={p} className="aspect-square rounded-lg border-2 border-border" />)}
           </div>
         </div>
-        <div className="bg-yellow-50 border-t border-yellow-200 p-4">
+        <div className="bg-accent/30 border-t border-border p-4">
            <div className="flex items-center gap-2 mb-3">
-              <div className="w-10 h-10 rounded-full bg-yellow-400 flex items-center justify-center text-white font-bold border-2 border-yellow-500 shadow-sm">T</div>
-              <div><p className="text-xs font-bold text-slate-700">{t('classroom.liveTutor')}</p><p className="text-[10px] text-green-600 font-medium">● {t('classroom.online')}</p></div>
+              <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-bold border-2 border-border shadow-sm">T</div>
+              <div><p className="text-xs font-bold text-foreground">{t('classroom.liveTutor')}</p><p className="text-[10px] text-success font-medium">● {t('classroom.online')}</p></div>
            </div>
-           <button className="w-full text-left px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-yellow-50 rounded flex items-center gap-2 bg-white border border-yellow-200">
+           <button className="w-full text-left px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded flex items-center gap-2 bg-background border border-border transition-colors">
               <MessageCircle className="w-3 h-3" /> {t('classroom.chatWithTutor')}
            </button>
         </div>
