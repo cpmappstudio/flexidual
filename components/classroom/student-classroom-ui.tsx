@@ -154,7 +154,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
   const t = useTranslations();
   const room = useRoomContext();
   const [needsClick, setNeedsClick] = useState(false);
-  const [waitingForApproval, setWaitingForApproval] = useState(false);
+  const [shareState, setShareState] = useState<"idle" | "requesting" | "approved">("idle");
   const [zoom, setZoom] = useState(1);
 
   const participants = useParticipants();
@@ -205,21 +205,21 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
     const handleData = (payload: Uint8Array) => {
       try {
         const msg = JSON.parse(decoder.decode(payload));
-        
+
         if (msg.type === "ALLOW_SHARE") {
-          setWaitingForApproval(false);
-          localParticipant?.setScreenShareEnabled(true, { audio: true });
-          toast.success(t('classroom.permissionGranted'));
+          setShareState("approved");
+          toast.success(t('classroom.permissionGrantedClickToStart') || 'Approved! Tap the screen share button to begin.');
         }
-        
+
         if (msg.type === "DENY_SHARE") {
-          setWaitingForApproval(false);
+          setShareState("idle");
           toast.error(t('classroom.permissionDenied'));
         }
-        
+
         if (msg.type === "STOP_SHARE" && isSharingLocally) {
-           localParticipant?.setScreenShareEnabled(false);
-           toast.info(t('classroom.sharingStoppedByTeacher'));
+          localParticipant?.setScreenShareEnabled(false);
+          setShareState("idle");
+          toast.info(t('classroom.sharingStoppedByTeacher'));
         }
       } catch (e) {
         console.error("Failed to parse data message", e);
@@ -230,12 +230,50 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
     return () => { room.off("dataReceived", handleData); };
   }, [room, isSharingLocally, localParticipant, t]);
 
+  const handleShareAction = async () => {
+    if (isSharingLocally) {
+      await localParticipant?.setScreenShareEnabled(false);
+      setShareState("idle");
+      return;
+    }
+
+    if (shareState === "approved") {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        toast.error(t('classroom.screenShareNotSupported') || "Screen sharing is not supported in this browser.");
+        setShareState("idle");
+        return;
+      }
+      
+      try {
+        await localParticipant?.setScreenShareEnabled(true, { audio: true });
+        setShareState("idle");
+      } catch (error) {
+        if ((error as Error)?.name === "NotAllowedError" || (error as Error)?.message?.includes("Permission denied")) {
+           setShareState("idle");
+           return;
+        }
+        
+        try {
+           await localParticipant?.setScreenShareEnabled(true, { audio: false });
+           toast.warning(t('classroom.screenShareAudioNotSupported')); 
+           setShareState("idle");
+        } catch (fallbackError) {
+           toast.error(`${t('classroom.screenShareFailed')}: ${(fallbackError as Error)?.message || 'Unknown error'}`); 
+           setShareState("idle");
+        }
+      }
+      return;
+    }
+
+    requestPermission();
+  };
+
   const requestPermission = async () => {
     if (isScreenSharingActive && !isSharingLocally) {
       toast.error(t('classroom.someoneSharing'));
       return;
     }
-    setWaitingForApproval(true);
+    setShareState("requesting");
     const encoder = new TextEncoder();
     const data = JSON.stringify({ type: "REQUEST_SHARE" });
     await room.localParticipant.publishData(encoder.encode(data), { reliable: true });
@@ -387,19 +425,21 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
               <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-6 h-6" />} iconOff={<MicOff className="w-6 h-6" />} />
               <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-6 h-6" />} iconOff={<VideoOff className="w-6 h-6" />} />
               <button 
-                onClick={requestPermission}
-                disabled={waitingForApproval || isSharingLocally}
+                onClick={handleShareAction}
+                disabled={shareState === "requesting"}
                 className={`
                   w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg border-2
                   ${isSharingLocally
                     ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-300 dark:border-green-600' 
-                    : waitingForApproval 
+                    : shareState === "approved"
+                        ? 'bg-blue-500 text-white border-blue-400 animate-pulse'
+                    : shareState === "requesting" 
                         ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 border-yellow-300 dark:border-yellow-600 cursor-wait'
                         : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-600'}
                 `}
-                title={waitingForApproval ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
+                title={shareState === "requesting" ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
               >
-                {waitingForApproval ? <MonitorUp className="w-6 h-6 animate-bounce" /> : <MonitorUp className="w-6 h-6" />}
+                {shareState === "requesting" ? <MonitorUp className="w-6 h-6 animate-bounce" /> : <MonitorUp className="w-6 h-6" />}
               </button>
           </div>
 

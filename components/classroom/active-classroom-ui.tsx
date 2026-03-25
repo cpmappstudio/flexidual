@@ -456,11 +456,11 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                 )
               ) : (
                 <div className="text-center z-10 p-8">
-                  <div className="w-32 h-32 mx-auto bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border-2 border-white/20 mb-4">
+                  <div className="w-32 h-32 mx-auto bg-background/50 backdrop-blur-sm rounded-full flex items-center justify-center border-2 border-border mb-4 shadow-sm">
                       <span className="text-6xl">👩‍🏫</span>
                   </div>
-                  <h2 className="text-2xl font-bold text-white">{className || t('classroom.class')}</h2>
-                  <p className="text-blue-100 mt-2">{t('classroom.waitingForTeacher')}</p>
+                  <h2 className="text-2xl font-bold text-foreground">{className || t('classroom.class')}</h2>
+                  <p className="text-muted-foreground mt-2 font-medium">{t('classroom.waitingForTeacher')}</p>
                 </div>
               )}
             </>
