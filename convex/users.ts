@@ -1,9 +1,10 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, QueryCtx, action, internalQuery } from "./_generated/server";
+import { mutation, query, internalMutation, QueryCtx, action, internalQuery, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { GRADE_VALUES } from "../lib/types/academic";
 import { ConvexError } from "convex/values";
 import { Id } from "./_generated/dataModel";
+import { createClerkClient } from "@clerk/backend";
 
 type UserJSON = {
   id: string;
@@ -15,6 +16,32 @@ type UserJSON = {
   public_metadata?: Record<string, any>;
   [key: string]: any;
 };
+
+function getClerkClient(secretKey: string) {
+  return createClerkClient({ secretKey });
+}
+
+function toUserJSON(clerkUser: {
+  id: string;
+  emailAddresses?: Array<{ emailAddress: string }>;
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string | null;
+  imageUrl?: string | null;
+  publicMetadata?: Record<string, any>;
+}): UserJSON {
+  return {
+    id: clerkUser.id,
+    email_addresses: clerkUser.emailAddresses?.map((email) => ({
+      email_address: email.emailAddress,
+    })),
+    first_name: clerkUser.firstName ?? undefined,
+    last_name: clerkUser.lastName ?? undefined,
+    username: clerkUser.username ?? undefined,
+    image_url: clerkUser.imageUrl ?? undefined,
+    public_metadata: clerkUser.publicMetadata ?? {},
+  };
+}
 
 // ============================================================================
 // QUERIES
@@ -351,6 +378,7 @@ export const createUsersWithClerk = action({
   handler: async (ctx, args) => {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
+    const clerk = getClerkClient(clerkSecretKey);
 
     const results = [];
 
@@ -389,6 +417,7 @@ export const createUsersWithClerk = action({
         }
 
         const clerkUser = await clerkResponse.json();
+        let syncedClerkUser: UserJSON = clerkUser;
 
         if (user.imageBase64) {
             const base64Data = user.imageBase64.split(',')[1];
@@ -408,10 +437,13 @@ export const createUsersWithClerk = action({
                 headers: { Authorization: `Bearer ${clerkSecretKey}` },
                 body: formData
             });
+
+            const refreshedClerkUser = await clerk.users.getUser(clerkUser.id);
+            syncedClerkUser = toUserJSON(refreshedClerkUser);
         }
 
         // 2. Sync Identity to Convex
-        await ctx.runMutation(internal.users.upsertFromClerk, { data: clerkUser });
+        await ctx.runMutation(internal.users.upsertFromClerk, { data: syncedClerkUser });
 
         // 3. Retrieve the newly created Convex User ID
         const newConvexUser = await ctx.runQuery(api.users.getCurrentUser, { clerkId: clerkUser.id });
@@ -479,6 +511,7 @@ export const updateUserWithClerk = action({
   handler: async (ctx, args) => {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
+    const clerk = getClerkClient(clerkSecretKey);
 
     const user = await ctx.runQuery(api.users.getUser, { userId: args.userId });
     if (!user) throw new Error("User not found");
@@ -549,6 +582,12 @@ export const updateUserWithClerk = action({
               method: 'POST',
               headers: { Authorization: `Bearer ${clerkSecretKey}` },
               body: formData
+          });
+
+          const refreshedClerkUser = await clerk.users.getUser(user.clerkId);
+          await ctx.runMutation(internal.users.patchUserImageUrl, {
+            userId: args.userId,
+            imageUrl: refreshedClerkUser.imageUrl ?? undefined,
           });
       }
 
@@ -640,3 +679,151 @@ export async function getCurrentUserFromAuth(ctx: QueryCtx) {
 }
 
 export const getAllUsersInternal = internalQuery({ handler: async (ctx) => await ctx.db.query("users").collect() })
+
+export const getStudentUsersInternal = internalQuery({
+  handler: async (ctx) => {
+    const assignments = await ctx.db.query("roleAssignments").collect();
+    const studentUserIds = new Set(
+      assignments.filter((assignment) => assignment.role === "student").map((assignment) => assignment.userId)
+    );
+
+    const students = [];
+    for (const userId of studentUserIds) {
+      const user = await ctx.db.get(userId);
+      if (user) {
+        students.push({
+          _id: user._id,
+          clerkId: user.clerkId,
+          imageUrl: user.imageUrl,
+        });
+      }
+    }
+
+    return students;
+  },
+});
+
+export const getUsersForImageSyncInternal = internalQuery({
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    return users.map((user) => ({
+      _id: user._id,
+      clerkId: user.clerkId,
+      imageUrl: user.imageUrl,
+    }));
+  },
+});
+
+export const patchUserImageUrl = internalMutation({
+  args: {
+    userId: v.id("users"),
+    imageUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+
+    if (user.imageUrl === args.imageUrl) {
+      return { updated: false };
+    }
+
+    await ctx.db.patch(args.userId, { imageUrl: args.imageUrl });
+    return { updated: true };
+  },
+});
+
+export const syncAllStudentImages = internalMutation({
+  handler: async (ctx) => {
+    await ctx.scheduler.runAfter(0, internal.users.syncAllStudentImagesWorker, {});
+    return { scheduled: true };
+  },
+});
+
+export const syncAllStudentImagesWorker = internalAction({
+  handler: async (ctx) => {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
+
+    const clerk = getClerkClient(clerkSecretKey);
+    const students = await ctx.runQuery(internal.users.getStudentUsersInternal);
+
+    let scanned = 0;
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const student of students) {
+      if (student.clerkId.startsWith("temp_")) {
+        skipped++;
+        continue;
+      }
+
+      scanned++;
+      try {
+        const clerkUser = await clerk.users.getUser(student.clerkId);
+        const clerkImageUrl = clerkUser.imageUrl ?? undefined;
+
+        if (student.imageUrl !== clerkImageUrl) {
+          await ctx.runMutation(internal.users.patchUserImageUrl, {
+            userId: student._id,
+            imageUrl: clerkImageUrl,
+          });
+          updated++;
+        }
+      } catch (error) {
+        console.error(`Failed to sync student image for ${student.clerkId}:`, error);
+        failed++;
+      }
+    }
+
+    return { scanned, updated, skipped, failed };
+  },
+});
+
+export const syncAllUserImages = internalMutation({
+  handler: async (ctx) => {
+    await ctx.scheduler.runAfter(0, internal.users.syncAllUserImagesWorker, {});
+    return { scheduled: true };
+  },
+});
+
+export const syncAllUserImagesWorker = internalAction({
+  handler: async (ctx) => {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
+
+    const clerk = getClerkClient(clerkSecretKey);
+    const users = await ctx.runQuery(internal.users.getUsersForImageSyncInternal);
+
+    let scanned = 0;
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const user of users) {
+      if (user.clerkId.startsWith("temp_")) {
+        skipped++;
+        continue;
+      }
+
+      scanned++;
+      try {
+        const clerkUser = await clerk.users.getUser(user.clerkId);
+        const clerkImageUrl = clerkUser.imageUrl ?? undefined;
+
+        if (user.imageUrl !== clerkImageUrl) {
+          await ctx.runMutation(internal.users.patchUserImageUrl, {
+            userId: user._id,
+            imageUrl: clerkImageUrl,
+          });
+          updated++;
+        }
+      } catch (error) {
+        console.error(`Failed to sync image for ${user.clerkId}:`, error);
+        failed++;
+      }
+    }
+
+    return { scanned, updated, skipped, failed };
+  },
+});
