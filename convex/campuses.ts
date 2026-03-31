@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { hasSystemRole, hasOrgRole } from "./permissions";
 
@@ -101,5 +102,13 @@ export const update = mutation({
 
     const { id, ...updates } = args;
     await ctx.db.patch(id, updates);
+
+    // When the slug changes, all users' Clerk metadata must be rebuilt with the new key
+    if (args.slug && args.slug !== campus.slug) {
+      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncOrgUsersToClerk, {
+        orgId: id,
+        orgType: "campus",
+      });
+    }
   },
 });

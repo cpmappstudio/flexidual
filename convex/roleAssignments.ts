@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
 // ============================================================================
@@ -77,6 +77,68 @@ export const syncRolesToClerk = internalAction({
         public_metadata: { roles: rolesMap },
       }),
     });
+  },
+});
+
+// Returns all role assignments for a given org — used when a slug changes.
+export const getOrgAssignmentsInternal = internalQuery({
+  args: {
+    orgId: v.string(),
+    orgType: v.union(v.literal("school"), v.literal("campus")),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_org", (q) => q.eq("orgId", args.orgId).eq("orgType", args.orgType))
+      .collect();
+  },
+});
+
+// Re-syncs Clerk metadata for every user in an org.
+// Triggered automatically when a school or campus slug is renamed.
+export const syncOrgUsersToClerk = internalAction({
+  args: {
+    orgId: v.string(),
+    orgType: v.union(v.literal("school"), v.literal("campus")),
+  },
+  handler: async (ctx, args) => {
+    const assignments = await ctx.runQuery(internal.roleAssignments.getOrgAssignmentsInternal, args);
+    const seen = new Set<string>();
+    for (const assignment of assignments) {
+      const uid = assignment.userId as string;
+      if (seen.has(uid)) continue;
+      seen.add(uid);
+      const user = await ctx.runQuery(api.users.getUser, { userId: assignment.userId });
+      if (user && !user.clerkId.startsWith("temp_")) {
+        await ctx.runAction(internal.roleAssignments.syncRolesToClerk, {
+          userId: assignment.userId,
+          clerkId: user.clerkId,
+        });
+      }
+    }
+  },
+});
+
+// Rebuilds Clerk public_metadata.roles for EVERY user from the Convex roleAssignments table.
+// Run this once to heal all corrupted metadata after the grade/school metadata bug.
+export const healAllUserRoles = action({
+  handler: async (ctx) => {
+    const users = await ctx.runQuery(internal.users.getAllUsersInternal);
+    let synced = 0, skipped = 0, errors = 0;
+    for (const user of users) {
+      if (user.clerkId.startsWith("temp_")) { skipped++; continue; }
+      try {
+        await ctx.runAction(internal.roleAssignments.syncRolesToClerk, {
+          userId: user._id,
+          clerkId: user.clerkId,
+        });
+        synced++;
+      } catch (e) {
+        errors++;
+        console.error(`Failed to sync user ${user._id} (${user.clerkId}):`, e);
+      }
+    }
+    return { synced, skipped, errors };
   },
 });
 

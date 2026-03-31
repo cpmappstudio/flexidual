@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { getCurrentUserOrThrow } from "./users";
 import { hasSystemRole } from "./permissions";
 
@@ -68,10 +69,21 @@ export const update = mutation({
       throw new Error("Only superadmins can modify schools.");
     }
 
+    const school = await ctx.db.get(args.id);
+    if (!school) throw new Error("School not found");
+
     const { id, ...updates } = args;
     const cleanUpdates: any = { ...updates };
     if (cleanUpdates.logoStorageId === null) cleanUpdates.logoStorageId = undefined;
 
     await ctx.db.patch(id, cleanUpdates);
+
+    // When the slug changes, all users' Clerk metadata must be rebuilt with the new key
+    if (args.slug && args.slug !== school.slug) {
+      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncOrgUsersToClerk, {
+        orgId: id,
+        orgType: "school",
+      });
+    }
   },
 });

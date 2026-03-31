@@ -393,7 +393,7 @@ export const createUsersWithClerk = action({
         const clerkPayload: any = {
             first_name: user.firstName,
             last_name: user.lastName,
-            public_metadata: { grade: user.grade, school: user.school },
+            public_metadata: {},
             skip_password_checks: true,
             skip_password_requirement: true,
         };
@@ -551,12 +551,6 @@ export const updateUserWithClerk = action({
         clerkUpdates.skip_password_checks = true;
       }
       
-      const metadataUpdates: any = {};
-      if (args.updates.grade !== undefined) metadataUpdates.grade = args.updates.grade;
-      if (args.updates.school !== undefined) metadataUpdates.school = args.updates.school;
-
-      if (Object.keys(metadataUpdates).length > 0) clerkUpdates.public_metadata = metadataUpdates;
-
       if (Object.keys(clerkUpdates).length > 0) {
         await fetch(`https://api.clerk.com/v1/users/${user.clerkId}`, {
           method: "PATCH",
