@@ -1,12 +1,13 @@
 "use client"
 
 import { Card } from "@/components/ui/card"
-import { GraduationCap, School, CheckCircle2, XCircle, Calendar, Trophy, Crown, Medal, Star, Camera, CameraOff, ChevronRight, ChevronLeft, type LucideIcon } from "lucide-react"
+import { GraduationCap, School, CheckCircle2, XCircle, Calendar, Trophy, Crown, Medal, Star, Camera, CameraOff, ChevronRight, ChevronLeft, BookOpen, type LucideIcon } from "lucide-react"
 import * as LucideIcons from "lucide-react"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
 import { useEffect, useRef, useState } from "react"
 import { ClassStat } from "@/components/student/student-class-card"
+import { ScrollIndicator } from "@/components/student/scroll-indicator"
 
 type LucideIconKey = keyof typeof LucideIcons;
 
@@ -34,9 +35,10 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
     const tGrades = useTranslations('student.grades')
 
     const [isCameraOn, setIsCameraOn] = useState(false)
-    const [isSidebarExpanded, setIsSidebarExpanded] = useState(false) // New Sidebar State
+    const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
     const videoRef = useRef<HTMLVideoElement>(null)
     const streamRef = useRef<MediaStream | null>(null)
+    const classesScrollRef = useRef<HTMLDivElement>(null)
     
     const stopCamera = () => {
         if (streamRef.current) {
@@ -264,8 +266,8 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
 
             </div>
 
-            {classes && classes.length > 0 && (
-                <div className={`relative transition-all duration-300 ease-in-out border-t-2 sm:border-t-0 sm:border-l-2 border-dashed border-purple-100 dark:border-purple-900/50 bg-purple-50/30 dark:bg-purple-950/10 flex flex-col ${isSidebarExpanded ? 'w-full sm:w-64 p-4' : 'w-full sm:w-[88px] p-2 sm:p-4'}`}>
+            {classes !== undefined && (
+                <div className={`relative transition-all duration-300 ease-in-out border-t-2 sm:border-t-0 sm:border-l-2 border-dashed border-purple-100 dark:border-purple-900/50 bg-purple-50/30 dark:bg-purple-950/10 flex flex-col overflow-hidden max-h-52 sm:max-h-none ${isSidebarExpanded ? 'w-full sm:w-64 p-4' : 'w-full sm:w-[88px] p-2 sm:p-4'}`}>
                     
                     {/* Desktop Toggle Button */}
                     <button 
@@ -278,12 +280,30 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
                     {/* Mobile Toggle */}
                     <button 
                         onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-                        className="sm:hidden w-full flex items-center justify-center py-2 mb-2 text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 border-2 border-dashed border-purple-200 dark:border-purple-800 rounded-xl bg-white/50 dark:bg-gray-800/50"
+                        className="sm:hidden flex-shrink-0 w-full flex items-center justify-center py-2 mb-2 text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 border-2 border-dashed border-purple-200 dark:border-purple-800 rounded-xl bg-white/50 dark:bg-gray-800/50"
                     >
                         {isSidebarExpanded ? t('hideComparison') : t('compareClasses')}
                     </button>
 
-                    <div className="flex-1 overflow-y-auto scrollbar-student space-y-4 sm:space-y-5 mt-1 pr-2">
+                    {classes.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center gap-2 py-3">
+                            <div className="p-3 rounded-2xl bg-purple-100/60 dark:bg-purple-900/30 border-2 border-purple-200 dark:border-purple-800">
+                                <BookOpen className="w-5 h-5 text-purple-400 dark:text-purple-500" />
+                            </div>
+                            {isSidebarExpanded && (
+                                <div className="text-center px-1 animate-in fade-in duration-300">
+                                    <p className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-gray-400 leading-snug">
+                                        {t('noClassesYet')}
+                                    </p>
+                                    <p className="text-[9px] sm:text-[10px] font-medium text-gray-400 dark:text-gray-500 mt-1 leading-snug">
+                                        {t('noClassesYetHint')}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                    <div className="relative flex-1 min-h-0 overflow-hidden">
+                        <div ref={classesScrollRef} className="h-full overflow-y-auto scrollbar-hide space-y-4 sm:space-y-5 mt-1 pr-2">
                         {classes.map((cls) => {
                             // Resolve dynamic icon
                             const IconComponent: LucideIcon = cls.icon && cls.icon in LucideIcons
@@ -393,7 +413,10 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
                                 </div>
                             )
                         })}
+                        </div>
+                        <ScrollIndicator containerRef={classesScrollRef} />
                     </div>
+                    )}
                 </div>
             )}
         </Card>

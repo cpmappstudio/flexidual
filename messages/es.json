@@ -424,7 +424,9 @@
       "turnOnCamera": "Enciende tu cámara",
       "turnOffCamera": "Apaga tu cámara",
       "compareClasses": "Comparar Clases",
-      "hideComparison": "Ocultar Detalles"
+      "hideComparison": "Ocultar Detalles",
+      "noClassesYet": "Aún no hay clases asignadas",
+      "noClassesYetHint": "Tu progreso aparecerá aquí cuando estés inscrito"
     },
     "grades": {
       "K": "Kindergarten",
