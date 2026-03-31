@@ -302,120 +302,123 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
                             )}
                         </div>
                     ) : (
-                    <div className="relative flex-1 min-h-0 overflow-hidden">
-                        <div ref={classesScrollRef} className="absolute inset-0 overflow-y-auto scrollbar-hide pt-1 pr-2 space-y-4 sm:space-y-5">
-                        {classes.map((cls) => {
-                            // Resolve dynamic icon
-                            const IconComponent: LucideIcon = cls.icon && cls.icon in LucideIcons
-                                ? LucideIcons[cls.icon as LucideIconKey] as LucideIcon
-                                : LucideIcons.BookOpen;
-                            
-                            // 1. Calculate Target vs Actual for this specific class
-                            const expectedPct = cls.stats.totalClasses > 0 
-                                ? Math.round((cls.stats.completedClasses / cls.stats.totalClasses) * 100) 
-                                : 0;
-                            const actualPct = cls.stats.totalClasses > 0 
-                                ? Math.round((cls.stats.attendedClasses / cls.stats.totalClasses) * 100) 
-                                : 0;
-                            
-                            const isBehind = actualPct < expectedPct;
-                            const isPerfect = cls.stats.completedClasses > 0 && cls.stats.attendedClasses === cls.stats.completedClasses;
-
-                            // 2. SVG Ring Math
-                            const radius = 20;
-                            const circumference = 2 * Math.PI * radius;
-                            const actualOffset = circumference - (actualPct / 100) * circumference;
-                            const targetOffset = circumference - (expectedPct / 100) * circumference;
-
-                            // 3. Dynamic Glow & Color States
-                            const glowClass = isBehind 
-                                ? "shadow-[0_0_12px_rgba(244,63,94,0.6)] animate-pulse border-rose-400 dark:border-rose-500" 
-                                : isPerfect
-                                    ? "shadow-[0_0_10px_rgba(168,85,247,0.4)] border-purple-400 dark:border-purple-500"
-                                    : "border-purple-200 dark:border-purple-800 shadow-sm";
-
-                            const iconColor = isBehind ? 'text-rose-500 dark:text-rose-400' : 'text-purple-600 dark:text-purple-400';
-                            const ringColor = isBehind ? 'stroke-rose-500' : 'stroke-purple-500';
-
-                            return (
-                                <div key={cls.classId} className="flex items-center gap-3 group/sidebar-item" title={cls.curriculumTitle}>
+                        <div className="relative flex-1 min-h-0 overflow-hidden">
+                            <div ref={classesScrollRef} className="absolute inset-0 overflow-y-auto scrollbar-hide pt-1 pr-2 pb-6 space-y-4 sm:space-y-5">
+                                {classes.map((cls) => {
+                                    // Resolve dynamic icon
+                                    const IconComponent: LucideIcon = cls.icon && cls.icon in LucideIcons
+                                        ? LucideIcons[cls.icon as LucideIconKey] as LucideIcon
+                                        : LucideIcons.BookOpen;
                                     
-                                    {/* COLLAPSED STATE: Circular Progress Ring Avatar */}
-                                    <div className="relative w-14 h-14 flex items-center justify-center shrink-0 mx-auto sm:mx-0">
-                                        {/* Background Track + Rings */}
-                                        <svg className="w-14 h-14 transform -rotate-90 absolute" viewBox="0 0 48 48">
-                                            {/* Track */}
-                                            <circle 
-                                                cx="24" cy="24" r={radius} 
-                                                className="stroke-gray-200 dark:stroke-gray-800 fill-none" 
-                                                strokeWidth="4" 
-                                            />
-                                            {/* Target Marker (Ghost Ring) */}
-                                            {expectedPct > 0 && (
-                                                <circle 
-                                                    cx="24" cy="24" r={radius} 
-                                                    className="stroke-gray-300 dark:stroke-gray-600 fill-none transition-all duration-1000" 
-                                                    strokeWidth="4"
-                                                    strokeDasharray={circumference}
-                                                    strokeDashoffset={targetOffset}
-                                                    strokeLinecap="round"
-                                                />
-                                            )}
-                                            {/* Actual Progress Ring */}
-                                            <circle 
-                                                cx="24" cy="24" r={radius} 
-                                                className={`fill-none transition-all duration-1000 ease-out ${ringColor}`}
-                                                strokeWidth="4"
-                                                strokeDasharray={circumference}
-                                                strokeDashoffset={actualOffset}
-                                                strokeLinecap="round"
-                                            />
-                                        </svg>
-                                        
-                                        {/* Inner Icon Container with Glow */}
-                                        <div className={`w-9 h-9 rounded-full bg-white dark:bg-gray-900 border-2 flex items-center justify-center z-10 transition-all ${glowClass} group-hover/sidebar-item:scale-110`}>
-                                            <IconComponent className={`w-4 h-4 ${iconColor}`} />
-                                        </div>
-                                    </div>
+                                    // 1. Calculate Target vs Actual for this specific class
+                                    const expectedPct = cls.stats.totalClasses > 0 
+                                        ? Math.round((cls.stats.completedClasses / cls.stats.totalClasses) * 100) 
+                                        : 0;
+                                    const actualPct = cls.stats.totalClasses > 0 
+                                        ? Math.round((cls.stats.attendedClasses / cls.stats.totalClasses) * 100) 
+                                        : 0;
                                     
-                                    {/* EXPANDED STATE: Title & Dual Track Bar */}
-                                    {isSidebarExpanded && (
-                                        <div className="flex-1 min-w-0 animate-in fade-in slide-in-from-left-2 duration-300">
-                                            <div className="flex justify-between items-end mb-1">
-                                                <p className="text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 uppercase truncate pr-2">
-                                                    {cls.curriculumTitle}
-                                                </p>
-                                                <span className={`text-[10px] sm:text-xs font-black tabular-nums ${iconColor}`}>
-                                                    {actualPct}%
-                                                </span>
+                                    const isBehind = actualPct < expectedPct;
+                                    const isPerfect = cls.stats.completedClasses > 0 && cls.stats.attendedClasses === cls.stats.completedClasses;
+
+                                    // 2. SVG Ring Math
+                                    const radius = 20;
+                                    const circumference = 2 * Math.PI * radius;
+                                    const actualOffset = circumference - (actualPct / 100) * circumference;
+                                    const targetOffset = circumference - (expectedPct / 100) * circumference;
+
+                                    // 3. Dynamic Glow & Color States
+                                    const glowClass = isBehind 
+                                        ? "shadow-[0_0_12px_rgba(244,63,94,0.6)] animate-pulse border-rose-400 dark:border-rose-500" 
+                                        : isPerfect
+                                            ? "shadow-[0_0_10px_rgba(168,85,247,0.4)] border-purple-400 dark:border-purple-500"
+                                            : "border-purple-200 dark:border-purple-800 shadow-sm";
+
+                                    const iconColor = isBehind ? 'text-rose-500 dark:text-rose-400' : 'text-purple-600 dark:text-purple-400';
+                                    const ringColor = isBehind ? 'stroke-rose-500' : 'stroke-purple-500';
+
+                                    return (
+                                        <div key={cls.classId} className="flex items-center gap-3 group/sidebar-item" title={cls.curriculumTitle}>
+                                            
+                                            {/* COLLAPSED STATE: Circular Progress Ring Avatar */}
+                                            <div className="relative w-14 h-14 flex items-center justify-center shrink-0 mx-auto sm:mx-0">
+                                                {/* Background Track + Rings */}
+                                                <svg className="w-14 h-14 transform -rotate-90 absolute" viewBox="0 0 48 48">
+                                                    {/* Track */}
+                                                    <circle 
+                                                        cx="24" cy="24" r={radius} 
+                                                        className="stroke-gray-200 dark:stroke-gray-800 fill-none" 
+                                                        strokeWidth="4" 
+                                                    />
+                                                    {/* Target Marker (Ghost Ring) */}
+                                                    {expectedPct > 0 && (
+                                                        <circle 
+                                                            cx="24" cy="24" r={radius} 
+                                                            className="stroke-gray-300 dark:stroke-gray-600 fill-none transition-all duration-1000" 
+                                                            strokeWidth="4"
+                                                            strokeDasharray={circumference}
+                                                            strokeDashoffset={targetOffset}
+                                                            strokeLinecap="round"
+                                                        />
+                                                    )}
+                                                    {/* Actual Progress Ring */}
+                                                    <circle 
+                                                        cx="24" cy="24" r={radius} 
+                                                        className={`fill-none transition-all duration-1000 ease-out ${ringColor}`}
+                                                        strokeWidth="4"
+                                                        strokeDasharray={circumference}
+                                                        strokeDashoffset={actualOffset}
+                                                        strokeLinecap="round"
+                                                    />
+                                                </svg>
+                                                
+                                                {/* Inner Icon Container with Glow */}
+                                                <div className={`w-9 h-9 rounded-full bg-white dark:bg-gray-900 border-2 flex items-center justify-center z-10 transition-all ${glowClass} group-hover/sidebar-item:scale-110`}>
+                                                    <IconComponent className={`w-4 h-4 ${iconColor}`} />
+                                                </div>
                                             </div>
                                             
-                                            {/* Dual Track Bar (Matching Hero Style) */}
-                                            <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full relative overflow-hidden border border-gray-200 dark:border-gray-700">
-                                                {/* Ghost Target Bar */}
-                                                <div 
-                                                    className="absolute left-0 top-0 h-full bg-gray-300 dark:bg-gray-600 rounded-full transition-all duration-1000"
-                                                    style={{ width: `${expectedPct}%` }}
-                                                />
-                                                {/* Actual Solid Bar */}
-                                                <div 
-                                                    className={`absolute left-0 top-0 h-full rounded-full transition-all duration-1000 ${isBehind ? 'bg-gradient-to-r from-rose-400 to-orange-500' : 'bg-gradient-to-r from-purple-400 to-pink-500'}`}
-                                                    style={{ width: `${actualPct}%` }}
-                                                />
-                                                {/* Target Marker Pin */}
-                                                <div 
-                                                    className="absolute -top-0.5 -bottom-0.5 w-1 bg-gray-500 dark:bg-gray-400 rounded-full shadow-sm z-10"
-                                                    style={{ left: `calc(${expectedPct}% - 2px)` }}
-                                                />
-                                            </div>
+                                            {/* EXPANDED STATE: Title & Dual Track Bar */}
+                                            {isSidebarExpanded && (
+                                                <div className="flex-1 min-w-0 animate-in fade-in slide-in-from-left-2 duration-300">
+                                                    <div className="flex justify-between items-end mb-1">
+                                                        <p className="text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 uppercase truncate pr-2">
+                                                            {cls.curriculumTitle}
+                                                        </p>
+                                                        <span className={`text-[10px] sm:text-xs font-black tabular-nums ${iconColor}`}>
+                                                            {actualPct}%
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {/* Dual Track Bar (Matching Hero Style) */}
+                                                    <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full relative overflow-hidden border border-gray-200 dark:border-gray-700">
+                                                        {/* Ghost Target Bar */}
+                                                        <div 
+                                                            className="absolute left-0 top-0 h-full bg-gray-300 dark:bg-gray-600 rounded-full transition-all duration-1000"
+                                                            style={{ width: `${expectedPct}%` }}
+                                                        />
+                                                        {/* Actual Solid Bar */}
+                                                        <div 
+                                                            className={`absolute left-0 top-0 h-full rounded-full transition-all duration-1000 ${isBehind ? 'bg-gradient-to-r from-rose-400 to-orange-500' : 'bg-gradient-to-r from-purple-400 to-pink-500'}`}
+                                                            style={{ width: `${actualPct}%` }}
+                                                        />
+                                                        {/* Target Marker Pin */}
+                                                        <div 
+                                                            className="absolute -top-0.5 -bottom-0.5 w-1 bg-gray-500 dark:bg-gray-400 rounded-full shadow-sm z-10"
+                                                            style={{ left: `calc(${expectedPct}% - 2px)` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                            )
-                        })}
+                                    )
+                                })}
+                            </div>
                         </div>
+                    )}
+
+                    {classes !== undefined && classes.length > 0 && (
                         <ScrollIndicator containerRef={classesScrollRef} />
-                    </div>
                     )}
                 </div>
             )}
