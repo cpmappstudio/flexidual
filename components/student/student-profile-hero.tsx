@@ -267,12 +267,12 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
             </div>
 
             {classes !== undefined && (
-                <div className={`relative transition-all duration-300 ease-in-out border-t-2 sm:border-t-0 sm:border-l-2 border-dashed border-purple-100 dark:border-purple-900/50 bg-purple-50/30 dark:bg-purple-950/10 flex flex-col overflow-hidden max-h-52 sm:max-h-none ${isSidebarExpanded ? 'w-full sm:w-64 p-4' : 'w-full sm:w-[88px] p-2 sm:p-4'}`}>
+                <div className={`relative transition-all duration-300 ease-in-out border-t-2 sm:border-t-0 sm:border-l-2 border-dashed border-purple-100 dark:border-purple-900/50 bg-purple-50/30 dark:bg-purple-950/10 flex flex-col overflow-hidden max-h-52 sm:overflow-visible sm:max-h-none ${isSidebarExpanded ? 'w-full sm:w-64 p-4' : 'w-full sm:w-[88px] p-2 sm:p-4'}`}>
                     
                     {/* Desktop Toggle Button */}
                     <button 
                         onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-                        className="absolute top-1/2 -left-3 sm:-translate-y-1/2 bg-white dark:bg-gray-800 border-2 border-purple-200 dark:border-purple-800 rounded-full p-0.5 text-purple-600 hover:bg-purple-50 z-10 hidden sm:flex items-center justify-center shadow-sm hover:scale-110 transition-transform"
+                        className="absolute top-1/2 -left-3 sm:-translate-y-1/2 bg-white dark:bg-gray-800 border-2 border-purple-200 dark:border-purple-800 rounded-full p-0.5 text-purple-600 hover:bg-purple-50 z-20 hidden sm:flex items-center justify-center shadow-sm hover:scale-110 transition-transform"
                     >
                         {isSidebarExpanded ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
                     </button>
@@ -303,7 +303,7 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
                         </div>
                     ) : (
                     <div className="relative flex-1 min-h-0 overflow-hidden">
-                        <div ref={classesScrollRef} className="h-full overflow-y-auto scrollbar-hide space-y-4 sm:space-y-5 mt-1 pr-2">
+                        <div ref={classesScrollRef} className="absolute inset-0 overflow-y-auto scrollbar-hide pt-1 pr-2 space-y-4 sm:space-y-5">
                         {classes.map((cls) => {
                             // Resolve dynamic icon
                             const IconComponent: LucideIcon = cls.icon && cls.icon in LucideIcons

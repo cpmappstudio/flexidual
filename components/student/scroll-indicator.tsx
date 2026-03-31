@@ -32,19 +32,24 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
     const container = containerRef.current
     if (!container) return
 
-    // Initial check
-    checkScroll()
+    // Defer initial check until after browser layout/paint so measurements are valid
+    const rafId = requestAnimationFrame(checkScroll)
 
-    // Add scroll listener
     container.addEventListener('scroll', checkScroll)
-    
-    // Add resize observer for when content changes
+
+    // Watch for container size changes (viewport resize)
     const resizeObserver = new ResizeObserver(checkScroll)
     resizeObserver.observe(container)
 
+    // Watch for children added/removed (async content → scrollHeight changes)
+    const mutationObserver = new MutationObserver(checkScroll)
+    mutationObserver.observe(container, { childList: true, subtree: false })
+
     return () => {
+      cancelAnimationFrame(rafId)
       container.removeEventListener('scroll', checkScroll)
       resizeObserver.disconnect()
+      mutationObserver.disconnect()
     }
   }, [containerRef, checkScroll])
 
