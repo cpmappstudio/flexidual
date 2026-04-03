@@ -50,11 +50,13 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
 
     const toggleCamera = async () => {
         if (isCameraOn) {
+            localStorage.setItem('flexidual_camera_on', 'false')
             stopCamera()
         } else {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true })
                 streamRef.current = stream
+                localStorage.setItem('flexidual_camera_on', 'true')
                 setIsCameraOn(true)
             } catch (err) {
                 console.error("Failed to access camera", err)
@@ -74,9 +76,28 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
         }
     }, [disableCamera, isCameraOn])
 
-    // Cleanup on unmount
+    // Restore camera preference from localStorage on mount
     useEffect(() => {
-        return () => stopCamera()
+        if (disableCamera) return
+        const stored = localStorage.getItem('flexidual_camera_on')
+        if (stored !== 'true') return
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                streamRef.current = stream
+                setIsCameraOn(true)
+            })
+            .catch(() => localStorage.removeItem('flexidual_camera_on'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Cleanup on unmount — only stop the media tracks, never touch the stored preference
+    useEffect(() => {
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop())
+                streamRef.current = null
+            }
+        }
     }, [])
 
     const gradeLabel = student.grade
@@ -104,42 +125,57 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
         <Card className="col-span-1 lg:col-span-2 overflow-hidden border-2 border-b-[6px] border-purple-200 dark:border-purple-900 shadow-sm bg-white dark:bg-gray-900 relative group flex flex-col sm:flex-row rounded-3xl transition-transform hover:-translate-y-1">
             {/* LEFT: Image & Basic Info Container */}
             <div className="relative p-4 sm:p-6 flex flex-col items-center justify-center sm:w-1/3 xl:w-1/4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border-r-2 border-dashed border-purple-100 dark:border-purple-900/50">
-                <div className="relative w-28 h-28 sm:w-32 sm:h-32 lg:w-48 lg:h-48 mb-4 rounded-full shadow-lg border-4 border-white dark:border-gray-800 overflow-hidden transform transition-transform duration-500 hover:scale-105 group/avatar">
-                    {isCameraOn ? (
-                        <video
-                            ref={videoRef}
-                            autoPlay
-                            playsInline
-                            muted
-                            className="w-full h-full object-cover scale-x-[-1]" // Mirrors the camera naturally
-                        />
-                    ) : student.imageUrl ? (
-                        <Image 
-                            src={student.imageUrl} 
-                            alt={student.fullName}
-                            fill
-                            className="object-cover"
-                        />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-purple-100 dark:bg-purple-900">
-                            <span className="text-4xl sm:text-5xl font-black text-purple-600 dark:text-purple-300">
-                                {student.fullName.charAt(0)}
-                            </span>
-                        </div>
-                    )}
-
-                    {/* Interactive Hover Overlay */}
-                    <div 
-                        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity cursor-pointer z-10"
-                        onClick={toggleCamera}
-                        title={isCameraOn ? t('turnOffCamera') : t('turnOnCamera')}
-                    >
+                {/* Avatar circle — overflow-hidden clips content, so the mobile hint lives outside */}
+                <div className="relative mb-4">
+                    <div className="relative w-28 h-28 sm:w-32 sm:h-32 lg:w-48 lg:h-48 rounded-full shadow-lg border-4 border-white dark:border-gray-800 overflow-hidden transform transition-transform duration-500 hover:scale-105 group/avatar">
                         {isCameraOn ? (
-                            <CameraOff className="w-8 h-8 text-white drop-shadow-md" />
+                            <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                muted
+                                className="w-full h-full object-cover scale-x-[-1]"
+                            />
+                        ) : student.imageUrl ? (
+                            <Image 
+                                src={student.imageUrl} 
+                                alt={student.fullName}
+                                fill
+                                className="object-cover"
+                            />
                         ) : (
-                            <Camera className="w-8 h-8 text-white drop-shadow-md" />
+                            <div className="w-full h-full flex items-center justify-center bg-purple-100 dark:bg-purple-900">
+                                <span className="text-4xl sm:text-5xl font-black text-purple-600 dark:text-purple-300">
+                                    {student.fullName.charAt(0)}
+                                </span>
+                            </div>
                         )}
+
+                        {/* Desktop hover overlay */}
+                        <div 
+                            className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity cursor-pointer z-10"
+                            onClick={toggleCamera}
+                            title={isCameraOn ? t('turnOffCamera') : t('turnOnCamera')}
+                        >
+                            {isCameraOn ? (
+                                <CameraOff className="w-8 h-8 text-white drop-shadow-md" />
+                            ) : (
+                                <Camera className="w-8 h-8 text-white drop-shadow-md" />
+                            )}
+                        </div>
                     </div>
+
+                    {/* Mobile/tablet tap hint — outside overflow-hidden so it's not clipped */}
+                    <button
+                        className="sm:hidden absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 cursor-pointer"
+                        onClick={toggleCamera}
+                        aria-label={isCameraOn ? t('turnOffCamera') : t('turnOnCamera')}
+                    >
+                        <span className="animate-bounce inline-flex items-center gap-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[9px] font-black rounded-full px-2.5 py-1 whitespace-nowrap shadow-md border-2 border-white/30">
+                            {isCameraOn ? <CameraOff className="w-2.5 h-2.5" /> : <Camera className="w-2.5 h-2.5" />}
+                            {isCameraOn ? t('turnOffCamera') : t('turnOnCamera')}
+                        </span>
+                    </button>
                 </div>
                 
                 <h2 className="text-xl sm:text-2xl font-black text-center text-gray-800 dark:text-gray-100 leading-tight mb-2">

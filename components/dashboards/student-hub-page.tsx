@@ -130,6 +130,89 @@ export default function StudentHubPage() {
   const audioCtxRef = useRef<AudioContext | null>(null)
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const soundEnabledRef = useRef(soundEnabled)
+  
+  const playRocketSound = () => {
+    if (!soundEnabledRef.current) return
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext()
+      }
+      const ctx = audioCtxRef.current
+
+      // Master limiter — prevents any clipping regardless of how layers sum
+      const limiter = ctx.createDynamicsCompressor()
+      limiter.threshold.value = -3   // dB — start compressing just below 0
+      limiter.knee.value = 0         // hard knee
+      limiter.ratio.value = 20       // brick-wall limiting
+      limiter.attack.value = 0.001
+      limiter.release.value = 0.1
+      limiter.connect(ctx.destination)
+
+      const duration = 2.4
+      const t0 = ctx.currentTime
+
+      // ── Noise layer ──────────────────────────────────────────────────────
+      const bufferSize = ctx.sampleRate * duration
+      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+      const data = noiseBuffer.getChannelData(0)
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1
+
+      const noise = ctx.createBufferSource()
+      noise.buffer = noiseBuffer
+
+      const filter = ctx.createBiquadFilter()
+      filter.type = 'lowpass'
+      filter.frequency.setValueAtTime(80, t0)
+      filter.frequency.exponentialRampToValueAtTime(900, t0 + duration)
+      filter.Q.value = 1.2           // reduced from 2.5 — less resonant spike
+
+      const bass = ctx.createBiquadFilter()
+      bass.type = 'lowshelf'
+      bass.frequency.value = 120
+      bass.gain.value = 7            // reduced from 14 — still deep, won't clip
+
+      const noiseGain = ctx.createGain()
+      noiseGain.gain.setValueAtTime(0, t0)
+      noiseGain.gain.linearRampToValueAtTime(0.45, t0 + 0.15)  // reduced from 0.9
+      noiseGain.gain.setValueAtTime(0.45, t0 + 1.0)
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, t0 + duration)
+
+      noise.connect(filter)
+      filter.connect(bass)
+      bass.connect(noiseGain)
+      noiseGain.connect(limiter)
+      noise.start(t0)
+      noise.stop(t0 + duration)
+
+      // ── Sub-bass rumble ───────────────────────────────────────────────────
+      const sub = ctx.createOscillator()
+      const subGain = ctx.createGain()
+      sub.type = 'sine'
+      sub.frequency.setValueAtTime(30, t0)
+      sub.frequency.exponentialRampToValueAtTime(180, t0 + 1.6)
+      subGain.gain.setValueAtTime(0, t0)
+      subGain.gain.linearRampToValueAtTime(0.18, t0 + 0.05)
+      subGain.gain.exponentialRampToValueAtTime(0.001, t0 + 1.6)
+      sub.connect(subGain)
+      subGain.connect(limiter)
+      sub.start(t0)
+      sub.stop(t0 + 1.6)
+
+      // ── Harmonic warmth ───────────────────────────────────────────────────
+      const osc2 = ctx.createOscillator()
+      const osc2Gain = ctx.createGain()
+      osc2.type = 'triangle'
+      osc2.frequency.setValueAtTime(55, t0)
+      osc2.frequency.exponentialRampToValueAtTime(220, t0 + 1.8)
+      osc2Gain.gain.setValueAtTime(0, t0)
+      osc2Gain.gain.linearRampToValueAtTime(0.12, t0 + 0.05)
+      osc2Gain.gain.exponentialRampToValueAtTime(0.001, t0 + 1.8)
+      osc2.connect(osc2Gain)
+      osc2Gain.connect(limiter)
+      osc2.start(t0)
+      osc2.stop(t0 + 1.8)
+    } catch { /* non-critical */ }
+  }
 
   // Queries
   const events = useQuery(api.schedule.getMySchedule, {})
@@ -250,6 +333,7 @@ export default function StudentHubPage() {
     console.log('🎯 Drop detected, draggedLesson:', draggedLesson?.title)
     if (draggedLesson) {
       setIsDragging(false)
+      playRocketSound()
       setIsLaunching(true)
     }
   }
@@ -260,6 +344,7 @@ export default function StudentHubPage() {
     console.log('📱 Tap detected:', lesson.title)
     setDraggedLesson(lesson)
     setSidebarOpen(false)
+    playRocketSound()
     setIsLaunching(true)
   }
 
