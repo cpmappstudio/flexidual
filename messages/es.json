@@ -225,7 +225,15 @@
     "teacherView": "Vista del Profesor",
     "platformAccess": "Acceso a {platform}",
     "screenShareAudioNotSupported": "Compartir pantalla con audio no es compatible en este navegador.",
-    "screenShareFailed": "Error al iniciar compartir pantalla. Por favor, inténtalo de nuevo."
+    "screenShareFailed": "Error al iniciar compartir pantalla. Por favor, inténtalo de nuevo.",
+    "raiseHand": "Levantar la Mano",
+    "lowerHand": "Bajar la Mano",
+    "handRaised": "✋ ¡Mano levantada!",
+    "raisedHand": "levantó la mano",
+    "observingIncognito": "Observando de Incógnito",
+    "takePresenterRole": "Tomar Rol de Presentador",
+    "exitPresenterRole": "Salir del Rol de Presentador",
+    "permissionGrantedClickToStart": "¡Aprobado! Haz clic en el botón de compartir pantalla para comenzar."
   },
   "curriculum": {
     "curriculum": "Currículo",

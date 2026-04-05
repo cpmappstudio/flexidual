@@ -226,7 +226,15 @@
     "teacherView": "Teacher View",
     "platformAccess": "{platform} Access",
     "screenShareAudioNotSupported": "Screen sharing with audio is not supported on this browser.",
-    "screenShareFailed": "Failed to start screen share. Please try again."
+    "screenShareFailed": "Failed to start screen share. Please try again.",
+    "raiseHand": "Raise Hand",
+    "lowerHand": "Lower Hand",
+    "handRaised": "✋ Hand raised!",
+    "raisedHand": "raised their hand",
+    "observingIncognito": "Observing Incognito",
+    "takePresenterRole": "Take Presenter Role",
+    "exitPresenterRole": "Exit Presenter Role",
+    "permissionGrantedClickToStart": "Approved! Click the screen share button to begin."
   },
   "curriculum": {
     "curriculum": "Curriculum",

@@ -13,14 +13,15 @@ import {
   Track, 
   Participant, 
   TrackPublication,
+  RemoteParticipant,
   RemoteTrackPublication
 } from "livekit-client";
 import { 
   Mic, MicOff, Video as VideoIcon, VideoOff, Loader2, VolumeX,
   ZoomIn, ZoomOut, Move, MessageCircle, LogOut,
-  MonitorUp
+  MonitorUp, Hand
 } from "lucide-react";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
@@ -63,12 +64,18 @@ function ParticipantTile({
   participant, 
   className, 
   showLabel = true,
-  variant = "grid"
+  variant = "grid",
+  raisedHand = false,
+  roleBadge,
+  youLabel,
 }: { 
   participant: Participant, 
   className?: string, 
   showLabel?: boolean,
-  variant?: "grid" | "stage" | "mini"
+  variant?: "grid" | "stage" | "mini",
+  raisedHand?: boolean,
+  roleBadge?: string,
+  youLabel?: string,
 }) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
   const isVideoEnabled = cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
@@ -91,52 +98,87 @@ function ParticipantTile({
         </div>
       )}
       
-      {showLabel && (
+      {showLabel && variant === "stage" ? (
+        <div className="absolute bottom-3 left-3 flex items-center gap-2 z-10">
+          <div className="bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-lg flex items-center gap-2 border border-white/10 shadow-md">
+            {roleBadge && (
+              <span className="text-[10px] font-bold text-white bg-purple-600 px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0">
+                {roleBadge}
+              </span>
+            )}
+            <span className="text-sm font-bold text-white truncate max-w-[200px]">
+              {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
+            </span>
+          </div>
+        </div>
+      ) : showLabel ? (
         <div className="absolute bottom-1 left-1 bg-black/60 px-2 py-1 rounded text-[10px] text-white font-medium truncate max-w-[90%] backdrop-blur-sm">
-          {participant.name || participant.identity} {participant.isLocal && "(You)"}
+          {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
+        </div>
+      ) : null}
+      {raisedHand && (
+        <div className="absolute top-1 right-1 bg-amber-500 rounded-full p-0.5 shadow-sm pointer-events-none">
+          <Hand className="w-3 h-3 text-white" />
         </div>
       )}
     </div>
   );
 }
 
-function DraggablePip({ children, initialPos = { x: 20, y: 20 } }: { children: React.ReactNode, initialPos?: {x: number, y: number} }) {
-  const [pos, setPos] = useState(initialPos);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+const PIP_W = 192, PIP_H = 144, PIP_MARGIN = 12;
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    setIsDragging(true);
-    setDragStart({ x: e.clientX - pos.x, y: e.clientY - pos.y });
+function DraggablePip({ children, containerRef }: { children: React.ReactNode; containerRef: React.RefObject<HTMLDivElement | null> }) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPos: { x: number; y: number } }>({
+    active: false, startMouse: { x: 0, y: 0 }, startPos: { x: 0, y: 0 },
+  });
+
+  const clampPos = (x: number, y: number) => {
+    const el = containerRef.current;
+    if (!el) return { x, y };
+    return {
+      x: Math.max(PIP_MARGIN, Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, x)),
+      y: Math.max(PIP_MARGIN, Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, y)),
+    };
   };
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      setPos({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
-    };
-    const handleMouseUp = () => setIsDragging(false);
+    const el = containerRef.current;
+    if (!el) return;
+    setPos({ x: PIP_MARGIN, y: el.offsetHeight - PIP_H - PIP_MARGIN });
+  }, []);
 
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current.active) return;
+      const dx = e.clientX - dragRef.current.startMouse.x;
+      const dy = e.clientY - dragRef.current.startMouse.y;
+      setPos(clampPos(dragRef.current.startPos.x + dx, dragRef.current.startPos.y + dy));
+    };
+    const handleMouseUp = () => { dragRef.current.active = false; };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragStart]);
+  }, []);
+
+  if (!pos) return null;
 
   return (
-    <div 
-      style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-      className="absolute z-50 w-48 h-36 bg-black rounded-lg shadow-2xl overflow-hidden border-2 border-purple-500 cursor-move"
-      onMouseDown={handleMouseDown}
+    <div
+      style={{ left: pos.x, top: pos.y, width: PIP_W, height: PIP_H }}
+      className="absolute z-50 rounded-lg shadow-2xl overflow-hidden border-2 border-purple-500 cursor-move select-none"
+      onMouseDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        dragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPos: { ...pos } };
+      }}
     >
       {children}
-      <div className="absolute top-1 right-1 p-1 bg-black/50 rounded-full hover:bg-white/10 transition-colors">
-        <Move className="w-3 h-3 text-white/70" />
+      <div className="absolute top-1 right-1 p-1 bg-background/50 rounded-full pointer-events-none">
+        <Move className="w-3 h-3 text-foreground/70" />
       </div>
     </div>
   );
@@ -156,14 +198,30 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
   const [needsClick, setNeedsClick] = useState(false);
   const [shareState, setShareState] = useState<"idle" | "requesting" | "approved">("idle");
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
+  const [handRaised, setHandRaised] = useState(false);
+  const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const panDragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPan: { x: number; y: number } }>({
+    active: false, startMouse: { x: 0, y: 0 }, startPan: { x: 0, y: 0 },
+  });
 
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
-  
-  const teacher = participants.find((p) => getRole(p) === "teacher");
+
+  const adminPresenterParticipant = adminPresenterId
+    ? participants.find((p) => p.identity === adminPresenterId)
+    : null;
+  const teacher = participants.find((p) => getRole(p) === "teacher") || adminPresenterParticipant || undefined;
   const students = participants.filter((p) => {
     const role = getRole(p);
     return role === "student";
+  });
+  const sortedStudents = [...students].sort((a, b) => {
+    const aRaised = (raisedHands.has(a.identity) || (a.isLocal && handRaised)) ? 1 : 0;
+    const bRaised = (raisedHands.has(b.identity) || (b.isLocal && handRaised)) ? 1 : 0;
+    return bRaised - aRaised;
   });
 
   const screenTracks = useTracks([Track.Source.ScreenShare], { updateOnlyOn: [], onlySubscribed: false });
@@ -202,13 +260,13 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
   useEffect(() => {
     const decoder = new TextDecoder();
 
-    const handleData = (payload: Uint8Array) => {
+    const handleData = (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const msg = JSON.parse(decoder.decode(payload));
 
         if (msg.type === "ALLOW_SHARE") {
           setShareState("approved");
-          toast.success(t('classroom.permissionGrantedClickToStart') || 'Approved! Tap the screen share button to begin.');
+          toast.success(t('classroom.permissionGrantedClickToStart'));
         }
 
         if (msg.type === "DENY_SHARE") {
@@ -220,6 +278,22 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
           localParticipant?.setScreenShareEnabled(false);
           setShareState("idle");
           toast.info(t('classroom.sharingStoppedByTeacher'));
+        }
+
+        if (msg.type === "FORCE_LOWER_HAND") {
+          setHandRaised(false);
+        }
+
+        if (msg.type === "RAISE_HAND" && participant) {
+          setRaisedHands((prev) => new Set(prev).add(participant.identity));
+        }
+
+        if (msg.type === "LOWER_HAND" && participant) {
+          setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
+        }
+
+        if (msg.type === "ADMIN_PRESENTING" && participant) {
+          setAdminPresenterId(msg.presenting ? participant.identity : null);
         }
       } catch (e) {
         console.error("Failed to parse data message", e);
@@ -280,7 +354,42 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
     toast.info(t('classroom.requestSent'));
   };
 
-  const handleZoom = (delta: number) => setZoom(prev => Math.min(Math.max(prev + delta, 1), 3));
+  const toggleHandRaised = async () => {
+    const newState = !handRaised;
+    setHandRaised(newState);
+    const encoder = new TextEncoder();
+    const data = JSON.stringify({ type: newState ? "RAISE_HAND" : "LOWER_HAND" });
+    await room.localParticipant.publishData(encoder.encode(data), { reliable: true });
+    if (newState) toast.info(t('classroom.handRaised'));
+  };
+
+  const handleZoom = (delta: number) => setZoom(prev => {
+    const next = Math.min(Math.max(prev + delta, 1), 3);
+    if (next === 1) setPan({ x: 0, y: 0 });
+    return next;
+  });
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!panDragRef.current.active || !stageRef.current) return;
+      const dx = e.clientX - panDragRef.current.startMouse.x;
+      const dy = e.clientY - panDragRef.current.startMouse.y;
+      const { offsetWidth: W, offsetHeight: H } = stageRef.current;
+      const maxX = (W * (zoom - 1)) / 2;
+      const maxY = (H * (zoom - 1)) / 2;
+      setPan({
+        x: Math.max(-maxX, Math.min(maxX, panDragRef.current.startPan.x + dx)),
+        y: Math.max(-maxY, Math.min(maxY, panDragRef.current.startPan.y + dy)),
+      });
+    };
+    const handleMouseUp = () => { panDragRef.current.active = false; };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [zoom]);
 
   const handleLeave = async () => {
     try {
@@ -347,12 +456,16 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
         </div>
 
         {/* Main Stage */}
-        <div className="flex-1 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl shadow-2xl overflow-hidden relative border-4 border-purple-400 dark:border-purple-600 flex items-center justify-center group">
+        <div ref={stageRef} className="flex-1 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl shadow-2xl overflow-hidden relative border-4 border-purple-400 dark:border-purple-600 flex items-center justify-center group">
           {isScreenSharingActive ? (
             <>
               <div 
-                className="w-full h-full flex items-center justify-center transition-transform duration-200 ease-out origin-center bg-black relative"
-                style={{ transform: `scale(${zoom})` }}
+                className={`w-full h-full flex items-center justify-center origin-center bg-black relative select-none ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+                style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+                onMouseDown={zoom > 1 ? (e) => {
+                  e.preventDefault();
+                  panDragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPan: { ...pan } };
+                } : undefined}
               >
                 <VideoTrack 
                    trackRef={activeScreenTrack} 
@@ -378,8 +491,8 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
               </div>
 
               {teacher && isTeacherVideoOn && (
-                 <DraggablePip initialPos={{ x: 20, y: 20 }}>
-                    <ParticipantTile participant={teacher} variant="mini" className="w-full h-full" showLabel={false} />
+                 <DraggablePip containerRef={stageRef}>
+                    <ParticipantTile participant={teacher} variant="grid" className="w-full h-full" showLabel={true} youLabel={t('classroom.youShort')} />
                  </DraggablePip>
               )}
             </>
@@ -388,7 +501,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
               <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
               {teacher ? (
                 isTeacherVideoOn ? (
-                  <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={false} />
+                  <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={true} roleBadge={t('classroom.teacher')} youLabel={t('classroom.youShort')} />
                 ) : (
                   <div className="z-10 flex flex-col items-center justify-center p-8 text-center">
                       <div className="w-40 h-40 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center border-8 border-white/20 mb-6 shadow-2xl">
@@ -413,17 +526,21 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
 
         {/* Controls */}
         <div className="h-24 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md rounded-3xl shadow-lg border-2 border-purple-300 dark:border-purple-700 px-6 flex items-center justify-center relative">
-          <div className="absolute left-6 flex items-center gap-3">
-              <div className="w-16 h-10 rounded overflow-hidden border-2 border-purple-400 shadow-md">
-                {localParticipant && <ParticipantTile participant={localParticipant} variant="mini" className="w-full h-full" showLabel={false} />}
-              </div>
-              <span className="hidden md:inline xl:hidden text-sm font-bold text-gray-700 dark:text-gray-300">👋 {t('classroom.youShort')}</span>
-              <span className="hidden xl:inline text-sm font-bold text-gray-700 dark:text-gray-300">👋 {t('classroom.you', { role: 'Student' })}</span>
-          </div>
-
           <div className="flex items-center gap-2 xl:gap-6">
               <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-6 h-6" />} iconOff={<MicOff className="w-6 h-6" />} />
               <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-6 h-6" />} iconOff={<VideoOff className="w-6 h-6" />} />
+              <button
+                onClick={toggleHandRaised}
+                title={handRaised ? t('classroom.lowerHand') : t('classroom.raiseHand')}
+                className={`
+                  w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg border-2
+                  ${handRaised
+                    ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 border-amber-400 dark:border-amber-600 animate-bounce'
+                    : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-600'}
+                `}
+              >
+                <Hand className="w-6 h-6" />
+              </button>
               <button 
                 onClick={handleShareAction}
                 disabled={shareState === "requesting"}
@@ -459,17 +576,23 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
         </div>
         <div className="flex-1 overflow-y-auto p-3 bg-purple-50/50 dark:bg-gray-800/50">
           <div className="grid grid-cols-2 gap-3">
-            {students.length === 0 && (
+            {sortedStudents.length === 0 && (
               <div className="col-span-2 text-center py-10 text-gray-500 dark:text-gray-400 text-sm font-medium">
                 {t('classroom.youAreFirst')}
               </div>
             )}
-            {students.map((p) => (
+            {sortedStudents.map((p) => (
               <ParticipantTile 
                 key={p.identity} 
                 variant="grid" 
                 participant={p} 
-                className="aspect-square rounded-2xl border-4 border-purple-300 dark:border-purple-600 shadow-md" 
+                className={`aspect-square rounded-2xl border-4 shadow-md ${
+                  raisedHands.has(p.identity) || (p.isLocal && handRaised)
+                    ? 'border-amber-400 dark:border-amber-500'
+                    : 'border-purple-300 dark:border-purple-600'
+                }`}
+                raisedHand={raisedHands.has(p.identity) || (p.isLocal && handRaised)}
+                youLabel={t('classroom.youShort')}
               />
             ))}
           </div>

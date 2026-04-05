@@ -20,10 +20,10 @@ import {
 } from "livekit-client";
 import { 
   Mic, MicOff, Video as VideoIcon, VideoOff, LogOut, MessageCircle, VolumeX, 
-  MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2
+  MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2, Eye
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { FlexidualLogo } from "../ui/flexidual-logo";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -31,6 +31,8 @@ import { useTranslations } from "next-intl";
 // --- Constants ---
 const SCREEN_SHARE_OPTIONS = { updateOnlyOn: [], onlySubscribed: false };
 const SCREEN_SHARE_SOURCE = [Track.Source.ScreenShare];
+const AUTHORITY_ROLES = ["teacher", "admin", "superadmin", "tutor", "principal"] as const;
+const isAuthority = (role: string) => (AUTHORITY_ROLES as readonly string[]).includes(role);
 
 // --- Types ---
 type ShareRequest = {
@@ -77,12 +79,20 @@ function ParticipantTile({
   participant, 
   className, 
   showLabel = true, 
-  variant = "grid" 
+  variant = "grid",
+  raisedHand = false,
+  onLowerHand,
+  roleBadge,
+  youLabel,
 }: { 
   participant: Participant, 
   className?: string, 
   showLabel?: boolean,
-  variant?: "grid" | "stage" | "mini"
+  variant?: "grid" | "stage" | "mini",
+  raisedHand?: boolean,
+  onLowerHand?: () => void,
+  roleBadge?: string,
+  youLabel?: string,
 }) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
   const isVideoEnabled = cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
@@ -105,51 +115,92 @@ function ParticipantTile({
         </div>
       )}
       
-      {showLabel && (
-        <div className="absolute bottom-1 left-1 bg-black/60 px-2 py-1 rounded text-[10px] text-white font-medium truncate max-w-[90%] backdrop-blur-sm">
-          {participant.name || participant.identity} {participant.isLocal && "(You)"}
+      {showLabel && variant === "stage" ? (
+        <div className="absolute bottom-3 left-3 flex items-center gap-2 z-10">
+          <div className="bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-lg flex items-center gap-2 border border-white/10 shadow-md">
+            {roleBadge && (
+              <span className="text-[10px] font-bold text-primary-foreground bg-primary px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0">
+                {roleBadge}
+              </span>
+            )}
+            <span className="text-sm font-bold text-white truncate max-w-[200px]">
+              {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
+            </span>
+          </div>
         </div>
+      ) : showLabel ? (
+        <div className="absolute bottom-1 left-1 bg-black/60 px-2 py-1 rounded text-[10px] text-white font-medium truncate max-w-[90%] backdrop-blur-sm">
+          {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
+        </div>
+      ) : null}
+      {raisedHand && (
+        <button
+          onClick={onLowerHand}
+          title={onLowerHand ? "Lower hand" : undefined}
+          className={`absolute top-1 right-1 bg-amber-500 rounded-full p-0.5 shadow-sm transition-colors ${
+            onLowerHand ? 'cursor-pointer hover:bg-amber-600' : 'cursor-default pointer-events-none'
+          }`}
+        >
+          <Hand className="w-3 h-3 text-white" />
+        </button>
       )}
     </div>
   );
 }
 
-function DraggablePip({ children, initialPos = { x: 20, y: 20 } }: { children: React.ReactNode, initialPos?: {x: number, y: number} }) {
-  const [pos, setPos] = useState(initialPos);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+const PIP_W = 192, PIP_H = 144, PIP_MARGIN = 12;
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    setIsDragging(true);
-    setDragStart({ x: e.clientX - pos.x, y: e.clientY - pos.y });
+function DraggablePip({ children, containerRef }: { children: React.ReactNode; containerRef: React.RefObject<HTMLDivElement | null> }) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPos: { x: number; y: number } }>({
+    active: false, startMouse: { x: 0, y: 0 }, startPos: { x: 0, y: 0 },
+  });
+
+  const clampPos = (x: number, y: number) => {
+    const el = containerRef.current;
+    if (!el) return { x, y };
+    return {
+      x: Math.max(PIP_MARGIN, Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, x)),
+      y: Math.max(PIP_MARGIN, Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, y)),
+    };
   };
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      setPos({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
-    };
-    const handleMouseUp = () => setIsDragging(false);
+    const el = containerRef.current;
+    if (!el) return;
+    setPos({ x: PIP_MARGIN, y: el.offsetHeight - PIP_H - PIP_MARGIN });
+  }, []);
 
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current.active) return;
+      const dx = e.clientX - dragRef.current.startMouse.x;
+      const dy = e.clientY - dragRef.current.startMouse.y;
+      setPos(clampPos(dragRef.current.startPos.x + dx, dragRef.current.startPos.y + dy));
+    };
+    const handleMouseUp = () => { dragRef.current.active = false; };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragStart]);
+  }, []);
+
+  if (!pos) return null;
 
   return (
-    <div 
-      style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-      className="absolute z-50 w-48 h-36 bg-card rounded-lg shadow-2xl overflow-hidden border-2 border-border cursor-move"
-      onMouseDown={handleMouseDown}
+    <div
+      style={{ left: pos.x, top: pos.y, width: PIP_W, height: PIP_H }}
+      className="absolute z-50 rounded-lg shadow-2xl overflow-hidden border-2 border-border cursor-move select-none"
+      onMouseDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        dragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPos: { ...pos } };
+      }}
     >
       {children}
-      <div className="absolute top-1 right-1 p-1 bg-background/50 rounded-full hover:bg-foreground/10 transition-colors">
+      <div className="absolute top-1 right-1 p-1 bg-background/50 rounded-full pointer-events-none">
         <Move className="w-3 h-3 text-foreground/70" />
       </div>
     </div>
@@ -170,26 +221,70 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const router = useRouter();
   const room = useRoomContext();
   const markLive = useMutation(api.schedule.markLive);
-  const [needsClick, setNeedsClick] = useState(false);
-
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
-  
+
+  // --- STATE ---
+  const [needsClick, setNeedsClick] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [pendingRequest, setPendingRequest] = useState<ShareRequest | null>(null);
+  const [waitingForApproval, setWaitingForApproval] = useState(false);
+  const [presenterMode, setPresenterMode] = useState(false);
+  const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
+  const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const panDragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPan: { x: number; y: number } }>({
+    active: false, startMouse: { x: 0, y: 0 }, startPan: { x: 0, y: 0 },
+  });
+
+  const playHandChime = () => {
+    if (!amIAuthority) return;
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+      const t0 = ctx.currentTime;
+      [[660, 0], [880, 0.18], [1100, 0.36]].forEach(([freq, delay]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, t0 + delay);
+        gain.gain.linearRampToValueAtTime(0.18, t0 + delay + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + delay + 0.35);
+        osc.start(t0 + delay);
+        osc.stop(t0 + delay + 0.35);
+      });
+    } catch { /* non-critical */ }
+  };
+
+  // --- ROLE & PARTICIPANT LOGIC ---
   const amITeacher = currentUserRole === "teacher";
-  const teacher = participants.find((p) => {
+  const amIAuthority = currentUserRole ? isAuthority(currentUserRole) : false;
+  const actualTeacher = participants.find((p) => {
     const role = p.isLocal ? currentUserRole : getRole(p);
     return role === "teacher";
   });
+  const adminPresenterParticipant = adminPresenterId
+    ? participants.find((p) => p.identity === adminPresenterId)
+    : null;
+  const isLocalAdminPresenting = amIAuthority && !amITeacher && !actualTeacher && presenterMode;
+  const teacher = actualTeacher || adminPresenterParticipant || (isLocalAdminPresenting ? localParticipant : null) || undefined;
+  const amIIncognito = amIAuthority && !amITeacher && !!actualTeacher;
   const students = participants.filter((p) => {
-    if (p.isLocal && amITeacher) return false;
-    const role = getRole(p);
+    if (p.isLocal && (amITeacher || isLocalAdminPresenting)) return false;
+    const role = p.isLocal ? currentUserRole : getRole(p);
     return role === "student";
   });
-
-  // --- STATE ---
-  const [zoom, setZoom] = useState(1);
-  const [pendingRequest, setPendingRequest] = useState<ShareRequest | null>(null);
-  const [waitingForApproval, setWaitingForApproval] = useState(false);
+  const sortedStudents = [...students].sort((a, b) => {
+    const aRaised = raisedHands.has(a.identity) ? 1 : 0;
+    const bRaised = raisedHands.has(b.identity) ? 1 : 0;
+    return bRaised - aRaised;
+  });
 
   // --- TRACKS ---
   const screenTracks = useTracks(SCREEN_SHARE_SOURCE, SCREEN_SHARE_OPTIONS);
@@ -233,17 +328,17 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
       try {
         const msg = JSON.parse(decoder.decode(payload));
         
-        if (amITeacher && msg.type === "REQUEST_SHARE" && participant) {
+        if (amIAuthority && msg.type === "REQUEST_SHARE" && participant) {
           setPendingRequest({ participantId: participant.identity, name: participant.name || t('classroom.student') });
         }
 
-        if (!amITeacher && msg.type === "ALLOW_SHARE") {
+        if (!amIAuthority && msg.type === "ALLOW_SHARE") {
           setWaitingForApproval(false);
           localParticipant?.setScreenShareEnabled(true, { audio: true });
           toast.success(t('classroom.permissionGranted'));
         }
         
-        if (!amITeacher && msg.type === "DENY_SHARE") {
+        if (!amIAuthority && msg.type === "DENY_SHARE") {
           setWaitingForApproval(false);
           toast.error(t('classroom.permissionDenied'));
         }
@@ -252,6 +347,50 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
            localParticipant?.setScreenShareEnabled(false);
            toast.info(t('classroom.sharingStoppedByTeacher'));
         }
+
+        if (msg.type === "RAISE_HAND" && participant) {
+          setRaisedHands((prev) => new Set(prev).add(participant.identity));
+          if (amIAuthority) {
+            playHandChime();
+            const name = participant.name || participant.identity;
+            toast.custom(
+              (toastId) => (
+                <div className="bg-card border border-amber-400/60 rounded-xl shadow-lg p-3 w-72 flex items-start gap-3">
+                  <div className="bg-amber-100 dark:bg-amber-900/40 p-2 rounded-full flex-shrink-0">
+                    <Hand className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-card-foreground truncate">{name}</p>
+                    <p className="text-xs text-muted-foreground">{t('classroom.raisedHand')}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const encoder = new TextEncoder();
+                      await room.localParticipant.publishData(
+                        encoder.encode(JSON.stringify({ type: "FORCE_LOWER_HAND" })),
+                        { reliable: true, destinationIdentities: [participant.identity] }
+                      );
+                      setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
+                      toast.dismiss(toastId);
+                    }}
+                    className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-800/60 border border-amber-300 dark:border-amber-700 rounded-lg px-2 py-1 flex-shrink-0 transition-colors"
+                  >
+                    {t('classroom.lowerHand')}
+                  </button>
+                </div>
+              ),
+              { id: `hand-${participant.identity}`, duration: 8000 }
+            );
+          }
+        }
+
+        if (msg.type === "LOWER_HAND" && participant) {
+          setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
+        }
+
+        if (msg.type === "ADMIN_PRESENTING" && participant && !amITeacher) {
+          setAdminPresenterId(msg.presenting ? participant.identity : null);
+        }
       } catch (e) {
         console.error("Failed to parse data message", e);
       }
@@ -259,7 +398,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
 
     room.on("dataReceived", handleData);
     return () => { room.off("dataReceived", handleData); };
-  }, [room, amITeacher, isSharingLocally, localParticipant, t]);
+  }, [room, amIAuthority, amITeacher, isSharingLocally, localParticipant, t]);
 
   const requestPermission = async () => {
     if (isScreenSharingActive && !isSharingLocally) {
@@ -285,12 +424,30 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
     setPendingRequest(null);
   };
 
+  const forceLowerHand = async (participantId: string) => {
+    const encoder = new TextEncoder();
+    const data = JSON.stringify({ type: "FORCE_LOWER_HAND" });
+    await room.localParticipant.publishData(encoder.encode(data), {
+      reliable: true,
+      destinationIdentities: [participantId],
+    });
+    setRaisedHands((prev) => { const next = new Set(prev); next.delete(participantId); return next; });
+  };
+
+  const togglePresenterMode = async () => {
+    const newMode = !presenterMode;
+    setPresenterMode(newMode);
+    const encoder = new TextEncoder();
+    const data = JSON.stringify({ type: "ADMIN_PRESENTING", presenting: newMode });
+    await room.localParticipant.publishData(encoder.encode(data), { reliable: true });
+  };
+
   const handleShareClick = async () => {
   if (isSharingLocally) {
     await localParticipant?.setScreenShareEnabled(false);
     return;
   }
-  if (amITeacher) {
+  if (amIAuthority) {
     try {
       await localParticipant?.setScreenShareEnabled(true, { audio: true });
     } catch (error) {
@@ -312,13 +469,43 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   }
 };
 
-  const handleZoom = (delta: number) => setZoom(prev => Math.min(Math.max(prev + delta, 1), 3));
+  const handleZoom = (delta: number) => setZoom(prev => {
+    const next = Math.min(Math.max(prev + delta, 1), 3);
+    if (next === 1) setPan({ x: 0, y: 0 });
+    return next;
+  });
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!panDragRef.current.active || !stageRef.current) return;
+      const dx = e.clientX - panDragRef.current.startMouse.x;
+      const dy = e.clientY - panDragRef.current.startMouse.y;
+      const { offsetWidth: W, offsetHeight: H } = stageRef.current;
+      const maxX = (W * (zoom - 1)) / 2;
+      const maxY = (H * (zoom - 1)) / 2;
+      setPan({
+        x: Math.max(-maxX, Math.min(maxX, panDragRef.current.startPan.x + dx)),
+        y: Math.max(-maxY, Math.min(maxY, panDragRef.current.startPan.y + dy)),
+      });
+    };
+    const handleMouseUp = () => { panDragRef.current.active = false; };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [zoom]);
 
   // --- MEDIA INIT ---
   useEffect(() => {
     const unlockAudio = async () => {
-        try { await room.startAudio(); } 
-        catch { setNeedsClick(true);}
+        try {
+          await room.startAudio();
+          if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+          audioCtxRef.current.resume().catch(() => {});
+        } 
+        catch { setNeedsClick(true); }
     };
     unlockAudio();
   }, [room]);
@@ -341,10 +528,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   }, [localParticipant]);
 
   useEffect(() => {
-    if (currentUserRole !== "teacher") return;
+    if (!amITeacher && !isLocalAdminPresenting) return;
     markLive({ roomName, isLive: true });
     return () => { markLive({ roomName, isLive: false }); };
-  }, [currentUserRole, roomName, markLive]);
+  }, [amITeacher, isLocalAdminPresenting, roomName, markLive]);
 
   return (
     <div className="flex h-full w-full bg-background overflow-hidden font-sans text-foreground relative">
@@ -360,12 +547,12 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         </div>
       )}
 
-      {pendingRequest && amITeacher && (
+      {pendingRequest && amIAuthority && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-card text-card-foreground rounded-xl shadow-2xl border border-border p-4 w-80 animate-in slide-in-from-top-4">
            <div className="flex items-start gap-3">
               <div className="bg-primary/10 p-2 rounded-full"><Hand className="w-5 h-5 text-primary" /></div>
               <div>
-                 <h4 className="font-bold text-sm text-slate-800">{t('classroom.shareRequest', { name: pendingRequest.name })}</h4>
+                 <h4 className="font-bold text-sm text-card-foreground">{t('classroom.shareRequest', { name: pendingRequest.name })}</h4>
                  <p className="text-xs text-muted-foreground mt-1">{t('classroom.shareRequestDescription')}</p>
               </div>
            </div>
@@ -373,6 +560,12 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               <button onClick={() => grantPermission(false)} className="flex-1 py-2 text-xs font-bold text-secondary-foreground bg-secondary hover:bg-secondary/80 rounded-lg">{t('classroom.deny')}</button>
               <button onClick={() => grantPermission(true)} className="flex-1 py-2 text-xs font-bold text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg">{t('classroom.allow')}</button>
            </div>
+        </div>
+      )}
+
+      {amIIncognito && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[90] bg-muted text-muted-foreground rounded-full px-4 py-1.5 text-xs font-medium flex items-center gap-2 border border-border shadow-sm pointer-events-none">
+          <Eye className="w-3 h-3" /> {t('classroom.observingIncognito')}
         </div>
       )}
 
@@ -391,13 +584,17 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           </div>
         </div>
 
-        <div className="flex-1 bg-muted rounded-2xl shadow-xl overflow-hidden relative border-4 border-border flex items-center justify-center group">
+        <div ref={stageRef} className="flex-1 bg-muted rounded-2xl shadow-xl overflow-hidden relative border-4 border-border flex items-center justify-center group">
           {isScreenSharingActive ? (
             <>
               <div 
                 key={activeScreenTrack.publication.trackSid} 
-                className="w-full h-full flex items-center justify-center transition-transform duration-200 ease-out origin-center bg-black relative"
-                style={{ transform: `scale(${zoom})`, cursor: zoom > 1 ? 'grab' : 'default' }}
+                className={`w-full h-full flex items-center justify-center origin-center bg-black relative select-none ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+                style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+                onMouseDown={zoom > 1 ? (e) => {
+                  e.preventDefault();
+                  panDragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPan: { ...pan } };
+                } : undefined}
               >
                 <VideoTrack 
                    trackRef={activeScreenTrack} 
@@ -423,8 +620,8 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               </div>
 
               {teacher && isTeacherVideoOn && (
-                 <DraggablePip initialPos={{ x: 20, y: 20 }}>
-                    <ParticipantTile participant={teacher} variant="mini" className="w-full h-full" showLabel={false} />
+                 <DraggablePip containerRef={stageRef}>
+                    <ParticipantTile participant={teacher} variant="grid" className="w-full h-full" showLabel={true} youLabel={t('classroom.youShort')} />
                  </DraggablePip>
               )}
             </>
@@ -433,24 +630,24 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
               {teacher ? (
                 isTeacherVideoOn ? (
-                  <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={false} />
-                ) : amITeacher ? (
+                  <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={true} roleBadge={t('classroom.teacher')} youLabel={t('classroom.youShort')} />
+                ) : (amITeacher || isLocalAdminPresenting) ? (
                   <div className="z-10 flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-300">
-                      <div className="w-28 h-28 bg-green-100 rounded-full flex items-center justify-center border-4 border-green-500 mb-6 shadow-xl animate-pulse">
-                          <VideoOff className="w-12 h-12 text-green-700" />
+                      <div className="w-28 h-28 bg-success/10 rounded-full flex items-center justify-center border-4 border-success mb-6 shadow-xl animate-pulse">
+                          <VideoOff className="w-12 h-12 text-success" />
                       </div>
-                      <h2 className="text-3xl font-bold text-white">{t('classroom.youAreLive')}</h2>
-                      <p className="text-blue-200 mt-2 text-lg">{t('classroom.cameraOff')}</p>
+                      <h2 className="text-3xl font-bold text-foreground">{t('classroom.youAreLive')}</h2>
+                      <p className="text-muted-foreground mt-2 text-lg">{t('classroom.cameraOff')}</p>
                   </div>
                 ) : (
                   <div className="z-10 flex flex-col items-center justify-center p-8">
                       <div className="w-32 h-32 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center border-4 border-white/20 mb-6 shadow-lg">
                         <span className="text-5xl font-bold text-white">{teacher.name?.charAt(0) || "T"}</span>
                       </div>
-                      <h2 className="text-2xl font-bold text-white">{teacher.name || t('classroom.teacher')}</h2>
-                      <div className="flex items-center gap-2 mt-3 bg-black/40 px-4 py-1.5 rounded-full backdrop-blur-sm border border-white/10">
-                        <Mic className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-green-400" : "text-red-400"}`} />
-                        <span className="text-sm text-green-50 font-medium">{isTeacherAudioOn ? t('classroom.audioOnly') : t('classroom.micOff')}</span>
+                      <h2 className="text-2xl font-bold text-foreground">{teacher.name || t('classroom.teacher')}</h2>
+                      <div className="flex items-center gap-2 mt-3 bg-secondary/80 px-4 py-1.5 rounded-full border border-border">
+                        <Mic className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-success" : "text-destructive"}`} />
+                        <span className="text-sm text-secondary-foreground font-medium">{isTeacherAudioOn ? t('classroom.audioOnly') : t('classroom.micOff')}</span>
                       </div>
                   </div>
                 )
@@ -468,14 +665,6 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         </div>
 
         <div className="h-20 bg-card rounded-2xl shadow-sm border border-border px-6 flex items-center justify-center relative">
-          <div className="absolute left-6 flex items-center gap-3">
-              <div className="w-16 h-10 rounded overflow-hidden border border-border relative shadow-sm">
-                {localParticipant && <ParticipantTile participant={localParticipant} variant="mini" className="w-full h-full" showLabel={false} />}
-              </div>
-              <span className="hidden md:inline xl:hidden text-sm font-bold text-muted-foreground">{t('classroom.youShort')}</span>
-              <span className="hidden xl:inline text-sm font-bold text-muted-foreground">{t('classroom.you', { role: currentUserRole || 'student' })}</span>
-          </div>
-
           <div className="flex items-center gap-2 xl:gap-6">
               <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
               <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
@@ -496,9 +685,23 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               </button>
           </div>
 
-          <button onClick={() => router.back()} className="absolute right-6 px-6 py-2.5 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-full font-bold text-sm flex items-center gap-2 shadow-md">
-            <LogOut className="w-4 h-4" /> {t('classroom.leave')}
-          </button>
+          <div className="absolute right-6 flex items-center gap-2">
+            {amIAuthority && !amITeacher && !actualTeacher && (
+              <button
+                onClick={togglePresenterMode}
+                className={`px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-sm border transition-colors ${
+                  isLocalAdminPresenting
+                    ? 'bg-success/10 text-success border-success/40 hover:bg-success/20'
+                    : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20'
+                }`}
+              >
+                {isLocalAdminPresenting ? t('classroom.exitPresenterRole') : t('classroom.takePresenterRole')}
+              </button>
+            )}
+            <button onClick={() => router.back()} className="px-6 py-2.5 bg-destructive hover:bg-destructive/90 text-white rounded-full font-bold text-sm flex items-center gap-2 shadow-md">
+              <LogOut className="w-4 h-4" /> {t('classroom.leave')}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -508,8 +711,18 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         </div>
         <div className="flex-1 overflow-y-auto p-2 bg-muted/30">
           <div className="grid grid-cols-2 gap-2">
-            {students.length === 0 && <div className="col-span-2 text-center py-10 text-muted-foreground text-xs italic">{amITeacher ? t('classroom.waitingForStudents') : t('classroom.youAreFirst')}</div>}
-            {students.map((p) => <ParticipantTile key={p.identity} variant="grid" participant={p} className="aspect-square rounded-lg border-2 border-border" />)}
+            {sortedStudents.length === 0 && <div className="col-span-2 text-center py-10 text-muted-foreground text-xs italic">{(amITeacher || isLocalAdminPresenting) ? t('classroom.waitingForStudents') : t('classroom.youAreFirst')}</div>}
+            {sortedStudents.map((p) => (
+              <ParticipantTile
+                key={p.identity}
+                variant="grid"
+                participant={p}
+                className={`aspect-square rounded-lg border-2 ${raisedHands.has(p.identity) ? 'border-amber-500' : 'border-border'}`}
+                raisedHand={raisedHands.has(p.identity)}
+                onLowerHand={(amITeacher || isLocalAdminPresenting) ? () => forceLowerHand(p.identity) : undefined}
+                youLabel={t('classroom.youShort')}
+              />
+            ))}
           </div>
         </div>
         <div className="bg-accent/30 border-t border-border p-4">

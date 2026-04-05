@@ -226,7 +226,15 @@
     "teacherView": "Visão do Profesor",
     "platformAccess": "Acesso a {platform}",
     "screenShareAudioNotSupported": "Compartilhar tela com áudio não é suportado neste navegador.",
-    "screenShareFailed": "Falha ao iniciar compartilhamento de tela. Por favor, tente novamente."
+    "screenShareFailed": "Falha ao iniciar compartilhamento de tela. Por favor, tente novamente.",
+    "raiseHand": "Levantar a Mão",
+    "lowerHand": "Baixar a Mão",
+    "handRaised": "✋ Mão levantada!",
+    "raisedHand": "levantou a mão",
+    "observingIncognito": "Observando de Incógnito",
+    "takePresenterRole": "Assumir Papel de Apresentador",
+    "exitPresenterRole": "Sair do Papel de Apresentador",
+    "permissionGrantedClickToStart": "Aprovado! Clique no botão de compartilhar tela para começar."
   },
   "curriculum": {
     "curriculum": "Currículo",
