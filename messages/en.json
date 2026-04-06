@@ -225,6 +225,7 @@
     "openAbekaPortal": "Open Abeka Portal",
     "teacherView": "Teacher View",
     "platformAccess": "{platform} Access",
+    "screenShareNotSupported": "Screen sharing is not supported on this device or browser. On iPad, use Safari.",
     "screenShareAudioNotSupported": "Screen sharing with audio is not supported on this browser.",
     "screenShareFailed": "Failed to start screen share. Please try again.",
     "raiseHand": "Raise Hand",

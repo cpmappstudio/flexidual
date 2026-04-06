@@ -230,6 +230,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [pendingRequest, setPendingRequest] = useState<ShareRequest | null>(null);
   const [waitingForApproval, setWaitingForApproval] = useState(false);
+  const [shareApproved, setShareApproved] = useState(false);
   const [presenterMode, setPresenterMode] = useState(false);
   const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
@@ -334,7 +335,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
 
         if (!amIAuthority && msg.type === "ALLOW_SHARE") {
           setWaitingForApproval(false);
-          localParticipant?.setScreenShareEnabled(true, { audio: true });
+          setShareApproved(true); // requires a user gesture click to actually start — see handleShareClick
           toast.success(t('classroom.permissionGranted'));
         }
         
@@ -443,31 +444,45 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   };
 
   const handleShareClick = async () => {
-  if (isSharingLocally) {
-    await localParticipant?.setScreenShareEnabled(false);
-    return;
-  }
-  if (amIAuthority) {
+    // Pre-flight: Fail fast before allowing any state changes or requests
+    if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+      toast.error(t('classroom.screenShareNotSupported'));
+      return;
+    }
+
+    if (isSharingLocally) {
+      await localParticipant?.setScreenShareEnabled(false);
+      setShareApproved(false);
+      return;
+    }
+
+    // Non-authority without approval: request it and wait for a second click
+    if (!amIAuthority && !shareApproved) {
+      requestPermission();
+      return;
+    }
+
+    // Consume approval before the async call so double-clicks don't re-enter
+    setShareApproved(false);
+
     try {
       await localParticipant?.setScreenShareEnabled(true, { audio: true });
     } catch (error) {
-      if ((error as Error)?.name === "NotAllowedError" || (error as Error)?.message?.includes("Permission denied")) {
-         console.log("Screen share cancelled by user.");
-         return; 
-      }
-      
-      console.warn("Screen share with audio failed, trying video only...", error);
+      const err = error as Error;
+      // User cancelled the picker — nothing to do
+      if (err.name === 'NotAllowedError' || err.message?.includes('Permission denied')) return;
+      // Any other error (NotSupportedError from audio constraint, codec issues, etc.):
+      // retry without audio. If audio: true threw before showing the picker, the user
+      // activation is still live so this call can succeed (feature detection, not UA sniffing).
       try {
-         await localParticipant?.setScreenShareEnabled(true, { audio: false });
-         toast.warning(t('classroom.screenShareAudioNotSupported')); 
+        await localParticipant?.setScreenShareEnabled(true, { audio: false });
+        toast.warning(t('classroom.screenShareAudioNotSupported'));
       } catch {
-         toast.error(t('classroom.screenShareFailed')); 
+        // Both attempts failed — screen sharing is not supported on this device/browser
+        toast.error(t('classroom.screenShareNotSupported'));
       }
     }
-  } else {
-    requestPermission();
-  }
-};
+  };
 
   const handleZoom = (delta: number) => setZoom(prev => {
     const next = Math.min(Math.max(prev + delta, 1), 3);
@@ -674,14 +689,18 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                 className={`
                   w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border relative
                   ${isSharingLocally
-                    ? 'bg-success/20 hover:bg-success/30 text-success border-success/50' 
-                    : waitingForApproval 
+                    ? 'bg-success/20 hover:bg-success/30 text-success border-success/50'
+                    : shareApproved
+                      ? 'bg-primary/20 hover:bg-primary/30 text-primary border-primary/50 animate-pulse'
+                      : waitingForApproval
                         ? 'bg-accent text-accent-foreground border-border cursor-wait'
                         : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border'}
                 `}
                 title={waitingForApproval ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
               >
-                {waitingForApproval ? <div className="animate-pulse"><Hand className="w-5 h-5" /></div> : <MonitorUp className="w-5 h-5" />}
+                {waitingForApproval
+                  ? <div className="animate-pulse"><Hand className="w-5 h-5" /></div>
+                  : <MonitorUp className="w-5 h-5" />}
               </button>
           </div>
 

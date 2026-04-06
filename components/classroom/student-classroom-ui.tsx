@@ -305,6 +305,12 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
   }, [room, isSharingLocally, localParticipant, t]);
 
   const handleShareAction = async () => {
+    // Pre-flight: Fail fast before allowing any state changes or requests
+    if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
+      toast.error(t('classroom.screenShareNotSupported'));
+      return;
+    }
+
     if (isSharingLocally) {
       await localParticipant?.setScreenShareEnabled(false);
       setShareState("idle");
@@ -312,28 +318,18 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
     }
 
     if (shareState === "approved") {
-      if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        toast.error(t('classroom.screenShareNotSupported') || "Screen sharing is not supported in this browser.");
-        setShareState("idle");
-        return;
-      }
-      
+      setShareState("idle");
+
       try {
         await localParticipant?.setScreenShareEnabled(true, { audio: true });
-        setShareState("idle");
       } catch (error) {
-        if ((error as Error)?.name === "NotAllowedError" || (error as Error)?.message?.includes("Permission denied")) {
-           setShareState("idle");
-           return;
-        }
-        
+        const err = error as Error;
+        if (err.name === "NotAllowedError" || err.message?.includes("Permission denied")) return;
         try {
-           await localParticipant?.setScreenShareEnabled(true, { audio: false });
-           toast.warning(t('classroom.screenShareAudioNotSupported')); 
-           setShareState("idle");
-        } catch (fallbackError) {
-           toast.error(`${t('classroom.screenShareFailed')}: ${(fallbackError as Error)?.message || 'Unknown error'}`); 
-           setShareState("idle");
+          await localParticipant?.setScreenShareEnabled(true, { audio: false });
+          toast.warning(t('classroom.screenShareAudioNotSupported'));
+        } catch {
+          toast.error(t('classroom.screenShareNotSupported'));
         }
       }
       return;

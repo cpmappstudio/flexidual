@@ -225,6 +225,7 @@
     "openAbekaPortal": "Abrir Portal da Abeka",
     "teacherView": "Visão do Profesor",
     "platformAccess": "Acesso a {platform}",
+    "screenShareNotSupported": "Compartilhamento de tela não é suportado neste dispositivo ou navegador. No iPad, use o Safari.",
     "screenShareAudioNotSupported": "Compartilhar tela com áudio não é suportado neste navegador.",
     "screenShareFailed": "Falha ao iniciar compartilhamento de tela. Por favor, tente novamente.",
     "raiseHand": "Levantar a Mão",
