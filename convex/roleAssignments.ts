@@ -52,17 +52,23 @@ export const syncRolesToClerk = internalAction({
 
     // 2. Build the dictionary map
     const rolesMap: Record<string, string> = {};
-    
-    for (const assignment of assignments) {
-      if (assignment.orgType === "system") {
-        rolesMap["system"] = assignment.role;
-      } else if (assignment.orgId) {
-        // Fetch the slug for the school or campus to use as the key
-        const slug = await ctx.runQuery(internal.roleAssignments.getOrgSlugInternal, { 
-          orgId: assignment.orgId, 
-          orgType: assignment.orgType 
-        });
-        if (slug) rolesMap[slug] = assignment.role;
+
+    // Superadmins are global — no org-specific roles needed in metadata.
+    const isSuperadmin = assignments.some(a => a.orgType === "system" && a.role === "superadmin");
+    if (isSuperadmin) {
+      rolesMap["system"] = "superadmin";
+    } else {
+      for (const assignment of assignments) {
+        if (assignment.orgType === "system") {
+          rolesMap["system"] = assignment.role;
+        } else if (assignment.orgId) {
+          // Fetch the slug for the school or campus to use as the key
+          const slug = await ctx.runQuery(internal.roleAssignments.getOrgSlugInternal, { 
+            orgId: assignment.orgId, 
+            orgType: assignment.orgType 
+          });
+          if (slug) rolesMap[slug] = assignment.role;
+        }
       }
     }
 

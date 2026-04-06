@@ -126,80 +126,6 @@ export const clearLessonsFromRecurring = internalMutation({
   },
 });
 
-// --- NEW MULTI-TENANT MIGRATIONS ---
-
-// export const runMultiTenantMigration = internalMutation({
-//   handler: async (ctx) => {
-//     const users = await ctx.db.query("users").collect();
-//     if (users.length === 0) throw new Error("No users found to migrate.");
-
-//     // 1. Create a Default School
-//     const schoolId = await ctx.db.insert("schools", {
-//       name: "Default Academy",
-//       slug: "default-academy",
-//       isActive: true,
-//       createdAt: Date.now(),
-//       createdBy: users[0]._id,
-//     });
-
-//     // 2. Create a Default Campus
-//     const campusId = await ctx.db.insert("campuses", {
-//       schoolId: schoolId,
-//       name: "Main Campus",
-//       slug: "main-campus",
-//       isActive: true,
-//       createdAt: Date.now(),
-//       createdBy: users[0]._id,
-//     });
-
-//     // 3. Migrate Users to Role Assignments
-//     for (const user of users) {
-//       if (user.role) {
-//         const existing = await ctx.db.query("roleAssignments").withIndex("by_user", q => q.eq("userId", user._id)).first();
-//         if (existing) continue;
-
-//         if (user.role === "superadmin") {
-//           await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "system", role: "superadmin", assignedAt: Date.now() });
-//         } else if (user.role === "admin") {
-//           await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "school", orgId: schoolId, role: "admin", assignedAt: Date.now() });
-//         } else {
-//           await ctx.db.insert("roleAssignments", { userId: user._id, orgType: "campus", orgId: campusId, role: user.role, assignedAt: Date.now() });
-//         }
-//       }
-//     }
-
-//     // 4. Attach Curriculums to the School
-//     const curriculums = await ctx.db.query("curriculums").collect();
-//     for (const curr of curriculums) {
-//       if (!curr.schoolId) await ctx.db.patch(curr._id, { schoolId });
-//     }
-
-//     // 5. Attach Classes to the Campus
-//     const classes = await ctx.db.query("classes").collect();
-//     for (const cls of classes) {
-//       if (!cls.campusId) await ctx.db.patch(cls._id, { campusId });
-//     }
-
-//     return { success: true, message: "Database migrated! Next step: Run syncAllUsersToClerk action." };
-//   },
-// });
-
-// export const scrubLegacyRoles = internalMutation({
-//   handler: async (ctx) => {
-//     const users = await ctx.db.query("users").collect();
-//     let scrubbedCount = 0;
-
-//     for (const user of users) {
-//       if (user.role !== undefined) {
-//         // In Convex, setting a field to undefined physically removes it from the document
-//         await ctx.db.patch(user._id, { role: undefined });
-//         scrubbedCount++;
-//       }
-//     }
-//     return { success: true, scrubbedCount };
-//   },
-// });
-
 export const syncAllUsersToClerk = internalAction({
   handler: async (ctx) => {
     // Requires an internal query in users.ts: 
@@ -239,7 +165,16 @@ export const elevateToSuperadmin = internalMutation({
       return "User is already a Superadmin!";
     }
 
-    // 3. Grant system-wide Superadmin access
+    // 3. Remove all existing role assignments — superadmin supersedes everything
+    const allAssignments = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    for (const a of allAssignments) {
+      await ctx.db.delete(a._id);
+    }
+
+    // 4. Grant system-wide Superadmin access
     await ctx.db.insert("roleAssignments", {
       userId: user._id,
       orgType: "system",
@@ -247,6 +182,6 @@ export const elevateToSuperadmin = internalMutation({
       assignedAt: Date.now(),
     });
 
-    return `Success! ${args.email} is now a Superadmin. Next: Run syncAllUsersToClerk.`;
+    return `Success! ${args.email} is now a Superadmin. Next: Run healAllUserRoles to sync Clerk metadata.`;
   },
 });

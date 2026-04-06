@@ -29,7 +29,10 @@ export function isSuperAdmin(claims: ClaimsWithMetadata): boolean {
 
 export function getRoleForOrg(claims: ClaimsWithMetadata, orgSlug: string): string | null {
   const roles = getRolesFromClaims(claims);
-  return roles?.[orgSlug] || null;
+  if (!roles) return null;
+  // System-level role (superadmin/admin) always takes precedence over org-specific roles.
+  // This ensures a superadmin is never misidentified when visiting any org context.
+  return roles["system"] ?? roles[orgSlug] ?? null;
 }
 
 export function getRoleBasePath(locale: string, orgSlug: string): string {
