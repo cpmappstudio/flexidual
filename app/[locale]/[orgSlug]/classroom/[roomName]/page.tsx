@@ -1,4 +1,4 @@
-import FlexiClassroom from '@/components/classroom/flexi-classroom';
+import FlexiClassroom from '@/components/classroom/flexi-classroom-client';
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";

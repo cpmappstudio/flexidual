@@ -198,6 +198,7 @@
     "presenter": "Presenter",
     "youAreLive": "You are Live!",
     "cameraOff": "Your camera is off",
+    "cameraOffLabel": "Camera Off",
     "teacher": "Teacher",
     "audioOnly": "Audio Only",
     "micOff": "Mic Off",
@@ -235,7 +236,8 @@
     "observingIncognito": "Observing Incognito",
     "takePresenterRole": "Take Presenter Role",
     "exitPresenterRole": "Exit Presenter Role",
-    "permissionGrantedClickToStart": "Approved! Click the screen share button to begin."
+    "permissionGrantedClickToStart": "Approved! Click the screen share button to begin.",
+    "cameraInUse": "Your camera is already in use by another application. Please close it and try again."
   },
   "curriculum": {
     "curriculum": "Curriculum",

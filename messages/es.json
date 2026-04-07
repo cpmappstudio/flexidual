@@ -197,6 +197,7 @@
     "presenter": "Presentador",
     "youAreLive": "¡Estás en Vivo!",
     "cameraOff": "Tu cámara está apagada",
+    "cameraOffLabel": "Cámara Apagada",
     "teacher": "Profesor",
     "audioOnly": "Solo Audio",
     "micOff": "Micrófono Apagado",
@@ -234,7 +235,8 @@
     "observingIncognito": "Observando de Incógnito",
     "takePresenterRole": "Tomar Rol de Presentador",
     "exitPresenterRole": "Salir del Rol de Presentador",
-    "permissionGrantedClickToStart": "¡Aprobado! Haz clic en el botón de compartir pantalla para comenzar."
+    "permissionGrantedClickToStart": "¡Aprobado! Haz clic en el botón de compartir pantalla para comenzar.",
+    "cameraInUse": "Tu cámara ya está siendo usada por otra aplicación. Por favor, ciérrala e inténtalo de nuevo."
   },
   "curriculum": {
     "curriculum": "Currículo",

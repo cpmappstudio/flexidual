@@ -309,8 +309,8 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   return (
     <div className={`w-full h-full overflow-hidden rounded-lg ${className}`}>
       <LiveKitRoom
-        video={true}
-        audio={true}
+        video={false}
+        audio={false}
         token={token}
         serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
         data-lk-theme="default"

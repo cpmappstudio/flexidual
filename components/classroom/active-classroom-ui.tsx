@@ -16,14 +16,16 @@ import {
   Participant, 
   TrackPublication, 
   RemoteParticipant,
-  RemoteTrackPublication
+  RemoteTrackPublication,
+  RoomEvent,
 } from "livekit-client";
 import { 
   Mic, MicOff, Video as VideoIcon, VideoOff, LogOut, MessageCircle, VolumeX, 
-  MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2, Eye
+  MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2, Eye, Crown,
+  ChevronUp, ChevronDown, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { FlexidualLogo } from "../ui/flexidual-logo";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -60,7 +62,7 @@ function CustomMediaToggle({ source, iconOn, iconOff }: {
   const { toggle, enabled, pending } = useTrackToggle({ source });
   return (
     <button 
-      onClick={() => toggle()}
+    onClick={() => { toggle().catch(console.error); }}
       disabled={pending}
       className={`
         w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border
@@ -84,6 +86,7 @@ function ParticipantTile({
   onLowerHand,
   roleBadge,
   youLabel,
+  audioMuted = false,
 }: { 
   participant: Participant, 
   className?: string, 
@@ -93,6 +96,7 @@ function ParticipantTile({
   onLowerHand?: () => void,
   roleBadge?: string,
   youLabel?: string,
+  audioMuted?: boolean,
 }) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
   const isVideoEnabled = cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
@@ -144,6 +148,13 @@ function ParticipantTile({
           <Hand className="w-3 h-3 text-white" />
         </button>
       )}
+      {audioMuted && (
+        <div className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${
+          variant === "stage" ? "bottom-3 right-3 p-1.5" : "bottom-1 right-1 p-1"
+        }`}>
+          <MicOff className={`text-white ${variant === "stage" ? "w-4 h-4" : "w-3 h-3"}`} />
+        </div>
+      )}
     </div>
   );
 }
@@ -179,11 +190,24 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
       setPos(clampPos(dragRef.current.startPos.x + dx, dragRef.current.startPos.y + dy));
     };
     const handleMouseUp = () => { dragRef.current.active = false; };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!dragRef.current.active) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dx = touch.clientX - dragRef.current.startMouse.x;
+      const dy = touch.clientY - dragRef.current.startMouse.y;
+      setPos(clampPos(dragRef.current.startPos.x + dx, dragRef.current.startPos.y + dy));
+    };
+    const handleTouchEnd = () => { dragRef.current.active = false; };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, []);
 
@@ -197,6 +221,10 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
         if (e.button !== 0) return;
         e.preventDefault();
         dragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPos: { ...pos } };
+      }}
+      onTouchStart={(e) => {
+        const touch = e.touches[0];
+        dragRef.current = { active: true, startMouse: { x: touch.clientX, y: touch.clientY }, startPos: { ...pos } };
       }}
     >
       {children}
@@ -234,11 +262,25 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const [presenterMode, setPresenterMode] = useState(false);
   const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
+  const [classmatesCanScrollPrev, setClassmatesCanScrollPrev] = useState(false);
+  const [classmatesCanScrollNext, setClassmatesCanScrollNext] = useState(false);
+  const [desktopCols, setDesktopCols] = useState<1 | 2>(1);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const classmateTilesRef = useRef<HTMLDivElement>(null);
   const panDragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPan: { x: number; y: number } }>({
     active: false, startMouse: { x: 0, y: 0 }, startPan: { x: 0, y: 0 },
   });
+
+  const updateClassmatesScroll = useCallback(() => {
+    const el = classmateTilesRef.current;
+    if (!el) return;
+    setClassmatesCanScrollPrev(el.scrollTop > 4 || el.scrollLeft > 4);
+    setClassmatesCanScrollNext(
+      (el.scrollHeight - el.scrollTop - el.clientHeight > 4) ||
+      (el.scrollWidth - el.scrollLeft - el.clientWidth > 4)
+    );
+  }, []);
 
   const playHandChime = () => {
     if (!amIAuthority) return;
@@ -401,6 +443,18 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
     return () => { room.off("dataReceived", handleData); };
   }, [room, amIAuthority, amITeacher, isSharingLocally, localParticipant, t]);
 
+  useEffect(() => {
+    const handleMediaError = (error: Error) => {
+      if (error.message?.includes('Device in use') || error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        toast.error(t('classroom.cameraInUse'));
+      } else {
+        console.error('Room media devices error:', error);
+      }
+    };
+    room.on(RoomEvent.MediaDevicesError, handleMediaError);
+    return () => { room.off(RoomEvent.MediaDevicesError, handleMediaError); };
+  }, [room, t]);
+
   const requestPermission = async () => {
     if (isScreenSharingActive && !isSharingLocally) {
       toast.error(t('classroom.someoneSharing'));
@@ -491,10 +545,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   });
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const applyDrag = (clientX: number, clientY: number) => {
       if (!panDragRef.current.active || !stageRef.current) return;
-      const dx = e.clientX - panDragRef.current.startMouse.x;
-      const dy = e.clientY - panDragRef.current.startMouse.y;
+      const dx = clientX - panDragRef.current.startMouse.x;
+      const dy = clientY - panDragRef.current.startMouse.y;
       const { offsetWidth: W, offsetHeight: H } = stageRef.current;
       const maxX = (W * (zoom - 1)) / 2;
       const maxY = (H * (zoom - 1)) / 2;
@@ -503,12 +557,19 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         y: Math.max(-maxY, Math.min(maxY, panDragRef.current.startPan.y + dy)),
       });
     };
+    const handleMouseMove = (e: MouseEvent) => applyDrag(e.clientX, e.clientY);
     const handleMouseUp = () => { panDragRef.current.active = false; };
+    const handleTouchMove = (e: TouchEvent) => { e.preventDefault(); applyDrag(e.touches[0].clientX, e.touches[0].clientY); };
+    const handleTouchEnd = () => { panDragRef.current.active = false; };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [zoom]);
 
@@ -527,20 +588,52 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
 
   useEffect(() => {
     if (!localParticipant) return;
+    // Authority non-teachers join with audio=false/video=false at the LiveKitRoom level,
+    // so no media is ever captured. Nothing to do here for them.
+    if (amIAuthority && !amITeacher) return;
     const initMedia = async () => {
-      try { 
-        await localParticipant.setMicrophoneEnabled(true); 
-      } catch (error) {
-        console.error("Failed to enable microphone:", error);
-      }
-      try { 
-        await localParticipant.setCameraEnabled(true); 
-      } catch (error) {
+      try { await localParticipant.setMicrophoneEnabled(true); } catch (error) { console.error("Failed to enable microphone:", error); }
+      try { await localParticipant.setCameraEnabled(true); } catch (error) {
         console.error("Failed to enable camera:", error);
       }
     };
     initMedia();
-  }, [localParticipant]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localParticipant]); // intentionally run once on join
+
+  // When an admin takes the presenter role, enable their media
+  useEffect(() => {
+    if (!localParticipant || !isLocalAdminPresenting) return;
+    localParticipant.setMicrophoneEnabled(true).catch(() => {});
+    localParticipant.setCameraEnabled(true).catch(() => {});
+  }, [localParticipant, isLocalAdminPresenting]);
+
+  // Classmates scroll overflow detection
+  useEffect(() => {
+    const el = classmateTilesRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateClassmatesScroll, { passive: true });
+    updateClassmatesScroll();
+    return () => el.removeEventListener('scroll', updateClassmatesScroll);
+  }, [updateClassmatesScroll]);
+
+  useEffect(() => { updateClassmatesScroll(); }, [sortedStudents.length, updateClassmatesScroll]);
+
+  useEffect(() => {
+    const el = classmateTilesRef.current;
+    if (!el) return;
+    const compute = () => {
+      const containerH = el.clientHeight;
+      const containerW = el.clientWidth;
+      const tileW = containerW - 16; // p-2 each side
+      const fitsIn1Col = Math.max(1, Math.floor((containerH + 8) / (tileW + 8)));
+      setDesktopCols(sortedStudents.length <= fitsIn1Col ? 1 : 2);
+    };
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    compute();
+    return () => ro.disconnect();
+  }, [sortedStudents.length]);
 
   useEffect(() => {
     if (!amITeacher && !isLocalAdminPresenting) return;
@@ -549,7 +642,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   }, [amITeacher, isLocalAdminPresenting, roomName, markLive]);
 
   return (
-    <div className="flex h-full w-full bg-background overflow-hidden font-sans text-foreground relative">
+    <div className="flex flex-col lg:flex-row h-full w-full bg-background overflow-hidden font-sans text-foreground relative">
       <RoomAudioRenderer />
       
       {needsClick && (
@@ -578,13 +671,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         </div>
       )}
 
-      {amIIncognito && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[90] bg-muted text-muted-foreground rounded-full px-4 py-1.5 text-xs font-medium flex items-center gap-2 border border-border shadow-sm pointer-events-none">
-          <Eye className="w-3 h-3" /> {t('classroom.observingIncognito')}
-        </div>
-      )}
-
-      <div className="flex-1 flex flex-col p-4 gap-4">
+      <div className="flex-1 flex flex-col p-4 gap-4 min-h-0">
         <div className="flex justify-between items-center bg-card p-3 rounded-xl shadow-sm border border-border">
           <div className="flex items-center gap-3">
             <FlexidualLogo />
@@ -599,7 +686,12 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           </div>
         </div>
 
-        <div ref={stageRef} className="flex-1 bg-muted rounded-2xl shadow-xl overflow-hidden relative border-4 border-border flex items-center justify-center group">
+        <div ref={stageRef} className="flex-1 bg-muted rounded-2xl shadow-xl overflow-hidden relative border-4 border-border flex items-center justify-center group min-h-0">
+          {amIIncognito && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/60 text-white backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1.5 shadow-sm pointer-events-none">
+              <Eye className="w-3 h-3 shrink-0" /> {t('classroom.observingIncognito')}
+            </div>
+          )}
           {isScreenSharingActive ? (
             <>
               <div 
@@ -609,6 +701,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                 onMouseDown={zoom > 1 ? (e) => {
                   e.preventDefault();
                   panDragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPan: { ...pan } };
+                } : undefined}
+                onTouchStart={zoom > 1 ? (e) => {
+                  const touch = e.touches[0];
+                  panDragRef.current = { active: true, startMouse: { x: touch.clientX, y: touch.clientY }, startPan: { ...pan } };
                 } : undefined}
               >
                 <VideoTrack 
@@ -645,7 +741,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
               {teacher ? (
                 isTeacherVideoOn ? (
-                  <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={true} roleBadge={t('classroom.teacher')} youLabel={t('classroom.youShort')} />
+                  <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={true} roleBadge={t('classroom.teacher')} youLabel={t('classroom.youShort')} audioMuted={!isTeacherAudioOn} />
                 ) : (amITeacher || isLocalAdminPresenting) ? (
                   <div className="z-10 flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-300">
                       <div className="w-28 h-28 bg-success/10 rounded-full flex items-center justify-center border-4 border-success mb-6 shadow-xl animate-pulse">
@@ -660,9 +756,17 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                         <span className="text-5xl font-bold text-white">{teacher.name?.charAt(0) || "T"}</span>
                       </div>
                       <h2 className="text-2xl font-bold text-foreground">{teacher.name || t('classroom.teacher')}</h2>
-                      <div className="flex items-center gap-2 mt-3 bg-secondary/80 px-4 py-1.5 rounded-full border border-border">
-                        <Mic className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-success" : "text-destructive"}`} />
-                        <span className="text-sm text-secondary-foreground font-medium">{isTeacherAudioOn ? t('classroom.audioOnly') : t('classroom.micOff')}</span>
+                      <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                        <div className="bg-secondary/80 px-3 py-1.5 rounded-full border border-border flex items-center gap-1.5">
+                          <VideoOff className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-sm text-secondary-foreground font-medium">{t('classroom.cameraOffLabel')}</span>
+                        </div>
+                        <div className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${
+                          isTeacherAudioOn ? 'bg-secondary/80 border-border' : 'bg-destructive/10 border-destructive/20'
+                        }`}>
+                          <Mic className={`w-4 h-4 ${isTeacherAudioOn ? 'animate-pulse text-success' : 'text-destructive'}`} />
+                          <span className="text-sm font-medium text-secondary-foreground">{isTeacherAudioOn ? t('classroom.audioOnly') : t('classroom.micOff')}</span>
+                        </div>
                       </div>
                   </div>
                 )
@@ -679,72 +783,154 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           )}
         </div>
 
-        <div className="h-20 bg-card rounded-2xl shadow-sm border border-border px-6 flex items-center justify-center relative">
-          <div className="flex items-center gap-2 xl:gap-6">
-              <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
-              <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
-              <button 
-                onClick={handleShareClick}
-                disabled={waitingForApproval}
-                className={`
-                  w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border relative
-                  ${isSharingLocally
-                    ? 'bg-success/20 hover:bg-success/30 text-success border-success/50'
-                    : shareApproved
-                      ? 'bg-primary/20 hover:bg-primary/30 text-primary border-primary/50 animate-pulse'
-                      : waitingForApproval
-                        ? 'bg-accent text-accent-foreground border-border cursor-wait'
-                        : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border'}
-                `}
-                title={waitingForApproval ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
-              >
-                {waitingForApproval
-                  ? <div className="animate-pulse"><Hand className="w-5 h-5" /></div>
-                  : <MonitorUp className="w-5 h-5" />}
-              </button>
-          </div>
-
-          <div className="absolute right-6 flex items-center gap-2">
+        <div className="h-20 bg-card rounded-2xl shadow-sm border border-border px-4 flex items-center">
+          {/* Left spacer — presenter toggle when applicable */}
+          <div className="flex-1 flex items-center">
             {amIAuthority && !amITeacher && !actualTeacher && (
               <button
                 onClick={togglePresenterMode}
-                className={`px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-sm border transition-colors ${
+                title={isLocalAdminPresenting ? t('classroom.exitPresenterRole') : t('classroom.takePresenterRole')}
+                className={`flex items-center gap-2 rounded-full px-2.5 lg:px-4 h-10 shadow-sm border transition-colors text-xs font-bold ${
                   isLocalAdminPresenting
                     ? 'bg-success/10 text-success border-success/40 hover:bg-success/20'
                     : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20'
                 }`}
               >
-                {isLocalAdminPresenting ? t('classroom.exitPresenterRole') : t('classroom.takePresenterRole')}
+                <Crown className="w-4 h-4 shrink-0" />
+                <span className="hidden lg:inline whitespace-nowrap">
+                  {isLocalAdminPresenting ? t('classroom.exitPresenterRole') : t('classroom.takePresenterRole')}
+                </span>
               </button>
             )}
-            <button onClick={() => router.back()} className="px-6 py-2.5 bg-destructive hover:bg-destructive/90 text-white rounded-full font-bold text-sm flex items-center gap-2 shadow-md">
-              <LogOut className="w-4 h-4" /> {t('classroom.leave')}
+          </div>
+          {/* Centered media controls */}
+          <div className="flex items-center gap-2">
+            <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
+            {!amIIncognito && (
+              <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
+            )}
+            <button
+              onClick={handleShareClick}
+              disabled={waitingForApproval}
+              className={`
+                w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border relative
+                ${isSharingLocally
+                  ? 'bg-success/20 hover:bg-success/30 text-success border-success/50'
+                  : shareApproved
+                    ? 'bg-primary/20 hover:bg-primary/30 text-primary border-primary/50 animate-pulse'
+                    : waitingForApproval
+                      ? 'bg-accent text-accent-foreground border-border cursor-wait'
+                      : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border'}
+              `}
+              title={waitingForApproval ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
+            >
+              {waitingForApproval
+                ? <div className="animate-pulse"><Hand className="w-5 h-5" /></div>
+                : <MonitorUp className="w-5 h-5" />}
+            </button>
+          </div>
+          {/* Right spacer — icon-only Leave */}
+          <div className="flex-1 flex items-center justify-end">
+            <button
+              onClick={() => router.back()}
+              title={t('classroom.leave')}
+              className="w-12 h-12 rounded-full bg-destructive hover:bg-destructive/90 text-white flex items-center justify-center shadow-md transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
             </button>
           </div>
         </div>
       </div>
 
-      <div className="w-72 bg-card border-l border-border flex flex-col shadow-xl z-10">
-        <div className="p-4 bg-primary text-primary-foreground text-center border-b border-border">
-          <h3 className="text-xs font-bold uppercase tracking-widest">{t('classroom.classmates', { count: students.length })}</h3>
+      {/* Classmates: vertical sidebar on lg+, horizontal strip on mobile */}
+      <div className="flex-shrink-0 bg-card border-border shadow-xl z-10 flex
+        lg:flex-col lg:w-72 lg:border-l lg:h-auto
+        flex-col border-t h-36">
+
+        {/* Header + nav arrows (arrows only when overflow exists) */}
+        <div className="bg-primary text-primary-foreground flex items-center gap-2 px-3 flex-shrink-0
+          lg:py-2.5 lg:border-b lg:border-border
+          py-1.5 border-b border-border">
+          <h3 className="flex-1 text-xs font-bold uppercase tracking-widest truncate">
+            {t('classroom.classmates', { count: students.length })}
+          </h3>
+          {/* Desktop: scroll up/down — only when needed */}
+          {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
+            <div className="hidden lg:flex items-center gap-0.5">
+              <button
+                onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })}
+                disabled={!classmatesCanScrollPrev}
+                className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })}
+                disabled={!classmatesCanScrollNext}
+                className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          {/* Mobile: scroll left/right — only when needed */}
+          {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
+            <div className="flex lg:hidden items-center gap-0.5">
+              <button
+                onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })}
+                disabled={!classmatesCanScrollPrev}
+                className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })}
+                disabled={!classmatesCanScrollNext}
+                className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
-        <div className="flex-1 overflow-y-auto p-2 bg-muted/30">
-          <div className="grid grid-cols-2 gap-2">
-            {sortedStudents.length === 0 && <div className="col-span-2 text-center py-10 text-muted-foreground text-xs italic">{(amITeacher || isLocalAdminPresenting) ? t('classroom.waitingForStudents') : t('classroom.youAreFirst')}</div>}
-            {sortedStudents.map((p) => (
-              <ParticipantTile
-                key={p.identity}
-                variant="grid"
-                participant={p}
-                className={`aspect-square rounded-lg border-2 ${raisedHands.has(p.identity) ? 'border-amber-500' : 'border-border'}`}
-                raisedHand={raisedHands.has(p.identity)}
-                onLowerHand={(amITeacher || isLocalAdminPresenting) ? () => forceLowerHand(p.identity) : undefined}
-                youLabel={t('classroom.youShort')}
-              />
-            ))}
-          </div>
+
+        {/* Tiles — smart grid (desktop) / single row (mobile) */}
+        <div
+          ref={classmateTilesRef}
+          className={`flex-1 min-h-0 min-w-0 bg-muted/30 p-2 gap-2
+            flex flex-row
+            overflow-x-auto overflow-y-hidden
+            lg:grid lg:content-start
+            lg:overflow-y-auto lg:overflow-x-hidden
+            ${desktopCols === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`}
+        >
+          {sortedStudents.length === 0 && (
+            <div className={`${desktopCols === 2 ? 'lg:col-span-2' : ''} flex items-center justify-center w-full text-muted-foreground text-xs italic text-center px-2 whitespace-nowrap lg:whitespace-normal`}>
+              {(amITeacher || isLocalAdminPresenting) ? t('classroom.waitingForStudents') : t('classroom.youAreFirst')}
+            </div>
+          )}
+          {sortedStudents.map((p) => (
+            <ParticipantTile
+              key={p.identity}
+              variant="grid"
+              participant={p}
+              className={`
+                flex-shrink-0 rounded-xl border-2 overflow-hidden
+                aspect-square w-24
+                lg:w-auto
+                ${raisedHands.has(p.identity)
+                  ? 'border-amber-500 shadow-[0_0_8px_2px] shadow-amber-500/40'
+                  : 'border-border'}
+              `}
+              raisedHand={raisedHands.has(p.identity)}
+              onLowerHand={(amITeacher || isLocalAdminPresenting) ? () => forceLowerHand(p.identity) : undefined}
+              youLabel={t('classroom.youShort')}
+            />
+          ))}
         </div>
-        <div className="bg-accent/30 border-t border-border p-4">
+
+        {/* Tutor footer: desktop only */}
+        <div className="hidden lg:flex flex-col bg-accent/30 border-t border-border p-4 flex-shrink-0">
            <div className="flex items-center gap-2 mb-3">
               <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-bold border-2 border-border shadow-sm">T</div>
               <div><p className="text-xs font-bold text-foreground">{t('classroom.liveTutor')}</p><p className="text-[10px] text-success font-medium">● {t('classroom.online')}</p></div>

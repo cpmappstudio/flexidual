@@ -14,14 +14,15 @@ import {
   Participant, 
   TrackPublication,
   RemoteParticipant,
-  RemoteTrackPublication
+  RemoteTrackPublication,
+  RoomEvent,
 } from "livekit-client";
 import { 
   Mic, MicOff, Video as VideoIcon, VideoOff, Loader2, VolumeX,
   ZoomIn, ZoomOut, Move, MessageCircle, LogOut,
-  MonitorUp, Hand
+  MonitorUp, Hand, ChevronUp, ChevronDown, ChevronLeft, ChevronRight
 } from "lucide-react";
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
@@ -45,7 +46,7 @@ function CustomMediaToggle({ source, iconOn, iconOff }: {
   const { toggle, enabled, pending } = useTrackToggle({ source });
   return (
     <button 
-      onClick={() => toggle()}
+      onClick={() => { toggle().catch(console.error); }}
       disabled={pending}
       className={`
         w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg
@@ -68,6 +69,7 @@ function ParticipantTile({
   raisedHand = false,
   roleBadge,
   youLabel,
+  audioMuted = false,
 }: { 
   participant: Participant, 
   className?: string, 
@@ -76,6 +78,7 @@ function ParticipantTile({
   raisedHand?: boolean,
   roleBadge?: string,
   youLabel?: string,
+  audioMuted?: boolean,
 }) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
   const isVideoEnabled = cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
@@ -121,6 +124,13 @@ function ParticipantTile({
           <Hand className="w-3 h-3 text-white" />
         </div>
       )}
+      {audioMuted && (
+        <div className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${
+          variant === "stage" ? "bottom-3 right-3 p-1.5" : "bottom-1 right-1 p-1"
+        }`}>
+          <MicOff className={`text-white ${variant === "stage" ? "w-4 h-4" : "w-3 h-3"}`} />
+        </div>
+      )}
     </div>
   );
 }
@@ -156,11 +166,24 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
       setPos(clampPos(dragRef.current.startPos.x + dx, dragRef.current.startPos.y + dy));
     };
     const handleMouseUp = () => { dragRef.current.active = false; };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!dragRef.current.active) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dx = touch.clientX - dragRef.current.startMouse.x;
+      const dy = touch.clientY - dragRef.current.startMouse.y;
+      setPos(clampPos(dragRef.current.startPos.x + dx, dragRef.current.startPos.y + dy));
+    };
+    const handleTouchEnd = () => { dragRef.current.active = false; };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, []);
 
@@ -174,6 +197,10 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
         if (e.button !== 0) return;
         e.preventDefault();
         dragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPos: { ...pos } };
+      }}
+      onTouchStart={(e) => {
+        const touch = e.touches[0];
+        dragRef.current = { active: true, startMouse: { x: touch.clientX, y: touch.clientY }, startPos: { ...pos } };
       }}
     >
       {children}
@@ -202,10 +229,24 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
   const [handRaised, setHandRaised] = useState(false);
   const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
+  const [classmatesCanScrollPrev, setClassmatesCanScrollPrev] = useState(false);
+  const [classmatesCanScrollNext, setClassmatesCanScrollNext] = useState(false);
+  const [desktopCols, setDesktopCols] = useState<1 | 2>(1);
   const stageRef = useRef<HTMLDivElement>(null);
+  const classmateTilesRef = useRef<HTMLDivElement>(null);
   const panDragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPan: { x: number; y: number } }>({
     active: false, startMouse: { x: 0, y: 0 }, startPan: { x: 0, y: 0 },
   });
+
+  const updateClassmatesScroll = useCallback(() => {
+    const el = classmateTilesRef.current;
+    if (!el) return;
+    setClassmatesCanScrollPrev(el.scrollTop > 4 || el.scrollLeft > 4);
+    setClassmatesCanScrollNext(
+      (el.scrollHeight - el.scrollTop - el.clientHeight > 4) ||
+      (el.scrollWidth - el.scrollLeft - el.clientWidth > 4)
+    );
+  }, []);
 
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
@@ -304,6 +345,18 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
     return () => { room.off("dataReceived", handleData); };
   }, [room, isSharingLocally, localParticipant, t]);
 
+  useEffect(() => {
+    const handleMediaError = (error: Error) => {
+      if (error.message?.includes('Device in use') || error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        toast.error(t('classroom.cameraInUse'));
+      } else {
+        console.error('Room media devices error:', error);
+      }
+    };
+    room.on(RoomEvent.MediaDevicesError, handleMediaError);
+    return () => { room.off(RoomEvent.MediaDevicesError, handleMediaError); };
+  }, [room, t]);
+
   const handleShareAction = async () => {
     // Pre-flight: Fail fast before allowing any state changes or requests
     if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
@@ -366,10 +419,10 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
   });
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const applyDrag = (clientX: number, clientY: number) => {
       if (!panDragRef.current.active || !stageRef.current) return;
-      const dx = e.clientX - panDragRef.current.startMouse.x;
-      const dy = e.clientY - panDragRef.current.startMouse.y;
+      const dx = clientX - panDragRef.current.startMouse.x;
+      const dy = clientY - panDragRef.current.startMouse.y;
       const { offsetWidth: W, offsetHeight: H } = stageRef.current;
       const maxX = (W * (zoom - 1)) / 2;
       const maxY = (H * (zoom - 1)) / 2;
@@ -378,12 +431,19 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
         y: Math.max(-maxY, Math.min(maxY, panDragRef.current.startPan.y + dy)),
       });
     };
+    const handleMouseMove = (e: MouseEvent) => applyDrag(e.clientX, e.clientY);
     const handleMouseUp = () => { panDragRef.current.active = false; };
+    const handleTouchMove = (e: TouchEvent) => { e.preventDefault(); applyDrag(e.touches[0].clientX, e.touches[0].clientY); };
+    const handleTouchEnd = () => { panDragRef.current.active = false; };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [zoom]);
 
@@ -412,14 +472,42 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
   useEffect(() => {
     if (!localParticipant) return;
     const initMedia = async () => {
-      try { await localParticipant.setMicrophoneEnabled(true); } catch {}
-      try { await localParticipant.setCameraEnabled(true); } catch {}
+      try { await localParticipant.setMicrophoneEnabled(true); } catch (error) { console.error("Failed to enable microphone:", error); }
+      try { await localParticipant.setCameraEnabled(true); } catch (error) {
+        console.error("Failed to enable camera:", error);
+      }
     };
     initMedia();
   }, [localParticipant]);
 
+  useEffect(() => {
+    const el = classmateTilesRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateClassmatesScroll, { passive: true });
+    updateClassmatesScroll();
+    return () => el.removeEventListener('scroll', updateClassmatesScroll);
+  }, [updateClassmatesScroll]);
+
+  useEffect(() => { updateClassmatesScroll(); }, [sortedStudents.length, updateClassmatesScroll]);
+
+  useEffect(() => {
+    const el = classmateTilesRef.current;
+    if (!el) return;
+    const compute = () => {
+      const containerH = el.clientHeight;
+      const containerW = el.clientWidth;
+      const tileW = containerW - 16; // p-2 each side
+      const fitsIn1Col = Math.max(1, Math.floor((containerH + 8) / (tileW + 8)));
+      setDesktopCols(sortedStudents.length <= fitsIn1Col ? 1 : 2);
+    };
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    compute();
+    return () => ro.disconnect();
+  }, [sortedStudents.length]);
+
   return (
-    <div className="flex h-full w-full bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden font-sans relative">
+    <div className="flex flex-col lg:flex-row h-full w-full bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden font-sans relative">
       <RoomAudioRenderer />
       
       {needsClick && (
@@ -438,7 +526,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col p-4 gap-4">
+      <div className="flex-1 flex flex-col p-4 gap-4 min-h-0">
         {/* Header */}
         <div className="flex justify-between items-center bg-white/90 dark:bg-gray-900/90 backdrop-blur-md p-3 rounded-2xl shadow-lg border-2 border-purple-300 dark:border-purple-700">
           <div className="flex flex-col">
@@ -452,7 +540,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
         </div>
 
         {/* Main Stage */}
-        <div ref={stageRef} className="flex-1 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl shadow-2xl overflow-hidden relative border-4 border-purple-400 dark:border-purple-600 flex items-center justify-center group">
+        <div ref={stageRef} className="flex-1 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl shadow-2xl overflow-hidden relative border-4 border-purple-400 dark:border-purple-600 flex items-center justify-center group min-h-0">
           {isScreenSharingActive ? (
             <>
               <div 
@@ -461,6 +549,10 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
                 onMouseDown={zoom > 1 ? (e) => {
                   e.preventDefault();
                   panDragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPan: { ...pan } };
+                } : undefined}
+                onTouchStart={zoom > 1 ? (e) => {
+                  const touch = e.touches[0];
+                  panDragRef.current = { active: true, startMouse: { x: touch.clientX, y: touch.clientY }, startPan: { ...pan } };
                 } : undefined}
               >
                 <VideoTrack 
@@ -497,16 +589,24 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
               <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
               {teacher ? (
                 isTeacherVideoOn ? (
-                  <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={true} roleBadge={t('classroom.teacher')} youLabel={t('classroom.youShort')} />
+                  <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={true} roleBadge={t('classroom.teacher')} youLabel={t('classroom.youShort')} audioMuted={!isTeacherAudioOn} />
                 ) : (
                   <div className="z-10 flex flex-col items-center justify-center p-8 text-center">
                       <div className="w-40 h-40 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center border-8 border-white/20 mb-6 shadow-2xl">
                         <span className="text-7xl font-bold text-white">{teacher.name?.charAt(0) || "T"}</span>
                       </div>
                       <h2 className="text-3xl font-black text-white mb-2">{teacher.name || t('classroom.teacher')}</h2>
-                      <div className="flex items-center gap-2 mt-3 bg-black/40 px-4 py-2 rounded-full backdrop-blur-sm border-2 border-white/20">
-                        <Mic className={`w-5 h-5 ${isTeacherAudioOn ? "animate-pulse text-green-400" : "text-red-400"}`} />
-                        <span className="text-sm text-white font-bold">{isTeacherAudioOn ? t('classroom.audioOnly') : t('classroom.micOff')}</span>
+                      <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                        <div className="bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm border-2 border-white/20 flex items-center gap-1.5">
+                          <VideoOff className="w-4 h-4 text-white/70" />
+                          <span className="text-sm text-white font-bold">{t('classroom.cameraOffLabel')}</span>
+                        </div>
+                        <div className={`px-3 py-1.5 rounded-full backdrop-blur-sm border-2 flex items-center gap-1.5 ${
+                          isTeacherAudioOn ? 'bg-black/40 border-white/20' : 'bg-red-500/40 border-red-400/60'
+                        }`}>
+                          <Mic className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-green-400" : "text-red-300"}`} />
+                          <span className="text-sm text-white font-bold">{isTeacherAudioOn ? t('classroom.audioOnly') : t('classroom.micOff')}</span>
+                        </div>
                       </div>
                   </div>
                 )
@@ -521,8 +621,11 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
         </div>
 
         {/* Controls */}
-        <div className="h-24 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md rounded-3xl shadow-lg border-2 border-purple-300 dark:border-purple-700 px-6 flex items-center justify-center relative">
-          <div className="flex items-center gap-2 xl:gap-6">
+        <div className="h-24 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md rounded-3xl shadow-lg border-2 border-purple-300 dark:border-purple-700 px-4 flex items-center">
+          {/* Left spacer */}
+          <div className="flex-1" />
+          {/* Centered controls */}
+          <div className="flex items-center gap-2">
               <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-6 h-6" />} iconOff={<MicOff className="w-6 h-6" />} />
               <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-6 h-6" />} iconOff={<VideoOff className="w-6 h-6" />} />
               <button
@@ -555,45 +658,91 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
                 {shareState === "requesting" ? <MonitorUp className="w-6 h-6 animate-bounce" /> : <MonitorUp className="w-6 h-6" />}
               </button>
           </div>
-
-          <button 
-            onClick={handleLeave} 
-            className="absolute right-6 px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-full font-bold text-sm flex items-center gap-2 shadow-lg border-2 border-red-300"
-          >
-            <LogOut className="w-4 h-4" /> {t('classroom.leave')}
-          </button>
+          {/* Right spacer — icon-only Leave */}
+          <div className="flex-1 flex items-center justify-end">
+            <button
+              onClick={handleLeave}
+              title={t('classroom.leave')}
+              className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg border-2 border-red-300 transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Classmates Sidebar */}
-      <div className="w-72 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-l-2 border-purple-300 dark:border-purple-700 flex flex-col shadow-xl z-10">
-        <div className="p-4 bg-purple-600 dark:bg-purple-700 text-white text-center border-b-2 border-purple-700 dark:border-purple-800">
-          <h3 className="text-sm font-black uppercase tracking-widest">{t('classroom.classmates', { count: students.length })}</h3>
+      {/* Classmates: vertical sidebar on lg+, horizontal strip on mobile */}
+      <div className="flex-shrink-0 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-xl z-10 flex
+        lg:flex-col lg:w-72 lg:border-l-2 lg:border-purple-300 dark:lg:border-purple-700 lg:h-auto
+        flex-col border-t-2 border-purple-300 dark:border-purple-700 h-36">
+
+        {/* Header + conditional nav arrows */}
+        <div className="bg-purple-600 dark:bg-purple-700 text-white flex items-center gap-2 px-3 flex-shrink-0
+          lg:py-2.5 lg:border-b-2 lg:border-purple-700 dark:lg:border-purple-800
+          py-1.5 border-b-2 border-purple-700 dark:border-purple-800">
+          <h3 className="flex-1 text-xs font-black uppercase tracking-widest truncate">
+            {t('classroom.classmates', { count: students.length })}
+          </h3>
+          {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
+            <div className="hidden lg:flex items-center gap-0.5">
+              <button onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30">
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30">
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
+            <div className="flex lg:hidden items-center gap-0.5">
+              <button onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30">
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30">
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
-        <div className="flex-1 overflow-y-auto p-3 bg-purple-50/50 dark:bg-gray-800/50">
-          <div className="grid grid-cols-2 gap-3">
-            {sortedStudents.length === 0 && (
-              <div className="col-span-2 text-center py-10 text-gray-500 dark:text-gray-400 text-sm font-medium">
-                {t('classroom.youAreFirst')}
-              </div>
-            )}
-            {sortedStudents.map((p) => (
-              <ParticipantTile 
-                key={p.identity} 
-                variant="grid" 
-                participant={p} 
-                className={`aspect-square rounded-2xl border-4 shadow-md ${
+
+        {/* Tiles — smart grid (desktop) / single scrollable row (mobile) */}
+        <div
+          ref={classmateTilesRef}
+          className={`flex-1 min-h-0 min-w-0 bg-purple-50/50 dark:bg-gray-800/50 p-2 gap-2
+            flex flex-row
+            overflow-x-auto overflow-y-hidden
+            lg:grid lg:content-start
+            lg:overflow-y-auto lg:overflow-x-hidden
+            ${desktopCols === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`}
+        >
+          {sortedStudents.length === 0 && (
+            <div className={`${desktopCols === 2 ? 'lg:col-span-2' : ''} flex items-center justify-center w-full text-gray-500 dark:text-gray-400 text-xs italic text-center px-2 whitespace-nowrap lg:whitespace-normal`}>
+              {t('classroom.youAreFirst')}
+            </div>
+          )}
+          {sortedStudents.map((p) => (
+            <ParticipantTile 
+              key={p.identity} 
+              variant="grid" 
+              participant={p} 
+              className={`
+                flex-shrink-0 rounded-2xl border-4 shadow-md overflow-hidden
+                aspect-square w-24
+                lg:w-auto
+                ${
                   raisedHands.has(p.identity) || (p.isLocal && handRaised)
-                    ? 'border-amber-400 dark:border-amber-500'
+                    ? 'border-amber-400 dark:border-amber-500 shadow-[0_0_8px_2px] shadow-amber-500/40'
                     : 'border-purple-300 dark:border-purple-600'
-                }`}
-                raisedHand={raisedHands.has(p.identity) || (p.isLocal && handRaised)}
-                youLabel={t('classroom.youShort')}
-              />
-            ))}
-          </div>
+                }
+              `}
+              raisedHand={raisedHands.has(p.identity) || (p.isLocal && handRaised)}
+              youLabel={t('classroom.youShort')}
+            />
+          ))}
         </div>
-        <div className="bg-yellow-100 dark:bg-yellow-900/30 border-t-2 border-yellow-300 dark:border-yellow-700 p-4">
+
+        {/* Tutor footer: desktop only */}
+        <div className="hidden lg:flex flex-col bg-yellow-100 dark:bg-yellow-900/30 border-t-2 border-yellow-300 dark:border-yellow-700 p-4 flex-shrink-0">
            <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white font-black text-xl border-4 border-yellow-500 shadow-md">T</div>
               <div>

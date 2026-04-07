@@ -198,6 +198,7 @@
     "presenter": "Apresentador",
     "youAreLive": "Você está ao Vivo!",
     "cameraOff": "Sua câmera está desligada",
+    "cameraOffLabel": "Câmera Desligada",
     "teacher": "Professor",
     "audioOnly": "Somente Áudio",
     "micOff": "Microfone Desligado",
@@ -235,7 +236,8 @@
     "observingIncognito": "Observando de Incógnito",
     "takePresenterRole": "Assumir Papel de Apresentador",
     "exitPresenterRole": "Sair do Papel de Apresentador",
-    "permissionGrantedClickToStart": "Aprovado! Clique no botão de compartilhar tela para começar."
+    "permissionGrantedClickToStart": "Aprovado! Clique no botão de compartilhar tela para começar.",
+    "cameraInUse": "Sua câmera já está sendo usada por outro aplicativo. Feche-o e tente novamente."
   },
   "curriculum": {
     "curriculum": "Currículo",
