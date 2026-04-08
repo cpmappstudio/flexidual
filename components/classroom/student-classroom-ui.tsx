@@ -592,7 +592,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
                   <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={true} roleBadge={t('classroom.teacher')} youLabel={t('classroom.youShort')} audioMuted={!isTeacherAudioOn} />
                 ) : (
                   <div className="z-10 flex flex-col items-center justify-center p-8 text-center">
-                      <div className="w-40 h-40 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center border-8 border-white/20 mb-6 shadow-2xl overflow-hidden">
+                      <div className="w-40 h-40 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center border-4 border-white/20 mb-6 shadow-2xl overflow-hidden">
                         {getImageUrl(teacher) ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={getImageUrl(teacher)!} alt={teacher.name || ""} className="w-full h-full object-cover" />

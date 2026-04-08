@@ -755,7 +755,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                   </div>
                 ) : (
                   <div className="z-10 flex flex-col items-center justify-center p-8">
-                      <div className="w-32 h-32 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center border-4 border-white/20 mb-6 shadow-lg overflow-hidden">
+                      <div className="w-32 h-32 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center border-2 border-white/20 mb-6 shadow-lg overflow-hidden">
                         {getImageUrl(teacher) ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={getImageUrl(teacher)!} alt={teacher.name || ""} className="w-full h-full object-cover" />
