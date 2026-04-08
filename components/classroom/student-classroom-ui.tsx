@@ -274,11 +274,23 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
     const role = getRole(p);
     return role === "student";
   });
-  const sortedStudents = [...students].sort((a, b) => {
-    const aRaised = (raisedHands.has(a.identity) || (a.isLocal && handRaised)) ? 1 : 0;
-    const bRaised = (raisedHands.has(b.identity) || (b.isLocal && handRaised)) ? 1 : 0;
-    return bRaised - aRaised;
-  });
+  const sortedStudents = useMemo(() => {
+    const raisedHandsQueue = Array.from(raisedHands);
+    return [...students].sort((a, b) => {
+      const aRaised = raisedHands.has(a.identity) || (a.isLocal && handRaised);
+      const bRaised = raisedHands.has(b.identity) || (b.isLocal && handRaised);
+      if (aRaised && bRaised) {
+        const indexA = raisedHandsQueue.indexOf(a.identity);
+        const indexB = raisedHandsQueue.indexOf(b.identity);
+        const safeIndexA = indexA === -1 ? Infinity : indexA;
+        const safeIndexB = indexB === -1 ? Infinity : indexB;
+        return safeIndexA - safeIndexB;
+      }
+      if (aRaised) return -1;
+      if (bRaised) return 1;
+      return (a.name || a.identity).localeCompare(b.name || b.identity);
+    });
+  }, [students, raisedHands, handRaised]);
 
   const screenTracks = useTracks([Track.Source.ScreenShare], { updateOnlyOn: [], onlySubscribed: false });
   

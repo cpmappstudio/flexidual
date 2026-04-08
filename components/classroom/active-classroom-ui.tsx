@@ -338,11 +338,17 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
     const role = p.isLocal ? currentUserRole : getRole(p);
     return role === "student";
   });
-  const sortedStudents = [...students].sort((a, b) => {
-    const aRaised = raisedHands.has(a.identity) ? 1 : 0;
-    const bRaised = raisedHands.has(b.identity) ? 1 : 0;
-    return bRaised - aRaised;
-  });
+  const sortedStudents = useMemo(() => {
+    const raisedHandsQueue = Array.from(raisedHands);
+    return [...students].sort((a, b) => {
+      const aRaised = raisedHands.has(a.identity);
+      const bRaised = raisedHands.has(b.identity);
+      if (aRaised && bRaised) return raisedHandsQueue.indexOf(a.identity) - raisedHandsQueue.indexOf(b.identity);
+      if (aRaised) return -1;
+      if (bRaised) return 1;
+      return (a.name || a.identity).localeCompare(b.name || b.identity);
+    });
+  }, [students, raisedHands]);
 
   // --- TRACKS ---
   const screenTracks = useTracks(SCREEN_SHARE_SOURCE, SCREEN_SHARE_OPTIONS);
