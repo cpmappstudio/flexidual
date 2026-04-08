@@ -17,7 +17,7 @@ import { FlexidualLogo } from "./ui/flexidual-logo"
 import { OrgSwitcher } from "./org-switcher"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { state } = useSidebar()
+  const { state, openMobile } = useSidebar()
   const collapsed = state === "collapsed";
   return (
     <Sidebar 
@@ -27,7 +27,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     >
       {/* 1. Header: User Profile */}
       <SidebarHeader className="flex items-center justify-center pt-6">
-        <FlexidualLogo stacked={collapsed} />
+        <FlexidualLogo stacked={collapsed || (openMobile && collapsed)} />
         <OrgSwitcher />
       </SidebarHeader>
 

@@ -623,6 +623,17 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
               )}
             </>
           )}
+
+          {/* FLOATING TUTOR BUTTON (Portrait/Mobile Only) */}
+          <div className="absolute bottom-4 left-4 landscape:lg:hidden xl:hidden z-50">
+            <button className="flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md px-3 py-2 rounded-full border-2 border-purple-300 dark:border-purple-600 shadow-lg hover:bg-purple-50 dark:hover:bg-purple-900/50 transition-colors" title={t('classroom.chatWithTutor')}>
+              <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 text-white font-bold text-sm border-2 border-yellow-500 shadow-sm">
+                T
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></span>
+              </div>
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-200 hidden sm:inline">{t('classroom.chatWithTutor')}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -703,7 +714,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
         {/* Responsive Tiles Auto-Grid */}
         <div
           ref={classmateTilesRef}
-          className="flex-1 min-h-0 min-w-0 bg-purple-50/50 dark:bg-gray-800/50 p-2 md:p-3 gap-2 md:gap-3 flex flex-row overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:grid md:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] md:auto-rows-max md:overflow-y-auto md:overflow-x-hidden md:snap-y md:content-start md:items-start landscape:grid landscape:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:auto-rows-max landscape:overflow-y-auto landscape:overflow-x-hidden landscape:snap-y landscape:content-start landscape:items-start scrollbar-thin"
+          className="flex-1 min-h-0 min-w-0 bg-purple-50/50 dark:bg-gray-800/50 p-2 md:p-3 gap-2 md:gap-3 flex flex-row overflow-x-auto overflow-y-hidden snap-x snap-mandatory landscape:lg:grid landscape:lg:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:lg:auto-rows-max landscape:lg:overflow-y-auto landscape:lg:overflow-x-hidden landscape:lg:snap-y landscape:lg:content-start landscape:lg:items-start xl:grid xl:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] xl:auto-rows-max xl:overflow-y-auto xl:overflow-x-hidden xl:snap-y xl:content-start xl:items-start scrollbar-thin"
         >
           {sortedStudents.length === 0 && (
             <div className="md:col-span-full landscape:col-span-full flex items-center justify-center w-full text-gray-500 dark:text-gray-400 text-xs italic text-center px-2 whitespace-nowrap md:whitespace-normal h-full">
@@ -715,7 +726,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
               key={p.identity}
               variant="grid"
               participant={p}
-              className={`flex-shrink-0 rounded-2xl border-4 shadow-md overflow-hidden aspect-square w-24 md:w-full md:h-auto landscape:w-full landscape:h-auto snap-start snap-always
+              className={`flex-shrink-0 rounded-2xl border-4 shadow-md overflow-hidden aspect-square w-24 sm:w-28 landscape:lg:w-full landscape:lg:h-auto xl:w-full xl:h-auto snap-start snap-always
                 ${raisedHands.has(p.identity) || (p.isLocal && handRaised) ? 'border-amber-400 dark:border-amber-500 shadow-[0_0_8px_2px] shadow-amber-500/40' : 'border-purple-300 dark:border-purple-600'}`}
               raisedHand={raisedHands.has(p.identity) || (p.isLocal && handRaised)}
               youLabel={t('classroom.youShort')}
@@ -724,7 +735,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
         </div>
 
         {/* Tutor footer */}
-        <div className="hidden md:flex landscape:flex flex-col bg-yellow-100 dark:bg-yellow-900/30 border-t-2 border-yellow-300 dark:border-yellow-700 p-4 flex-shrink-0">
+        <div className="hidden landscape:lg:flex xl:flex flex-col bg-yellow-100 dark:bg-yellow-900/30 border-t-2 border-yellow-300 dark:border-yellow-700 p-4 flex-shrink-0">
            <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white font-black text-xl border-4 border-yellow-500 shadow-md">T</div>
               <div>

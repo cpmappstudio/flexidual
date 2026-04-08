@@ -35,10 +35,14 @@ export function UserAvatarTrigger({
   }
 
   return (
-    <Avatar className={`h-${size/4} w-${size/4} ${className}`}>
-      <AvatarImage 
-        src={imageUrl} 
-        alt={user.fullName || user.username || "User"} 
+    <Avatar
+      className={`rounded-full overflow-hidden ${className}`}
+      style={{ width: size, height: size }}
+    >
+      <AvatarImage
+        src={imageUrl}
+        alt={user.fullName || user.username || "User"}
+        className="object-cover"
       />
       <AvatarFallback className="bg-muted">
         <Image 

@@ -641,7 +641,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   }, [amITeacher, isLocalAdminPresenting, roomName, markLive]);
 
   return (
-    <div className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] md:grid-cols-[1fr_280px] md:grid-rows-[min-content_1fr_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] lg:grid-cols-[1fr_320px]">
+    <div className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] landscape:lg:grid-cols-[1fr_280px] landscape:lg:grid-rows-[min-content_1fr_min-content] xl:grid-cols-[1fr_320px] xl:grid-rows-[min-content_1fr_min-content]">
       <RoomAudioRenderer />
 
       {needsClick && (
@@ -789,11 +789,22 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               )}
             </>
           )}
+
+          {/* FLOATING TUTOR BUTTON (Portrait/Mobile Only) */}
+          <div className="absolute bottom-4 right-4 landscape:lg:hidden xl:hidden z-50">
+            <button className="flex items-center gap-2 bg-card/90 backdrop-blur-md px-3 py-2 rounded-full border border-border shadow-lg hover:bg-accent/50 transition-colors" title={t('classroom.chatWithTutor')}>
+              <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-accent text-accent-foreground font-bold text-sm border border-border">
+                T
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-success rounded-full border-2 border-card"></span>
+              </div>
+              <span className="text-sm font-bold text-foreground hidden sm:inline">{t('classroom.chatWithTutor')}</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* 3. Meeting Controls (row 4 on mobile, row 3 on md+) */}
-      <div className="col-start-1 row-start-4 md:col-start-1 md:row-start-3 landscape:col-start-1 landscape:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10">
+      <div className="col-start-1 row-start-4 landscape:lg:col-start-1 landscape:lg:row-start-3 xl:col-start-1 xl:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10">
         <div className="h-20 bg-card rounded-2xl shadow-sm border border-border px-4 flex items-center">
           {/* Left spacer — presenter toggle when applicable */}
           <div className="flex-1 flex items-center">
@@ -854,7 +865,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
       </div>
 
       {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
-      <div className="col-start-1 row-start-3 md:col-start-2 md:row-start-1 md:row-span-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 flex flex-col bg-card border-border shadow-xl z-20 border-y md:border-y-0 md:border-l landscape:border-y-0 landscape:border-l h-36 md:h-full landscape:h-full overflow-hidden">
+      <div className="col-start-1 row-start-3 landscape:lg:col-start-2 landscape:lg:row-start-1 landscape:lg:row-span-3 xl:col-start-2 xl:row-start-1 xl:row-span-3 flex flex-col bg-card border-border shadow-xl z-20 border-y landscape:lg:border-y-0 landscape:lg:border-l xl:border-y-0 xl:border-l h-36 landscape:lg:h-full xl:h-full overflow-hidden">
 
         {/* Header + nav arrows */}
         <div className="bg-primary text-primary-foreground flex items-center gap-2 px-3 py-1.5 md:py-2.5 border-b border-border flex-shrink-0">
@@ -878,7 +889,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         {/* Responsive Tiles Auto-Grid */}
         <div
           ref={classmateTilesRef}
-          className="flex-1 min-h-0 min-w-0 bg-muted/30 p-2 md:p-3 gap-2 md:gap-3 flex flex-row overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:grid md:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] md:auto-rows-max md:overflow-y-auto md:overflow-x-hidden md:snap-y md:content-start md:items-start landscape:grid landscape:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:auto-rows-max landscape:overflow-y-auto landscape:overflow-x-hidden landscape:snap-y landscape:content-start landscape:items-start scrollbar-thin"
+          className="flex-1 min-h-0 min-w-0 bg-muted/30 p-2 md:p-3 gap-2 md:gap-3 flex flex-row overflow-x-auto overflow-y-hidden snap-x snap-mandatory landscape:lg:grid landscape:lg:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:lg:auto-rows-max landscape:lg:overflow-y-auto landscape:lg:overflow-x-hidden landscape:lg:snap-y landscape:lg:content-start landscape:lg:items-start xl:grid xl:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] xl:auto-rows-max xl:overflow-y-auto xl:overflow-x-hidden xl:snap-y xl:content-start xl:items-start scrollbar-thin"
         >
           {sortedStudents.length === 0 && (
             <div className="md:col-span-full landscape:col-span-full flex items-center justify-center w-full text-muted-foreground text-xs italic text-center px-2 whitespace-nowrap md:whitespace-normal h-full">
@@ -890,7 +901,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               key={p.identity}
               variant="grid"
               participant={p}
-              className={`flex-shrink-0 rounded-xl md:rounded-2xl border-2 overflow-hidden aspect-square w-24 md:w-full md:h-auto landscape:w-full landscape:h-auto snap-start snap-always
+              className={`flex-shrink-0 rounded-xl landscape:lg:rounded-2xl xl:rounded-2xl border-2 overflow-hidden aspect-square w-24 sm:w-28 landscape:lg:w-full landscape:lg:h-auto xl:w-full xl:h-auto snap-start snap-always
                 ${raisedHands.has(p.identity) ? 'border-amber-500 shadow-[0_0_8px_2px] shadow-amber-500/40' : 'border-border'}`}
               raisedHand={raisedHands.has(p.identity)}
               onLowerHand={(amITeacher || isLocalAdminPresenting) ? () => forceLowerHand(p.identity) : undefined}
@@ -900,7 +911,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         </div>
 
         {/* Tutor footer */}
-        <div className="hidden md:flex landscape:flex flex-col bg-accent/30 border-t border-border p-4 flex-shrink-0">
+        <div className="hidden landscape:lg:flex xl:flex flex-col bg-accent/30 border-t border-border p-4 flex-shrink-0">
            <div className="flex items-center gap-2 mb-3">
               <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-bold border-2 border-border shadow-sm">T</div>
               <div><p className="text-xs font-bold text-foreground">{t('classroom.liveTutor')}</p><p className="text-[10px] text-success font-medium">● {t('classroom.online')}</p></div>

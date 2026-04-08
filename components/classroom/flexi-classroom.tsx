@@ -14,12 +14,51 @@ import { useTranslations } from "next-intl";
 import { useAuth } from "@clerk/nextjs";
 import { getRoleForOrg } from "@/lib/rbac";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { useSidebar } from "@/components/ui/sidebar";
 
 interface FlexiClassroomProps {
   roomName: string;
   className?: string;
   isStudentView?: boolean;
   onLeave?: () => void;
+}
+
+function SidebarAutoCollapser() {
+  const { setOpen } = useSidebar();
+  
+  // 1. Keep a stable reference to the latest setOpen function
+  const setOpenRef = useRef(setOpen);
+  
+  useEffect(() => {
+    setOpenRef.current = setOpen;
+  }, [setOpen]);
+
+  useEffect(() => {
+    const mqTablet = window.matchMedia("(max-width: 1023px)");
+    const mqPortrait = window.matchMedia("(orientation: portrait)");
+
+    const handleLayoutChange = () => {
+      // If we cross into tablet or portrait territory, collapse it automatically
+      if (mqTablet.matches || mqPortrait.matches) {
+        // 2. Call it via the ref so we don't trigger re-runs
+        setOpenRef.current(false);
+      }
+    };
+
+    // Apply on initial component mount
+    handleLayoutChange();
+
+    // Listen ONLY for actual breakpoint/orientation crosses
+    mqTablet.addEventListener("change", handleLayoutChange);
+    mqPortrait.addEventListener("change", handleLayoutChange);
+
+    return () => {
+      mqTablet.removeEventListener("change", handleLayoutChange);
+      mqPortrait.removeEventListener("change", handleLayoutChange);
+    };
+  }, []); // 3. <-- EMPTY DEPENDENCY ARRAY. This is the magic key.
+
+  return null;
 }
 
 export default function FlexiClassroom({ roomName, className, isStudentView = false, onLeave }: FlexiClassroomProps) {
@@ -308,6 +347,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   // Active Classroom
   return (
     <div className={`w-full h-full overflow-hidden rounded-lg ${className}`}>
+      {!isStudentView && <SidebarAutoCollapser />}
       <LiveKitRoom
         video={false}
         audio={false}
