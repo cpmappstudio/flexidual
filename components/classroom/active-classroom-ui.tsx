@@ -53,6 +53,16 @@ const getRole = (p: Participant | undefined): string => {
   }
 };
 
+const getImageUrl = (p: Participant | undefined): string | null => {
+  if (!p || !p.metadata) return null;
+  try {
+    const data = JSON.parse(p.metadata);
+    return data.imageUrl || null;
+  } catch {
+    return null;
+  }
+};
+
 // --- Helper Components ---
 function CustomMediaToggle({ source, iconOn, iconOff }: { 
   source: Track.Source.Camera | Track.Source.Microphone | Track.Source.ScreenShare, 
@@ -100,9 +110,10 @@ function ParticipantTile({
 }) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
   const isVideoEnabled = cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
+  const imageUrl = getImageUrl(participant);
 
   const avatarSize = variant === "stage" ? "w-32 h-32 text-6xl" : variant === "mini" ? "w-8 h-8 text-xs" : "w-16 h-16 text-2xl";
-  const borderSize = variant === "mini" ? "border-2" : "border-4";
+  const borderSize = variant === "mini" ? "border-1" : "border-2";
 
   return (
     <div className={`relative bg-muted overflow-hidden ${className}`}>
@@ -113,9 +124,14 @@ function ParticipantTile({
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-secondary">
-           <div className={`${avatarSize} rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center font-bold text-white ${borderSize} border-white/10 shadow-xl transition-all`}>
-              {participant.name?.charAt(0).toUpperCase() || participant.identity?.charAt(0).toUpperCase() || "?"}
-           </div>
+          <div className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-white ${borderSize} border-white/10 shadow-xl overflow-hidden bg-gradient-to-tr from-yellow-500 to-orange-500 transition-all`}>
+            {imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={imageUrl} alt={participant.name || participant.identity} className="w-full h-full object-cover" />
+            ) : (
+              participant.name?.charAt(0).toUpperCase() || participant.identity?.charAt(0).toUpperCase() || "?"
+            )}
+          </div>
         </div>
       )}
       
@@ -264,7 +280,6 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
   const [classmatesCanScrollPrev, setClassmatesCanScrollPrev] = useState(false);
   const [classmatesCanScrollNext, setClassmatesCanScrollNext] = useState(false);
-  const [desktopCols, setDesktopCols] = useState<1 | 2>(1);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const classmateTilesRef = useRef<HTMLDivElement>(null);
@@ -620,31 +635,15 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   useEffect(() => { updateClassmatesScroll(); }, [sortedStudents.length, updateClassmatesScroll]);
 
   useEffect(() => {
-    const el = classmateTilesRef.current;
-    if (!el) return;
-    const compute = () => {
-      const containerH = el.clientHeight;
-      const containerW = el.clientWidth;
-      const tileW = containerW - 16; // p-2 each side
-      const fitsIn1Col = Math.max(1, Math.floor((containerH + 8) / (tileW + 8)));
-      setDesktopCols(sortedStudents.length <= fitsIn1Col ? 1 : 2);
-    };
-    const ro = new ResizeObserver(compute);
-    ro.observe(el);
-    compute();
-    return () => ro.disconnect();
-  }, [sortedStudents.length]);
-
-  useEffect(() => {
     if (!amITeacher && !isLocalAdminPresenting) return;
     markLive({ roomName, isLive: true });
     return () => { markLive({ roomName, isLive: false }); };
   }, [amITeacher, isLocalAdminPresenting, roomName, markLive]);
 
   return (
-    <div className="flex flex-col lg:flex-row h-full w-full bg-background overflow-hidden font-sans text-foreground relative">
+    <div className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] md:grid-cols-[1fr_280px] md:grid-rows-[min-content_1fr_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] lg:grid-cols-[1fr_320px]">
       <RoomAudioRenderer />
-      
+
       {needsClick && (
         <div className="absolute inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-card text-card-foreground rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl border border-border">
@@ -671,7 +670,8 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         </div>
       )}
 
-      <div className="flex-1 flex flex-col p-4 gap-4 min-h-0">
+      {/* 1. Header Row */}
+      <div className="col-start-1 row-start-1 p-3 md:p-4 pb-2 md:pb-0 z-10 flex flex-col justify-end">
         <div className="flex justify-between items-center bg-card p-3 rounded-xl shadow-sm border border-border">
           <div className="flex items-center gap-3">
             <FlexidualLogo />
@@ -685,7 +685,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
             <span className="text-xs font-bold text-primary uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
           </div>
         </div>
+      </div>
 
+      {/* 2. Stage Row */}
+      <div className="col-start-1 row-start-2 min-h-0 p-3 md:p-4 py-2 md:py-4 z-10 flex flex-col relative">
         <div ref={stageRef} className="flex-1 bg-muted rounded-2xl shadow-xl overflow-hidden relative border-4 border-border flex items-center justify-center group min-h-0">
           {amIIncognito && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/60 text-white backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1.5 shadow-sm pointer-events-none">
@@ -694,8 +697,8 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           )}
           {isScreenSharingActive ? (
             <>
-              <div 
-                key={activeScreenTrack.publication.trackSid} 
+              <div
+                key={activeScreenTrack.publication.trackSid}
                 className={`w-full h-full flex items-center justify-center origin-center bg-black relative select-none ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
                 onMouseDown={zoom > 1 ? (e) => {
@@ -707,9 +710,9 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                   panDragRef.current = { active: true, startMouse: { x: touch.clientX, y: touch.clientY }, startPan: { ...pan } };
                 } : undefined}
               >
-                <VideoTrack 
-                   trackRef={activeScreenTrack} 
-                   className="w-full h-full object-contain" 
+                <VideoTrack
+                   trackRef={activeScreenTrack}
+                   className="w-full h-full object-contain"
                    onError={(e) => console.error("Video Track Error", e)}
                 />
 
@@ -752,8 +755,13 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                   </div>
                 ) : (
                   <div className="z-10 flex flex-col items-center justify-center p-8">
-                      <div className="w-32 h-32 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center border-4 border-white/20 mb-6 shadow-lg">
-                        <span className="text-5xl font-bold text-white">{teacher.name?.charAt(0) || "T"}</span>
+                      <div className="w-32 h-32 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center border-4 border-white/20 mb-6 shadow-lg overflow-hidden">
+                        {getImageUrl(teacher) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={getImageUrl(teacher)!} alt={teacher.name || ""} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-5xl font-bold text-white">{teacher.name?.charAt(0) || "T"}</span>
+                        )}
                       </div>
                       <h2 className="text-2xl font-bold text-foreground">{teacher.name || t('classroom.teacher')}</h2>
                       <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
@@ -782,7 +790,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
             </>
           )}
         </div>
+      </div>
 
+      {/* 3. Meeting Controls (row 4 on mobile, row 3 on md+) */}
+      <div className="col-start-1 row-start-4 md:col-start-1 md:row-start-3 landscape:col-start-1 landscape:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10">
         <div className="h-20 bg-card rounded-2xl shadow-sm border border-border px-4 flex items-center">
           {/* Left spacer — presenter toggle when applicable */}
           <div className="flex-1 flex items-center">
@@ -842,70 +853,35 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         </div>
       </div>
 
-      {/* Classmates: vertical sidebar on lg+, horizontal strip on mobile */}
-      <div className="flex-shrink-0 bg-card border-border shadow-xl z-10 flex
-        lg:flex-col lg:w-72 lg:border-l lg:h-auto
-        flex-col border-t h-36">
+      {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
+      <div className="col-start-1 row-start-3 md:col-start-2 md:row-start-1 md:row-span-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 flex flex-col bg-card border-border shadow-xl z-20 border-y md:border-y-0 md:border-l landscape:border-y-0 landscape:border-l h-36 md:h-full landscape:h-full overflow-hidden">
 
-        {/* Header + nav arrows (arrows only when overflow exists) */}
-        <div className="bg-primary text-primary-foreground flex items-center gap-2 px-3 flex-shrink-0
-          lg:py-2.5 lg:border-b lg:border-border
-          py-1.5 border-b border-border">
+        {/* Header + nav arrows */}
+        <div className="bg-primary text-primary-foreground flex items-center gap-2 px-3 py-1.5 md:py-2.5 border-b border-border flex-shrink-0">
           <h3 className="flex-1 text-xs font-bold uppercase tracking-widest truncate">
             {t('classroom.classmates', { count: students.length })}
           </h3>
-          {/* Desktop: scroll up/down — only when needed */}
           {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
-            <div className="hidden lg:flex items-center gap-0.5">
-              <button
-                onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })}
-                disabled={!classmatesCanScrollPrev}
-                className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"
-              >
-                <ChevronUp className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })}
-                disabled={!classmatesCanScrollNext}
-                className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"
-              >
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-          {/* Mobile: scroll left/right — only when needed */}
-          {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
-            <div className="flex lg:hidden items-center gap-0.5">
-              <button
-                onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })}
-                disabled={!classmatesCanScrollPrev}
-                className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })}
-                disabled={!classmatesCanScrollNext}
-                className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            <>
+              <div className="hidden md:flex landscape:flex items-center gap-0.5">
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
+              </div>
+              <div className="flex md:hidden landscape:hidden items-center gap-0.5">
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
+              </div>
+            </>
           )}
         </div>
 
-        {/* Tiles — smart grid (desktop) / single row (mobile) */}
+        {/* Responsive Tiles Auto-Grid */}
         <div
           ref={classmateTilesRef}
-          className={`flex-1 min-h-0 min-w-0 bg-muted/30 p-2 gap-2
-            flex flex-row
-            overflow-x-auto overflow-y-hidden
-            lg:grid lg:content-start
-            lg:overflow-y-auto lg:overflow-x-hidden
-            ${desktopCols === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`}
+          className="flex-1 min-h-0 min-w-0 bg-muted/30 p-2 md:p-3 gap-2 md:gap-3 flex flex-row overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:grid md:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] md:auto-rows-max md:overflow-y-auto md:overflow-x-hidden md:snap-y md:content-start md:items-start landscape:grid landscape:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:auto-rows-max landscape:overflow-y-auto landscape:overflow-x-hidden landscape:snap-y landscape:content-start landscape:items-start scrollbar-thin"
         >
           {sortedStudents.length === 0 && (
-            <div className={`${desktopCols === 2 ? 'lg:col-span-2' : ''} flex items-center justify-center w-full text-muted-foreground text-xs italic text-center px-2 whitespace-nowrap lg:whitespace-normal`}>
+            <div className="md:col-span-full landscape:col-span-full flex items-center justify-center w-full text-muted-foreground text-xs italic text-center px-2 whitespace-nowrap md:whitespace-normal h-full">
               {(amITeacher || isLocalAdminPresenting) ? t('classroom.waitingForStudents') : t('classroom.youAreFirst')}
             </div>
           )}
@@ -914,14 +890,8 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               key={p.identity}
               variant="grid"
               participant={p}
-              className={`
-                flex-shrink-0 rounded-xl border-2 overflow-hidden
-                aspect-square w-24
-                lg:w-auto
-                ${raisedHands.has(p.identity)
-                  ? 'border-amber-500 shadow-[0_0_8px_2px] shadow-amber-500/40'
-                  : 'border-border'}
-              `}
+              className={`flex-shrink-0 rounded-xl md:rounded-2xl border-2 overflow-hidden aspect-square w-24 md:w-full md:h-auto landscape:w-full landscape:h-auto snap-start snap-always
+                ${raisedHands.has(p.identity) ? 'border-amber-500 shadow-[0_0_8px_2px] shadow-amber-500/40' : 'border-border'}`}
               raisedHand={raisedHands.has(p.identity)}
               onLowerHand={(amITeacher || isLocalAdminPresenting) ? () => forceLowerHand(p.identity) : undefined}
               youLabel={t('classroom.youShort')}
@@ -929,8 +899,8 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           ))}
         </div>
 
-        {/* Tutor footer: desktop only */}
-        <div className="hidden lg:flex flex-col bg-accent/30 border-t border-border p-4 flex-shrink-0">
+        {/* Tutor footer */}
+        <div className="hidden md:flex landscape:flex flex-col bg-accent/30 border-t border-border p-4 flex-shrink-0">
            <div className="flex items-center gap-2 mb-3">
               <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-bold border-2 border-border shadow-sm">T</div>
               <div><p className="text-xs font-bold text-foreground">{t('classroom.liveTutor')}</p><p className="text-[10px] text-success font-medium">● {t('classroom.online')}</p></div>

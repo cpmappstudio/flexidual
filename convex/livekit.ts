@@ -64,6 +64,7 @@ export const getToken = action({
         role: finalRole,
         userId: identity.subject,
         fullName: user.fullName,
+        imageUrl: user.imageUrl ?? null,
       })
     });
 
