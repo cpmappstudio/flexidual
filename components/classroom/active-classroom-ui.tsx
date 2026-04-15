@@ -20,7 +20,7 @@ import {
   RoomEvent,
 } from "livekit-client";
 import { 
-  Mic, MicOff, Video as VideoIcon, VideoOff, LogOut, MessageCircle, VolumeX, 
+  Mic, MicOff, Video as VideoIcon, VideoOff, LogOut, VolumeX, 
   MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2, Eye, Crown,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight
 } from "lucide-react";
@@ -64,21 +64,42 @@ const getImageUrl = (p: Participant | undefined): string | null => {
 };
 
 // --- Helper Components ---
-function CustomMediaToggle({ source, iconOn, iconOff }: { 
+function CustomMediaToggle({ source, iconOn, iconOff, compact = false }: { 
   source: Track.Source.Camera | Track.Source.Microphone | Track.Source.ScreenShare, 
   iconOn: React.ReactNode, 
-  iconOff: React.ReactNode 
+  iconOff: React.ReactNode,
+  compact?: boolean,
 }) {
   const { toggle, enabled, pending } = useTrackToggle({ source });
+  const { localParticipant } = useLocalParticipant();
+
+  const handleToggle = async () => {
+    try {
+      await toggle();
+      // Release camera hardware when disabling so other apps can use the device
+      if (enabled && source === Track.Source.Camera) {
+        localParticipant
+          .getTrackPublication(Track.Source.Camera)
+          ?.track?.mediaStreamTrack?.stop();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <button 
-    onClick={() => { toggle().catch(console.error); }}
+      onClick={handleToggle}
       disabled={pending}
       className={`
-        w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border
+        ${compact ? 'w-11 h-11' : 'w-12 h-12'} rounded-full flex items-center justify-center transition-all shadow-md border
         ${enabled 
-          ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border' 
-          : 'bg-destructive/10 text-destructive border-destructive/20'}
+          ? compact
+            ? 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+            : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border'
+          : compact
+            ? 'bg-red-500/50 text-white border-red-400/60'
+            : 'bg-destructive/10 text-destructive border-destructive/20'}
         ${pending ? 'opacity-50 cursor-wait' : ''}
       `}
     >
@@ -280,6 +301,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
   const [classmatesCanScrollPrev, setClassmatesCanScrollPrev] = useState(false);
   const [classmatesCanScrollNext, setClassmatesCanScrollNext] = useState(false);
+  const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
+  const [stageControlsVisible, setStageControlsVisible] = useState(true);
+  const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const classmateTilesRef = useRef<HTMLDivElement>(null);
@@ -295,6 +320,12 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
       (el.scrollHeight - el.scrollTop - el.clientHeight > 4) ||
       (el.scrollWidth - el.scrollLeft - el.clientWidth > 4)
     );
+  }, []);
+
+  const showStageControls = useCallback(() => {
+    setStageControlsVisible(true);
+    if (stageControlsTimerRef.current) clearTimeout(stageControlsTimerRef.current);
+    stageControlsTimerRef.current = setTimeout(() => setStageControlsVisible(false), 3000);
   }, []);
 
   const playHandChime = () => {
@@ -641,13 +672,28 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   useEffect(() => { updateClassmatesScroll(); }, [sortedStudents.length, updateClassmatesScroll]);
 
   useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
+    const handle = () => setIsPhoneLandscape(mq.matches);
+    handle();
+    mq.addEventListener('change', handle);
+    return () => {
+      mq.removeEventListener('change', handle);
+      if (stageControlsTimerRef.current) clearTimeout(stageControlsTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isPhoneLandscape) showStageControls();
+  }, [isPhoneLandscape, showStageControls]);
+
+  useEffect(() => {
     if (!amITeacher && !isLocalAdminPresenting) return;
     markLive({ roomName, isLive: true });
     return () => { markLive({ roomName, isLive: false }); };
   }, [amITeacher, isLocalAdminPresenting, roomName, markLive]);
 
   return (
-    <div className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] landscape:lg:grid-cols-[1fr_280px] landscape:lg:grid-rows-[min-content_1fr_min-content] xl:grid-cols-[1fr_320px] xl:grid-rows-[min-content_1fr_min-content]">
+    <div className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] xl:grid-cols-[1fr_320px] xl:grid-rows-[min-content_1fr_min-content]">
       <RoomAudioRenderer />
 
       {needsClick && (
@@ -677,24 +723,38 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
       )}
 
       {/* 1. Header Row */}
-      <div className="col-start-1 row-start-1 p-3 md:p-4 pb-2 md:pb-0 z-10 flex flex-col justify-end">
-        <div className="flex justify-between items-center bg-card p-3 rounded-xl shadow-sm border border-border">
-          <div className="flex items-center gap-3">
-            <FlexidualLogo />
-            <div className="flex flex-col">
-              <h2 className="text-sm font-bold text-card-foreground">{className || t('classroom.classroom')}</h2>
-              {lessonTitle && <p className="text-xs text-muted-foreground">{lessonTitle}</p>}
+      <div className={`col-start-1 row-start-1 z-10 flex flex-col ${isPhoneLandscape ? '' : 'p-3 md:p-4 pb-2 md:pb-0 justify-end'}`}>
+        {isPhoneLandscape ? (
+          <div className="flex items-center gap-2 px-2 py-1 bg-card/90 backdrop-blur-md border-b border-border">
+            <FlexidualLogo stacked className="h-6 w-6 flex-shrink-0" />
+            <div className="flex-1 min-w-0 flex items-center gap-1.5">
+              <span className="text-xs font-bold text-card-foreground truncate">{className || t('classroom.classroom')}</span>
+              {lessonTitle && <span className="text-[10px] text-muted-foreground truncate">&middot; {lessonTitle}</span>}
+            </div>
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0 ${teacher ? 'bg-green-500/20 border-green-400/30' : 'bg-orange-500/20 border-orange-400/30'}`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${teacher ? 'bg-green-500 dark:bg-green-400 animate-pulse' : 'bg-orange-500 dark:bg-orange-400'}`} />
+              <span className="text-[9px] font-bold text-foreground/70 uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
-            <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-chart-4'}`} />
-            <span className="text-xs font-bold text-primary uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
+        ) : (
+          <div className="flex justify-between items-center bg-card p-3 rounded-xl shadow-sm border border-border">
+            <div className="flex items-center gap-3">
+              <FlexidualLogo />
+              <div className="flex flex-col">
+                <h2 className="text-sm font-bold text-card-foreground">{className || t('classroom.classroom')}</h2>
+                {lessonTitle && <p className="text-xs text-muted-foreground">{lessonTitle}</p>}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+              <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-chart-4'}`} />
+              <span className="text-xs font-bold text-primary uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* 2. Stage Row */}
-      <div className="col-start-1 row-start-2 min-h-0 p-3 md:p-4 py-2 md:py-4 z-10 flex flex-col relative">
+      <div className={`col-start-1 row-start-2 min-h-0 z-10 flex flex-col relative ${isPhoneLandscape ? 'p-1' : 'p-3 md:p-4 py-2 md:py-4'}`}>
         <div ref={stageRef} className="flex-1 bg-muted rounded-2xl shadow-xl overflow-hidden relative border-4 border-border flex items-center justify-center group min-h-0">
           {amIIncognito && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/60 text-white backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1.5 shadow-sm pointer-events-none">
@@ -796,21 +856,79 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
             </>
           )}
 
-          {/* FLOATING TUTOR BUTTON (Portrait/Mobile Only) */}
-          <div className="absolute bottom-4 right-4 landscape:lg:hidden xl:hidden z-50">
-            <button className="flex items-center gap-2 bg-card/90 backdrop-blur-md px-3 py-2 rounded-full border border-border shadow-lg hover:bg-accent/50 transition-colors" title={t('classroom.chatWithTutor')}>
-              <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-accent text-accent-foreground font-bold text-sm border border-border">
-                T
-                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-success rounded-full border-2 border-card"></span>
+          {/* Phone landscape: tap zone to reveal floating controls */}
+          {isPhoneLandscape && (
+            <div
+              className="absolute inset-0 z-[25]"
+              style={{ pointerEvents: zoom > 1 ? 'none' : 'auto' }}
+              onTouchStart={(e) => { stageTouchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+              onTouchEnd={(e) => {
+                if (!stageTouchStartRef.current) return;
+                const dx = Math.abs(e.changedTouches[0].clientX - stageTouchStartRef.current.x);
+                const dy = Math.abs(e.changedTouches[0].clientY - stageTouchStartRef.current.y);
+                stageTouchStartRef.current = null;
+                if (dx < 8 && dy < 8) showStageControls();
+              }}
+              onClick={showStageControls}
+            />
+          )}
+          {/* Phone landscape: floating controls overlay — auto-hides after 3s, reveals on tap */}
+          {isPhoneLandscape && (
+            <div
+              className={`absolute inset-x-0 bottom-3 z-[35] flex items-center justify-center pointer-events-none transition-all duration-300 ${
+                stageControlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+              }`}
+            >
+              <div
+                className="flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-full px-4 py-2.5 border border-white/20 shadow-2xl pointer-events-auto"
+                onClick={showStageControls}
+              >
+                {amIAuthority && !amITeacher && !actualTeacher && (
+                  <button
+                    onClick={togglePresenterMode}
+                    className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
+                      isLocalAdminPresenting
+                        ? 'bg-green-500/80 text-white border-green-400'
+                        : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                    }`}
+                  >
+                    <Crown className="w-5 h-5" />
+                  </button>
+                )}
+                <CustomMediaToggle compact source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
+                {!amIIncognito && (
+                  <CustomMediaToggle compact source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
+                )}
+                <button
+                  onClick={handleShareClick}
+                  disabled={waitingForApproval}
+                  className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
+                    isSharingLocally
+                      ? 'bg-green-500/80 text-white border-green-400'
+                      : shareApproved
+                        ? 'bg-blue-500/80 text-white border-blue-400 animate-pulse'
+                        : waitingForApproval
+                          ? 'bg-yellow-500/80 text-white border-yellow-400 cursor-wait'
+                          : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                  }`}
+                >
+                  {waitingForApproval ? <Hand className="w-5 h-5 animate-pulse" /> : <MonitorUp className="w-5 h-5" />}
+                </button>
+                <div className="w-px h-6 bg-white/30 mx-1" />
+                <button
+                  onClick={() => router.back()}
+                  className="w-11 h-11 rounded-full bg-red-500/80 hover:bg-red-600/80 text-white flex items-center justify-center shadow-lg border-2 border-red-400/60 transition-colors"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
               </div>
-              <span className="text-sm font-bold text-foreground hidden sm:inline">{t('classroom.chatWithTutor')}</span>
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 3. Meeting Controls (row 4 on mobile, row 3 on md+) */}
-      <div className="col-start-1 row-start-4 landscape:lg:col-start-1 landscape:lg:row-start-3 xl:col-start-1 xl:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10">
+      {/* 3. Meeting Controls (row 4 on mobile, row 3 on md+) — hidden in phone landscape */}
+      <div className={`col-start-1 row-start-4 landscape:col-start-1 landscape:row-start-3 xl:col-start-1 xl:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10 ${isPhoneLandscape ? 'hidden' : ''}`}>
         <div className="h-20 bg-card rounded-2xl shadow-sm border border-border px-4 flex items-center">
           {/* Left spacer — presenter toggle when applicable */}
           <div className="flex-1 flex items-center">
@@ -871,7 +989,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
       </div>
 
       {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
-      <div className="col-start-1 row-start-3 landscape:lg:col-start-2 landscape:lg:row-start-1 landscape:lg:row-span-3 xl:col-start-2 xl:row-start-1 xl:row-span-3 flex flex-col bg-card border-border shadow-xl z-20 border-y landscape:lg:border-y-0 landscape:lg:border-l xl:border-y-0 xl:border-l h-36 landscape:lg:h-full xl:h-full overflow-hidden">
+      <div className="col-start-1 row-start-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 xl:col-start-2 xl:row-start-1 xl:row-span-3 flex flex-col bg-card border-border shadow-xl z-20 border-y landscape:border-y-0 landscape:border-l xl:border-y-0 xl:border-l h-36 landscape:h-full xl:h-full overflow-hidden">
 
         {/* Header + nav arrows */}
         <div className="bg-primary text-primary-foreground flex items-center gap-2 px-3 py-1.5 md:py-2.5 border-b border-border flex-shrink-0">
@@ -895,7 +1013,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         {/* Responsive Tiles Auto-Grid */}
         <div
           ref={classmateTilesRef}
-          className="flex-1 min-h-0 min-w-0 bg-muted/30 p-2 md:p-3 gap-2 md:gap-3 flex flex-row overflow-x-auto overflow-y-hidden snap-x snap-mandatory landscape:lg:grid landscape:lg:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:lg:auto-rows-max landscape:lg:overflow-y-auto landscape:lg:overflow-x-hidden landscape:lg:snap-y landscape:lg:content-start landscape:lg:items-start xl:grid xl:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] xl:auto-rows-max xl:overflow-y-auto xl:overflow-x-hidden xl:snap-y xl:content-start xl:items-start scrollbar-thin"
+          className="flex-1 min-h-0 min-w-0 bg-muted/30 p-2 md:p-3 gap-2 md:gap-3 flex flex-row items-start overflow-x-auto overflow-y-hidden snap-x snap-mandatory landscape:grid landscape:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:auto-rows-max landscape:overflow-y-auto landscape:overflow-x-hidden landscape:snap-y landscape:content-start landscape:items-start scrollbar-thin"
         >
           {sortedStudents.length === 0 && (
             <div className="md:col-span-full landscape:col-span-full flex items-center justify-center w-full text-muted-foreground text-xs italic text-center px-2 whitespace-nowrap md:whitespace-normal h-full">
@@ -907,24 +1025,13 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               key={p.identity}
               variant="grid"
               participant={p}
-              className={`flex-shrink-0 rounded-xl landscape:lg:rounded-2xl xl:rounded-2xl border-2 overflow-hidden aspect-square w-24 sm:w-28 landscape:lg:w-full landscape:lg:h-auto xl:w-full xl:h-auto snap-start snap-always
+              className={`flex-shrink-0 rounded-xl landscape:rounded-2xl border-2 overflow-hidden aspect-square w-24 h-24 sm:w-28 sm:h-28 landscape:w-full landscape:h-auto snap-start snap-always
                 ${raisedHands.has(p.identity) ? 'border-amber-500 shadow-[0_0_8px_2px] shadow-amber-500/40' : 'border-border'}`}
               raisedHand={raisedHands.has(p.identity)}
               onLowerHand={(amITeacher || isLocalAdminPresenting) ? () => forceLowerHand(p.identity) : undefined}
               youLabel={t('classroom.youShort')}
             />
           ))}
-        </div>
-
-        {/* Tutor footer */}
-        <div className="hidden landscape:lg:flex xl:flex flex-col bg-accent/30 border-t border-border p-4 flex-shrink-0">
-           <div className="flex items-center gap-2 mb-3">
-              <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-bold border-2 border-border shadow-sm">T</div>
-              <div><p className="text-xs font-bold text-foreground">{t('classroom.liveTutor')}</p><p className="text-[10px] text-success font-medium">● {t('classroom.online')}</p></div>
-           </div>
-           <button className="w-full text-left px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded flex items-center gap-2 bg-background border border-border transition-colors">
-              <MessageCircle className="w-3 h-3" /> {t('classroom.chatWithTutor')}
-           </button>
         </div>
       </div>
     </div>
