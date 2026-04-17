@@ -512,7 +512,7 @@ export default function StudentHubPage() {
 
         {/* Left Sidebar - Schedule */}
         <div className={cn(
-          "fixed xl:relative z-40 w-80 landscape:w-64 xl:w-96",
+          "fixed xl:relative z-40 w-80 xl:w-96",
           "bg-white/90 dark:bg-gray-900/90 backdrop-blur-md",
           "xl:rounded-3xl border-r-4 xl:border-4 border-purple-400 dark:border-purple-600 shadow-2xl",
           "flex flex-col overflow-hidden flex-shrink-0 transition-transform duration-300",
