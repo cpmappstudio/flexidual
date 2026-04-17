@@ -525,10 +525,13 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   }, [room, t]);
 
   useEffect(() => {
+    setIsRecording(room.isRecording);
+
     const handleRecordingChange = (recording: boolean) => setIsRecording(recording);
     room.on(RoomEvent.RecordingStatusChanged, handleRecordingChange);
+    
     return () => { room.off(RoomEvent.RecordingStatusChanged, handleRecordingChange); };
-  }, [room]);
+  }, [room, room.isRecording]);
 
   const requestPermission = async () => {
     if (isScreenSharingActive && !isSharingLocally) {
