@@ -236,7 +236,12 @@
     "takePresenterRole": "Tomar Rol de Presentador",
     "exitPresenterRole": "Salir del Rol de Presentador",
     "permissionGrantedClickToStart": "¡Aprobado! Haz clic en el botón de compartir pantalla para comenzar.",
-    "cameraInUse": "Tu cámara ya está siendo usada por otra aplicación. Por favor, ciérrala e inténtalo de nuevo."
+    "cameraInUse": "Tu cámara ya está siendo usada por otra aplicación. Por favor, ciérrala e inténtalo de nuevo.",
+    "startRecording": "Iniciar grabación",
+    "stopRecording": "Detener grabación",
+    "recordingStarted": "Grabación iniciada",
+    "recordingStopped": "Grabación detenida",
+    "recordingError": "Error al cambiar el estado de la grabación"
   },
   "curriculum": {
     "curriculum": "Currículo",

@@ -237,7 +237,12 @@
     "takePresenterRole": "Assumir Papel de Apresentador",
     "exitPresenterRole": "Sair do Papel de Apresentador",
     "permissionGrantedClickToStart": "Aprovado! Clique no botão de compartilhar tela para começar.",
-    "cameraInUse": "Sua câmera já está sendo usada por outro aplicativo. Feche-o e tente novamente."
+    "cameraInUse": "Sua câmera já está sendo usada por outro aplicativo. Feche-o e tente novamente.",
+    "startRecording": "Iniciar gravação",
+    "stopRecording": "Parar gravação",
+    "recordingStarted": "Gravação iniciada",
+    "recordingStopped": "Gravação encerrada",
+    "recordingError": "Falha ao alternar a gravação"
   },
   "curriculum": {
     "curriculum": "Currículo",

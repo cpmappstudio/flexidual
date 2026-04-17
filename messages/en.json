@@ -237,7 +237,12 @@
     "takePresenterRole": "Take Presenter Role",
     "exitPresenterRole": "Exit Presenter Role",
     "permissionGrantedClickToStart": "Approved! Click the screen share button to begin.",
-    "cameraInUse": "Your camera is already in use by another application. Please close it and try again."
+    "cameraInUse": "Your camera is already in use by another application. Please close it and try again.",
+    "startRecording": "Start Recording",
+    "stopRecording": "Stop Recording",
+    "recordingStarted": "Recording started",
+    "recordingStopped": "Recording stopped",
+    "recordingError": "Failed to toggle recording"
   },
   "curriculum": {
     "curriculum": "Curriculum",

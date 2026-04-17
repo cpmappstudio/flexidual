@@ -271,6 +271,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
   const [classmatesCanScrollNext, setClassmatesCanScrollNext] = useState(false);
   const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
   const [stageControlsVisible, setStageControlsVisible] = useState(true);
+  const [isRecording, setIsRecording] = useState(room.isRecording);
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -414,6 +415,19 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
     };
     room.on(RoomEvent.MediaDevicesError, handleMediaError);
     return () => { room.off(RoomEvent.MediaDevicesError, handleMediaError); };
+  }, [room, t]);
+
+  useEffect(() => {
+    const handleRecordingChange = (recording: boolean) => {
+      setIsRecording(recording);
+      if (recording) {
+        toast.info(t('classroom.recordingStarted'));
+      } else {
+        toast.info(t('classroom.recordingStopped'));
+      }
+    };
+    room.on(RoomEvent.RecordingStatusChanged, handleRecordingChange);
+    return () => { room.off(RoomEvent.RecordingStatusChanged, handleRecordingChange); };
   }, [room, t]);
 
   const handleShareAction = async () => {
@@ -592,6 +606,12 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
               <span className="text-xs font-bold text-gray-800 dark:text-white truncate">{className || t('classroom.classroom')}</span>
               {lessonTitle && <span className="text-[10px] text-gray-500 dark:text-white/50 truncate">· {lessonTitle}</span>}
             </div>
+            {isRecording && (
+              <div className="flex items-center gap-1 bg-red-500/10 px-1.5 py-0.5 rounded-full border border-red-500/20 flex-shrink-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-[9px] font-bold text-red-500 uppercase tracking-wide">REC</span>
+              </div>
+            )}
             <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0 ${teacher ? 'bg-green-500/20 border-green-400/30' : 'bg-orange-500/20 border-orange-400/30'}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${teacher ? 'bg-green-500 dark:bg-green-400 animate-pulse' : 'bg-orange-500 dark:bg-orange-400'}`} />
               <span className="text-[9px] font-bold text-gray-700 dark:text-white/80 uppercase tracking-wide">{teacher ? t('common.live') : t('classroom.waiting')}</span>
@@ -603,9 +623,17 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
               <h2 className="text-lg font-black text-purple-600 dark:text-purple-400">{className || t('classroom.classroom')}</h2>
               {lessonTitle && <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">{lessonTitle}</p>}
             </div>
-            <div className="flex items-center gap-2 bg-green-100 dark:bg-green-900/30 px-4 py-2 rounded-full border-2 border-green-300 dark:border-green-700">
-              <div className={`w-3 h-3 rounded-full ${teacher ? 'bg-green-500 animate-pulse' : 'bg-orange-400'}`} />
-              <span className="text-sm font-bold text-green-700 dark:text-green-400 uppercase tracking-wide">{teacher ? t('common.live') : t('classroom.waiting')}</span>
+            <div className="flex items-center gap-2">
+              {isRecording && (
+                <div className="flex items-center gap-1.5 bg-red-500/10 px-3 py-1.5 rounded-full border-2 border-red-400/40">
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-xs font-bold text-red-500 uppercase tracking-wide">REC</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 bg-green-100 dark:bg-green-900/30 px-4 py-2 rounded-full border-2 border-green-300 dark:border-green-700">
+                <div className={`w-3 h-3 rounded-full ${teacher ? 'bg-green-500 animate-pulse' : 'bg-orange-400'}`} />
+                <span className="text-sm font-bold text-green-700 dark:text-green-400 uppercase tracking-wide">{teacher ? t('common.live') : t('classroom.waiting')}</span>
+              </div>
             </div>
           </div>
         )}

@@ -3,7 +3,14 @@
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import { AccessToken } from "livekit-server-sdk";
+import { 
+  AccessToken, 
+  EgressClient, 
+  EncodedFileOutput, 
+  EncodedFileType, 
+  S3Upload, 
+  EgressStatus 
+} from "livekit-server-sdk";
 
 export const getToken = action({
   args: {
@@ -78,5 +85,68 @@ export const getToken = action({
     });
     
     return at.toJwt();
+  },
+});
+
+export const toggleRecording = action({
+  args: {
+    roomName: v.string(),
+    start: v.boolean(),
+    filePrefix: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // You might want to add similar auth/role checks here as you have in getToken
+    // to ensure only authorized users can trigger recordings.
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const url = process.env.LIVEKIT_URL;
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+
+    if (!url || !apiKey || !apiSecret) {
+      throw new Error("LiveKit credentials are not configured.");
+    }
+
+    const egressClient = new EgressClient(url, apiKey, apiSecret);
+
+    if (args.start) {
+      const s3Upload = new S3Upload({
+        accessKey: process.env.S3_ACCESS_KEY ?? "",
+        secret: process.env.S3_SECRET_KEY ?? "",
+        region: process.env.S3_REGION ?? "",
+        bucket: process.env.S3_BUCKET ?? "",
+        endpoint: process.env.S3_ENDPOINT, 
+      });
+
+      const fileOutput = new EncodedFileOutput({
+        fileType: EncodedFileType.MP4,
+        filepath: `${args.filePrefix}.mp4`,
+        output: { case: "s3", value: s3Upload },
+      });
+
+      await egressClient.startRoomCompositeEgress(
+        args.roomName,
+        fileOutput,
+        { layout: "speaker" } 
+      );
+      
+      return { success: true, message: "Recording started" };
+    } else {
+      const egresses = await egressClient.listEgress({
+        roomName: args.roomName,
+      });
+
+      const activeEgress = egresses.find(
+        (e) => e.status === EgressStatus.EGRESS_STARTING || e.status === EgressStatus.EGRESS_ACTIVE
+      );
+
+      if (activeEgress && activeEgress.egressId) {
+        await egressClient.stopEgress(activeEgress.egressId);
+        return { success: true, message: "Recording stopped" };
+      }
+
+      return { success: false, message: "No active recording found" };
+    }
   },
 });

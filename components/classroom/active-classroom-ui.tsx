@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { 
   VideoTrack,
@@ -22,7 +22,8 @@ import {
 import { 
   Mic, MicOff, Video as VideoIcon, VideoOff, LogOut, VolumeX, 
   MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2, Eye, Crown,
-  ChevronUp, ChevronDown, ChevronLeft, ChevronRight
+  ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
+  CircleDot, StopCircle
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
@@ -286,6 +287,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const router = useRouter();
   const room = useRoomContext();
   const markLive = useMutation(api.schedule.markLive);
+  const toggleRecording = useAction(api.livekit.toggleRecording);
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
 
@@ -303,6 +305,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const [classmatesCanScrollNext, setClassmatesCanScrollNext] = useState(false);
   const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
   const [stageControlsVisible, setStageControlsVisible] = useState(true);
+  const [isRecording, setIsRecording] = useState(room.isRecording);
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -507,6 +510,12 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
     return () => { room.off(RoomEvent.MediaDevicesError, handleMediaError); };
   }, [room, t]);
 
+  useEffect(() => {
+    const handleRecordingChange = (recording: boolean) => setIsRecording(recording);
+    room.on(RoomEvent.RecordingStatusChanged, handleRecordingChange);
+    return () => { room.off(RoomEvent.RecordingStatusChanged, handleRecordingChange); };
+  }, [room]);
+
   const requestPermission = async () => {
     if (isScreenSharingActive && !isSharingLocally) {
       toast.error(t('classroom.someoneSharing'));
@@ -587,6 +596,23 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         // Both attempts failed — screen sharing is not supported on this device/browser
         toast.error(t('classroom.screenShareNotSupported'));
       }
+    }
+  };
+
+  const handleRecordClick = async () => {
+    if (!amIAuthority) return;
+    try {
+      const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+      const cleanClassName = (className || 'Class').replace(/\s+/g, '-');
+      const cleanLesson = (lessonTitle || 'Lesson').replace(/\s+/g, '-');
+      await toggleRecording({
+        roomName,
+        start: !isRecording,
+        filePrefix: `${dateStr}_${cleanClassName}_${cleanLesson}_${roomName}`,
+      });
+      toast.success(isRecording ? t('classroom.recordingStopped') : t('classroom.recordingStarted'));
+    } catch {
+      toast.error(t('classroom.recordingError'));
     }
   };
 
@@ -731,6 +757,12 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               <span className="text-xs font-bold text-card-foreground truncate">{className || t('classroom.classroom')}</span>
               {lessonTitle && <span className="text-[10px] text-muted-foreground truncate">&middot; {lessonTitle}</span>}
             </div>
+            {isRecording && (
+              <div className="flex items-center gap-1 bg-red-500/10 px-1.5 py-0.5 rounded-full border border-red-500/20 flex-shrink-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-[9px] font-bold text-red-500 uppercase tracking-wide">REC</span>
+              </div>
+            )}
             <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0 ${teacher ? 'bg-green-500/20 border-green-400/30' : 'bg-orange-500/20 border-orange-400/30'}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${teacher ? 'bg-green-500 dark:bg-green-400 animate-pulse' : 'bg-orange-500 dark:bg-orange-400'}`} />
               <span className="text-[9px] font-bold text-foreground/70 uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
@@ -745,9 +777,17 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                 {lessonTitle && <p className="text-xs text-muted-foreground">{lessonTitle}</p>}
               </div>
             </div>
-            <div className="flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
-              <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-chart-4'}`} />
-              <span className="text-xs font-bold text-primary uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
+            <div className="flex items-center gap-2">
+              {isRecording && (
+                <div className="flex items-center gap-1.5 bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20">
+                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-xs font-bold text-red-500 uppercase tracking-wide">REC</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+                <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-chart-4'}`} />
+                <span className="text-xs font-bold text-primary uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
+              </div>
             </div>
           </div>
         )}
@@ -914,6 +954,19 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                 >
                   {waitingForApproval ? <Hand className="w-5 h-5 animate-pulse" /> : <MonitorUp className="w-5 h-5" />}
                 </button>
+                {amIAuthority && (
+                  <button
+                    onClick={handleRecordClick}
+                    title={isRecording ? t('classroom.stopRecording') : t('classroom.startRecording')}
+                    className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
+                      isRecording
+                        ? 'bg-red-500/80 text-white border-red-400 animate-pulse'
+                        : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                    }`}
+                  >
+                    {isRecording ? <StopCircle className="w-5 h-5" /> : <CircleDot className="w-5 h-5" />}
+                  </button>
+                )}
                 <div className="w-px h-6 bg-white/30 mx-1" />
                 <button
                   onClick={() => router.back()}
@@ -974,6 +1027,20 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                 ? <div className="animate-pulse"><Hand className="w-5 h-5" /></div>
                 : <MonitorUp className="w-5 h-5" />}
             </button>
+            {amIAuthority && (
+              <button
+                onClick={handleRecordClick}
+                title={isRecording ? t('classroom.stopRecording') : t('classroom.startRecording')}
+                className={`
+                  w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border
+                  ${isRecording
+                    ? 'bg-red-500/20 hover:bg-red-500/30 text-red-500 border-red-500/50 animate-pulse'
+                    : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border'}
+                `}
+              >
+                {isRecording ? <StopCircle className="w-5 h-5" /> : <CircleDot className="w-5 h-5" />}
+              </button>
+            )}
           </div>
           {/* Right spacer — icon-only Leave */}
           <div className="flex-1 flex items-center justify-end">
