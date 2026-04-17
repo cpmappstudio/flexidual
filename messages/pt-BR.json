@@ -242,7 +242,10 @@
     "stopRecording": "Parar gravação",
     "recordingStarted": "Gravação iniciada",
     "recordingStopped": "Gravação encerrada",
-    "recordingError": "Falha ao alternar a gravação"
+    "recordingError": "Falha ao alternar a gravação",
+    "startRecordingTitle": "Iniciar gravação?",
+    "startRecordingDesc": "Tem certeza de que deseja iniciar a gravação desta aula? Lembre-se de notificar todos os participantes que esta reunião está sendo gravada.",
+    "confirmStart": "Iniciar Gravação"
   },
   "curriculum": {
     "curriculum": "Currículo",

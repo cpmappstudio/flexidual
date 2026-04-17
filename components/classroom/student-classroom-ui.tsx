@@ -8,6 +8,7 @@ import {
   useParticipants,
   useTracks,
   RoomAudioRenderer,
+  useIsSpeaking,
 } from "@livekit/components-react";
 import { 
   Track, 
@@ -113,6 +114,7 @@ function ParticipantTile({
   audioMuted?: boolean,
 }) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
+  const isSpeaking = useIsSpeaking(participant);
   const isVideoEnabled = cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
   const imageUrl = getImageUrl(participant);
 
@@ -120,7 +122,7 @@ function ParticipantTile({
   const borderSize = variant === "mini" ? "border-2" : "border-4";
 
   return (
-    <div className={`relative bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden ${className}`}>
+    <div className={`relative bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px_rgba(34,197,94,0.4)] z-20" : ""} ${className}`}>
       {isVideoEnabled ? (
         <VideoTrack 
           trackRef={{ participant, source: Track.Source.Camera, publication: cameraTrack as TrackPublication }} 

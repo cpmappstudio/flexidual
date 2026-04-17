@@ -625,6 +625,22 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
     }
   };
 
+  const handleLeaveClick = () => {
+    // If an authority explicitly clicks leave while recording, ensure we stop the egress
+    if (amIAuthority && isRecording) {
+      // We fire this and intentionally DO NOT await it, 
+      // so the teacher routes back instantly without being held hostage by the network request.
+      toggleRecording({ 
+        roomName, 
+        start: false, 
+        filePrefix: "" // Prefix doesn't matter for stopping
+      }).catch(console.error);
+    }
+    
+    // Route back immediately
+    router.back();
+  };
+
   const executeRecordingToggle = async (start: boolean) => {
     if (isTogglingRecord) return;
     setIsTogglingRecord(true);
@@ -1017,19 +1033,26 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                 {amIAuthority && (
                   <button
                     onClick={handleRecordClick}
+                    disabled={isTogglingRecord}
                     title={isRecording ? t('classroom.stopRecording') : t('classroom.startRecording')}
                     className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
                       isRecording
                         ? 'bg-red-500/80 text-white border-red-400 animate-pulse'
                         : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
-                    }`}
+                    } ${isTogglingRecord ? 'opacity-50 cursor-wait' : ''}`}
                   >
-                    {isRecording ? <StopCircle className="w-5 h-5" /> : <CircleDot className="w-5 h-5" />}
+                    {isTogglingRecord ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : isRecording ? (
+                      <StopCircle className="w-5 h-5" />
+                    ) : (
+                      <CircleDot className="w-5 h-5" />
+                    )}
                   </button>
                 )}
                 <div className="w-px h-6 bg-white/30 mx-1" />
                 <button
-                  onClick={() => router.back()}
+                  onClick={handleLeaveClick}
                   className="w-11 h-11 rounded-full bg-red-500/80 hover:bg-red-600/80 text-white flex items-center justify-center shadow-lg border-2 border-red-400/60 transition-colors"
                 >
                   <LogOut className="w-5 h-5" />
@@ -1105,7 +1128,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           {/* Right spacer — icon-only Leave */}
           <div className="flex-1 flex items-center justify-end">
             <button
-              onClick={() => router.back()}
+              onClick={handleLeaveClick}
               title={t('classroom.leave')}
               className="w-12 h-12 rounded-full bg-destructive hover:bg-destructive/90 text-white flex items-center justify-center shadow-md transition-colors"
             >

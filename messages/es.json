@@ -241,7 +241,10 @@
     "stopRecording": "Detener grabación",
     "recordingStarted": "Grabación iniciada",
     "recordingStopped": "Grabación detenida",
-    "recordingError": "Error al cambiar el estado de la grabación"
+    "recordingError": "Error al cambiar el estado de la grabación",
+    "startRecordingTitle": "¿Iniciar grabación?",
+    "startRecordingDesc": "¿Estás seguro de que deseas iniciar la grabación de esta clase? Recuerda notificar a todos los participantes que esta reunión está siendo grabada.",
+    "confirmStart": "Iniciar Grabación"
   },
   "curriculum": {
     "curriculum": "Currículo",
