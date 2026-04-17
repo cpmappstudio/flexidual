@@ -13,6 +13,7 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/:locale/pending-role',
   '/pending-role',
+  '/recording',
 ])
 
 export default clerkMiddleware(async (auth, req: NextRequest) => {
@@ -21,6 +22,10 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   // 1. Fast path: static files
   if (pathname.match(/\.(jpg|jpeg|gif|png|svg|ico|webp|mp4|pdf|js|css|woff2?)$/)) {
     return NextResponse.next()
+  }
+
+  if (pathname.startsWith('/recording')) {
+    return NextResponse.next();
   }
 
   const locale = getLocaleFromPathname(pathname)

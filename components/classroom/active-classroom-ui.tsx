@@ -10,6 +10,7 @@ import {
   useParticipants,
   useTracks,
   RoomAudioRenderer,
+  useIsSpeaking,
 } from "@livekit/components-react";
 import { 
   Track, 
@@ -30,6 +31,16 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { FlexidualLogo } from "../ui/flexidual-logo";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // --- Constants ---
 const SCREEN_SHARE_OPTIONS = { updateOnlyOn: [], onlySubscribed: false };
@@ -131,6 +142,7 @@ function ParticipantTile({
   audioMuted?: boolean,
 }) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
+  const isSpeaking = useIsSpeaking(participant);
   const isVideoEnabled = cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
   const imageUrl = getImageUrl(participant);
 
@@ -138,7 +150,7 @@ function ParticipantTile({
   const borderSize = variant === "mini" ? "border-1" : "border-2";
 
   return (
-    <div className={`relative bg-muted overflow-hidden ${className}`}>
+    <div className={`relative bg-muted overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px_rgba(34,197,94,0.4)] z-20" : ""} ${className}`}>
       {isVideoEnabled ? (
         <VideoTrack 
           trackRef={{ participant, source: Track.Source.Camera, publication: cameraTrack as TrackPublication }} 
@@ -306,6 +318,8 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
   const [stageControlsVisible, setStageControlsVisible] = useState(true);
   const [isRecording, setIsRecording] = useState(room.isRecording);
+  const [showRecordConfirm, setShowRecordConfirm] = useState(false);
+  const [isTogglingRecord, setIsTogglingRecord] = useState(false);
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -599,20 +613,36 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
     }
   };
 
-  const handleRecordClick = async () => {
+  const handleRecordClick = () => {
     if (!amIAuthority) return;
+    if (isRecording) {
+      executeRecordingToggle(false);
+    } else {
+      setShowRecordConfirm(true);
+    }
+  };
+
+  const executeRecordingToggle = async (start: boolean) => {
+    if (isTogglingRecord) return;
+    setIsTogglingRecord(true);
     try {
       const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
       const cleanClassName = (className || 'Class').replace(/\s+/g, '-');
       const cleanLesson = (lessonTitle || 'Lesson').replace(/\s+/g, '-');
+      const uniqueSuffix = Date.now(); // <-- Prevents S3 overwrites
+
       await toggleRecording({
         roomName,
-        start: !isRecording,
-        filePrefix: `${dateStr}_${cleanClassName}_${cleanLesson}_${roomName}`,
+        start,
+        filePrefix: `${dateStr}_${cleanClassName}_${cleanLesson}_${roomName}_${uniqueSuffix}`,
       });
-      toast.success(isRecording ? t('classroom.recordingStopped') : t('classroom.recordingStarted'));
+      
+      toast.success(start ? t('classroom.recordingStarted') : t('classroom.recordingStopped'));
     } catch {
       toast.error(t('classroom.recordingError'));
+    } finally {
+      setIsTogglingRecord(false);
+      setShowRecordConfirm(false);
     }
   };
 
@@ -721,6 +751,26 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   return (
     <div className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] xl:grid-cols-[1fr_320px] xl:grid-rows-[min-content_1fr_min-content]">
       <RoomAudioRenderer />
+
+      <AlertDialog open={showRecordConfirm} onOpenChange={setShowRecordConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('classroom.startRecordingTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('classroom.startRecordingDesc')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => executeRecordingToggle(true)}
+              disabled={isTogglingRecord}
+            >
+              {isTogglingRecord ? <Loader2 className="w-4 h-4 animate-spin" /> : t('classroom.confirmStart')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {needsClick && (
         <div className="absolute inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

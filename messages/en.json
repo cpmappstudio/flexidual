@@ -242,7 +242,10 @@
     "stopRecording": "Stop Recording",
     "recordingStarted": "Recording started",
     "recordingStopped": "Recording stopped",
-    "recordingError": "Failed to toggle recording"
+    "recordingError": "Failed to toggle recording",
+    "startRecordingTitle": "Start Recording?",
+    "startRecordingDesc": "Are you sure you want to start recording this class? Please remember to notify all participants that this meeting is being recorded.",
+    "confirmStart": "Start Recording"
   },
   "curriculum": {
     "curriculum": "Curriculum",

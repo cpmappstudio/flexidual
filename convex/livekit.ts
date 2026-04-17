@@ -111,6 +111,17 @@ export const toggleRecording = action({
     const egressClient = new EgressClient(url, apiKey, apiSecret);
 
     if (args.start) {
+      // 1. THE GUARD: Check if there is already an active/starting session for this room
+      const existingEgresses = await egressClient.listEgress({ roomName: args.roomName });
+      const isAlreadyRunning = existingEgresses.some(
+        (e) => e.status === EgressStatus.EGRESS_STARTING || e.status === EgressStatus.EGRESS_ACTIVE
+      );
+
+      if (isAlreadyRunning) {
+        return { success: false, message: "A recording is already starting or active." };
+      }
+
+      // 2. Proceed with starting the recording
       const s3Upload = new S3Upload({
         accessKey: process.env.S3_ACCESS_KEY ?? "",
         secret: process.env.S3_SECRET_KEY ?? "",
@@ -125,10 +136,13 @@ export const toggleRecording = action({
         output: { case: "s3", value: s3Upload },
       });
 
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+      if (!baseUrl) throw new Error("NEXT_PUBLIC_APP_URL is not defined in environment variables.");
+
       await egressClient.startRoomCompositeEgress(
         args.roomName,
         fileOutput,
-        { layout: "speaker" } 
+        { customBaseUrl: `${baseUrl}/recording` }
       );
       
       return { success: true, message: "Recording started" };
@@ -137,12 +151,17 @@ export const toggleRecording = action({
         roomName: args.roomName,
       });
 
-      const activeEgress = egresses.find(
-        (e) => e.status === EgressStatus.EGRESS_STARTING || e.status === EgressStatus.EGRESS_ACTIVE
+      const activeEgresses = egresses.filter(
+        (e) => 
+          e.status === EgressStatus.EGRESS_STARTING || 
+          e.status === EgressStatus.EGRESS_ACTIVE
       );
 
-      if (activeEgress && activeEgress.egressId) {
-        await egressClient.stopEgress(activeEgress.egressId);
+      if (activeEgresses.length > 0) {
+        // Stop all active egresses found for this room
+        await Promise.all(
+          activeEgresses.map((e) => egressClient.stopEgress(e.egressId))
+        );
         return { success: true, message: "Recording stopped" };
       }
 
