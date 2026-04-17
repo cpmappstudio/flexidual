@@ -169,3 +169,42 @@ export const toggleRecording = action({
     }
   },
 });
+
+export const forceCleanupEgress = action({
+  args: {},
+  handler: async (ctx) => {
+    const url = process.env.LIVEKIT_URL;
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+
+    if (!url || !apiKey || !apiSecret) {
+      throw new Error("LiveKit credentials are not configured.");
+    }
+
+    const egressClient = new EgressClient(url, apiKey, apiSecret);
+    
+    // List ALL egresses across the entire project
+    const egresses = await egressClient.listEgress();
+
+    // Filter for stuck/active sessions
+    const stuckSessions = egresses.filter(
+      (e) => 
+        e.status === EgressStatus.EGRESS_STARTING || 
+        e.status === EgressStatus.EGRESS_ACTIVE
+    );
+
+    if (stuckSessions.length === 0) {
+      return { message: "No stuck sessions found. You are clear!" };
+    }
+
+    // Forcefully stop all of them
+    const results = await Promise.allSettled(
+      stuckSessions.map((e) => egressClient.stopEgress(e.egressId))
+    );
+
+    return { 
+      message: `Attempted to stop ${stuckSessions.length} stuck sessions.`,
+      results 
+    };
+  },
+});
