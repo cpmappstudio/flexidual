@@ -629,13 +629,20 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
       const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
       const cleanClassName = (className || 'Class').replace(/\s+/g, '-');
       const cleanLesson = (lessonTitle || 'Lesson').replace(/\s+/g, '-');
-      const uniqueSuffix = Date.now(); // <-- Prevents S3 overwrites
+      const uniqueSuffix = Date.now();
 
-      await toggleRecording({
+      // Store the result of the mutation
+      const result = await toggleRecording({
         roomName,
         start,
         filePrefix: `${dateStr}_${cleanClassName}_${cleanLesson}_${roomName}_${uniqueSuffix}`,
       });
+      
+      // If the backend guard blocked it, show the error and stop
+      if (!result.success) {
+        toast.error(result.message);
+        return;
+      }
       
       toast.success(start ? t('classroom.recordingStarted') : t('classroom.recordingStopped'));
     } catch {
