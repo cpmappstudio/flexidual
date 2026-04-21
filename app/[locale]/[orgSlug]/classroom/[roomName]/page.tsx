@@ -11,6 +11,7 @@ interface ClassroomPageProps {
     locale: string;
     roomName: string;
   }>;
+  searchParams: Promise<{ companion?: string }>;
 }
 
 // Helper to extract IDs from room name
@@ -52,8 +53,10 @@ export async function generateMetadata(props: ClassroomPageProps) {
 
 export default async function ClassroomPage(props: ClassroomPageProps) {
   const t = await getTranslations('classroom');
-  const params = await props.params; 
+  const params = await props.params;
+  const searchParams = await props.searchParams;
   const roomName = decodeURIComponent(params.roomName);
+  const isCompanion = searchParams.companion === "true";
 
   // 1. Fetch the schedule to determine the type
   const schedule = await fetchQuery(api.schedule.getByRoomName, { roomName });
@@ -127,7 +130,7 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
   // 3. LIVEKIT RENDER STRATEGY (Standard)
   return (
     <main className="w-full h-[calc(100vh-6rem)] rounded-2xl overflow-hidden border border-border shadow-sm">
-      <FlexiClassroom roomName={roomName} />
+      <FlexiClassroom roomName={roomName} isCompanion={isCompanion} />
     </main>
   );
 }

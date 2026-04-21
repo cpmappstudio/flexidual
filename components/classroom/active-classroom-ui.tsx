@@ -24,11 +24,12 @@ import {
   Mic, MicOff, Video as VideoIcon, VideoOff, LogOut, VolumeX, 
   MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2, Eye, Crown,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  CircleDot, StopCircle
+  CircleDot, StopCircle, TabletSmartphone
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { FlexidualLogo } from "../ui/flexidual-logo";
+import { SharedWhiteboard } from "./shared-whiteboard";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import {
@@ -41,6 +42,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { QRCodeSVG } from "qrcode.react";
 
 // --- Constants ---
 const SCREEN_SHARE_OPTIONS = { updateOnlyOn: [], onlySubscribed: false };
@@ -297,7 +307,15 @@ interface ActiveClassroomUIProps {
 export function ActiveClassroomUI({ currentUserRole, roomName, className, lessonTitle }: ActiveClassroomUIProps) {
   const t = useTranslations();
   const router = useRouter();
+  const pathname = usePathname();
   const room = useRoomContext();
+
+  const [companionUrl, setCompanionUrl] = useState("");
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCompanionUrl(`${window.location.origin}${pathname}?companion=true`);
+    }
+  }, [pathname]);
   const markLive = useMutation(api.schedule.markLive);
   const toggleRecording = useAction(api.livekit.toggleRecording);
   const participants = useParticipants();
@@ -320,6 +338,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const [isRecording, setIsRecording] = useState(room.isRecording);
   const [showRecordConfirm, setShowRecordConfirm] = useState(false);
   const [isTogglingRecord, setIsTogglingRecord] = useState(false);
+  const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -502,6 +521,15 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
 
         if (msg.type === "ADMIN_PRESENTING" && participant && !amITeacher) {
           setAdminPresenterId(msg.presenting ? participant.identity : null);
+        }
+
+        if (msg.type === "WHITEBOARD_STATE") {
+          setIsWhiteboardActive(msg.active);
+          if (msg.active) {
+            toast.success(t('classroom.whiteboardStarted') || "Whiteboard started");
+          } else {
+            toast.info(t('classroom.whiteboardStopped') || "Whiteboard stopped");
+          }
         }
       } catch (e) {
         console.error("Failed to parse data message", e);
@@ -877,7 +905,18 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               <Eye className="w-3 h-3 shrink-0" /> {t('classroom.observingIncognito')}
             </div>
           )}
-          {isScreenSharingActive ? (
+          {isWhiteboardActive ? (
+            <>
+              <div className="w-full h-full relative rounded-xl overflow-hidden">
+                <SharedWhiteboard isReadonly={true} />
+              </div>
+              {teacher && isTeacherVideoOn && (
+                <DraggablePip containerRef={stageRef}>
+                  <ParticipantTile participant={teacher} variant="grid" className="w-full h-full" showLabel={true} youLabel={t('classroom.youShort')} />
+                </DraggablePip>
+              )}
+            </>
+          ) : isScreenSharingActive ? (
             <>
               <div
                 key={activeScreenTrack.publication.trackSid}
@@ -1090,6 +1129,38 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
             <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
             {!amIIncognito && (
               <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
+            )}
+            {amIAuthority && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button
+                    title={t('classroom.connectTablet') || "Connect Tablet"}
+                    className="w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border"
+                  >
+                    <TabletSmartphone className="w-5 h-5" />
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="text-xl">{t('classroom.connectTablet') || "Connect Companion Tablet"}</DialogTitle>
+                    <DialogDescription>
+                      {t('classroom.connectTabletDesc') || "Scan this QR code with your iPad or Android tablet to open the interactive whiteboard."}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="flex flex-col items-center justify-center p-6 bg-white rounded-xl shadow-inner my-4">
+                    {companionUrl ? (
+                      <QRCodeSVG value={companionUrl} size={220} level="M" includeMargin={true} />
+                    ) : (
+                      <div className="w-[220px] h-[220px] flex items-center justify-center bg-muted animate-pulse rounded-lg" />
+                    )}
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground break-all bg-muted p-3 rounded-lg border border-border/50 font-mono select-all">
+                      {companionUrl}
+                    </p>
+                  </div>
+                </DialogContent>
+              </Dialog>
             )}
             <button
               onClick={handleShareClick}

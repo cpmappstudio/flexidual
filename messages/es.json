@@ -244,7 +244,14 @@
     "recordingError": "Error al cambiar el estado de la grabación",
     "startRecordingTitle": "¿Iniciar grabación?",
     "startRecordingDesc": "¿Estás seguro de que deseas iniciar la grabación de esta clase? Recuerda notificar a todos los participantes que esta reunión está siendo grabada.",
-    "confirmStart": "Iniciar Grabación"
+    "confirmStart": "Iniciar Grabación",
+    "whiteboardStarted": "El profesor abrió la pizarra",
+    "whiteboardStopped": "Pizarra cerrada",
+    "connectTablet": "Conectar Tablet",
+    "connectTabletDesc": "Escanea este código QR con tu iPad o tablet Android para abrir la pizarra interactiva.",
+    "companionDeviceFor": "Dispositivo Compañero · {room}",
+    "stopPresenting": "Dejar de Presentar",
+    "presentBoard": "Presentar Pizarra"
   },
   "curriculum": {
     "curriculum": "Currículo",

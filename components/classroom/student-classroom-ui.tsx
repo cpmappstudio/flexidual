@@ -24,6 +24,7 @@ import {
   MonitorUp, Hand, ChevronUp, ChevronDown, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { FlexidualLogo } from "@/components/ui/flexidual-logo";
+import { SharedWhiteboard } from "./shared-whiteboard";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -274,6 +275,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
   const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
   const [stageControlsVisible, setStageControlsVisible] = useState(true);
   const [isRecording, setIsRecording] = useState(room.isRecording);
+  const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -397,6 +399,15 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
 
         if (msg.type === "ADMIN_PRESENTING" && participant) {
           setAdminPresenterId(msg.presenting ? participant.identity : null);
+        }
+
+        if (msg.type === "WHITEBOARD_STATE") {
+          setIsWhiteboardActive(msg.active);
+          if (msg.active) {
+            toast.success(t('classroom.whiteboardStarted') || "Teacher opened the whiteboard");
+          } else {
+            toast.info(t('classroom.whiteboardStopped') || "Whiteboard closed");
+          }
         }
       } catch (e) {
         console.error("Failed to parse data message", e);
@@ -644,7 +655,18 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
       {/* 2. Stage */}
       <div className={`col-start-1 row-start-2 min-h-0 z-10 flex flex-col relative ${isPhoneLandscape ? 'p-1' : 'p-3 md:p-4 py-2 md:py-4'}`}>
         <div ref={stageRef} className="flex-1 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl shadow-2xl overflow-hidden relative border-4 border-purple-400 dark:border-purple-600 flex items-center justify-center group min-h-0">
-          {isScreenSharingActive ? (
+          {isWhiteboardActive ? (
+            <>
+              <div className="w-full h-full relative rounded-2xl overflow-hidden">
+                <SharedWhiteboard isReadonly={true} />
+              </div>
+              {teacher && isTeacherVideoOn && (
+                <DraggablePip containerRef={stageRef}>
+                  <ParticipantTile participant={teacher} variant="grid" className="w-full h-full" showLabel={true} youLabel={t('classroom.youShort')} />
+                </DraggablePip>
+              )}
+            </>
+          ) : isScreenSharingActive ? (
             <>
               <div
                 className={`w-full h-full flex items-center justify-center origin-center bg-black relative select-none ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}

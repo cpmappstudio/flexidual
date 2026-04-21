@@ -245,7 +245,14 @@
     "recordingError": "Failed to toggle recording",
     "startRecordingTitle": "Start Recording?",
     "startRecordingDesc": "Are you sure you want to start recording this class? Please remember to notify all participants that this meeting is being recorded.",
-    "confirmStart": "Start Recording"
+    "confirmStart": "Start Recording",
+    "whiteboardStarted": "Teacher opened the whiteboard",
+    "whiteboardStopped": "Whiteboard closed",
+    "connectTablet": "Connect Tablet",
+    "connectTabletDesc": "Scan this QR code with your iPad or Android tablet to open the interactive whiteboard.",
+    "companionDeviceFor": "Companion Device · {room}",
+    "stopPresenting": "Stop Presenting",
+    "presentBoard": "Present Board"
   },
   "curriculum": {
     "curriculum": "Curriculum",

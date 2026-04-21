@@ -245,7 +245,14 @@
     "recordingError": "Falha ao alternar a gravação",
     "startRecordingTitle": "Iniciar gravação?",
     "startRecordingDesc": "Tem certeza de que deseja iniciar a gravação desta aula? Lembre-se de notificar todos os participantes que esta reunião está sendo gravada.",
-    "confirmStart": "Iniciar Gravação"
+    "confirmStart": "Iniciar Gravação",
+    "whiteboardStarted": "O professor abriu o quadro",
+    "whiteboardStopped": "Quadro fechado",
+    "connectTablet": "Conectar Tablet",
+    "connectTabletDesc": "Escaneie este QR code com seu iPad ou tablet Android para abrir o quadro interativo.",
+    "companionDeviceFor": "Dispositivo Companheiro · {room}",
+    "stopPresenting": "Parar Apresentação",
+    "presentBoard": "Apresentar Quadro"
   },
   "curriculum": {
     "curriculum": "Currículo",

@@ -17,6 +17,7 @@ export const getToken = action({
     roomName: v.string(), 
     participantName: v.string(),
     role: v.optional(v.string()),
+    isCompanion: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<string> => {
     const identity = await ctx.auth.getUserIdentity();
@@ -64,14 +65,23 @@ export const getToken = action({
     // Determine the final role (Prefer the tenant context passed from the frontend)
     const finalRole = args.role || access.computedRole || "student";
 
+    const finalIdentity = args.isCompanion 
+      ? `${identity.subject}-companion` 
+      : identity.subject;
+
+    const finalName = args.isCompanion 
+      ? `${args.participantName} (Companion)` 
+      : args.participantName;
+
     const at = new AccessToken(apiKey, apiSecret, {
-      identity: identity.subject,
-      name: args.participantName,
+      identity: finalIdentity,
+      name: finalName,
       metadata: JSON.stringify({
         role: finalRole,
         userId: identity.subject,
         fullName: user.fullName,
         imageUrl: user.imageUrl ?? null,
+        isCompanion: args.isCompanion || false
       })
     });
 

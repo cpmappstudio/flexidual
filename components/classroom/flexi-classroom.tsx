@@ -15,11 +15,13 @@ import { useAuth } from "@clerk/nextjs";
 import { getRoleForOrg } from "@/lib/rbac";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSidebar } from "@/components/ui/sidebar";
+import { CompanionClassroomUI } from "./companion-classroom-ui";
 
 interface FlexiClassroomProps {
   roomName: string;
   className?: string;
   isStudentView?: boolean;
+  isCompanion?: boolean;
   onLeave?: () => void;
 }
 
@@ -61,7 +63,7 @@ function SidebarAutoCollapser() {
   return null;
 }
 
-export default function FlexiClassroom({ roomName, className, isStudentView = false, onLeave }: FlexiClassroomProps) {
+export default function FlexiClassroom({ roomName, className, isStudentView = false, isCompanion = false, onLeave }: FlexiClassroomProps) {
   const t = useTranslations();
   const router = useRouter();
   const [token, setToken] = useState<string>("");
@@ -137,7 +139,8 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
         const jwt = await getToken({
           roomName,
           participantName,
-          role
+          role,
+          isCompanion
         });
         setToken(jwt);
       } catch (err) {
@@ -151,7 +154,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
     };
 
     fetchToken();
-  }, [convexUser, roomName, getToken, shouldConnect, t]);
+  }, [convexUser, roomName, getToken, shouldConnect, isCompanion, t]);
 
   // Handle disconnect (leave)
   const handleDisconnect = async () => {
@@ -357,8 +360,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
         style={{ height: '100%', width: '100%' }}
         onDisconnected={handleDisconnect}
       >
-        {isStudentView ? (
-          <StudentClassroomUI 
+        {isCompanion ? (
+          <CompanionClassroomUI roomName={roomName} /> 
+        ) : isStudentView ? (
+          <StudentClassroomUI
             currentUserRole={role}
             roomName={roomName}
             className={scheduleDetails?.class?.name}
