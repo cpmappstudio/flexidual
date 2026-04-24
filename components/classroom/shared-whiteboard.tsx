@@ -1,64 +1,73 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Tldraw, createTLStore, defaultShapeUtils } from "tldraw";
+import { useEffect, useState } from "react";
+import { Tldraw, createTLStore, defaultShapeUtils, TLRecord } from "tldraw";
 import "tldraw/tldraw.css";
-
-// Minimal interface for the subset of Editor methods used externally
-export type TLEditorInstance = {
-  getContainer: () => HTMLElement;
-  toImage: (ids: string[], opts?: Record<string, unknown>) => Promise<{ blob: Blob }>;
-  getCurrentPageShapeIds: () => Set<string>;
-  updateInstanceState: (state: Record<string, unknown>) => void;
-  store: { listen: (handler: () => void, opts?: { source?: string; scope?: string }) => () => void };
-};
+import { useRoomContext } from "@livekit/components-react";
 
 interface SharedWhiteboardProps {
   isReadonly?: boolean;
-  onEditorReady?: (editor: TLEditorInstance) => void;
 }
 
-export function SharedWhiteboard({ isReadonly = false, onEditorReady }: SharedWhiteboardProps) {
+export function SharedWhiteboard({ isReadonly = false }: SharedWhiteboardProps) {
+  const room = useRoomContext();
   const [store] = useState(() => createTLStore({ shapeUtils: defaultShapeUtils }));
-  const internalEditorRef = useRef<TLEditorInstance | null>(null);
 
-  // Tldraw sets isFocused via a debounced handler that checks:
-  //   document.hasFocus() && container.contains(document.activeElement)
-  // On mobile, touch events don't move DOM focus to the container, so activeElement
-  // stays as document.body and isFocused goes false after 32ms.
-  // The ONLY fix that satisfies Tldraw's own check is editor.getContainer().focus() —
-  // the same call Tldraw uses internally (see DefaultContextMenu, StylePanel, etc.)
   useEffect(() => {
-    if (isReadonly) return;
-    const focusContainer = () => internalEditorRef.current?.getContainer().focus();
-    // Re-focus on every pointer interaction (covers all drawing gestures)
-    document.addEventListener("pointerdown", focusContainer, { capture: true });
-    // Re-focus when tab/app becomes visible again
-    const onVisibility = () => { if (!document.hidden) focusContainer(); };
-    document.addEventListener("visibilitychange", onVisibility);
-    // Fallback interval — catches any remaining edge cases without flooding
-    const id = setInterval(focusContainer, 500);
-    return () => {
-      document.removeEventListener("pointerdown", focusContainer, { capture: true });
-      document.removeEventListener("visibilitychange", onVisibility);
-      clearInterval(id);
+    if (!room) return;
+
+    // BROADCASTER: listen to local user changes and publish via data channel
+    const unlisten = store.listen(
+      (update) => {
+        if (update.source !== "user" || isReadonly) return;
+        const payload = JSON.stringify({ type: "WHITEBOARD_SYNC", changes: update.changes });
+        room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+      },
+      { source: "user", scope: "document" }
+    );
+
+    // RECEIVER: apply remote changes into local store
+    const handleDataReceived = (payload: Uint8Array) => {
+      try {
+        const msg = JSON.parse(new TextDecoder().decode(payload));
+        if (msg.type === "WHITEBOARD_SYNC") {
+          store.mergeRemoteChanges(() => {
+            const { added, updated, removed } = msg.changes as {
+              added?: Record<string, TLRecord>;
+              updated?: Record<string, [TLRecord, TLRecord]>;
+              removed?: Record<string, TLRecord>;
+            };
+            if (added) store.put(Object.values(added));
+            if (updated) store.put(Object.values(updated).map((u) => u[1]));
+            // store.remove requires an array of IDs, not objects
+            if (removed) store.remove(Object.values(removed).map((r) => r.id) as Parameters<typeof store.remove>[0]);
+          });
+        }
+      } catch (e) {
+        console.error("Failed to parse whiteboard sync data", e);
+      }
     };
-  }, [isReadonly]);
+
+    room.on("dataReceived", handleDataReceived);
+    return () => {
+      unlisten();
+      room.off("dataReceived", handleDataReceived);
+    };
+  }, [room, store, isReadonly]);
 
   return (
     <div className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none">
       <Tldraw
         store={store}
         onMount={(editor) => {
-          internalEditorRef.current = editor as unknown as TLEditorInstance;
-          // Use the same call Tldraw uses internally for focus management
-          editor.getContainer().focus();
-          onEditorReady?.(editor as unknown as TLEditorInstance);
           if (isReadonly) {
             editor.updateInstanceState({ isReadonly: true });
+          } else {
+            editor.updateInstanceState({ isFocused: true });
           }
         }}
       />
     </div>
   );
 }
+

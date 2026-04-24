@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRoomContext, useLocalParticipant } from "@livekit/components-react";
-import { Track, LocalVideoTrack } from "livekit-client";
+import { useEffect, useState } from "react";
+import { useRoomContext } from "@livekit/components-react";
 import { LogOut, MonitorUp, StopCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { SharedWhiteboard, type TLEditorInstance } from "./shared-whiteboard";
+import { SharedWhiteboard } from "./shared-whiteboard";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
@@ -13,153 +12,36 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
   const t = useTranslations();
   const router = useRouter();
   const room = useRoomContext();
-  const { localParticipant } = useLocalParticipant();
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
 
-  const editorRef = useRef<TLEditorInstance | null>(null);
-  const whiteboardContainerRef = useRef<HTMLDivElement>(null);
-  const broadcastTrackRef = useRef<LocalVideoTrack | null>(null);
-  const streamCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const streamCtxRef = useRef<CanvasRenderingContext2D | null>(null);
-  const broadcastActiveRef = useRef(false);
-  const unlistenRef = useRef<(() => void) | null>(null);
-  const renderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Use screen.height/width (not window.inner*) so the virtual keyboard
-  // appearing/disappearing does NOT trigger a re-render and blank the Tldraw canvas.
+  // Use screen dimensions (not window.inner*) so the virtual keyboard
+  // appearing/disappearing does NOT trigger a re-render.
   useEffect(() => {
-    const check = () =>
-      setIsPortrait(window.screen.height > window.screen.width);
+    const check = () => setIsPortrait(window.screen.height > window.screen.width);
     check();
     window.addEventListener("orientationchange", check);
     return () => window.removeEventListener("orientationchange", check);
   }, []);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      broadcastActiveRef.current = false;
-      if (unlistenRef.current) unlistenRef.current();
-      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-      const track = broadcastTrackRef.current;
-      if (track) {
-        localParticipant.unpublishTrack(track);
-        track.mediaStreamTrack.stop();
-      }
-      // Remove ghost canvas from DOM
-      document.getElementById("wb-stream-canvas")?.remove();
-    };
-  }, [localParticipant]);
-
-  const startBroadcast = async () => {
-    const editor = editorRef.current;
-    const container = whiteboardContainerRef.current;
-    if (!editor || !container) {
-      toast.error("Whiteboard not ready. Please try again.");
-      return;
-    }
-
-    const { width, height } = container.getBoundingClientRect();
-
-    // Ghost canvas: attached to DOM at near-zero opacity so iOS Safari doesn't
-    // kill the MediaStream when the canvas leaves the viewport.
-    let canvas = document.getElementById("wb-stream-canvas") as HTMLCanvasElement | null;
-    if (!canvas) {
-      canvas = document.createElement("canvas");
-      canvas.id = "wb-stream-canvas";
-      Object.assign(canvas.style, {
-        position: "fixed", bottom: "0", right: "0",
-        width: "1px", height: "1px",
-        opacity: "0.01", pointerEvents: "none", zIndex: "-1",
-      });
-      document.body.appendChild(canvas);
-    }
-    canvas.width = Math.round(width) || 1280;
-    canvas.height = Math.round(height) || 720;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    streamCanvasRef.current = canvas;
-    streamCtxRef.current = ctx;
-    broadcastActiveRef.current = true;
-
-    // Paint one frame via getSvgString (lightweight — no PNG encoding on mobile)
-    const paintFrame = async () => {
-      const ed = editorRef.current;
-      const cv = streamCanvasRef.current;
-      const cx = streamCtxRef.current;
-      if (!ed || !cv || !cx || !broadcastActiveRef.current) return;
-
-      try {
-        const ids = [...ed.getCurrentPageShapeIds()];
-        if (ids.length === 0) {
-          cx.fillStyle = "#ffffff";
-          cx.fillRect(0, 0, cv.width, cv.height);
-          return;
-        }
-        // toImage() confirmed working — returns a proper PNG blob with all shapes
-        const { blob } = await ed.toImage(ids, { format: "png", background: true });
-        const bitmap = await createImageBitmap(blob);
-        cx.clearRect(0, 0, cv.width, cv.height);
-        cx.drawImage(bitmap, 0, 0, cv.width, cv.height);
-        bitmap.close();
-      } catch {
-        // Silent fail — keep the last good frame
-      }
-    };
-
-    // Render initial frame before publishing
-    await paintFrame();
-
-    // Event-driven updates: re-paint only when shapes actually change (~4 FPS max)
-    unlistenRef.current = editor.store.listen(
-      () => {
-        if (!broadcastActiveRef.current || renderTimeoutRef.current) return;
-        renderTimeoutRef.current = setTimeout(async () => {
-          await paintFrame();
-          renderTimeoutRef.current = null;
-        }, 250);
-      },
-      { scope: "document" }
-    );
-
-    const mediaTrack = canvas.captureStream(10).getVideoTracks()[0];
-    if (!mediaTrack) {
-      broadcastActiveRef.current = false;
-      toast.error("Failed to capture stream. Please try again.");
-      return;
-    }
-
-    const pub = await localParticipant.publishTrack(mediaTrack, {
-      source: Track.Source.ScreenShare,
-      name: "whiteboard",
-      simulcast: false,
-    });
-    if (pub.track) broadcastTrackRef.current = pub.track as LocalVideoTrack;
-    setIsBroadcasting(true);
-    toast.success(t("classroom.whiteboardStarted"));
+  const sendWhiteboardState = (active: boolean) => {
+    const payload = JSON.stringify({ type: "WHITEBOARD_STATE", active });
+    room.localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
   };
 
-  const stopBroadcast = async () => {
-    broadcastActiveRef.current = false;
-    if (unlistenRef.current) { unlistenRef.current(); unlistenRef.current = null; }
-    if (renderTimeoutRef.current) { clearTimeout(renderTimeoutRef.current); renderTimeoutRef.current = null; }
-    streamCanvasRef.current = null;
-    streamCtxRef.current = null;
-    const track = broadcastTrackRef.current;
-    if (track) {
-      await localParticipant.unpublishTrack(track);
-      track.mediaStreamTrack.stop();
-      broadcastTrackRef.current = null;
-    }
+  const startBroadcast = () => {
+    sendWhiteboardState(true);
+    setIsBroadcasting(true);
+    toast.success(t("classroom.whiteboardStarted") || "Whiteboard is now visible to students");
+  };
+
+  const stopBroadcast = () => {
+    sendWhiteboardState(false);
     setIsBroadcasting(false);
   };
 
   const handleLeave = async () => {
-    await stopBroadcast();
+    if (isBroadcasting) stopBroadcast();
     await room.disconnect();
     router.back();
   };
@@ -207,17 +89,10 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
       </div>
 
       {/* Whiteboard — fills remaining space */}
-      <div
-        ref={whiteboardContainerRef}
-        className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 touch-none overscroll-none"
-      >
-        <SharedWhiteboard
-          isReadonly={false}
-          onEditorReady={(editor) => {
-            editorRef.current = editor;
-          }}
-        />
+      <div className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 touch-none overscroll-none">
+        <SharedWhiteboard isReadonly={false} />
       </div>
     </div>
   );
 }
+
