@@ -1,1 +1,1 @@
-declare module "tldraw/tldraw.css";
+declare module "@excalidraw/excalidraw";
