@@ -26,12 +26,14 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
   const unlistenRef = useRef<(() => void) | null>(null);
   const renderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Responsive layout: detect portrait vs landscape
+  // Use screen.height/width (not window.inner*) so the virtual keyboard
+  // appearing/disappearing does NOT trigger a re-render and blank the Tldraw canvas.
   useEffect(() => {
-    const check = () => setIsPortrait(window.innerHeight > window.innerWidth);
+    const check = () =>
+      setIsPortrait(window.screen.height > window.screen.width);
     check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    return () => window.removeEventListener("orientationchange", check);
   }, []);
 
   // Cleanup on unmount
@@ -98,21 +100,12 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
           cx.fillRect(0, 0, cv.width, cv.height);
           return;
         }
-        const result = await ed.getSvgString(ids, { background: true });
-        if (!result) return;
-        const blob = new Blob([result.svg], { type: "image/svg+xml;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        await new Promise<void>((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            cx.clearRect(0, 0, cv.width, cv.height);
-            cx.drawImage(img, 0, 0, cv.width, cv.height);
-            URL.revokeObjectURL(url);
-            resolve();
-          };
-          img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-          img.src = url;
-        });
+        // toImage() confirmed working — returns a proper PNG blob with all shapes
+        const { blob } = await ed.toImage(ids, { format: "png", background: true });
+        const bitmap = await createImageBitmap(blob);
+        cx.clearRect(0, 0, cv.width, cv.height);
+        cx.drawImage(bitmap, 0, 0, cv.width, cv.height);
+        bitmap.close();
       } catch {
         // Silent fail — keep the last good frame
       }

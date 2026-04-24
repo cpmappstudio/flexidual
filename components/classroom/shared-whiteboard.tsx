@@ -23,32 +23,31 @@ export function SharedWhiteboard({ isReadonly = false, onEditorReady }: SharedWh
   const [store] = useState(() => createTLStore({ shapeUtils: defaultShapeUtils }));
   const internalEditorRef = useRef<TLEditorInstance | null>(null);
 
-  // editor.focus() moves actual DOM focus — unlike updateInstanceState({ isFocused: true }),
-  // it is respected by Tldraw's own focus detector and won't be immediately overridden.
+  // On mobile, browser focus management sets isFocused=false which hides the Tldraw UI.
+  // We reassert via updateInstanceState (NOT editor.focus() — that triggers the virtual
+  // keyboard, which changes window.innerHeight, which causes layout shifts → blank canvas).
   useEffect(() => {
     if (isReadonly) return;
-    const refocus = () => internalEditorRef.current?.focus();
-    // Re-focus when the browser tab/app regains visibility (most common mobile case)
-    const onVisibility = () => { if (!document.hidden) refocus(); };
-    document.addEventListener("visibilitychange", onVisibility);
-    // 1-second fallback for any other focus-steal scenario on mobile
-    const id = setInterval(refocus, 1000);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      clearInterval(id);
-    };
+    const assert = () =>
+      internalEditorRef.current?.updateInstanceState({ isFocused: true });
+    const id = setInterval(assert, 300);
+    return () => clearInterval(id);
   }, [isReadonly]);
 
   return (
-    <div className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none">
+    // onPointerDown asserts focus before each drawing gesture so the first stroke
+    // is never blocked by a brief isFocused=false window.
+    <div
+      className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none"
+      onPointerDown={() =>
+        internalEditorRef.current?.updateInstanceState({ isFocused: true })
+      }
+    >
       <Tldraw
         store={store}
-        autoFocus
         onMount={(editor) => {
           internalEditorRef.current = editor as unknown as TLEditorInstance;
-          // Call editor.focus() — this moves real DOM focus so Tldraw's own
-          // focus detection confirms it and doesn't reset isFocused to false.
-          editor.focus();
+          editor.updateInstanceState({ isFocused: true });
           onEditorReady?.(editor as unknown as TLEditorInstance);
           if (isReadonly) {
             editor.updateInstanceState({ isReadonly: true });
