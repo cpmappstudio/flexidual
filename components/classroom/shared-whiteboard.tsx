@@ -61,6 +61,7 @@ export function SharedWhiteboard({ isReadonly = false, onEditorReady }: SharedWh
     <div className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none">
       <Tldraw
         store={store}
+        licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY}
         onMount={(editor) => {
           onEditorReady?.(editor as unknown as TLEditorInstance);
 
