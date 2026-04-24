@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRoomContext, useLocalParticipant } from "@livekit/components-react";
 import { LogOut, MonitorUp, StopCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,8 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
   const { localParticipant } = useLocalParticipant();
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const whiteboardApiRef = useRef<any>(null);
 
   // screen.height/width is stable across virtual keyboard open/close
   useEffect(() => {
@@ -27,12 +29,24 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
   const toggleWhiteboard = async () => {
     const newState = !isBroadcasting;
     setIsBroadcasting(newState);
-    const payload = JSON.stringify({
-      type: "WHITEBOARD_STATE",
-      active: newState,
-      companionId: localParticipant.identity,
-    });
-    await localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+    const encoder = new TextEncoder();
+    await localParticipant.publishData(
+      encoder.encode(JSON.stringify({
+        type: "WHITEBOARD_STATE",
+        active: newState,
+        companionId: localParticipant.identity,
+      })),
+      { reliable: true },
+    );
+    // When activating, immediately broadcast the full current scene so students
+    // who are already in the room see existing content without drawing anything new
+    if (newState && whiteboardApiRef.current) {
+      const elements = whiteboardApiRef.current.getSceneElements();
+      await localParticipant.publishData(
+        encoder.encode(JSON.stringify({ type: "WHITEBOARD_SYNC", elements })),
+        { reliable: true },
+      );
+    }
     if (newState) {
       toast.success(t("classroom.whiteboardStarted") || "Whiteboard is now visible");
     }
@@ -79,7 +93,7 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
       </div>
 
       <div className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 touch-none overscroll-none">
-        <SharedWhiteboard isReadonly={false} />
+        <SharedWhiteboard isReadonly={false} onApiReady={(api) => { whiteboardApiRef.current = api; }} />
       </div>
     </div>
   );

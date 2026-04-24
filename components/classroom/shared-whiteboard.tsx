@@ -23,14 +23,19 @@ const Excalidraw = dynamic(
 
 interface SharedWhiteboardProps {
   isReadonly?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onApiReady?: (api: any) => void;
 }
 
-export function SharedWhiteboard({ isReadonly = false }: SharedWhiteboardProps) {
+export function SharedWhiteboard({ isReadonly = false, onApiReady }: SharedWhiteboardProps) {
   const room = useRoomContext();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const apiRef = useRef<any>(null);
   const suppressRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Buffer elements that arrive before Excalidraw has finished loading
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pendingElementsRef = useRef<any[] | null>(null);
 
   // RECEIVER: apply remote element array into the local scene
   useEffect(() => {
@@ -39,11 +44,16 @@ export function SharedWhiteboard({ isReadonly = false }: SharedWhiteboardProps) 
     const handleDataReceived = (payload: Uint8Array) => {
       try {
         const msg = JSON.parse(new TextDecoder().decode(payload));
-        if (msg.type === "WHITEBOARD_SYNC" && apiRef.current) {
-          suppressRef.current = true;
-          apiRef.current.updateScene({ elements: msg.elements });
-          // One tick so the resulting onChange fires suppressed, then re-enable
-          setTimeout(() => { suppressRef.current = false; }, 0);
+        if (msg.type === "WHITEBOARD_SYNC") {
+          if (apiRef.current) {
+            suppressRef.current = true;
+            apiRef.current.updateScene({ elements: msg.elements });
+            setTimeout(() => { suppressRef.current = false; }, 0);
+          } else {
+            // Excalidraw still loading — keep the latest snapshot so we can
+            // apply it as soon as the API becomes available
+            pendingElementsRef.current = msg.elements;
+          }
         }
       } catch { /* ignore non-whiteboard packets */ }
     };
@@ -68,7 +78,17 @@ export function SharedWhiteboard({ isReadonly = false }: SharedWhiteboardProps) 
     <div className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none">
       <Excalidraw
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        excalidrawAPI={(api: any) => { apiRef.current = api; }}
+        excalidrawAPI={(api: any) => {
+          apiRef.current = api;
+          onApiReady?.(api);
+          // Apply any elements that arrived before the API was ready
+          if (pendingElementsRef.current) {
+            suppressRef.current = true;
+            api.updateScene({ elements: pendingElementsRef.current });
+            pendingElementsRef.current = null;
+            setTimeout(() => { suppressRef.current = false; }, 0);
+          }
+        }}
         onChange={handleChange}
         viewModeEnabled={isReadonly}
         UIOptions={{
