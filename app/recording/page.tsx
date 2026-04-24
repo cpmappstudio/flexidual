@@ -14,7 +14,6 @@ import { ConnectionState, Participant, Track, RemoteParticipant, TrackPublicatio
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Hand, MicOff } from "lucide-react";
-import { SharedWhiteboard } from "@/components/classroom/shared-whiteboard";
 
 // --- Helpers (Kept DRY from your main UI) ---
 const getRole = (p: Participant | undefined): string => {
@@ -119,7 +118,6 @@ function RecordingLayout() {
   const screenTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false });
   
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
-  const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
 
   // Listen to data channels exactly like the main UI to catch hands in the recording
   useEffect(() => {
@@ -129,9 +127,6 @@ function RecordingLayout() {
         const msg = JSON.parse(decoder.decode(payload));
         if (msg.type === "RAISE_HAND" && participant) {
           setRaisedHands((prev) => new Set(prev).add(participant.identity));
-        }
-        if (msg.type === "WHITEBOARD_STATE") {
-          setIsWhiteboardActive(!!msg.active);
         }
         if (msg.type === "LOWER_HAND" || msg.type === "FORCE_LOWER_HAND") {
           if (participant) {
@@ -155,11 +150,8 @@ function RecordingLayout() {
       
       {/* LEFT: MAIN STAGE */}
       <div className="flex-1 relative bg-muted border-r border-border flex items-center justify-center p-2">
-        {isWhiteboardActive ? (
-          <div className="w-full h-full rounded-2xl overflow-hidden border-2 border-border shadow-xl">
-            <SharedWhiteboard isReadonly={true} />
-          </div>
-        ) : activeScreenTrack ? (
+        {activeScreenTrack ? (
+          <div className="w-full h-full bg-black relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
           <div className="w-full h-full bg-black relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
              <VideoTrack 
                trackRef={activeScreenTrack} 
