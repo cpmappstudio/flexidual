@@ -152,7 +152,6 @@ function RecordingLayout() {
       <div className="flex-1 relative bg-muted border-r border-border flex items-center justify-center p-2">
         {activeScreenTrack ? (
           <div className="w-full h-full bg-black relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
-          <div className="w-full h-full bg-black relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
              <VideoTrack 
                trackRef={activeScreenTrack} 
                className="w-full h-full object-contain" 
