@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { ComponentType } from "react";
 import dynamic from "next/dynamic";
 import { useRoomContext } from "@livekit/components-react";
+import "@excalidraw/excalidraw/index.css";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ExcalidrawProps = Record<string, any>;
 
