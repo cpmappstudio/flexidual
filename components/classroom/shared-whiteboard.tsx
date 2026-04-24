@@ -6,9 +6,8 @@ import "tldraw/tldraw.css";
 
 // Minimal interface for the subset of Editor methods used externally
 export type TLEditorInstance = {
-  focus: () => void;
+  getContainer: () => HTMLElement;
   toImage: (ids: string[], opts?: Record<string, unknown>) => Promise<{ blob: Blob }>;
-  getSvgString: (ids: string[], opts?: Record<string, unknown>) => Promise<{ svg: string; width: number; height: number } | undefined>;
   getCurrentPageShapeIds: () => Set<string>;
   updateInstanceState: (state: Record<string, unknown>) => void;
   store: { listen: (handler: () => void, opts?: { source?: string; scope?: string }) => () => void };
@@ -23,31 +22,37 @@ export function SharedWhiteboard({ isReadonly = false, onEditorReady }: SharedWh
   const [store] = useState(() => createTLStore({ shapeUtils: defaultShapeUtils }));
   const internalEditorRef = useRef<TLEditorInstance | null>(null);
 
-  // On mobile, browser focus management sets isFocused=false which hides the Tldraw UI.
-  // We reassert via updateInstanceState (NOT editor.focus() — that triggers the virtual
-  // keyboard, which changes window.innerHeight, which causes layout shifts → blank canvas).
+  // Tldraw sets isFocused via a debounced handler that checks:
+  //   document.hasFocus() && container.contains(document.activeElement)
+  // On mobile, touch events don't move DOM focus to the container, so activeElement
+  // stays as document.body and isFocused goes false after 32ms.
+  // The ONLY fix that satisfies Tldraw's own check is editor.getContainer().focus() —
+  // the same call Tldraw uses internally (see DefaultContextMenu, StylePanel, etc.)
   useEffect(() => {
     if (isReadonly) return;
-    const assert = () =>
-      internalEditorRef.current?.updateInstanceState({ isFocused: true });
-    const id = setInterval(assert, 300);
-    return () => clearInterval(id);
+    const focusContainer = () => internalEditorRef.current?.getContainer().focus();
+    // Re-focus on every pointer interaction (covers all drawing gestures)
+    document.addEventListener("pointerdown", focusContainer, { capture: true });
+    // Re-focus when tab/app becomes visible again
+    const onVisibility = () => { if (!document.hidden) focusContainer(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    // Fallback interval — catches any remaining edge cases without flooding
+    const id = setInterval(focusContainer, 500);
+    return () => {
+      document.removeEventListener("pointerdown", focusContainer, { capture: true });
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearInterval(id);
+    };
   }, [isReadonly]);
 
   return (
-    // onPointerDown asserts focus before each drawing gesture so the first stroke
-    // is never blocked by a brief isFocused=false window.
-    <div
-      className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none"
-      onPointerDown={() =>
-        internalEditorRef.current?.updateInstanceState({ isFocused: true })
-      }
-    >
+    <div className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none">
       <Tldraw
         store={store}
         onMount={(editor) => {
           internalEditorRef.current = editor as unknown as TLEditorInstance;
-          editor.updateInstanceState({ isFocused: true });
+          // Use the same call Tldraw uses internally for focus management
+          editor.getContainer().focus();
           onEditorReady?.(editor as unknown as TLEditorInstance);
           if (isReadonly) {
             editor.updateInstanceState({ isReadonly: true });
