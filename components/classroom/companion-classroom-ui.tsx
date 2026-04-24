@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRoomContext, useLocalParticipant } from "@livekit/components-react";
+import { Track, LocalVideoTrack } from "livekit-client";
 import { LogOut, MonitorUp, StopCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { SharedWhiteboard } from "./shared-whiteboard";
@@ -14,37 +15,46 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const whiteboardContainerRef = useRef<HTMLDivElement>(null);
+  const broadcastTrackRef = useRef<LocalVideoTrack | null>(null);
 
-  // Inform the room when the companion starts/stops the whiteboard
-  const toggleWhiteboard = async () => {
-    const newState = !isBroadcasting;
-    setIsBroadcasting(newState);
-
-    const payload = JSON.stringify({
-      type: "WHITEBOARD_STATE",
-      active: newState,
-      companionId: localParticipant.identity,
-    });
-
-    await localParticipant.publishData(new TextEncoder().encode(payload), {
-      reliable: true,
-    });
-
-    if (newState) {
-      toast.success(t('classroom.whiteboardStarted'));
+  const startBroadcast = async () => {
+    const canvas = whiteboardContainerRef.current?.querySelector("canvas");
+    if (!canvas) {
+      toast.error("Whiteboard canvas not ready. Please try again.");
+      return;
     }
+    const mediaTrack = canvas.captureStream(30).getVideoTracks()[0];
+    if (!mediaTrack) return;
+
+    const pub = await localParticipant.publishTrack(mediaTrack, {
+      source: Track.Source.ScreenShare,
+      name: "whiteboard",
+      simulcast: false,
+    });
+    if (pub.track) broadcastTrackRef.current = pub.track as LocalVideoTrack;
+    setIsBroadcasting(true);
+    toast.success(t('classroom.whiteboardStarted'));
   };
 
-  // Ensure companion disconnects cleanly
-  const handleLeave = async () => {
-    if (isBroadcasting) {
-      const payload = JSON.stringify({ type: "WHITEBOARD_STATE", active: false });
-      // 1. Await the message to ensure it sends
-      await localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+  const stopBroadcast = async () => {
+    const track = broadcastTrackRef.current;
+    if (track) {
+      await localParticipant.unpublishTrack(track);
+      track.mediaStreamTrack.stop();
+      broadcastTrackRef.current = null;
     }
-    // 2. Await the disconnect to ensure WebRTC closes cleanly
+    setIsBroadcasting(false);
+  };
+
+  const toggleWhiteboard = () => {
+    if (isBroadcasting) stopBroadcast();
+    else startBroadcast();
+  };
+
+  const handleLeave = async () => {
+    await stopBroadcast();
     await room.disconnect();
-    // 3. Finally, route back
     router.back();
   };
 
@@ -82,7 +92,7 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
       </div>
 
       {/* The Whiteboard Workspace */}
-      <div className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
+      <div ref={whiteboardContainerRef} className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
         {/* The companion is never readonly */}
         <SharedWhiteboard isReadonly={false} />
       </div>
