@@ -59,7 +59,7 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
   };
 
   return (
-    <div className="flex flex-col w-full h-full bg-slate-950 p-2">
+    <div className="flex flex-col w-full h-full bg-slate-950 p-2 touch-none overscroll-none">
       {/* Top Bar */}
       <div className="flex justify-between items-center bg-slate-900 rounded-xl p-3 mb-2 border border-slate-800">
         <div className="flex items-center gap-3">
@@ -92,7 +92,7 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
       </div>
 
       {/* The Whiteboard Workspace */}
-      <div ref={whiteboardContainerRef} className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
+      <div ref={whiteboardContainerRef} className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 touch-none overscroll-none">
         {/* The companion is never readonly */}
         <SharedWhiteboard isReadonly={false} />
       </div>

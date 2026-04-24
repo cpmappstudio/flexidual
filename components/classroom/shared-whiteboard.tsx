@@ -12,10 +12,12 @@ export function SharedWhiteboard({ isReadonly = false }: SharedWhiteboardProps) 
   const [store] = useState(() => createTLStore({ shapeUtils: defaultShapeUtils }));
 
   return (
-    <div className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border">
+    <div className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none">
       <Tldraw 
         store={store} 
+        autoFocus
         onMount={(editor) => {
+          editor.focus();
           if (isReadonly) {
             editor.updateInstanceState({ isReadonly: true });
           }
