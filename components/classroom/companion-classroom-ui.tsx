@@ -22,8 +22,9 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
   const broadcastTrackRef = useRef<LocalVideoTrack | null>(null);
   const streamCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamCtxRef = useRef<CanvasRenderingContext2D | null>(null);
-  // Flag to stop the render loop without relying on stale state closures
   const broadcastActiveRef = useRef(false);
+  const unlistenRef = useRef<(() => void) | null>(null);
+  const renderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Responsive layout: detect portrait vs landscape
   useEffect(() => {
@@ -33,15 +34,19 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Cleanup on unmount — stop any active broadcast
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       broadcastActiveRef.current = false;
+      if (unlistenRef.current) unlistenRef.current();
+      if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
       const track = broadcastTrackRef.current;
       if (track) {
         localParticipant.unpublishTrack(track);
         track.mediaStreamTrack.stop();
       }
+      // Remove ghost canvas from DOM
+      document.getElementById("wb-stream-canvas")?.remove();
     };
   }, [localParticipant]);
 
@@ -53,9 +58,21 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
       return;
     }
 
-    // Create a hidden canvas sized to the whiteboard container
     const { width, height } = container.getBoundingClientRect();
-    const canvas = document.createElement("canvas");
+
+    // Ghost canvas: attached to DOM at near-zero opacity so iOS Safari doesn't
+    // kill the MediaStream when the canvas leaves the viewport.
+    let canvas = document.getElementById("wb-stream-canvas") as HTMLCanvasElement | null;
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      canvas.id = "wb-stream-canvas";
+      Object.assign(canvas.style, {
+        position: "fixed", bottom: "0", right: "0",
+        width: "1px", height: "1px",
+        opacity: "0.01", pointerEvents: "none", zIndex: "-1",
+      });
+      document.body.appendChild(canvas);
+    }
     canvas.width = Math.round(width) || 1280;
     canvas.height = Math.round(height) || 720;
     const ctx = canvas.getContext("2d");
@@ -63,40 +80,58 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
 
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     streamCanvasRef.current = canvas;
     streamCtxRef.current = ctx;
     broadcastActiveRef.current = true;
 
-    // Self-referencing render loop — reads refs so never goes stale
-    const render = async () => {
-      if (!broadcastActiveRef.current) return;
+    // Paint one frame via getSvgString (lightweight — no PNG encoding on mobile)
+    const paintFrame = async () => {
       const ed = editorRef.current;
       const cv = streamCanvasRef.current;
       const cx = streamCtxRef.current;
-      if (!ed || !cv || !cx) return;
+      if (!ed || !cv || !cx || !broadcastActiveRef.current) return;
 
       try {
         const ids = [...ed.getCurrentPageShapeIds()];
         if (ids.length === 0) {
           cx.fillStyle = "#ffffff";
           cx.fillRect(0, 0, cv.width, cv.height);
-        } else {
-          const { blob } = await ed.toImage(ids, { format: "png", background: true });
-          const bitmap = await createImageBitmap(blob);
-          cx.clearRect(0, 0, cv.width, cv.height);
-          cx.drawImage(bitmap, 0, 0, cv.width, cv.height);
-          bitmap.close();
+          return;
         }
+        const result = await ed.getSvgString(ids, { background: true });
+        if (!result) return;
+        const blob = new Blob([result.svg], { type: "image/svg+xml;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        await new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            cx.clearRect(0, 0, cv.width, cv.height);
+            cx.drawImage(img, 0, 0, cv.width, cv.height);
+            URL.revokeObjectURL(url);
+            resolve();
+          };
+          img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+          img.src = url;
+        });
       } catch {
-        // Keep the last good frame — don't crash the loop
+        // Silent fail — keep the last good frame
       }
-
-      if (broadcastActiveRef.current) setTimeout(render, 150);
     };
 
-    // Render an initial frame so the stream isn't black on first publish
-    await render();
+    // Render initial frame before publishing
+    await paintFrame();
+
+    // Event-driven updates: re-paint only when shapes actually change (~4 FPS max)
+    unlistenRef.current = editor.store.listen(
+      () => {
+        if (!broadcastActiveRef.current || renderTimeoutRef.current) return;
+        renderTimeoutRef.current = setTimeout(async () => {
+          await paintFrame();
+          renderTimeoutRef.current = null;
+        }, 250);
+      },
+      { scope: "document" }
+    );
 
     const mediaTrack = canvas.captureStream(10).getVideoTracks()[0];
     if (!mediaTrack) {
@@ -117,6 +152,8 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
 
   const stopBroadcast = async () => {
     broadcastActiveRef.current = false;
+    if (unlistenRef.current) { unlistenRef.current(); unlistenRef.current = null; }
+    if (renderTimeoutRef.current) { clearTimeout(renderTimeoutRef.current); renderTimeoutRef.current = null; }
     streamCanvasRef.current = null;
     streamCtxRef.current = null;
     const track = broadcastTrackRef.current;
