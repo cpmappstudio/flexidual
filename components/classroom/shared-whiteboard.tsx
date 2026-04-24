@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Tldraw, createTLStore, defaultShapeUtils } from "tldraw";
 import "tldraw/tldraw.css";
 
@@ -18,6 +18,17 @@ interface SharedWhiteboardProps {
 
 export function SharedWhiteboard({ isReadonly = false, onEditorReady }: SharedWhiteboardProps) {
   const [store] = useState(() => createTLStore({ shapeUtils: defaultShapeUtils }));
+  const internalEditorRef = useRef<TLEditorInstance | null>(null);
+
+  // On mobile, browsers periodically steal document focus, causing Tldraw to set
+  // isFocused=false and hide the entire UI. Re-assert on a short interval to prevent this.
+  useEffect(() => {
+    if (isReadonly) return;
+    const id = setInterval(() => {
+      internalEditorRef.current?.updateInstanceState({ isFocused: true });
+    }, 300);
+    return () => clearInterval(id);
+  }, [isReadonly]);
 
   return (
     <div className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none">
@@ -26,6 +37,7 @@ export function SharedWhiteboard({ isReadonly = false, onEditorReady }: SharedWh
         autoFocus
         onMount={(editor) => {
           // Keep the editor's focus state active so the toolbar never hides
+          internalEditorRef.current = editor as unknown as TLEditorInstance;
           editor.updateInstanceState({ isFocused: true });
           onEditorReady?.(editor as unknown as TLEditorInstance);
           if (isReadonly) {
