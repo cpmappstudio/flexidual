@@ -540,7 +540,8 @@ export function UserDialog({
                                 <Input 
                                     id="username" 
                                     value={formData.username}
-                                    onChange={e => setFormData({...formData, username: e.target.value})}
+                                    onKeyDown={e => { if (e.key === " ") e.preventDefault() }}
+                                    onChange={e => setFormData({...formData, username: e.target.value.replace(/\s/g, "")})}
                                 />
                             </div>
                             <div className="grid gap-2">
