@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRoomContext, useLocalParticipant } from "@livekit/components-react";
 import { ConnectionState, RoomEvent } from "livekit-client";
 import type { RemoteParticipant } from "livekit-client";
-import { LogOut, MonitorUp, StopCircle } from "lucide-react";
+import { LogOut, Maximize2, Minimize2, MonitorUp, StopCircle } from "lucide-react";
 import { SharedWhiteboard } from "./shared-whiteboard";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { toast } from "sonner";
@@ -24,6 +24,7 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
     return localStorage.getItem(`${WB_PRESENTING_KEY}${roomName}`) === "true";
   });
   const [isPortrait, setIsPortrait] = useState(false);
+  const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
   const whiteboardApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
 
   // Ref so ParticipantConnected listener always reads the current broadcasting state
@@ -103,6 +104,15 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
     check();
     window.addEventListener("orientationchange", check);
     return () => window.removeEventListener("orientationchange", check);
+  }, []);
+
+  // Phone landscape: same breakpoint used by the other classroom UIs
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
+    const handle = () => setIsPhoneLandscape(mq.matches);
+    handle();
+    mq.addEventListener('change', handle);
+    return () => mq.removeEventListener('change', handle);
   }, []);
 
   // Issue 3: Send current whiteboard state to participants who join late
@@ -198,7 +208,8 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
   };
 
   return (
-    <div className="flex flex-col w-full h-full bg-background p-2 touch-none overscroll-none">
+    <div className={`flex flex-col w-full h-full bg-background touch-none overscroll-none ${isPhoneLandscape ? '' : 'p-2'}`}>
+      {!isPhoneLandscape && (
       <div className={`flex items-center bg-card rounded-xl border border-border mb-2 ${isPortrait ? "justify-center gap-2 p-2" : "justify-between p-3"}`}>
         {!isPortrait && (
           <div className="bg-primary/10 text-primary px-3 py-1 rounded-md text-sm font-bold uppercase tracking-wider">
@@ -211,7 +222,7 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
             onMouseDown={(e) => e.preventDefault()}
             onClick={toggleWhiteboard}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${
-              isBroadcasting ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : "bg-primary hover:bg-primary/90 text-primary-foreground"
+              isBroadcasting ? "bg-destructive hover:bg-destructive/90 text-primary-foreground" : "bg-primary hover:bg-primary/90 text-primary-foreground"
             }`}
           >
             {isBroadcasting ? <StopCircle className="w-4 h-4" /> : <MonitorUp className="w-4 h-4" />}
@@ -231,19 +242,66 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
           </button>
         </div>
       </div>
+      )}
 
-      <div className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-border touch-none overscroll-none">
-        <SharedWhiteboard
-          roomName={roomName}
-          isReadonly={false}
-          broadcastRef={broadcastRef}
-          cleanupRef={cleanupRef}
-          onApiReady={(api) => {
-            whiteboardApiRef.current = api;
-            // Excalidraw API + broadcastRef are now both ready; attempt state restore
-            void restoreBroadcastState();
-          }}
-        />
+      {/* Whiteboard — relative so the landscape floating pill can be positioned inside */}
+      <div className="flex-1 relative">
+
+        {/* Phone landscape: compact icon-only controls pill in the top-right corner */}
+        {isPhoneLandscape && (
+          <div className="absolute top-2 right-2 z-[35] flex items-center gap-1.5 bg-black/60 backdrop-blur-md rounded-full px-2.5 py-1.5 border border-white/20 shadow-2xl">
+            {/* Present / Stop */}
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleWhiteboard}
+              title={isBroadcasting ? (t("classroom.stopPresenting") || "Stop Presenting") : (t("classroom.presentBoard") || "Present")}
+              className={`w-9 h-9 rounded-full flex items-center justify-center transition-all border-2 ${
+                isBroadcasting
+                  ? 'bg-destructive/80 text-primary-foreground border-destructive/50'
+                  : 'bg-primary/80 text-primary-foreground border-primary/50'
+              }`}
+            >
+              {isBroadcasting ? <StopCircle className="w-4 h-4" /> : <MonitorUp className="w-4 h-4" />}
+            </button>
+
+            {/* Fullscreen */}
+            {onToggleFullscreen && (
+              <button
+                onClick={onToggleFullscreen}
+                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-all bg-white/20 text-white border-2 border-white/30 hover:bg-white/30"
+              >
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+            )}
+
+            <div className="w-px h-4 bg-white/30" />
+
+            {/* Leave */}
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleLeave}
+              title={t("classroom.leave") || "Leave"}
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-destructive/70 hover:bg-destructive/90 text-primary-foreground border-2 border-destructive/50 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        <div className="absolute inset-0 rounded-xl overflow-hidden shadow-2xl ring-1 ring-border touch-none overscroll-none">
+          <SharedWhiteboard
+            roomName={roomName}
+            isReadonly={false}
+            broadcastRef={broadcastRef}
+            cleanupRef={cleanupRef}
+            onApiReady={(api) => {
+              whiteboardApiRef.current = api;
+              // Excalidraw API + broadcastRef are now both ready; attempt state restore
+              void restoreBroadcastState();
+            }}
+          />
+        </div>
       </div>
     </div>
   );
