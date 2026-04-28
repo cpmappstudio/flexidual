@@ -711,7 +711,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                 )}
               </div>
 
-              <div className="absolute bottom-4 right-4 flex gap-2 z-40 bg-black/60 p-2 rounded-xl backdrop-blur-sm border border-white/20">
+              <div className={`absolute top-4 right-4 flex gap-2 z-40 bg-black/60 p-2 rounded-xl backdrop-blur-sm border border-white/20 transition-all duration-300 ${isPhoneLandscape && !stageControlsVisible ? 'opacity-0 -translate-y-2 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
                 <button onClick={() => handleZoom(-0.25)} className="p-2 hover:bg-white/20 rounded-lg text-white">
                   <ZoomOut className="w-4 h-4" />
                 </button>
