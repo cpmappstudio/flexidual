@@ -200,6 +200,23 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
     setPos({ x: PIP_MARGIN, y: el.offsetHeight - PIP_H - PIP_MARGIN });
   }, []);
 
+  // Re-clamp position whenever the container is resized (e.g. orientation change)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      setPos(prev => {
+        if (!prev) return prev;
+        return {
+          x: Math.max(PIP_MARGIN, Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, prev.x)),
+          y: Math.max(PIP_MARGIN, Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, prev.y)),
+        };
+      });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [containerRef]);
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!dragRef.current.active) return;
@@ -282,6 +299,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const classmateTilesRef = useRef<HTMLDivElement>(null);
   const panDragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPan: { x: number; y: number } }>({
     active: false, startMouse: { x: 0, y: 0 }, startPan: { x: 0, y: 0 },
@@ -597,7 +615,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
   }, [isPhoneLandscape, showStageControls]);
 
   return (
-    <div className="grid h-full w-full bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden font-sans relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] md:grid-cols-[1fr_280px] md:grid-rows-[min-content_1fr_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] lg:grid-cols-[1fr_320px]">
+    <div ref={rootRef} className="grid h-full w-full bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden font-sans relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] md:grid-cols-[1fr_280px] md:grid-rows-[min-content_1fr_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] lg:grid-cols-[1fr_320px]">
       <RoomAudioRenderer />
 
       {needsClick && (
@@ -665,11 +683,6 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
               <div className="w-full h-full relative rounded-2xl overflow-hidden">
                 <SharedWhiteboard roomName={room.name} isReadonly={true} />
               </div>
-              {teacher && isTeacherVideoOn && (
-                <DraggablePip containerRef={stageRef}>
-                  <ParticipantTile participant={teacher} variant="grid" className="w-full h-full" showLabel={true} youLabel={t('classroom.youShort')} />
-                </DraggablePip>
-              )}
             </>
           ) : isScreenSharingActive ? (
             <>
@@ -708,11 +721,6 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                 </button>
               </div>
 
-              {teacher && isTeacherVideoOn && (
-                 <DraggablePip containerRef={stageRef}>
-                    <ParticipantTile participant={teacher} variant="grid" className="w-full h-full" showLabel={true} youLabel={t('classroom.youShort')} />
-                 </DraggablePip>
-              )}
             </>
           ) : (
             <>
@@ -925,6 +933,13 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
           ))}
         </div>
       </div>
+
+      {/* Teacher PiP — floats over the entire classroom during whiteboard & screen share */}
+      {(isWhiteboardActive || isScreenSharingActive) && teacher && isTeacherVideoOn && (
+        <DraggablePip containerRef={rootRef}>
+          <ParticipantTile participant={teacher} variant="grid" className="w-full h-full" showLabel={true} youLabel={t('classroom.youShort')} />
+        </DraggablePip>
+      )}
     </div>
   );
 }
