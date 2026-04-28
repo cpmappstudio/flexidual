@@ -157,7 +157,7 @@ function RecordingLayout() {
       <div className="flex-1 relative bg-muted border-r border-border flex items-center justify-center p-2">
         {isWhiteboardActive ? (
           <div className="w-full h-full bg-white relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
-             <SharedWhiteboard isReadonly={true} />
+             <SharedWhiteboard roomName={room.name} isReadonly={true} />
              {teacher && (
                <div className="absolute bottom-4 left-4 w-48 h-48 rounded-xl overflow-hidden shadow-2xl border-2 border-border z-50">
                  <RecordingTile participant={teacher} variant="grid" roleBadge="Teacher" />

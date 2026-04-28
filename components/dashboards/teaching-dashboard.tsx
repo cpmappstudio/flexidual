@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Video, Calendar as CalendarIcon, Clock, BookOpen, MonitorPlay } from "lucide-react"
+import { ArrowRight, Video, Calendar as CalendarIcon, Clock, BookOpen, MonitorPlay, Smartphone } from "lucide-react"
 import { Link } from "@/i18n/navigation"
 import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { useParams } from "next/navigation"
@@ -193,6 +193,21 @@ export default function TeachingDashboard() {
                       )}
                     </Link>
                   </Button>
+
+                  {/* Mobile-only: quick companion mode entry for the teacher's phone */}
+                  {!isIgnitia && (
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="md:hidden w-full font-semibold border-purple-400 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/30"
+                      asChild
+                    >
+                      <Link href={`/${orgSlug}/classroom/${nextLesson.roomName}?companion=true`}>
+                        <Smartphone className="mr-2 w-5 h-5" />
+                        {t('dashboard.joinAsCompanion')}
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="py-8 text-center text-muted-foreground">

@@ -908,7 +908,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           {isWhiteboardActive ? (
             <>
               <div className="w-full h-full relative rounded-xl overflow-hidden">
-                <SharedWhiteboard isReadonly={true} />
+                <SharedWhiteboard roomName={roomName} isReadonly={true} />
               </div>
               {teacher && isTeacherVideoOn && (
                 <DraggablePip containerRef={stageRef}>

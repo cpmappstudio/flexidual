@@ -658,7 +658,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
           {isWhiteboardActive ? (
             <>
               <div className="w-full h-full relative rounded-2xl overflow-hidden">
-                <SharedWhiteboard isReadonly={true} />
+                <SharedWhiteboard roomName={room.name} isReadonly={true} />
               </div>
               {teacher && isTeacherVideoOn && (
                 <DraggablePip containerRef={stageRef}>
