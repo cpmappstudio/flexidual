@@ -691,9 +691,11 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
                 onMouseDown={zoom > 1 ? (e) => {
                   e.preventDefault();
+                  showStageControls();
                   panDragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPan: { ...pan } };
                 } : undefined}
                 onTouchStart={zoom > 1 ? (e) => {
+                  showStageControls();
                   const touch = e.touches[0];
                   panDragRef.current = { active: true, startMouse: { x: touch.clientX, y: touch.clientY }, startPan: { ...pan } };
                 } : undefined}
