@@ -51,6 +51,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
+import { FullscreenButton, FullscreenButtonCompact } from "./fullscreen-button";
 
 // --- Constants ---
 const SCREEN_SHARE_OPTIONS = { updateOnlyOn: [], onlySubscribed: false };
@@ -302,9 +303,11 @@ interface ActiveClassroomUIProps {
   roomName: string;
   className?: string;
   lessonTitle?: string;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
-export function ActiveClassroomUI({ currentUserRole, roomName, className, lessonTitle }: ActiveClassroomUIProps) {
+export function ActiveClassroomUI({ currentUserRole, roomName, className, lessonTitle, isFullscreen = false, onToggleFullscreen }: ActiveClassroomUIProps) {
   const t = useTranslations();
   const router = useRouter();
   const pathname = usePathname();
@@ -1090,6 +1093,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                   </button>
                 )}
                 <div className="w-px h-6 bg-white/30 mx-1" />
+                {onToggleFullscreen && (
+                  <FullscreenButtonCompact isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
+                )}
+                <div className="w-px h-6 bg-white/30 mx-1" />
                 <button
                   onClick={handleLeaveClick}
                   className="w-11 h-11 rounded-full bg-red-500/80 hover:bg-red-600/80 text-white flex items-center justify-center shadow-lg border-2 border-red-400/60 transition-colors"
@@ -1197,7 +1204,10 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
             )}
           </div>
           {/* Right spacer — icon-only Leave */}
-          <div className="flex-1 flex items-center justify-end">
+          <div className="flex-1 flex items-center justify-end gap-2">
+            {onToggleFullscreen && (
+              <FullscreenButton isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
+            )}
             <button
               onClick={handleLeaveClick}
               title={t('classroom.leave')}

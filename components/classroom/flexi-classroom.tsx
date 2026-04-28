@@ -16,6 +16,7 @@ import { getRoleForOrg } from "@/lib/rbac";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSidebar } from "@/components/ui/sidebar";
 import { CompanionClassroomUI } from "./companion-classroom-ui";
+import { useFullscreen } from "@/hooks/use-fullscreen";
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -68,6 +69,9 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   const router = useRouter();
   const [token, setToken] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { isFullscreen, isSupported, toggleFullscreen } = useFullscreen();
+  const handleToggleFullscreen = () => toggleFullscreen(containerRef.current);
   
   // Timer State
   const [now, setNow] = useState(Date.now());
@@ -349,7 +353,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   // Active Classroom
   return (
-    <div className={`w-full h-full overflow-hidden rounded-lg ${className}`}>
+    <div ref={containerRef} className={`w-full h-full overflow-hidden rounded-lg ${className}`}>
       {!isStudentView && <SidebarAutoCollapser />}
       <LiveKitRoom
         video={false}
@@ -361,7 +365,11 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
         onDisconnected={handleDisconnect}
       >
         {isCompanion ? (
-          <CompanionClassroomUI roomName={roomName} /> 
+          <CompanionClassroomUI
+            roomName={roomName}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
+          /> 
         ) : isStudentView ? (
           <StudentClassroomUI
             currentUserRole={role}
@@ -369,6 +377,8 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
             onLeave={handleDisconnect}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
           />
         ) : (
           <ActiveClassroomUI 
@@ -376,6 +386,8 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             roomName={roomName}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
           />
         )}
       </LiveKitRoom>

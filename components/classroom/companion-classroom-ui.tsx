@@ -9,11 +9,12 @@ import { SharedWhiteboard } from "./shared-whiteboard";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { FullscreenButton } from "./fullscreen-button";
 
 /** localStorage key that survives companion page refreshes while the session is live. */
 const WB_PRESENTING_KEY = "wb_presenting_";
 
-export function CompanionClassroomUI({ roomName }: { roomName: string }) {
+export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleFullscreen }: { roomName: string; isFullscreen?: boolean; onToggleFullscreen?: () => void }) {
   const t = useTranslations();
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
@@ -197,10 +198,10 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
   };
 
   return (
-    <div className="flex flex-col w-full h-full bg-slate-950 p-2 touch-none overscroll-none">
-      <div className={`flex items-center bg-slate-900 rounded-xl border border-slate-800 mb-2 ${isPortrait ? "justify-center gap-2 p-2" : "justify-between p-3"}`}>
+    <div className="flex flex-col w-full h-full bg-background p-2 touch-none overscroll-none">
+      <div className={`flex items-center bg-card rounded-xl border border-border mb-2 ${isPortrait ? "justify-center gap-2 p-2" : "justify-between p-3"}`}>
         {!isPortrait && (
-          <div className="bg-blue-500/20 text-blue-400 px-3 py-1 rounded-md text-sm font-bold uppercase tracking-wider">
+          <div className="bg-primary/10 text-primary px-3 py-1 rounded-md text-sm font-bold uppercase tracking-wider">
             {t("classroom.companionDeviceFor", { room: roomName }) || `Companion — "${roomName}"`}
           </div>
         )}
@@ -210,24 +211,28 @@ export function CompanionClassroomUI({ roomName }: { roomName: string }) {
             onMouseDown={(e) => e.preventDefault()}
             onClick={toggleWhiteboard}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${
-              isBroadcasting ? "bg-red-500 hover:bg-red-600 text-white" : "bg-blue-600 hover:bg-blue-700 text-white"
+              isBroadcasting ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : "bg-primary hover:bg-primary/90 text-primary-foreground"
             }`}
           >
             {isBroadcasting ? <StopCircle className="w-4 h-4" /> : <MonitorUp className="w-4 h-4" />}
             {isBroadcasting ? (t("classroom.stopPresenting") || "Stop") : (t("classroom.presentBoard") || "Present")}
           </button>
 
+          {onToggleFullscreen && (
+            <FullscreenButton isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
+          )}
+
           <button
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleLeave}
-            className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-lg bg-muted hover:bg-muted/80 text-destructive transition-colors"
           >
-            <LogOut className="w-5 h-5 text-red-400" />
+            <LogOut className="w-5 h-5" />
           </button>
         </div>
       </div>
 
-      <div className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 touch-none overscroll-none">
+      <div className="flex-1 rounded-xl overflow-hidden shadow-2xl ring-1 ring-border touch-none overscroll-none">
         <SharedWhiteboard
           roomName={roomName}
           isReadonly={false}

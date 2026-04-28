@@ -28,6 +28,7 @@ import { SharedWhiteboard } from "./shared-whiteboard";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { FullscreenButton, FullscreenButtonCompact } from "./fullscreen-button";
 
 // Helper Functions
 const getRole = (p: Participant | undefined): string => {
@@ -258,9 +259,11 @@ interface StudentClassroomUIProps {
   className?: string;
   lessonTitle?: string;
   onLeave?: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
-export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentClassroomUIProps) {
+export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscreen = false, onToggleFullscreen }: StudentClassroomUIProps) {
   const t = useTranslations();
   const room = useRoomContext();
   const [needsClick, setNeedsClick] = useState(false);
@@ -804,6 +807,10 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
                   <MonitorUp className="w-5 h-5" />
                 </button>
                 <div className="w-px h-6 bg-white/30 mx-1" />
+                {onToggleFullscreen && (
+                  <FullscreenButtonCompact isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
+                )}
+                <div className="w-px h-6 bg-white/30 mx-1" />
                 <button
                   onClick={handleLeave}
                   className="w-11 h-11 rounded-full bg-red-500/80 hover:bg-red-600/80 text-white flex items-center justify-center shadow-lg border-2 border-red-400/60 transition-colors"
@@ -857,6 +864,9 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave }: StudentC
           </div>
           {/* Right spacer — icon-only Leave */}
           <div className="flex-1 flex items-center justify-end">
+            {onToggleFullscreen && (
+              <FullscreenButton isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
+            )}
             <button
               onClick={handleLeave}
               title={t('classroom.leave')}
