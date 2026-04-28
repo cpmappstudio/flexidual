@@ -390,6 +390,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
 
         if (msg.type === "FORCE_LOWER_HAND") {
           setHandRaised(false);
+          toast.dismiss('hand-raised');
         }
 
         if (msg.type === "RAISE_HAND" && participant) {
@@ -498,7 +499,8 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
     const encoder = new TextEncoder();
     const data = JSON.stringify({ type: newState ? "RAISE_HAND" : "LOWER_HAND" });
     await room.localParticipant.publishData(encoder.encode(data), { reliable: true });
-    if (newState) toast.info(t('classroom.handRaised'));
+    if (newState) toast.info(t('classroom.handRaised'), { id: 'hand-raised' });
+    else toast.dismiss('hand-raised');
   };
 
   const handleZoom = (delta: number) => setZoom(prev => {

@@ -520,6 +520,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
 
         if (msg.type === "LOWER_HAND" && participant) {
           setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
+          toast.dismiss(`hand-${participant.identity}`);
         }
 
         if (msg.type === "ADMIN_PRESENTING" && participant && !amITeacher) {
@@ -596,6 +597,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
       destinationIdentities: [participantId],
     });
     setRaisedHands((prev) => { const next = new Set(prev); next.delete(participantId); return next; });
+    toast.dismiss(`hand-${participantId}`);
   };
 
   const togglePresenterMode = async () => {
