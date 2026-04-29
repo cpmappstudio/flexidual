@@ -3,7 +3,6 @@
 import { 
   VideoTrack,
   useLocalParticipant,
-  useTrackToggle,
   useRoomContext,
   useParticipants,
   useTracks,
@@ -29,6 +28,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { FullscreenButton, FullscreenButtonCompact } from "./fullscreen-button";
+import { DeviceToggleButton } from "./device-toggle-button";
 
 // Helper Functions
 const getRole = (p: Participant | undefined): string => {
@@ -52,50 +52,6 @@ const getImageUrl = (p: Participant | undefined): string | null => {
 };
 
 // Helper Components
-function CustomMediaToggle({ source, iconOn, iconOff, compact = false }: { 
-  source: Track.Source.Camera | Track.Source.Microphone, 
-  iconOn: React.ReactNode, 
-  iconOff: React.ReactNode,
-  compact?: boolean,
-}) {
-  const { toggle, enabled, pending } = useTrackToggle({ source });
-  const { localParticipant } = useLocalParticipant();
-
-  const handleToggle = async () => {
-    try {
-      await toggle();
-      // Release camera hardware when disabling so other apps can use the device
-      if (enabled && source === Track.Source.Camera) {
-        localParticipant
-          .getTrackPublication(Track.Source.Camera)
-          ?.track?.mediaStreamTrack?.stop();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  return (
-    <button 
-      onClick={handleToggle}
-      disabled={pending}
-      className={`
-        ${compact ? 'w-11 h-11' : 'w-14 h-14'} rounded-full flex items-center justify-center transition-all shadow-lg
-        ${enabled 
-          ? compact
-            ? 'bg-white/20 text-white border-2 border-white/30 hover:bg-white/30'
-            : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 border-2 border-purple-300 dark:border-purple-600' 
-          : compact
-            ? 'bg-red-500/50 text-white border-2 border-red-400/60'
-            : 'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400 border-2 border-red-200 dark:border-red-800'}
-        ${pending ? 'opacity-50 cursor-wait' : ''}
-      `}
-    >
-      {enabled ? iconOn : iconOff}
-    </button>
-  );
-}
-
 function ParticipantTile({ 
   participant, 
   className, 
@@ -791,8 +747,8 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                 className="flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-full px-4 py-2.5 border border-white/20 shadow-2xl pointer-events-auto"
                 onClick={showStageControls}
               >
-                <CustomMediaToggle compact source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
-                <CustomMediaToggle compact source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
+                <DeviceToggleButton variant="compact" source={Track.Source.Microphone} kind="audioinput" iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
+                <DeviceToggleButton variant="compact" source={Track.Source.Camera} kind="videoinput" iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
                 <button
                   onClick={toggleHandRaised}
                   className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
@@ -842,8 +798,8 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
           <div className="flex-1" />
           {/* Centered controls */}
           <div className="flex items-center gap-2">
-              <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-6 h-6" />} iconOff={<MicOff className="w-6 h-6" />} />
-              <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-6 h-6" />} iconOff={<VideoOff className="w-6 h-6" />} />
+              <DeviceToggleButton variant="purple" source={Track.Source.Microphone} kind="audioinput" includeAudioOutput iconOn={<Mic className="w-6 h-6" />} iconOff={<MicOff className="w-6 h-6" />} />
+              <DeviceToggleButton variant="purple" source={Track.Source.Camera} kind="videoinput" iconOn={<VideoIcon className="w-6 h-6" />} iconOff={<VideoOff className="w-6 h-6" />} />
               <button
                 onClick={toggleHandRaised}
                 title={handRaised ? t('classroom.lowerHand') : t('classroom.raiseHand')}
@@ -891,7 +847,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
       </div>
 
       {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
-      <div className="col-start-1 row-start-3 md:col-start-2 md:row-start-1 md:row-span-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 flex flex-col bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-xl z-20 border-y-2 border-purple-300 dark:border-purple-700 md:border-y-0 md:border-l-2 landscape:border-y-0 landscape:border-l-2 h-36 md:h-full landscape:h-full overflow-hidden">
+      <div className="col-start-1 row-start-3 md:col-start-2 md:row-start-1 md:row-span-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 flex flex-col bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-xl z-0 border-y-2 border-purple-300 dark:border-purple-700 md:border-y-0 md:border-l-2 landscape:border-y-0 landscape:border-l-2 h-36 md:h-full landscape:h-full overflow-hidden">
 
         {/* Header + nav arrows */}
         <div className="bg-purple-600 dark:bg-purple-700 text-white flex items-center gap-2 px-3 py-1.5 md:py-2.5 border-b-2 border-purple-700 dark:border-purple-800 flex-shrink-0">

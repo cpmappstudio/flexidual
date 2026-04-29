@@ -5,7 +5,6 @@ import { api } from "@/convex/_generated/api";
 import { 
   VideoTrack,
   useLocalParticipant,
-  useTrackToggle,
   useRoomContext,
   useParticipants,
   useTracks,
@@ -52,6 +51,7 @@ import {
 } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { FullscreenButton, FullscreenButtonCompact } from "./fullscreen-button";
+import { DeviceToggleButton } from "./device-toggle-button";
 
 // --- Constants ---
 const SCREEN_SHARE_OPTIONS = { updateOnlyOn: [], onlySubscribed: false };
@@ -87,50 +87,6 @@ const getImageUrl = (p: Participant | undefined): string | null => {
 };
 
 // --- Helper Components ---
-function CustomMediaToggle({ source, iconOn, iconOff, compact = false }: { 
-  source: Track.Source.Camera | Track.Source.Microphone | Track.Source.ScreenShare, 
-  iconOn: React.ReactNode, 
-  iconOff: React.ReactNode,
-  compact?: boolean,
-}) {
-  const { toggle, enabled, pending } = useTrackToggle({ source });
-  const { localParticipant } = useLocalParticipant();
-
-  const handleToggle = async () => {
-    try {
-      await toggle();
-      // Release camera hardware when disabling so other apps can use the device
-      if (enabled && source === Track.Source.Camera) {
-        localParticipant
-          .getTrackPublication(Track.Source.Camera)
-          ?.track?.mediaStreamTrack?.stop();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  return (
-    <button 
-      onClick={handleToggle}
-      disabled={pending}
-      className={`
-        ${compact ? 'w-11 h-11' : 'w-12 h-12'} rounded-full flex items-center justify-center transition-all shadow-md border
-        ${enabled 
-          ? compact
-            ? 'bg-white/20 text-white border-white/30 hover:bg-white/30'
-            : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border'
-          : compact
-            ? 'bg-red-500/50 text-white border-red-400/60'
-            : 'bg-destructive/10 text-destructive border-destructive/20'}
-        ${pending ? 'opacity-50 cursor-wait' : ''}
-      `}
-    >
-      {enabled ? iconOn : iconOff}
-    </button>
-  );
-}
-
 function ParticipantTile({ 
   participant, 
   className, 
@@ -1065,9 +1021,9 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                     <Crown className="w-5 h-5" />
                   </button>
                 )}
-                <CustomMediaToggle compact source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
+                <DeviceToggleButton variant="compact" source={Track.Source.Microphone} kind="audioinput" iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
                 {!amIIncognito && (
-                  <CustomMediaToggle compact source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
+                  <DeviceToggleButton variant="compact" source={Track.Source.Camera} kind="videoinput" iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
                 )}
                 <button
                   onClick={handleShareClick}
@@ -1145,9 +1101,9 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           </div>
           {/* Centered media controls */}
           <div className="flex items-center gap-2">
-            <CustomMediaToggle source={Track.Source.Microphone} iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
+            <DeviceToggleButton variant="default" source={Track.Source.Microphone} kind="audioinput" includeAudioOutput iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
             {!amIIncognito && (
-              <CustomMediaToggle source={Track.Source.Camera} iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
+              <DeviceToggleButton variant="default" source={Track.Source.Camera} kind="videoinput" iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
             )}
             {amIAuthority && (
               <Dialog>
@@ -1232,7 +1188,7 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
       </div>
 
       {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
-      <div className="col-start-1 row-start-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 xl:col-start-2 xl:row-start-1 xl:row-span-3 flex flex-col bg-card border-border shadow-xl z-20 border-y landscape:border-y-0 landscape:border-l xl:border-y-0 xl:border-l h-36 landscape:h-full xl:h-full overflow-hidden">
+      <div className="col-start-1 row-start-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 xl:col-start-2 xl:row-start-1 xl:row-span-3 flex flex-col bg-card border-border shadow-xl z-0 border-y landscape:border-y-0 landscape:border-l xl:border-y-0 xl:border-l h-36 landscape:h-full xl:h-full overflow-hidden">
 
         {/* Header + nav arrows */}
         <div className="bg-primary text-primary-foreground flex items-center gap-2 px-3 py-1.5 md:py-2.5 border-b border-border flex-shrink-0">
