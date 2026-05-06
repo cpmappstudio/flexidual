@@ -20,15 +20,26 @@ import {
 import { 
   Mic, MicOff, Video as VideoIcon, VideoOff, Loader2, VolumeX,
   ZoomIn, ZoomOut, Move, LogOut,
-  MonitorUp, Hand, ChevronUp, ChevronDown, ChevronLeft, ChevronRight
+  MonitorUp, Hand, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
+  Eye, EyeOff, Maximize2, Minimize2
 } from "lucide-react";
 import { FlexidualLogo } from "@/components/ui/flexidual-logo";
 import { SharedWhiteboard } from "./shared-whiteboard";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
-import { FullscreenButton, FullscreenButtonCompact } from "./fullscreen-button";
+import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Helper Functions
 const getRole = (p: Participant | undefined): string => {
@@ -252,6 +263,8 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
   const [stageControlsVisible, setStageControlsVisible] = useState(true);
   const [isRecording, setIsRecording] = useState(room.isRecording);
   const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
+  const [followViewport, setFollowViewport] = useState(true);
+  const [pendingFullscreen, setPendingFullscreen] = useState(false);
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -570,6 +583,22 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
     if (isPhoneLandscape) showStageControls();
   }, [isPhoneLandscape, showStageControls]);
 
+  // Auto-fullscreen: prompt user to go fullscreen when remote content appears.
+  // requestFullscreen() requires a user gesture, so we cannot call it from a useEffect directly.
+  const autoFullscreenFiredRef = useRef(false);
+  useEffect(() => {
+    const hasContent = isScreenSharingActive || isWhiteboardActive;
+    if (hasContent && !isFullscreen && !autoFullscreenFiredRef.current && onToggleFullscreen) {
+      autoFullscreenFiredRef.current = true;
+      setPendingFullscreen(true);
+    }
+    if (!hasContent) {
+      autoFullscreenFiredRef.current = false;
+      setPendingFullscreen(false);
+    }
+    if (isFullscreen) setPendingFullscreen(false);
+  }, [isScreenSharingActive, isWhiteboardActive, isFullscreen, onToggleFullscreen]);
+
   return (
     <div ref={rootRef} className="grid h-full w-full bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden font-sans relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] md:grid-cols-[1fr_280px] md:grid-rows-[min-content_1fr_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] lg:grid-cols-[1fr_320px]">
       <RoomAudioRenderer />
@@ -634,10 +663,37 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
       {/* 2. Stage */}
       <div className={`col-start-1 row-start-2 min-h-0 z-10 flex flex-col relative ${isPhoneLandscape ? 'p-1' : 'p-3 md:p-4 py-2 md:py-4'}`}>
         <div ref={stageRef} className="flex-1 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl shadow-2xl overflow-hidden relative border-4 border-purple-400 dark:border-purple-600 flex items-center justify-center group min-h-0">
+          {/* Top-right stage overlay: following pill + fullscreen toggle */}
+          {(isWhiteboardActive || isScreenSharingActive) && (
+            <div className="absolute top-2 right-2 z-30 flex flex-col items-end gap-1.5 pointer-events-none">
+              {isWhiteboardActive && (
+                <button
+                  onClick={() => setFollowViewport(v => !v)}
+                  className={`pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg border transition-all ${
+                    followViewport
+                      ? 'bg-green-500/90 text-white border-green-400/50 hover:bg-green-600/90'
+                      : 'bg-black/60 text-white/80 border-white/20 hover:bg-black/80'
+                  }`}
+                >
+                  {followViewport ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  {followViewport ? t('classroom.followingTeacher') || 'Following' : t('classroom.viewUnlocked') || 'Unlocked'}
+                </button>
+              )}
+              {onToggleFullscreen && (
+                <button
+                  onClick={onToggleFullscreen}
+                  title={isFullscreen ? (t('classroom.exitFullscreen') || 'Exit fullscreen') : (t('classroom.enterFullscreen') || 'Fullscreen')}
+                  className="pointer-events-auto w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center shadow-lg border border-white/20 transition-all"
+                >
+                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
+              )}
+            </div>
+          )}
           {isWhiteboardActive ? (
             <>
               <div className="w-full h-full relative rounded-2xl overflow-hidden">
-                <SharedWhiteboard roomName={room.name} isReadonly={true} />
+                <SharedWhiteboard roomName={room.name} isReadonly={true} followViewport={followViewport} />
               </div>
             </>
           ) : isScreenSharingActive ? (
@@ -832,9 +888,6 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
           </div>
           {/* Right spacer — icon-only Leave */}
           <div className="flex-1 flex items-center justify-end">
-            {onToggleFullscreen && (
-              <FullscreenButton isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
-            )}
             <button
               onClick={handleLeave}
               title={t('classroom.leave')}
@@ -845,6 +898,26 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
           </div>
         </div>
       </div>
+
+      {/* Fullscreen invitation dialog */}
+      <AlertDialog open={pendingFullscreen} onOpenChange={(open) => { if (!open) setPendingFullscreen(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('classroom.fullscreenInviteTitle') || 'Go fullscreen?'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('classroom.fullscreenInviteDesc') || 'Content is being presented. Going fullscreen provides the best viewing experience.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingFullscreen(false)}>
+              {t('common.notNow') || 'Not now'}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setPendingFullscreen(false); onToggleFullscreen?.(); }}>
+              {t('classroom.goFullscreen') || 'Go Fullscreen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
       <div className="col-start-1 row-start-3 md:col-start-2 md:row-start-1 md:row-span-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 flex flex-col bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-xl z-0 border-y-2 border-purple-300 dark:border-purple-700 md:border-y-0 md:border-l-2 landscape:border-y-0 landscape:border-l-2 h-36 md:h-full landscape:h-full overflow-hidden">

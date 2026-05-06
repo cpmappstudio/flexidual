@@ -320,6 +320,20 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_org", ["orgId", "orgType"])
     .index("by_user_org", ["userId", "orgId", "orgType"]),
+
+  /**
+   * WHITEBOARD SESSIONS
+   * Live scene state for an active classroom whiteboard session.
+   * Writer (companion device) upserts on every change (debounced).
+   * Readers (teacher view, students) subscribe reactively via useQuery.
+   * Avoids all WebRTC DataChannel size limits for scene data.
+   */
+  whiteboardSessions: defineTable({
+    roomName: v.string(),
+    elements: v.any(),           // ExcalidrawElements array
+    fileRefs: v.optional(v.any()), // { [fileId]: { url, mimeType, storageId, created } }
+    updatedAt: v.number(),
+  }).index("by_roomName", ["roomName"]),
 });
 
 /**

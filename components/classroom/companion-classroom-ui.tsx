@@ -14,7 +14,7 @@ import { FullscreenButton } from "./fullscreen-button";
 /** localStorage key that survives companion page refreshes while the session is live. */
 const WB_PRESENTING_KEY = "wb_presenting_";
 
-export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleFullscreen }: { roomName: string; isFullscreen?: boolean; onToggleFullscreen?: () => void }) {
+export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleFullscreen, onSessionEnd }: { roomName: string; isFullscreen?: boolean; onToggleFullscreen?: () => void; onSessionEnd?: () => void }) {
   const t = useTranslations();
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
@@ -53,7 +53,6 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
     if (!isBroadcastingRef.current) return;
     if (hasRestoredRef.current) return;
     if (room.state !== ConnectionState.Connected) return;
-    if (!whiteboardApiRef.current || !broadcastRef.current) return;
 
     // Mark done optimistically — reset on failure so a Reconnected event can retry
     hasRestoredRef.current = true;
@@ -67,12 +66,7 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
         })),
         { reliable: true },
       );
-      const elements = whiteboardApiRef.current.getSceneElements();
-      await localParticipant.publishData(
-        encoder.encode(JSON.stringify({ type: "WHITEBOARD_SYNC", elements })),
-        { reliable: true },
-      );
-      await broadcastRef.current();
+      // Scene is distributed via Convex reactive query — no DataChannel send needed.
     } catch (err) {
       // DataChannel was not ready — reset so the Reconnected event can trigger a retry
       hasRestoredRef.current = false;
@@ -115,6 +109,36 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
     return () => mq.removeEventListener('change', handle);
   }, []);
 
+  // SESSION_END — teacher ended the main session; companion disconnects automatically
+  useEffect(() => {
+    if (!room) return;
+    const decoder = new TextDecoder();
+    const handleDataReceived = (payload: Uint8Array) => {
+      try {
+        const msg = JSON.parse(decoder.decode(payload)) as { type: string };
+        if (msg.type === "SESSION_END") {
+          void (async () => {
+            // Best-effort: tell receivers the whiteboard is gone
+            if (isBroadcastingRef.current && room.state === ConnectionState.Connected) {
+              try {
+                await localParticipant.publishData(
+                  new TextEncoder().encode(JSON.stringify({ type: "WHITEBOARD_STATE", active: false })),
+                  { reliable: true },
+                );
+              } catch { /* ignore */ }
+            }
+            localStorage.removeItem(`${WB_PRESENTING_KEY}${roomName}`);
+            await cleanupRef.current?.();
+            // Trigger disconnect via the parent (flexi-classroom.handleDisconnect)
+            onSessionEnd?.();
+          })();
+        }
+      } catch { /* ignore non-whiteboard packets */ }
+    };
+    room.on("dataReceived", handleDataReceived);
+    return () => { room.off("dataReceived", handleDataReceived); };
+  }, [room, roomName, localParticipant, onSessionEnd]);
+
   // Issue 3: Send current whiteboard state to participants who join late
   useEffect(() => {
     if (!room) return;
@@ -131,15 +155,7 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
           })),
           { reliable: true, destinationIdentities: [participant.identity] },
         );
-        if (whiteboardApiRef.current) {
-          const elements = whiteboardApiRef.current.getSceneElements();
-          await localParticipant.publishData(
-            encoder.encode(JSON.stringify({ type: "WHITEBOARD_SYNC", elements })),
-            { reliable: true, destinationIdentities: [participant.identity] },
-          );
-        }
-        // Re-broadcast all image file refs to the late joiner
-        await broadcastRef.current?.([participant.identity]);
+        // Scene and file refs are delivered to the late joiner via Convex reactive query.
       } catch (err) {
         console.error("[Companion] Failed to sync late joiner:", err);
       }
@@ -168,16 +184,7 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
       );
       // When activating, immediately broadcast the full current scene so students
       // who are already in the room see existing content without drawing anything new
-      if (newState && whiteboardApiRef.current) {
-        const elements = whiteboardApiRef.current.getSceneElements();
-        await localParticipant.publishData(
-          encoder.encode(JSON.stringify({ type: "WHITEBOARD_SYNC", elements })),
-          { reliable: true },
-        );
-        // Re-broadcast all image file refs to the whole room
-        // (covers refresh recovery — cached CDN URLs, no re-upload)
-        await broadcastRef.current?.();
-      }
+      // Scene is already in Convex — no DataChannel publish needed when activating.
       if (newState) {
         toast.success(t("classroom.whiteboardStarted") || "Whiteboard is now visible");
       }

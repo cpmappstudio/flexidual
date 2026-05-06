@@ -369,6 +369,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             roomName={roomName}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
+            onSessionEnd={handleDisconnect}
           /> 
         ) : isStudentView ? (
           <StudentClassroomUI

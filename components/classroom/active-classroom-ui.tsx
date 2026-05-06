@@ -18,12 +18,13 @@ import {
   RemoteParticipant,
   RemoteTrackPublication,
   RoomEvent,
+  ConnectionState,
 } from "livekit-client";
 import { 
   Mic, MicOff, Video as VideoIcon, VideoOff, LogOut, VolumeX, 
-  MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2, Eye, Crown,
+  MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2, Eye, EyeOff, Crown,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  CircleDot, StopCircle, TabletSmartphone
+  CircleDot, StopCircle, TabletSmartphone, Maximize2, Minimize2
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
@@ -50,7 +51,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
-import { FullscreenButton, FullscreenButtonCompact } from "./fullscreen-button";
+import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
 
 // --- Constants ---
@@ -83,6 +84,16 @@ const getImageUrl = (p: Participant | undefined): string | null => {
     return data.imageUrl || null;
   } catch {
     return null;
+  }
+};
+
+const getIsCompanion = (p: Participant | undefined): boolean => {
+  if (!p || !p.metadata) return false;
+  try {
+    const data = JSON.parse(p.metadata);
+    return data.isCompanion === true;
+  } catch {
+    return false;
   }
 };
 
@@ -315,6 +326,9 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const [showRecordConfirm, setShowRecordConfirm] = useState(false);
   const [isTogglingRecord, setIsTogglingRecord] = useState(false);
   const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
+  const [followViewport, setFollowViewport] = useState(true);
+  const [pendingFullscreen, setPendingFullscreen] = useState(false);
+  const [showQR, setShowQR] = useState(false);
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -377,6 +391,8 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const isLocalAdminPresenting = amIAuthority && !amITeacher && !actualTeacher && presenterMode;
   const teacher = actualTeacher || adminPresenterParticipant || (isLocalAdminPresenting ? localParticipant : null) || undefined;
   const amIIncognito = amIAuthority && !amITeacher && !!actualTeacher;
+  // A companion is any remote participant whose metadata marks isCompanion: true
+  const hasCompanion = participants.some((p) => !p.isLocal && getIsCompanion(p));
   const students = participants.filter((p) => {
     if (p.isLocal && (amITeacher || isLocalAdminPresenting)) return false;
     const role = p.isLocal ? currentUserRole : getRole(p);
@@ -643,6 +659,16 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
         filePrefix: "" // Prefix doesn't matter for stopping
       }).catch(console.error);
     }
+
+    // Notify companion device(s) to disconnect — prevents stale LiveKit sessions
+    if (room.state === ConnectionState.Connected) {
+      try {
+        room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({ type: "SESSION_END" })),
+          { reliable: true },
+        );
+      } catch { /* ignore — leaving anyway */ }
+    }
     
     // Route back immediately
     router.back();
@@ -749,6 +775,31 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
     localParticipant.setCameraEnabled(true).catch(() => {});
   }, [localParticipant, isLocalAdminPresenting]);
 
+  // Auto-close QR dialog when a companion device successfully joins the room
+  useEffect(() => {
+    if (hasCompanion && showQR) {
+      setShowQR(false);
+      toast.success(t('classroom.companionConnected') || 'Companion device connected!');
+    }
+  }, [hasCompanion, showQR, t]);
+
+  // Auto-fullscreen: prompt user to go fullscreen when remote content becomes active.
+  // We cannot call requestFullscreen() from a useEffect (no user gesture), so we prompt instead.
+  const autoFullscreenFiredRef = useRef(false);
+  useEffect(() => {
+    const hasRemoteContent = screenTracks.some(t => !t.participant.isLocal) || isWhiteboardActive;
+    if (hasRemoteContent && !isFullscreen && !autoFullscreenFiredRef.current && onToggleFullscreen) {
+      autoFullscreenFiredRef.current = true;
+      setPendingFullscreen(true);
+    }
+    if (!hasRemoteContent) {
+      autoFullscreenFiredRef.current = false;
+      setPendingFullscreen(false);
+    }
+    // Clear the prompt once already fullscreen
+    if (isFullscreen) setPendingFullscreen(false);
+  }, [screenTracks, isWhiteboardActive, isFullscreen, onToggleFullscreen]);
+
   // Classmates scroll overflow detection
   useEffect(() => {
     const el = classmateTilesRef.current;
@@ -784,6 +835,26 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   return (
     <div ref={rootRef} className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] xl:grid-cols-[1fr_320px] xl:grid-rows-[min-content_1fr_min-content]">
       <RoomAudioRenderer />
+
+      {/* Fullscreen invitation dialog — shown when remote content appears; needs user click to satisfy browser gesture requirement */}
+      <AlertDialog open={pendingFullscreen} onOpenChange={(open) => { if (!open) setPendingFullscreen(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('classroom.fullscreenInviteTitle') || 'Go fullscreen?'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('classroom.fullscreenInviteDesc') || 'Content is being presented. Going fullscreen provides the best viewing experience.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingFullscreen(false)}>
+              {t('common.notNow') || 'Not now'}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setPendingFullscreen(false); onToggleFullscreen?.(); }}>
+              {t('classroom.goFullscreen') || 'Go Fullscreen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={showRecordConfirm} onOpenChange={setShowRecordConfirm}>
         <AlertDialogContent>
@@ -884,10 +955,37 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               <Eye className="w-3 h-3 shrink-0" /> {t('classroom.observingIncognito')}
             </div>
           )}
+          {/* Top-right stage overlay: following pill + fullscreen toggle */}
+          {(isWhiteboardActive || isScreenSharingActive) && (
+            <div className="absolute top-2 right-2 z-30 flex flex-col items-end gap-1.5 pointer-events-none">
+              {isWhiteboardActive && (
+                <button
+                  onClick={() => setFollowViewport(v => !v)}
+                  className={`pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg border transition-all ${
+                    followViewport
+                      ? 'bg-green-500/90 text-white border-green-400/50 hover:bg-green-600/90'
+                      : 'bg-black/60 text-white/80 border-white/20 hover:bg-black/80'
+                  }`}
+                >
+                  {followViewport ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  {followViewport ? t('classroom.followingTeacher') || 'Following' : t('classroom.viewUnlocked') || 'Unlocked'}
+                </button>
+              )}
+              {onToggleFullscreen && (
+                <button
+                  onClick={onToggleFullscreen}
+                  title={isFullscreen ? (t('classroom.exitFullscreen') || 'Exit fullscreen') : (t('classroom.enterFullscreen') || 'Fullscreen')}
+                  className="pointer-events-auto w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center shadow-lg border border-white/20 transition-all"
+                >
+                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
+              )}
+            </div>
+          )}
           {isWhiteboardActive ? (
             <>
               <div className="w-full h-full relative rounded-xl overflow-hidden">
-                <SharedWhiteboard roomName={roomName} isReadonly={true} />
+                <SharedWhiteboard roomName={roomName} isReadonly={true} followViewport={followViewport} />
               </div>
             </>
           ) : isScreenSharingActive ? (
@@ -1060,6 +1158,22 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
                     )}
                   </button>
                 )}
+                {amIAuthority && (
+                  <button
+                    onClick={() => setShowQR(true)}
+                    title={hasCompanion ? (t('classroom.companionActive') || 'Companion active') : (t('classroom.connectTablet') || 'Connect Tablet')}
+                    className={`w-11 h-11 rounded-full flex items-center justify-center relative transition-all shadow-lg border-2 ${
+                      hasCompanion
+                        ? 'bg-green-500/80 text-white border-green-400'
+                        : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                    }`}
+                  >
+                    <TabletSmartphone className="w-5 h-5" />
+                    {hasCompanion && (
+                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-black/60 animate-pulse" />
+                    )}
+                  </button>
+                )}
                 <div className="w-px h-6 bg-white/30 mx-1" />
                 {onToggleFullscreen && (
                   <FullscreenButtonCompact isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
@@ -1106,22 +1220,43 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
               <DeviceToggleButton variant="default" source={Track.Source.Camera} kind="videoinput" iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
             )}
             {amIAuthority && (
-              <Dialog>
+              <Dialog open={showQR} onOpenChange={setShowQR}>
                 <DialogTrigger asChild>
                   <button
-                    title={t('classroom.connectTablet') || "Connect Tablet"}
-                    className="w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border"
+                    title={hasCompanion ? (t('classroom.companionActive') || 'Companion device active') : (t('classroom.connectTablet') || 'Connect Tablet')}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border relative ${
+                      hasCompanion
+                        ? 'bg-success/20 hover:bg-success/30 text-success border-success/50'
+                        : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border'
+                    }`}
                   >
                     <TabletSmartphone className="w-5 h-5" />
+                    {hasCompanion && (
+                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-success rounded-full border-2 border-background animate-pulse" />
+                    )}
                   </button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle className="text-xl">{t('classroom.connectTablet') || "Connect Companion Tablet"}</DialogTitle>
+                    <DialogTitle className="text-xl">
+                      {hasCompanion
+                        ? (t('classroom.companionConnected') || 'Companion device connected!')
+                        : (t('classroom.connectTablet') || 'Connect Companion Tablet')}
+                    </DialogTitle>
                     <DialogDescription>
-                      {t('classroom.connectTabletDesc') || "Scan this QR code with your iPad or Android tablet to open the interactive whiteboard."}
+                      {hasCompanion
+                        ? (t('classroom.companionActiveDesc') || 'A companion device is currently active in this session. Scan again to add another.')
+                        : (t('classroom.connectTabletDesc') || 'Scan this QR code with your iPad or Android tablet to open the interactive whiteboard.')}
                     </DialogDescription>
                   </DialogHeader>
+                  {hasCompanion && (
+                    <div className="flex items-center gap-3 px-4 py-3 bg-success/10 border border-success/30 rounded-xl">
+                      <span className="w-3 h-3 bg-success rounded-full animate-pulse shrink-0" />
+                      <p className="text-sm font-medium text-success">
+                        {participants.filter((p) => !p.isLocal && getIsCompanion(p)).map((p) => p.name || p.identity).join(', ')}
+                      </p>
+                    </div>
+                  )}
                   <div className="flex flex-col items-center justify-center p-6 bg-white rounded-xl shadow-inner my-4">
                     {companionUrl ? (
                       <QRCodeSVG value={companionUrl} size={220} level="M" includeMargin={true} />
@@ -1173,9 +1308,6 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
           </div>
           {/* Right spacer — icon-only Leave */}
           <div className="flex-1 flex items-center justify-end gap-2">
-            {onToggleFullscreen && (
-              <FullscreenButton isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
-            )}
             <button
               onClick={handleLeaveClick}
               title={t('classroom.leave')}

@@ -28,6 +28,12 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     return NextResponse.next();
   }
 
+  // API routes must not go through intlMiddleware — it would redirect
+  // /api/... to /en/api/... which doesn't exist as a Next.js route.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
   const locale = getLocaleFromPathname(pathname)
 
   // 2. Handle public routes

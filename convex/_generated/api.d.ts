@@ -32,6 +32,7 @@ import type * as student from "../student.js";
 import type * as types from "../types.js";
 import type * as users from "../users.js";
 import type * as whiteboardFiles from "../whiteboardFiles.js";
+import type * as whiteboardSessions from "../whiteboardSessions.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -61,6 +62,7 @@ declare const fullApi: ApiFromModules<{
   types: typeof types;
   users: typeof users;
   whiteboardFiles: typeof whiteboardFiles;
+  whiteboardSessions: typeof whiteboardSessions;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,
