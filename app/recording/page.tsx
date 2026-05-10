@@ -15,6 +15,12 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Hand, MicOff } from "lucide-react";
 import { SharedWhiteboard } from "@/components/classroom/shared-whiteboard";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+
+// Module-level singleton — unauthenticated Convex client for public queries.
+// SharedWhiteboard's getScene query has no auth guard so this is safe.
+// Cannot use ConvexProviderWithClerk here — the LiveKit egress bot has no Clerk session.
+const convexClient = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 // --- Helpers (Kept DRY from your main UI) ---
 const getRole = (p: Participant | undefined): string => {
@@ -155,40 +161,49 @@ function RecordingLayout() {
       
       {/* LEFT: MAIN STAGE */}
       <div className="flex-1 relative bg-muted border-r border-border flex items-center justify-center p-2">
-        {isWhiteboardActive ? (
-          <div className="w-full h-full bg-white relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
-             <SharedWhiteboard roomName={room.name} isReadonly={true} />
-             {teacher && (
-               <div className="absolute bottom-4 left-4 w-48 h-48 rounded-xl overflow-hidden shadow-2xl border-2 border-border z-50">
-                 <RecordingTile participant={teacher} variant="grid" roleBadge="Teacher" />
-               </div>
-             )}
-          </div>
-        ) : activeScreenTrack ? (
-          <div className="w-full h-full bg-black relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
-             <VideoTrack 
-               trackRef={activeScreenTrack} 
-               className="w-full h-full object-contain" 
-             />
-             {/* Small PiP for Teacher when sharing screen */}
-             {teacher && (
-               <div className="absolute bottom-4 left-4 w-48 h-48 rounded-xl overflow-hidden shadow-2xl border-2 border-border z-50">
-                 <RecordingTile participant={teacher} variant="grid" roleBadge="Teacher" />
-               </div>
-             )}
-          </div>
-        ) : teacher ? (
-           <div className="w-full h-full rounded-2xl overflow-hidden border-2 border-border shadow-xl relative">
-             <RecordingTile participant={teacher} variant="stage" roleBadge="Teacher" />
-           </div>
-        ) : (
-           <div className="text-center p-8">
-             <div className="w-24 h-24 mx-auto bg-background/50 rounded-full flex items-center justify-center border-2 border-border mb-4">
-               <span className="text-4xl">👩‍🏫</span>
-             </div>
-             <h2 className="text-xl font-bold">Waiting for Teacher</h2>
-           </div>
-        )}
+        {/* Base layer: screen share → teacher cam → waiting placeholder */}
+        <div className="w-full h-full relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
+          {activeScreenTrack ? (
+            <div className="w-full h-full bg-black relative">
+              <VideoTrack
+                trackRef={activeScreenTrack}
+                className="w-full h-full object-contain"
+              />
+              {teacher && (
+                <div className="absolute bottom-4 left-4 w-48 h-36 rounded-xl overflow-hidden shadow-2xl border-2 border-border z-50">
+                  <RecordingTile participant={teacher} variant="grid" roleBadge="Teacher" />
+                </div>
+              )}
+            </div>
+          ) : teacher ? (
+            <RecordingTile participant={teacher} variant="stage" roleBadge="Teacher" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="text-center p-8">
+                <div className="w-24 h-24 mx-auto bg-background/50 rounded-full flex items-center justify-center border-2 border-border mb-4">
+                  <span className="text-4xl">👩‍🏫</span>
+                </div>
+                <h2 className="text-xl font-bold">Waiting for Teacher</h2>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Whiteboard overlay — always mounted so Excalidraw's dynamic import resolves
+            before the companion activates it. Hidden via CSS (not unmounted) so the
+            LiveKit DataChannel listener + Convex subscription stay active throughout,
+            meaning pan/zoom and scene changes are tracked even while the overlay is hidden. */}
+        <div
+          className="absolute inset-2 bg-white rounded-2xl overflow-hidden border-2 border-border shadow-xl"
+          style={{ display: isWhiteboardActive ? "block" : "none" }}
+        >
+          <SharedWhiteboard roomName={room.name} isReadonly={true} followViewport={true} />
+          {teacher && (
+            <div className="absolute bottom-4 left-4 w-48 h-36 rounded-xl overflow-hidden shadow-2xl border-2 border-border z-50">
+              <RecordingTile participant={teacher} variant="grid" roleBadge="Teacher" />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* RIGHT: CLASSMATES SIDEBAR */}
@@ -238,8 +253,10 @@ function RecordingContent() {
 
 export default function RecordingPage() {
   return (
-    <Suspense fallback={<div className="w-screen h-screen bg-black" />}>
-      <RecordingContent />
-    </Suspense>
+    <ConvexProvider client={convexClient}>
+      <Suspense fallback={<div className="w-screen h-screen bg-black" />}>
+        <RecordingContent />
+      </Suspense>
+    </ConvexProvider>
   );
 }
