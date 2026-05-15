@@ -1,21 +1,25 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useQuery } from "convex/react";
+import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 import { 
   SquareUserRound, 
   Presentation, 
   BookMarked, 
-  GraduationCap, 
+  GraduationCap,
+  Film,
   LucideIcon 
 } from "lucide-react";
 import { Id } from "@/convex/_generated/dataModel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { AdminClassTrackingCard } from "@/components/admin/admin-class-tracking-card";
 import FlexidualHeader from "../flexidual-header";
 import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
+import { toast } from "sonner";
 
 export default function AdminDashboard() {
   const t = useTranslations();
@@ -58,6 +62,24 @@ export default function AdminDashboard() {
   const curriculums = useQuery(api.curriculums.list, orgContext ? { includeInactive: false, schoolId: querySchoolId } : "skip");
   const allSchedules = useQuery(api.schedule.getMySchedule, {});
 
+  const healRecordings = useAction(api.livekit.healRecordings);
+  const [isHealing, setIsHealing] = useState(false);
+
+  const handleHealRecordings = async () => {
+    setIsHealing(true);
+    try {
+      const result = await healRecordings({});
+      toast.success(
+        `Recordings healed: ${result.created} created, ${result.skipped} already tracked, ${result.noSchedule} no matching schedule`,
+        { duration: 8000 }
+      );
+    } catch (err) {
+      toast.error(`Heal failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsHealing(false);
+    }
+  };
+
   const isLoading =
     teachers === undefined ||
     students === undefined ||
@@ -93,6 +115,34 @@ export default function AdminDashboard() {
           <StatCard title={t("navigation.allCurriculums") || "Curriculums"} value={curriculums?.length || 0} icon={BookMarked} />
           <StatCard title={t("navigation.allClasses") || "Active Classes"} value={activeClasses?.length || 0} icon={Presentation} />
         </div>
+
+        {/* Recordings Maintenance */}
+        <Card className="border border-primary/20 shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <Film className="h-5 w-5 text-primary/80" />
+                <div>
+                  <CardTitle className="text-base font-semibold">Recordings Maintenance</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Backfill any recordings from LiveKit history that are missing in the database.
+                    Run this after enabling the recordings feature or if recordings appear missing.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 shrink-0"
+                onClick={handleHealRecordings}
+                disabled={isHealing}
+              >
+                <Film className="h-4 w-4" />
+                {isHealing ? "Scanning…" : "Heal Recordings"}
+              </Button>
+            </div>
+          </CardHeader>
+        </Card>
 
         {/* Class & Teacher Tracking */}
         <div className="mt-10">

@@ -132,7 +132,7 @@ export const toggleRecording = action({
         return { success: false, message: "A recording is already starting or active." };
       }
 
-      // 2. Proceed with starting the recording
+      // Proceed with starting the recording
       const s3Upload = new S3Upload({
         accessKey: process.env.S3_ACCESS_KEY ?? "",
         secret: process.env.S3_SECRET_KEY ?? "",
@@ -150,30 +150,24 @@ export const toggleRecording = action({
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
       if (!baseUrl) throw new Error("NEXT_PUBLIC_APP_URL is not defined in environment variables.");
 
-      await egressClient.startRoomCompositeEgress(
+      // Look up the schedule before starting — done here so we have scheduleId ready
+      const schedule = await ctx.runQuery(api.schedule.getByRoomName, { roomName: args.roomName });
+
+      // startRoomCompositeEgress returns EgressInfo which includes egressId directly
+      const egressInfo = await egressClient.startRoomCompositeEgress(
         args.roomName,
         fileOutput,
         { customBaseUrl: `${baseUrl}/recording` }
       );
-      
-      // Persist the egress so we can track recording status and store the URL on completion.
-      // Look up scheduleId from roomName — non-throwing since legacy rooms may not exist.
-      const schedule = await ctx.runQuery(api.schedule.getByRoomName, { roomName: args.roomName });
-      if (schedule) {
-        // Re-fetch the new egress to get its ID (startRoomCompositeEgress returns EgressInfo)
-        const startedEgresses = await egressClient.listEgress({ roomName: args.roomName });
-        const newest = startedEgresses
-          .filter((e) => e.status === EgressStatus.EGRESS_STARTING || e.status === EgressStatus.EGRESS_ACTIVE)
-          .sort((a, b) => Number(b.startedAt ?? BigInt(0)) - Number(a.startedAt ?? BigInt(0)))[0];
 
-        if (newest?.egressId) {
-          await ctx.runMutation(internal.recordings.createRecording, {
-            scheduleId: schedule._id,
-            roomName: args.roomName,
-            egressId: newest.egressId,
-            startedAt: Date.now(),
-          });
-        }
+      // Persist the egress using the egressId from the return value (no second listEgress needed)
+      if (schedule && egressInfo.egressId) {
+        await ctx.runMutation(internal.recordings.createRecording, {
+          scheduleId: schedule._id,
+          roomName: args.roomName,
+          egressId: egressInfo.egressId,
+          startedAt: Date.now(),
+        });
       }
 
       return { success: true, message: "Recording started" };
@@ -198,6 +192,170 @@ export const toggleRecording = action({
 
       return { success: false, message: "No active recording found" };
     }
+  },
+});
+
+// ─── Room name extraction from file key ───────────────────────────────────────
+//
+// File keys follow the pattern set in active-classroom-ui.tsx:
+//   {YYYYMMDD}_{className}_{lessonTitle}_{roomName}_{timestamp}.mp4
+// optionally prefixed by a folder:
+//   some-folder/{YYYYMMDD}_{className}_{lessonTitle}_{roomName}_{timestamp}.mp4
+//
+// The roomName is always the segment immediately before the final all-digit timestamp.
+// For standard class rooms it matches /class-[a-z0-9]+-series-\d+/.
+// We use a regex that captures everything between the third underscore and the last
+// underscore-followed-by-digits suffix, which is more robust to class/lesson names
+// containing underscores.
+function extractRoomNameFromFileKey(fileKey: string): string | null {
+  // Strip folder prefix if present
+  const base = fileKey.includes("/") ? fileKey.split("/").pop()! : fileKey;
+  // Remove .mp4 extension
+  const name = base.replace(/\.mp4$/i, "");
+  // Split on _; last segment is the numeric uniqueSuffix
+  const parts = name.split("_");
+  if (parts.length < 4) return null;
+  // The uniqueSuffix is the last part and must be all digits
+  if (!/^\d+$/.test(parts[parts.length - 1])) return null;
+  // roomName is the part before the uniqueSuffix
+  return parts[parts.length - 2];
+}
+
+/**
+ * Scans LiveKit egress history (primary) and S3 file keys (fallback) to backfill
+ * any recordings that were not captured in the recordings table — for example,
+ * recordings made before this feature was deployed or when the webhook was not set up.
+ *
+ * Pass `fileKeys` as an array of S3 object keys (e.g. from an R2 bucket listing)
+ * to also cover egresses that LiveKit no longer has history for.
+ *
+ * Returns a summary: { checked, created, skipped, noSchedule, errors }
+ */
+export const healRecordings = action({
+  args: {
+    fileKeys: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const livekitUrl = process.env.LIVEKIT_URL;
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+    const r2BaseUrl = process.env.R2_PUBLIC_URL;
+
+    if (!livekitUrl || !apiKey || !apiSecret) {
+      throw new Error("LiveKit credentials not configured.");
+    }
+
+    const egressClient = new EgressClient(livekitUrl, apiKey, apiSecret);
+    const EGRESS_COMPLETE = 3; // EgressStatus.EGRESS_COMPLETE numeric value
+
+    let checked = 0, created = 0, skipped = 0, noSchedule = 0, errors = 0;
+
+    // ── Pass 1: LiveKit egress history ────────────────────────────────────────
+    let allEgresses: Awaited<ReturnType<typeof egressClient.listEgress>> = [];
+    try {
+      allEgresses = await egressClient.listEgress();
+    } catch (err) {
+      console.error("[healRecordings] Failed to list egresses:", err);
+    }
+
+    for (const egress of allEgresses) {
+      if (Number(egress.status) !== EGRESS_COMPLETE) continue;
+      if (!egress.fileResults?.length || !egress.egressId) continue;
+
+      checked++;
+
+      try {
+        const existing = await ctx.runQuery(internal.recordings.getByEgressId, {
+          egressId: egress.egressId,
+        });
+        if (existing) { skipped++; continue; }
+
+        const roomName = egress.roomName ?? "";
+        const schedule = await ctx.runQuery(api.schedule.getByRoomName, { roomName });
+        if (!schedule) { noSchedule++; continue; }
+
+        const fileResult = egress.fileResults[0];
+        const fileKey = fileResult.filename ?? undefined;
+        const fileUrl = (r2BaseUrl && fileKey)
+          ? `${r2BaseUrl.replace(/\/$/, "")}/${fileKey}`
+          : undefined;
+        const durationMs = fileResult.duration ? Number(fileResult.duration) / 1_000_000 : undefined;
+        const fileSize = fileResult.size ? Number(fileResult.size) : undefined;
+        const startedAt = egress.startedAt ? Number(egress.startedAt) : Date.now();
+
+        await ctx.runMutation(internal.recordings.createRecording, {
+          scheduleId: schedule._id,
+          roomName,
+          egressId: egress.egressId,
+          startedAt,
+        });
+        await ctx.runMutation(internal.recordings.updateFromWebhook, {
+          egressId: egress.egressId,
+          status: "complete",
+          ...(fileKey !== undefined && { fileKey }),
+          ...(fileUrl !== undefined && { url: fileUrl }),
+          ...(durationMs !== undefined && { durationMs }),
+          ...(fileSize !== undefined && { fileSize }),
+          completedAt: Date.now(),
+        });
+        created++;
+      } catch (err) {
+        console.error(`[healRecordings] Error processing egress ${egress.egressId}:`, err);
+        errors++;
+      }
+    }
+
+    // ── Pass 2: S3 file key fallback (for files LiveKit no longer tracks) ─────
+    for (const fileKey of args.fileKeys ?? []) {
+      if (!fileKey.endsWith(".mp4")) continue;
+
+      try {
+        // Skip if already in recordings table by fileKey
+        const existingByKey = await ctx.runQuery(internal.recordings.getByFileKey, { fileKey });
+        if (existingByKey) { skipped++; continue; }
+
+        checked++;
+
+        const roomName = extractRoomNameFromFileKey(fileKey);
+        if (!roomName) { noSchedule++; continue; }
+
+        const schedule = await ctx.runQuery(api.schedule.getByRoomName, { roomName });
+        if (!schedule) { noSchedule++; continue; }
+
+        const fileUrl = r2BaseUrl ? `${r2BaseUrl.replace(/\/$/, "")}/${fileKey}` : undefined;
+
+        // Use a synthetic egressId derived from the fileKey so it's idempotent
+        const syntheticEgressId = `healed:${fileKey}`;
+        const alreadyByEgress = await ctx.runQuery(internal.recordings.getByEgressId, {
+          egressId: syntheticEgressId,
+        });
+        if (alreadyByEgress) { skipped++; continue; }
+
+        await ctx.runMutation(internal.recordings.createRecording, {
+          scheduleId: schedule._id,
+          roomName,
+          egressId: syntheticEgressId,
+          startedAt: Date.now(),
+        });
+        await ctx.runMutation(internal.recordings.updateFromWebhook, {
+          egressId: syntheticEgressId,
+          status: "complete",
+          fileKey,
+          ...(fileUrl !== undefined && { url: fileUrl }),
+          completedAt: Date.now(),
+        });
+        created++;
+      } catch (err) {
+        console.error(`[healRecordings] Error processing file key ${fileKey}:`, err);
+        errors++;
+      }
+    }
+
+    console.log(`[healRecordings] Done — checked:${checked} created:${created} skipped:${skipped} noSchedule:${noSchedule} errors:${errors}`);
+    return { checked, created, skipped, noSchedule, errors };
   },
 });
 

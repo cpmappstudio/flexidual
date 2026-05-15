@@ -91,6 +91,32 @@ export const getByRoom = internalQuery({
 });
 
 /**
+ * Look up a single recording by egressId — used by healRecordings for deduplication.
+ */
+export const getByEgressId = internalQuery({
+  args: { egressId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("recordings")
+      .withIndex("by_egress_id", (q) => q.eq("egressId", args.egressId))
+      .first();
+  },
+});
+
+/**
+ * Look up a single recording by fileKey — used by healRecordings S3 fallback.
+ */
+export const getByFileKey = internalQuery({
+  args: { fileKey: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("recordings")
+      .filter((q) => q.eq(q.field("fileKey"), args.fileKey))
+      .first();
+  },
+});
+
+/**
  * Check if a set of scheduleIds has any complete recordings — used by getMySchedule.
  * Returns a Set of scheduleIds that have at least one complete recording.
  */
