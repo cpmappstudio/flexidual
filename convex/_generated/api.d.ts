@@ -23,6 +23,7 @@ import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
 import type * as organizations from "../organizations.js";
 import type * as permissions from "../permissions.js";
+import type * as recordings from "../recordings.js";
 import type * as roleAssignments from "../roleAssignments.js";
 import type * as schedule from "../schedule.js";
 import type * as schools from "../schools.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   migration: typeof migration;
   organizations: typeof organizations;
   permissions: typeof permissions;
+  recordings: typeof recordings;
   roleAssignments: typeof roleAssignments;
   schedule: typeof schedule;
   schools: typeof schools;

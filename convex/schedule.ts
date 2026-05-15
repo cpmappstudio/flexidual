@@ -4,6 +4,7 @@ import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
 import { hasSystemRole, canManageClasses } from "./permissions";
+import { internal } from "./_generated/api";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -258,6 +259,14 @@ export const getMySchedule = query({
 
     const sessionsBySchedule = new Map(flatSchedule.map((s, idx) => [s._id, allSessionsForSchedules[idx] || []]));
 
+    // Join recording availability — only check completed sessions to keep it cheap
+    const completedScheduleIds = flatSchedule
+      .filter(s => s.status === "completed" || s.status === "active")
+      .map(s => s._id);
+    const scheduleIdsWithRecordings: Set<string> = completedScheduleIds.length > 0
+      ? new Set(await ctx.runQuery(internal.recordings.getCompletedScheduleIds, { scheduleIds: completedScheduleIds }))
+      : new Set<string>();
+
     const results = await Promise.all(
       flatSchedule.map(async (item) => {
         const classData = myClasses.find(c => c._id === item.classId);
@@ -419,7 +428,8 @@ export const getMySchedule = query({
           attendance: attendanceStatus,
           minutesAttended: Math.round(timeInClass / 60),
           isStudentActive: isStudentActive,
-          attendanceSummary: isClassAdminOrTeacher ? attendanceSummary : undefined
+          attendanceSummary: isClassAdminOrTeacher ? attendanceSummary : undefined,
+          hasRecording: scheduleIdsWithRecordings.has(item._id),
         };
       })
     );

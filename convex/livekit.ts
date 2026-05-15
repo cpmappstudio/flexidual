@@ -1,7 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { 
   AccessToken, 
@@ -9,7 +9,8 @@ import {
   EncodedFileOutput, 
   EncodedFileType, 
   S3Upload, 
-  EgressStatus 
+  EgressStatus,
+  WebhookReceiver,
 } from "livekit-server-sdk";
 
 export const getToken = action({
@@ -155,6 +156,26 @@ export const toggleRecording = action({
         { customBaseUrl: `${baseUrl}/recording` }
       );
       
+      // Persist the egress so we can track recording status and store the URL on completion.
+      // Look up scheduleId from roomName — non-throwing since legacy rooms may not exist.
+      const schedule = await ctx.runQuery(api.schedule.getByRoomName, { roomName: args.roomName });
+      if (schedule) {
+        // Re-fetch the new egress to get its ID (startRoomCompositeEgress returns EgressInfo)
+        const startedEgresses = await egressClient.listEgress({ roomName: args.roomName });
+        const newest = startedEgresses
+          .filter((e) => e.status === EgressStatus.EGRESS_STARTING || e.status === EgressStatus.EGRESS_ACTIVE)
+          .sort((a, b) => Number(b.startedAt ?? BigInt(0)) - Number(a.startedAt ?? BigInt(0)))[0];
+
+        if (newest?.egressId) {
+          await ctx.runMutation(internal.recordings.createRecording, {
+            scheduleId: schedule._id,
+            roomName: args.roomName,
+            egressId: newest.egressId,
+            startedAt: Date.now(),
+          });
+        }
+      }
+
       return { success: true, message: "Recording started" };
     } else {
       const egresses = await egressClient.listEgress({
@@ -177,6 +198,86 @@ export const toggleRecording = action({
 
       return { success: false, message: "No active recording found" };
     }
+  },
+});
+
+/**
+ * Internal action that verifies a LiveKit egress webhook and processes it.
+ * Must live in a "use node" file because WebhookReceiver uses node:crypto.
+ * Called from the /livekit-egress-webhook HTTP route in http.ts.
+ */
+export const processEgressWebhook = internalAction({
+  args: { body: v.string(), authorization: v.string() },
+  handler: async (ctx, { body, authorization }) => {
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+
+    if (!apiKey || !apiSecret) {
+      console.error("[LiveKit Webhook] Missing LIVEKIT_API_KEY or LIVEKIT_API_SECRET");
+      return { ok: false as const, error: "Server misconfigured", status: 500 };
+    }
+
+    const receiver = new WebhookReceiver(apiKey, apiSecret);
+    let event: Awaited<ReturnType<typeof receiver.receive>>;
+    try {
+      event = await receiver.receive(body, authorization);
+    } catch (err) {
+      console.error("[LiveKit Webhook] Signature verification failed:", err);
+      return { ok: false as const, error: "Unauthorized", status: 401 };
+    }
+
+    if (!event.egressInfo) {
+      return { ok: true as const };
+    }
+
+    const info = event.egressInfo;
+    const egressId = info.egressId;
+
+    // EgressStatus: 0=STARTING, 1=ACTIVE, 2=ENDING, 3=COMPLETE, 4=FAILED, 5=ABORTED, 6=LIMIT_REACHED
+    const statusMap: Record<number, "starting" | "active" | "complete" | "failed" | "aborted"> = {
+      0: "starting",
+      1: "active",
+      2: "active",
+      3: "complete",
+      4: "failed",
+      5: "aborted",
+      6: "aborted",
+    };
+    const numericStatus = Number(info.status);
+    const status = statusMap[numericStatus] ?? "failed";
+
+    let fileKey: string | undefined;
+    let url: string | undefined;
+    let durationMs: number | undefined;
+    let fileSize: number | undefined;
+    let completedAt: number | undefined;
+
+    if (status === "complete" && info.fileResults && info.fileResults.length > 0) {
+      const fileResult = info.fileResults[0];
+      fileKey = fileResult.filename ?? undefined;
+      fileSize = fileResult.size ? Number(fileResult.size) : undefined;
+      durationMs = fileResult.duration ? Number(fileResult.duration) / 1_000_000 : undefined;
+      completedAt = Date.now();
+
+      const r2BaseUrl = process.env.R2_PUBLIC_URL;
+      if (r2BaseUrl && fileKey) {
+        url = `${r2BaseUrl.replace(/\/$/,  "")}/${fileKey}`;
+      }
+    }
+
+    if (egressId) {
+      await ctx.runMutation(internal.recordings.updateFromWebhook, {
+        egressId,
+        status,
+        ...(fileKey !== undefined && { fileKey }),
+        ...(url !== undefined && { url }),
+        ...(durationMs !== undefined && { durationMs }),
+        ...(fileSize !== undefined && { fileSize }),
+        ...(completedAt !== undefined && { completedAt }),
+      });
+    }
+
+    return { ok: true as const };
   },
 });
 

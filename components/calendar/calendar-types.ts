@@ -70,6 +70,9 @@ export type CalendarEvent = {
   recurrenceParentId?: Id<"classSchedule">
   teacherName?: string
   teacherImageUrl?: string
+
+  // Recordings
+  hasRecording?: boolean
 }
 
 // For scheduling new lessons

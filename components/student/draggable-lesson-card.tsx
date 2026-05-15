@@ -3,12 +3,13 @@
 import { motion } from "framer-motion"
 import { format } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
-import { Clock, GripVertical, MonitorPlay, Video, AlertCircle, RotateCcw, Radio, Hourglass, Sparkles } from "lucide-react"
+import { Clock, GripVertical, MonitorPlay, Video, AlertCircle, RotateCcw, Radio, Hourglass, Sparkles, PlayCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useTranslations, useLocale } from "next-intl"
 import { StudentScheduleEvent } from "@/lib/types/student"
 import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
+import { RecordingPlayerModal } from "@/components/recording-player-modal"
 
 interface DraggableLessonCardProps {
   lesson: StudentScheduleEvent
@@ -111,6 +112,8 @@ export function DraggableLessonCard({
   }
 
   const showTrailingBadge = (isMissed || isPresent || isPartialFinal || isVirtualPending) && !isInClass;
+  const [recordingOpen, setRecordingOpen] = useState(false);
+  const canWatchRecording = !!lesson.hasRecording && isPast && !isInClass;
 
   return (
     <motion.div
@@ -271,6 +274,27 @@ export function DraggableLessonCard({
            
            {/* Hides on mobile and tablet, shows on desktop */}
            <span className="hidden lg:inline">👆 {t('dragHint') || 'Drag me! 🚀'}</span>
+        </div>
+      )}
+
+      {/* Watch Recording — shown for past sessions with a recording */}
+      {canWatchRecording && (
+        <div className="mt-3 relative z-10" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => setRecordingOpen(true)}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary text-sm font-semibold transition-colors"
+          >
+            <PlayCircle className="h-4 w-4" />
+            {t('watchRecording') || 'Watch Recording'}
+          </button>
+          <RecordingPlayerModal
+            scheduleId={lesson.scheduleId}
+            title={lesson.title}
+            className={lesson.className}
+            scheduledStart={lesson.start}
+            open={recordingOpen}
+            onOpenChange={setRecordingOpen}
+          />
         </div>
       )}
     </motion.div>

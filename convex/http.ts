@@ -3,6 +3,7 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Webhook } from "svix";
 
+
 // Tipo del webhook event de Clerk
 type WebhookEvent = {
     type: "user.created" | "user.updated" | "user.deleted" | string;
@@ -83,5 +84,36 @@ async function validateClerkWebhook(
         return null;
     }
 }
+
+// ============================================================================
+// LIVEKIT EGRESS WEBHOOK
+// ============================================================================
+
+/**
+ * LiveKit calls this endpoint when an egress job updates (started, completed, failed).
+ * 
+ * Setup instructions:
+ * 1. Go to LiveKit Cloud Dashboard → your project → Webhooks → Add Webhook
+ * 2. Set the URL to: https://<your-deployment>.convex.site/livekit-egress-webhook
+ * 3. Subscribe to: EgressUpdated events
+ * 4. Select your existing API key for signing — LiveKit signs webhooks with your
+ *    API key + secret (LIVEKIT_API_KEY / LIVEKIT_API_SECRET, already in Convex env vars)
+ */
+http.route({
+    path: "/livekit-egress-webhook",
+    method: "POST",
+    handler: httpAction(async (ctx, request) => {
+        const body = await request.text();
+        const authorization = request.headers.get("Authorization") ?? "";
+
+        const result = await ctx.runAction(internal.livekit.processEgressWebhook, { body, authorization });
+
+        if (!result.ok) {
+            return new Response(result.error, { status: result.status });
+        }
+
+        return new Response(null, { status: 200 });
+    }),
+});
 
 export default http;

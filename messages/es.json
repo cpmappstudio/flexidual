@@ -420,6 +420,7 @@
     "dragHint": "¡Arrástrame! 🚀",
     "tapHint": "¡Toca aquí! 🚀",
     "dragOrTap": "Arrastrame o toca aquí para comenzar 🚀",
+    "watchRecording": "Ver Grabación",
     "attended": "Asistido",
     "missed": "Perdido",
     "excused": "Justificado",
@@ -747,5 +748,15 @@
     "clearFilters": "Limpiar filtros",
     "noResults": "Sin resultados",
     "selectedRows": "{selected} de {total} fila(s) seleccionada(s)"
+  },
+  "recordings": {
+    "watch": "Grabación",
+    "watchRecording": "Ver Grabación",
+    "title": "Grabaciones",
+    "noRecordings": "No hay grabaciones disponibles",
+    "noRecordingsHint": "Esta sesión puede estar procesando o no fue grabada.",
+    "processing": "La grabación aún se está procesando…",
+    "duration": "Duración",
+    "fileSize": "Tamaño de archivo"
   }
 }

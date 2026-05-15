@@ -422,6 +422,7 @@
     "dragHint": "Drag me! 🚀",
     "tapHint": "Tap me! 🚀",
     "dragOrTap": "Drag or tap me! 🚀",
+    "watchRecording": "Watch Recording",
     "attended": "Attended",
     "missed": "Missed",
     "pending": "Pending",
@@ -749,5 +750,15 @@
     "clearFilters": "Clear filters",
     "noResults": "No results",
     "selectedRows": "{selected} of {total} row(s) selected"
+  },
+  "recordings": {
+    "watch": "Recording",
+    "watchRecording": "Watch Recording",
+    "title": "Recordings",
+    "noRecordings": "No recordings available",
+    "noRecordingsHint": "This session may still be processing or was not recorded.",
+    "processing": "Recording is still processing…",
+    "duration": "Duration",
+    "fileSize": "File size"
   }
 }

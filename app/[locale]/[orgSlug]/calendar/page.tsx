@@ -184,6 +184,7 @@ function CalendarContent() {
       recurrenceRule: e.recurrenceRule,
       teacherName: e.teacherName,
       teacherImageUrl: e.teacherImageUrl,
+      hasRecording: e.hasRecording,
     }));
   }, [scheduleData]);
 

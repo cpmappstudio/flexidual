@@ -322,6 +322,33 @@ export default defineSchema({
     .index("by_user_org", ["userId", "orgId", "orgType"]),
 
   /**
+   * RECORDINGS
+   * Tracks LiveKit egress recordings for class sessions.
+   * Created when a recording starts; updated via LiveKit egress webhook on completion.
+   */
+  recordings: defineTable({
+    scheduleId: v.id("classSchedule"),
+    roomName: v.string(),
+    egressId: v.string(),
+    status: v.union(
+      v.literal("starting"),
+      v.literal("active"),
+      v.literal("complete"),
+      v.literal("failed"),
+      v.literal("aborted")
+    ),
+    fileKey: v.optional(v.string()),  // S3/R2 object key (path)
+    url: v.optional(v.string()),      // Public playback URL
+    durationMs: v.optional(v.number()),
+    fileSize: v.optional(v.number()),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_schedule", ["scheduleId"])
+    .index("by_egress_id", ["egressId"])
+    .index("by_room", ["roomName"]),
+
+  /**
    * WHITEBOARD SESSIONS
    * Live scene state for an active classroom whiteboard session.
    * Writer (companion device) upserts on every change (debounced).

@@ -19,4 +19,5 @@ export interface StudentScheduleEvent {
   attendance: "upcoming" | "present" | "absent" | "partial" | "in-progress" | "late" | "excused";
   minutesAttended: number
   isStudentActive: boolean
+  hasRecording?: boolean
 }

@@ -38,7 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, Link as LinkIcon, MonitorPlay, Repeat, AlertCircle } from "lucide-react";
+import { Loader2, Trash2, Video, Pencil, CalendarClock, BookOpen, Link as LinkIcon, MonitorPlay, Repeat, AlertCircle, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
@@ -48,6 +48,7 @@ import Image from "next/image";
 import { CalendarEvent } from "../calendar-types";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 import { useParams } from "next/navigation"
+import { RecordingPlayerModal } from "@/components/recording-player-modal"
 
 // Helper function to format recurrence pattern
 function formatRecurrencePattern(
@@ -128,6 +129,7 @@ export default function CalendarManageEventDialog() {
   const [updateMode, setUpdateMode] = useState<"single" | "series">("single");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [recordingOpen, setRecordingOpen] = useState(false);
   
   const lastEventIdRef = useRef<string | null>(null);
 
@@ -519,6 +521,34 @@ export default function CalendarManageEventDialog() {
                           );
                         })}
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Recordings section — shown when there is a known recording */}
+                {selectedEvent.hasRecording && (
+                  <div className="flex gap-3">
+                    <PlayCircle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium mb-2">
+                        {t('recordings.title') || 'Recordings'}
+                      </p>
+                      <Button
+                        variant="outline"
+                        className="gap-2 border-primary/40 text-primary hover:bg-primary/10 w-full sm:w-auto"
+                        onClick={() => setRecordingOpen(true)}
+                      >
+                        <PlayCircle className="h-4 w-4" />
+                        {t('recordings.watch') || 'Watch Recording'}
+                      </Button>
+                      <RecordingPlayerModal
+                        scheduleId={selectedEvent.scheduleId}
+                        title={selectedEvent.title}
+                        className={selectedEvent.className}
+                        scheduledStart={selectedEvent.start.getTime()}
+                        open={recordingOpen}
+                        onOpenChange={setRecordingOpen}
+                      />
                     </div>
                   </div>
                 )}

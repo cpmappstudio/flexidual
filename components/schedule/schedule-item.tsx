@@ -2,7 +2,7 @@
 
 import { format } from "date-fns"
 import { enUS, es, ptBR } from "date-fns/locale"
-import { CheckCircle2, MonitorPlay, Video, BookOpen, ArrowRight, Users, UserCheck, UserX, Clock, Link as LinkIcon } from "lucide-react"
+import { CheckCircle2, MonitorPlay, Video, BookOpen, ArrowRight, Users, UserCheck, UserX, Clock, Link as LinkIcon, PlayCircle } from "lucide-react"
 import { useTranslations, useLocale } from "next-intl"
 import { useParams } from "next/navigation"
 import { Link } from "@/i18n/navigation" 
@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button"
 import { ManageScheduleDialog } from "@/components/teaching/classes/manage-schedule-dialog"
 import { AttendanceDialog } from "@/components/teaching/classes/attendance-dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { RecordingPlayerModal } from "@/components/recording-player-modal"
+import { useState } from "react"
 
 const localeMap = {
   en: enUS,
@@ -47,6 +49,7 @@ interface ScheduleItemProps {
     }
     isRecurring?: boolean
     recurrenceParentId?: Id<"classSchedule">
+    hasRecording?: boolean
   }
   classId?: Id<"classes">
   isPast?: boolean
@@ -70,6 +73,7 @@ export function ScheduleItem({
   const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
   const { orgSlug } = useParams<{ orgSlug: string }>()
   const isIgnitia = schedule.sessionType === "ignitia"
+  const [recordingOpen, setRecordingOpen] = useState(false)
   
   // Convert to Date if needed
   const startDate = schedule.start instanceof Date ? schedule.start : new Date(schedule.start)
@@ -251,6 +255,31 @@ export function ScheduleItem({
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+        {/* Recording Button — shown for completed sessions with a recording */}
+        {schedule.hasRecording && (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 border-primary/40 text-primary hover:bg-primary/10"
+              onClick={() => setRecordingOpen(true)}
+            >
+              <PlayCircle className="h-4 w-4" />
+              <span className="sr-only sm:not-sr-only sm:inline-block">
+                {t("recordings.watch") || "Recording"}
+              </span>
+            </Button>
+            <RecordingPlayerModal
+              scheduleId={schedule.scheduleId}
+              title={schedule.title}
+              className={schedule.className}
+              scheduledStart={startDate.getTime()}
+              open={recordingOpen}
+              onOpenChange={setRecordingOpen}
+            />
+          </>
+        )}
+
         {/* Attendance Button */}
         {classId && showEdit && (
             <AttendanceDialog 
