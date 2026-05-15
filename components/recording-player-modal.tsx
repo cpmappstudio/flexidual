@@ -34,6 +34,8 @@ export interface RecordingPlayerProps {
   scheduledStart?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** "student" uses the student dashboard's colourful card style; "default" keeps the cinema dark style */
+  variant?: "student" | "default";
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -179,6 +181,7 @@ export function RecordingPlayerModal({
   scheduledStart,
   open,
   onOpenChange,
+  variant = "default",
 }: RecordingPlayerProps) {
   const t = useTranslations();
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -196,28 +199,64 @@ export function RecordingPlayerModal({
   const isEmpty = recordings !== undefined && recordings.length === 0;
   const activeRec = recordings ? (recordings[selectedIdx] ?? recordings[0]) : null;
 
+  const isStudent = variant === "student";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-3xl bg-gray-950 border-gray-800 text-white p-0 overflow-hidden"
+        className={cn(
+          "max-w-3xl p-0 overflow-hidden",
+          isStudent
+            ? "bg-background border-2 border-primary/30 rounded-2xl"
+            : "bg-gray-950 border-gray-800 text-white"
+        )}
         showCloseButton
       >
         {/* Header */}
-        <DialogHeader className="px-6 pt-5 pb-3 border-b border-gray-800">
+        <DialogHeader
+          className={cn(
+            "px-6 pt-5 pb-3 border-b",
+            isStudent
+              ? "border-primary/20 bg-primary/5"
+              : "border-gray-800"
+          )}
+        >
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+            <div
+              className={cn(
+                "flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center",
+                isStudent ? "bg-primary/15 border border-primary/30" : "rounded-lg bg-primary/20"
+              )}
+            >
               <Video className="h-5 w-5 text-primary" />
             </div>
             <div className="flex-1 min-w-0">
-              <DialogTitle className="text-white text-lg font-bold leading-tight truncate">
+              <DialogTitle
+                className={cn(
+                  "text-lg font-black leading-tight truncate",
+                  isStudent ? "text-foreground" : "text-white"
+                )}
+              >
                 {title}
               </DialogTitle>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 {className && (
-                  <span className="text-sm text-gray-400 truncate">{className}</span>
+                  <span
+                    className={cn(
+                      "text-sm truncate",
+                      isStudent ? "text-muted-foreground" : "text-gray-400"
+                    )}
+                  >
+                    {className}
+                  </span>
                 )}
                 {scheduledStart && (
-                  <span className="text-xs text-gray-500">
+                  <span
+                    className={cn(
+                      "text-xs",
+                      isStudent ? "text-muted-foreground" : "text-gray-500"
+                    )}
+                  >
                     {format(new Date(scheduledStart), "EEEE, MMMM d, yyyy")}
                   </span>
                 )}
@@ -230,21 +269,31 @@ export function RecordingPlayerModal({
         <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
           {isLoading && (
             <div className="space-y-3">
-              <Skeleton className="w-full bg-gray-800" style={{ aspectRatio: "16/9" }} />
+              <Skeleton
+                className={cn(
+                  "w-full",
+                  isStudent ? "bg-primary/10" : "bg-gray-800"
+                )}
+                style={{ aspectRatio: "16/9" }}
+              />
               <div className="flex gap-3">
-                <Skeleton className="h-4 w-32 bg-gray-800" />
-                <Skeleton className="h-4 w-24 bg-gray-800" />
+                <Skeleton className={cn("h-4 w-32", isStudent ? "bg-primary/10" : "bg-gray-800")} />
+                <Skeleton className={cn("h-4 w-24", isStudent ? "bg-primary/10" : "bg-gray-800")} />
               </div>
             </div>
           )}
 
           {isEmpty && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Video className="h-12 w-12 text-gray-600 mb-3" />
-              <p className="text-gray-400 font-medium">
+              {isStudent ? (
+                <div className="text-5xl mb-3">🎬</div>
+              ) : (
+                <Video className="h-12 w-12 text-gray-600 mb-3" />
+              )}
+              <p className={cn("font-bold", isStudent ? "text-foreground" : "text-gray-400")}>
                 {t("recordings.noRecordings") || "No recordings available"}
               </p>
-              <p className="text-gray-600 text-sm mt-1">
+              <p className={cn("text-sm mt-1", isStudent ? "text-muted-foreground" : "text-gray-600")}>
                 {t("recordings.noRecordingsHint") ||
                   "This session may still be processing or was not recorded."}
               </p>
@@ -261,10 +310,15 @@ export function RecordingPlayerModal({
                       key={rec._id}
                       onClick={() => setSelectedIdx(idx)}
                       className={cn(
-                        "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
+                        "flex items-center gap-2 px-3 py-1.5 text-sm font-semibold transition-colors border",
+                        isStudent ? "rounded-full" : "rounded-lg",
                         selectedIdx === idx
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-gray-900 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-200"
+                          ? isStudent
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-primary text-primary-foreground border-primary"
+                          : isStudent
+                            ? "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20"
+                            : "bg-gray-900 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-200"
                       )}
                     >
                       <PlayCircle className="h-3.5 w-3.5" />
@@ -290,7 +344,14 @@ export function RecordingPlayerModal({
                     completedAt={activeRec.completedAt}
                   />
                 ) : (
-                  <div className="flex items-center gap-3 p-4 bg-gray-900 rounded-lg border border-gray-800 text-gray-400">
+                  <div
+                    className={cn(
+                      "flex items-center gap-3 p-4 rounded-xl border",
+                      isStudent
+                        ? "bg-primary/5 border-primary/20 text-muted-foreground"
+                        : "bg-gray-900 rounded-lg border-gray-800 text-gray-400"
+                    )}
+                  >
                     <Video className="h-5 w-5 flex-shrink-0" />
                     <span className="text-sm">
                       {t("recordings.processing") || "Recording is still processing…"}

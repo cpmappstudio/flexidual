@@ -300,6 +300,7 @@ export function DraggableLessonCard({
             scheduledStart={lesson.start}
             open={recordingOpen}
             onOpenChange={setRecordingOpen}
+            variant="student"
           />
         </div>
       )}

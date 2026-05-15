@@ -3,12 +3,10 @@ import { api } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Run the sweeper every hour to catch ungraceful disconnects
-crons.hourly(
+// Run every 15 minutes to quickly catch ungraceful disconnects and stuck "active" schedules
+crons.interval(
   "Cleanup stale LiveKit sessions",
-  {
-    minuteUTC: 0,
-  },
+  { minutes: 15 },
   api.schedule.cleanupStaleSessions
 );
 

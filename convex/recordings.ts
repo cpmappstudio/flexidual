@@ -135,12 +135,13 @@ export const getBySchedule = query({
     const classData = await ctx.db.get(schedule.classId);
     if (!classData) return [];
 
-    // Authorization: teacher, any admin, or enrolled student
-    const isTeacher = classData.teacherId === user._id;
-    const isStudent = classData.students.includes(user._id);
+    // Authorization: teacher, any admin, enrolled student, or student who has attended
+    const isTeacher = classData.teacherId === user._id || classData.tutorId === user._id;
+    const isEnrolledStudent = classData.students.includes(user._id);
     const isSuperAdmin = await hasSystemRole(ctx, user._id, ["superadmin"]);
 
-    if (!isTeacher && !isStudent && !isSuperAdmin) {
+    if (!isTeacher && !isEnrolledStudent && !isSuperAdmin) {
+      // Check admin/principal role assignment
       const adminAssignment = await ctx.db
         .query("roleAssignments")
         .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -152,7 +153,19 @@ export const getBySchedule = query({
         )
         .first();
 
-      if (!adminAssignment) return [];
+      if (adminAssignment) {
+        // Admin/principal — allowed
+      } else {
+        // Last resort: student who has ever attended this class session
+        const attendedSession = await ctx.db
+          .query("class_sessions")
+          .withIndex("by_student_schedule", (q) =>
+            q.eq("studentId", user._id).eq("scheduleId", args.scheduleId)
+          )
+          .first();
+
+        if (!attendedSession) return [];
+      }
     }
 
     const recordings = await ctx.db

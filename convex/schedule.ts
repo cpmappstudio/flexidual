@@ -14,6 +14,8 @@ const FULL_ATTENDANCE_THRESHOLD_PERCENT = 0.5;
 const PARTIAL_ATTENDANCE_THRESHOLD_PERCENT = 0.10;
 const MIN_PARTIAL_SECONDS = 120; 
 const STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+/** A session with no leftAt is considered a dropped connection if older than this */
+const SESSION_STALE_MS = 4 * 60 * 60 * 1000;
 
 // ============================================================================
 // HELPERS
@@ -298,7 +300,10 @@ export const getMySchedule = query({
         if (!isClassAdminOrTeacher) {
           const studentSessions = sessions.filter(s => s.studentId === user._id);
           const activeSession = studentSessions.find(s => s.joinedAt && !s.leftAt);
-          isStudentActive = !!activeSession;
+          // Student is only "in class" if the schedule hasn't ended yet and the session isn't stale
+          isStudentActive = !!activeSession &&
+            now <= item.scheduledEnd &&
+            (now - (activeSession?.joinedAt ?? 0)) < SESSION_STALE_MS;
 
           const manualRecord = studentSessions.find(s => s.attendanceStatus);
           
@@ -363,9 +368,20 @@ export const getMySchedule = query({
           }
         }
 
-        const isStale = now > (item.scheduledEnd + STALE_THRESHOLD_MS);
-        const effectiveIsLive = item.isLive && !isStale || false;
-        const effectiveStatus = (item.status === "active" && isStale) ? "completed" : item.status;
+        const isPastEnd = now > item.scheduledEnd;
+        // A session is "genuinely active" if it has no leftAt and isn't an old dropped connection
+        const hasActiveSessions = sessions.some(
+          s => !s.leftAt && (now - s.joinedAt) < SESSION_STALE_MS
+        );
+        // Hard cutoff: 2 h past end we always clean up regardless of open sessions
+        const isHardStale = now > item.scheduledEnd + STALE_THRESHOLD_MS;
+        // Live only if: flag is set AND (within scheduled time OR people still genuinely in room) AND not hard-stale
+        const effectiveIsLive = !!(item.isLive && !isHardStale && (!isPastEnd || hasActiveSessions));
+        // Status: treat active schedule as completed once past end with no real participants
+        const effectiveStatus =
+          item.status === "active" && (isHardStale || (isPastEnd && !hasActiveSessions))
+            ? "completed"
+            : item.status;
 
         let teacherAttendanceStatus = "upcoming";
         let teacherTimeInClass = 0;
@@ -1072,7 +1088,15 @@ export const markLive = mutation({
         if (schedule.completedAt) updates.completedAt = undefined;
       }
     } else {
-      if (schedule.status === "active") updates.status = "scheduled"; 
+      const now = Date.now();
+      if (now >= schedule.scheduledEnd) {
+        // Class time has already passed — mark it properly finished
+        updates.status = "completed";
+        updates.completedAt = schedule.completedAt ?? now;
+      } else {
+        // Teacher left early but class time hasn't ended; revert to scheduled
+        updates.status = "scheduled";
+      }
     }
     await ctx.db.patch(schedule._id, updates);
   },
@@ -1163,21 +1187,31 @@ export const cleanupStaleSessions = mutation({
     const activeSchedules = await ctx.db.query("classSchedule").withIndex("by_status", (q) => q.eq("status", "active")).collect();
 
     for (const schedule of activeSchedules) {
-      if (now > schedule.scheduledEnd + STALE_THRESHOLD_MS) {
+      if (now <= schedule.scheduledEnd) continue; // class time hasn't ended yet
+
+      const openSessions = await ctx.db.query("class_sessions")
+        .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+        .filter(q => q.eq(q.field("leftAt"), undefined))
+        .collect();
+
+      // A session is genuinely active if it isn't older than SESSION_STALE_MS
+      const hasActiveSessions = openSessions.some(
+        s => (now - s.joinedAt) < SESSION_STALE_MS
+      );
+
+      if (!hasActiveSessions) {
+        // No real participants — finalize the schedule
         await ctx.db.patch(schedule._id, {
           status: "completed",
           isLive: false,
-          completedAt: schedule.scheduledEnd,
+          completedAt: schedule.completedAt ?? schedule.scheduledEnd,
         });
-        
-        const openSessions = await ctx.db.query("class_sessions")
-          .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
-          .filter(q => q.eq(q.field("leftAt"), undefined))
-          .collect();
-          
+
+        // Close orphaned open sessions, capped at scheduledEnd
         for (const os of openSessions) {
-           const duration = (schedule.scheduledEnd - os.joinedAt) / 1000;
-           await ctx.db.patch(os._id, { leftAt: schedule.scheduledEnd, durationSeconds: Math.max(0, duration) });
+          const leftAt = Math.min(now, schedule.scheduledEnd);
+          const duration = Math.max(0, (leftAt - os.joinedAt) / 1000);
+          await ctx.db.patch(os._id, { leftAt, durationSeconds: duration });
         }
       }
     }
