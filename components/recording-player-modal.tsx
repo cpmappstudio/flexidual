@@ -205,7 +205,7 @@ export function RecordingPlayerModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "max-w-5xl w-full p-0 overflow-hidden",
+          "max-w-5xl sm:max-w-5xl w-full p-0 overflow-hidden",
           isStudent
             ? "bg-background border-2 border-primary/30 rounded-2xl"
             : "bg-card border-border"
