@@ -3,7 +3,7 @@ import { useCalendarContext } from "@/components/calendar/calendar-context";
 import { format, isSameDay, isSameMonth } from "date-fns";
 import { cn } from "@/lib/utils";
 import { motion, MotionConfig, AnimatePresence } from "framer-motion";
-import { Video } from "lucide-react";
+import { Video, PlayCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface EventPosition {
@@ -204,6 +204,12 @@ export default function CalendarEvent({
                 <div className="flex items-center gap-1 text-xs font-medium mt-1">
                   <Video className="h-3 w-3" />
                   <span>Live Now</span>
+                </div>
+              )}
+              {event.hasRecording && !event.isLive && (
+                <div className="flex items-center gap-1 text-xs font-medium mt-1">
+                  <PlayCircle className="h-3 w-3" />
+                  <span>Recording</span>
                 </div>
               )}
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Maximize2,
@@ -64,15 +63,11 @@ function VideoPlayer({
   durationMs,
   fileSize,
   completedAt,
-  index,
-  total,
 }: {
   url: string;
   durationMs: number | null;
   fileSize: number | null;
   completedAt: number | null;
-  index: number;
-  total: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,19 +81,7 @@ function VideoPlayer({
 
   return (
     <div className="space-y-3">
-      {total > 1 && (
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-xs">
-            <Video className="h-3 w-3 mr-1" />
-            Recording {index + 1} of {total}
-          </Badge>
-          {completedAt && (
-            <span className="text-xs text-muted-foreground">
-              {format(new Date(completedAt), "MMM d, yyyy 'at' h:mm a")}
-            </span>
-          )}
-        </div>
-      )}
+
 
       {/* Video container */}
       <div
@@ -163,7 +146,7 @@ function VideoPlayer({
       {/* Metadata strip */}
       {(durationMs || fileSize || completedAt) && (
         <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-          {completedAt && total === 1 && (
+          {completedAt && (
             <span className="flex items-center gap-1">
               <Calendar className="h-3 w-3" />
               {format(new Date(completedAt), "MMM d, yyyy 'at' h:mm a")}
@@ -198,13 +181,20 @@ export function RecordingPlayerModal({
   onOpenChange,
 }: RecordingPlayerProps) {
   const t = useTranslations();
+  const [selectedIdx, setSelectedIdx] = useState(0);
   const recordings = useQuery(
     api.recordings.getBySchedule,
     open ? { scheduleId } : "skip"
   );
 
+  // Reset selection when modal opens or recording count changes
+  useEffect(() => {
+    setSelectedIdx(0);
+  }, [open, recordings?.length]);
+
   const isLoading = recordings === undefined;
   const isEmpty = recordings !== undefined && recordings.length === 0;
+  const activeRec = recordings ? (recordings[selectedIdx] ?? recordings[0]) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -262,23 +252,45 @@ export function RecordingPlayerModal({
           )}
 
           {recordings && recordings.length > 0 && (
-            <div className="space-y-8">
-              {recordings.map((rec, idx) =>
-                rec.url ? (
+            <div className="space-y-4">
+              {/* Selector — only shown when there are multiple recordings */}
+              {recordings.length > 1 && (
+                <div className="flex flex-wrap gap-2">
+                  {recordings.map((rec, idx) => (
+                    <button
+                      key={rec._id}
+                      onClick={() => setSelectedIdx(idx)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
+                        selectedIdx === idx
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-gray-900 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-200"
+                      )}
+                    >
+                      <PlayCircle className="h-3.5 w-3.5" />
+                      {rec.completedAt
+                        ? format(new Date(rec.completedAt), "MMM d, h:mm a")
+                        : `Recording ${idx + 1}`}
+                      {rec.durationMs && (
+                        <span className="opacity-60">· {formatDuration(rec.durationMs)}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Active recording player */}
+              {activeRec && (
+                activeRec.url ? (
                   <VideoPlayer
-                    key={rec._id}
-                    url={rec.url}
-                    durationMs={rec.durationMs}
-                    fileSize={rec.fileSize}
-                    completedAt={rec.completedAt}
-                    index={idx}
-                    total={recordings.length}
+                    key={activeRec._id}
+                    url={activeRec.url}
+                    durationMs={activeRec.durationMs}
+                    fileSize={activeRec.fileSize}
+                    completedAt={activeRec.completedAt}
                   />
                 ) : (
-                  <div
-                    key={rec._id}
-                    className="flex items-center gap-3 p-4 bg-gray-900 rounded-lg border border-gray-800 text-gray-400"
-                  >
+                  <div className="flex items-center gap-3 p-4 bg-gray-900 rounded-lg border border-gray-800 text-gray-400">
                     <Video className="h-5 w-5 flex-shrink-0" />
                     <span className="text-sm">
                       {t("recordings.processing") || "Recording is still processing…"}

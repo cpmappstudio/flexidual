@@ -263,6 +263,12 @@ export function DraggableLessonCard({
                     {lesson.minutesAttended}m
                 </div>
             )}
+            {!!lesson.hasRecording && isPast && (
+              <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full font-bold border border-primary/20">
+                <PlayCircle className="w-3 h-3" />
+                <span>{t('watchRecording') || 'Recorded'}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

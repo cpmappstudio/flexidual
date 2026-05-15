@@ -220,6 +220,12 @@ export function ScheduleItem({
                 {t('dashboard.completed')}
               </Badge>
             )}
+            {schedule.hasRecording && (
+              <Badge variant="outline" className="shrink-0 border-primary/50 text-primary bg-primary/5">
+                <PlayCircle className="h-3 w-3 mr-1" />
+                {t('recordings.watch') || 'Recording'}
+              </Badge>
+            )}
           </div>
 
           {/* ✅ NEW: Display linked lessons */}
