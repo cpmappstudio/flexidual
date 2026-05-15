@@ -259,12 +259,10 @@ export const getMySchedule = query({
 
     const sessionsBySchedule = new Map(flatSchedule.map((s, idx) => [s._id, allSessionsForSchedules[idx] || []]));
 
-    // Join recording availability — only check completed sessions to keep it cheap
-    const completedScheduleIds = flatSchedule
-      .filter(s => s.status === "completed" || s.status === "active")
-      .map(s => s._id);
-    const scheduleIdsWithRecordings: Set<string> = completedScheduleIds.length > 0
-      ? new Set(await ctx.runQuery(internal.recordings.getCompletedScheduleIds, { scheduleIds: completedScheduleIds }))
+    // Join recording availability — check all schedules (a session can be recorded and still show as scheduled)
+    const allScheduleIds = flatSchedule.map(s => s._id);
+    const scheduleIdsWithRecordings: Set<string> = allScheduleIds.length > 0
+      ? new Set(await ctx.runQuery(internal.recordings.getCompletedScheduleIds, { scheduleIds: allScheduleIds }))
       : new Set<string>();
 
     const results = await Promise.all(

@@ -113,7 +113,7 @@ export function DraggableLessonCard({
 
   const showTrailingBadge = (isMissed || isPresent || isPartialFinal || isVirtualPending) && !isInClass;
   const [recordingOpen, setRecordingOpen] = useState(false);
-  const canWatchRecording = !!lesson.hasRecording && isPast && !isInClass;
+  const canWatchRecording = !!lesson.hasRecording;
 
   return (
     <motion.div
@@ -263,7 +263,7 @@ export function DraggableLessonCard({
                     {lesson.minutesAttended}m
                 </div>
             )}
-            {!!lesson.hasRecording && isPast && (
+            {!!lesson.hasRecording && (
               <div className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full font-bold border border-primary/20">
                 <PlayCircle className="w-3 h-3" />
                 <span>{t('watchRecording') || 'Recorded'}</span>
