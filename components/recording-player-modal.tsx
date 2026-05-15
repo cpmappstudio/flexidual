@@ -208,7 +208,7 @@ export function RecordingPlayerModal({
           "max-w-3xl p-0 overflow-hidden",
           isStudent
             ? "bg-background border-2 border-primary/30 rounded-2xl"
-            : "bg-gray-950 border-gray-800 text-white"
+            : "bg-card border-border"
         )}
         showCloseButton
       >
@@ -218,7 +218,7 @@ export function RecordingPlayerModal({
             "px-6 pt-5 pb-3 border-b",
             isStudent
               ? "border-primary/20 bg-primary/5"
-              : "border-gray-800"
+              : "border-border"
           )}
         >
           <div className="flex items-start gap-3">
@@ -234,7 +234,7 @@ export function RecordingPlayerModal({
               <DialogTitle
                 className={cn(
                   "text-lg font-black leading-tight truncate",
-                  isStudent ? "text-foreground" : "text-white"
+                  "text-foreground"
                 )}
               >
                 {title}
@@ -244,7 +244,7 @@ export function RecordingPlayerModal({
                   <span
                     className={cn(
                       "text-sm truncate",
-                      isStudent ? "text-muted-foreground" : "text-gray-400"
+                      "text-muted-foreground"
                     )}
                   >
                     {className}
@@ -254,7 +254,7 @@ export function RecordingPlayerModal({
                   <span
                     className={cn(
                       "text-xs",
-                      isStudent ? "text-muted-foreground" : "text-gray-500"
+                      "text-muted-foreground"
                     )}
                   >
                     {format(new Date(scheduledStart), "EEEE, MMMM d, yyyy")}
@@ -272,13 +272,13 @@ export function RecordingPlayerModal({
               <Skeleton
                 className={cn(
                   "w-full",
-                  isStudent ? "bg-primary/10" : "bg-gray-800"
+                  isStudent ? "bg-primary/10" : "bg-muted"
                 )}
                 style={{ aspectRatio: "16/9" }}
               />
               <div className="flex gap-3">
-                <Skeleton className={cn("h-4 w-32", isStudent ? "bg-primary/10" : "bg-gray-800")} />
-                <Skeleton className={cn("h-4 w-24", isStudent ? "bg-primary/10" : "bg-gray-800")} />
+                <Skeleton className={cn("h-4 w-32", isStudent ? "bg-primary/10" : "bg-muted")} />
+                <Skeleton className={cn("h-4 w-24", isStudent ? "bg-primary/10" : "bg-muted")} />
               </div>
             </div>
           )}
@@ -290,10 +290,10 @@ export function RecordingPlayerModal({
               ) : (
                 <Video className="h-12 w-12 text-gray-600 mb-3" />
               )}
-              <p className={cn("font-bold", isStudent ? "text-foreground" : "text-gray-400")}>
+              <p className="font-bold text-foreground">
                 {t("recordings.noRecordings") || "No recordings available"}
               </p>
-              <p className={cn("text-sm mt-1", isStudent ? "text-muted-foreground" : "text-gray-600")}>
+              <p className="text-sm mt-1 text-muted-foreground">
                 {t("recordings.noRecordingsHint") ||
                   "This session may still be processing or was not recorded."}
               </p>
@@ -313,12 +313,10 @@ export function RecordingPlayerModal({
                         "flex items-center gap-2 px-3 py-1.5 text-sm font-semibold transition-colors border",
                         isStudent ? "rounded-full" : "rounded-lg",
                         selectedIdx === idx
-                          ? isStudent
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-primary text-primary-foreground border-primary"
+                          ? "bg-primary text-primary-foreground border-primary"
                           : isStudent
                             ? "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20"
-                            : "bg-gray-900 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-gray-200"
+                            : "bg-muted text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground"
                       )}
                     >
                       <PlayCircle className="h-3.5 w-3.5" />
@@ -349,7 +347,7 @@ export function RecordingPlayerModal({
                       "flex items-center gap-3 p-4 rounded-xl border",
                       isStudent
                         ? "bg-primary/5 border-primary/20 text-muted-foreground"
-                        : "bg-gray-900 rounded-lg border-gray-800 text-gray-400"
+                        : "bg-muted border-border text-muted-foreground"
                     )}
                   >
                     <Video className="h-5 w-5 flex-shrink-0" />
