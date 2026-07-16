@@ -1,0 +1,242 @@
+{
+  "actions": {
+    "save": "Save",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "add": "Add",
+    "remove": "Remove",
+    "search": "Search",
+    "filter": "Filter",
+    "clear": "Clear",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "reset": "Reset",
+    "close": "Close",
+    "open": "Open",
+    "loading": "Loading...",
+    "view": "View",
+    "download": "Download",
+    "upload": "Upload",
+    "export": "Export",
+    "skip": "Skip",
+    "sendInvitation": "Send invitation",
+    "settings": "Settings"
+  },
+  "table": {
+    "columns": "Columns",
+    "filters": "Filters",
+    "pageInfo": "Page {current} of {total}",
+    "clearFilters": "Clear filters",
+    "noResults": "No results",
+    "selectedRows": "{selected} of {total} row(s) selected",
+    "selectPage": "Select all rows on this page",
+    "selectRow": "Select row"
+  },
+  "gender": {
+    "male": "Male",
+    "female": "Female",
+    "mixed": "Mixed"
+  },
+  "organizations": {
+    "searchPlaceholder": "Search by name, slug, location...",
+    "emptyMessage": "No organizations found. Create your first league to get started.",
+    "name": "Name",
+    "type": "Type",
+    "location": "Location",
+    "clubs": "Clubs",
+    "status": "Status",
+    "mismatch": {
+      "title": "Organization not available",
+      "description": "You don't have access to the organization \"{organization}\". Please select an organization you belong to."
+    }
+  },
+  "organizationType": {
+    "league": "League",
+    "club": "Club"
+  },
+  "organizationStatus": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "affiliated": "Affiliated",
+    "invited": "Invited",
+    "suspended": "Suspended"
+  },
+  "teams": {
+    "searchPlaceholder": "Search by name, nickname, delegate, conference...",
+    "emptyMessage": "No teams found. Create your first team to get started.",
+    "description": "Manage all teams in your league",
+    "name": "Name",
+    "nickname": "Nickname",
+    "conference": "Conference",
+    "delegate": "Delegate",
+    "foundedYear": "Founded",
+    "status": "Status",
+    "colors": "Colors",
+    "colorName": "Color name (e.g. Navy)",
+    "inviteDelegate": "Invite delegate",
+    "statusOptions": {
+      "affiliated": "Affiliated",
+      "invited": "Invited",
+      "suspended": "Suspended"
+    }
+  },
+  "players": {
+    "searchPlaceholder": "Search by name...",
+    "emptyMessage": "No players found. Add your first player to get started.",
+    "name": "Player",
+    "team": "Team",
+    "position": "Position",
+    "status": "Status",
+    "notAssigned": "Not assigned",
+    "title": "Players",
+    "create": "Add Player",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "email": "Email",
+    "phoneNumber": "Phone",
+    "dateOfBirth": "Date of Birth",
+    "jerseyNumber": "Jersey Number",
+    "nationality": "Nationality",
+    "height": "Height",
+    "weight": "Weight",
+    "category": "Category",
+    "selectCategory": "Select category",
+    "deleteTitle": "Delete Player",
+    "deleteDescription": "Are you sure you want to delete {name}? This action cannot be undone.",
+    "statusOptions": {
+      "active": "Active",
+      "injured": "Injured",
+      "suspended": "Suspended",
+      "inactive": "Inactive"
+    }
+  },
+  "position": {
+    "goalkeeper": "Goalkeeper",
+    "defender": "Defender",
+    "midfielder": "Midfielder",
+    "forward": "Forward",
+    "point_guard": "Point Guard",
+    "shooting_guard": "Shooting Guard",
+    "small_forward": "Small Forward",
+    "power_forward": "Power Forward",
+    "center": "Center"
+  },
+  "foot": {
+    "left": "Left",
+    "right": "Right",
+    "both": "Both"
+  },
+  "playerStatus": {
+    "active": "Active",
+    "injured": "Injured",
+    "on_loan": "On Loan",
+    "inactive": "Inactive"
+  },
+  "staff": {
+    "searchPlaceholder": "Search by name...",
+    "emptyMessage": "No staff members found. Add your first staff member to get started.",
+    "emptyDescription": "Add coaches, trainers, and other staff members to manage your team.",
+    "addFirst": "Add Staff Member",
+    "name": "Name",
+    "role": "Role",
+    "team": "Team",
+    "notAssigned": "Not assigned",
+    "title": "Staff",
+    "create": "Add Staff Member",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "email": "Email",
+    "phoneNumber": "Phone",
+    "selectRole": "Select role"
+  },
+  "roster": {
+    "title": "Roster",
+    "description": "Manage the team's roster",
+    "emptyMessage": "No players in the roster."
+  },
+  "playerCard": {
+    "height": "Height",
+    "weight": "Weight",
+    "age": "Age",
+    "yearsPro": "Years Pro",
+    "country": "Country",
+    "season": "Season",
+    "gamesPlayed": "GP",
+    "pointsPerGame": "PPG",
+    "assistsPerGame": "APG",
+    "reboundsPerGame": "RPG"
+  },
+  "staffRole": {
+    "technical_director": "Technical Director",
+    "assistant_coach": "Assistant Coach"
+  },
+  "settings": {
+    "general": "General",
+    "appearance": "Appearance",
+    "notifications": "Notifications",
+    "security": "Security",
+    "billing": "Billing"
+  },
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "pending": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "completed": "Completed"
+  },
+  "validation": {
+    "required": "This field is required",
+    "email": "Enter a valid email address",
+    "minLength": "Minimum {min} characters",
+    "maxLength": "Maximum {max} characters"
+  },
+  "errors": {
+    "generic": "An error occurred",
+    "notFound": "Not found",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Access denied"
+  },
+  "divisions": {
+    "searchPlaceholder": "Search by name, level...",
+    "emptyMessage": "No divisions found. Create your first division to organize players by skill level.",
+    "name": "Name",
+    "displayName": "Display Name",
+    "level": "Level",
+    "description": "Description",
+    "image": "Image",
+    "minWinPercentage": "Min. Win %",
+    "minGamesPlayed": "Min. Games",
+    "teamsCount": "Teams"
+  },
+  "tournaments": {
+    "searchPlaceholder": "Search by name, season, status...",
+    "emptyMessage": "No tournaments found. Create your first tournament to start organizing competitions.",
+    "name": "Name",
+    "season": "Season",
+    "status": "Status",
+    "ageGroup": "Age Group",
+    "gender": "Gender",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "enableDivisions": "Divisions",
+    "teamsCount": "Teams"
+  },
+  "tournamentStatus": {
+    "draft": "Draft",
+    "upcoming": "Upcoming",
+    "ongoing": "Ongoing",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
+  },
+  "languages": {
+    "en": "English",
+    "es": "Spanish"
+  }
+}

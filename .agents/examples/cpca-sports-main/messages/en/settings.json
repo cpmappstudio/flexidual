@@ -1,0 +1,154 @@
+{
+  "nav": {
+    "general": "General",
+    "appearance": "Appearance",
+    "profileSecurity": "Profile and Security",
+    "billing": "Billing"
+  },
+  "general": {
+    "title": "General Settings",
+    "description": "Manage your organization's general settings",
+    "placeholder": "General settings content coming soon.",
+    "organization": {
+      "title": "General details",
+      "description": "Manage your organization information and settings"
+    },
+    "members": {
+      "title": "Organization members",
+      "description": "Manage members, roles, and permissions",
+      "invite": {
+        "title": "Invite member",
+        "description": "Send invitations with the correct tenant redirect.",
+        "emailPlaceholder": "email@example.com",
+        "roleMember": "Member",
+        "roleAdmin": "Admin",
+        "submit": "Send invite",
+        "submitting": "Sending...",
+        "success": "Invitation sent successfully.",
+        "error": "Unable to send invitation.",
+        "emailRequired": "Email is required."
+      },
+      "table": {
+        "searchPlaceholder": "Search by name, email, or role...",
+        "emptyMessage": "No users to display.",
+        "summary": "Total members: {count}",
+        "columns": {
+          "createdAt": "Created",
+          "user": "User",
+          "role": "Role",
+          "actions": "Actions"
+        },
+        "roles": {
+          "member": "Member",
+          "admin": "Admin",
+          "superadmin": "Superadmin"
+        },
+        "actions": {
+          "delete": "Delete user",
+          "deleting": "Deleting..."
+        },
+        "deleteDialog": {
+          "title": "Delete user",
+          "description": "Are you sure you want to delete {email}? This action cannot be undone."
+        },
+        "toasts": {
+          "cannotDelete": "You can't delete this user.",
+          "roleUpdated": "Role updated successfully.",
+          "roleUpdateError": "Unable to update role.",
+          "userDeleted": "User deleted successfully.",
+          "userDeleteError": "Unable to delete user."
+        }
+      }
+    },
+    "wireTransfer": {
+      "title": "Wire transfer payments",
+      "description": "Configure when online checkout should be replaced by wire transfer instructions for all applications.",
+      "enable": "Enable wire transfer rule",
+      "thresholdLabel": "Threshold amount ($)",
+      "thresholdPlaceholder": "0.00",
+      "thresholdHelp": "If the selected balance is greater than or equal to this amount, users will see wire transfer instructions instead of online checkout.",
+      "noPdfUploaded": "No PDF uploaded",
+      "noPdfDescription": "Upload the wire transfer instruction PDF for users.",
+      "usingCustomPdf": "Using custom wire transfer PDF.",
+      "uploadPdf": "Upload PDF",
+      "uploadingPdf": "Uploading...",
+      "downloadCurrent": "Download current",
+      "removePdf": "Remove PDF",
+      "save": "Save",
+      "saving": "Saving...",
+      "saveSuccess": "Wire transfer settings updated.",
+      "saveError": "Unable to save wire transfer settings.",
+      "pdfUploadSuccess": "Wire transfer PDF uploaded.",
+      "pdfRemovedSuccess": "Wire transfer PDF removed.",
+      "errors": {
+        "invalidThreshold": "Enter a threshold greater than $0.00.",
+        "pdfRequired": "Upload a wire transfer PDF before enabling this rule.",
+        "invalidPdf": "Upload a valid PDF file.",
+        "uploadFailed": "Unable to upload the PDF.",
+        "saveFailed": "Unable to update this setting."
+      }
+    },
+    "appearance": {
+      "title": "Appearance",
+      "description": "Customize how the app looks",
+      "theme": "Theme",
+      "themeDescription": "Select the application theme"
+    },
+    "language": {
+      "title": "Language",
+      "description": "Select your preferred language",
+      "comingSoon": "Coming soon"
+    }
+  },
+  "appearance": {
+    "theme": {
+      "title": "Mode",
+      "description": "Choose between light and dark mode"
+    },
+    "colorScheme": {
+      "title": "Color Scheme",
+      "description": "Choose your preferred color palette"
+    },
+    "language": {
+      "title": "Language",
+      "description": "Select your preferred language"
+    }
+  },
+
+  "profileSecurity": {
+    "title": "Profile and Security",
+    "description": "Manage your profile and account security"
+  },
+  "profile": {
+    "title": "Profile details",
+    "description": "Manage your profile and account information",
+    "profileInfo": {
+      "title": "Profile information",
+      "description": "Update your name and profile picture"
+    },
+    "email": {
+      "title": "Email addresses",
+      "description": "Manage your email addresses"
+    }
+  },
+  "security": {
+    "title": "Security",
+    "description": "Manage your account security and authentication",
+    "password": {
+      "title": "Password",
+      "description": "Update your password"
+    },
+    "devices": {
+      "title": "Active devices",
+      "description": "Manage your active sessions and devices"
+    }
+  },
+  "billing": {
+    "title": "Billing",
+    "description": "Manage your plan and payment methods"
+  },
+  "search": {
+    "placeholder": "Search settings...",
+    "noResults": "No settings found"
+  }
+}

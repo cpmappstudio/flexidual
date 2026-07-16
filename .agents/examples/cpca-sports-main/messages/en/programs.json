@@ -1,0 +1,352 @@
+{
+  "page": {
+    "title": "Programs",
+    "description": "Manage the programs available for this organization",
+    "createAction": "Create new program"
+  },
+  "createDialog": {
+    "title": "Create new program",
+    "description": "Start with the program name and description. Then you can configure its form, documents, and payments.",
+    "submit": "Create program",
+    "fields": {
+      "name": {
+        "label": "Program name",
+        "placeholder": "For example: Elite Basketball Summer 2027"
+      },
+      "description": {
+        "label": "Description",
+        "placeholder": "Briefly describe the goal, focus, or audience for this program."
+      },
+      "icon": {
+        "label": "Program icon",
+        "description": "Choose the icon that will represent this program in the header, cards, and tables."
+      }
+    },
+    "feedback": {
+      "nameRequired": "Program name is required.",
+      "descriptionRequired": "Program description is required.",
+      "createSuccess": "Program created. You can now configure its form, documents, and payments.",
+      "createError": "Failed to create the program. Please try again."
+    }
+  },
+  "tabs": {
+    "programs": "Programs",
+    "templates": "Templates"
+  },
+  "programsGrid": {
+    "emptyTitle": "There are no programs yet",
+    "emptyDescription": "Create your first program to start defining its form, documents, and payments.",
+    "updatedLabel": "Updated {date}",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "actions": {
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "moreOptions": "More options"
+    },
+    "deleteDialog": {
+      "title": "Delete program",
+      "description": "Are you sure you want to delete \"{name}\"? This will also remove its default documents and charges and cannot be undone.",
+      "confirm": "Delete program"
+    },
+    "feedback": {
+      "activated": "Program activated.",
+      "deactivated": "Program deactivated.",
+      "deleted": "Program deleted.",
+      "actionError": "Could not update the program. Please try again.",
+      "deleteError": "Could not delete the program. Please try again."
+    }
+  },
+  "templatesTable": {
+    "searchPlaceholder": "Search templates...",
+    "emptyMessage": "There are no saved templates yet",
+    "totalCount": "Templates: {count}",
+    "filteredCount": "Showing {count} of {total}",
+    "descriptionFallback": "No description",
+    "deleteDialog": {
+      "title": "Delete template",
+      "description": "Are you sure you want to delete \"{name}\"? If this template is already used by an application, it will be archived instead of deleted.",
+      "confirm": "Delete template"
+    },
+    "feedback": {
+      "deleted": "Template deleted.",
+      "archived": "Template archived. It was hidden from the list to avoid affecting existing applications.",
+      "deleteError": "Could not delete the template. Please try again."
+    },
+    "columns": {
+      "name": "Template",
+      "version": "Version",
+      "sections": "Sections"
+    }
+  },
+  "create": {
+    "header": {
+      "useTemplateAction": "Use template",
+      "saveAction": "Save program",
+      "descriptionFallback": "No description",
+      "nameFallback": "Untitled program",
+      "editName": "Edit program name",
+      "editDescription": "Edit program description",
+      "iconPicker": {
+        "edit": "Change program icon",
+        "title": "Choose program icon",
+        "description": "Select the icon that best represents this program.",
+        "options": {
+          "generic": "Generic",
+          "baseball": "Baseball",
+          "basketball": "Basketball",
+          "soccer": "Soccer",
+          "volleyball": "Volleyball",
+          "hr14Baseball": "HR14 Baseball",
+          "golf": "Golf",
+          "tennis": "Tennis",
+          "softball": "Softball",
+          "volleyballClub": "Volleyball Club",
+          "postgradBasketball": "PG Basketball",
+          "football": "Football",
+          "swimming": "Swimming",
+          "track": "Track"
+        }
+      }
+    },
+    "useTemplateDialog": {
+      "title": "Use template",
+      "description": "Choose a saved template to load its configuration into this program.",
+      "searchPlaceholder": "Search templates...",
+      "empty": "No templates found.",
+      "groupLabel": "Saved templates",
+      "noDescription": "No description"
+    },
+    "saveDialog": {
+      "title": "Save changes",
+      "description": "Choose whether you want to save this form as a program, a template, or both.",
+      "confirm": "Save",
+      "targets": {
+        "program": "Save as program",
+        "programDescription": "Update this program with the current form changes.",
+        "programAlreadySaved": "There are no pending changes in the program right now.",
+        "template": "Save as template",
+        "templateDescription": "Create a reusable template for new programs."
+      },
+      "fields": {
+        "templateName": "Template name",
+        "templateNameSuggestedSuffix": "Template"
+      }
+    },
+    "tabs": {
+      "application": "Application",
+      "documents": "Documents",
+      "payments": "Payments"
+    },
+    "builder": {
+      "defaults": {
+        "stepLabel": "Step {current}",
+        "optionLabel": "Option {current}",
+        "elements": {
+          "text": {
+            "label": "Text",
+            "content": "Section title",
+            "placeholder": ""
+          },
+          "separator": {
+            "label": "Separator",
+            "placeholder": ""
+          },
+          "input": {
+            "label": "Text field",
+            "placeholder": "Enter a value"
+          },
+          "textarea": {
+            "label": "Textarea",
+            "placeholder": "Write your answer"
+          },
+          "checkbox": {
+            "label": "Checkbox",
+            "placeholder": ""
+          },
+          "switch": {
+            "label": "Switch",
+            "placeholder": ""
+          },
+          "select": {
+            "label": "Select",
+            "placeholder": "Choose an option"
+          },
+          "radioGroup": {
+            "label": "Radio group",
+            "placeholder": ""
+          },
+          "datePicker": {
+            "label": "Date picker",
+            "placeholder": "Select a date"
+          }
+        }
+      },
+      "editor": {
+        "emptyDescription": "Add elements to start building this program form.",
+        "actions": {
+          "addElement": "Add element",
+          "addStep": "Add step",
+          "removeStep": "Remove step",
+          "edit": "Edit element",
+          "delete": "Delete element"
+        },
+        "step": {
+          "iconLabel": "Step icon"
+        },
+        "stepIcons": {
+          "number": "Number",
+          "athlete": "Athlete",
+          "address": "Address",
+          "school": "School",
+          "parents": "Parents",
+          "general": "General"
+        },
+        "command": {
+          "title": "Add element",
+          "description": "Choose the type of element you want to add to the form.",
+          "searchPlaceholder": "Search elements...",
+          "empty": "No elements found.",
+          "groups": {
+            "fields": "Fields",
+            "display": "Display"
+          }
+        },
+        "catalog": {
+          "Input": {
+            "label": "Input",
+            "description": "Single-line text, email, number, phone, or URL input."
+          },
+          "Textarea": {
+            "label": "Textarea",
+            "description": "Multi-line text field for longer answers."
+          },
+          "Checkbox": {
+            "label": "Checkbox",
+            "description": "Boolean field for simple confirmations."
+          },
+          "Switch": {
+            "label": "Switch",
+            "description": "Toggle field for yes or no decisions."
+          },
+          "Select": {
+            "label": "Select",
+            "description": "Dropdown field with a predefined set of options."
+          },
+          "RadioGroup": {
+            "label": "Radio group",
+            "description": "Single-choice list where all options stay visible."
+          },
+          "DatePicker": {
+            "label": "Date picker",
+            "description": "Single date or date range selection."
+          },
+          "Text": {
+            "label": "Text",
+            "description": "Heading or paragraph block for instructions."
+          },
+          "Separator": {
+            "label": "Separator",
+            "description": "Divider to organize sections of the form."
+          }
+        }
+      },
+      "preview": {
+        "titleFallback": "Form step",
+        "singleStepDescription": "Preview of the form users will complete.",
+        "requiredError": "This field is required.",
+        "stepCounter": "Step {current} of {total}",
+        "stepLabel": "Step {current}",
+        "reset": "Reset",
+        "previous": "Back",
+        "next": "Next",
+        "submit": "Submit",
+        "successTitle": "Preview completed",
+        "successDescription": "This is how the form will behave when a user submits all required steps.",
+        "backToForm": "Back to form"
+      },
+      "settings": {
+        "title": "Field settings",
+        "description": "Configure the behavior and content of the selected element.",
+        "separatorHelp": "You can use the label as optional text above the divider line.",
+        "validation": {
+          "nameRequired": "Field name is required.",
+          "nameUnique": "Each field name must be unique within the form."
+        },
+        "fields": {
+          "fieldKey": "Field key",
+          "name": "Field name",
+          "label": "Label",
+          "description": "Description",
+          "placeholder": "Placeholder",
+          "required": "Required",
+          "disabled": "Disabled",
+          "width": "Width",
+          "inputType": "Input type",
+          "textVariant": "Text style",
+          "content": "Content",
+          "dateMode": "Date mode",
+          "options": "Options",
+          "optionLabel": "Option label",
+          "optionValue": "Option value"
+        },
+        "actions": {
+          "addOption": "Add option"
+        },
+        "widths": {
+          "full": "Full width",
+          "half": "Half width",
+          "third": "One third"
+        },
+        "inputTypes": {
+          "text": "Text",
+          "email": "Email",
+          "number": "Number",
+          "tel": "Phone",
+          "url": "URL"
+        },
+        "textVariants": {
+          "H1": "Heading 1",
+          "H2": "Heading 2",
+          "H3": "Heading 3",
+          "P": "Paragraph"
+        },
+        "dateModes": {
+          "single": "Single date",
+          "range": "Date range"
+        }
+      }
+    },
+    "documents": {
+      "title": "Document requirements",
+      "description": "Define the default documents that will be requested for applications using this program.",
+      "saveProgramFirstTitle": "Save the program first",
+      "saveProgramFirstDescription": "Save the basic program information before defining the default documents for this program.",
+      "emptyStateTitle": "No documents configured yet",
+      "emptyStateDescription": "Add the default documents that should be requested for applications using this program.",
+      "activeHint": "This document will be requested by default for applications that use this program.",
+      "hiddenHint": "This document is saved in the program, but it is hidden by default.",
+      "loading": "Loading documents..."
+    },
+    "payments": {
+      "title": "Charges and fees",
+      "description": "Here we will configure one-time and recurring payments associated with this program.",
+      "saveProgramFirstTitle": "Save the program first",
+      "saveProgramFirstDescription": "Save the basic program information before defining the default charges for this program.",
+      "loading": "Loading payment defaults...",
+      "emptyStateTitle": "No charges configured yet",
+      "emptyStateDescription": "Add the default one-time and recurring charges that should be created for applications using this program.",
+      "activeHint": "These charges will be created by default for applications that use this program."
+    },
+    "feedback": {
+      "invalidFormDefinition": "Fix the fields with empty or duplicate names before saving the form.",
+      "templateApplied": "Template applied to the form. Remember to save the program if you want to keep the changes.",
+      "saveSuccess": "Program saved.",
+      "saveTemplateSuccess": "Template saved.",
+      "saveBothSuccess": "Program and template saved.",
+      "saveError": "Failed to save the program. Please try again."
+    }
+  }
+}
