@@ -1,0 +1,16 @@
+{
+  "nav": {
+    "dashboard": "Panel",
+    "applications": "Mis Solicitudes",
+    "programs": "Programas",
+    "organizations": "Organizaciones",
+    "users": "Usuarios",
+    "settings": "Configuración",
+    "profile": "Perfil",
+    "payments": "Pagos",
+    "teams": "Equipos",
+    "divisions": "Divisiones",
+    "tournaments": "Torneos",
+    "organizationLogoAlt": "Logo de CPCA"
+  }
+}

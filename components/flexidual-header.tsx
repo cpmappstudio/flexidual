@@ -14,9 +14,15 @@ interface FlexidualHeaderProps {
   title: string;
   subtitle: string;
   logoUrl?: string;
+  showCampusFilter?: boolean;
 }
 
-const FlexidualHeader = ({ title, subtitle, logoUrl }: FlexidualHeaderProps) => {
+const FlexidualHeader = ({
+  title,
+  subtitle,
+  logoUrl,
+  showCampusFilter = true,
+}: FlexidualHeaderProps) => {
   const t = useTranslations("admin");
   const { selectedSchoolId, selectedCampusId, setSelectedCampusId, isAvailable } = useAdminSchoolFilter();
 
@@ -63,7 +69,7 @@ const FlexidualHeader = ({ title, subtitle, logoUrl }: FlexidualHeaderProps) => 
       </div>
 
       {/* Right: Campus filter — only when a school is selected */}
-      {schoolSelected && (
+      {showCampusFilter && schoolSelected && (
         <div className="shrink-0 mb-4">
           <Select
             value={selectedCampusId}

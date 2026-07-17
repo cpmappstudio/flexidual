@@ -1,0 +1,352 @@
+{
+  "page": {
+    "title": "Programas",
+    "description": "Administra los programas disponibles para esta organización",
+    "createAction": "Crear nuevo programa"
+  },
+  "createDialog": {
+    "title": "Crear nuevo programa",
+    "description": "Define primero el nombre y la descripción. Luego podrás configurar formulario, documentos y cobros.",
+    "submit": "Crear programa",
+    "fields": {
+      "name": {
+        "label": "Nombre del programa",
+        "placeholder": "Por ejemplo: Elite Basketball Summer 2027"
+      },
+      "description": {
+        "label": "Descripción",
+        "placeholder": "Describe brevemente el objetivo, el enfoque o la audiencia de este programa."
+      },
+      "icon": {
+        "label": "Ícono del programa",
+        "description": "Elige el ícono que representará a este programa en el header, las cards y las tablas."
+      }
+    },
+    "feedback": {
+      "nameRequired": "El nombre del programa es obligatorio.",
+      "descriptionRequired": "La descripción del programa es obligatoria.",
+      "createSuccess": "Programa creado. Ya puedes configurar su formulario, documentos y cobros.",
+      "createError": "No se pudo crear el programa. Inténtalo de nuevo."
+    }
+  },
+  "tabs": {
+    "programs": "Programas",
+    "templates": "Plantillas"
+  },
+  "programsGrid": {
+    "emptyTitle": "Aún no hay programas creados",
+    "emptyDescription": "Crea tu primer programa para empezar a definir su formulario, documentos y cobros.",
+    "updatedLabel": "Actualizado {date}",
+    "status": {
+      "active": "Activo",
+      "inactive": "Desactivado"
+    },
+    "actions": {
+      "activate": "Activar",
+      "deactivate": "Desactivar",
+      "moreOptions": "Más opciones"
+    },
+    "deleteDialog": {
+      "title": "Eliminar programa",
+      "description": "¿Estás seguro de que deseas eliminar \"{name}\"? Esta acción también eliminará sus documentos y cobros por defecto y no se puede deshacer.",
+      "confirm": "Eliminar programa"
+    },
+    "feedback": {
+      "activated": "Programa activado.",
+      "deactivated": "Programa desactivado.",
+      "deleted": "Programa eliminado.",
+      "actionError": "No se pudo actualizar el programa. Inténtalo de nuevo.",
+      "deleteError": "No se pudo eliminar el programa. Inténtalo de nuevo."
+    }
+  },
+  "templatesTable": {
+    "searchPlaceholder": "Buscar plantillas...",
+    "emptyMessage": "Aún no hay plantillas guardadas",
+    "totalCount": "Plantillas: {count}",
+    "filteredCount": "Mostrando {count} de {total}",
+    "descriptionFallback": "Sin descripción",
+    "deleteDialog": {
+      "title": "Eliminar plantilla",
+      "description": "¿Estás seguro de que deseas eliminar \"{name}\"? Si esta plantilla ya está siendo usada por una solicitud, se archivará en lugar de borrarse.",
+      "confirm": "Eliminar plantilla"
+    },
+    "feedback": {
+      "deleted": "Plantilla eliminada.",
+      "archived": "Plantilla archivada. Se ocultó de la lista para no afectar solicitudes existentes.",
+      "deleteError": "No se pudo eliminar la plantilla. Inténtalo de nuevo."
+    },
+    "columns": {
+      "name": "Plantilla",
+      "version": "Versión",
+      "sections": "Secciones"
+    }
+  },
+  "create": {
+    "header": {
+      "useTemplateAction": "Usar plantilla",
+      "saveAction": "Guardar programa",
+      "descriptionFallback": "Sin descripción",
+      "nameFallback": "Programa sin nombre",
+      "editName": "Editar nombre del programa",
+      "editDescription": "Editar descripción del programa",
+      "iconPicker": {
+        "edit": "Cambiar ícono del programa",
+        "title": "Elegir ícono del programa",
+        "description": "Selecciona el ícono que mejor represente este programa.",
+        "options": {
+          "generic": "Genérico",
+          "baseball": "Béisbol",
+          "basketball": "Baloncesto",
+          "soccer": "Fútbol",
+          "volleyball": "Voleibol",
+          "hr14Baseball": "HR14 Baseball",
+          "golf": "Golf",
+          "tennis": "Tenis",
+          "softball": "Sofbol",
+          "volleyballClub": "Club de voleibol",
+          "postgradBasketball": "Baloncesto de posgrado",
+          "football": "Fútbol americano",
+          "swimming": "Natación",
+          "track": "Atletismo"
+        }
+      }
+    },
+    "useTemplateDialog": {
+      "title": "Usar plantilla",
+      "description": "Selecciona una plantilla guardada para cargar su configuración en este programa.",
+      "searchPlaceholder": "Buscar plantillas...",
+      "empty": "No se encontraron plantillas.",
+      "groupLabel": "Plantillas guardadas",
+      "noDescription": "Sin descripción"
+    },
+    "saveDialog": {
+      "title": "Guardar cambios",
+      "description": "Elige si deseas guardar este formulario como programa, como plantilla o como ambos.",
+      "confirm": "Guardar",
+      "targets": {
+        "program": "Guardar como programa",
+        "programDescription": "Actualiza este programa con los cambios actuales del formulario.",
+        "programAlreadySaved": "No hay cambios pendientes en el programa ahora mismo.",
+        "template": "Guardar como plantilla",
+        "templateDescription": "Crea una plantilla reutilizable para iniciar nuevos programas."
+      },
+      "fields": {
+        "templateName": "Nombre de la plantilla",
+        "templateNameSuggestedSuffix": "Plantilla"
+      }
+    },
+    "tabs": {
+      "application": "Formulario",
+      "documents": "Documentos",
+      "payments": "Pagos"
+    },
+    "builder": {
+      "defaults": {
+        "stepLabel": "Paso {current}",
+        "optionLabel": "Opción {current}",
+        "elements": {
+          "text": {
+            "label": "Texto",
+            "content": "Título de sección",
+            "placeholder": ""
+          },
+          "separator": {
+            "label": "Separador",
+            "placeholder": ""
+          },
+          "input": {
+            "label": "Campo de texto",
+            "placeholder": "Escribe un valor"
+          },
+          "textarea": {
+            "label": "Área de texto",
+            "placeholder": "Escribe tu respuesta"
+          },
+          "checkbox": {
+            "label": "Casilla",
+            "placeholder": ""
+          },
+          "switch": {
+            "label": "Interruptor",
+            "placeholder": ""
+          },
+          "select": {
+            "label": "Selección",
+            "placeholder": "Elige una opción"
+          },
+          "radioGroup": {
+            "label": "Grupo de opciones",
+            "placeholder": ""
+          },
+          "datePicker": {
+            "label": "Selector de fecha",
+            "placeholder": "Selecciona una fecha"
+          }
+        }
+      },
+      "editor": {
+        "emptyDescription": "Agrega elementos para empezar a construir el formulario de este programa.",
+        "actions": {
+          "addElement": "Agregar elemento",
+          "addStep": "Agregar paso",
+          "removeStep": "Eliminar paso",
+          "edit": "Editar elemento",
+          "delete": "Eliminar elemento"
+        },
+        "step": {
+          "iconLabel": "Ícono del paso"
+        },
+        "stepIcons": {
+          "number": "Número",
+          "athlete": "Atleta",
+          "address": "Dirección",
+          "school": "Escuela",
+          "parents": "Padres",
+          "general": "General"
+        },
+        "command": {
+          "title": "Agregar elemento",
+          "description": "Selecciona el tipo de elemento que quieres añadir al formulario.",
+          "searchPlaceholder": "Buscar elemento...",
+          "empty": "No se encontraron elementos.",
+          "groups": {
+            "fields": "Campos",
+            "display": "Contenido"
+          }
+        },
+        "catalog": {
+          "Input": {
+            "label": "Input",
+            "description": "Campo de una sola línea para texto, correo, número, teléfono o URL."
+          },
+          "Textarea": {
+            "label": "Área de texto",
+            "description": "Campo multilínea para respuestas más largas."
+          },
+          "Checkbox": {
+            "label": "Casilla",
+            "description": "Campo booleano para confirmaciones simples."
+          },
+          "Switch": {
+            "label": "Interruptor",
+            "description": "Campo de alternancia para decisiones de sí o no."
+          },
+          "Select": {
+            "label": "Selección",
+            "description": "Campo desplegable con un conjunto predefinido de opciones."
+          },
+          "RadioGroup": {
+            "label": "Grupo de opciones",
+            "description": "Lista de selección única donde todas las opciones permanecen visibles."
+          },
+          "DatePicker": {
+            "label": "Selector de fecha",
+            "description": "Selección de una fecha o de un rango de fechas."
+          },
+          "Text": {
+            "label": "Texto",
+            "description": "Bloque de encabezado o párrafo para instrucciones."
+          },
+          "Separator": {
+            "label": "Separador",
+            "description": "Divisor para organizar secciones del formulario."
+          }
+        }
+      },
+      "preview": {
+        "titleFallback": "Paso del formulario",
+        "singleStepDescription": "Vista previa del formulario que completará el usuario.",
+        "requiredError": "Este campo es obligatorio.",
+        "stepCounter": "Paso {current} de {total}",
+        "stepLabel": "Paso {current}",
+        "reset": "Reiniciar",
+        "previous": "Atrás",
+        "next": "Siguiente",
+        "submit": "Enviar",
+        "successTitle": "Vista previa completada",
+        "successDescription": "Así se comportará el formulario cuando un usuario envíe todos los pasos requeridos.",
+        "backToForm": "Volver al formulario"
+      },
+      "settings": {
+        "title": "Configuración del campo",
+        "description": "Configura el comportamiento y el contenido del elemento seleccionado.",
+        "separatorHelp": "Puedes usar la etiqueta como texto opcional encima de la línea divisoria.",
+        "validation": {
+          "nameRequired": "El nombre del campo es obligatorio.",
+          "nameUnique": "Cada nombre de campo debe ser único dentro del formulario."
+        },
+        "fields": {
+          "fieldKey": "Clave del campo",
+          "name": "Nombre del campo",
+          "label": "Etiqueta",
+          "description": "Descripción",
+          "placeholder": "Placeholder",
+          "required": "Obligatorio",
+          "disabled": "Deshabilitado",
+          "width": "Ancho",
+          "inputType": "Tipo de input",
+          "textVariant": "Estilo de texto",
+          "content": "Contenido",
+          "dateMode": "Modo de fecha",
+          "options": "Opciones",
+          "optionLabel": "Etiqueta de la opción",
+          "optionValue": "Valor de la opción"
+        },
+        "actions": {
+          "addOption": "Agregar opción"
+        },
+        "widths": {
+          "full": "Ancho completo",
+          "half": "Media anchura",
+          "third": "Un tercio"
+        },
+        "inputTypes": {
+          "text": "Texto",
+          "email": "Correo",
+          "number": "Número",
+          "tel": "Teléfono",
+          "url": "URL"
+        },
+        "textVariants": {
+          "H1": "Encabezado 1",
+          "H2": "Encabezado 2",
+          "H3": "Encabezado 3",
+          "P": "Párrafo"
+        },
+        "dateModes": {
+          "single": "Fecha única",
+          "range": "Rango de fechas"
+        }
+      }
+    },
+    "documents": {
+      "title": "Requisitos documentales",
+      "description": "Define los documentos por defecto que se solicitarán a las solicitudes que usen este programa.",
+      "saveProgramFirstTitle": "Guarda primero el programa",
+      "saveProgramFirstDescription": "Guarda la información básica del programa antes de definir los documentos por defecto.",
+      "emptyStateTitle": "Todavía no hay documentos configurados",
+      "emptyStateDescription": "Agrega los documentos por defecto que deberán solicitarse a las solicitudes de este programa.",
+      "activeHint": "Este documento se solicitará por defecto en las solicitudes que usen este programa.",
+      "hiddenHint": "Este documento queda guardado en el programa, pero estará oculto por defecto.",
+      "loading": "Cargando documentos..."
+    },
+    "payments": {
+      "title": "Cobros y pagos",
+      "description": "Aquí configuraremos los cobros únicos y recurrentes asociados a este programa.",
+      "saveProgramFirstTitle": "Guarda primero el programa",
+      "saveProgramFirstDescription": "Guarda la información básica del programa antes de definir los cobros por defecto.",
+      "loading": "Cargando cobros por defecto...",
+      "emptyStateTitle": "Todavía no hay cobros configurados",
+      "emptyStateDescription": "Agrega los cobros únicos y recurrentes que deberían crearse por defecto para las solicitudes de este programa.",
+      "activeHint": "Estos cobros se crearán por defecto para las solicitudes que usen este programa."
+    },
+    "feedback": {
+      "invalidFormDefinition": "Corrige los campos con nombre vacío o duplicado antes de guardar el formulario.",
+      "templateApplied": "Plantilla aplicada al formulario. Recuerda guardar el programa si deseas conservar los cambios.",
+      "saveSuccess": "Programa guardado.",
+      "saveTemplateSuccess": "Plantilla guardada.",
+      "saveBothSuccess": "Programa y plantilla guardados.",
+      "saveError": "No se pudo guardar el programa. Inténtalo de nuevo."
+    }
+  }
+}

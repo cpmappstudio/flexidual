@@ -1,0 +1,542 @@
+{
+  "page": {
+    "titleAdmin": "Solicitudes",
+    "titleClient": "Mis Solicitudes",
+    "descriptionAdmin": "Gestiona las solicitudes de inscripción de la organización",
+    "descriptionClient": "Revisa el estado de tus solicitudes de inscripción"
+  },
+  "searchPlaceholder": "Buscar por nombre...",
+  "emptyMessageAdmin": "No hay solicitudes registradas",
+  "emptyMessageClient": "No has realizado solicitudes aún",
+  "emptyMessageArchived": "No hay solicitudes archivadas",
+  "athlete": "Atleta",
+  "fullName": "Nombre Completo",
+  "country": "País",
+  "birth": "Nacimiento",
+  "citizenship": "Ciudadanía",
+  "graduationYear": "Graduación",
+  "visaStatus": "Visa",
+  "parent": "Tutor",
+  "guardian": "Tutor",
+  "date": "Fecha",
+  "enrollmentYear": "Año de Inscripción",
+  "program": "Programa",
+  "grade": "Grado",
+  "contact": "Contacto",
+  "status": "Estado",
+  "payment": "Pago",
+  "paymentProgress": "{progress}% pagado",
+  "paymentTooltip": {
+    "title": "Detalle de pagos",
+    "loading": "Cargando detalle de pagos...",
+    "noFees": "No hay cobros configurados",
+    "dueDate": "Vence {date}"
+  },
+  "analytics": {
+    "applications": "Solicitudes",
+    "byProgram": "Solicitudes por programa",
+    "collected": "Recaudado",
+    "paymentStatus": "Estado de pagos",
+    "range": "Rango de tendencia",
+    "ranges": {
+      "30d": "30d",
+      "8w": "8sem"
+    },
+    "new": "Nuevo",
+    "other": "Otros",
+    "applicationCount": "{count, plural, one {# solicitud} other {# solicitudes}}",
+    "countAndPercentage": "{count} · {percentage}%",
+    "due": "Adeudado",
+    "remaining": "Pendiente",
+    "total": "Total",
+    "noAmountDue": "No hay monto adeudado",
+    "trendAriaLabel": "{count} solicitudes en el periodo seleccionado",
+    "programAriaLabel": "Solicitudes agrupadas por programa",
+    "collectionAriaLabel": "Tasa de recaudo: {rate}",
+    "paymentStatusAriaLabel": "Solicitudes por estado de pago",
+    "statuses": {
+      "paid": "Pagado",
+      "partial": "Parcial",
+      "unpaid": "Sin pagar",
+      "noPaymentRequired": "No requiere pago"
+    }
+  },
+  "statusOptions": {
+    "pending": "Pendiente",
+    "reviewing": "En Revisión",
+    "pre-admitted": "Pre-admitido",
+    "admitted": "Admitido",
+    "denied": "Denegado"
+  },
+  "programs": {
+    "basketball": "Basketball",
+    "soccer": "Soccer",
+    "volleyball": "Volleyball",
+    "baseball": "Baseball",
+    "tennis": "Tennis",
+    "golf": "Golf",
+    "softball": "Softball",
+    "hr14Baseball": "HR14 Baseball",
+    "volleyballClub": "Volleyball Club",
+    "pgBasketball": "PG Basketball"
+  },
+  "table": {
+    "totalCountAdmin": "Solicitudes actuales: {count}",
+    "totalCountArchivedAdmin": "Solicitudes archivadas: {count}",
+    "totalCountClient": "Mis solicitudes: {count}",
+    "filteredCount": "Mostrando {count} de {total}",
+    "exportHeaders": {
+      "code": "Código",
+      "email": "Correo electrónico",
+      "phone": "Teléfono",
+      "accountEmail": "Correo de la cuenta",
+      "createdAt": "Fecha de creación"
+    }
+  },
+  "tabs": {
+    "active": "Actuales",
+    "archived": "Archivadas",
+    "application": "Aplicación",
+    "payments": "Pagos",
+    "documents": "Documentos",
+    "transactions": "Historial de Transacciones"
+  },
+  "archiveActions": {
+    "actions": "Acciones",
+    "moreActions": "Más acciones de la solicitud",
+    "archiveOne": "Archivar solicitud",
+    "restoreOne": "Desarchivar solicitud",
+    "archiveSelected": "Archivar seleccionadas",
+    "restoreSelected": "Desarchivar seleccionadas",
+    "selectedRows": "{selected} de {total} seleccionadas",
+    "archiveOneTitle": "¿Archivar solicitud?",
+    "archiveManyTitle": "¿Archivar {count} solicitudes?",
+    "archiveOneDescription": "Esta solicitud saldrá de la lista actual y seguirá accesible desde las solicitudes archivadas.",
+    "archiveManyDescription": "Las solicitudes seleccionadas saldrán de la lista actual y seguirán accesibles desde las solicitudes archivadas.",
+    "archiveConfirm": "Archivar",
+    "archiveSuccess": "{count, plural, one {Solicitud archivada correctamente.} other {Solicitudes archivadas correctamente.}}",
+    "restoreOneTitle": "¿Desarchivar solicitud?",
+    "restoreManyTitle": "¿Desarchivar {count} solicitudes?",
+    "restoreOneDescription": "Esta solicitud volverá a la lista de solicitudes actuales.",
+    "restoreManyDescription": "Las solicitudes seleccionadas volverán a la lista de solicitudes actuales.",
+    "restoreConfirm": "Desarchivar",
+    "restoreSuccess": "{count, plural, one {Solicitud desarchivada correctamente.} other {Solicitudes desarchivadas correctamente.}}",
+    "error": "No se pudo actualizar el estado de archivo de la solicitud. Intenta de nuevo."
+  },
+  "sections": {
+    "athlete": "Atleta",
+    "address": "Dirección",
+    "school": "Escuela",
+    "parents": "Padres",
+    "general": "General"
+  },
+  "detail": {
+    "code": "Código",
+    "program": "Programa",
+    "applicantInfo": "Información del solicitante",
+    "noAdditionalFields": "Esta solicitud no requiere campos adicionales en el formulario.",
+    "backToList": "Volver a la lista",
+    "call": "Llamar",
+    "delete": "Eliminar",
+    "deleteApplication": "Eliminar solicitud",
+    "archive": {
+      "archive": "Archivar solicitud",
+      "restore": "Desarchivar solicitud",
+      "badge": "Archivada",
+      "archiveTitle": "¿Archivar solicitud?",
+      "archiveDescription": "Esta solicitud saldrá de la lista activa y seguirá accesible desde las solicitudes archivadas.",
+      "archiveConfirm": "Archivar",
+      "archiveSuccess": "Solicitud archivada correctamente.",
+      "restoreTitle": "¿Desarchivar solicitud?",
+      "restoreDescription": "Esta solicitud volverá a la lista de solicitudes activas.",
+      "restoreConfirm": "Desarchivar",
+      "restoreSuccess": "Solicitud desarchivada correctamente.",
+      "cancel": "Cancelar",
+      "error": "No se pudo actualizar el estado de archivo de la solicitud. Intenta de nuevo."
+    },
+    "transfer": {
+      "title": "Transferir solicitud",
+      "description": "Mueve esta solicitud a otro perfil existente de miembro.",
+      "source": "Cuenta origen",
+      "destination": "Cuenta destino",
+      "selectDestination": "Selecciona el perfil destino",
+      "destinationPlaceholder": "Elige un perfil de miembro",
+      "searchDestination": "Buscar perfiles...",
+      "noResults": "No se encontraron perfiles",
+      "inviteTitle": "¿Necesitas invitar a alguien primero?",
+      "inviteDescription": "Invita un miembro y luego asigna esta solicitud cuando se una.",
+      "cancel": "Cancelar",
+      "action": "Transferir titularidad",
+      "transferring": "Transfiriendo...",
+      "confirmTitle": "¿Confirmar transferencia?",
+      "confirmDescription": "La cuenta de origen perderá acceso a esta solicitud de inmediato.",
+      "confirmAction": "Transferir",
+      "success": "La titularidad de la solicitud se transfirió correctamente.",
+      "errors": {
+        "selectDestination": "Selecciona primero un perfil destino.",
+        "generic": "No se pudo transferir la solicitud. Intenta de nuevo."
+      }
+    },
+    "athleteInfo": "Información del Atleta",
+    "programInfo": "Información del Programa",
+    "schoolInfo": "Información Escolar Actual",
+    "parentsInfo": "Información de Padres/Tutores",
+    "addressInfo": "Información de Dirección",
+    "additionalInfo": "Información Adicional",
+    "fullName": "Nombre Completo",
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "email": "Correo Electrónico",
+    "phone": "Teléfono",
+    "birthDate": "Fecha de Nacimiento",
+    "sex": "Sexo",
+    "male": "Masculino",
+    "female": "Femenino",
+    "height": "Altura",
+    "birthCountry": "País de Nacimiento",
+    "citizenship": "País de Ciudadanía",
+    "address": "Dirección",
+    "age": "Edad",
+    "highlights": "Video de Destacados",
+    "format": "Formato",
+    "fullTime": "Tiempo completo",
+    "partTime": "Medio tiempo",
+    "gradeEntering": "Grado de Ingreso",
+    "enrollmentYear": "Año de Inscripción",
+    "graduationYear": "Año de Graduación",
+    "programOfInterest": "Programa de Interés",
+    "boarding": "Interesado en Internado",
+    "yes": "Sí",
+    "no": "No",
+    "currentSchool": "Mombre de la Escuela",
+    "schoolType": "Tipo de Escuela",
+    "schoolAddress": "Dirección de la Escuela",
+    "gpa": "Promedio (GPA)",
+    "reference": "Referencia",
+    "referenceName": "Nombre de Referencia",
+    "referenceRelationship": "Relación",
+    "referencePhone": "Teléfono de Referencia",
+    "parent1": "Padre/Tutor 1",
+    "parent2": "Padre/Tutor 2",
+    "relationship": "Relación",
+    "streetAddress": "Dirección",
+    "city": "Ciudad",
+    "state": "Estado",
+    "zipCode": "Código Postal",
+    "country": "País",
+    "submittedBy": "Enviado Por",
+    "howDidYouHear": "Cómo Nos Conociste",
+    "needsI20": "Necesita I-20?",
+    "submittedAt": "Enviado El",
+    "message": "Mensaje Adicional"
+  },
+  "payments": {
+    "summary": {
+      "title": "Resumen de Pagos",
+      "description": "Resumen de todas las tarifas y pagos de esta solicitud",
+      "totalDue": "Total a Pagar",
+      "totalPaid": "Total Pagado",
+      "pending": "Pendiente"
+    },
+    "actions": {
+      "pay": "Pagar",
+      "edit": "Editar",
+      "save": "Guardar",
+      "saving": "Guardando...",
+      "processing": "Procesando...",
+      "markAsPaid": "Marcar como Pagado",
+      "markingAsPaid": "Marcando como Pagado...",
+      "delete": "Eliminar",
+      "deleting": "Eliminando...",
+      "addFee": "Agregar Tarifa",
+      "cancel": "Cancelar",
+      "tooltips": {
+        "selectToPay": "Selecciona una o más tarifas para realizar un pago",
+        "selectToMarkAsPaid": "Selecciona una o más tarifas para marcar como pagadas en efectivo",
+        "selectToDelete": "Selecciona una o más tarifas para eliminar",
+        "loadingPaymentRules": "Cargando reglas de pago...",
+        "editFee": "Editar tarifa",
+        "saveChanges": "Guardar cambios"
+      },
+      "wireTransferDialog": {
+        "title": "Completa el pago por transferencia bancaria",
+        "description": "Este pago alcanza el umbral configurado, por lo que el checkout en línea no está disponible para esta transacción.",
+        "amountInfo": "Saldo seleccionado: {amount} (umbral: {threshold}).",
+        "instructionTitle": "Cómo completar tu transferencia bancaria",
+        "stepVerify": "Usa exactamente los datos del beneficiario del PDF y valida con tu banco cuenta/ruta/SWIFT antes de enviar.",
+        "stepReference": "Incluye la referencia del solicitante o de la solicitud indicada en tus instrucciones para que el pago se pueda conciliar correctamente.",
+        "stepProof": "Conserva el comprobante de la transferencia y compártelo con la organización. Un admin registrará el pago manualmente cuando se confirmen los fondos.",
+        "safetyNote": "Las transferencias bancarias suelen ser difíciles de revertir una vez enviadas. Revisa todos los datos cuidadosamente antes de confirmar.",
+        "downloadTitle": "Instrucciones de transferencia bancaria",
+        "downloadDescription": "Descarga el PDF y completa la transferencia con tu banco.",
+        "downloadAction": "Descargar PDF",
+        "close": "Cerrar",
+        "errors": {
+          "invalidConfiguration": "La transferencia bancaria está habilitada, pero su configuración está incompleta (falta umbral o PDF). Contacta al administrador."
+        }
+      },
+      "deleteDialog": {
+        "title": "¿Eliminar tarifas?",
+        "description": "Esto eliminará permanentemente las tarifas seleccionadas. Esta acción no se puede deshacer.",
+        "cancel": "Cancelar",
+        "confirm": "Eliminar"
+      },
+      "deleteFeeDialog": {
+        "title": "¿Eliminar cobro?",
+        "description": "Esto eliminará permanentemente esta configuración de cobro. Esta acción no se puede deshacer.",
+        "cancel": "Cancelar",
+        "confirm": "Eliminar"
+      },
+      "deleteRecurringScopeDialog": {
+        "title": "¿Eliminar cuotas recurrentes?",
+        "description": "Elige si los cobros recurrentes deben eliminar solo la(s) cuota(s) seleccionada(s) o también cada cuota siguiente del mismo plan.",
+        "single": "Solo cuota(s) seleccionada(s)",
+        "thisAndFollowing": "Seleccionadas y siguientes"
+      },
+      "markAsPaidDialog": {
+        "title": "¿Marcar como pagado en efectivo?",
+        "description": "Esto marcará las tarifas seleccionadas como completamente pagadas mediante pago en efectivo. Esta acción no se puede deshacer.",
+        "accountability": "Su cuenta quedará registrada como responsable de esta transacción de pago en efectivo. El sistema mantendrá un registro de su cuenta como la persona que procesó este pago con fines de rendición de cuentas.",
+        "cancel": "Cancelar",
+        "confirm": "Marcar como Pagado",
+        "confirmPartial": "Registrar pago",
+        "amount": {
+          "totalSelected": "Saldo total seleccionado",
+          "payFullRemaining": "Pagar saldo pendiente completo",
+          "amountLabel": "Monto",
+          "amountPlaceholder": "0.00",
+          "maxHelp": "Máximo: {max}",
+          "multiFeeNote": "Para registrar un pago parcial, selecciona solo una tarifa."
+        },
+        "errors": {
+          "invalidAmount": "Ingresa un monto entre $0.01 y {max}."
+        }
+      }
+    },
+    "form": {
+      "feeName": "Nombre de la Tarifa",
+      "feeNamePlaceholder": "Ingresa el nombre de la tarifa",
+      "description": "Descripción",
+      "descriptionPlaceholder": "Opcional",
+      "totalAmount": "Monto Total ($)",
+      "amountPlaceholder": "0.00",
+      "recurring": "Cobro mensual recurrente",
+      "startDate": "Mes de inicio",
+      "endDate": "Mes final",
+      "installmentCount": "Cantidad de meses",
+      "installmentCountPlaceholder": "Ingresa la cantidad de meses",
+      "dueDayOfMonth": "Día límite de pago",
+      "timezone": "Zona horaria",
+      "downPaymentAmount": "Primer pago ($)",
+      "selectDateRange": "Selecciona fecha de inicio y fin",
+      "recurringPreview": "Este plan generará automáticamente {count} cuotas mensuales.",
+      "timezones": {
+        "easternUs": "Hora del Este (EE. UU.)",
+        "puertoRico": "Puerto Rico (AST)"
+      },
+      "refundable": "Reembolsable",
+      "included": "Incluido",
+      "required": "Requerido",
+      "adding": "Agregando...",
+      "addButton": "Agregar Tarifa"
+    },
+    "emptyState": "Todas las tarifas han sido pagadas. Consulta la pestaña de Historial de Transacciones para ver los registros de pago.",
+    "activeFees": {
+      "title": "Cobros actuales para procesar",
+      "empty": "No hay cobros vencidos hoy. Las próximas cuotas recurrentes se muestran abajo."
+    },
+    "projection": {
+      "title": "Próximas cuotas recurrentes",
+      "description": "Solo proyección. Cada cuota se activa cuando se paga la cuota actual."
+    },
+    "feeStatuses": {
+      "paid": "Pagado",
+      "partiallyPaid": "Parcialmente Pagado",
+      "pending": "Pendiente"
+    },
+    "feeBadges": {
+      "required": "Requerido",
+      "default": "Predeterminado",
+      "recurring": "Recurrente",
+      "refundable": "Reembolsable",
+      "included": "Incluido"
+    },
+    "dueDate": "Vence {date}",
+    "dueStatuses": {
+      "overdue": "Atrasado",
+      "dueToday": "Vence hoy",
+      "upcoming": "Próximo"
+    },
+    "editRecurringScope": {
+      "title": "Actualizar cuota recurrente",
+      "description": "Elige si este cambio aplica solo a esta cuota o si debe redistribuirse en esta y las siguientes.",
+      "cancel": "Cancelar",
+      "single": "Solo esta cuota",
+      "thisAndFollowing": "Esta y siguientes"
+    },
+    "recurringEditDialog": {
+      "title": "Editar cobros recurrentes",
+      "description": "Actualiza el cronograma recurrente proyectado y revisa cómo se distribuye cada cuota próxima.",
+      "form": {
+        "title": "Configuración recurrente"
+      },
+      "fields": {
+        "name": "Nombre de la tarifa",
+        "totalAmount": "Monto total de las cuotas proyectadas ($)",
+        "installmentCount": "Cantidad de meses",
+        "startDate": "Mes de inicio",
+        "endDate": "Mes final",
+        "rangePlaceholder": "Selecciona mes de inicio y fin",
+        "dueDayOfMonth": "Día límite de pago",
+        "timezone": "Zona horaria"
+      },
+      "projection": {
+        "title": "Cuotas proyectadas",
+        "description": "Vista previa de todas las cuotas próximas después de aplicar estos cambios."
+      },
+      "summary": {
+        "installments": "Cuotas",
+        "total": "Total proyectado",
+        "average": "Promedio por cuota",
+        "downPayment": "Primer pago"
+      },
+      "chart": {
+        "title": "Distribución",
+        "caption": "Cada porción representa el monto de una cuota."
+      },
+      "schedule": {
+        "title": "Cronograma de cuotas",
+        "description": "Ajusta cualquier cuota. Las cuotas restantes se redistribuyen automáticamente.",
+        "empty": "Selecciona un rango válido para previsualizar el cronograma proyectado.",
+        "installment": "Cuota {index}",
+        "manual": "Personalizado",
+        "indicators": {
+          "automatic": "Distribución automática",
+          "custom": "Monto personalizado",
+          "paid": "Cuota pagada (bloqueada)",
+          "locked": "Fuera del alcance de esta edición"
+        }
+      },
+      "warnings": {
+        "paidInstallments": "No puedes reconfigurar este rango proyectado porque una o más cuotas ya tienen pagos."
+      },
+      "cancel": "Cancelar",
+      "save": "Guardar cambios recurrentes",
+      "saving": "Guardando...",
+      "errors": {
+        "invalidAmount": "El monto debe ser mayor que 0.",
+        "invalidRange": "Selecciona un mes de inicio y fin válidos.",
+        "paidInstallments": "Hay una cuota pagada dentro del rango recurrente seleccionado.",
+        "lockedExceedsTotal": "Los montos personalizados de cuotas exceden el monto total.",
+        "totalMismatch": "Cuando todas las cuotas son personalizadas, su suma debe coincidir con el monto total.",
+        "saveFailed": "No se pudieron guardar los cambios recurrentes. Inténtalo de nuevo."
+      }
+    },
+    "feeProgress": {
+      "progress": "Progreso",
+      "remaining": "Restante"
+    },
+    "feeTooltips": {
+      "created": "Creado",
+      "paid": "Pagado"
+    },
+    "errors": {
+      "saveFeeFailed": "No se pudieron guardar los cambios. Inténtalo de nuevo."
+    }
+  },
+  "transactions": {
+    "title": "Historial de Transacciones",
+    "description": "Todas las transacciones de pago para esta solicitud",
+    "emptyMessage": "No hay transacciones aún",
+    "searchPlaceholder": "Buscar por tarifa, monto o referencia...",
+    "filterMethod": "Método",
+    "filterStatus": "Estado",
+    "filterDate": "Filtrar por fecha",
+    "table": {
+      "date": "Fecha",
+      "fee": "Tarifa",
+      "amount": "Monto",
+      "method": "Método",
+      "status": "Estado",
+      "reference": "Referencia"
+    },
+    "methods": {
+      "cash": "Efectivo",
+      "online": "En línea"
+    },
+    "statuses": {
+      "completed": "Completado",
+      "pending": "Pendiente",
+      "failed": "Fallido"
+    },
+    "filters": {
+      "all": "Todos"
+    },
+    "counter": {
+      "payment": "pago",
+      "payments": "pagos"
+    },
+    "actions": {
+      "viewReceipt": "Ver recibo",
+      "registeredBy": "Registrado por {name}",
+      "registeredByTooltip": "Pago registrado por"
+    }
+  },
+  "documents": {
+    "title": "Documentos",
+    "description": "Sube los documentos requeridos para esta solicitud",
+    "visibility": {
+      "required": "Requerido",
+      "optional": "Opcional",
+      "hidden": "Oculto"
+    },
+    "status": {
+      "pending": "Pendiente",
+      "approved": "Aprobado",
+      "rejected": "Rechazado",
+      "notUploaded": "Sin subir"
+    },
+    "actions": {
+      "upload": "Subir archivo",
+      "replace": "Reemplazar archivo",
+      "view": "Ver",
+      "approve": "Aprobar",
+      "reject": "Rechazar",
+      "delete": "Eliminar archivo",
+      "changeVisibility": "Cambiar visibilidad",
+      "addDocument": "Agregar Documento",
+      "cancel": "Cancelar",
+      "deleteDialog": {
+        "title": "¿Eliminar documento?",
+        "description": "Esto eliminará permanentemente el archivo subido. Esta acción no se puede deshacer.",
+        "cancel": "Cancelar",
+        "confirm": "Eliminar"
+      },
+      "edit": "Editar",
+      "deleteType": "Eliminar",
+      "moreOptions": "Más opciones",
+      "editDialog": {
+        "title": "Editar tipo de documento",
+        "save": "Guardar cambios",
+        "saving": "Guardando..."
+      },
+      "deleteTypeDialog": {
+        "title": "¿Eliminar tipo de documento?",
+        "description": "Esto eliminará permanentemente este tipo de documento personalizado. Si se subió un archivo, también será eliminado. Esta acción no se puede deshacer.",
+        "cancel": "Cancelar",
+        "confirm": "Eliminar"
+      }
+    },
+    "form": {
+      "documentName": "Nombre del Documento",
+      "documentNamePlaceholder": "Ingresa el nombre del documento",
+      "description": "Descripción (opcional)",
+      "descriptionPlaceholder": "Ingresa una descripción",
+      "required": "Requerido",
+      "adding": "Agregando...",
+      "addButton": "Agregar Documento"
+    },
+    "uploadedBy": "Subido el {date} por {name}",
+    "rejectionReason": "Motivo del rechazo"
+  }
+}

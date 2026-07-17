@@ -1,0 +1,542 @@
+{
+  "page": {
+    "titleAdmin": "Applications",
+    "titleClient": "My Applications",
+    "descriptionAdmin": "Manage enrollment applications for the organization",
+    "descriptionClient": "Review the status of your enrollment applications"
+  },
+  "searchPlaceholder": "Search by name...",
+  "emptyMessageAdmin": "No applications registered",
+  "emptyMessageClient": "You haven't submitted any applications yet",
+  "emptyMessageArchived": "No archived applications",
+  "athlete": "Athlete",
+  "fullName": "Full Name",
+  "country": "Country",
+  "birth": "Birth",
+  "citizenship": "Citizen",
+  "graduationYear": "Graduation",
+  "visaStatus": "Visa",
+  "parent": "Parent",
+  "guardian": "Guardian",
+  "date": "Date",
+  "enrollmentYear": "Enrollment Year",
+  "program": "Program",
+  "grade": "Grade",
+  "contact": "Contact",
+  "status": "Status",
+  "payment": "Payment",
+  "paymentProgress": "{progress}% paid",
+  "paymentTooltip": {
+    "title": "Payment details",
+    "loading": "Loading payment details...",
+    "noFees": "No fees configured",
+    "dueDate": "Due {date}"
+  },
+  "analytics": {
+    "applications": "Applications",
+    "byProgram": "Applications by program",
+    "collected": "Collected",
+    "paymentStatus": "Payment status",
+    "range": "Trend range",
+    "ranges": {
+      "30d": "30d",
+      "8w": "8w"
+    },
+    "new": "New",
+    "other": "Other",
+    "applicationCount": "{count, plural, one {# application} other {# applications}}",
+    "countAndPercentage": "{count} · {percentage}%",
+    "due": "Due",
+    "remaining": "Outstanding",
+    "total": "Total",
+    "noAmountDue": "No amount due",
+    "trendAriaLabel": "{count} applications in the selected period",
+    "programAriaLabel": "Applications grouped by program",
+    "collectionAriaLabel": "Collection rate: {rate}",
+    "paymentStatusAriaLabel": "Applications by payment status",
+    "statuses": {
+      "paid": "Paid",
+      "partial": "Partial",
+      "unpaid": "Unpaid",
+      "noPaymentRequired": "No payment required"
+    }
+  },
+  "statusOptions": {
+    "pending": "Pending",
+    "reviewing": "Reviewing",
+    "pre-admitted": "Pre-admitted",
+    "admitted": "Admitted",
+    "denied": "Denied"
+  },
+  "programs": {
+    "basketball": "Basketball",
+    "soccer": "Soccer",
+    "volleyball": "Volleyball",
+    "baseball": "Baseball",
+    "tennis": "Tennis",
+    "golf": "Golf",
+    "softball": "Softball",
+    "hr14Baseball": "HR14 Baseball",
+    "volleyballClub": "Volleyball Club",
+    "pgBasketball": "PG Basketball"
+  },
+  "table": {
+    "totalCountAdmin": "Current applications: {count}",
+    "totalCountArchivedAdmin": "Archived applications: {count}",
+    "totalCountClient": "My applications: {count}",
+    "filteredCount": "Showing {count} of {total}",
+    "exportHeaders": {
+      "code": "Code",
+      "email": "Email",
+      "phone": "Phone",
+      "accountEmail": "Account Email",
+      "createdAt": "Created At"
+    }
+  },
+  "tabs": {
+    "active": "Current",
+    "archived": "Archived",
+    "application": "Application",
+    "payments": "Payments",
+    "documents": "Documents",
+    "transactions": "Transaction History"
+  },
+  "archiveActions": {
+    "actions": "Actions",
+    "moreActions": "More application actions",
+    "archiveOne": "Archive application",
+    "restoreOne": "Unarchive application",
+    "archiveSelected": "Archive selected",
+    "restoreSelected": "Unarchive selected",
+    "selectedRows": "{selected} of {total} selected",
+    "archiveOneTitle": "Archive application?",
+    "archiveManyTitle": "Archive {count} applications?",
+    "archiveOneDescription": "This application will move out of the current list and remain accessible from archived applications.",
+    "archiveManyDescription": "The selected applications will move out of the current list and remain accessible from archived applications.",
+    "archiveConfirm": "Archive",
+    "archiveSuccess": "{count, plural, one {Application archived successfully.} other {Applications archived successfully.}}",
+    "restoreOneTitle": "Unarchive application?",
+    "restoreManyTitle": "Unarchive {count} applications?",
+    "restoreOneDescription": "This application will return to the current applications list.",
+    "restoreManyDescription": "The selected applications will return to the current applications list.",
+    "restoreConfirm": "Unarchive",
+    "restoreSuccess": "{count, plural, one {Application unarchived successfully.} other {Applications unarchived successfully.}}",
+    "error": "Failed to update application archive state. Please try again."
+  },
+  "sections": {
+    "athlete": "Athlete",
+    "address": "Address",
+    "school": "School",
+    "parents": "Parents",
+    "general": "General"
+  },
+  "detail": {
+    "code": "Code",
+    "program": "Program",
+    "applicantInfo": "Applicant Information",
+    "noAdditionalFields": "This application doesn't require additional form fields.",
+    "backToList": "Back to list",
+    "call": "Call",
+    "delete": "Delete",
+    "deleteApplication": "Delete application",
+    "archive": {
+      "archive": "Archive application",
+      "restore": "Unarchive application",
+      "badge": "Archived",
+      "archiveTitle": "Archive application?",
+      "archiveDescription": "This application will move out of the active list and remain accessible from archived applications.",
+      "archiveConfirm": "Archive",
+      "archiveSuccess": "Application archived successfully.",
+      "restoreTitle": "Unarchive application?",
+      "restoreDescription": "This application will return to the active applications list.",
+      "restoreConfirm": "Unarchive",
+      "restoreSuccess": "Application unarchived successfully.",
+      "cancel": "Cancel",
+      "error": "Failed to update application archive state. Please try again."
+    },
+    "transfer": {
+      "title": "Transfer Application",
+      "description": "Move this application to another existing member account.",
+      "source": "Source account",
+      "destination": "Destination account",
+      "selectDestination": "Select destination profile",
+      "destinationPlaceholder": "Choose a member profile",
+      "searchDestination": "Search profiles...",
+      "noResults": "No profiles found",
+      "inviteTitle": "Need to invite someone first?",
+      "inviteDescription": "Invite a member and then assign this application once they join.",
+      "cancel": "Cancel",
+      "action": "Transfer ownership",
+      "transferring": "Transferring...",
+      "confirmTitle": "Confirm transfer?",
+      "confirmDescription": "The source account will immediately lose access to this application.",
+      "confirmAction": "Transfer",
+      "success": "Application ownership transferred successfully.",
+      "errors": {
+        "selectDestination": "Select a destination profile first.",
+        "generic": "Failed to transfer application. Please try again."
+      }
+    },
+    "athleteInfo": "Athlete Information",
+    "programInfo": "Program Information",
+    "schoolInfo": "Current School Information",
+    "parentsInfo": "Parents/Guardians Information",
+    "addressInfo": "Address Information",
+    "additionalInfo": "Additional Information",
+    "fullName": "Full Name",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "email": "Email",
+    "phone": "Phone",
+    "birthDate": "Birth Date",
+    "sex": "Sex",
+    "male": "Male",
+    "female": "Female",
+    "height": "Height",
+    "birthCountry": "Country of Birth",
+    "citizenship": "Country of Citizenship",
+    "address": "Address",
+    "age": "Age",
+    "highlights": "Highlights Video",
+    "format": "Format",
+    "fullTime": "Full-time",
+    "partTime": "Part-time",
+    "gradeEntering": "Grade Entering",
+    "enrollmentYear": "Enrollment Year",
+    "graduationYear": "Graduation Year",
+    "programOfInterest": "Program of Interest",
+    "boarding": "Interested in Boarding?",
+    "yes": "Yes",
+    "no": "No",
+    "currentSchool": "School Name",
+    "schoolType": "School Type",
+    "schoolAddress": "School Address",
+    "gpa": "GPA",
+    "reference": "Reference",
+    "referenceName": "Reference Name",
+    "referenceRelationship": "Relationship",
+    "referencePhone": "Reference Phone",
+    "parent1": "Parent/Guardian 1",
+    "parent2": "Parent/Guardian 2",
+    "relationship": "Relationship",
+    "streetAddress": "Street Address",
+    "city": "City",
+    "state": "State",
+    "zipCode": "Zip Code",
+    "country": "Country",
+    "submittedBy": "Submitted By",
+    "howDidYouHear": "How Did You Hear About Us",
+    "needsI20": "Needs I-20?",
+    "submittedAt": "Submitted At",
+    "message": "Additional Message"
+  },
+  "payments": {
+    "summary": {
+      "title": "Payment Summary",
+      "description": "Overview of all fees and payments for this application",
+      "totalDue": "Total Due",
+      "totalPaid": "Total Paid",
+      "pending": "Pending"
+    },
+    "actions": {
+      "edit": "Edit",
+      "save": "Save",
+      "saving": "Saving...",
+      "pay": "Pay",
+      "processing": "Processing...",
+      "markAsPaid": "Mark as Paid",
+      "markingAsPaid": "Marking as Paid...",
+      "delete": "Delete",
+      "deleting": "Deleting...",
+      "addFee": "Add Fee",
+      "cancel": "Cancel",
+      "tooltips": {
+        "selectToPay": "Select one or more fees to make a payment",
+        "selectToMarkAsPaid": "Select one or more fees to mark as paid in cash",
+        "selectToDelete": "Select one or more fees to delete",
+        "loadingPaymentRules": "Loading payment rules...",
+        "editFee": "Edit fee",
+        "saveChanges": "Save changes"
+      },
+      "wireTransferDialog": {
+        "title": "Complete payment by wire transfer",
+        "description": "This payment meets the wire transfer threshold, so online checkout is not available for this transaction.",
+        "amountInfo": "Selected balance: {amount} (threshold: {threshold}).",
+        "instructionTitle": "How to complete your wire transfer",
+        "stepVerify": "Use the beneficiary details exactly as listed in the PDF and verify the bank account/routing/SWIFT details with your bank before sending.",
+        "stepReference": "Include the applicant or application reference specified in your instructions so the payment can be matched correctly.",
+        "stepProof": "Keep your wire confirmation or receipt and share it with the organization. An admin will register the payment manually once funds are confirmed.",
+        "safetyNote": "Wire transfers are usually difficult to reverse after they are sent. Review all details carefully before confirming the transfer.",
+        "downloadTitle": "Wire transfer instructions",
+        "downloadDescription": "Download the PDF and complete the transfer with your bank.",
+        "downloadAction": "Download PDF",
+        "close": "Close",
+        "errors": {
+          "invalidConfiguration": "Wire transfer is enabled but its configuration is incomplete (threshold or PDF missing). Contact your administrator."
+        }
+      },
+      "deleteDialog": {
+        "title": "Delete fees?",
+        "description": "This will permanently delete the selected fees. This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete"
+      },
+      "deleteFeeDialog": {
+        "title": "Delete fee?",
+        "description": "This will permanently delete this fee configuration. This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete"
+      },
+      "deleteRecurringScopeDialog": {
+        "title": "Delete recurring installments?",
+        "description": "Choose whether recurring charges should remove only the selected installment(s) or also each following installment in the same plan.",
+        "single": "Only selected installment(s)",
+        "thisAndFollowing": "Selected and following installments"
+      },
+      "markAsPaidDialog": {
+        "title": "Mark as paid in cash?",
+        "description": "This will mark the selected fees as fully paid via cash payment. This action cannot be undone.",
+        "accountability": "Your account will be registered as responsible for this cash payment transaction. The system will maintain a record of your account as the person who processed this payment for accountability purposes.",
+        "cancel": "Cancel",
+        "confirm": "Mark as Paid",
+        "confirmPartial": "Record Payment",
+        "amount": {
+          "totalSelected": "Total selected balance",
+          "payFullRemaining": "Pay full remaining balance",
+          "amountLabel": "Amount",
+          "amountPlaceholder": "0.00",
+          "maxHelp": "Max: {max}",
+          "multiFeeNote": "To record a partial payment, select a single fee."
+        },
+        "errors": {
+          "invalidAmount": "Enter an amount between $0.01 and {max}."
+        }
+      }
+    },
+    "form": {
+      "feeName": "Fee Name",
+      "feeNamePlaceholder": "Enter fee name",
+      "description": "Description",
+      "descriptionPlaceholder": "Optional",
+      "totalAmount": "Total Amount ($)",
+      "amountPlaceholder": "0.00",
+      "recurring": "Recurring monthly charge",
+      "startDate": "Start month",
+      "endDate": "End month",
+      "installmentCount": "Number of months",
+      "installmentCountPlaceholder": "Enter number of months",
+      "dueDayOfMonth": "Due day of month",
+      "timezone": "Timezone",
+      "downPaymentAmount": "Down payment amount ($)",
+      "selectDateRange": "Select start and end dates",
+      "recurringPreview": "This plan will generate {count} monthly installments automatically.",
+      "timezones": {
+        "easternUs": "Eastern Time (US)",
+        "puertoRico": "Puerto Rico (AST)"
+      },
+      "refundable": "Refundable",
+      "included": "Included",
+      "required": "Required",
+      "adding": "Adding...",
+      "addButton": "Add Fee"
+    },
+    "emptyState": "All fees have been paid. Check the Transaction History tab to view payment records.",
+    "activeFees": {
+      "title": "Current fees to process",
+      "empty": "No fees due right now. Upcoming recurring installments are listed below."
+    },
+    "projection": {
+      "title": "Upcoming recurring installments",
+      "description": "Projection only. Each installment becomes actionable after the current one is paid."
+    },
+    "feeStatuses": {
+      "paid": "Paid",
+      "partiallyPaid": "Partially Paid",
+      "pending": "Pending"
+    },
+    "feeBadges": {
+      "required": "Required",
+      "default": "Default",
+      "recurring": "Recurring",
+      "refundable": "Refundable",
+      "included": "Included"
+    },
+    "dueDate": "Due {date}",
+    "dueStatuses": {
+      "overdue": "Overdue",
+      "dueToday": "Due today",
+      "upcoming": "Upcoming"
+    },
+    "editRecurringScope": {
+      "title": "Update recurring installment",
+      "description": "Choose whether to apply this change only to this installment or rebalance this and following installments.",
+      "cancel": "Cancel",
+      "single": "Only this installment",
+      "thisAndFollowing": "This and following"
+    },
+    "recurringEditDialog": {
+      "title": "Edit recurring charges",
+      "description": "Update the projected recurring schedule and review how each upcoming installment will be distributed.",
+      "form": {
+        "title": "Recurring settings"
+      },
+      "fields": {
+        "name": "Fee name",
+        "totalAmount": "Total amount for projected installments ($)",
+        "installmentCount": "Number of months",
+        "startDate": "Start month",
+        "endDate": "End month",
+        "rangePlaceholder": "Select start and end month",
+        "dueDayOfMonth": "Due day of month",
+        "timezone": "Timezone"
+      },
+      "projection": {
+        "title": "Projected installments",
+        "description": "Preview of every upcoming installment after applying these changes."
+      },
+      "summary": {
+        "installments": "Installments",
+        "total": "Projected total",
+        "average": "Average installment",
+        "downPayment": "Down payment"
+      },
+      "chart": {
+        "title": "Distribution",
+        "caption": "Each slice represents one installment amount."
+      },
+      "schedule": {
+        "title": "Installment timeline",
+        "description": "Adjust any installment amount. Remaining installments rebalance automatically.",
+        "empty": "Select a valid range to preview the projected schedule.",
+        "installment": "Installment {index}",
+        "manual": "Custom",
+        "indicators": {
+          "automatic": "Automatic distribution",
+          "custom": "Custom amount",
+          "paid": "Paid installment (locked)",
+          "locked": "Outside current edit scope"
+        }
+      },
+      "warnings": {
+        "paidInstallments": "You cannot reconfigure this projected range because one or more installments in it already have payments."
+      },
+      "cancel": "Cancel",
+      "save": "Save recurring changes",
+      "saving": "Saving...",
+      "errors": {
+        "invalidAmount": "Amount must be greater than 0.",
+        "invalidRange": "Select a valid start and end month.",
+        "paidInstallments": "A paid installment exists in the selected recurring range.",
+        "lockedExceedsTotal": "Custom installment amounts exceed the total amount.",
+        "totalMismatch": "When all installments are custom, their sum must match the total amount.",
+        "saveFailed": "Could not save recurring changes. Please try again."
+      }
+    },
+    "feeProgress": {
+      "progress": "Progress",
+      "remaining": "Remaining"
+    },
+    "feeTooltips": {
+      "created": "Created",
+      "paid": "Paid"
+    },
+    "errors": {
+      "saveFeeFailed": "Could not save changes. Please try again."
+    }
+  },
+  "transactions": {
+    "title": "Transaction History",
+    "description": "All payment transactions for this application",
+    "emptyMessage": "No transactions yet",
+    "searchPlaceholder": "Search by fee, amount, or reference...",
+    "filterMethod": "Method",
+    "filterStatus": "Status",
+    "filterDate": "Filter by date",
+    "table": {
+      "date": "Date",
+      "fee": "Fee",
+      "amount": "Amount",
+      "method": "Method",
+      "status": "Status",
+      "reference": "Reference"
+    },
+    "methods": {
+      "cash": "Cash",
+      "online": "Online"
+    },
+    "statuses": {
+      "completed": "Completed",
+      "pending": "Pending",
+      "failed": "Failed"
+    },
+    "filters": {
+      "all": "All"
+    },
+    "counter": {
+      "payment": "payment",
+      "payments": "payments"
+    },
+    "actions": {
+      "viewReceipt": "View Receipt",
+      "registeredBy": "Registered by {name}",
+      "registeredByTooltip": "Payment registered by"
+    }
+  },
+  "documents": {
+    "title": "Documents",
+    "description": "Upload required documents for this application",
+    "visibility": {
+      "required": "Required",
+      "optional": "Optional",
+      "hidden": "Hidden"
+    },
+    "status": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "notUploaded": "Not uploaded"
+    },
+    "actions": {
+      "upload": "Upload file",
+      "replace": "Replace file",
+      "view": "View",
+      "approve": "Approve",
+      "reject": "Reject",
+      "delete": "Delete file",
+      "changeVisibility": "Change visibility",
+      "addDocument": "Add Document",
+      "cancel": "Cancel",
+      "deleteDialog": {
+        "title": "Delete document?",
+        "description": "This will permanently delete this document from the application. This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete"
+      },
+      "edit": "Edit",
+      "deleteType": "Delete",
+      "moreOptions": "More options",
+      "editDialog": {
+        "title": "Edit document type",
+        "save": "Save changes",
+        "saving": "Saving..."
+      },
+      "deleteTypeDialog": {
+        "title": "Delete document type?",
+        "description": "This will permanently delete this custom document type. If a file was uploaded, it will also be deleted. This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete"
+      }
+    },
+    "form": {
+      "documentName": "Document Name",
+      "documentNamePlaceholder": "Enter document name",
+      "description": "Description (optional)",
+      "descriptionPlaceholder": "Enter description",
+      "required": "Required",
+      "adding": "Adding...",
+      "addButton": "Add Document"
+    },
+    "uploadedBy": "Uploaded on {date} by {name}",
+    "rejectionReason": "Rejection reason"
+  }
+}

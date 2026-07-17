@@ -65,7 +65,7 @@ export function AddStudentDialog({ classId, curriculumId }: AddStudentDialogProp
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm">
-          <UserPlus className="mr-2 h-4 w-4" />
+          <UserPlus className="h-4 w-4" />
           {t("class.enrollStudent")}
         </Button>
       </DialogTrigger>

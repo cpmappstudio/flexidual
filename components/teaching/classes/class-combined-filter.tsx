@@ -35,6 +35,9 @@ interface ClassCombinedFilterProps {
   onSelectTeacher: (id: Id<"users"> | null) => void;
   selectedCurriculumId: Id<"curriculums"> | null;
   onSelectCurriculum: (id: Id<"curriculums"> | null) => void;
+  selectedSchoolId?: string;
+  selectedCampusId?: string;
+  onSelectCampus?: (id: string) => void;
   isAdmin: boolean;
 }
 
@@ -43,6 +46,9 @@ export function ClassCombinedFilter({
   onSelectTeacher,
   selectedCurriculumId,
   onSelectCurriculum,
+  selectedSchoolId = "all",
+  selectedCampusId = "all",
+  onSelectCampus,
   isAdmin,
 }: ClassCombinedFilterProps) {
   const t = useTranslations();
@@ -51,12 +57,26 @@ export function ClassCombinedFilter({
   const curriculums = useQuery(api.curriculums.list, {
     includeInactive: false,
   });
+  const campuses = useQuery(
+    api.campuses.list,
+    selectedSchoolId !== "all"
+      ? { schoolId: selectedSchoolId as Id<"schools">, isActive: true }
+      : "skip",
+  );
 
-  const hasActiveFilters = !!(selectedTeacherId || selectedCurriculumId);
+  const shouldShowCampusFilter =
+    isAdmin && selectedSchoolId !== "all" && !!onSelectCampus;
+  const hasCampusFilter = shouldShowCampusFilter && selectedCampusId !== "all";
+  const hasActiveFilters = !!(
+    selectedTeacherId ||
+    selectedCurriculumId ||
+    hasCampusFilter
+  );
 
   const clearAllFilters = () => {
     onSelectTeacher(null);
     onSelectCurriculum(null);
+    onSelectCampus?.("all");
   };
 
   return (
@@ -77,6 +97,77 @@ export function ClassCombinedFilter({
       <DropdownMenuContent align="end" className="w-[200px]">
         <DropdownMenuLabel>{t("table.filters")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
+
+        {shouldShowCampusFilter && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="flex items-center justify-between">
+              <span>{t("admin.campuses")}</span>
+              {hasCampusFilter && (
+                <Badge color="zinc" className="ml-2 h-5 px-1.5">
+                  1
+                </Badge>
+              )}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-[260px] p-0" sideOffset={8}>
+              <Command>
+                <CommandInput placeholder={t("userDialog.selectCampus")} />
+                <CommandList className="max-h-[220px]">
+                  <CommandEmpty>{t("admin.noCampusesFound")}</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value={t("admin.allCampuses")}
+                      onSelect={() => onSelectCampus?.("all")}
+                      className="flex items-center gap-2"
+                    >
+                      <Check
+                        className={cn(
+                          "size-4 shrink-0",
+                          selectedCampusId === "all" ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <span className="font-medium text-sm">
+                        {t("admin.allCampuses")}
+                      </span>
+                    </CommandItem>
+                    {campuses?.map((campus) => (
+                      <CommandItem
+                        key={campus._id}
+                        value={`${campus.name} ${campus.code ?? ""}`}
+                        onSelect={() =>
+                          onSelectCampus?.(
+                            selectedCampusId === campus._id
+                              ? "all"
+                              : campus._id,
+                          )
+                        }
+                        className="flex items-center gap-2"
+                      >
+                        <Check
+                          className={cn(
+                            "size-4 shrink-0",
+                            selectedCampusId === campus._id
+                              ? "opacity-100"
+                              : "opacity-0",
+                          )}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate text-sm">
+                            {campus.name}
+                          </p>
+                          {campus.code && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {campus.code}
+                            </p>
+                          )}
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
 
         {/* Curriculum filter */}
         <DropdownMenuSub>

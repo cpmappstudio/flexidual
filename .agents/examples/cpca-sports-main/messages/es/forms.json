@@ -1,0 +1,101 @@
+{
+  "organization": {
+    "createTitle": "Crear Organización",
+    "editTitle": "Editar Organización",
+    "createDescription": "Crea una nueva liga o club",
+    "editDescription": "Actualiza la información de la organización",
+    "name": "Nombre",
+    "namePlaceholder": "ej., Liga del Valle",
+    "shortName": "Nombre Corto",
+    "shortNamePlaceholder": "ej., LIVF",
+    "country": "País",
+    "countryPlaceholder": "ej., Colombia",
+    "region": "Región",
+    "regionPlaceholder": "ej., Valle del Cauca",
+    "status": "Estado"
+  },
+  "team": {
+    "createTitle": "Crear Equipo",
+    "editTitle": "Editar Equipo",
+    "createDescription": "Crea un nuevo equipo por grupo de edad para tu club",
+    "editDescription": "Actualiza la información del equipo",
+    "name": "Nombre del Equipo",
+    "namePlaceholder": "ej., Sub-17",
+    "ageGroup": "Grupo de Edad",
+    "ageGroupPlaceholder": "ej., 15-17 años",
+    "gender": "Género",
+    "status": "Estado"
+  },
+  "player": {
+    "createTitle": "Agregar Jugador",
+    "editTitle": "Editar Jugador",
+    "createDescription": "Agrega un nuevo jugador a tu club",
+    "editDescription": "Actualiza la información del jugador",
+    "firstName": "Nombre",
+    "firstNamePlaceholder": "ej., Lionel",
+    "lastName": "Apellido",
+    "lastNamePlaceholder": "ej., Messi",
+    "email": "Correo Electrónico",
+    "emailPlaceholder": "ej., jugador@ejemplo.com",
+    "phoneNumber": "Teléfono",
+    "phoneNumberPlaceholder": "ej., +573001234567",
+    "dateOfBirth": "Fecha de Nacimiento",
+    "category": "Equipo",
+    "categoryPlaceholder": "Seleccionar equipo",
+    "position": "Posición",
+    "positionPlaceholder": "Seleccionar posición",
+    "jerseyNumber": "Número de Camiseta",
+    "jerseyNumberPlaceholder": "ej., 10",
+    "nationality": "Nacionalidad",
+    "nationalityPlaceholder": "ej., Colombia",
+    "height": "Altura (cm)",
+    "heightPlaceholder": "ej., 180",
+    "weight": "Peso (kg)",
+    "weightPlaceholder": "ej., 75",
+    "preferredFoot": "Pie Preferido",
+    "preferredFootPlaceholder": "Seleccionar pie preferido",
+    "status": "Estado"
+  },
+  "staff": {
+    "createTitle": "Agregar Miembro del Staff",
+    "editTitle": "Editar Miembro del Staff",
+    "createDescription": "Agrega un nuevo miembro del staff a tu club",
+    "editDescription": "Actualiza la información del miembro del staff"
+  },
+  "template": {
+    "header": {
+      "updateAction": "Actualizar plantilla",
+      "descriptionFallback": "Sin descripción",
+      "nameFallback": "Plantilla sin nombre",
+      "badge": "Plantilla v{version}",
+      "editName": "Editar nombre de la plantilla",
+      "editDescription": "Editar descripción de la plantilla"
+    },
+    "tabs": {
+      "application": "Formulario",
+      "documents": "Documentos",
+      "payments": "Pagos"
+    },
+    "documents": {
+      "loading": "Cargando documentos de la plantilla...",
+      "emptyStateTitle": "Aún no hay documentos por defecto",
+      "emptyStateDescription": "Agrega los documentos que todos los programas creados desde esta plantilla deberían solicitar por defecto.",
+      "activeHint": "Este documento estará disponible por defecto en los programas creados desde esta plantilla.",
+      "hiddenHint": "Este documento permanece en la plantilla, pero comienza oculto para los nuevos programas."
+    },
+    "payments": {
+      "title": "Cobros por defecto",
+      "description": "Configura los cobros por defecto que deberían heredar los nuevos programas creados desde esta plantilla.",
+      "loading": "Cargando cobros por defecto de la plantilla...",
+      "emptyStateTitle": "Todavía no hay cobros por defecto",
+      "emptyStateDescription": "Agrega los cobros únicos y recurrentes con los que deberían empezar los nuevos programas creados desde esta plantilla.",
+      "activeHint": "Estos cobros se copiarán en los nuevos programas creados desde esta plantilla."
+    },
+    "feedback": {
+      "nameRequired": "El nombre de la plantilla es obligatorio.",
+      "invalidFormDefinition": "Corrige los campos con nombre vacío o duplicado antes de guardar la plantilla.",
+      "saveSuccess": "Plantilla guardada.",
+      "saveError": "No se pudo guardar la plantilla. Inténtalo de nuevo."
+    }
+  }
+}

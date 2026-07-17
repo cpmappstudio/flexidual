@@ -1,0 +1,154 @@
+{
+  "nav": {
+    "general": "General",
+    "appearance": "Apariencia",
+    "profileSecurity": "Perfil y Seguridad",
+    "billing": "Facturación"
+  },
+  "general": {
+    "title": "Configuración General",
+    "description": "Administra la configuración general de tu organización",
+    "placeholder": "La configuración general estará disponible próximamente.",
+    "organization": {
+      "title": "Detalles generales",
+      "description": "Administra la información y configuración de tu organización"
+    },
+    "members": {
+      "title": "Miembros de la organización",
+      "description": "Administra miembros, roles y permisos",
+      "invite": {
+        "title": "Invitar miembro",
+        "description": "Envía invitaciones con redirección correcta al tenant.",
+        "emailPlaceholder": "correo@ejemplo.com",
+        "roleMember": "Miembro",
+        "roleAdmin": "Administrador",
+        "submit": "Enviar invitación",
+        "submitting": "Enviando...",
+        "success": "Invitación enviada correctamente.",
+        "error": "No se pudo enviar la invitación.",
+        "emailRequired": "El correo es obligatorio."
+      },
+      "table": {
+        "searchPlaceholder": "Buscar por nombre, correo o rol...",
+        "emptyMessage": "No hay usuarios para mostrar.",
+        "summary": "Total de miembros: {count}",
+        "columns": {
+          "createdAt": "Creado",
+          "user": "Usuario",
+          "role": "Rol",
+          "actions": "Acciones"
+        },
+        "roles": {
+          "member": "Miembro",
+          "admin": "Administrador",
+          "superadmin": "Superadmin"
+        },
+        "actions": {
+          "delete": "Eliminar usuario",
+          "deleting": "Eliminando..."
+        },
+        "deleteDialog": {
+          "title": "Eliminar usuario",
+          "description": "¿Estás seguro de que deseas eliminar a {email}? Esta acción no se puede deshacer."
+        },
+        "toasts": {
+          "cannotDelete": "No puedes eliminar este usuario.",
+          "roleUpdated": "Rol actualizado correctamente.",
+          "roleUpdateError": "No se pudo actualizar el rol.",
+          "userDeleted": "Usuario eliminado correctamente.",
+          "userDeleteError": "No se pudo eliminar el usuario."
+        }
+      }
+    },
+    "wireTransfer": {
+      "title": "Pagos por transferencia bancaria",
+      "description": "Configura cuándo el checkout en línea debe reemplazarse por instrucciones de transferencia bancaria para todas las solicitudes.",
+      "enable": "Habilitar regla de transferencia bancaria",
+      "thresholdLabel": "Monto umbral ($)",
+      "thresholdPlaceholder": "0.00",
+      "thresholdHelp": "Si el saldo seleccionado es mayor o igual a este monto, el usuario verá instrucciones de transferencia bancaria en lugar del checkout en línea.",
+      "noPdfUploaded": "No hay PDF cargado",
+      "noPdfDescription": "Sube el PDF de instrucciones de transferencia para los usuarios.",
+      "usingCustomPdf": "Usando un PDF personalizado de transferencia bancaria.",
+      "uploadPdf": "Subir PDF",
+      "uploadingPdf": "Subiendo...",
+      "downloadCurrent": "Descargar actual",
+      "removePdf": "Eliminar PDF",
+      "save": "Guardar",
+      "saving": "Guardando...",
+      "saveSuccess": "Configuración de transferencia bancaria actualizada.",
+      "saveError": "No se pudo guardar la configuración de transferencia bancaria.",
+      "pdfUploadSuccess": "PDF de transferencia bancaria cargado.",
+      "pdfRemovedSuccess": "PDF de transferencia bancaria eliminado.",
+      "errors": {
+        "invalidThreshold": "Ingresa un umbral mayor a $0.00.",
+        "pdfRequired": "Sube un PDF de transferencia bancaria antes de habilitar esta regla.",
+        "invalidPdf": "Sube un archivo PDF válido.",
+        "uploadFailed": "No se pudo cargar el PDF.",
+        "saveFailed": "No se pudo actualizar esta configuración."
+      }
+    },
+    "appearance": {
+      "title": "Apariencia",
+      "description": "Personaliza cómo se ve la aplicación",
+      "theme": "Tema",
+      "themeDescription": "Selecciona el tema de la aplicación"
+    },
+    "language": {
+      "title": "Idioma",
+      "description": "Selecciona tu idioma preferido",
+      "comingSoon": "Próximamente"
+    }
+  },
+  "appearance": {
+    "theme": {
+      "title": "Modo",
+      "description": "Elige entre modo claro y oscuro"
+    },
+    "colorScheme": {
+      "title": "Esquema de Color",
+      "description": "Elige tu paleta de colores preferida"
+    },
+    "language": {
+      "title": "Idioma",
+      "description": "Selecciona tu idioma preferido"
+    }
+  },
+
+  "profileSecurity": {
+    "title": "Perfil y Seguridad",
+    "description": "Administra tu perfil y la seguridad de tu cuenta"
+  },
+  "profile": {
+    "title": "Detalles del perfil",
+    "description": "Administra tu perfil e información de la cuenta",
+    "profileInfo": {
+      "title": "Información del perfil",
+      "description": "Actualiza tu nombre y foto de perfil"
+    },
+    "email": {
+      "title": "Direcciones de correo",
+      "description": "Administra tus direcciones de correo electrónico"
+    }
+  },
+  "security": {
+    "title": "Seguridad",
+    "description": "Administra la seguridad y autenticación de tu cuenta",
+    "password": {
+      "title": "Contraseña",
+      "description": "Actualiza tu contraseña"
+    },
+    "devices": {
+      "title": "Dispositivos activos",
+      "description": "Administra tus sesiones y dispositivos activos"
+    }
+  },
+  "billing": {
+    "title": "Facturación",
+    "description": "Administra tu plan y métodos de pago"
+  },
+  "search": {
+    "placeholder": "Buscar configuración...",
+    "noResults": "No se encontraron ajustes"
+  }
+}

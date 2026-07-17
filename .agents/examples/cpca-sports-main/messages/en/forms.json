@@ -1,0 +1,101 @@
+{
+  "organization": {
+    "createTitle": "Create Organization",
+    "editTitle": "Edit Organization",
+    "createDescription": "Create a new league or club",
+    "editDescription": "Update the organization information",
+    "name": "Name",
+    "namePlaceholder": "e.g., Liga del Valle",
+    "shortName": "Short Name",
+    "shortNamePlaceholder": "e.g., LIVF",
+    "country": "Country",
+    "countryPlaceholder": "e.g., Colombia",
+    "region": "Region",
+    "regionPlaceholder": "e.g., Valle del Cauca",
+    "status": "Status"
+  },
+  "team": {
+    "createTitle": "Create Team",
+    "editTitle": "Edit Team",
+    "createDescription": "Create a new age-based team for your club",
+    "editDescription": "Update the team information",
+    "name": "Team Name",
+    "namePlaceholder": "e.g., Sub-17",
+    "ageGroup": "Age Group",
+    "ageGroupPlaceholder": "e.g., 15-17 years",
+    "gender": "Gender",
+    "status": "Status"
+  },
+  "player": {
+    "createTitle": "Add Player",
+    "editTitle": "Edit Player",
+    "createDescription": "Add a new player to your club",
+    "editDescription": "Update the player information",
+    "firstName": "First Name",
+    "firstNamePlaceholder": "e.g., Lionel",
+    "lastName": "Last Name",
+    "lastNamePlaceholder": "e.g., Messi",
+    "email": "Email",
+    "emailPlaceholder": "e.g., player@example.com",
+    "phoneNumber": "Phone Number",
+    "phoneNumberPlaceholder": "e.g., +1234567890",
+    "dateOfBirth": "Date of Birth",
+    "category": "Team",
+    "categoryPlaceholder": "Select team",
+    "position": "Position",
+    "positionPlaceholder": "Select position",
+    "jerseyNumber": "Jersey Number",
+    "jerseyNumberPlaceholder": "e.g., 10",
+    "nationality": "Nationality",
+    "nationalityPlaceholder": "e.g., Argentina",
+    "height": "Height (cm)",
+    "heightPlaceholder": "e.g., 180",
+    "weight": "Weight (kg)",
+    "weightPlaceholder": "e.g., 75",
+    "preferredFoot": "Preferred Foot",
+    "preferredFootPlaceholder": "Select preferred foot",
+    "status": "Status"
+  },
+  "staff": {
+    "createTitle": "Add Staff Member",
+    "editTitle": "Edit Staff Member",
+    "createDescription": "Add a new staff member to your club",
+    "editDescription": "Update the staff member information"
+  },
+  "template": {
+    "header": {
+      "updateAction": "Update template",
+      "descriptionFallback": "No description",
+      "nameFallback": "Untitled template",
+      "badge": "Template v{version}",
+      "editName": "Edit template name",
+      "editDescription": "Edit template description"
+    },
+    "tabs": {
+      "application": "Application",
+      "documents": "Documents",
+      "payments": "Payments"
+    },
+    "documents": {
+      "loading": "Loading template documents...",
+      "emptyStateTitle": "No default documents yet",
+      "emptyStateDescription": "Add the documents every program created from this template should request by default.",
+      "activeHint": "This document will be available by default in programs created from this template.",
+      "hiddenHint": "This document stays in the template, but starts hidden for new programs."
+    },
+    "payments": {
+      "title": "Payment defaults",
+      "description": "Configure the default charges that new programs created from this template should inherit.",
+      "loading": "Loading template payment defaults...",
+      "emptyStateTitle": "No default charges yet",
+      "emptyStateDescription": "Add the one-time and recurring charges that every new program created from this template should start with.",
+      "activeHint": "These charges will be copied into new programs created from this template."
+    },
+    "feedback": {
+      "nameRequired": "Template name is required.",
+      "invalidFormDefinition": "Fix the fields with empty or duplicate names before saving the template.",
+      "saveSuccess": "Template saved.",
+      "saveError": "Could not save the template. Please try again."
+    }
+  }
+}

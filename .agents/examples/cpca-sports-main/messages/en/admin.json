@@ -1,0 +1,39 @@
+{
+  "dashboard": {
+    "title": "Global Dashboard",
+    "description": "Platform overview and system-wide metrics",
+    "organizations": "Organizations",
+    "activeOrganizations": "Active organizations",
+    "manageOrganizations": "Manage Organizations",
+    "users": "Users",
+    "totalUsers": "Total registered users",
+    "viewDirectory": "View Directory",
+    "analytics": "Analytics",
+    "analyticsDescription": "Platform-wide insights and reports",
+    "viewAnalytics": "View Analytics",
+    "systemHealth": "System Health",
+    "systemHealthDescription": "Platform operational status",
+    "allSystemsOperational": "All Systems Operational"
+  },
+  "organizations": {
+    "title": "Organizations",
+    "description": "Manage all organizations on the platform",
+    "search": "Search organizations…",
+    "create": "Create organization",
+    "createTitle": "Create New Organization",
+    "empty": "No organizations yet",
+    "emptyDescription": "Create your first organization to get started",
+    "members": "{count, plural, =0 {No members} =1 {1 member} other {# members}}",
+    "moreOptions": "More options",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "suspended": "Suspended"
+    },
+    "actions": {
+      "view": "View",
+      "edit": "Edit",
+      "delete": "Delete"
+    }
+  }
+}

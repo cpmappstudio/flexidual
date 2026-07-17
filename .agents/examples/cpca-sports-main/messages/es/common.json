@@ -1,0 +1,251 @@
+{
+  "actions": {
+    "save": "Guardar",
+    "saving": "Guardando...",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "add": "Agregar",
+    "remove": "Quitar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "clear": "Limpiar",
+    "confirm": "Confirmar",
+    "back": "Volver",
+    "next": "Siguiente",
+    "previous": "Anterior",
+    "submit": "Enviar",
+    "reset": "Reiniciar",
+    "close": "Cerrar",
+    "open": "Abrir",
+    "loading": "Cargando...",
+    "view": "Ver",
+    "download": "Descargar",
+    "upload": "Subir",
+    "export": "Exportar",
+    "skip": "Omitir",
+    "sendInvitation": "Enviar invitación",
+    "settings": "Configuración"
+  },
+  "table": {
+    "columns": "Columnas",
+    "filters": "Filtros",
+    "pageInfo": "Página {current} de {total}",
+    "clearFilters": "Limpiar filtros",
+    "noResults": "Sin resultados",
+    "selectedRows": "{selected} de {total} fila(s) seleccionada(s)",
+    "selectPage": "Seleccionar todas las filas de esta página",
+    "selectRow": "Seleccionar fila"
+  },
+  "gender": {
+    "male": "Masculino",
+    "female": "Femenino",
+    "mixed": "Mixto"
+  },
+  "organizations": {
+    "searchPlaceholder": "Buscar por nombre, slug, ubicación...",
+    "emptyMessage": "No se encontraron organizaciones. Crea tu primera liga para comenzar.",
+    "name": "Nombre",
+    "type": "Tipo",
+    "location": "Ubicación",
+    "clubs": "Clubes",
+    "status": "Estado",
+    "mismatch": {
+      "title": "Organización no disponible",
+      "description": "No tienes acceso a la organización \"{organization}\". Por favor selecciona una organización a la que pertenezcas."
+    }
+  },
+  "organizationType": {
+    "league": "Liga",
+    "club": "Club"
+  },
+  "organizationStatus": {
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "affiliated": "Afiliado",
+    "invited": "Invitado",
+    "suspended": "Suspendido"
+  },
+  "teams": {
+    "searchPlaceholder": "Buscar por nombre, apodo, delegado, conferencia...",
+    "emptyMessage": "No se encontraron equipos. Crea tu primer equipo para comenzar.",
+    "description": "Administra todos los equipos de tu liga",
+    "name": "Nombre",
+    "nickname": "Apodo",
+    "conference": "Conferencia",
+    "delegate": "Delegado",
+    "foundedYear": "Fundado",
+    "status": "Estado",
+    "colors": "Colores",
+    "colorName": "Nombre del color (ej. Azul marino)",
+    "inviteDelegate": "Invitar delegado",
+    "statusOptions": {
+      "affiliated": "Afiliado",
+      "invited": "Invitado",
+      "suspended": "Suspendido"
+    }
+  },
+  "players": {
+    "searchPlaceholder": "Buscar por nombre...",
+    "emptyMessage": "No se encontraron jugadores. Agrega tu primer jugador para comenzar.",
+    "name": "Jugador",
+    "team": "Equipo",
+    "position": "Posición",
+    "status": "Estado",
+    "notAssigned": "Sin asignar",
+    "title": "Jugadores",
+    "create": "Agregar Jugador",
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "email": "Correo electrónico",
+    "phoneNumber": "Teléfono",
+    "dateOfBirth": "Fecha de nacimiento",
+    "jerseyNumber": "Número de camiseta",
+    "nationality": "Nacionalidad",
+    "height": "Altura",
+    "weight": "Peso",
+    "category": "Categoría",
+    "selectCategory": "Seleccionar categoría",
+    "deleteTitle": "Eliminar Jugador",
+    "deleteDescription": "¿Estás seguro de que deseas eliminar a {name}? Esta acción no se puede deshacer.",
+    "statusOptions": {
+      "active": "Activo",
+      "injured": "Lesionado",
+      "suspended": "Suspendido",
+      "inactive": "Inactivo"
+    }
+  },
+  "position": {
+    "goalkeeper": "Portero",
+    "defender": "Defensa",
+    "midfielder": "Mediocampista",
+    "forward": "Delantero",
+    "point_guard": "Base",
+    "shooting_guard": "Escolta",
+    "small_forward": "Alero",
+    "power_forward": "Ala-Pívot",
+    "center": "Pívot"
+  },
+  "foot": {
+    "left": "Izquierdo",
+    "right": "Derecho",
+    "both": "Ambos"
+  },
+  "playerStatus": {
+    "active": "Activo",
+    "injured": "Lesionado",
+    "on_loan": "Prestado",
+    "inactive": "Inactivo"
+  },
+  "staff": {
+    "searchPlaceholder": "Buscar por nombre...",
+    "emptyMessage": "No se encontraron miembros del personal. Agrega tu primer miembro del personal para comenzar.",
+    "emptyDescription": "Agrega entrenadores, preparadores físicos y otros miembros del personal para gestionar tu equipo.",
+    "addFirst": "Agregar Miembro del Personal",
+    "name": "Nombre",
+    "role": "Rol",
+    "team": "Equipo",
+    "notAssigned": "Sin asignar",
+    "title": "Personal",
+    "create": "Agregar Miembro del Personal",
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "email": "Correo electrónico",
+    "phoneNumber": "Teléfono",
+    "selectRole": "Seleccionar rol"
+  },
+  "settings": {
+    "general": "General",
+    "appearance": "Apariencia",
+    "notifications": "Notificaciones",
+    "security": "Seguridad",
+    "billing": "Facturación"
+  },
+  "roster": {
+    "title": "Plantilla",
+    "description": "Administra la plantilla del equipo",
+    "emptyMessage": "No hay jugadores en la plantilla."
+  },
+  "playerCard": {
+    "height": "Altura",
+    "weight": "Peso",
+    "age": "Edad",
+    "yearsPro": "Años Pro",
+    "country": "País",
+    "season": "Temporada",
+    "gamesPlayed": "PJ",
+    "pointsPerGame": "PPP",
+    "assistsPerGame": "APP",
+    "reboundsPerGame": "RPP"
+  },
+  "staffRole": {
+    "technical_director": "Director Técnico",
+    "assistant_coach": "Asistente Técnico"
+  },
+  "staff": {
+    "title": "Cuerpo Técnico",
+    "searchPlaceholder": "Buscar por nombre...",
+    "emptyMessage": "No se encontraron miembros del staff. Agrega tu primer director técnico para comenzar.",
+    "name": "Nombre",
+    "role": "Rol",
+    "team": "Equipo",
+    "notAssigned": "Sin asignar"
+  },
+  "status": {
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "pending": "Pendiente",
+    "approved": "Aprobado",
+    "rejected": "Rechazado",
+    "completed": "Completado"
+  },
+  "validation": {
+    "required": "Este campo es requerido",
+    "email": "Ingresa un correo electrónico válido",
+    "minLength": "Mínimo {min} caracteres",
+    "maxLength": "Máximo {max} caracteres"
+  },
+  "errors": {
+    "generic": "Ha ocurrido un error",
+    "notFound": "No encontrado",
+    "unauthorized": "No autorizado",
+    "forbidden": "Acceso denegado"
+  },
+  "divisions": {
+    "searchPlaceholder": "Buscar por nombre, nivel...",
+    "emptyMessage": "No se encontraron divisiones. Crea tu primera división para organizar jugadores por nivel de habilidad.",
+    "name": "Nombre",
+    "displayName": "Nombre para Mostrar",
+    "level": "Nivel",
+    "description": "Descripción",
+    "image": "Imagen",
+    "minWinPercentage": "% Victorias Mín.",
+    "minGamesPlayed": "Juegos Mín.",
+    "teamsCount": "Equipos"
+  },
+  "tournaments": {
+    "searchPlaceholder": "Buscar por nombre, temporada, estado...",
+    "emptyMessage": "No se encontraron torneos. Crea tu primer torneo para comenzar a organizar competiciones.",
+    "name": "Nombre",
+    "season": "Temporada",
+    "status": "Estado",
+    "ageGroup": "Grupo de Edad",
+    "gender": "Género",
+    "startDate": "Fecha de Inicio",
+    "endDate": "Fecha de Fin",
+    "enableDivisions": "Divisiones",
+    "teamsCount": "Equipos"
+  },
+  "tournamentStatus": {
+    "draft": "Borrador",
+    "upcoming": "Próximo",
+    "ongoing": "En Curso",
+    "completed": "Completado",
+    "cancelled": "Cancelado"
+  },
+  "languages": {
+    "en": "Inglés",
+    "es": "Español"
+  }
+}
