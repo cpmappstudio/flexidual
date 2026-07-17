@@ -12,12 +12,7 @@ import {
   useReactTable,
   VisibilityState,
 } from "@tanstack/react-table";
-import {
-  Download,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-} from "lucide-react";
+import { Download, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -55,6 +50,7 @@ export function DataTable<TData>({
   pageSize,
   customFilter,
   createAction,
+  renderMobileCard,
   onExport,
   onRowClick,
 }: DataTableProps<TData>) {
@@ -130,13 +126,25 @@ export function DataTable<TData>({
   );
 
   const handleRowContainerClick = React.useCallback(
-    (
-      event: React.MouseEvent<HTMLTableRowElement, MouseEvent>,
-      rowData: TData,
-    ) => {
+    (event: React.MouseEvent<HTMLElement, MouseEvent>, rowData: TData) => {
       if (!onRowClick || !shouldHandleRowClick(event)) {
         return;
       }
+      handleRowClick(rowData);
+    },
+    [handleRowClick, onRowClick],
+  );
+
+  const handleMobileCardKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLElement>, rowData: TData) => {
+      if (
+        !onRowClick ||
+        event.target !== event.currentTarget ||
+        (event.key !== "Enter" && event.key !== " ")
+      ) {
+        return;
+      }
+      event.preventDefault();
       handleRowClick(rowData);
     },
     [handleRowClick, onRowClick],
@@ -200,7 +208,44 @@ export function DataTable<TData>({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-md border">
+      {renderMobileCard && (
+        <div className="grid gap-3 md:grid-cols-2 lg:hidden">
+          {table.getRowModel().rows.length ? (
+            table.getRowModel().rows.map((row) => (
+              <div
+                key={row.id}
+                className={
+                  onRowClick
+                    ? "h-full cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    : "h-full"
+                }
+                role={onRowClick ? "button" : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onClick={
+                  onRowClick
+                    ? (event) => handleRowContainerClick(event, row.original)
+                    : undefined
+                }
+                onKeyDown={
+                  onRowClick
+                    ? (event) => handleMobileCardKeyDown(event, row.original)
+                    : undefined
+                }
+              >
+                {renderMobileCard(row.original)}
+              </div>
+            ))
+          ) : (
+            <div className="rounded-md border bg-card p-6 text-center text-sm text-muted-foreground">
+              {emptyMessage}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div
+        className={`overflow-hidden rounded-md border ${renderMobileCard ? "hidden lg:block" : ""}`}
+      >
         <Table className="bg-card">
           <TableHeader className="bg-primary/95 sticky top-0 z-10 ">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -237,7 +282,9 @@ export function DataTable<TData>({
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                   className={
-                    onRowClick ? "cursor-pointer transition-colors hover:bg-muted/50" : undefined
+                    onRowClick
+                      ? "cursor-pointer transition-colors hover:bg-muted/50"
+                      : undefined
                   }
                   onClick={
                     onRowClick

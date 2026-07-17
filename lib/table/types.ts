@@ -1,4 +1,8 @@
-import type { ColumnDef, ColumnFiltersState, SortingState } from "@tanstack/react-table";
+import type {
+  ColumnDef,
+  ColumnFiltersState,
+  SortingState,
+} from "@tanstack/react-table";
 
 export interface FilterOption {
   value: string;
@@ -34,6 +38,7 @@ export interface DataTableProps<TData> {
   pageSize?: number;
   customFilter?: React.ReactNode;
   createAction?: React.ReactNode;
+  renderMobileCard?: (row: TData) => React.ReactNode;
   onExport?: (rows: TData[]) => void;
   onRowClick?: (row: TData) => void;
 }

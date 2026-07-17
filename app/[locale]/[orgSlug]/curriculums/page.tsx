@@ -12,6 +12,7 @@ export default function CurriculumsPage() {
       <FlexidualHeader
         title={t("navigation.curriculums")}
         subtitle={t("navigation.curriculumsDescription")}
+        showCampusFilter={false}
       />
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
         <CurriculumsTable />
