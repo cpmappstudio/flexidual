@@ -3,7 +3,12 @@
 import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +17,14 @@ import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-d
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { DataTable } from "@/components/table/data-table";
-import { createSearchColumn, createSortableHeader } from "@/components/table/column-helpers";
+import {
+  createSearchColumn,
+  createSortableHeader,
+} from "@/components/table/column-helpers";
 import type { FilterConfig } from "@/lib/table/types";
 import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
+import { Card, CardContent } from "@/components/ui/card";
+import { BookMarked } from "lucide-react";
 
 export function CurriculumsTable() {
   const t = useTranslations();
@@ -23,7 +33,7 @@ export function CurriculumsTable() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedCurriculumId = searchParams.get("curriculumId");
-  
+
   const orgSlug = (params.orgSlug as string) || "system";
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
   const isSystemDashboard = orgContext?.type === "system";
@@ -39,12 +49,13 @@ export function CurriculumsTable() {
     querySchoolId = orgContext._id as Id<"schools">;
   }
 
-  const data = useQuery(api.curriculums.list, { 
+  const data = useQuery(api.curriculums.list, {
     includeInactive: true,
-    schoolId: querySchoolId 
+    schoolId: querySchoolId,
   });
 
-  const [editingCurriculum, setEditingCurriculum] = useState<Doc<"curriculums"> | null>(null);
+  const [editingCurriculum, setEditingCurriculum] =
+    useState<Doc<"curriculums"> | null>(null);
 
   React.useEffect(() => {
     if (!data || !requestedCurriculumId) {
@@ -111,9 +122,7 @@ export function CurriculumsTable() {
             {code && (
               <div className="lg:hidden">
                 <span className="font-mono">{t("common.code")}:</span>
-                <span className="text-muted-foreground">
-                  {code || "-"}
-                </span>
+                <span className="text-muted-foreground">{code || "-"}</span>
               </div>
             )}
           </div>
@@ -143,6 +152,36 @@ export function CurriculumsTable() {
     },
   ];
 
+  const renderMobileCard = (curriculum: Doc<"curriculums">) => (
+    <Card className="group relative h-full gap-0 overflow-hidden rounded-md border-primary/10 py-0 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 via-orange-500/5 to-transparent" />
+      <BookMarked className="pointer-events-none absolute -right-5 -top-5 h-28 w-28 text-primary/10 transition-transform group-hover:scale-105" />
+      <CardContent className="relative flex h-full flex-col p-4">
+        <div className="min-w-0">
+          <h3 className="break-words text-base font-semibold leading-snug whitespace-normal">
+            {curriculum.title}
+          </h3>
+          {curriculum.code && (
+            <div className="mt-2">
+              <div className="text-xs font-medium uppercase text-muted-foreground">
+                {t("common.code")}
+              </div>
+              <p className="mt-0.5 break-words text-sm text-muted-foreground whitespace-normal">
+                {curriculum.code}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-auto pt-5">
+          <Badge variant={curriculum.isActive ? "active" : "inactive"}>
+            {curriculum.isActive ? t("common.active") : t("common.inactive")}
+          </Badge>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   if (!data) return <Skeleton className="h-96 w-full" />;
 
   return (
@@ -164,6 +203,7 @@ export function CurriculumsTable() {
         emptyMessage={t("common.noResults")}
         filterConfigs={filterConfigs}
         createAction={<CurriculumDialog />}
+        renderMobileCard={renderMobileCard}
         pageSize={10}
         onRowClick={(curriculum) => setEditingCurriculum(curriculum)}
       />
