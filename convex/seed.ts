@@ -1,28 +1,339 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, MutationCtx } from "./_generated/server";
+import { Doc, Id } from "./_generated/dataModel";
+
+const UX_DEMO_CURRICULUM_CODE = "UX-DEMO-01";
+const UX_DEMO_CLASS_NAME = "UX Demo - Integrated Biology Studio";
+const CLASSES_TABLE_DEMO_CODE_PREFIX = "CLASSES-TABLE-DEMO";
+const ADVANCED_LITERATURE_CLASS_NAME =
+  "Advanced Literature Seminar - Comparative Essays and Guided Reading Workshop";
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+const uxDemoLessons = [
+  [
+    "Course orientation and learning goals",
+    "How this class uses curriculum lessons, custom sessions, and live rooms.",
+  ],
+  [
+    "Cell structure and organelles",
+    "Identify key organelles and explain how each one supports cell function.",
+  ],
+  [
+    "Microscopes and lab safety",
+    "Prepare students for safe observation work and lab routines.",
+  ],
+  [
+    "Cell membrane transport",
+    "Diffusion, osmosis, and active transport through real-life examples.",
+  ],
+  [
+    "Photosynthesis lab prep",
+    "Set up the investigation and review materials before lab day.",
+  ],
+  [
+    "Photosynthesis investigation",
+    "Collect observations and connect evidence to energy transfer.",
+  ],
+  [
+    "Cellular respiration",
+    "Compare respiration and photosynthesis as linked energy processes.",
+  ],
+  [
+    "Review: cells and energy",
+    "Spiral review before assessment and student conferences.",
+  ],
+  [
+    "Unit assessment",
+    "Demonstrate understanding of cells, energy, and lab evidence.",
+  ],
+  [
+    "Reflection and extension",
+    "Use feedback to plan next steps and enrichment work.",
+  ],
+] as const;
+
+const classesTableDemoClasses = [
+  {
+    name: ADVANCED_LITERATURE_CLASS_NAME,
+    curriculumTitle:
+      "Middle School Language Arts - Critical Reading and Composition",
+    curriculumCode: `${CLASSES_TABLE_DEMO_CODE_PREFIX}-ELA`,
+    academicYear: "2026-2027",
+    studentCount: 8,
+  },
+  {
+    name: "Pre-Algebra Foundations - Problem Solving Lab and Skills Practice",
+    curriculumTitle:
+      "Mathematics Foundations - Ratios, Expressions, and Equations",
+    curriculumCode: `${CLASSES_TABLE_DEMO_CODE_PREFIX}-MATH`,
+    academicYear: "2026-2027",
+    studentCount: 10,
+  },
+  {
+    name: "World History Studio - Civilizations, Trade Routes, and Source Analysis",
+    curriculumTitle:
+      "World History - Ancient Societies Through Early Modern Change",
+    curriculumCode: `${CLASSES_TABLE_DEMO_CODE_PREFIX}-HIST`,
+    academicYear: "2026-2027",
+    studentCount: 9,
+  },
+  {
+    name: "Earth Science Field Notes - Weather Systems and Environmental Observation",
+    curriculumTitle:
+      "Earth and Space Science - Systems, Cycles, and Field Investigation",
+    curriculumCode: `${CLASSES_TABLE_DEMO_CODE_PREFIX}-SCI`,
+    academicYear: "2026-2027",
+    studentCount: 11,
+  },
+  {
+    name: "Spanish Conversation Lab - Heritage Speakers and Applied Grammar",
+    curriculumTitle:
+      "Spanish Language Development - Communication and Cultural Context",
+    curriculumCode: `${CLASSES_TABLE_DEMO_CODE_PREFIX}-SPA`,
+    academicYear: "2026-2027",
+    studentCount: 7,
+  },
+  {
+    name: "Integrated STEM Design Studio - Robotics, Data, and Engineering Challenges",
+    curriculumTitle:
+      "STEM Design Lab - Coding, Measurement, and Iterative Prototyping",
+    curriculumCode: `${CLASSES_TABLE_DEMO_CODE_PREFIX}-STEM`,
+    academicYear: "2026-2027",
+    studentCount: 12,
+  },
+] as const;
+
+const advancedLiteratureLessons = [
+  {
+    title: "Seminar norms and close reading routines",
+    description:
+      "Establish discussion protocols, annotation codes, and evidence logs for guided reading.",
+    content:
+      "Students set expectations for seminar participation and practice close reading with a shared short text.",
+  },
+  {
+    title: "Comparative thesis statements",
+    description:
+      "Write arguable claims that compare two texts through a clear literary lens.",
+    content:
+      "Students move from observation to interpretation and draft thesis statements with contrast, significance, and scope.",
+  },
+  {
+    title: "Evidence selection and quote integration",
+    description:
+      "Choose strong textual evidence and integrate quotations without interrupting the analysis.",
+    content:
+      "Students evaluate evidence quality, introduce quotations, and explain how each quote supports the comparative claim.",
+  },
+  {
+    title: "Character perspective across texts",
+    description:
+      "Compare character motivation, conflict, and narrative perspective across paired readings.",
+    content:
+      "Students build comparison notes that separate surface similarities from meaningful interpretive differences.",
+  },
+  {
+    title: "Theme tracking and motif maps",
+    description:
+      "Trace recurring ideas, symbols, and motifs to support a deeper comparative reading.",
+    content:
+      "Students create motif maps and connect patterns to theme statements for both texts.",
+  },
+  {
+    title: "Counterclaim and nuance in literary analysis",
+    description:
+      "Strengthen literary arguments by addressing alternate readings and adding complexity.",
+    content:
+      "Students revise body paragraphs to include counterclaims, concessions, and more precise interpretive language.",
+  },
+  {
+    title: "Drafting the comparative essay",
+    description:
+      "Organize introduction, body paragraphs, transitions, and conclusion for a comparative essay.",
+    content:
+      "Students turn their outline into a full draft with paragraph-level goals and evidence checkpoints.",
+  },
+  {
+    title: "Revision workshop and final reflection",
+    description:
+      "Use peer feedback to revise claims, evidence, organization, and final reflection.",
+    content:
+      "Students complete a revision pass, submit the final essay, and reflect on their growth as literary analysts.",
+  },
+] as const;
+
+function nextDate(dayOffset: number, hour: number, minute = 0) {
+  const date = new Date(Date.now() + dayOffset * DAY);
+  date.setHours(hour, minute, 0, 0);
+  return date.getTime();
+}
+
+async function getDemoCampus(ctx: MutationCtx): Promise<Doc<"campuses">> {
+  const campuses = await ctx.db.query("campuses").collect();
+  const cpcaCampus = campuses.find((campus) => campus.slug === "cpca-main");
+  if (cpcaCampus) return cpcaCampus;
+
+  const defaultCampus = campuses.find(
+    (campus) => campus.slug === "main-campus",
+  );
+  if (defaultCampus) return defaultCampus;
+
+  const campus = campuses[0];
+  if (!campus)
+    throw new Error(
+      "No campus found. Seed a campus before creating the UX demo class.",
+    );
+  return campus;
+}
+
+async function getUserByRole(
+  ctx: MutationCtx,
+  role: string,
+  campusId?: Id<"campuses">,
+): Promise<Doc<"users"> | null> {
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .filter((q) => q.eq(q.field("role"), role))
+    .collect();
+
+  const scoped = campusId
+    ? assignments.filter((assignment) => assignment.orgId === campusId)
+    : assignments;
+
+  for (const assignment of scoped.length > 0 ? scoped : assignments) {
+    const user = await ctx.db.get(assignment.userId);
+    if (user?.isActive) return user;
+  }
+
+  return null;
+}
+
+async function getStudents(
+  ctx: MutationCtx,
+  campusId: Id<"campuses">,
+): Promise<Doc<"users">[]> {
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .filter((q) => q.eq(q.field("role"), "student"))
+    .collect();
+
+  const scoped = assignments.filter(
+    (assignment) => assignment.orgId === campusId,
+  );
+  const candidates = scoped.length > 0 ? scoped : assignments;
+  const students: Doc<"users">[] = [];
+
+  for (const assignment of candidates) {
+    const user = await ctx.db.get(assignment.userId);
+    if (user?.isActive) students.push(user);
+    if (students.length >= 12) break;
+  }
+
+  if (students.length === 0) {
+    throw new Error(
+      "No active students found. Seed students before creating the UX demo class.",
+    );
+  }
+
+  return students;
+}
+
+async function findUserByName(
+  ctx: MutationCtx,
+  searchTerm: string,
+): Promise<Doc<"users"> | null> {
+  const normalizedSearch = searchTerm.toLowerCase();
+  const users = await ctx.db.query("users").collect();
+
+  return (
+    users.find((user) => {
+      const values = [user.fullName, user.firstName, user.lastName, user.email]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return user.isActive && values.includes(normalizedSearch);
+    }) || null
+  );
+}
+
+async function getUserCampus(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+): Promise<Doc<"campuses"> | null> {
+  const campusAssignment = await ctx.db
+    .query("roleAssignments")
+    .filter((q) =>
+      q.and(
+        q.eq(q.field("userId"), userId),
+        q.eq(q.field("orgType"), "campus"),
+      ),
+    )
+    .first();
+
+  if (!campusAssignment) return null;
+  return await ctx.db.get(campusAssignment.orgId as Id<"campuses">);
+}
+
+async function getClassByName(
+  ctx: MutationCtx,
+  name: string,
+): Promise<Doc<"classes"> | null> {
+  const classes = await ctx.db.query("classes").collect();
+  return classes.find((classDoc) => classDoc.name === name) || null;
+}
+
+async function deleteSchedulesForClass(
+  ctx: MutationCtx,
+  classId: Id<"classes">,
+) {
+  const schedules = await ctx.db
+    .query("classSchedule")
+    .withIndex("by_class", (q) => q.eq("classId", classId))
+    .collect();
+
+  for (const schedule of schedules) {
+    const sessions = await ctx.db
+      .query("class_sessions")
+      .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+      .collect();
+    for (const session of sessions) {
+      await ctx.db.delete(session._id);
+    }
+    await ctx.db.delete(schedule._id);
+  }
+}
 
 export const run = mutation({
-  args: { 
-    clearExisting: v.optional(v.boolean()) 
+  args: {
+    clearExisting: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     // 1. CLEAR EXISTING DATA (Optional)
     if (args.clearExisting) {
-      const allTables = [
-        "classSchedule", "classes", "lessons", "curriculums", 
-        "users", "class_sessions", "schools", "campuses", "roleAssignments"
-      ];
-      for (const table of allTables) {
-        const docs = await ctx.db.query(table as any).collect();
-        for (const doc of docs) {
-          await ctx.db.delete(doc._id);
-        }
-      }
+      for (const doc of await ctx.db.query("classSchedule").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db.query("classes").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db.query("lessons").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db.query("curriculums").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db.query("users").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db.query("class_sessions").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db.query("schools").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db.query("campuses").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db.query("roleAssignments").collect())
+        await ctx.db.delete(doc._id);
     }
 
     // 2. CREATE USERS (Identity only)
     const teacherId = await ctx.db.insert("users", {
-      clerkId: "user_teacher_frizzle", 
+      clerkId: "user_teacher_frizzle",
       email: "frizzle@school.edu",
       firstName: "Valerie",
       lastName: "Frizzle",
@@ -91,10 +402,28 @@ export const run = mutation({
     });
 
     // 4. ASSIGN ROLES
-    await ctx.db.insert("roleAssignments", { userId: adminId, orgType: "school", orgId: schoolId, role: "admin", assignedAt: Date.now() });
-    await ctx.db.insert("roleAssignments", { userId: teacherId, orgType: "campus", orgId: campusId, role: "teacher", assignedAt: Date.now() });
+    await ctx.db.insert("roleAssignments", {
+      userId: adminId,
+      orgType: "school",
+      orgId: schoolId,
+      role: "admin",
+      assignedAt: Date.now(),
+    });
+    await ctx.db.insert("roleAssignments", {
+      userId: teacherId,
+      orgType: "campus",
+      orgId: campusId,
+      role: "teacher",
+      assignedAt: Date.now(),
+    });
     for (const studentId of studentIds) {
-      await ctx.db.insert("roleAssignments", { userId: studentId, orgType: "campus", orgId: campusId, role: "student", assignedAt: Date.now() });
+      await ctx.db.insert("roleAssignments", {
+        userId: studentId,
+        orgType: "campus",
+        orgId: campusId,
+        role: "student",
+        assignedAt: Date.now(),
+      });
     }
 
     // 5. CREATE CURRICULUM (Attached to School)
@@ -111,13 +440,34 @@ export const run = mutation({
 
     // 6. CREATE LESSONS
     const lesson1Id = await ctx.db.insert("lessons", {
-      curriculumId, title: "The Solar System", description: "Explore the planets.", content: "Space is big!", order: 1, isActive: true, createdAt: Date.now(), createdBy: teacherId,
+      curriculumId,
+      title: "The Solar System",
+      description: "Explore the planets.",
+      content: "Space is big!",
+      order: 1,
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: teacherId,
     });
     const lesson2Id = await ctx.db.insert("lessons", {
-      curriculumId, title: "Inside the Human Body", description: "A journey through the digestive system.", content: "Digestion", order: 2, isActive: true, createdAt: Date.now(), createdBy: teacherId,
+      curriculumId,
+      title: "Inside the Human Body",
+      description: "A journey through the digestive system.",
+      content: "Digestion",
+      order: 2,
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: teacherId,
     });
     const lesson3Id = await ctx.db.insert("lessons", {
-      curriculumId, title: "The Water Cycle", description: "Ocean to clouds to rain.", content: "Water cycles", order: 3, isActive: true, createdAt: Date.now(), createdBy: teacherId,
+      curriculumId,
+      title: "The Water Cycle",
+      description: "Ocean to clouds to rain.",
+      content: "Water cycles",
+      order: 3,
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: teacherId,
     });
 
     // 7. CREATE CLASS (Attached to Campus)
@@ -131,8 +481,8 @@ export const run = mutation({
       isActive: true,
       createdAt: Date.now(),
       createdBy: adminId,
-      startDate: Date.now() - (30 * 24 * 60 * 60 * 1000),
-      endDate: Date.now() + (60 * 24 * 60 * 60 * 1000),
+      startDate: Date.now() - 30 * 24 * 60 * 60 * 1000,
+      endDate: Date.now() + 60 * 24 * 60 * 60 * 1000,
     });
 
     // 8. SCHEDULE LESSONS
@@ -140,31 +490,540 @@ export const run = mutation({
     const oneHour = 60 * 60 * 1000;
 
     const schedule1Id = await ctx.db.insert("classSchedule", {
-      classId, lessonIds: [lesson1Id], scheduledStart: now - (10 * 60 * 1000), scheduledEnd: now + (50 * 60 * 1000), roomName: `class-${classId}-lesson-${lesson1Id}-${now}`, status: "active", isLive: true, createdAt: now, createdBy: teacherId,
+      classId,
+      lessonIds: [lesson1Id],
+      scheduledStart: now - 10 * 60 * 1000,
+      scheduledEnd: now + 50 * 60 * 1000,
+      roomName: `class-${classId}-lesson-${lesson1Id}-${now}`,
+      status: "active",
+      isLive: true,
+      createdAt: now,
+      createdBy: teacherId,
     });
 
-    const tomorrow10AM = new Date(); tomorrow10AM.setDate(tomorrow10AM.getDate() + 1); tomorrow10AM.setHours(10, 0, 0, 0);
+    const tomorrow10AM = new Date();
+    tomorrow10AM.setDate(tomorrow10AM.getDate() + 1);
+    tomorrow10AM.setHours(10, 0, 0, 0);
     await ctx.db.insert("classSchedule", {
-      classId, lessonIds: [lesson2Id], scheduledStart: tomorrow10AM.getTime(), scheduledEnd: tomorrow10AM.getTime() + oneHour, roomName: `class-${classId}-lesson-${lesson2Id}-${tomorrow10AM.getTime()}`, status: "scheduled", isLive: false, createdAt: now, createdBy: teacherId,
+      classId,
+      lessonIds: [lesson2Id],
+      scheduledStart: tomorrow10AM.getTime(),
+      scheduledEnd: tomorrow10AM.getTime() + oneHour,
+      roomName: `class-${classId}-lesson-${lesson2Id}-${tomorrow10AM.getTime()}`,
+      status: "scheduled",
+      isLive: false,
+      createdAt: now,
+      createdBy: teacherId,
     });
 
-    const nextWeek = now + (7 * 24 * 60 * 60 * 1000);
+    const nextWeek = now + 7 * 24 * 60 * 60 * 1000;
     await ctx.db.insert("classSchedule", {
-      classId, lessonIds: [lesson3Id], scheduledStart: nextWeek, scheduledEnd: nextWeek + oneHour, roomName: `class-${classId}-lesson-${lesson3Id}-${nextWeek}`, status: "scheduled", isLive: false, createdAt: now, createdBy: teacherId,
+      classId,
+      lessonIds: [lesson3Id],
+      scheduledStart: nextWeek,
+      scheduledEnd: nextWeek + oneHour,
+      roomName: `class-${classId}-lesson-${lesson3Id}-${nextWeek}`,
+      status: "scheduled",
+      isLive: false,
+      createdAt: now,
+      createdBy: teacherId,
     });
 
-    const yesterday = now - (24 * 60 * 60 * 1000);
+    const yesterday = now - 24 * 60 * 60 * 1000;
     await ctx.db.insert("classSchedule", {
-      classId, lessonIds: [lesson1Id], scheduledStart: yesterday, scheduledEnd: yesterday + oneHour, roomName: `class-${classId}-lesson-${lesson1Id}-${yesterday}`, status: "completed", isLive: false, completedAt: yesterday + oneHour, createdAt: yesterday - (2 * 24 * 60 * 60 * 1000), createdBy: teacherId,
+      classId,
+      lessonIds: [lesson1Id],
+      scheduledStart: yesterday,
+      scheduledEnd: yesterday + oneHour,
+      roomName: `class-${classId}-lesson-${lesson1Id}-${yesterday}`,
+      status: "completed",
+      isLive: false,
+      completedAt: yesterday + oneHour,
+      createdAt: yesterday - 2 * 24 * 60 * 60 * 1000,
+      createdBy: teacherId,
     });
 
     // 9. SAMPLE ATTENDANCE
     for (const studentId of studentIds) {
       await ctx.db.insert("class_sessions", {
-        scheduleId: schedule1Id, studentId, joinedAt: yesterday + (5 * 60 * 1000), leftAt: yesterday + (55 * 60 * 1000), durationSeconds: 50 * 60, roomName: `class-${classId}-lesson-${lesson1Id}-${yesterday}`, sessionDate: new Date(yesterday).toISOString().split('T')[0],
+        scheduleId: schedule1Id,
+        studentId,
+        joinedAt: yesterday + 5 * 60 * 1000,
+        leftAt: yesterday + 55 * 60 * 1000,
+        durationSeconds: 50 * 60,
+        roomName: `class-${classId}-lesson-${lesson1Id}-${yesterday}`,
+        sessionDate: new Date(yesterday).toISOString().split("T")[0],
       });
     }
 
     return { message: "Multi-Tenant Seed complete!" };
+  },
+});
+
+export const createClassesUxDemo = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const existingCurriculum = await ctx.db
+      .query("curriculums")
+      .withIndex("by_code", (q) => q.eq("code", UX_DEMO_CURRICULUM_CODE))
+      .first();
+
+    if (existingCurriculum) {
+      const existingClass = await ctx.db
+        .query("classes")
+        .withIndex("by_curriculum", (q) =>
+          q.eq("curriculumId", existingCurriculum._id),
+        )
+        .filter((q) => q.eq(q.field("name"), UX_DEMO_CLASS_NAME))
+        .first();
+
+      if (existingClass) {
+        return {
+          message: "UX demo class already exists.",
+          classId: existingClass._id,
+          curriculumId: existingCurriculum._id,
+        };
+      }
+    }
+
+    const campus = await getDemoCampus(ctx);
+    const school = await ctx.db.get(campus.schoolId);
+    if (!school) throw new Error("Demo campus has no parent school.");
+
+    const teacher =
+      (await getUserByRole(ctx, "teacher", campus._id)) ||
+      (await getUserByRole(ctx, "principal", campus._id)) ||
+      (await getUserByRole(ctx, "admin"));
+    if (!teacher)
+      throw new Error("No teacher/admin user found for demo class.");
+
+    const admin = (await getUserByRole(ctx, "admin")) || teacher;
+    const students = await getStudents(ctx, campus._id);
+    const now = Date.now();
+
+    const curriculumId =
+      existingCurriculum?._id ||
+      (await ctx.db.insert("curriculums", {
+        title: "UX Demo Biology Curriculum",
+        description:
+          "Demo curriculum for reviewing the class detail flow, scheduling model, and curriculum hierarchy.",
+        code: UX_DEMO_CURRICULUM_CODE,
+        color: "#2563eb",
+        schoolId: school._id,
+        gradeCodes: ["07", "08"],
+        isActive: true,
+        createdAt: now,
+        createdBy: admin._id,
+      }));
+
+    const existingLessons = await ctx.db
+      .query("lessons")
+      .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculumId))
+      .collect();
+
+    const lessonIds: Id<"lessons">[] = [];
+    if (existingLessons.length > 0) {
+      lessonIds.push(
+        ...existingLessons
+          .sort((a, b) => a.order - b.order)
+          .map((lesson) => lesson._id),
+      );
+    } else {
+      for (const [index, lesson] of uxDemoLessons.entries()) {
+        const [title, description] = lesson;
+        const lessonId = await ctx.db.insert("lessons", {
+          curriculumId,
+          title,
+          description,
+          content: `Demo lesson content for ${title}.`,
+          order: index + 1,
+          isActive: true,
+          createdAt: now + index,
+          createdBy: teacher._id,
+        });
+        lessonIds.push(lessonId);
+      }
+    }
+
+    const classId = await ctx.db.insert("classes", {
+      name: UX_DEMO_CLASS_NAME,
+      description:
+        "A complete demo class to review Overview, Sessions, Curriculum, Students, linked lessons, and custom sessions.",
+      curriculumId,
+      campusId: campus._id,
+      teacherId: teacher._id,
+      students: students.map((student) => student._id),
+      academicYear: "2026-2027",
+      classType: "standard",
+      startDate: nextDate(-21, 8),
+      endDate: nextDate(75, 15),
+      isActive: true,
+      createdAt: now,
+      createdBy: admin._id,
+    });
+
+    const schedules = [
+      {
+        lessonIds: [lessonIds[0]],
+        title: undefined,
+        description:
+          "Completed orientation session linked to the first curriculum lesson.",
+        start: nextDate(-10, 9),
+        end: nextDate(-10, 10),
+        status: "completed" as const,
+        completedAt: nextDate(-10, 10),
+      },
+      {
+        lessonIds: [lessonIds[1]],
+        title: undefined,
+        description:
+          "Live class currently active for reviewing join and active-state UI.",
+        start: Date.now() - 20 * 60 * 1000,
+        end: Date.now() + 40 * 60 * 1000,
+        status: "active" as const,
+        isLive: true,
+      },
+      {
+        lessonIds: [lessonIds[2]],
+        title: undefined,
+        description: "Upcoming curriculum lesson with a normal live session.",
+        start: nextDate(1, 10),
+        end: nextDate(1, 11),
+        status: "scheduled" as const,
+      },
+      {
+        lessonIds: undefined,
+        title: "Custom review: notebook check and Q&A",
+        description:
+          "A custom class session that does not modify or extend the curriculum.",
+        start: nextDate(2, 14),
+        end: nextDate(2, 15),
+        status: "scheduled" as const,
+      },
+      {
+        lessonIds: [lessonIds[3]],
+        title: undefined,
+        description:
+          "Ignitia-style session to inspect external-platform visual states.",
+        start: nextDate(4, 9),
+        end: nextDate(4, 10),
+        status: "scheduled" as const,
+        sessionType: "ignitia" as const,
+      },
+      {
+        lessonIds: undefined,
+        title: "Custom assessment conference",
+        description: "Past custom session with attendance records.",
+        start: nextDate(-3, 13),
+        end: nextDate(-3, 14),
+        status: "completed" as const,
+        completedAt: nextDate(-3, 14),
+      },
+    ];
+
+    const createdScheduleIds: Id<"classSchedule">[] = [];
+    for (const [index, schedule] of schedules.entries()) {
+      const scheduleId = await ctx.db.insert("classSchedule", {
+        classId,
+        lessonIds: schedule.lessonIds,
+        title: schedule.title,
+        description: schedule.description,
+        scheduledStart: schedule.start,
+        scheduledEnd: schedule.end,
+        sessionType: schedule.sessionType || "live",
+        roomName: `ux-demo-${classId}-${index}-${schedule.start}`,
+        isLive: schedule.isLive || false,
+        status: schedule.status,
+        completedAt: schedule.completedAt,
+        isRecurring: false,
+        createdAt: now + index,
+        createdBy: teacher._id,
+      });
+      createdScheduleIds.push(scheduleId);
+    }
+
+    const attendedScheduleIds = [
+      createdScheduleIds[0],
+      createdScheduleIds[5],
+    ].filter(Boolean);
+    for (const scheduleId of attendedScheduleIds) {
+      const schedule = await ctx.db.get(scheduleId);
+      if (!schedule) continue;
+
+      for (const [index, student] of students.slice(0, 8).entries()) {
+        const joinedAt = schedule.scheduledStart + (index % 3) * 5 * 60 * 1000;
+        const leftAt =
+          index % 4 === 0
+            ? schedule.scheduledStart + 20 * 60 * 1000
+            : schedule.scheduledEnd - (index % 2) * 5 * 60 * 1000;
+
+        await ctx.db.insert("class_sessions", {
+          scheduleId,
+          studentId: student._id,
+          joinedAt,
+          leftAt,
+          durationSeconds: Math.max(0, Math.round((leftAt - joinedAt) / 1000)),
+          roomName: schedule.roomName,
+          sessionDate: new Date(schedule.scheduledStart)
+            .toISOString()
+            .split("T")[0],
+          attendanceStatus: index === 7 ? "excused" : undefined,
+          manualMarkedBy: index === 7 ? teacher._id : undefined,
+        });
+      }
+    }
+
+    return {
+      message: "Created UX demo class.",
+      school: school.name,
+      campus: campus.name,
+      classId,
+      curriculumId,
+      lessons: lessonIds.length,
+      students: students.length,
+      schedules: createdScheduleIds.length,
+    };
+  },
+});
+
+export const createClassesTableDemo = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const teacher = await findUserByName(ctx, "betancourt");
+    if (!teacher) {
+      throw new Error("No active user matching Betancourt was found.");
+    }
+
+    const campus =
+      (await getUserCampus(ctx, teacher._id)) || (await getDemoCampus(ctx));
+    const school = await ctx.db.get(campus.schoolId);
+    if (!school) throw new Error("Demo campus has no parent school.");
+
+    const admin = (await getUserByRole(ctx, "admin")) || teacher;
+    const students = await getStudents(ctx, campus._id);
+    const now = Date.now();
+    const createdClassIds: Id<"classes">[] = [];
+    const updatedClassIds: Id<"classes">[] = [];
+
+    for (const [index, demoClass] of classesTableDemoClasses.entries()) {
+      let curriculum = await ctx.db
+        .query("curriculums")
+        .withIndex("by_code", (q) => q.eq("code", demoClass.curriculumCode))
+        .first();
+
+      if (!curriculum) {
+        const curriculumId = await ctx.db.insert("curriculums", {
+          title: demoClass.curriculumTitle,
+          description: "Demo curriculum for reviewing classes table behavior.",
+          code: demoClass.curriculumCode,
+          color: "#f97316",
+          schoolId: school._id,
+          isActive: true,
+          createdAt: now + index,
+          createdBy: admin._id,
+        });
+        curriculum = await ctx.db.get(curriculumId);
+      }
+
+      if (!curriculum) continue;
+
+      const existingClass = await ctx.db
+        .query("classes")
+        .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculum._id))
+        .filter((q) => q.eq(q.field("name"), demoClass.name))
+        .first();
+      const selectedStudents = students
+        .slice(0, Math.min(demoClass.studentCount, students.length))
+        .map((student) => student._id);
+
+      const classData = {
+        curriculumId: curriculum._id,
+        campusId: campus._id,
+        teacherId: teacher._id,
+        tutorId: undefined,
+        students: selectedStudents,
+        academicYear: demoClass.academicYear,
+        classType: "standard" as const,
+        startDate: nextDate(-14 + index, 8),
+        endDate: nextDate(90 + index, 15),
+        isActive: true,
+      };
+
+      if (existingClass) {
+        await ctx.db.patch(existingClass._id, classData);
+        updatedClassIds.push(existingClass._id);
+      } else {
+        const classId = await ctx.db.insert("classes", {
+          name: demoClass.name,
+          description: "Demo class for reviewing classes table layout.",
+          ...classData,
+          createdAt: now + index,
+          createdBy: admin._id,
+        });
+        createdClassIds.push(classId);
+      }
+    }
+
+    return {
+      message: "Created classes table demo data.",
+      teacher: teacher.fullName,
+      campus: campus.name,
+      created: createdClassIds.length,
+      updated: updatedClassIds.length,
+      total: classesTableDemoClasses.length,
+    };
+  },
+});
+
+export const createAdvancedLiteratureLessonsDemo = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const classDoc = await getClassByName(ctx, ADVANCED_LITERATURE_CLASS_NAME);
+    if (!classDoc) {
+      throw new Error(
+        `No class found with name "${ADVANCED_LITERATURE_CLASS_NAME}".`,
+      );
+    }
+
+    const curriculum = await ctx.db.get(classDoc.curriculumId);
+    if (!curriculum) {
+      throw new Error("Advanced Literature class has no curriculum.");
+    }
+
+    const author =
+      (classDoc.teacherId && (await ctx.db.get(classDoc.teacherId))) ||
+      (await getUserByRole(ctx, "admin"));
+    if (!author) throw new Error("No active user found to create lessons.");
+
+    const now = Date.now();
+    const existingLessons = await ctx.db
+      .query("lessons")
+      .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculum._id))
+      .collect();
+    const existingByTitle = new Map(
+      existingLessons.map((lesson) => [lesson.title, lesson]),
+    );
+    let order = existingLessons.reduce(
+      (max, lesson) => Math.max(max, lesson.order),
+      0,
+    );
+    let created = 0;
+    let updated = 0;
+
+    for (const lesson of advancedLiteratureLessons) {
+      const existingLesson = existingByTitle.get(lesson.title);
+      if (existingLesson) {
+        await ctx.db.patch(existingLesson._id, {
+          description: lesson.description,
+          content: lesson.content,
+          isActive: true,
+        });
+        updated += 1;
+        continue;
+      }
+
+      order += 1;
+      await ctx.db.insert("lessons", {
+        curriculumId: curriculum._id,
+        title: lesson.title,
+        description: lesson.description,
+        content: lesson.content,
+        order,
+        isActive: true,
+        createdAt: now + order,
+        createdBy: author._id,
+      });
+      created += 1;
+    }
+
+    return {
+      message: "Created Advanced Literature demo lessons.",
+      className: classDoc.name,
+      curriculumTitle: curriculum.title,
+      created,
+      updated,
+      total: advancedLiteratureLessons.length,
+    };
+  },
+});
+
+export const clearClassesTableDemo = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const demoCurriculums = await ctx.db.query("curriculums").collect();
+    const targetCurriculums = demoCurriculums.filter((curriculum) =>
+      curriculum.code?.startsWith(CLASSES_TABLE_DEMO_CODE_PREFIX),
+    );
+
+    let deletedClasses = 0;
+    let deletedLessons = 0;
+    for (const curriculum of targetCurriculums) {
+      const classes = await ctx.db
+        .query("classes")
+        .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculum._id))
+        .collect();
+
+      for (const classDoc of classes) {
+        await deleteSchedulesForClass(ctx, classDoc._id);
+        await ctx.db.delete(classDoc._id);
+        deletedClasses += 1;
+      }
+
+      const lessons = await ctx.db
+        .query("lessons")
+        .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculum._id))
+        .collect();
+      for (const lesson of lessons) {
+        await ctx.db.delete(lesson._id);
+        deletedLessons += 1;
+      }
+
+      await ctx.db.delete(curriculum._id);
+    }
+
+    return {
+      message: "Cleared classes table demo data.",
+      curriculums: targetCurriculums.length,
+      classes: deletedClasses,
+      lessons: deletedLessons,
+    };
+  },
+});
+
+export const clearClassesUxDemo = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const curriculum = await ctx.db
+      .query("curriculums")
+      .withIndex("by_code", (q) => q.eq("code", UX_DEMO_CURRICULUM_CODE))
+      .first();
+
+    if (!curriculum) return { message: "No UX demo data found." };
+
+    const classes = await ctx.db
+      .query("classes")
+      .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculum._id))
+      .collect();
+
+    for (const classDoc of classes) {
+      await deleteSchedulesForClass(ctx, classDoc._id);
+      await ctx.db.delete(classDoc._id);
+    }
+
+    const lessons = await ctx.db
+      .query("lessons")
+      .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculum._id))
+      .collect();
+    for (const lesson of lessons) {
+      await ctx.db.delete(lesson._id);
+    }
+
+    await ctx.db.delete(curriculum._id);
+
+    return {
+      message: "Cleared UX demo data.",
+      classes: classes.length,
+      lessons: lessons.length,
+    };
   },
 });

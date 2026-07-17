@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,10 @@ import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter
 export function CurriculumsTable() {
   const t = useTranslations();
   const params = useParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedCurriculumId = searchParams.get("curriculumId");
   
   const orgSlug = (params.orgSlug as string) || "system";
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
@@ -41,6 +45,40 @@ export function CurriculumsTable() {
   });
 
   const [editingCurriculum, setEditingCurriculum] = useState<Doc<"curriculums"> | null>(null);
+
+  React.useEffect(() => {
+    if (!data || !requestedCurriculumId) {
+      return;
+    }
+
+    const requestedCurriculum = data.find(
+      (curriculum) => curriculum._id === requestedCurriculumId,
+    );
+
+    if (requestedCurriculum) {
+      setEditingCurriculum(requestedCurriculum);
+    }
+  }, [data, requestedCurriculumId]);
+
+  const handleDialogOpenChange = React.useCallback(
+    (open: boolean) => {
+      if (open) {
+        return;
+      }
+
+      setEditingCurriculum(null);
+
+      if (requestedCurriculumId) {
+        const nextSearchParams = new URLSearchParams(searchParams.toString());
+        nextSearchParams.delete("curriculumId");
+        const nextSearch = nextSearchParams.toString();
+        router.replace(nextSearch ? `${pathname}?${nextSearch}` : pathname, {
+          scroll: false,
+        });
+      }
+    },
+    [pathname, requestedCurriculumId, router, searchParams],
+  );
 
   const filterConfigs: FilterConfig[] = [
     {
@@ -113,7 +151,7 @@ export function CurriculumsTable() {
         <CurriculumDialog
           curriculum={editingCurriculum}
           open={true}
-          onOpenChange={(open) => !open && setEditingCurriculum(null)}
+          onOpenChange={handleDialogOpenChange}
           trigger={<span className="hidden" />}
         />
       )}

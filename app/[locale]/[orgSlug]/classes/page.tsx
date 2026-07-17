@@ -38,8 +38,8 @@ export default function MyClassesPage() {
   const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null);
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null);
 
-  // School comes from global sidebar context; campus stays page-scoped
-  const { selectedSchoolId, selectedCampusId } = useAdminSchoolFilter();
+  const { selectedSchoolId, selectedCampusId, setSelectedCampusId } =
+    useAdminSchoolFilter();
 
   let querySchoolId = undefined;
   let queryCampusId = undefined;
@@ -80,6 +80,9 @@ export default function MyClassesPage() {
     if (!selectedCurriculumId) return allClasses;
     return allClasses.filter((cls) => cls.curriculumId === selectedCurriculumId);
   }, [allClasses, selectedCurriculumId]);
+  const hasTableFilters = Boolean(
+    selectedTeacherId || selectedCurriculumId || selectedCampusId !== "all",
+  );
 
   if (isUserLoading || classes === undefined) {
     return (
@@ -108,12 +111,13 @@ export default function MyClassesPage() {
       <FlexidualHeader
         title={isAdmin ? t("class.allClasses") : t("class.myClasses")}
         subtitle={isAdmin ? t("class.manageAllDescription") : t("class.manageMyDescription")}
+        showCampusFilter={false}
       />
       <div className="container mx-auto p-4 sm:p-6 space-y-6">
 
         {renderWeekOverview()}
         
-        {classes.length === 0 ? (
+        {classes.length === 0 && !hasTableFilters ? (
           <EmptyState isAdmin={isAdmin} />
         ) : (
           <ClassesTable
@@ -125,6 +129,9 @@ export default function MyClassesPage() {
                 onSelectTeacher={setSelectedTeacherId}
                 selectedCurriculumId={selectedCurriculumId}
                 onSelectCurriculum={setSelectedCurriculumId}
+                selectedSchoolId={selectedSchoolId}
+                selectedCampusId={selectedCampusId}
+                onSelectCampus={setSelectedCampusId}
                 isAdmin={isAdmin}
               />
             }
