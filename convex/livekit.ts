@@ -1,6 +1,6 @@
 "use node";
 
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { 
@@ -17,15 +17,15 @@ export const getToken = action({
   args: {
     roomName: v.string(), 
     participantName: v.string(),
-    role: v.optional(v.string()),
     isCompanion: v.optional(v.boolean()),
   },
+  returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (!identity) throw new ConvexError("Not authenticated");
 
     const user = await ctx.runQuery(api.users.getCurrentUser, { clerkId: identity.subject });
-    if (!user) throw new Error("User not found");
+    if (!user) throw new ConvexError("User not found");
 
     // Check backend authorization to join this specific room
     const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, { 
@@ -34,7 +34,7 @@ export const getToken = action({
     });
 
     if (!access || !access.authorized) {
-      throw new Error("You are not authorized to join this session.");
+      throw new ConvexError("You are not authorized to join this session.");
     }
     
     const sessionStatus = await ctx.runQuery(api.schedule.getSessionStatus, { 
@@ -42,19 +42,23 @@ export const getToken = action({
     });
 
     if (!sessionStatus) {
-      throw new Error("Session not found");
-    }
-
-    if (!sessionStatus.isActive && !access.canJoinEarly) {
-      throw new Error("Class has not started yet. Please wait for your teacher.");
+      throw new ConvexError("Session not found");
     }
 
     if (sessionStatus.status === "cancelled") {
-      throw new Error("This session has been cancelled");
+      throw new ConvexError("This session has been cancelled");
+    }
+
+    if (!access.roomAdmin && !sessionStatus.isLive) {
+      throw new ConvexError("Class is not live");
+    }
+
+    if (!sessionStatus.isActive && !access.canJoinEarly) {
+      throw new ConvexError("Class has not started yet. Please wait for your teacher.");
     }
 
     if (sessionStatus.status === "completed" && !access.canJoinEarly) {
-      throw new Error("This session has already ended");
+      throw new ConvexError("This session has already ended");
     }
     
     const apiKey = process.env.LIVEKIT_API_KEY;
@@ -63,8 +67,7 @@ export const getToken = action({
       throw new Error("LiveKit credentials not configured");
     }
 
-    // Determine the final role (Prefer the tenant context passed from the frontend)
-    const finalRole = args.role || access.computedRole || "student";
+    const finalRole = access.computedRole;
 
     const finalIdentity = args.isCompanion 
       ? `${identity.subject}-companion` 
@@ -105,11 +108,20 @@ export const toggleRecording = action({
     start: v.boolean(),
     filePrefix: v.string(),
   },
+  returns: v.object({ success: v.boolean(), message: v.string() }),
   handler: async (ctx, args) => {
-    // You might want to add similar auth/role checks here as you have in getToken
-    // to ensure only authorized users can trigger recordings.
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (!identity) throw new ConvexError("Not authenticated");
+
+    const user = await ctx.runQuery(api.users.getCurrentUser, { clerkId: identity.subject });
+    if (!user) throw new ConvexError("User not found");
+    const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, {
+      userId: user._id,
+      roomName: args.roomName,
+    });
+    if (!access?.authorized || !access.roomAdmin) {
+      throw new ConvexError("Only a room administrator can control recordings");
+    }
 
     const url = process.env.LIVEKIT_URL;
     const apiKey = process.env.LIVEKIT_API_KEY;

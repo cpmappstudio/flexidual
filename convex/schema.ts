@@ -174,6 +174,10 @@ export default defineSchema({
     // LiveKit Integration
     roomName: v.string(),
     isLive: v.optional(v.boolean()),
+    liveAccess: v.optional(v.object({
+      mode: v.union(v.literal("private"), v.literal("school")),
+      allowedGradeCodes: v.array(v.string()),
+    })),
     
     // Status tracking
     status: v.union(

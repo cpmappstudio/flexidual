@@ -123,6 +123,7 @@ export default function StudentHubPage() {
 
   const upcomingScrollRef = useRef<HTMLDivElement>(null)
   const pastScrollRef = useRef<HTMLDivElement>(null)
+  const liveScrollRef = useRef<HTMLDivElement>(null)
 
   const [notifiedLessons, setNotifiedLessons] = useState<Set<string>>(new Set())
 
@@ -216,6 +217,7 @@ export default function StudentHubPage() {
 
   // Queries
   const events = useQuery(api.schedule.getMySchedule, {})
+  const accessibleLiveClasses = useQuery(api.schedule.listAccessibleLiveClasses)
   const dashboardData = useQuery(api.student.getStudentDashboardStats)
 
   useEffect(() => {
@@ -521,7 +523,7 @@ export default function StudentHubPage() {
         )}>
           <Tabs defaultValue="upcoming" className="flex-1 flex flex-col min-h-0">
             <div className="p-3 lg:p-4 border-b-2 border-purple-200 dark:border-purple-800 flex-shrink-0">
-              <TabsList className="grid w-full grid-cols-2 bg-purple-100 dark:bg-purple-900/50">
+              <TabsList className="grid w-full grid-cols-3 bg-purple-100 dark:bg-purple-900/50">
                 <TabsTrigger 
                   value="upcoming" 
                   className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-500 data-[state=active]:to-pink-500 data-[state=active]:text-white data-[state=active]:shadow-md transition-all text-xs sm:text-sm"
@@ -537,6 +539,13 @@ export default function StudentHubPage() {
                   <History className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">{t('student.history')}</span>
                   <span className="sm:hidden">{t('schedule.past')}</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="live"
+                  className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-500 data-[state=active]:to-pink-500 data-[state=active]:text-white transition-all text-xs sm:text-sm"
+                >
+                  <BellRing className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                  {t('student.liveNow')}
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -585,6 +594,32 @@ export default function StudentHubPage() {
                 )}
               </div>
               <ScrollIndicator containerRef={pastScrollRef} />
+            </TabsContent>
+
+            <TabsContent value="live" className="flex-1 min-h-0 m-0 relative">
+              <div ref={liveScrollRef} className="h-full overflow-y-auto p-3 lg:p-4 space-y-3 lg:space-y-4 scrollbar-hide">
+                {accessibleLiveClasses === undefined ? (
+                  <div className="flex h-full items-center justify-center text-sm font-medium text-gray-500">
+                    {t('student.loadingLiveClasses')}
+                  </div>
+                ) : accessibleLiveClasses.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center p-6 lg:p-8 opacity-70">
+                    <div className="text-4xl lg:text-6xl mb-3 lg:mb-4">📡</div>
+                    <h3 className="text-xl lg:text-2xl font-bold text-gray-600 dark:text-gray-400 mb-2">{t('student.noLiveClasses')}</h3>
+                  </div>
+                ) : (
+                  accessibleLiveClasses.map((lesson) => (
+                    <DraggableLessonCard
+                      key={lesson.scheduleId}
+                      lesson={lesson}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      onTap={handleLessonTap}
+                    />
+                  ))
+                )}
+              </div>
+              <ScrollIndicator containerRef={liveScrollRef} />
             </TabsContent>
           </Tabs>
         </div>

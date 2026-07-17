@@ -101,7 +101,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   // 4. Permission & Connection Logic
   const canJoinEarly = ["teacher", "admin", "superadmin", "tutor", "principal"].includes(role);
-  const isClassLive = sessionStatus?.isActive || false;
+  const isClassLive = sessionStatus?.isLive || false;
   const shouldConnect = (isClassLive || canJoinEarly) && !!convexUser;
 
   // Use a ref to ensure we don't log join multiple times for the same session
@@ -143,7 +143,6 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
         const jwt = await getToken({
           roomName,
           participantName,
-          role,
           isCompanion
         });
         setToken(jwt);
@@ -387,6 +386,9 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             roomName={roomName}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
+            sessionIsLive={isClassLive}
+            curriculumGradeCodes={scheduleDetails?.curriculum?.gradeCodes ?? []}
+            liveAccess={scheduleDetails?.liveAccess}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
           />

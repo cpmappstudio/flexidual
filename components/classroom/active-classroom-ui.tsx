@@ -53,6 +53,10 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { GRADE_VALUES } from "@/lib/types/academic";
 
 // --- Constants ---
 const SCREEN_SHARE_OPTIONS = { updateOnlyOn: [], onlySubscribed: false };
@@ -282,16 +286,34 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
 
 // --- Main Component ---
 
+type LiveAccess = {
+  mode: "private" | "school";
+  allowedGradeCodes: string[];
+};
+
 interface ActiveClassroomUIProps {
   currentUserRole?: string;
   roomName: string;
   className?: string;
   lessonTitle?: string;
+  sessionIsLive: boolean;
+  curriculumGradeCodes: string[];
+  liveAccess?: LiveAccess;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
 }
 
-export function ActiveClassroomUI({ currentUserRole, roomName, className, lessonTitle, isFullscreen = false, onToggleFullscreen }: ActiveClassroomUIProps) {
+export function ActiveClassroomUI({
+  currentUserRole,
+  roomName,
+  className,
+  lessonTitle,
+  sessionIsLive,
+  curriculumGradeCodes,
+  liveAccess,
+  isFullscreen = false,
+  onToggleFullscreen,
+}: ActiveClassroomUIProps) {
   const t = useTranslations();
   const router = useRouter();
   const pathname = usePathname();
@@ -329,6 +351,14 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const [followViewport, setFollowViewport] = useState(true);
   const [pendingFullscreen, setPendingFullscreen] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const suggestedGradeCodes = Array.from(new Set([...curriculumGradeCodes, "09", "10", "11", "12"]))
+    .filter((gradeCode) => GRADE_VALUES.includes(gradeCode as (typeof GRADE_VALUES)[number]));
+  const [accessMode, setAccessMode] = useState<LiveAccess["mode"]>(liveAccess?.mode ?? "private");
+  const [selectedGradeCodes, setSelectedGradeCodes] = useState<string[]>(
+    liveAccess?.mode === "school" ? liveAccess.allowedGradeCodes : suggestedGradeCodes
+  );
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [hasStartedSession, setHasStartedSession] = useState(false);
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -391,6 +421,25 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   const isLocalAdminPresenting = amIAuthority && !amITeacher && !actualTeacher && presenterMode;
   const teacher = actualTeacher || adminPresenterParticipant || (isLocalAdminPresenting ? localParticipant : null) || undefined;
   const amIIncognito = amIAuthority && !amITeacher && !!actualTeacher;
+
+  const handleStartSession = async () => {
+    if (accessMode === "school" && selectedGradeCodes.length === 0) return;
+
+    setIsStartingSession(true);
+    try {
+      const selectedLiveAccess: LiveAccess = {
+        mode: accessMode,
+        allowedGradeCodes: accessMode === "school" ? selectedGradeCodes : [],
+      };
+      await markLive({ roomName, isLive: true, liveAccess: selectedLiveAccess });
+      setHasStartedSession(true);
+    } catch {
+      toast.error(t('classroom.startClassError'));
+    } finally {
+      setIsStartingSession(false);
+    }
+  };
+
   // A companion is any remote participant whose metadata marks isCompanion: true
   const hasCompanion = participants.some((p) => !p.isLocal && getIsCompanion(p));
   const students = participants.filter((p) => {
@@ -827,14 +876,75 @@ export function ActiveClassroomUI({ currentUserRole, roomName, className, lesson
   }, [isPhoneLandscape, showStageControls]);
 
   useEffect(() => {
-    if (!amITeacher && !isLocalAdminPresenting) return;
-    markLive({ roomName, isLive: true });
-    return () => { markLive({ roomName, isLive: false }); };
-  }, [amITeacher, isLocalAdminPresenting, roomName, markLive]);
+    if (!hasStartedSession) return;
+    return () => { void markLive({ roomName, isLive: false }); };
+  }, [hasStartedSession, roomName, markLive]);
 
   return (
     <div ref={rootRef} className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] xl:grid-cols-[1fr_320px] xl:grid-rows-[min-content_1fr_min-content]">
       <RoomAudioRenderer />
+
+      <AlertDialog open={amIAuthority && !sessionIsLive && !hasStartedSession}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('classroom.startClassTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('classroom.startClassDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <RadioGroup value={accessMode} onValueChange={(value) => setAccessMode(value as LiveAccess["mode"])} className="space-y-3">
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <RadioGroupItem value="private" id="live-access-private" className="mt-1" />
+              <Label htmlFor="live-access-private" className="cursor-pointer space-y-1">
+                <span className="block font-semibold">{t('classroom.privateAccess')}</span>
+                <span className="block text-sm font-normal text-muted-foreground">{t('classroom.privateAccessDescription')}</span>
+              </Label>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <RadioGroupItem value="school" id="live-access-school" className="mt-1" />
+              <Label htmlFor="live-access-school" className="cursor-pointer space-y-1">
+                <span className="block font-semibold">{t('classroom.schoolAccess')}</span>
+                <span className="block text-sm font-normal text-muted-foreground">{t('classroom.schoolAccessDescription')}</span>
+              </Label>
+            </div>
+          </RadioGroup>
+
+          {accessMode === "school" && (
+            <div className="space-y-3">
+              <Label>{t('classroom.selectGrades')}</Label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {GRADE_VALUES.map((gradeCode) => (
+                  <Label key={gradeCode} htmlFor={`live-grade-${gradeCode}`} className="flex cursor-pointer items-center gap-2 rounded-md border p-2 font-normal">
+                    <Checkbox
+                      id={`live-grade-${gradeCode}`}
+                      checked={selectedGradeCodes.includes(gradeCode)}
+                      onCheckedChange={(checked) => setSelectedGradeCodes((current) =>
+                        checked ? [...current, gradeCode] : current.filter((code) => code !== gradeCode)
+                      )}
+                    />
+                    {t(`student.grades.${gradeCode}`)}
+                  </Label>
+                ))}
+              </div>
+              {selectedGradeCodes.length === 0 && (
+                <p className="text-sm text-destructive">{t('classroom.gradeRequired')}</p>
+              )}
+            </div>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogAction
+              disabled={isStartingSession || (accessMode === "school" && selectedGradeCodes.length === 0)}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleStartSession();
+              }}
+            >
+              {isStartingSession && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('classroom.confirmStartClass')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Fullscreen invitation dialog — shown when remote content appears; needs user click to satisfy browser gesture requirement */}
       <AlertDialog open={pendingFullscreen} onOpenChange={(open) => { if (!open) setPendingFullscreen(false); }}>
