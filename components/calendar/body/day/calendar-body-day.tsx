@@ -8,7 +8,7 @@ export default function CalendarBodyDay() {
   const { date } = useCalendarContext()
   return (
     <div className="flex divide-x h-full overflow-hidden">
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-card">
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="relative flex min-h-full divide-x">
             <CalendarBodyMarginDayMargin />

@@ -58,8 +58,8 @@ export default function CalendarBodyMonth() {
   })
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="hidden md:grid grid-cols-7 border-b sticky top-0 bg-background z-10">
+    <div className="flex h-full flex-col overflow-hidden bg-card">
+      <div className="sticky top-0 z-10 hidden grid-cols-7 border-b bg-card md:grid">
         {weekDays.map((day, index) => (
           <div
             key={index}
@@ -73,7 +73,7 @@ export default function CalendarBodyMonth() {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={monthStart.toISOString()}
-          className="grid md:grid-cols-7 grid-rows-[repeat(auto-fit,minmax(0,1fr))] flex-1 min-h-0"
+          className="grid min-h-0 flex-1 grid-rows-[repeat(auto-fit,minmax(0,1fr))] overflow-y-auto md:grid-cols-7 md:overflow-hidden"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -165,7 +165,7 @@ function DayCell({
     <div
       ref={containerRef}
       className={cn(
-        'relative flex flex-col border-b border-r p-1.5 min-h-[100px] cursor-pointer',
+        'relative flex min-h-16 cursor-pointer flex-col border-b p-1.5 last:border-b-0 md:min-h-0 md:border-r md:[&:nth-child(7n)]:border-r-0 md:[&:nth-last-child(-n+7)]:border-b-0',
         !isCurrentMonth && 'bg-muted/50 hidden md:flex'
       )}
       onClick={(e) => {

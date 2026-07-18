@@ -7,7 +7,7 @@ export type CalendarProps = {
   setMode: (mode: Mode) => void
   date: Date
   setDate: (date: Date) => void
-  calendarIconIsToday?: boolean
+
   isLoading?: boolean
   userId?: Id<"users">
 }
@@ -93,5 +93,5 @@ export type SchedulableClass = {
   }[]
 }
 
-export const calendarModes = ['day', 'week', 'month'] as const
+export const calendarModes = ['month', 'week', 'day'] as const
 export type Mode = (typeof calendarModes)[number]

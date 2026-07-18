@@ -1,6 +1,6 @@
-import { Button } from '@/components/ui/button'
-import { useCalendarContext } from '../../calendar-context'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Button } from "@/components/ui/button"
+import { useCalendarContext } from "../../calendar-context"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import {
   format,
   addDays,
@@ -11,86 +11,83 @@ import {
   subWeeks,
   startOfWeek,
   endOfWeek,
-} from 'date-fns'
-import { enUS, es, ptBR } from 'date-fns/locale'
-import { useLocale } from 'next-intl'
-import CalendarHeaderDateBadge from './calendar-header-date-badge'
+} from "date-fns"
+import { enUS, es, ptBR } from "date-fns/locale"
+import { useLocale, useTranslations } from "next-intl"
+import CalendarHeaderDateBadge from "./calendar-header-date-badge"
 
 const localeMap = {
   en: enUS,
-  es: es,
+  es,
   "pt-BR": ptBR,
 } as const
 
 export default function CalendarHeaderDateChevrons() {
   const { mode, date, setDate } = useCalendarContext()
   const locale = useLocale()
+  const tDashboard = useTranslations("dashboard")
+  const tCommon = useTranslations("common")
   const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
 
   function handleDateBackward() {
-    switch (mode) {
-      case 'month':
-        setDate(subMonths(date, 1))
-        break
-      case 'week':
-        setDate(subWeeks(date, 1))
-        break
-      case 'day':
-        setDate(subDays(date, 1))
-        break
-    }
+    if (mode === "month") setDate(subMonths(date, 1))
+    if (mode === "week") setDate(subWeeks(date, 1))
+    if (mode === "day") setDate(subDays(date, 1))
   }
 
   function handleDateForward() {
-    switch (mode) {
-      case 'month':
-        setDate(addMonths(date, 1))
-        break
-      case 'week':
-        setDate(addWeeks(date, 1))
-        break
-      case 'day':
-        setDate(addDays(date, 1))
-        break
-    }
+    if (mode === "month") setDate(addMonths(date, 1))
+    if (mode === "week") setDate(addWeeks(date, 1))
+    if (mode === "day") setDate(addDays(date, 1))
   }
 
   function getDateLabel() {
-    switch (mode) {
-      case 'month':
-        return format(date, 'MMMM yyyy', { locale: dateLocale })
-      case 'week':
-        const weekStart = startOfWeek(date)
-        const weekEnd = endOfWeek(date)
-        return `${format(weekStart, 'MMM d', { locale: dateLocale })} - ${format(weekEnd, 'MMM d, yyyy', { locale: dateLocale })}`
-      case 'day':
-        return format(date, 'MMMM d, yyyy', { locale: dateLocale })
-      default:
-        return format(date, 'MMMM d, yyyy', { locale: dateLocale })
+    if (mode === "month") {
+      return format(date, "MMMM yyyy", { locale: dateLocale })
     }
+
+    if (mode === "week") {
+      const weekStart = startOfWeek(date, { weekStartsOn: 1 })
+      const weekEnd = endOfWeek(date, { weekStartsOn: 1 })
+      return `${format(weekStart, "MMM d", { locale: dateLocale })} – ${format(weekEnd, "MMM d, yyyy", { locale: dateLocale })}`
+    }
+
+    return format(date, "MMMM d, yyyy", { locale: dateLocale })
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-1.5">
       <Button
         variant="outline"
-        className="h-7 w-7 p-1"
+        size="sm"
+        className="h-9 bg-sidebar hover:bg-accent"
+        onClick={() => setDate(new Date())}
+      >
+        {tDashboard("today")}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={tCommon("previous")}
+        title={tCommon("previous")}
         onClick={handleDateBackward}
       >
-        <ChevronLeft className="min-w-5 min-h-5" />
+        <ChevronLeft className="size-4" />
       </Button>
-
-      <span className="min-w-[140px] text-center font-medium">
-        {getDateLabel()}
-      </span>
-
       <Button
-        variant="outline"
-        className="h-7 w-7 p-1"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={tCommon("next")}
+        title={tCommon("next")}
         onClick={handleDateForward}
       >
-        <ChevronRight className="min-w-5 min-h-5" />
+        <ChevronRight className="size-4" />
       </Button>
+
+      <span className="min-w-0 text-lg font-bold capitalize sm:text-xl">
+        {getDateLabel()}
+      </span>
       <CalendarHeaderDateBadge />
     </div>
   )

@@ -4,7 +4,7 @@ export default function CalendarHeader({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex lg:flex-row flex-col lg:items-center justify-between p-4 gap-4 border-b">
+    <div className="flex shrink-0 flex-col justify-between gap-3 py-3 lg:flex-row lg:items-center">
       {children}
     </div>
   )

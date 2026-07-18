@@ -21,7 +21,7 @@ export default function CalendarBodyHeader({
   const isToday = isSameDay(date, new Date())
 
   return (
-    <div className="flex items-center justify-center gap-1 py-1.5 w-full sticky top-0 bg-background z-10 border-b">
+    <div className="sticky top-0 z-10 flex w-full items-center justify-center gap-1 border-b bg-card py-1.5">
       <span
         className={cn(
           'text-[10px] font-medium',

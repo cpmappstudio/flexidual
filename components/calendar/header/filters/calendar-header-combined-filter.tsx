@@ -16,7 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useCalendarContext } from "../../calendar-context"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
-import { Badge } from "@/components/ui/badge"
+
 
 // Multi-tenant imports
 import { useParams } from "next/navigation"
@@ -55,39 +55,19 @@ export default function CalendarHeaderCombinedFilter() {
     curriculum.code?.toLowerCase().includes(curriculumSearch.toLowerCase())
   )
 
-  const clearAllFilters = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
-    onTeacherChange(null)
-    onCurriculumChange(null)
-  }
+
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant={hasActiveFilters ? "secondary" : "outline"}
-          size="sm"
-          className="gap-2 group"
+          variant="outline"
+          size="icon"
+          className={hasActiveFilters ? "border-secondary bg-sidebar text-secondary" : "bg-sidebar"}
+          aria-label={hasActiveFilters ? t("class.filtered") : t("class.filterBy")}
+          title={hasActiveFilters ? t("class.filtered") : t("class.filterBy")}
         >
-          <Filter className="h-4 w-4" />
-          <span className="hidden sm:inline">
-            {hasActiveFilters ? t("class.filtered") : t("class.filterBy")}
-          </span>
-          {hasActiveFilters && (
-            <>
-              <Badge variant="outline" className="ml-1 px-1.5 py-0 h-5">
-                {(selectedTeacherId ? 1 : 0) + (selectedCurriculumId ? 1 : 0)}
-              </Badge>
-              <div
-                role="button"
-                className="ml-1 rounded-full p-0.5 hover:bg-foreground/10 cursor-pointer relative z-50"
-                onClick={clearAllFilters}
-              >
-                <X className="h-3 w-3" />
-              </div>
-            </>
-          )}
+          <Filter className="size-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">

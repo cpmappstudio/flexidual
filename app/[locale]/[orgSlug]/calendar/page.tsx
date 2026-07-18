@@ -5,7 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import Calendar from "@/components/calendar/calendar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format, isSameDay, startOfDay } from "date-fns";
@@ -17,7 +17,7 @@ import CalendarNewEventDialog from "@/components/calendar/dialog/calendar-new-ev
 import CalendarManageEventDialog from "@/components/calendar/dialog/calendar-manage-event-dialog";
 import { useCalendarContext } from "@/components/calendar/calendar-context";
 import { useTranslations, useLocale } from "next-intl";
-import CalendarHeaderCombinedFilter from "@/components/calendar/header/filters/calendar-header-combined-filter";
+
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types";
 import { ScheduleItem } from "@/components/schedule/schedule-item";
 
@@ -137,12 +137,12 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
 function CalendarContent() {
   const [mode, setMode] = useState<Mode>("month");
   const [date, setDate] = useState<Date>(new Date());
-  const [activeTab, setActiveTab] = useState("month");
+
   const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null);
   const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null);
 
   const { user } = useCurrentUser();
-  const t = useTranslations();
+
 
   const searchParams = useSearchParams();
   const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
@@ -209,7 +209,7 @@ function CalendarContent() {
   }, [filteredEvents]);
 
   if (scheduleData === undefined) {
-    return <Skeleton className="h-[600px] w-full" />;
+    return <Skeleton className="h-full min-h-0 w-full" />;
   }
 
   return (
@@ -226,28 +226,11 @@ function CalendarContent() {
         selectedCurriculumId={selectedCurriculumId}
         onCurriculumChange={setSelectedCurriculumId}
       >
-        <div className="flex h-full w-full flex-col space-y-6">
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="flex flex-col h-full w-full"
-          >
-            <div className="flex items-center justify-between mb-4 px-1">
-              <TabsList>
-                <TabsTrigger value="month">
-                  {t("calendar.monthView")}
-                </TabsTrigger>
-                <TabsTrigger value="agenda">
-                  {t("calendar.agendaList")}
-                </TabsTrigger>
-              </TabsList>
-
-              <CalendarHeaderCombinedFilter />
-            </div>
-
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+          <Tabs defaultValue="month" className="flex h-full min-h-0 w-full flex-col overflow-hidden">
             <TabsContent
               value="month"
-              className="flex-1 min-h-0 border rounded-lg bg-background p-4 m-0 data-[state=active]:flex data-[state=active]:flex-col"
+              className="m-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
             >
               <Calendar
                 events={filteredEvents}
@@ -276,10 +259,10 @@ function CalendarContent() {
 
 export default function CalendarPage() {
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] w-full">
-      <div className="flex-1 min-h-0">
+    <div className="flex h-[calc(100svh-var(--header-height)-2rem)] min-h-0 w-full overflow-hidden md:h-[calc(100svh-var(--header-height)-3rem)]">
+      <div className="h-full min-h-0 flex-1 overflow-hidden">
         <Suspense
-          fallback={<Skeleton className="h-[600px] w-full" />}
+          fallback={<Skeleton className="h-full min-h-0 w-full" />}
         >
           <CalendarContent />
         </Suspense>

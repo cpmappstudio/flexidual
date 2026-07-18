@@ -22,11 +22,11 @@ export default function CalendarBodyMarginDayMargin({
   return (
     <div
       className={cn(
-        'sticky left-0 w-16 xl:w-20 bg-background z-10 flex flex-col shrink-0',
+        'sticky left-0 z-10 flex w-16 shrink-0 flex-col bg-card xl:w-20',
         className
       )}
     >
-      <div className="sticky top-0 left-0 h-7 bg-background z-20 border-b" />
+      <div className="sticky top-0 left-0 z-20 h-7 border-b bg-card" />
       <div className="flex flex-col">
         {hours.map((hour) => (
           <div key={hour} className="relative h-16 xl:h-20 2xl:h-24 first:mt-0">

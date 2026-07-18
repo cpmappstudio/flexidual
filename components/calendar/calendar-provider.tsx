@@ -12,7 +12,7 @@ interface CalendarProviderProps {
   setMode: (mode: Mode) => void;
   date: Date;
   setDate: (date: Date) => void;
-  calendarIconIsToday?: boolean;
+
   isLoading?: boolean;
   userId?: Id<"users">;
   selectedTeacherId: Id<"users"> | null;
@@ -29,7 +29,7 @@ export default function CalendarProvider({
   setMode,
   date,
   setDate,
-  calendarIconIsToday = true,
+
   isLoading = false,
   userId,
   selectedTeacherId,
@@ -53,7 +53,7 @@ export default function CalendarProvider({
         setMode,
         date,
         setDate,
-        calendarIconIsToday,
+
         isLoading,
         userId,
 
