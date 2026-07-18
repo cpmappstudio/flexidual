@@ -295,7 +295,7 @@ export function RecordingPlayerModal({
               </p>
               <p className="text-sm mt-1 text-muted-foreground">
                 {t("recordings.noRecordingsHint") ||
-                  "This session may still be processing or was not recorded."}
+                  "This class may still be processing or was not recorded."}
               </p>
             </div>
           )}

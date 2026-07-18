@@ -58,8 +58,8 @@ export default function CalendarBodyMonth() {
   })
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-card">
-      <div className="sticky top-0 z-10 hidden grid-cols-7 border-b bg-card md:grid">
+    <div className="flex h-full flex-col overflow-hidden bg-sidebar">
+      <div className="sticky top-0 z-10 hidden grid-cols-7 border-b bg-sidebar md:grid">
         {weekDays.map((day, index) => (
           <div
             key={index}

@@ -38,10 +38,9 @@ export default function CalendarProvider({
   onCurriculumChange,
   children,
 }: CalendarProviderProps) {
-  const [newEventDialogOpen, setNewEventDialogOpen] = useState(false);
+
   const [manageEventDialogOpen, setManageEventDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [preselectedLessonId, setPreselectedLessonId] = useState<Id<"lessons"> | null>(null);
 
   return (
     <CalendarContext.Provider
@@ -58,16 +57,11 @@ export default function CalendarProvider({
         userId,
 
         // Dialog Management
-        newEventDialogOpen,
-        setNewEventDialogOpen,
         manageEventDialogOpen,
         setManageEventDialogOpen,
         selectedEvent,
         setSelectedEvent,
 
-        // Scheduling Shortcut
-        preselectedLessonId,
-        setPreselectedLessonId,
         selectedTeacherId,
         onTeacherChange,
         selectedCurriculumId,

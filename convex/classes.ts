@@ -294,6 +294,272 @@ export const checkStudentCurriculumEnrollment = internalQuery({
 // MUTATIONS
 // ============================================================================
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_ACADEMIC_PERIOD_MS = 400 * DAY_MS;
+const MAX_WEEKLY_SLOTS = 14;
+const MAX_OCCURRENCES_PER_SLOT = 60;
+
+type WeeklySlot = {
+  dayOfWeek: number;
+  startMinutes: number;
+  durationMinutes: number;
+  sessionType: "live" | "ignitia" | "abeka";
+};
+
+function getWeeklyOccurrences(
+  startDate: number,
+  endDate: number,
+  timezoneOffset: number,
+  slot: WeeklySlot,
+) {
+  const offsetMs = timezoneOffset * 60 * 1000;
+  const localStart = startDate - offsetMs;
+  const localEnd = endDate - offsetMs;
+  const start = new Date(localStart);
+  const daysToFirst = (slot.dayOfWeek - start.getUTCDay() + 7) % 7;
+  let current =
+    Date.UTC(
+      start.getUTCFullYear(),
+      start.getUTCMonth(),
+      start.getUTCDate() + daysToFirst,
+    ) +
+    slot.startMinutes * 60 * 1000;
+  const occurrences: number[] = [];
+
+  while (current <= localEnd && occurrences.length < MAX_OCCURRENCES_PER_SLOT) {
+    occurrences.push(current + offsetMs);
+    current += 7 * DAY_MS;
+  }
+
+  return occurrences;
+}
+
+/**
+ * Create a course and its recurring classes in one transaction.
+ */
+export const createWithSchedule = mutation({
+  args: {
+    name: v.string(),
+    description: v.optional(v.string()),
+    curriculumId: v.id("curriculums"),
+    campusId: v.optional(v.id("campuses")),
+    teacherId: v.id("users"),
+    startDate: v.number(),
+    endDate: v.number(),
+    timezoneOffset: v.number(),
+    weeklySlots: v.array(
+      v.object({
+        dayOfWeek: v.number(),
+        startMinutes: v.number(),
+        durationMinutes: v.number(),
+        sessionType: v.union(
+          v.literal("live"),
+          v.literal("ignitia"),
+          v.literal("abeka"),
+        ),
+      }),
+    ),
+  },
+  returns: v.object({
+    classId: v.id("classes"),
+    classesCreated: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const name = args.name.trim();
+
+    if (!name) throw new ConvexError("COURSE_NAME_REQUIRED");
+    if (args.endDate <= args.startDate) {
+      throw new ConvexError("INVALID_ACADEMIC_PERIOD");
+    }
+    if (args.endDate - args.startDate > MAX_ACADEMIC_PERIOD_MS) {
+      throw new ConvexError("ACADEMIC_PERIOD_TOO_LONG");
+    }
+    if (
+      args.weeklySlots.length === 0 ||
+      args.weeklySlots.length > MAX_WEEKLY_SLOTS
+    ) {
+      throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
+    }
+
+    const curriculum = await ctx.db.get(args.curriculumId);
+    if (!curriculum) throw new ConvexError("CURRICULUM_NOT_FOUND");
+
+    if (args.campusId) {
+      const campus = await ctx.db.get(args.campusId);
+      if (!campus || campus.schoolId !== curriculum.schoolId) {
+        throw new ConvexError("INVALID_CAMPUS");
+      }
+    }
+
+    const isAuthorized = await canManageClasses(
+      ctx,
+      user._id,
+      args.campusId,
+      curriculum.schoolId,
+    );
+    if (!isAuthorized) throw new ConvexError("PERMISSION_DENIED");
+
+    const teacher = await ctx.db.get(args.teacherId);
+    if (!teacher || !(await hasAnyOrgRole(ctx, args.teacherId, ["teacher"]))) {
+      throw new ConvexError("INVALID_TEACHER");
+    }
+
+    for (const slot of args.weeklySlots) {
+      if (
+        !Number.isInteger(slot.dayOfWeek) ||
+        slot.dayOfWeek < 0 ||
+        slot.dayOfWeek > 6 ||
+        !Number.isInteger(slot.startMinutes) ||
+        slot.startMinutes < 0 ||
+        slot.startMinutes >= 24 * 60 ||
+        !Number.isInteger(slot.durationMinutes) ||
+        slot.durationMinutes < 15 ||
+        slot.durationMinutes > 8 * 60
+      ) {
+        throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
+      }
+    }
+
+    const occurrencesBySlot = args.weeklySlots.map((slot) => {
+      const starts = getWeeklyOccurrences(
+        args.startDate,
+        args.endDate,
+        args.timezoneOffset,
+        slot,
+      );
+      if (starts.length === 0) {
+        throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
+      }
+      return starts.map((start) => ({
+        start,
+        end: start + slot.durationMinutes * 60 * 1000,
+        sessionType: slot.sessionType,
+      }));
+    });
+
+    const plannedClasses = occurrencesBySlot
+      .flat()
+      .sort((a, b) => a.start - b.start);
+    for (let index = 1; index < plannedClasses.length; index++) {
+      if (plannedClasses[index].start < plannedClasses[index - 1].end) {
+        throw new ConvexError("COURSE_CLASS_OVERLAP");
+      }
+    }
+
+    const liveClasses = plannedClasses.filter(
+      (plannedClass) => plannedClass.sessionType === "live",
+    );
+    if (liveClasses.length > 0) {
+      const teacherClasses = await ctx.db
+        .query("classes")
+        .withIndex("by_teacher", (q) =>
+          q.eq("teacherId", args.teacherId).eq("isActive", true),
+        )
+        .collect();
+      const teacherClassIds = new Set(
+        teacherClasses.map((classData) => classData._id),
+      );
+      const existingSchedules = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_date_range", (q) =>
+          q
+            .gte("scheduledStart", args.startDate - DAY_MS)
+            .lte("scheduledStart", args.endDate),
+        )
+        .collect();
+      const teacherSchedules = existingSchedules.filter(
+        (schedule) =>
+          schedule.status !== "cancelled" &&
+          teacherClassIds.has(schedule.classId),
+      );
+
+      for (const plannedClass of liveClasses) {
+        const conflict = teacherSchedules.find(
+          (schedule) =>
+            schedule.scheduledStart < plannedClass.end &&
+            schedule.scheduledEnd > plannedClass.start,
+        );
+        if (conflict) {
+          throw new ConvexError({
+            code: "TEACHER_SCHEDULE_CONFLICT",
+            className: name,
+            conflictTime: conflict.scheduledStart.toString(),
+          });
+        }
+      }
+    }
+
+    const offsetMs = args.timezoneOffset * 60 * 1000;
+    const localStart = new Date(args.startDate - offsetMs);
+    const localEnd = new Date(args.endDate - offsetMs);
+    const startYear = localStart.getUTCFullYear();
+    const endYear = localEnd.getUTCFullYear();
+    const now = Date.now();
+    const classId = await ctx.db.insert("classes", {
+      name,
+      description: args.description,
+      curriculumId: args.curriculumId,
+      campusId: args.campusId,
+      teacherId: args.teacherId,
+      students: [],
+      academicYear:
+        startYear === endYear ? `${startYear}` : `${startYear}-${endYear}`,
+      startDate: args.startDate,
+      endDate: args.endDate,
+      isActive: true,
+      createdAt: now,
+      createdBy: user._id,
+    });
+
+    let classesCreated = 0;
+    for (let slotIndex = 0; slotIndex < args.weeklySlots.length; slotIndex++) {
+      const slot = args.weeklySlots[slotIndex];
+      const occurrences = occurrencesBySlot[slotIndex];
+      const parentRoomName = `class-${classId}-series-${now}-${slotIndex}`;
+      const parentId = await ctx.db.insert("classSchedule", {
+        classId,
+        lessonIds: [],
+        sessionType: slot.sessionType,
+        scheduledStart: occurrences[0].start,
+        scheduledEnd: occurrences[0].end,
+        roomName: parentRoomName,
+        isLive: false,
+        isRecurring: true,
+        recurrenceRule: JSON.stringify({
+          type: "weekly",
+          daysOfWeek: [slot.dayOfWeek],
+          endDate: args.endDate,
+        }),
+        status: "scheduled",
+        createdAt: now,
+        createdBy: user._id,
+      });
+      classesCreated++;
+
+      for (let index = 1; index < occurrences.length; index++) {
+        await ctx.db.insert("classSchedule", {
+          classId,
+          lessonIds: [],
+          sessionType: slot.sessionType,
+          scheduledStart: occurrences[index].start,
+          scheduledEnd: occurrences[index].end,
+          roomName: `${parentRoomName}-${index}`,
+          isLive: false,
+          isRecurring: true,
+          recurrenceParentId: parentId,
+          status: "scheduled",
+          createdAt: now,
+          createdBy: user._id,
+        });
+        classesCreated++;
+      }
+    }
+
+    return { classId, classesCreated };
+  },
+});
+
 /**
  * Create new class
  */
@@ -359,6 +625,7 @@ export const create = mutation({
       curriculumId: args.curriculumId,
       campusId: args.campusId,
       teacherId: args.teacherId,
+      classType: args.classType || "standard",
       tutorId: args.tutorId,
       students: args.students || [],
       academicYear: args.academicYear,

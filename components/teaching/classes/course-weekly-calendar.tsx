@@ -1,0 +1,300 @@
+"use client";
+
+import { useState } from "react";
+import { format } from "date-fns";
+import { Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { toast } from "sonner";
+import {
+  CalendarTimeGridDay,
+  CalendarWeekTimeGrid,
+} from "@/components/calendar/body/week/calendar-week-time-grid";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+
+export type CourseClassFormat = "live" | "ignitia" | "abeka";
+
+export type CourseWeeklySlot = {
+  id: string;
+  dayOfWeek: number;
+  startMinutes: number;
+  endMinutes: number;
+  sessionType: CourseClassFormat;
+};
+
+interface DraftSelection {
+  dayOfWeek: number;
+  anchorMinutes: number;
+  currentMinutes: number;
+}
+
+interface CourseWeeklyCalendarProps {
+  value: CourseWeeklySlot[];
+  onChangeAction: (value: CourseWeeklySlot[]) => void;
+  courseName: string;
+  teacherName?: string;
+}
+
+const MINUTES_PER_DAY = 24 * 60;
+const SNAP_MINUTES = 15;
+
+const formatClasses: Record<CourseClassFormat, string> = {
+  live: "border-primary/40 bg-primary/20 text-primary",
+  ignitia: "border-secondary/50 bg-secondary/20 text-secondary-foreground",
+  abeka: "border-info/40 bg-info/15 text-info",
+};
+
+function getPointerMinutes(
+  event: React.PointerEvent<HTMLDivElement>,
+  isStart: boolean,
+) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const surfaceHeight = event.currentTarget.scrollHeight || rect.height;
+  const ratio = (event.clientY - rect.top) / surfaceHeight;
+  const minutes = Math.round(
+    (Math.max(0, Math.min(1, ratio)) * MINUTES_PER_DAY) / SNAP_MINUTES,
+  ) * SNAP_MINUTES;
+
+  return isStart
+    ? Math.min(minutes, MINUTES_PER_DAY - SNAP_MINUTES)
+    : Math.min(minutes, MINUTES_PER_DAY);
+}
+
+function normalizeSelection(selection: DraftSelection) {
+  const startMinutes = Math.min(
+    selection.anchorMinutes,
+    selection.currentMinutes,
+  );
+  const endMinutes = Math.max(
+    selection.anchorMinutes,
+    selection.currentMinutes,
+  );
+
+  return {
+    dayOfWeek: selection.dayOfWeek,
+    startMinutes,
+    endMinutes:
+      endMinutes === startMinutes
+        ? Math.min(startMinutes + SNAP_MINUTES, MINUTES_PER_DAY)
+        : endMinutes,
+  };
+}
+
+function formatMinutes(minutes: number) {
+  const date = new Date();
+  date.setHours(Math.floor(minutes / 60) % 24, minutes % 60, 0, 0);
+  return format(date, "h:mm a");
+}
+
+export function CourseWeeklyCalendar({
+  value,
+  onChangeAction,
+  courseName,
+  teacherName,
+}: CourseWeeklyCalendarProps) {
+  const t = useTranslations();
+  const [draft, setDraft] = useState<DraftSelection>();
+  const [pending, setPending] = useState<
+    ReturnType<typeof normalizeSelection>
+  >();
+
+  const startSelection = (
+    dayOfWeek: number,
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const minutes = getPointerMinutes(event, true);
+    setDraft({
+      dayOfWeek,
+      anchorMinutes: minutes,
+      currentMinutes: minutes,
+    });
+  };
+
+  const updateSelection = (
+    dayOfWeek: number,
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (!draft || draft.dayOfWeek !== dayOfWeek) return;
+    const currentMinutes = getPointerMinutes(event, false);
+    setDraft((current) =>
+      current ? { ...current, currentMinutes } : current,
+    );
+  };
+
+  const finishSelection = (
+    dayOfWeek: number,
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (!draft || draft.dayOfWeek !== dayOfWeek) return;
+    const selection = normalizeSelection({
+      ...draft,
+      currentMinutes: getPointerMinutes(event, false),
+    });
+    setDraft(undefined);
+    setPending(selection);
+  };
+
+  const addSelection = (sessionType: CourseClassFormat) => {
+    if (!pending) return;
+    const overlaps = value.some(
+      (slot) =>
+        slot.dayOfWeek === pending.dayOfWeek &&
+        slot.startMinutes < pending.endMinutes &&
+        slot.endMinutes > pending.startMinutes,
+    );
+
+    if (overlaps) {
+      toast.error(t("class.classTimeOverlap"));
+      setPending(undefined);
+      return;
+    }
+
+    onChangeAction([
+      ...value,
+      {
+        ...pending,
+        id: `${Date.now()}-${pending.dayOfWeek}-${pending.startMinutes}`,
+        sessionType,
+      },
+    ]);
+    setPending(undefined);
+  };
+
+  const renderSelection = (
+    selection: {
+      startMinutes: number;
+      endMinutes: number;
+      sessionType?: CourseClassFormat;
+      id?: string;
+    },
+    isDraft = false,
+  ) => {
+    const top = (selection.startMinutes / MINUTES_PER_DAY) * 100;
+    const height =
+      ((selection.endMinutes - selection.startMinutes) / MINUTES_PER_DAY) * 100;
+
+    return (
+      <div
+        key={selection.id || "draft"}
+        className={cn(
+          "absolute inset-x-1 z-10 overflow-hidden rounded-md border px-1.5 py-1 text-[10px] font-semibold shadow-sm",
+          isDraft
+            ? "pointer-events-none border-primary/50 bg-primary/15 text-primary"
+            : formatClasses[selection.sessionType || "live"],
+        )}
+        style={{ top: `${top}%`, height: `${height}%` }}
+        onPointerDown={isDraft ? undefined : (event) => event.stopPropagation()}
+      >
+        {isDraft ? (
+          <span className="block truncate">
+            {formatMinutes(selection.startMinutes)}–
+            {formatMinutes(selection.endMinutes)}
+          </span>
+        ) : (
+          <>
+            <span className="block truncate">
+              {courseName.trim() || t("class.class")}
+            </span>
+            <span className="block truncate font-normal">
+              {selection.sessionType === "live"
+                ? teacherName || t("navigation.teacher")
+                : selection.sessionType === "ignitia"
+                  ? "Ignitia"
+                  : "Abeka"}
+            </span>
+            <span className="block truncate font-normal">
+              {formatMinutes(selection.startMinutes)}–
+              {formatMinutes(selection.endMinutes)}
+            </span>
+          </>
+        )}
+        {!isDraft && selection.id && (
+          <button
+            type="button"
+            className="absolute right-1 top-1 rounded-sm p-0.5 hover:bg-sidebar/80"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() =>
+              onChangeAction(value.filter((slot) => slot.id !== selection.id))
+            }
+            aria-label={t("common.delete")}
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="h-[680px] overflow-hidden rounded-lg border bg-sidebar">
+        <CalendarWeekTimeGrid
+          date={new Date()}
+          initialScrollHour={7}
+          className="[--calendar-hour-height:3rem] xl:[--calendar-hour-height:3rem] 2xl:[--calendar-hour-height:3rem]"
+          renderDayAction={(day) => {
+            const dayOfWeek = day.getDay();
+            const daySlots = value.filter(
+              (slot) => slot.dayOfWeek === dayOfWeek,
+            );
+            const draftSelection =
+              draft?.dayOfWeek === dayOfWeek
+                ? normalizeSelection(draft)
+                : undefined;
+
+            return (
+              <CalendarTimeGridDay
+                date={day}
+                onlyDayHeader
+                surfaceProps={{
+                  className: "cursor-crosshair touch-none select-none",
+                  onPointerDown: (event) =>
+                    startSelection(dayOfWeek, event),
+                  onPointerMove: (event) =>
+                    updateSelection(dayOfWeek, event),
+                  onPointerUp: (event) =>
+                    finishSelection(dayOfWeek, event),
+                  onPointerCancel: () => setDraft(undefined),
+                }}
+              >
+                {daySlots.map((slot) => renderSelection(slot))}
+                {draftSelection && renderSelection(draftSelection, true)}
+              </CalendarTimeGridDay>
+            );
+          }}
+        />
+      </div>
+
+      <Dialog
+        open={Boolean(pending)}
+        onOpenChange={(open) => !open && setPending(undefined)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("schedule.sessionFormat")}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Button variant="outline" onClick={() => addSelection("live")}>
+              {t("class.typeStandard")}
+            </Button>
+            <Button variant="outline" onClick={() => addSelection("ignitia")}>
+              Ignitia
+            </Button>
+            <Button variant="outline" onClick={() => addSelection("abeka")}>
+              Abeka
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

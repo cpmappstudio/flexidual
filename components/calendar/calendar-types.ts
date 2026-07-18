@@ -13,14 +13,12 @@ export type CalendarProps = {
 }
 
 export type CalendarContextType = CalendarProps & {
-  newEventDialogOpen: boolean
-  setNewEventDialogOpen: (open: boolean) => void
+
   manageEventDialogOpen: boolean
   setManageEventDialogOpen: (open: boolean) => void
   selectedEvent: CalendarEvent | null
   setSelectedEvent: (event: CalendarEvent | null) => void
-  preselectedLessonId: Id<"lessons"> | null
-  setPreselectedLessonId: (id: Id<"lessons"> | null) => void
+
   refetchEvents?: () => void
   selectedTeacherId: Id<"users"> | null
   onTeacherChange: (id: Id<"users"> | null) => void

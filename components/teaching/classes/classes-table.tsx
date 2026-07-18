@@ -12,8 +12,8 @@ import { useAuth } from "@clerk/nextjs";
 import { getRoleForOrg } from "@/lib/rbac";
 import { DataTable } from "@/components/table/data-table";
 import { createSearchColumn, createSortableHeader } from "@/components/table/column-helpers";
-import { useRouter } from "@/i18n/navigation";
-import { Edit } from "lucide-react";
+import { Link, useRouter } from "@/i18n/navigation";
+import { Edit, Plus } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -236,7 +236,16 @@ export function ClassesTable({ data, curriculums, customFilter }: ClassesTablePr
         filterPlaceholder={t("common.searchByName")}
         emptyMessage={t("common.noResults")}
         customFilter={customFilter}
-        createAction={isAdmin ? <ClassDialog /> : undefined}
+        createAction={
+          isAdmin ? (
+            <Button asChild>
+              <Link href={`/${orgSlug}/classes/new`}>
+                <Plus className="h-4 w-4" />
+                {t("class.createClass")}
+              </Link>
+            </Button>
+          ) : undefined
+        }
         pageSize={10}
         onRowClick={(cls) => router.push(`/${orgSlug}/classes/${cls._id}`)}
       />

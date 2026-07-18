@@ -4,22 +4,18 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import {
   ArrowRight,
   Calendar as CalendarIcon,
-  Plus,
   Edit,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { ManageScheduleDialog } from "@/components/teaching/classes/manage-schedule-dialog";
+
 import { StudentManager } from "@/components/teaching/classes/student-manager";
 import { Button } from "@/components/ui/button";
 import { useParams } from "next/navigation";
@@ -73,7 +69,7 @@ export default function ClassDetailPage() {
   const [roadmapPage, setRoadmapPage] = useState(1);
   const [focusedScheduleId, setFocusedScheduleId] =
     useState<Id<"classSchedule"> | null>(null);
-  const [isScheduleActionFocused, setIsScheduleActionFocused] = useState(false);
+
 
   const classData = useQuery(api.classes.get, { id: classId });
 
@@ -112,30 +108,7 @@ export default function ClassDetailPage() {
     };
   }, [activeTab, focusedScheduleId, visiblePast, visibleUpcoming]);
 
-  useEffect(() => {
-    if (activeTab !== "schedule" || !isScheduleActionFocused) {
-      return;
-    }
 
-    const scrollToScheduleAction = () => {
-      document
-        .getElementById("schedule-session-action")
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    };
-
-    const scrollTimers = [120, 450, 900].map((delay) =>
-      window.setTimeout(scrollToScheduleAction, delay),
-    );
-
-    const clearTimer = window.setTimeout(() => {
-      setIsScheduleActionFocused(false);
-    }, 5000);
-
-    return () => {
-      scrollTimers.forEach(window.clearTimeout);
-      window.clearTimeout(clearTimer);
-    };
-  }, [activeTab, isScheduleActionFocused]);
 
   if (
     classData === undefined ||
@@ -169,16 +142,8 @@ export default function ClassDetailPage() {
       (roadmapPage - 1) * ITEMS_PER_PAGE,
       roadmapPage * ITEMS_PER_PAGE,
     ) || [];
-  const handleOpenSessions = (schedule?: ClassScheduleItem) => {
+  const handleOpenSessions = (schedule: ClassScheduleItem) => {
     setActiveTab("schedule");
-
-    if (!schedule) {
-      setFocusedScheduleId(null);
-      setIsScheduleActionFocused(true);
-      return;
-    }
-
-    setIsScheduleActionFocused(false);
     setFocusedScheduleId(schedule.scheduleId);
 
     if (schedule.end < Date.now()) {
@@ -269,34 +234,12 @@ export default function ClassDetailPage() {
 
                 {(upcomingSchedules.length > 0 || pastSchedules.length > 0) && (
                   <section className="space-y-3">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <h3 className="flex items-center gap-2 text-base font-semibold">
-                          {t("schedule.upcoming")}
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                            {upcomingSchedules.length}
-                          </span>
-                        </h3>
-                      </div>
-                      <div
-                        id="schedule-session-action"
-                        className={
-                          isScheduleActionFocused
-                            ? "scroll-mt-24 rounded-md ring-2 ring-primary/60 ring-offset-2 ring-offset-background transition-all duration-300"
-                            : "scroll-mt-24 rounded-md transition-all duration-300"
-                        }
-                      >
-                        <ManageScheduleDialog
-                          classId={classId}
-                          trigger={
-                            <Button>
-                              <Plus className="h-4 w-4" />
-                              {t("class.scheduleSession")}
-                            </Button>
-                          }
-                        />
-                      </div>
-                    </div>
+                    <h3 className="flex items-center gap-2 text-base font-semibold">
+                      {t("schedule.upcoming")}
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                        {upcomingSchedules.length}
+                      </span>
+                    </h3>
 
                     {upcomingSchedules.length === 0 ? (
                       <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
@@ -403,18 +346,12 @@ export default function ClassDetailPage() {
 
                 {upcomingSchedules.length === 0 &&
                   pastSchedules.length === 0 && (
-                    <Card>
-                      <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                        <CalendarIcon className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                        <h3 className="text-lg font-semibold mb-2">
-                          {t("schedule.noSchedules")}
-                        </h3>
-                        <p className="text-muted-foreground mb-4 max-w-sm">
-                          {t("schedule.createPrompt")}
-                        </p>
-                        <ManageScheduleDialog classId={classId} />
-                      </CardContent>
-                    </Card>
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
+                      <CalendarIcon className="mb-4 h-12 w-12 text-muted-foreground/50" />
+                      <h3 className="text-lg font-semibold">
+                        {t("schedule.noSchedules")}
+                      </h3>
+                    </div>
                   )}
               </div>
             </TabsContent>
@@ -471,7 +408,7 @@ function CurriculumOverview({
   currentPage: number;
   totalPages: number;
   onPageChange: React.Dispatch<React.SetStateAction<number>>;
-  onOpenSessions: (schedule?: ClassScheduleItem) => void;
+  onOpenSessions: (schedule: ClassScheduleItem) => void;
 }) {
   const t = useTranslations();
 
@@ -582,24 +519,19 @@ function CurriculumOverview({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0 sm:ml-4">
-                    <Button
-                      size="sm"
-                      variant={scheduledItem ? "link" : "default"}
-                      className={
-                        scheduledItem
-                          ? "h-auto px-0 text-muted-foreground hover:text-primary"
-                          : undefined
-                      }
-                      onClick={() => onOpenSessions(scheduledItem)}
-                    >
-                      {!scheduledItem}
-                      {scheduledItem
-                        ? t("class.viewInSessions")
-                        : t("class.scheduleInSessions")}
-                      {scheduledItem && <ArrowRight className="h-4 w-4" />}
-                    </Button>
-                  </div>
+                  {scheduledItem && (
+                    <div className="flex shrink-0 items-center gap-2 sm:ml-4">
+                      <Button
+                        size="sm"
+                        variant="link"
+                        className="h-auto px-0 text-muted-foreground hover:text-primary"
+                        onClick={() => onOpenSessions(scheduledItem)}
+                      >
+                        {t("class.viewInSessions")}
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}

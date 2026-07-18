@@ -13,7 +13,7 @@ import { enUS, es, ptBR } from "date-fns/locale";
 import { useSearchParams } from "next/navigation";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import CalendarProvider from "@/components/calendar/calendar-provider";
-import CalendarNewEventDialog from "@/components/calendar/dialog/calendar-new-event-dialog";
+
 import CalendarManageEventDialog from "@/components/calendar/dialog/calendar-manage-event-dialog";
 import { useCalendarContext } from "@/components/calendar/calendar-context";
 import { useTranslations, useLocale } from "next-intl";
@@ -250,7 +250,6 @@ function CalendarContent() {
             </TabsContent>
           </Tabs>
 
-          <CalendarNewEventDialog />
           <CalendarManageEventDialog />
         </div>
     </CalendarProvider>

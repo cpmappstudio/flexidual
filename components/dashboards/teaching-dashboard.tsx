@@ -126,7 +126,7 @@ export default function TeachingDashboard() {
                   )}
 
                   {isLive
-                    ? (isIgnitia ? "Ignitia Session Active" : t('dashboard.classInSession'))
+                    ? (isIgnitia ? "Ignitia Class Active" : t('dashboard.classInSession'))
                     : t('dashboard.nextClass')
                   }
                 </CardTitle>

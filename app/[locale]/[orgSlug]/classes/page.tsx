@@ -11,12 +11,14 @@ import { getRoleForOrg } from "@/lib/rbac";
 import { Card } from "@/components/ui/card";
 import { School } from "lucide-react";
 import { startOfWeek, addDays } from "date-fns";
-import { ClassDialog } from "@/components/teaching/classes/class-dialog";
+
 import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter";
 import { ClassesTable } from "@/components/teaching/classes/classes-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslations } from "next-intl";
 import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview";
+import { Button } from "@/components/ui/button";
+import { Link } from "@/i18n/navigation";
 
 import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
@@ -135,6 +137,9 @@ export default function MyClassesPage() {
 
 function EmptyState({ isAdmin }: { isAdmin: boolean }) {
   const t = useTranslations();
+  const params = useParams();
+  const orgSlug = (params.orgSlug as string) || "system";
+
   return (
     <Card className="flex flex-col items-center justify-center p-8 text-center border-dashed">
       <div className="rounded-full bg-primary/10 p-4 mb-4">
@@ -144,7 +149,13 @@ function EmptyState({ isAdmin }: { isAdmin: boolean }) {
       <p className="text-muted-foreground mb-4 max-w-sm">
         {isAdmin ? t("class.createPrompt") : t("class.notAssigned")}
       </p>
-      {isAdmin && <ClassDialog />}
+      {isAdmin && (
+        <Button asChild>
+          <Link href={`/${orgSlug}/classes/new`}>
+            {t("class.createClass")}
+          </Link>
+        </Button>
+      )}
     </Card>
   );
 }

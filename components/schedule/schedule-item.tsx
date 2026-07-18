@@ -594,7 +594,7 @@ export function ScheduleItem({
                 asChild
               >
                 <Link href={`/${orgSlug}/classroom/${schedule.roomName}`}>
-                  {isIgnitia ? "Open Session" : t("classroom.joinLive")}
+                  {isIgnitia ? "Open Class" : t("classroom.joinLive")}
                 </Link>
               </Button>
             ) : (
