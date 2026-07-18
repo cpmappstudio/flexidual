@@ -242,7 +242,7 @@ export function ManageScheduleDialog({
           }) ||
           `Moved to ${smartStartDate.toLocaleDateString()} to match pattern.`,
         duration: 3000,
-        icon: <CalendarClock className="h-4 w-4 text-blue-500" />,
+        icon: <CalendarClock className="h-4 w-4 text-info" />,
       });
     }
   }, [daysOfWeek, anchorDate, startDate, t]);
@@ -449,8 +449,8 @@ export function ManageScheduleDialog({
           <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
             {isEditing &&
               (initialData?.isRecurring || initialData?.recurrenceParentId) && (
-                <div className="p-4 border-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 space-y-3">
-                  <Label className="text-base font-semibold text-blue-900 dark:text-blue-100">
+                <div className="p-4 border-2 rounded-lg bg-info/10 border-info/30 space-y-3">
+                  <Label className="text-base font-semibold text-info">
                     {t("schedule.updateScope")}
                   </Label>
 
@@ -467,7 +467,7 @@ export function ManageScheduleDialog({
                     }}
                     className="flex flex-col gap-3"
                   >
-                    <div className="flex items-start space-x-3 p-3 rounded-md border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-900 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors">
+                    <div className="flex items-start space-x-3 p-3 rounded-md border border-info/30 bg-card cursor-pointer hover:bg-info/10 transition-colors">
                       <RadioGroupItem
                         value="instance"
                         id="scope-instance"
@@ -486,7 +486,7 @@ export function ManageScheduleDialog({
                       </div>
                     </div>
 
-                    <div className="flex items-start space-x-3 p-3 rounded-md border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-900 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors">
+                    <div className="flex items-start space-x-3 p-3 rounded-md border border-info/30 bg-card cursor-pointer hover:bg-info/10 transition-colors">
                       <RadioGroupItem
                         value="series"
                         id="scope-series"
@@ -634,14 +634,14 @@ export function ManageScheduleDialog({
                     </Label>
 
                     {isEditing && updateSeries && (
-                      <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-300 dark:border-amber-700 rounded-md p-3 space-y-2">
+                      <div className="bg-warning/10 border-2 border-warning/40 rounded-md p-3 space-y-2">
                         <div className="flex items-start gap-2">
-                          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                          <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
                           <div>
-                            <p className="font-semibold text-sm text-amber-900 dark:text-amber-100">
+                            <p className="font-semibold text-sm text-warning">
                               {t("schedule.seriesLessonsBlocked")}
                             </p>
-                            <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                            <p className="text-xs text-warning mt-1">
                               {t("schedule.switchToInstance")}
                             </p>
                           </div>
@@ -834,7 +834,7 @@ export function ManageScheduleDialog({
                                     }
                                     size="sm"
                                     onClick={() => toggleDayOfWeek(day.value)}
-                                    className={`w-12 ${isStartDay ? "ring-2 ring-offset-2 ring-blue-500 dark:ring-blue-400" : ""}`}
+                                    className={`w-12 ${isStartDay ? "ring-2 ring-offset-2 ring-primary" : ""}`}
                                     title={
                                       isStartDay
                                         ? t("schedule.currentStartDate")

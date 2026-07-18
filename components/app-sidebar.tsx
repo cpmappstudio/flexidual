@@ -1,48 +1,42 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { NavMain } from "@/components/nav-main"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarRail,
-  useSidebar
 } from "@/components/ui/sidebar"
-import { ModeToggle } from "./mode-toggle"
-import { LangToggle } from "./lang-toggle"
-import { UserButtonWrapper } from "./user-button-wrapper"
-import { FlexidualLogo } from "./ui/flexidual-logo"
+
 import { OrgSwitcher } from "./org-switcher"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { state, openMobile } = useSidebar()
-  const collapsed = state === "collapsed";
   return (
-    <Sidebar 
-      collapsible="icon" 
-      className="overflow-hidden data-[state=expanded | collapsed]:overflow-hidden"
+    <Sidebar
+      collapsible="offcanvas"
+      className="top-(--header-height) h-[calc(100svh-var(--header-height))]! overflow-hidden"
       {...props}
     >
-      {/* 1. Header: User Profile */}
-      <SidebarHeader className="flex items-center justify-center pt-6">
-        <FlexidualLogo stacked={collapsed || (openMobile && collapsed)} />
+      <SidebarHeader>
         <OrgSwitcher />
       </SidebarHeader>
-
-      {/* 2. Content: The Main Menu (Logic is inside NavMain now) */}
       <SidebarContent>
         <NavMain />
       </SidebarContent>
-
-      {/* 3. Footer: Theme & Language Toggles */}
-      <SidebarFooter>
-          <ModeToggle showText={!collapsed}/>
-          <LangToggle showText={!collapsed}/>
-          <UserButtonWrapper showName={!collapsed} collapsed={collapsed} />
+      <SidebarFooter className="gap-0 overflow-hidden p-0">
+        <div className="relative h-48 w-full overflow-hidden">
+          <Image
+            src="/sidebar-footer-decoration.svg"
+            alt=""
+            width={2055}
+            height={1064}
+            aria-hidden="true"
+            className="pointer-events-none absolute top-0 left-1/2 h-auto w-[150%] max-w-none -translate-x-1/2 select-none"
+          />
+        </div>
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   )
 }

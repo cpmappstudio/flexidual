@@ -88,12 +88,12 @@ function VideoPlayer({
       {/* Video container */}
       <div
         ref={containerRef}
-        className="relative bg-black rounded-xl overflow-hidden group"
+        className="relative bg-inverse rounded-xl overflow-hidden group"
         style={{ aspectRatio: "16/9" }}
       >
         {isLoading && !hasError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
-            <div className="flex flex-col items-center gap-3 text-white/70">
+          <div className="absolute inset-0 flex items-center justify-center bg-inverse/80 z-10">
+            <div className="flex flex-col items-center gap-3 text-inverse-foreground/70">
               <PlayCircle className="h-12 w-12 animate-pulse" />
               <span className="text-sm">Loading recording…</span>
             </div>
@@ -101,8 +101,8 @@ function VideoPlayer({
         )}
 
         {hasError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/90 z-10">
-            <div className="flex flex-col items-center gap-3 text-white/70 text-center px-6">
+          <div className="absolute inset-0 flex items-center justify-center bg-inverse/90 z-10">
+            <div className="flex flex-col items-center gap-3 text-inverse-foreground/70 text-center px-6">
               <Video className="h-12 w-12 opacity-50" />
               <p className="text-sm font-medium">Unable to load recording</p>
               <p className="text-xs opacity-60">
@@ -133,7 +133,7 @@ function VideoPlayer({
         {isSupported && !hasError && !isLoading && (
           <button
             onClick={handleFullscreen}
-            className="absolute bottom-3 right-3 z-20 bg-black/60 hover:bg-black/80 text-white rounded-md p-1.5 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+            className="absolute bottom-3 right-3 z-20 bg-inverse/60 hover:bg-inverse/80 text-inverse-foreground rounded-md p-1.5 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
             title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           >
             {isFullscreen ? (
@@ -288,7 +288,7 @@ export function RecordingPlayerModal({
               {isStudent ? (
                 <div className="text-5xl mb-3">🎬</div>
               ) : (
-                <Video className="h-12 w-12 text-gray-600 mb-3" />
+                <Video className="h-12 w-12 text-muted-foreground mb-3" />
               )}
               <p className="font-bold text-foreground">
                 {t("recordings.noRecordings") || "No recordings available"}

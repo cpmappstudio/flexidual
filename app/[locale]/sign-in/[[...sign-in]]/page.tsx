@@ -11,9 +11,9 @@ export default function SignInPage() {
           style={{ backgroundImage: "url(/backgroud-image.png)" }}
         />
         {/* Tinte naranja sobre la imagen (zona superior) */}
-        <div className="absolute inset-0 bg-[linear-gradient(175deg,rgba(247,130,28,0.45)_0%,rgba(209,141,5,0.35)_40%,transparent_60%)]" />
+        <div className="absolute inset-0 bg-linear-[175deg] from-secondary/45 from-0% via-secondary/35 via-40% to-transparent to-60%" />
         {/* Gradiente oscuro desde abajo — crea el "panel" donde vive el card */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(22,14,5,0.97)_48%,rgba(22,14,5,0.55)_68%,transparent_100%)]" />
+        <div className="absolute inset-0 bg-linear-to-t from-inverse/95 from-48% via-inverse/55 via-68% to-transparent" />
       </div>
 
       {/* ── PANEL DEL FORMULARIO ── */}
@@ -33,7 +33,7 @@ export default function SignInPage() {
                 card: {
                   backgroundColor: "var(--card)", 
                   boxShadow:
-                    "0 12px 28px -14px rgba(0, 0, 0, 0.48), 0 22px 36px -24px rgba(0, 0, 0, 0.42), 0 0 0 1px var(--border)",
+                    "0 12px 28px -14px color-mix(in oklab, var(--inverse) 48%, transparent), 0 22px 36px -24px color-mix(in oklab, var(--inverse) 42%, transparent), 0 0 0 1px var(--border)",
                   borderRadius: "1rem",
                   "@media (max-width: 1023px)": {
                     backgroundColor: "transparent",
@@ -45,7 +45,7 @@ export default function SignInPage() {
                     display: "block",
                     width: "96px",
                     height: "96px",
-                    backgroundImage: "url(/flexidual-icon.png)",
+                    backgroundImage: "url(/logo-flexidual.svg)",
                     backgroundSize: "contain",
                     backgroundRepeat: "no-repeat",
                     backgroundPosition: "center",
@@ -62,19 +62,19 @@ export default function SignInPage() {
                   fontWeight: "750",
                   letterSpacing: "-0.025em",
                   "@media (max-width: 1023px)": {
-                    color: "oklch(0.96 0.015 70)",
+                    color: "var(--inverse-foreground)",
                   },
                 },
                 headerSubtitle: {
                   color: "var(--muted-foreground)",
                   "@media (max-width: 1023px)": {
-                    color: "oklch(0.72 0.04 60)",
+                    color: "color-mix(in oklab, var(--inverse-foreground) 70%, transparent)",
                   },
                 },
                 formFieldLabel: {
                   color: "var(--card-foreground)", 
                   "@media (max-width: 1023px)": {
-                    color: "oklch(0.82 0.03 60)",
+                    color: "color-mix(in oklab, var(--inverse-foreground) 82%, transparent)",
                   },
                 },
                 formFieldInput: {
@@ -82,29 +82,29 @@ export default function SignInPage() {
                   backgroundColor: "var(--background)",
                   borderColor: "var(--border)",
                   "@media (max-width: 1023px)": {
-                    backgroundColor: "rgba(255,255,255,0.08)",
-                    borderColor: "rgba(255,255,255,0.15)",
-                    color: "oklch(0.95 0.01 60)",
+                    backgroundColor: "color-mix(in oklab, var(--inverse-foreground) 8%, transparent)",
+                    borderColor: "color-mix(in oklab, var(--inverse-foreground) 15%, transparent)",
+                    color: "var(--inverse-foreground)",
                   },
                 },
                 formButtonPrimary: {
                   backgroundColor: "var(--primary)",
                   color: "var(--primary-foreground)",
                   boxShadow:
-                    "0 6px 14px rgba(160, 80, 15, 0.25), 0 1px 2px rgba(160, 80, 15, 0.16)",
+                    "0 6px 14px color-mix(in oklab, var(--primary) 25%, transparent), 0 1px 2px color-mix(in oklab, var(--primary) 16%, transparent)",
                   transition: "all 0.15s ease",
                   "&:hover": {
-                    backgroundColor: "oklch(66% 0.18 53.878)",
+                    backgroundColor: "color-mix(in oklab, var(--primary) 90%, var(--foreground))",
                     boxShadow:
-                      "0 10px 20px rgba(160, 80, 15, 0.28), 0 2px 5px rgba(160, 80, 15, 0.2)",
+                      "0 10px 20px color-mix(in oklab, var(--primary) 28%, transparent), 0 2px 5px color-mix(in oklab, var(--primary) 20%, transparent)",
                     transform: "translateY(-1px)",
                   },
                   "&:focus": {
                     boxShadow:
-                      "0 0 0 3px oklch(72.47% 0.17389 53.878 / 0.3) !important",
+                      "0 0 0 3px color-mix(in oklab, var(--primary) 30%, transparent) !important",
                   },
                   "&:active": {
-                    boxShadow: "0 1px 3px rgba(160, 80, 15, 0.3) !important",
+                    boxShadow: "0 1px 3px color-mix(in oklab, var(--primary) 30%, transparent) !important",
                     transform: "translateY(0)",
                   },
                   "& .cl-buttonArrowIcon": {
@@ -130,9 +130,9 @@ export default function SignInPage() {
           style={{ backgroundImage: "url(/backgroud-image.png)" }}
         />
         {/* Tinte naranja sobre la imagen (zona superior) */}
-        <div className="absolute inset-0 bg-[linear-gradient(175deg,rgba(247,130,28,0.45)_0%,rgba(209,141,5,0.35)_40%,transparent_60%)]" />
+        <div className="absolute inset-0 bg-linear-[175deg] from-secondary/45 from-0% via-secondary/35 via-40% to-transparent to-60%" />
         {/* Gradiente oscuro desde abajo — crea el "panel" donde vive el card */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(22,14,5,0.75)_48%,rgba(22,14,5,0.55)_68%,transparent_100%)]" />
+        <div className="absolute inset-0 bg-linear-to-t from-inverse/75 from-48% via-inverse/55 via-68% to-transparent" />
       </div>
     </div>
   );

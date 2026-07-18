@@ -1,38 +1,53 @@
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 
 interface FlexidualLogoProps {
   className?: string;
   stacked?: boolean;
+  inverted?: boolean;
+  priority?: boolean;
 }
 
-const sizeMap = {
-  icon: { width: 40, height: 40 },
-  wide: { width: 160, height: 40 },
-};
-
 export function FlexidualLogo({
-  className = "",
+  className,
   stacked = false,
+  inverted = false,
+  priority = false,
 }: FlexidualLogoProps) {
   if (stacked) {
     return (
       <Image
-        src="/flexidual-icon.png"
+        src="/logo-flexidual.svg"
         alt="Flexidual"
-        width={sizeMap.icon.width}
-        height={sizeMap.icon.height}
-        className={`object-contain ${className}`}
+        width={81}
+        height={40}
+        priority={priority}
+        className={cn("h-10 w-auto object-contain", className)}
       />
     );
   }
 
   return (
-    <Image
-      src="/flexidual-icon-wide.png"
-      alt="Flexidual"
-      width={sizeMap.wide.width}
-      height={sizeMap.wide.height}
-      className={`object-contain ${className}`}
-    />
+    <div
+      className={cn("flex h-10 items-center gap-1.5", className)}
+      role="img"
+      aria-label="Flexidual"
+    >
+      <Image
+        src="/logo-flexidual.svg"
+        alt=""
+        width={81}
+        height={40}
+        priority={priority}
+        aria-hidden="true"
+        className="h-full w-auto object-contain"
+      />
+      <span className="font-logo text-xl font-extrabold leading-none tracking-[0.04em] sm:text-2xl">
+        <span className={inverted ? "text-primary-foreground" : "text-primary"}>
+          FLEXI
+        </span>
+        <span className="text-secondary">DUAL</span>
+      </span>
+    </div>
   );
 }

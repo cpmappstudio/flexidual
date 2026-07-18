@@ -19,9 +19,9 @@ interface DraggableLessonCardProps {
   isPast?: boolean
 }
 
-export function DraggableLessonCard({ 
-  lesson, 
-  onDragStart, 
+export function DraggableLessonCard({
+  lesson,
+  onDragStart,
   onDragEnd,
   onTap,
   isPast = false
@@ -29,14 +29,14 @@ export function DraggableLessonCard({
   const t = useTranslations('student')
   const locale = useLocale()
   const dateLocale = locale === 'es' ? es : locale === 'pt-BR' ? ptBR : enUS
-  
+
   const [now, setNow] = useState(Date.now())
 
   // Calculate durations
   const durationMs = lesson.end - lesson.start;
   const timeToStart = lesson.start - now;
   const timeToEnd = lesson.end - now;
-  
+
   // 50% Threshold logic
   const requiredTimeMs = durationMs * 0.5;
   const canStillPass = timeToEnd >= requiredTimeMs;
@@ -44,10 +44,10 @@ export function DraggableLessonCard({
   const isIgnitia = lesson.sessionType === "ignitia"
   const isAbeka = lesson.sessionType === "abeka"
   const isVirtual = isIgnitia || isAbeka
-  
+
   // Update timer
   useEffect(() => {
-    if (now > lesson.end + 1000 && !isVirtual && !lesson.isStudentActive) return; 
+    if (now > lesson.end + 1000 && !isVirtual && !lesson.isStudentActive) return;
 
     const interval = setInterval(() => {
       setNow(Date.now())
@@ -63,7 +63,7 @@ export function DraggableLessonCard({
   const isLate = !isVirtual && isLiveWindow && !isInClass && !isPresent;
   const isMissed = !isVirtual && now >= lesson.end && !isPresent && !isPartialFinal && !isInClass;
   const isUrgent = timeToStart > 0 && timeToStart <= 5 * 60 * 1000;
-  
+
   const isVirtualPending = isVirtual && (isPast || now > lesson.end) && !isPresent && !isPartialFinal;
 
   const canDrag = (isVirtual && !isPresent) || isInClass || isLiveWindow || (now < lesson.start);
@@ -77,38 +77,38 @@ export function DraggableLessonCard({
 
   // --- 🎨 VISUAL STYLES ---
   const getCardStyle = () => {
-    if (isInClass) return 'bg-green-50 dark:bg-green-950/50 border-green-500 border-b-[6px] ring-2 ring-green-400 ring-offset-2 dark:ring-offset-gray-900 animate-pulse-slow';
-    
+    if (isInClass) return 'bg-success/10 border-success border-b-[6px] ring-2 ring-success ring-offset-2 ring-offset-background animate-pulse-slow';
+
     if (isLate) {
-        if (!canStillPass) return 'bg-red-50/50 dark:bg-red-950/20 border-red-300 border-b-[6px] dark:border-red-900 border-dashed';
-        return 'bg-red-50 dark:bg-red-950/40 border-red-500 border-b-[6px] dark:border-red-700 shadow-xl shadow-red-200 dark:shadow-none';
+        if (!canStillPass) return 'bg-destructive/5 border-destructive/40 border-b-[6px] border-dashed';
+                return 'bg-destructive/10 border-destructive border-b-[6px] shadow-xl shadow-destructive/20';
     }
 
     if (isVirtual) {
         if (lesson.isLive || (now >= lesson.start && now <= lesson.end)) {
-            return isAbeka 
-              ? 'bg-gradient-to-br from-blue-100 via-sky-100 to-cyan-100 dark:from-blue-950 dark:via-sky-950 dark:to-cyan-950 border-blue-400 border-b-[6px] dark:border-blue-500'
-              : 'bg-gradient-to-br from-orange-100 via-amber-100 to-yellow-100 dark:from-orange-950 dark:via-amber-950 dark:to-yellow-950 border-orange-400 border-b-[6px] dark:border-orange-500';
+            return isAbeka
+              ? 'bg-info/15 border-info border-b-[6px]'
+                            : 'bg-secondary/15 border-secondary border-b-[6px]';
         }
         return isAbeka
-          ? 'bg-gradient-to-br from-sky-50 to-blue-50 dark:from-sky-950/40 dark:to-blue-950/40 border-blue-300 border-b-[6px] dark:border-blue-800 shadow-sm'
-          : 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-orange-300 border-b-[6px] dark:border-orange-800 shadow-sm';
+          ? 'bg-info/10 border-info/40 border-b-[6px] shadow-sm'
+                    : 'bg-secondary/10 border-secondary/40 border-b-[6px] shadow-sm';
     }
 
-    if (isMissed) return 'bg-gray-100 dark:bg-gray-900/50 border-gray-300 border-b-4 dark:border-gray-800 opacity-60 grayscale';
-    if (isPresent || isPartialFinal) return 'bg-white dark:bg-gray-900 border-green-200 border-b-4 dark:border-green-900 opacity-80';
-    if (isUrgent) return 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 border-b-[6px] shadow-lg shadow-amber-200 dark:shadow-none';
-    if (lesson.isLive) return 'bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-950 dark:to-emerald-950 border-green-400 border-b-[6px] dark:border-green-600 shadow-md';
+    if (isMissed) return 'bg-muted border-neutral-status/40 border-b-4 opacity-60 grayscale';
+        if (isPresent || isPartialFinal) return 'bg-card border-success/30 border-b-4 opacity-80';
+        if (isUrgent) return 'bg-warning/10 border-warning border-b-[6px] shadow-lg shadow-warning/20';
+        if (lesson.isLive) return 'bg-success/15 border-success border-b-[6px] shadow-md';
 
-    return 'bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950 border-blue-400 border-b-[6px] dark:border-purple-500 shadow-sm hover:shadow-md transition-shadow';
+        return 'bg-primary/10 border-primary border-b-[6px] shadow-sm hover:shadow-md transition-shadow';
   }
 
   const getTextColor = () => {
-      if (isMissed) return "text-gray-500 dark:text-gray-500";
-      if (isLate) return "text-gray-800 dark:text-red-100";
-      if (isAbeka) return "text-gray-800 dark:text-blue-100";
-      if (isIgnitia) return "text-gray-800 dark:text-orange-100";
-      return "text-gray-800 dark:text-gray-100";
+      if (isMissed) return "text-neutral-status";
+            if (isLate) return "text-destructive";
+            if (isAbeka) return "text-info";
+            if (isIgnitia) return "text-secondary";
+            return "text-foreground";
   }
 
   const showTrailingBadge = (isMissed || isPresent || isPartialFinal || isVirtualPending) && !isInClass;
@@ -123,13 +123,13 @@ export function DraggableLessonCard({
       onClick={() => canDrag && onTap && onTap(lesson)}
       whileHover={canDrag ? { scale: 1.01, y: -2 } : {}}
       className={cn(
-        "relative rounded-2xl border-2 p-4 transition-all duration-150 select-none", 
+        "relative rounded-2xl border-2 p-4 transition-all duration-150 select-none",
         canDrag ? "cursor-pointer touch-manipulation active:border-b-2 active:translate-y-[4px]" : "cursor-default touch-none",
         getCardStyle()
       )}
       style={{ borderColor: !isMissed && !isIgnitia && !lesson.isLive && !isLate && !isUrgent && !isInClass ? lesson.color : undefined }}
     >
-      
+
       {/* Sparkles */}
       {(canDrag && !lesson.isLive) && (
         <motion.div
@@ -137,20 +137,20 @@ export function DraggableLessonCard({
             animate={isLate ? { scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] } : isUrgent ? { scale: [1, 1.3, 1], rotate: [0, 15, -15, 0] } : { opacity: [0.4, 1, 0.4] }}
             transition={{ duration: isLate ? 0.5 : isUrgent ? 1 : 2, repeat: Infinity, ease: "easeInOut" }}
         >
-            <Sparkles className={cn("w-6 h-6 opacity-80", isLate ? "text-red-500" : (isIgnitia ? "text-orange-400 dark:text-orange-300" : "text-yellow-400"))} />
+            <Sparkles className={cn("w-6 h-6 opacity-80", isLate ? "text-destructive" : (isIgnitia ? "text-secondary" : "text-warning"))} />
         </motion.div>
       )}
 
       {canDrag && (
-        <div className="absolute -left-3 top-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 rounded-full p-1 shadow-md border-2 border-gray-300 dark:border-gray-600 z-20 lg:block hidden">
-          <GripVertical className="w-5 h-5 text-gray-400" />
+        <div className="absolute -left-3 top-1/2 -translate-y-1/2 bg-card rounded-full p-1 shadow-md border-2 border-border z-20 lg:block hidden">
+                  <GripVertical className="w-5 h-5 text-muted-foreground" />
         </div>
       )}
 
       {/* --- BADGES --- */}
       {isInClass && (
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute -top-3 left-8 z-10">
-            <Badge className="bg-green-600 text-white font-bold border-2 border-white dark:border-gray-800 shadow-md animate-pulse">
+            <Badge className="bg-success text-success-foreground font-bold border-2 border-background shadow-md animate-pulse">
                 <Radio className="w-3 h-3 mr-1" />
                 In Class
             </Badge>
@@ -161,12 +161,12 @@ export function DraggableLessonCard({
       {isLate && (
         <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="absolute -top-3 right-8 z-10">
             {canStillPass ? (
-                <Badge className="bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 border-red-300 dark:border-red-700 animate-pulse font-mono font-bold shadow-sm border-2">
+                <Badge className="bg-destructive/15 text-destructive border-destructive/40 animate-pulse font-mono font-bold shadow-sm border-2">
                     <AlertCircle className="w-3 h-3 mr-1" />
                     {t('late')}: {formatCountdown(now - lesson.start)}
                 </Badge>
             ) : (
-                <Badge className="bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-100 border-orange-300 dark:border-orange-700 font-bold shadow-sm border-2">
+                <Badge className="bg-warning/15 text-warning border-warning/40 font-bold shadow-sm border-2">
                     <Hourglass className="w-3 h-3 mr-1" />
                     {t('partialCreditOnly')}
                 </Badge>
@@ -177,7 +177,7 @@ export function DraggableLessonCard({
       {/* 🟡 URGENT / UPCOMING BADGE (Starts in < 5 mins) */}
       {isUrgent && (
         <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="absolute -top-3 right-8 z-10">
-             <Badge className="bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-100 border-amber-300 dark:border-amber-700 animate-pulse font-mono font-bold shadow-sm border-2">
+             <Badge className="bg-warning/15 text-warning border-warning/40 animate-pulse font-mono font-bold shadow-sm border-2">
                 <Clock className="w-3 h-3 mr-1" />
                 {formatCountdown(lesson.start - now)}
             </Badge>
@@ -186,21 +186,21 @@ export function DraggableLessonCard({
 
       {/* ✅ TRAILING BADGE (Status) */}
       {showTrailingBadge && (
-        <Badge 
+        <Badge
           className={cn(
             "absolute -top-3 -right-3 z-10 border-2",
             (isIgnitia && !isPresent && !isPartialFinal)
-                ? "bg-orange-100 dark:bg-orange-900/80 text-orange-700 dark:text-orange-100 border-orange-300 dark:border-orange-700" 
-            : isPresent 
-                ? 'bg-green-500 text-white border-green-600' 
-            : isPartialFinal 
-                ? 'bg-yellow-500 text-white border-yellow-600'
-            : 'bg-gray-500 dark:bg-gray-700 text-white border-gray-600'
+                ? "bg-secondary/15 text-secondary border-secondary/40"
+                            : isPresent
+                                ? 'bg-success text-success-foreground border-success'
+                            : isPartialFinal
+                                ? 'bg-warning text-warning-foreground border-warning'
+                            : 'bg-neutral-status text-neutral-status-foreground border-neutral-status'
           )}
         >
           {(isIgnitia && !isPresent && !isPartialFinal) ? (
             <span className="flex items-center gap-1">
-                <RotateCcw className="w-3 h-3" /> 
+                <RotateCcw className="w-3 h-3" />
                 {t('pending')}
             </span>
           ) : isPresent ? (
@@ -217,16 +217,16 @@ export function DraggableLessonCard({
       {/* Time Circle */}
       <div className="flex items-start gap-3 relative z-10">
         <div className={cn(
-            "flex-shrink-0 w-16 h-16 rounded-full bg-white dark:bg-gray-800 border-4 flex flex-col items-center justify-center shadow-md",
-            isLate ? "border-red-200 dark:border-red-900" : (isIgnitia ? "border-orange-200 dark:border-orange-900" : ""),
-            isMissed ? "grayscale opacity-50 dark:border-gray-700" : ""
+            "flex-shrink-0 w-16 h-16 rounded-full bg-card border-4 flex flex-col items-center justify-center shadow-md",
+                        isLate ? "border-destructive/30" : (isIgnitia ? "border-secondary/30" : ""),
+                        isMissed ? "grayscale opacity-50 border-neutral-status/40" : ""
         )}
           style={{ borderColor: (!isMissed && !isIgnitia && !isLate && !isUrgent && !isInClass) ? lesson.color : undefined }}
         >
-          <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
+          <span className="text-xs font-bold text-muted-foreground">
             {format(lesson.start, "MMM", { locale: dateLocale })}
           </span>
-          <span className={cn("text-2xl font-black text-gray-800 dark:text-gray-100", isLate ? "text-red-500 dark:text-red-400" : "")}>
+          <span className={cn("text-2xl font-black text-foreground", isLate ? "text-destructive" : "")}>
             {format(lesson.start, "d")}
           </span>
         </div>
@@ -236,29 +236,29 @@ export function DraggableLessonCard({
           <div className="flex items-center gap-2 mb-1">
              <h3 className={cn("text-lg font-black truncate", getTextColor())}>{lesson.title}</h3>
              {isVirtual && (
-                <div className={cn("p-1 rounded-md", isAbeka ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200" : "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-200")}>
+                <div className={cn("p-1 rounded-md", isAbeka ? "bg-info/15 text-info" : "bg-secondary/15 text-secondary")}>
                     <MonitorPlay className="w-4 h-4" />
                 </div>
              )}
              {!isVirtual && !isMissed && (
-                <div className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 p-1 rounded-md">
+                <div className="bg-info/15 text-info p-1 rounded-md">
                     <Video className="w-4 h-4" />
                 </div>
              )}
           </div>
-          <p className="text-sm font-bold text-gray-600 dark:text-gray-300 truncate mb-2">
+          <p className="text-sm font-bold text-muted-foreground truncate mb-2">
             📚 {lesson.className}
           </p>
-          
+
           <div className="flex flex-wrap gap-2 text-xs">
-            <div className={cn("flex items-center gap-1 px-2 py-1 rounded-full", isLate ? "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-200 font-bold" : "bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300")}>
+            <div className={cn("flex items-center gap-1 px-2 py-1 rounded-full", isLate ? "bg-destructive/15 text-destructive font-bold" : "bg-background/80 text-foreground")}>
               <Clock className="w-3 h-3" />
               <span className="font-bold">
                 {format(lesson.start, "h:mm a", { locale: dateLocale })} - {format(lesson.end, "h:mm a", { locale: dateLocale })}
               </span>
             </div>
             {(lesson.minutesAttended > 0) && (
-                <div className="flex items-center gap-1 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-2 py-1 rounded-full font-bold">
+                <div className="flex items-center gap-1 bg-success/15 text-success px-2 py-1 rounded-full font-bold">
                     <Clock className="w-3 h-3" />
                     {lesson.minutesAttended}m
                 </div>
@@ -269,10 +269,10 @@ export function DraggableLessonCard({
       </div>
 
       {canDrag && !isInClass && (
-        <div className={cn("mt-3 text-center text-xs font-bold animate-bounce relative z-10", isLate ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400")}>
+        <div className={cn("mt-3 text-center text-xs font-bold animate-bounce relative z-10", isLate ? "text-destructive" : "text-muted-foreground")}>
            {/* Shows on mobile and tablet, hides on desktop */}
            <span className="lg:hidden">👆 {t('tapHint') || 'Tap me! 🚀'}</span>
-           
+
            {/* Hides on mobile and tablet, shows on desktop */}
            <span className="hidden lg:inline">👆 {t('dragHint') || 'Drag me! 🚀'}</span>
         </div>

@@ -2,6 +2,7 @@ import { useCalendarContext } from '../../calendar-context'
 import { startOfWeek, endOfWeek, isWithinInterval, format } from 'date-fns'
 import { enUS, es, ptBR } from 'date-fns/locale'
 import { useLocale, useTranslations } from 'next-intl'
+import { getCalendarColorClasses } from '../../calendar-tailwind-classes'
 
 const localeMap = {
   en: enUS,
@@ -37,7 +38,9 @@ export default function CalendarBodyWeekEvents() {
               setManageEventDialogOpen(true)
             }}
           >
-            <div className={`size-2 rounded-full bg-${event.color}-500 shrink-0`} />
+            <div
+              className={`size-2 shrink-0 rounded-full ${getCalendarColorClasses(event.color).dot}`}
+            />
             <div className="flex flex-col min-w-0">
               <p className="text-xs text-muted-foreground">
                 {format(event.start, 'EEE, MMM d', { locale: dateLocale })}

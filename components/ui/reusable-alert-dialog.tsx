@@ -69,7 +69,7 @@ export function ReusableAlertDialog({
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isLoading}
-            className={config.variant === "destructive" ? "bg-destructive text-white hover:bg-destructive/90" : ""}
+            className={config.variant === "destructive" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
           >
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {config.confirmLabel || t("common.delete")}

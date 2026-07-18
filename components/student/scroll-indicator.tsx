@@ -54,12 +54,12 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
   }, [containerRef, checkScroll])
 
   const gradientDown = isDark
-    ? 'linear-gradient(to top, rgba(17, 24, 39, 0.95) 0%, rgba(17, 24, 39, 0) 100%)'
-    : 'linear-gradient(to top, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 100%)'
+      ? 'linear-gradient(to top, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
+      : 'linear-gradient(to top, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
 
-  const gradientUp = isDark
-    ? 'linear-gradient(to bottom, rgba(17, 24, 39, 0.95) 0%, rgba(17, 24, 39, 0) 100%)'
-    : 'linear-gradient(to bottom, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 100%)'
+    const gradientUp = isDark
+      ? 'linear-gradient(to bottom, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
+      : 'linear-gradient(to bottom, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
 
   return (
     <>
@@ -87,7 +87,7 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
             >
               {/* Glow effect */}
               <motion.div
-                className="absolute w-12 h-12 bg-purple-400 dark:bg-purple-500 rounded-full blur-xl opacity-50"
+                className="absolute w-12 h-12 bg-primary rounded-full blur-xl opacity-50"
                 animate={{
                   scale: [1, 1.3, 1],
                   opacity: [0.3, 0.6, 0.3],
@@ -98,7 +98,7 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
                   ease: "easeInOut",
                 }}
               />
-              <ChevronDown className="w-6 h-6 text-purple-600 dark:text-purple-400 relative z-10" strokeWidth={3} />
+              <ChevronDown className="w-6 h-6 text-primary relative z-10" strokeWidth={3} />
             </motion.div>
           </div>
         </motion.div>
@@ -128,7 +128,7 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
             >
               {/* Glow effect */}
               <motion.div
-                className="absolute w-12 h-12 bg-purple-400 dark:bg-purple-500 rounded-full blur-xl opacity-50"
+                className="absolute w-12 h-12 bg-primary rounded-full blur-xl opacity-50"
                 animate={{
                   scale: [1, 1.3, 1],
                   opacity: [0.3, 0.6, 0.3],
@@ -139,7 +139,7 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
                   ease: "easeInOut",
                 }}
               />
-              <ChevronUp className="w-6 h-6 text-purple-600 dark:text-purple-400 relative z-10" strokeWidth={3} />
+              <ChevronUp className="w-6 h-6 text-primary relative z-10" strokeWidth={3} />
             </motion.div>
           </div>
         </motion.div>

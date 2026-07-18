@@ -113,7 +113,7 @@ export function SchoolDialog({ school, trigger, open, onOpenChange }: SchoolDial
         <EntityDialog
             open={effectiveOpen}
             onOpenChange={handleOpenChange}
-            trigger={trigger || defaultTrigger}
+            trigger={trigger === undefined ? defaultTrigger : trigger}
             title={isEditing ? "Edit School" : "Create New School"}
             description={isEditing ? "Update the school's core details." : "Register a new educational network or district."}
             onSubmit={handleSubmit}

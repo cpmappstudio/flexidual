@@ -91,15 +91,15 @@ function ParticipantTile({
   const borderSize = variant === "mini" ? "border-2" : "border-4";
 
   return (
-    <div className={`relative bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px_rgba(34,197,94,0.4)] z-20" : ""} ${className}`}>
+    <div className={`relative bg-inverse overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px] shadow-success/40 z-20" : ""} ${className}`}>
       {isVideoEnabled ? (
         <VideoTrack 
           trackRef={{ participant, source: Track.Source.Camera, publication: cameraTrack as TrackPublication }} 
           className="w-full h-full object-cover"
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500">
-          <div className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-white ${borderSize} border-white/10 shadow-xl overflow-hidden bg-gradient-to-tr from-purple-400 to-pink-500`}>
+        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary to-secondary">
+          <div className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-primary-foreground ${borderSize} border-primary-foreground/10 shadow-xl overflow-hidden bg-primary`}>
             {imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={imageUrl} alt={participant.name || participant.identity} className="w-full h-full object-cover" />
@@ -112,32 +112,32 @@ function ParticipantTile({
       
       {showLabel && variant === "stage" ? (
         <div className="absolute bottom-3 left-3 flex items-center gap-2 z-10">
-          <div className="bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-lg flex items-center gap-2 border border-white/10 shadow-md">
+          <div className="bg-inverse/70 backdrop-blur-sm px-3 py-1.5 rounded-lg flex items-center gap-2 border border-inverse-foreground/10 shadow-md">
             {roleBadge && (
-              <span className="text-[10px] font-bold text-white bg-purple-600 px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0">
+              <span className="text-[10px] font-bold text-primary-foreground bg-primary px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0">
                 {roleBadge}
               </span>
             )}
-            <span className="text-sm font-bold text-white truncate max-w-[200px]">
+            <span className="text-sm font-bold text-inverse-foreground truncate max-w-[200px]">
               {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
             </span>
           </div>
         </div>
       ) : showLabel ? (
-        <div className="absolute bottom-1 left-1 bg-black/60 px-2 py-1 rounded text-[10px] text-white font-medium truncate max-w-[90%] backdrop-blur-sm">
+        <div className="absolute bottom-1 left-1 bg-inverse/60 px-2 py-1 rounded text-[10px] text-inverse-foreground font-medium truncate max-w-[90%] backdrop-blur-sm">
           {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
         </div>
       ) : null}
       {raisedHand && (
-        <div className="absolute top-1 right-1 bg-amber-500 rounded-full p-0.5 shadow-sm pointer-events-none">
-          <Hand className="w-3 h-3 text-white" />
+        <div className="absolute top-1 right-1 bg-warning rounded-full p-0.5 shadow-sm pointer-events-none">
+          <Hand className="w-3 h-3 text-warning-foreground" />
         </div>
       )}
       {audioMuted && (
         <div className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${
           variant === "stage" ? "bottom-3 right-3 p-1.5" : "bottom-1 right-1 p-1"
         }`}>
-          <MicOff className={`text-white ${variant === "stage" ? "w-4 h-4" : "w-3 h-3"}`} />
+          <MicOff className={`text-destructive-foreground ${variant === "stage" ? "w-4 h-4" : "w-3 h-3"}`} />
         </div>
       )}
     </div>
@@ -218,7 +218,7 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
   return (
     <div
       style={{ left: pos.x, top: pos.y, width: PIP_W, height: PIP_H }}
-      className="absolute z-50 rounded-lg shadow-2xl overflow-hidden border-2 border-purple-500 cursor-move select-none"
+      className="absolute z-50 rounded-lg shadow-2xl overflow-hidden border-2 border-primary cursor-move select-none"
       onMouseDown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();
@@ -600,17 +600,17 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
   }, [isScreenSharingActive, isWhiteboardActive, isFullscreen, onToggleFullscreen]);
 
   return (
-    <div ref={rootRef} className="grid h-full w-full bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 overflow-hidden font-sans relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] md:grid-cols-[1fr_280px] md:grid-rows-[min-content_1fr_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] lg:grid-cols-[1fr_320px]">
+    <div ref={rootRef} className="grid h-full w-full bg-gradient-to-br from-background to-muted overflow-hidden font-sans relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] md:grid-cols-[1fr_280px] md:grid-rows-[min-content_1fr_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] lg:grid-cols-[1fr_320px]">
       <RoomAudioRenderer />
 
       {needsClick && (
-        <div className="absolute inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl border-4 border-purple-400">
-                <VolumeX className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-                <h3 className="text-xl font-bold mb-2 text-gray-800 dark:text-gray-200">{t('classroom.enableAudio')}</h3>
+        <div className="absolute inset-0 z-[999] bg-inverse/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-card rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl border-4 border-primary">
+                <VolumeX className="w-12 h-12 text-secondary mx-auto mb-4" />
+                <h3 className="text-xl font-bold mb-2 text-foreground">{t('classroom.enableAudio')}</h3>
                 <button
                   onClick={async () => { await room.startAudio(); setNeedsClick(false); }}
-                  className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-lg shadow-lg"
+                  className="w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-bold text-lg shadow-lg"
                 >
                   {t('classroom.startClass')}
                 </button>
@@ -621,39 +621,39 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
       {/* 1. Header */}
       <div className={`col-start-1 row-start-1 z-10 flex flex-col ${isPhoneLandscape ? '' : 'p-3 md:p-4 pb-2 md:pb-0 justify-end'}`}>
         {isPhoneLandscape ? (
-          <div className="flex items-center gap-2 px-2 py-1 bg-white/90 dark:bg-black/80 backdrop-blur-md border-b border-gray-200 dark:border-white/10">
+          <div className="flex items-center gap-2 px-2 py-1 bg-card/90 backdrop-blur-md border-b border-border">
             <FlexidualLogo stacked className="h-6 w-6 flex-shrink-0" />
             <div className="flex-1 min-w-0 flex items-center gap-1.5">
-              <span className="text-xs font-bold text-gray-800 dark:text-white truncate">{className || t('classroom.classroom')}</span>
-              {lessonTitle && <span className="text-[10px] text-gray-500 dark:text-white/50 truncate">· {lessonTitle}</span>}
+              <span className="text-xs font-bold text-card-foreground truncate">{className || t('classroom.classroom')}</span>
+              {lessonTitle && <span className="text-[10px] text-muted-foreground truncate">· {lessonTitle}</span>}
             </div>
             {isRecording && (
-              <div className="flex items-center gap-1 bg-red-500/10 px-1.5 py-0.5 rounded-full border border-red-500/20 flex-shrink-0">
-                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-[9px] font-bold text-red-500 uppercase tracking-wide">REC</span>
+              <div className="flex items-center gap-1 bg-destructive/10 px-1.5 py-0.5 rounded-full border border-destructive/20 flex-shrink-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                <span className="text-[9px] font-bold text-destructive uppercase tracking-wide">REC</span>
               </div>
             )}
-            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0 ${teacher ? 'bg-green-500/20 border-green-400/30' : 'bg-orange-500/20 border-orange-400/30'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${teacher ? 'bg-green-500 dark:bg-green-400 animate-pulse' : 'bg-orange-500 dark:bg-orange-400'}`} />
-              <span className="text-[9px] font-bold text-gray-700 dark:text-white/80 uppercase tracking-wide">{teacher ? t('common.live') : t('classroom.waiting')}</span>
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0 ${teacher ? 'bg-success/20 border-success/30' : 'bg-secondary/20 border-secondary/30'}`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-secondary'}`} />
+              <span className="text-[9px] font-bold text-foreground/80 uppercase tracking-wide">{teacher ? t('common.live') : t('classroom.waiting')}</span>
             </div>
           </div>
         ) : (
-          <div className="flex justify-between items-center bg-white/90 dark:bg-gray-900/90 backdrop-blur-md p-3 rounded-2xl shadow-lg border-2 border-purple-300 dark:border-purple-700">
+          <div className="flex justify-between items-center bg-card/90 backdrop-blur-md p-3 rounded-2xl shadow-lg border-2 border-primary/30">
             <div className="flex flex-col">
-              <h2 className="text-lg font-black text-purple-600 dark:text-purple-400">{className || t('classroom.classroom')}</h2>
-              {lessonTitle && <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">{lessonTitle}</p>}
+              <h2 className="text-lg font-black text-primary">{className || t('classroom.classroom')}</h2>
+              {lessonTitle && <p className="text-sm text-muted-foreground font-medium">{lessonTitle}</p>}
             </div>
             <div className="flex items-center gap-2">
               {isRecording && (
-                <div className="flex items-center gap-1.5 bg-red-500/10 px-3 py-1.5 rounded-full border-2 border-red-400/40">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-xs font-bold text-red-500 uppercase tracking-wide">REC</span>
+                <div className="flex items-center gap-1.5 bg-destructive/10 px-3 py-1.5 rounded-full border-2 border-destructive/40">
+                  <div className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
+                  <span className="text-xs font-bold text-destructive uppercase tracking-wide">REC</span>
                 </div>
               )}
-              <div className="flex items-center gap-2 bg-green-100 dark:bg-green-900/30 px-4 py-2 rounded-full border-2 border-green-300 dark:border-green-700">
-                <div className={`w-3 h-3 rounded-full ${teacher ? 'bg-green-500 animate-pulse' : 'bg-orange-400'}`} />
-                <span className="text-sm font-bold text-green-700 dark:text-green-400 uppercase tracking-wide">{teacher ? t('common.live') : t('classroom.waiting')}</span>
+              <div className="flex items-center gap-2 bg-success/10 px-4 py-2 rounded-full border-2 border-success/30">
+                <div className={`w-3 h-3 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-secondary'}`} />
+                <span className="text-sm font-bold text-success uppercase tracking-wide">{teacher ? t('common.live') : t('classroom.waiting')}</span>
               </div>
             </div>
           </div>
@@ -662,7 +662,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
 
       {/* 2. Stage */}
       <div className={`col-start-1 row-start-2 min-h-0 z-10 flex flex-col relative ${isPhoneLandscape ? 'p-1' : 'p-3 md:p-4 py-2 md:py-4'}`}>
-        <div ref={stageRef} className="flex-1 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-3xl shadow-2xl overflow-hidden relative border-4 border-purple-400 dark:border-purple-600 flex items-center justify-center group min-h-0">
+        <div ref={stageRef} className="flex-1 bg-gradient-to-br from-primary via-primary to-secondary rounded-3xl shadow-2xl overflow-hidden relative border-4 border-primary flex items-center justify-center group min-h-0">
           {/* Top-right stage overlay: following pill + fullscreen toggle */}
           {(isWhiteboardActive || isScreenSharingActive) && (
             <div className="absolute top-2 right-2 z-30 flex flex-col items-end gap-1.5 pointer-events-none">
@@ -671,8 +671,8 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                   onClick={() => setFollowViewport(v => !v)}
                   className={`pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg border transition-all ${
                     followViewport
-                      ? 'bg-green-500/90 text-white border-green-400/50 hover:bg-green-600/90'
-                      : 'bg-black/60 text-white/80 border-white/20 hover:bg-black/80'
+                      ? 'bg-success/90 text-success-foreground border-success/50 hover:bg-success/80'
+                      : 'bg-inverse/60 text-inverse-foreground/80 border-inverse-foreground/20 hover:bg-inverse/80'
                   }`}
                 >
                   {followViewport ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
@@ -683,7 +683,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                 <button
                   onClick={onToggleFullscreen}
                   title={isFullscreen ? (t('classroom.exitFullscreen') || 'Exit fullscreen') : (t('classroom.enterFullscreen') || 'Fullscreen')}
-                  className="pointer-events-auto w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center shadow-lg border border-white/20 transition-all"
+                  className="pointer-events-auto w-8 h-8 rounded-full bg-inverse/60 hover:bg-inverse/80 text-inverse-foreground flex items-center justify-center shadow-lg border border-inverse-foreground/20 transition-all"
                 >
                   {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                 </button>
@@ -699,7 +699,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
           ) : isScreenSharingActive ? (
             <>
               <div
-                className={`w-full h-full flex items-center justify-center origin-center bg-black relative select-none ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+                className={`w-full h-full flex items-center justify-center origin-center bg-inverse relative select-none ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
                 onMouseDown={zoom > 1 ? (e) => {
                   e.preventDefault();
@@ -718,19 +718,19 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                 />
 
                 {(!activeScreenTrack.publication.isSubscribed || !activeScreenTrack.publication.track) && (
-                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 backdrop-blur-sm z-50">
-                      <Loader2 className="w-12 h-12 text-purple-500 animate-spin mb-4" />
-                      <p className="text-white font-bold text-lg">{t('classroom.loadingShare')}</p>
+                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-inverse/90 backdrop-blur-sm z-50">
+                      <Loader2 className="w-12 h-12 text-info animate-spin mb-4" />
+                      <p className="text-inverse-foreground font-bold text-lg">{t('classroom.loadingShare')}</p>
                    </div>
                 )}
               </div>
 
-              <div className={`absolute top-4 right-4 flex gap-2 z-40 bg-black/60 p-2 rounded-xl backdrop-blur-sm border border-white/20 transition-all duration-300 ${isPhoneLandscape && !stageControlsVisible ? 'opacity-0 -translate-y-2 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-                <button onClick={() => handleZoom(-0.25)} className="p-2 hover:bg-white/20 rounded-lg text-white">
+              <div className={`absolute top-4 right-4 flex gap-2 z-40 bg-inverse/60 p-2 rounded-xl backdrop-blur-sm border border-inverse-foreground/20 transition-all duration-300 ${isPhoneLandscape && !stageControlsVisible ? 'opacity-0 -translate-y-2 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+                <button onClick={() => handleZoom(-0.25)} className="p-2 hover:bg-inverse-foreground/20 rounded-lg text-inverse-foreground">
                   <ZoomOut className="w-4 h-4" />
                 </button>
-                <span className="text-white text-sm font-mono py-2 min-w-[3ch] text-center">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => handleZoom(0.25)} className="p-2 hover:bg-white/20 rounded-lg text-white">
+                <span className="text-inverse-foreground text-sm font-mono py-2 min-w-[3ch] text-center">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => handleZoom(0.25)} className="p-2 hover:bg-inverse-foreground/20 rounded-lg text-inverse-foreground">
                   <ZoomIn className="w-4 h-4" />
                 </button>
               </div>
@@ -744,25 +744,25 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                   <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={true} roleBadge={t('classroom.teacher')} youLabel={t('classroom.youShort')} audioMuted={!isTeacherAudioOn} />
                 ) : (
                   <div className="z-10 flex flex-col items-center justify-center p-8 text-center">
-                      <div className="w-40 h-40 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center border-4 border-white/20 mb-6 shadow-2xl overflow-hidden">
+                      <div className="w-40 h-40 bg-primary rounded-full flex items-center justify-center border-4 border-inverse-foreground/20 mb-6 shadow-2xl overflow-hidden">
                         {getImageUrl(teacher) ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={getImageUrl(teacher)!} alt={teacher.name || ""} className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-7xl font-bold text-white">{teacher.name?.charAt(0) || "T"}</span>
+                          <span className="text-7xl font-bold text-primary-foreground">{teacher.name?.charAt(0) || "T"}</span>
                         )}
                       </div>
-                      <h2 className="text-3xl font-black text-white mb-2">{teacher.name || t('classroom.teacher')}</h2>
+                      <h2 className="text-3xl font-black text-primary-foreground mb-2">{teacher.name || t('classroom.teacher')}</h2>
                       <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-                        <div className="bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm border-2 border-white/20 flex items-center gap-1.5">
-                          <VideoOff className="w-4 h-4 text-white/70" />
-                          <span className="text-sm text-white font-bold">{t('classroom.cameraOffLabel')}</span>
+                        <div className="bg-inverse/40 px-3 py-1.5 rounded-full backdrop-blur-sm border-2 border-inverse-foreground/20 flex items-center gap-1.5">
+                          <VideoOff className="w-4 h-4 text-inverse-foreground/70" />
+                          <span className="text-sm text-inverse-foreground font-bold">{t('classroom.cameraOffLabel')}</span>
                         </div>
                         <div className={`px-3 py-1.5 rounded-full backdrop-blur-sm border-2 flex items-center gap-1.5 ${
-                          isTeacherAudioOn ? 'bg-black/40 border-white/20' : 'bg-red-500/40 border-red-400/60'
+                          isTeacherAudioOn ? 'bg-inverse/40 border-inverse-foreground/20' : 'bg-destructive/40 border-destructive/60'
                         }`}>
-                          <Mic className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-green-400" : "text-red-300"}`} />
-                          <span className="text-sm text-white font-bold">{isTeacherAudioOn ? t('classroom.audioOnly') : t('classroom.micOff')}</span>
+                          <Mic className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-success" : "text-destructive"}`} />
+                          <span className="text-sm text-inverse-foreground font-bold">{isTeacherAudioOn ? t('classroom.audioOnly') : t('classroom.micOff')}</span>
                         </div>
                       </div>
                   </div>
@@ -770,7 +770,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
               ) : (
                 <div className="text-center z-10 p-8">
                   <div className="text-9xl mb-4">👩‍🏫</div>
-                  <h2 className="text-3xl font-black text-white">{t('classroom.waitingForTeacher')}</h2>
+                  <h2 className="text-3xl font-black text-primary-foreground">{t('classroom.waitingForTeacher')}</h2>
                 </div>
               )}
             </>
@@ -800,7 +800,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
               }`}
             >
               <div
-                className="flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-full px-4 py-2.5 border border-white/20 shadow-2xl pointer-events-auto"
+                className="flex items-center gap-2 bg-inverse/60 backdrop-blur-md rounded-full px-4 py-2.5 border border-inverse-foreground/20 shadow-2xl pointer-events-auto"
                 onClick={showStageControls}
               >
                 <DeviceToggleButton variant="compact" source={Track.Source.Microphone} kind="audioinput" iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
@@ -809,8 +809,8 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                   onClick={toggleHandRaised}
                   className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
                     handRaised
-                      ? 'bg-amber-500/80 text-white border-amber-400 animate-bounce'
-                      : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                      ? 'bg-warning/80 text-warning-foreground border-warning animate-bounce'
+                      : 'bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30'
                   }`}
                 >
                   <Hand className="w-5 h-5" />
@@ -820,24 +820,24 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                   disabled={shareState === "requesting"}
                   className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
                     isSharingLocally
-                      ? 'bg-green-500/80 text-white border-green-400'
+                      ? 'bg-success/80 text-success-foreground border-success'
                       : shareState === "approved"
-                        ? 'bg-blue-500/80 text-white border-blue-400 animate-pulse'
+                        ? 'bg-info/80 text-info-foreground border-info animate-pulse'
                         : shareState === "requesting"
-                          ? 'bg-yellow-500/80 text-white border-yellow-400 cursor-wait'
-                          : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                          ? 'bg-warning/80 text-warning-foreground border-warning cursor-wait'
+                          : 'bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30'
                   }`}
                 >
                   <MonitorUp className="w-5 h-5" />
                 </button>
-                <div className="w-px h-6 bg-white/30 mx-1" />
+                <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
                 {onToggleFullscreen && (
                   <FullscreenButtonCompact isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
                 )}
-                <div className="w-px h-6 bg-white/30 mx-1" />
+                <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
                 <button
                   onClick={handleLeave}
-                  className="w-11 h-11 rounded-full bg-red-500/80 hover:bg-red-600/80 text-white flex items-center justify-center shadow-lg border-2 border-red-400/60 transition-colors"
+                  className="w-11 h-11 rounded-full bg-destructive/80 hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center shadow-lg border-2 border-destructive/60 transition-colors"
                 >
                   <LogOut className="w-5 h-5" />
                 </button>
@@ -849,7 +849,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
 
       {/* 3. Controls — hidden in phone landscape (replaced by floating stage overlay) */}
       <div className={`col-start-1 row-start-4 md:col-start-1 md:row-start-3 landscape:col-start-1 landscape:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10 ${isPhoneLandscape ? 'hidden' : ''}`}>
-        <div className="h-24 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md rounded-3xl shadow-lg border-2 border-purple-300 dark:border-purple-700 px-4 flex items-center">
+        <div className="h-24 bg-card/90 backdrop-blur-md rounded-3xl shadow-lg border-2 border-primary/30 px-4 flex items-center">
           {/* Left spacer */}
           <div className="flex-1" />
           {/* Centered controls */}
@@ -862,8 +862,8 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                 className={`
                   w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg border-2
                   ${handRaised
-                    ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 border-amber-400 dark:border-amber-600 animate-bounce'
-                    : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-600'}
+                    ? 'bg-warning/10 text-warning border-warning/40 animate-bounce'
+                    : 'bg-card hover:bg-muted text-primary border-primary/30'}
                 `}
               >
                 <Hand className="w-6 h-6" />
@@ -874,12 +874,12 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
                 className={`
                   w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg border-2
                   ${isSharingLocally
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-300 dark:border-green-600'
+                    ? 'bg-success/10 text-success border-success/30'
                     : shareState === "approved"
-                        ? 'bg-blue-500 text-white border-blue-400 animate-pulse'
+                        ? 'bg-info text-info-foreground border-info animate-pulse'
                     : shareState === "requesting"
-                        ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 border-yellow-300 dark:border-yellow-600 cursor-wait'
-                        : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-600'}
+                        ? 'bg-warning/10 text-warning border-warning/30 cursor-wait'
+                        : 'bg-card hover:bg-muted text-primary border-primary/30'}
                 `}
                 title={shareState === "requesting" ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
               >
@@ -891,7 +891,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
             <button
               onClick={handleLeave}
               title={t('classroom.leave')}
-              className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg border-2 border-red-300 transition-colors"
+              className="w-12 h-12 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center shadow-lg border-2 border-destructive/30 transition-colors"
             >
               <LogOut className="w-5 h-5" />
             </button>
@@ -920,22 +920,22 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
       </AlertDialog>
 
       {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
-      <div className="col-start-1 row-start-3 md:col-start-2 md:row-start-1 md:row-span-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 flex flex-col bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-xl z-0 border-y-2 border-purple-300 dark:border-purple-700 md:border-y-0 md:border-l-2 landscape:border-y-0 landscape:border-l-2 h-36 md:h-full landscape:h-full overflow-hidden">
+      <div className="col-start-1 row-start-3 md:col-start-2 md:row-start-1 md:row-span-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 flex flex-col bg-card/90 backdrop-blur-md shadow-xl z-0 border-y-2 border-primary/30 md:border-y-0 md:border-l-2 landscape:border-y-0 landscape:border-l-2 h-36 md:h-full landscape:h-full overflow-hidden">
 
         {/* Header + nav arrows */}
-        <div className="bg-purple-600 dark:bg-purple-700 text-white flex items-center gap-2 px-3 py-1.5 md:py-2.5 border-b-2 border-purple-700 dark:border-purple-800 flex-shrink-0">
+        <div className="bg-primary text-primary-foreground flex items-center gap-2 px-3 py-1.5 md:py-2.5 border-b-2 border-primary flex-shrink-0">
           <h3 className="flex-1 text-xs font-black uppercase tracking-widest truncate">
             {t('classroom.classmates', { count: students.length })}
           </h3>
           {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
             <>
               <div className="hidden md:flex landscape:flex items-center gap-0.5">
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-inverse-foreground/20 transition-colors disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-inverse-foreground/20 transition-colors disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
               </div>
               <div className="flex md:hidden landscape:hidden items-center gap-0.5">
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-inverse-foreground/20 transition-colors disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-inverse-foreground/20 transition-colors disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
             </>
           )}
@@ -944,10 +944,10 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
         {/* Responsive Tiles Auto-Grid */}
         <div
           ref={classmateTilesRef}
-          className="flex-1 min-h-0 min-w-0 bg-purple-50/50 dark:bg-gray-800/50 p-2 md:p-3 gap-2 md:gap-3 flex flex-row items-start overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:grid md:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] md:auto-rows-max md:overflow-y-auto md:overflow-x-hidden md:snap-y md:content-start md:items-start landscape:grid landscape:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:auto-rows-max landscape:overflow-y-auto landscape:overflow-x-hidden landscape:snap-y landscape:content-start landscape:items-start scrollbar-thin"
+          className="flex-1 min-h-0 min-w-0 bg-muted/50 p-2 md:p-3 gap-2 md:gap-3 flex flex-row items-start overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:grid md:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] md:auto-rows-max md:overflow-y-auto md:overflow-x-hidden md:snap-y md:content-start md:items-start landscape:grid landscape:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:auto-rows-max landscape:overflow-y-auto landscape:overflow-x-hidden landscape:snap-y landscape:content-start landscape:items-start scrollbar-thin"
         >
           {sortedStudents.length === 0 && (
-            <div className="md:col-span-full landscape:col-span-full flex items-center justify-center w-full text-gray-500 dark:text-gray-400 text-xs italic text-center px-2 whitespace-nowrap md:whitespace-normal h-full">
+            <div className="md:col-span-full landscape:col-span-full flex items-center justify-center w-full text-muted-foreground text-xs italic text-center px-2 whitespace-nowrap md:whitespace-normal h-full">
               {t('classroom.youAreFirst')}
             </div>
           )}
@@ -957,7 +957,7 @@ export function StudentClassroomUI({ className, lessonTitle, onLeave, isFullscre
               variant="grid"
               participant={p}
               className={`flex-shrink-0 rounded-2xl border-4 shadow-md overflow-hidden aspect-square w-24 h-24 sm:w-28 sm:h-28 md:w-full md:h-auto landscape:w-full landscape:h-auto snap-start snap-always
-                ${raisedHands.has(p.identity) || (p.isLocal && handRaised) ? 'border-amber-400 dark:border-amber-500 shadow-[0_0_8px_2px] shadow-amber-500/40' : 'border-purple-300 dark:border-purple-600'}`}
+                ${raisedHands.has(p.identity) || (p.isLocal && handRaised) ? 'border-warning shadow-[0_0_8px_2px] shadow-warning/40' : 'border-primary/30'}`}
               raisedHand={raisedHands.has(p.identity) || (p.isLocal && handRaised)}
               youLabel={t('classroom.youShort')}
             />

@@ -17,11 +17,10 @@ import { ClassesTable } from "@/components/teaching/classes/classes-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslations } from "next-intl";
 import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview";
-import FlexidualHeader from "@/components/flexidual-header";
+
 import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 export default function MyClassesPage() {
-  const t = useTranslations();
   const { user, isLoading: isUserLoading } = useCurrentUser();
   const params = useParams();
   
@@ -86,7 +85,7 @@ export default function MyClassesPage() {
 
   if (isUserLoading || classes === undefined) {
     return (
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="space-y-6">
         <Skeleton className="h-12 w-48" />
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
@@ -107,38 +106,30 @@ export default function MyClassesPage() {
   };
 
   return (
-    <>
-      <FlexidualHeader
-        title={isAdmin ? t("class.allClasses") : t("class.myClasses")}
-        subtitle={isAdmin ? t("class.manageAllDescription") : t("class.manageMyDescription")}
-        showCampusFilter={false}
-      />
-      <div className="container mx-auto p-4 sm:p-6 space-y-6">
+    <div className="space-y-6">
+      {renderWeekOverview()}
 
-        {renderWeekOverview()}
-        
-        {classes.length === 0 && !hasTableFilters ? (
-          <EmptyState isAdmin={isAdmin} />
-        ) : (
-          <ClassesTable
-            data={classes}
-            curriculums={curriculums ?? undefined}
-            customFilter={
-              <ClassCombinedFilter
-                selectedTeacherId={selectedTeacherId}
-                onSelectTeacher={setSelectedTeacherId}
-                selectedCurriculumId={selectedCurriculumId}
-                onSelectCurriculum={setSelectedCurriculumId}
-                selectedSchoolId={selectedSchoolId}
-                selectedCampusId={selectedCampusId}
-                onSelectCampus={setSelectedCampusId}
-                isAdmin={isAdmin}
-              />
-            }
-          />
-        )}
-      </div>
-    </>
+      {classes.length === 0 && !hasTableFilters ? (
+        <EmptyState isAdmin={isAdmin} />
+      ) : (
+        <ClassesTable
+          data={classes}
+          curriculums={curriculums ?? undefined}
+          customFilter={
+            <ClassCombinedFilter
+              selectedTeacherId={selectedTeacherId}
+              onSelectTeacher={setSelectedTeacherId}
+              selectedCurriculumId={selectedCurriculumId}
+              onSelectCurriculum={setSelectedCurriculumId}
+              selectedSchoolId={selectedSchoolId}
+              selectedCampusId={selectedCampusId}
+              onSelectCampus={setSelectedCampusId}
+              isAdmin={isAdmin}
+            />
+          }
+        />
+      )}
+    </div>
   );
 }
 

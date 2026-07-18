@@ -15,7 +15,7 @@ export default function CalendarHeaderActionsMode() {
   return (
     <LayoutGroup>
       <ToggleGroup
-        className="flex gap-0 -space-x-px rounded-sm border overflow-hidden shadow-sm shadow-black/5 rtl:space-x-reverse"
+        className="flex gap-0 -space-x-px rounded-sm border overflow-hidden shadow-sm shadow-foreground/5 rtl:space-x-reverse"
         type="single"
         variant="outline"
         value={mode}

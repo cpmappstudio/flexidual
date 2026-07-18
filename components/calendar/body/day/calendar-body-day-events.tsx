@@ -1,6 +1,7 @@
 import { useCalendarContext } from '../../calendar-context'
 import { isSameDay } from 'date-fns'
 import { useTranslations } from 'next-intl'
+import { getCalendarColorClasses } from '../../calendar-tailwind-classes'
 
 export default function CalendarBodyDayEvents() {
   const { events, date, setManageEventDialogOpen, setSelectedEvent } =
@@ -21,7 +22,9 @@ export default function CalendarBodyDayEvents() {
               setManageEventDialogOpen(true)
             }}
           >
-            <div className={`size-2 rounded-full bg-${event.color}-500 shrink-0`} />
+            <div
+              className={`size-2 shrink-0 rounded-full ${getCalendarColorClasses(event.color).dot}`}
+            />
             <div className="flex flex-col min-w-0">
               {event.curriculumTitle && (
                 <p className="text-sm font-semibold truncate">

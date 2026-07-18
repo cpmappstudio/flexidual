@@ -32,11 +32,11 @@ export default function TeachingDashboard() {
 
   // Process events
   const { nextLesson, isLive, isIgnitia, todayLessons, upcomingLessons, weekCalendar } = useMemo(() => {
-    if (!events) return { 
-      nextLesson: null, 
-      isLive: false, 
+    if (!events) return {
+      nextLesson: null,
+      isLive: false,
       isIgnitia: false,
-      todayLessons: [], 
+      todayLessons: [],
       upcomingLessons: [],
       weekCalendar: []
     }
@@ -45,7 +45,7 @@ export default function TeachingDashboard() {
     const live = next && next.start <= now && next.end >= now
     const ignitia = next?.sessionType === "ignitia"
 
-    const today = events.filter(e => 
+    const today = events.filter(e =>
       e.start >= todayStart && e.start < todayStart + 86400000
     ).sort((a, b) => a.start - b.start)
 
@@ -67,11 +67,11 @@ export default function TeachingDashboard() {
       }
     })
 
-    return { 
-      nextLesson: next, 
-      isLive: live, 
+    return {
+      nextLesson: next,
+      isLive: live,
       isIgnitia: ignitia,
-      todayLessons: today, 
+      todayLessons: today,
       upcomingLessons: upcoming,
       weekCalendar: week
     }
@@ -86,11 +86,11 @@ export default function TeachingDashboard() {
   const getCardStyle = () => {
     if (isLive) {
       if (isIgnitia) {
-        return 'border-orange-500 dark:border-orange-600 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30'
+        return 'border-secondary bg-secondary/10'
       }
-      return 'border-green-500 dark:border-green-600 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30'
+      return 'border-success bg-success/10'
     }
-    return 'border-blue-500 dark:border-blue-600 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30'
+    return 'border-info bg-info/10'
   }
 
   if (curriculums === undefined || events === undefined || allClasses === undefined) {
@@ -99,7 +99,7 @@ export default function TeachingDashboard() {
 
   return (
     <div className="space-y-6">
-      
+
       {/* Header */}
       <div className="flex items-center justify-between dashboard-header">
         <div>
@@ -110,33 +110,33 @@ export default function TeachingDashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        
+
         {/* LEFT COLUMN */}
         <div className="lg:col-span-2 space-y-6">
-          
+
           {/* Next Class Hero */}
           <Card className={`dashboard-card ${getCardStyle()}`}>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-2xl">
                   {isIgnitia ? (
-                     <MonitorPlay className={`w-6 h-6 ${isLive ? 'text-orange-600 dark:text-orange-400' : 'text-blue-600'}`} />
+                     <MonitorPlay className={`w-6 h-6 ${isLive ? 'text-secondary' : 'text-info'}`} />
                   ) : (
-                     <Video className={`w-6 h-6 ${isLive ? 'text-green-600 dark:text-green-400' : 'text-blue-600'}`} />
+                     <Video className={`w-6 h-6 ${isLive ? 'text-success' : 'text-info'}`} />
                   )}
-                  
-                  {isLive 
-                    ? (isIgnitia ? "Ignitia Session Active" : t('dashboard.classInSession')) 
+
+                  {isLive
+                    ? (isIgnitia ? "Ignitia Session Active" : t('dashboard.classInSession'))
                     : t('dashboard.nextClass')
                   }
                 </CardTitle>
                 {isLive && !isIgnitia && (
-                  <Badge className="bg-red-500 text-white animate-pulse px-3 py-1">
+                  <Badge className="bg-destructive text-destructive-foreground animate-pulse px-3 py-1">
                     ● {t('common.live')}
                   </Badge>
                 )}
                 {isLive && isIgnitia && (
-                  <Badge className="bg-orange-500 text-white px-3 py-1">
+                  <Badge className="bg-secondary text-secondary-foreground px-3 py-1">
                     ● Active
                   </Badge>
                 )}
@@ -150,34 +150,34 @@ export default function TeachingDashboard() {
                     <p className="text-lg font-medium text-muted-foreground">{nextLesson.className}</p>
                     <p className="text-sm text-muted-foreground mt-1">{nextLesson.curriculumTitle}</p>
                   </div>
-                  
+
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="time-badge">
-                      <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      <Clock className="w-4 h-4 text-info" />
                       <span className="font-semibold">
                         {format(nextLesson.start, "h:mm a")}
                       </span>
                     </div>
                     <div className="time-badge">
-                      <CalendarIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                      <CalendarIcon className="w-4 h-4 text-primary" />
                       <span className="font-medium">
-                        {isToday(nextLesson.start) 
+                        {isToday(nextLesson.start)
                           ? t('dashboard.today')
-                          : isTomorrow(nextLesson.start) 
+                          : isTomorrow(nextLesson.start)
                           ? t('dashboard.tomorrow')
                           : format(nextLesson.start, "EEEE, MMM d")}
                       </span>
                     </div>
                   </div>
 
-                  <Button 
-                    size="lg" 
+                  <Button
+                    size="lg"
                     className={`w-full font-bold ${
-                      isLive 
-                        ? (isIgnitia 
-                            ? 'bg-orange-600 hover:bg-orange-700 dark:bg-orange-700' 
-                            : 'bg-green-600 hover:bg-green-700 dark:bg-green-700')
-                        : 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700'
+                      isLive
+                        ? (isIgnitia
+                            ? 'bg-secondary hover:bg-secondary/90 text-secondary-foreground'
+                                                        : 'bg-success hover:bg-success/90 text-success-foreground')
+                                                    : 'bg-primary hover:bg-primary/90 text-primary-foreground'
                     }`}
                     asChild
                   >
@@ -199,7 +199,7 @@ export default function TeachingDashboard() {
                     <Button
                       size="lg"
                       variant="outline"
-                      className="md:hidden w-full font-semibold border-purple-400 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/30"
+                      className="md:hidden w-full font-semibold border-primary text-primary hover:bg-primary/10"
                       asChild
                     >
                       <Link href={`/${orgSlug}/classroom/${nextLesson.roomName}?companion=true`}>
@@ -223,18 +223,18 @@ export default function TeachingDashboard() {
             <Card className="dashboard-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <CalendarIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  <CalendarIcon className="w-5 h-5 text-info" />
                   {t('dashboard.todaySchedule')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   {todayLessons.map((lesson) => (
-                    <div 
+                    <div
                       key={lesson.scheduleId}
                       className={`lesson-card ${
-                        lesson.isLive 
-                          ? (lesson.sessionType === 'ignitia' ? 'border-l-4 border-orange-500 bg-orange-50/50' : 'lesson-live')
+                        lesson.isLive
+                          ? (lesson.sessionType === 'ignitia' ? 'border-l-4 border-secondary bg-secondary/10' : 'lesson-live')
                           : lesson.end < now
                           ? 'lesson-completed'
                           : 'lesson-upcoming'
@@ -248,14 +248,14 @@ export default function TeachingDashboard() {
                           {format(lesson.start, "a")}
                         </span>
                       </div>
-                      
+
                       <div className="flex-1">
                         <h4 className="font-bold">{lesson.title}</h4>
                         <p className="text-sm text-muted-foreground">{lesson.className}</p>
                       </div>
 
                       {lesson.isLive ? (
-                        <Badge className="bg-red-500 text-white animate-pulse">
+                        <Badge className="bg-destructive text-destructive-foreground animate-pulse">
                           {t('common.live')}
                         </Badge>
                       ) : lesson.end < now ? (
@@ -273,19 +273,19 @@ export default function TeachingDashboard() {
             <Card className="dashboard-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                  <Clock className="w-5 h-5 text-secondary" />
                   {t('dashboard.upcomingClasses')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   {upcomingLessons.map((lesson) => (
-                    <div 
+                    <div
                       key={lesson.scheduleId}
                       className="lesson-card lesson-upcoming"
                     >
                       <div className="upcoming-date-box">
-                        <span className="text-xs font-bold text-orange-600 dark:text-orange-400 uppercase">
+                        <span className="text-xs font-bold text-secondary uppercase">
                           {format(lesson.start, "MMM")}
                         </span>
                         <span className="text-2xl font-bold">
@@ -295,12 +295,12 @@ export default function TeachingDashboard() {
                           {format(lesson.start, "h:mm a")}
                         </span>
                       </div>
-                      
+
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                             <h4 className="font-bold">{lesson.title}</h4>
                             {lesson.sessionType === 'ignitia' && (
-                                <Badge variant="outline" className="text-[10px] h-5 px-1 text-orange-600 border-orange-200 bg-orange-50">
+                                <Badge variant="outline" className="text-[10px] h-5 px-1 text-secondary border-secondary/30 bg-secondary/10">
                                     Ignitia
                                 </Badge>
                             )}
@@ -310,9 +310,9 @@ export default function TeachingDashboard() {
 
                       {lesson.isLive ? (
                         lesson.sessionType === 'ignitia' ? (
-                            <Badge className="bg-orange-500 text-white">Active</Badge>
+                            <Badge className="bg-secondary text-secondary-foreground">Active</Badge>
                         ) : (
-                            <Badge className="bg-red-500 text-white animate-pulse">{t('common.live')}</Badge>
+                            <Badge className="bg-destructive text-destructive-foreground animate-pulse">{t('common.live')}</Badge>
                         )
                       ) : lesson.end < now ? (
                         <Badge variant="secondary">{t('dashboard.completed')}</Badge>
@@ -320,7 +320,7 @@ export default function TeachingDashboard() {
                     </div>
                   ))}
                 </div>
-                
+
                 <Button variant="outline" className="w-full mt-4" asChild>
                   <Link href={`/${orgSlug}/calendar`}>
                     {t('dashboard.viewFullCalendar')}
@@ -333,12 +333,12 @@ export default function TeachingDashboard() {
 
         {/* RIGHT COLUMN - Week View & Curriculums */}
         <div className="space-y-6">
-          
+
           {/* Week Calendar Mini View */}
           <Card className="dashboard-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <CalendarIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                <CalendarIcon className="w-5 h-5 text-primary" />
                 {t('dashboard.thisWeek')}
               </CardTitle>
             </CardHeader>
@@ -347,38 +347,38 @@ export default function TeachingDashboard() {
                 {weekCalendar.map((day, idx) => {
                   const isCurrentDay = isToday(day.date)
                   return (
-                    <div 
+                    <div
                       key={idx}
                       className={`calendar-day-card ${isCurrentDay ? 'calendar-day-today' : ''}`}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div>
                           <p className={`text-xs font-bold uppercase ${
-                            isCurrentDay ? 'text-purple-700 dark:text-purple-300' : 'text-muted-foreground'
+                            isCurrentDay ? 'text-primary' : 'text-muted-foreground'
                           }`}>
                             {format(day.date, "EEE")}
                           </p>
                           <p className={`text-lg font-bold ${
-                            isCurrentDay ? 'text-purple-800 dark:text-purple-200' : ''
+                            isCurrentDay ? 'text-primary' : ''
                           }`}>
                             {format(day.date, "d")}
                           </p>
                         </div>
                         {day.events.length > 0 && (
                           <Badge className={`${
-                            isCurrentDay 
-                              ? 'bg-purple-600 dark:bg-purple-500' 
-                              : 'bg-blue-600 dark:bg-blue-500'
-                          } text-white`}>
+                            isCurrentDay
+                              ? 'bg-primary'
+                                                            : 'bg-info'
+                                                        } text-primary-foreground`}>
                             {day.events.length}
                           </Badge>
                         )}
                       </div>
-                      
+
                       {day.events.length > 0 ? (
                         <div className="space-y-1">
                           {day.events.slice(0, 2).map((evt) => (
-                            <div 
+                            <div
                               key={evt.scheduleId}
                               className="event-mini-card"
                             >
@@ -410,7 +410,7 @@ export default function TeachingDashboard() {
           <Card className="dashboard-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <BookOpen className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <BookOpen className="w-5 h-5 text-success" />
                 {t('dashboard.myCurriculums')}
               </CardTitle>
             </CardHeader>
@@ -419,8 +419,8 @@ export default function TeachingDashboard() {
                 {curriculums?.slice(0, 3).map((curr) => {
                   const relatedClass = getClassForCurriculum(curr._id)
                   return relatedClass ? (
-                    <Link 
-                      key={curr._id} 
+                    <Link
+                      key={curr._id}
                       href={`/${orgSlug}/teaching/classes/${relatedClass._id}`}
                       className="curriculum-link-card"
                     >
@@ -442,7 +442,7 @@ export default function TeachingDashboard() {
                   </p>
                 )}
               </div>
-              
+
               <Button variant="outline" className="w-full mt-3" asChild>
                 <Link href={`/${orgSlug}/teaching/classes`}>
                   {t('dashboard.viewAllCurriculums')}

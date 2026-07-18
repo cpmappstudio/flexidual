@@ -14,7 +14,7 @@ import {
 import { Id } from "@/convex/_generated/dataModel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminClassTrackingCard } from "@/components/admin/admin-class-tracking-card";
-import FlexidualHeader from "../flexidual-header";
+
 import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 export default function AdminDashboard() {
@@ -67,7 +67,7 @@ export default function AdminDashboard() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6 space-y-6 animate-pulse">
+      <div className="space-y-6 animate-pulse">
         <div className="h-24 bg-card rounded-xl border border-border"></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {[1, 2, 3, 4].map((i) => (
@@ -79,13 +79,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <>
-      <FlexidualHeader
-        title={t("admin.title")}
-        subtitle={t("admin.description")}
-      />
-      
-      <div className="container mx-auto p-4 sm:p-6 space-y-6">
+    <div className="space-y-6">
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <StatCard title={t("navigation.teachers") || "Active Teachers"} value={teachers?.length || 0} icon={SquareUserRound} />
@@ -133,8 +127,7 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
-      </div>
-    </>
+    </div>
   );
 }
 

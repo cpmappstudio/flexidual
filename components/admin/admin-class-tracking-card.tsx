@@ -75,7 +75,7 @@ export function AdminClassTrackingCard({ classData, schedules }: AdminClassTrack
                 <div className="flex items-center gap-6 shrink-0">
                     <div className="flex flex-col items-end">
                         <span className="text-xs font-medium text-muted-foreground mb-0.5">Teacher Attendance</span>
-                        <div className={`text-xl font-bold ${teacherAttendanceRate < 80 ? 'text-destructive' : teacherAttendanceRate < 95 ? 'text-amber-500' : 'text-green-600 dark:text-green-500'}`}>
+                        <div className={`text-xl font-bold ${teacherAttendanceRate < 80 ? 'text-destructive' : teacherAttendanceRate < 95 ? 'text-warning' : 'text-success'}`}>
                             {teacherAttendanceRate}%
                         </div>
                     </div>
@@ -135,7 +135,7 @@ export function AdminClassTrackingCard({ classData, schedules }: AdminClassTrack
                                                 {/* Teacher Status Badge */}
                                                 <div className="flex flex-col items-end sm:items-start min-w-[80px]">
                                                     <span className="text-[10px] font-medium text-muted-foreground uppercase mb-0.5">Teacher</span>
-                                                    <Badge variant={isPresent ? "outline" : "destructive"} className={`font-normal ${isPresent ? 'text-green-600 border-green-200 bg-green-50 dark:text-green-400 dark:border-green-900 dark:bg-green-950/30' : ''}`}>
+                                                    <Badge variant={isPresent ? "outline" : "destructive"} className={`font-normal ${isPresent ? 'border-success/30 bg-success/10 text-success' : ''}`}>
                                                         {isPresent ? <CheckCircle2 className="w-3 h-3 mr-1" /> : <XCircle className="w-3 h-3 mr-1" />}
                                                         {tStatus === "partial" ? "Partial" : isPresent ? "Present" : "Missed"}
                                                     </Badge>

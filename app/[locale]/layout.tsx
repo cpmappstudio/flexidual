@@ -39,7 +39,8 @@ export default async function LocaleLayout({
         <ThemeProvider
             attribute="class"
             defaultTheme="light"
-            enableSystem
+            forcedTheme="light"
+            enableSystem={false}
             disableTransitionOnChange
         >
             <ClerkProvider

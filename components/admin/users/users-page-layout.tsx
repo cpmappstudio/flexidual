@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
 import { UsersTable } from "@/components/admin/users/users-table";
-import FlexidualHeader from "@/components/flexidual-header";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldCheck, GraduationCap, Users, School } from "lucide-react";
@@ -16,12 +16,7 @@ export default function UsersPageLayout() {
   const isSystemDashboard = orgSlug === "system" || orgSlug === "admin";
 
   return (
-    <>
-      <FlexidualHeader
-        title={t("navigation.users")}
-        subtitle={t("dashboard.usersSummary")}
-      />
-      <div className="container mx-auto p-4 sm:p-6 space-y-6">
+    <div className="space-y-6">
         <Tabs defaultValue="all" className="w-full">
             <TabsList className="grid w-full grid-cols-5 lg:w-[500px]">
                 <TabsTrigger value="all">{t('common.all') || "All"}</TabsTrigger>
@@ -72,7 +67,7 @@ export default function UsersPageLayout() {
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <ShieldCheck className="h-5 w-5 text-indigo-500" />
+                            <ShieldCheck className="h-5 w-5 text-info" />
                             {t('navigation.principals') || "Principals"}
                         </CardTitle>
                         <CardDescription>
@@ -112,7 +107,7 @@ export default function UsersPageLayout() {
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <GraduationCap className="h-5 w-5 text-blue-500" />
+                            <GraduationCap className="h-5 w-5 text-primary" />
                             {t('navigation.students')}
                         </CardTitle>
                         <CardDescription>
@@ -128,7 +123,6 @@ export default function UsersPageLayout() {
                 </Card>
             </TabsContent>
         </Tabs>
-      </div>
-    </>
+    </div>
   );
 }

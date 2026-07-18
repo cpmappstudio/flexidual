@@ -8,7 +8,7 @@ export default function CalendarHeaderActionsAdd() {
   const t = useTranslations()
   return (
     <Button
-      className="flex items-center gap-1 bg-deep-koamaru text-white hover:bg-deep-koamaru/90"
+      className="flex items-center gap-1"
       onClick={() => setNewEventDialogOpen(true)}
     >
       <Plus />

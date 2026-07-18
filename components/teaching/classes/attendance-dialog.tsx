@@ -50,11 +50,11 @@ export function AttendanceDialog({ scheduleId, trigger, open, onOpenChange, titl
 
   const getStatusBadge = (status: string, isManual: boolean) => {
     const styles = {
-      present: "bg-green-100 text-green-700 hover:bg-green-100",
-      absent: "bg-red-100 text-red-700 hover:bg-red-100",
-      partial: "bg-yellow-100 text-yellow-700 hover:bg-yellow-100",
-      excused: "bg-blue-100 text-blue-700 hover:bg-blue-100",
-      pending: "bg-gray-100 text-gray-500 hover:bg-gray-100",
+      present: "bg-success/10 text-success hover:bg-success/10",
+      absent: "bg-destructive/10 text-destructive hover:bg-destructive/10",
+      partial: "bg-warning/10 text-warning hover:bg-warning/10",
+      excused: "bg-info/10 text-info hover:bg-info/10",
+      pending: "bg-muted text-muted-foreground hover:bg-muted",
     }
     const label = status.charAt(0).toUpperCase() + status.slice(1)
     

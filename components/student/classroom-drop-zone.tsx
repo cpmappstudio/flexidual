@@ -76,7 +76,7 @@ export function ClassroomDropZone({
   const platformName = isAbeka ? "Abeka" : "Ignitia";
 
   return (
-    <div className="relative h-full w-full rounded-3xl overflow-hidden border-4 border-purple-400 dark:border-purple-600 shadow-2xl">
+    <div className="relative h-full w-full rounded-3xl overflow-hidden border-4 border-primary shadow-2xl">
       <AnimatePresence mode="wait">
         {/* Rocket Launch Animation */}
         {isLaunching && (
@@ -85,14 +85,14 @@ export function ClassroomDropZone({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-gradient-to-b from-blue-900 via-purple-900 to-pink-900 flex items-center justify-center"
+            className="absolute inset-0 z-50 bg-gradient-to-b from-inverse via-primary to-secondary flex items-center justify-center"
           >
             {/* Stars background */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
               {launchStars.map((star) => (
                 <motion.div
                   key={star.id}
-                  className="absolute w-1 h-1 bg-white rounded-full"
+                  className="absolute w-1 h-1 bg-inverse-foreground rounded-full"
                   style={{
                     left: star.left,
                     top: star.top,
@@ -118,7 +118,7 @@ export function ClassroomDropZone({
               onAnimationComplete={onLaunchComplete}
               className="relative"
             >
-              <Rocket className="w-32 h-32 text-orange-400" strokeWidth={1.5} />
+              <Rocket className="w-32 h-32 text-secondary" strokeWidth={1.5} />
               
               {/* Fire trail */}
               <motion.div
@@ -133,7 +133,7 @@ export function ClassroomDropZone({
                   ease: "easeInOut",
                 }}
               >
-                <div className="bg-gradient-to-b from-yellow-400 via-orange-500 to-red-600 h-24 w-full rounded-b-full blur-sm" />
+                <div className="bg-gradient-to-b from-warning via-secondary to-destructive h-24 w-full rounded-b-full blur-sm" />
               </motion.div>
             </motion.div>
 
@@ -144,10 +144,10 @@ export function ClassroomDropZone({
               transition={{ delay: 0.3 }}
               className="absolute bottom-32 text-center px-4"
             >
-              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-2">
+              <h2 className="text-3xl sm:text-4xl font-bold text-inverse-foreground mb-2">
                 🚀 {t('launchingClass')}
               </h2>
-              <p className="text-lg sm:text-xl text-blue-200">{t('getReady')}</p>
+              <p className="text-lg sm:text-xl text-inverse-foreground/70">{t('getReady')}</p>
             </motion.div>
           </motion.div>
         )}
@@ -161,11 +161,11 @@ export function ClassroomDropZone({
             className="h-full w-full relative"
           >
             {isVirtual ? (
-              <div className="h-full w-full flex flex-col bg-white dark:bg-gray-900">
+              <div className="h-full w-full flex flex-col bg-card text-card-foreground">
                 {/* Header for Virtual Frame */}
-                <div className="h-12 sm:h-14 bg-gray-100 dark:bg-gray-800 border-b flex items-center justify-between px-3 sm:px-4 shrink-0 gap-2">
+                <div className="h-12 sm:h-14 bg-muted border-b flex items-center justify-between px-3 sm:px-4 shrink-0 gap-2">
                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="font-bold text-gray-700 dark:text-gray-200 text-sm sm:text-base truncate">
+                      <span className="font-bold text-foreground text-sm sm:text-base truncate">
                         {platformName}: {activeLesson.title}
                       </span>
                    </div>
@@ -190,19 +190,19 @@ export function ClassroomDropZone({
                 
                 {/* The Content Area: Iframe OR External Launch */}
                 {isAbeka ? (
-                  <div className="flex-1 w-full h-full flex flex-col items-center justify-center bg-blue-50/50 dark:bg-blue-900/10 p-6 text-center">
-                    <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                      <ExternalLink className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+                  <div className="flex-1 w-full h-full flex flex-col items-center justify-center bg-info/10 p-6 text-center">
+                    <div className="w-20 h-20 bg-info/20 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                      <ExternalLink className="w-10 h-10 text-info" />
                     </div>
-                    <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+                    <h3 className="text-2xl font-bold text-foreground mb-2">
                       {tClassroom('secureLoginRequired')}
                     </h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md">
+                    <p className="text-muted-foreground mb-8 max-w-md">
                       {tClassroom('abekaStudentSecurityMsg')}
                     </p>
                     <Button 
                       size="lg" 
-                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all" 
+                      className="bg-info hover:bg-info/90 text-info-foreground rounded-full px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all"
                       asChild
                     >
                       <a href={platformUrl} target="_blank" rel="noopener noreferrer">
@@ -242,11 +242,11 @@ export function ClassroomDropZone({
             onDrop={handleDrop}
             className={`
               h-full w-full flex flex-col items-center justify-center
-              bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500
+              bg-gradient-to-br from-primary via-primary to-secondary
               relative overflow-hidden
               transition-all duration-300
               ${isDragging ? 'scale-105 shadow-2xl' : ''}
-              ${isHovering ? 'ring-8 ring-yellow-400 ring-opacity-50' : ''}
+              ${isHovering ? 'ring-8 ring-warning ring-opacity-50' : ''}
             `}
           >
             {/* Animated stars */}
@@ -270,7 +270,7 @@ export function ClassroomDropZone({
                     delay: star.delay,
                   }}
                 >
-                  <Sparkles className="w-4 h-4 sm:w-6 sm:h-6 text-yellow-300" />
+                  <Sparkles className="w-4 h-4 sm:w-6 sm:h-6 text-warning" />
                 </motion.div>
               ))}
             </div>
@@ -288,11 +288,11 @@ export function ClassroomDropZone({
               }}
               className="relative z-10"
             >
-              <Rocket className="w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 text-white drop-shadow-2xl" strokeWidth={1.5} />
+              <Rocket className="w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 text-primary-foreground drop-shadow-2xl" strokeWidth={1.5} />
               
               {/* Pulsing glow */}
               <motion.div
-                className="absolute inset-0 bg-white rounded-full blur-3xl opacity-50"
+                className="absolute inset-0 bg-primary-foreground rounded-full blur-3xl opacity-50"
                 animate={{
                   scale: [1, 1.2, 1],
                   opacity: [0.3, 0.6, 0.3],
@@ -311,10 +311,10 @@ export function ClassroomDropZone({
               transition={{ duration: 1, repeat: Infinity }}
               className="mt-6 sm:mt-8 text-center z-10 px-4"
             >
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white mb-3 sm:mb-4 drop-shadow-lg">
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-primary-foreground mb-3 sm:mb-4 drop-shadow-lg">
                 {isDragging ? `🎯 ${t('dropHere')}` : `🚀 ${t('readyForClass')}`}
               </h2>
-              <p className="text-lg sm:text-xl lg:text-2xl text-white/90 font-bold drop-shadow-md">
+              <p className="text-lg sm:text-xl lg:text-2xl text-primary-foreground/90 font-bold drop-shadow-md">
                 {isDragging ? t('releaseToLaunch') : t('dragOrTapToStart')}
               </p>
             </motion.div>

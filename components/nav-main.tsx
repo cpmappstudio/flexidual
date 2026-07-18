@@ -1,9 +1,9 @@
 "use client"
 
 import { useMemo } from "react"
+import Image from "next/image"
 import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
-import { BookMarked, Calendar, LayoutDashboard, Users, School, Building2, MapPin, Presentation } from "lucide-react"
 import { Link, usePathname } from "@/i18n/navigation"
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { useTranslations } from "next-intl"
@@ -40,90 +40,76 @@ export function NavMain() {
       <SidebarMenu>
         
         <SidebarMenuItem>
-          <SidebarMenuButton asChild isActive={pathname === basePath}>
+          <SidebarMenuButton
+            asChild
+            isActive={pathname === basePath}
+            className="h-12 gap-3 px-2 text-base"
+          >
             <Link href={basePath}>
-              <LayoutDashboard />
+              <Image src="/home-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
               <span>{t('navigation.dashboard')}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
 
+        {(isTeacher || isAdmin) && (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              isActive={pathname.includes(`${basePath}/classes`)}
+              className="h-12 gap-3 px-2 text-base"
+            >
+              <Link href={`${basePath}/classes`}>
+                <Image src="/classes-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
+                <span>{isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+
         <SidebarMenuItem>
-          <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/calendar`)}>
+          <SidebarMenuButton
+            asChild
+            isActive={pathname.includes(`${basePath}/calendar`)}
+            className="h-12 gap-3 px-2 text-base"
+          >
             <Link href={`${basePath}/calendar`}>
-              <Calendar />
+              <Image src="/calendar-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
               <span>{t('navigation.calendar')}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
 
-        {isTeacher && (
-          <>
-            <SidebarGroupLabel className="mt-4">{t('navigation.teaching')}</SidebarGroupLabel>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/classes`)}>
-                <Link href={`${basePath}/classes`}>
-                  <School />
-                  <span>{isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </>
-        )}
-
-        {/* Global Superadmin Exclusive Links */}
-        {isGlobalSystem && role === "superadmin" && (
-          <>
-            <SidebarGroupLabel className="mt-4">Network</SidebarGroupLabel>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes(`/admin/schools`)}>
-                <Link href={`/admin/schools`}>
-                  <Building2 />
-                  <span>Schools</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes(`/admin/campuses`)}>
-                <Link href={`/admin/campuses`}>
-                  <MapPin />
-                  <span>Campuses</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </>
-        )}
 
         {isAdmin && (
           <>
             <SidebarGroupLabel className="mt-4">{t('navigation.administration')}</SidebarGroupLabel>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/users`)}>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname.includes(`${basePath}/users`)}
+                className="h-12 gap-3 px-2 text-base"
+              >
                 <Link href={`${basePath}/users`}>
-                  <Users />
+                  <Image src="/messages-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
                   <span>{t('navigation.allUsers')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/curriculums`)}>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname.includes(`${basePath}/curriculums`)}
+                className="h-12 gap-3 px-2 text-base"
+              >
                 <Link href={`${basePath}/curriculums`}>
-                  <BookMarked />
+                  <Image src="/resources-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
                   <span>{t('navigation.allCurriculums')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname.includes(`${basePath}/classes`)}>
-                <Link href={`${basePath}/classes`}>
-                  <Presentation/>
-                  <span>{t('navigation.allClasses')}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
           </>
         )}
       </SidebarMenu>

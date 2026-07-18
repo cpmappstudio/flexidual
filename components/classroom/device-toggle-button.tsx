@@ -77,8 +77,8 @@ function circleClass(variant: Variant, enabled: boolean, pending: boolean): stri
       return [
         "w-11 h-11", base, "shadow-md border-2",
         enabled
-          ? "bg-white/20 text-white border-white/30 hover:bg-white/30"
-          : "bg-red-500/50 text-white border-red-400/60",
+          ? "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
+          : "bg-destructive/50 text-destructive-foreground border-destructive/60",
         pendingCls,
       ].join(" ");
 
@@ -86,8 +86,8 @@ function circleClass(variant: Variant, enabled: boolean, pending: boolean): stri
       return [
         "w-14 h-14", base, "shadow-lg border-2",
         enabled
-          ? "bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-600"
-          : "bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400 border-red-200 dark:border-red-800",
+          ? "bg-card hover:bg-muted text-primary border-primary/30"
+          : "bg-destructive/10 text-destructive border-destructive/20",
         pendingCls,
       ].join(" ");
 
@@ -164,7 +164,7 @@ function DeviceRow({
 function dropdownCls(side: "left" | "right", variant: Variant = "default", extra = "") {
   const borderCls =
     variant === "purple"
-      ? "border-purple-300 dark:border-purple-600"
+      ? "border-primary/30"
       : "border-border";
   const scrollCls = variant === "purple" ? "scrollbar-student" : "";
   return `absolute bottom-full ${

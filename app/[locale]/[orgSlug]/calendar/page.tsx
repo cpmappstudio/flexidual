@@ -20,7 +20,7 @@ import { useTranslations, useLocale } from "next-intl";
 import CalendarHeaderCombinedFilter from "@/components/calendar/header/filters/calendar-header-combined-filter";
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types";
 import { ScheduleItem } from "@/components/schedule/schedule-item";
-import FlexidualHeader from "@/components/flexidual-header";
+
 import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 const localeMap = {
@@ -209,20 +209,11 @@ function CalendarContent() {
   }, [filteredEvents]);
 
   if (scheduleData === undefined) {
-    return (
-      <div className="p-6">
-        <Skeleton className="h-[600px] w-full" />
-      </div>
-    );
+    return <Skeleton className="h-[600px] w-full" />;
   }
 
   return (
-    <>
-      <FlexidualHeader
-        title={t("calendar.title")}
-        subtitle={t("calendar.description")}
-      />
-      <CalendarProvider
+    <CalendarProvider
         events={filteredEvents}
         setEvents={setEvents}
         mode={mode}
@@ -235,7 +226,7 @@ function CalendarContent() {
         selectedCurriculumId={selectedCurriculumId}
         onCurriculumChange={setSelectedCurriculumId}
       >
-        <div className="flex flex-col h-full w-full p-4 sm:p-6 space-y-6">
+        <div className="flex h-full w-full flex-col space-y-6">
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
@@ -279,8 +270,7 @@ function CalendarContent() {
           <CalendarNewEventDialog />
           <CalendarManageEventDialog />
         </div>
-      </CalendarProvider>
-    </>
+    </CalendarProvider>
   );
 }
 
@@ -289,11 +279,7 @@ export default function CalendarPage() {
     <div className="flex flex-col h-[calc(100vh-6rem)] w-full">
       <div className="flex-1 min-h-0">
         <Suspense
-          fallback={
-            <div className="p-6">
-              <Skeleton className="h-[600px] w-full" />
-            </div>
-          }
+          fallback={<Skeleton className="h-[600px] w-full" />}
         >
           <CalendarContent />
         </Suspense>

@@ -61,7 +61,7 @@ export default function CalendarHeaderTeacherFilter() {
               <span className="hidden sm:inline">{selectedTeacher.fullName}</span>
               <div
                 role="button"
-                className="ml-1 rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/20 cursor-pointer relative z-50"
+                className="ml-1 rounded-full p-0.5 hover:bg-foreground/10 cursor-pointer relative z-50"
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
@@ -101,7 +101,7 @@ export default function CalendarHeaderTeacherFilter() {
                   ${selectedTeacherId === teacher._id ? "bg-muted" : ""}
                 `}
               >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 border border-white dark:border-gray-800 shadow-sm flex items-center justify-center overflow-hidden shrink-0">
+                <div className="w-8 h-8 rounded-full bg-primary border border-background shadow-sm flex items-center justify-center overflow-hidden shrink-0">
                     {teacher.imageUrl ? (
                       <Image 
                         src={teacher.imageUrl} 
@@ -111,7 +111,7 @@ export default function CalendarHeaderTeacherFilter() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <span className="text-xs font-bold text-white">
+                      <span className="text-xs font-bold text-primary-foreground">
                         {teacher.fullName.charAt(0)}
                       </span>
                     )}

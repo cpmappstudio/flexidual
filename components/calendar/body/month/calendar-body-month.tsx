@@ -176,7 +176,7 @@ function DayCell({
       <div
         className={cn(
           'text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full',
-          isToday && 'bg-deep-koamaru text-white'
+          isToday && 'bg-primary text-primary-foreground'
         )}
       >
         {format(day, 'd', { locale: dateLocale })}

@@ -76,15 +76,15 @@ export function AddStudentDialog({ classId, curriculumId }: AddStudentDialogProp
         
         <div className="space-y-4 pt-4">
           {gradeCodes.length > 0 && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-md flex items-start gap-3 border border-blue-100 dark:border-blue-800">
-                <Filter className="h-4 w-4 text-blue-500 mt-1" />
+            <div className="bg-info/10 p-3 rounded-md flex items-start gap-3 border border-info/30">
+                <Filter className="h-4 w-4 text-info mt-1" />
                 <div className="text-sm">
-                    <p className="font-medium text-blue-700 dark:text-blue-300">
+                    <p className="font-medium text-info">
                         {t('student.filteringByGrade')}
                     </p>
                     <div className="flex flex-wrap gap-1 mt-1.5">
                         {gradeCodes.map(code => (
-                            <Badge key={code} variant="secondary" className="bg-white/50 text-xs">
+                            <Badge key={code} variant="secondary" className="bg-card/50 text-xs">
                                 {t(`student.grades.${code}`)}
                             </Badge>
                         ))}

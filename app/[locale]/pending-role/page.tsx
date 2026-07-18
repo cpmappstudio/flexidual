@@ -14,8 +14,8 @@ export default function PendingRolePage() {
           <FlexidualLogo />
         </div>
         
-        <div className="bg-orange-100 dark:bg-orange-950/50 p-4 rounded-full w-20 h-20 mx-auto flex items-center justify-center">
-          <ShieldAlert className="w-10 h-10 text-orange-600 dark:text-orange-500" />
+        <div className="bg-warning/15 p-4 rounded-full w-20 h-20 mx-auto flex items-center justify-center">
+          <ShieldAlert className="w-10 h-10 text-warning" />
         </div>
 
         <div className="space-y-2">

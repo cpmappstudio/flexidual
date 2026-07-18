@@ -103,7 +103,7 @@ export function ClassCombinedFilter({
             <DropdownMenuSubTrigger className="flex items-center justify-between">
               <span>{t("admin.campuses")}</span>
               {hasCampusFilter && (
-                <Badge color="zinc" className="ml-2 h-5 px-1.5">
+                <Badge variant="secondary" className="ml-2 h-5 px-1.5">
                   1
                 </Badge>
               )}
@@ -174,7 +174,7 @@ export function ClassCombinedFilter({
           <DropdownMenuSubTrigger className="flex items-center justify-between">
             <span>{t("navigation.curriculum")}</span>
             {selectedCurriculumId && (
-              <Badge color="zinc" className="ml-2 h-5 px-1.5">
+              <Badge variant="secondary" className="ml-2 h-5 px-1.5">
                 1
               </Badge>
             )}
@@ -230,7 +230,7 @@ export function ClassCombinedFilter({
             <DropdownMenuSubTrigger className="flex items-center justify-between">
               <span>{t("navigation.teacher")}</span>
               {selectedTeacherId && (
-                <Badge color="zinc" className="ml-2 h-5 px-1.5">
+                <Badge variant="secondary" className="ml-2 h-5 px-1.5">
                   1
                 </Badge>
               )}
@@ -262,7 +262,7 @@ export function ClassCombinedFilter({
                               : "opacity-0",
                           )}
                         />
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden shrink-0">
                           {teacher.imageUrl ? (
                             <Image
                               src={teacher.imageUrl}
@@ -272,7 +272,7 @@ export function ClassCombinedFilter({
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <span className="text-xs font-bold text-white">
+                            <span className="text-xs font-bold text-primary-foreground">
                               {teacher.fullName.charAt(0)}
                             </span>
                           )}

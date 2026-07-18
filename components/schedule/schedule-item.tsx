@@ -174,7 +174,7 @@ export function ScheduleItem({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-1 text-green-600">
+              <div className="flex items-center gap-1 text-success">
                 <UserCheck className="w-3.5 h-3.5" />
                 <span>{present}</span>
               </div>
@@ -184,7 +184,7 @@ export function ScheduleItem({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-1 text-yellow-600">
+              <div className="flex items-center gap-1 text-warning">
                 <Clock className="w-3.5 h-3.5" />
                 <span>{partial}</span>
               </div>
@@ -194,7 +194,7 @@ export function ScheduleItem({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-1 text-red-500">
+              <div className="flex items-center gap-1 text-destructive">
                 <UserX className="w-3.5 h-3.5" />
                 <span>{missed}</span>
               </div>
@@ -364,7 +364,7 @@ export function ScheduleItem({
 
   return (
     <div
-      className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4 ${isPast ? "opacity-90 bg-muted/10" : ""} ${isIgnitia ? "bg-orange-50/30 border-orange-100" : ""} ${onEventClick ? "cursor-pointer" : ""}`}
+      className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-4 ${isPast ? "opacity-90 bg-muted/10" : ""} ${isIgnitia ? "bg-secondary/10 border-secondary/20" : ""} ${onEventClick ? "cursor-pointer" : ""}`}
       onClick={handleClick}
     >
       <div className="flex items-start gap-4 flex-1">
@@ -372,7 +372,7 @@ export function ScheduleItem({
         {showDate && (
           <div
             className={`flex flex-col items-center justify-center min-w-[60px] text-center p-2 rounded-md ${
-              isIgnitia ? "bg-orange-100 text-orange-900" : "bg-muted"
+              isIgnitia ? "bg-secondary text-secondary-foreground" : "bg-muted"
             }`}
           >
             <span className="text-xs font-bold uppercase opacity-70">
@@ -420,7 +420,7 @@ export function ScheduleItem({
             {isIgnitia ? (
               <Badge
                 variant="outline"
-                className="shrink-0 text-orange-700 bg-orange-100 border-orange-200"
+                className="shrink-0 text-secondary-foreground bg-secondary border-secondary"
               >
                 <MonitorPlay className="h-3 w-3 mr-1" />
                 Ignitia
@@ -453,7 +453,7 @@ export function ScheduleItem({
             {/* Active Status */}
             {schedule.isLive &&
               (isIgnitia ? (
-                <Badge className="shrink-0 bg-orange-500">Active</Badge>
+                <Badge className="shrink-0 bg-secondary text-secondary-foreground">Active</Badge>
               ) : (
                 <Badge variant="destructive" className="animate-pulse shrink-0">
                   {t("common.live")}
@@ -590,7 +590,7 @@ export function ScheduleItem({
               <Button
                 size="sm"
                 variant={isIgnitia ? "default" : "destructive"}
-                className={isIgnitia ? "bg-orange-600 hover:bg-orange-700" : ""}
+                className={isIgnitia ? "bg-secondary text-secondary-foreground hover:bg-secondary/90" : ""}
                 asChild
               >
                 <Link href={`/${orgSlug}/classroom/${schedule.roomName}`}>
@@ -602,7 +602,7 @@ export function ScheduleItem({
                 <Link href={`/${orgSlug}/classroom/${schedule.roomName}`}>
                   {isIgnitia ? (
                     <>
-                      <MonitorPlay className="mr-2 h-4 w-4 text-orange-600" />
+                      <MonitorPlay className="mr-2 h-4 w-4 text-secondary" />
                       Open Ignitia
                     </>
                   ) : (

@@ -51,7 +51,7 @@ export function FullscreenButtonCompact({ isFullscreen, onToggle }: Pick<Fullscr
     <button
       onClick={onToggle}
       title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-      className="w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 bg-white/20 text-white border-white/30 hover:bg-white/30"
+      className="w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
     >
       {isFullscreen ? (
         <Minimize2 className="w-5 h-5" />

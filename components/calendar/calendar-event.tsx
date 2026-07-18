@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { motion, MotionConfig, AnimatePresence } from "framer-motion";
 import { Video, PlayCircle } from "lucide-react";
 import { useEffect, useState } from "react";
+import { getCalendarColorClasses } from "@/components/calendar/calendar-tailwind-classes";
 
 interface EventPosition {
   left: string;
@@ -106,11 +107,15 @@ export default function CalendarEvent({
 
   const isPast = event.end.getTime() < Date.now();
 
-  const statusColor = 
-    event.status === "active" ? "green" :
-    (event.status === "completed" || isPast) ? "gray" :
-    event.status === "cancelled" ? "red" :
-    event.color.replace("#", "");
+  const statusColor =
+    event.status === "active"
+      ? "green"
+      : event.status === "completed" || isPast
+        ? "gray"
+        : event.status === "cancelled"
+          ? "red"
+          : event.color;
+  const statusClasses = getCalendarColorClasses(statusColor);
 
   const tooltipText = month 
     ? `${event.curriculumTitle} - ${event.teacherName} - ${format(event.start, "h:mm a")}`
@@ -122,8 +127,8 @@ export default function CalendarEvent({
         <motion.div
           title={tooltipText}
           className={cn(
-            `px-3 py-1.5 rounded-md truncate cursor-pointer transition-all duration-300`,
-            `bg-${statusColor}-500/10 hover:bg-${statusColor}-500/20 border border-${statusColor}-500`,
+            "cursor-pointer truncate rounded-md border px-3 py-1.5 transition-all duration-300",
+            statusClasses.event,
             !month && "absolute",
             className,
           )}
@@ -167,7 +172,8 @@ export default function CalendarEvent({
         >
           <motion.div
             className={cn(
-              `flex flex-col w-full text-${statusColor}-500`,
+              "flex w-full flex-col",
+              statusClasses.text,
               month && "flex-row items-center justify-between gap-2",
             )}
             layout="position"

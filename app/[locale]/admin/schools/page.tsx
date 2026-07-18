@@ -29,7 +29,7 @@ export default function SchoolsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5 text-blue-500" />
+                        <Building2 className="h-5 w-5 text-primary" />
                         Active Schools
                     </CardTitle>
                     <CardDescription>

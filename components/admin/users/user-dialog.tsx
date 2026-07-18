@@ -465,10 +465,10 @@ export function UserDialog({
 
                                 <label 
                                     htmlFor="profileImage"
-                                    className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                    className="absolute inset-0 flex items-center justify-center bg-inverse/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                                     title="Upload picture"
                                 >
-                                    <Camera className="h-5 w-5 text-white" />
+                                    <Camera className="h-5 w-5 text-inverse-foreground" />
                                 </label>
                             </div>
 

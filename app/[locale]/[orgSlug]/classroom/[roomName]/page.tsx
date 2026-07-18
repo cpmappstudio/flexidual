@@ -71,18 +71,18 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
     
     const platformUrl = isAbeka ? abekaUrl : ignitiaUrl;
     const platformName = isAbeka ? "Abeka" : "Ignitia";
-    const iconColor = isAbeka ? "text-blue-600 bg-blue-100" : "text-orange-600 bg-orange-100";
+    const iconColor = isAbeka ? "text-info bg-info/10" : "text-secondary bg-secondary/10";
     
     return (
-      <main className="w-full h-[calc(100vh-6rem)] rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-white flex flex-col">
+      <main className="w-full h-[calc(100vh-6rem)] rounded-2xl overflow-hidden border border-border shadow-sm bg-card flex flex-col">
         {/* Header Bar */}
-        <div className="h-14 bg-gray-50 border-b flex items-center justify-between px-6 shrink-0">
+        <div className="h-14 bg-muted border-b flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-3">
              <div className={`p-2 rounded-full ${iconColor}`}>
                <MonitorPlay className="w-5 h-5" />
              </div>
              <div>
-               <h1 className="font-bold text-gray-800">{t('platformAccess', { platform: platformName })}</h1>
+               <h1 className="font-bold text-card-foreground">{t('platformAccess', { platform: platformName })}</h1>
                <p className="text-xs text-muted-foreground">{t('teacherView')}</p>
              </div>
           </div>
@@ -95,16 +95,16 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
         </div>
 
         {/* The Content Area: Iframe OR External Launch */}
-        <div className="flex-1 relative bg-gray-100 flex flex-col">
+        <div className="flex-1 relative bg-muted flex flex-col">
           {isAbeka ? (
-            <div className="flex-1 w-full h-full flex flex-col items-center justify-center bg-white p-6 text-center">
-              <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 border border-blue-100">
-                <ExternalLink className="w-10 h-10 text-blue-500" />
+            <div className="flex-1 w-full h-full flex flex-col items-center justify-center bg-card p-6 text-center">
+              <div className="w-20 h-20 bg-info/10 rounded-full flex items-center justify-center mb-6 border border-info/20">
+                <ExternalLink className="w-10 h-10 text-info" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">
+              <h3 className="text-2xl font-bold text-card-foreground mb-2">
                 {t('abekaTeacherAccess')}
               </h3>
-              <p className="text-gray-500 mb-8 max-w-md">
+              <p className="text-muted-foreground mb-8 max-w-md">
                 {t('abekaTeacherSecurityMsg')}
               </p>
               <Button size="lg" className="px-8" asChild>

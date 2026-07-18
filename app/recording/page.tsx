@@ -73,7 +73,7 @@ function RecordingTile({
   const avatarSize = variant === "stage" ? "w-32 h-32 text-6xl" : "w-16 h-16 text-2xl";
 
   return (
-    <div className={`relative bg-muted overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px_rgba(34,197,94,0.4)] z-20" : ""} ${variant === "grid" ? "aspect-square rounded-xl border-2 border-border" : "w-full h-full"}`}>
+    <div className={`relative bg-muted overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px] shadow-success/40 z-20" : ""} ${variant === "grid" ? "aspect-square rounded-xl border-2 border-border" : "w-full h-full"}`}>
       {isVideoEnabled && cameraTrack?.track ? (
         <VideoTrack 
           trackRef={{ participant, source: Track.Source.Camera, publication: cameraTrack as TrackPublication }} 
@@ -81,7 +81,7 @@ function RecordingTile({
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-secondary">
-          <div className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-white shadow-xl overflow-hidden bg-gradient-to-tr from-yellow-500 to-orange-500`}>
+          <div className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-secondary-foreground shadow-xl overflow-hidden bg-secondary`}>
             {imageUrl ? (
               <img src={imageUrl} alt={name} className="w-full h-full object-cover" />
             ) : (
@@ -93,25 +93,25 @@ function RecordingTile({
       
       {/* Name and Role Labels */}
       {variant === "stage" ? (
-        <div className="absolute bottom-6 left-6 bg-black/70 backdrop-blur-sm px-4 py-2 rounded-lg flex items-center gap-2 border border-white/10 shadow-md z-10">
+        <div className="absolute bottom-6 left-6 bg-inverse/70 backdrop-blur-sm px-4 py-2 rounded-lg flex items-center gap-2 border border-inverse-foreground/10 shadow-md z-10">
           {roleBadge && <span className="text-xs font-bold text-primary-foreground bg-primary px-2 py-1 rounded uppercase tracking-wide">{roleBadge}</span>}
-          <span className="text-lg font-bold text-white">{name}</span>
+          <span className="text-lg font-bold text-inverse-foreground">{name}</span>
         </div>
       ) : (
-        <div className="absolute bottom-1 left-1 bg-black/60 px-2 py-1 rounded text-[10px] text-white font-medium truncate max-w-[90%] backdrop-blur-sm">
+        <div className="absolute bottom-1 left-1 bg-inverse/60 px-2 py-1 rounded text-[10px] text-inverse-foreground font-medium truncate max-w-[90%] backdrop-blur-sm">
           {name}
         </div>
       )}
 
       {/* Overlays: Raised Hand & Muted State */}
       {raisedHand && (
-        <div className="absolute top-2 right-2 bg-amber-500 rounded-full p-1.5 shadow-md">
-          <Hand className="w-4 h-4 text-white" />
+        <div className="absolute top-2 right-2 bg-warning rounded-full p-1.5 shadow-md">
+          <Hand className="w-4 h-4 text-warning-foreground" />
         </div>
       )}
       {isAudioMuted && (
         <div className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${variant === "stage" ? "bottom-6 right-6 p-2" : "bottom-1 right-1 p-1"}`}>
-          <MicOff className={`text-white ${variant === "stage" ? "w-5 h-5" : "w-3 h-3"}`} />
+          <MicOff className={`text-destructive-foreground ${variant === "stage" ? "w-5 h-5" : "w-3 h-3"}`} />
         </div>
       )}
     </div>
@@ -164,7 +164,7 @@ function RecordingLayout() {
         {/* Base layer: screen share → teacher cam → waiting placeholder */}
         <div className="w-full h-full relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
           {activeScreenTrack ? (
-            <div className="w-full h-full bg-black relative">
+            <div className="w-full h-full bg-inverse relative">
               <VideoTrack
                 trackRef={activeScreenTrack}
                 className="w-full h-full object-contain"
@@ -194,7 +194,7 @@ function RecordingLayout() {
             LiveKit DataChannel listener + Convex subscription stay active throughout,
             meaning pan/zoom and scene changes are tracked even while the overlay is hidden. */}
         <div
-          className="absolute inset-2 bg-white rounded-2xl overflow-hidden border-2 border-border shadow-xl"
+          className="absolute inset-2 overflow-hidden rounded-2xl border-2 border-border bg-whiteboard shadow-xl"
           style={{ display: isWhiteboardActive ? "block" : "none" }}
         >
           <SharedWhiteboard roomName={room.name} isReadonly={true} followViewport={true} />
@@ -254,7 +254,7 @@ function RecordingContent() {
 export default function RecordingPage() {
   return (
     <ConvexProvider client={convexClient}>
-      <Suspense fallback={<div className="w-screen h-screen bg-black" />}>
+      <Suspense fallback={<div className="w-screen h-screen bg-inverse" />}>
         <RecordingContent />
       </Suspense>
     </ConvexProvider>

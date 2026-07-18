@@ -127,7 +127,7 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
         <EntityDialog
             open={effectiveOpen}
             onOpenChange={handleOpenChange}
-            trigger={trigger || defaultTrigger}
+            trigger={trigger === undefined ? defaultTrigger : trigger}
             title={isEditing ? "Edit Campus" : "Create New Campus"}
             description={isEditing ? "Update campus details and settings." : "Add a new campus to a school network."}
             onSubmit={handleSubmit}

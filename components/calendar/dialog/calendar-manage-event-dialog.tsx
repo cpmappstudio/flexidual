@@ -354,12 +354,12 @@ export default function CalendarManageEventDialog() {
                     </Badge>
 
                     {(selectedEvent as CalendarEvent).sessionType === "ignitia" ? (
-                      <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200">
+                      <Badge className="bg-secondary text-secondary-foreground hover:bg-secondary/90 border-secondary">
                         <MonitorPlay className="h-3 w-3 mr-1" />
                         {t("schedule.typeIgnitia")}
                       </Badge>
                     ) : (selectedEvent as CalendarEvent).sessionType === "abeka" ? (
-                      <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200">
+                      <Badge className="bg-info text-info-foreground hover:bg-info/90 border-info">
                         <BookOpen className="h-3 w-3 mr-1" />
                         {t("schedule.typeAbeka")}
                       </Badge>
@@ -385,8 +385,8 @@ export default function CalendarManageEventDialog() {
                     {selectedEvent.isLive && (
                       <Badge variant="destructive" className="animate-pulse">
                         <span className="relative flex h-2 w-2 mr-1">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive-foreground opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive-foreground"></span>
                         </span>
                         {t('common.live')}
                       </Badge>
@@ -399,7 +399,7 @@ export default function CalendarManageEventDialog() {
                 {/* Teacher Info */}
                 <div className="flex gap-3">
                   <div className="shrink-0">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-500 border-2 border-white dark:border-gray-800 shadow-lg flex items-center justify-center overflow-hidden">
+                    <div className="w-12 h-12 rounded-full bg-primary border-2 border-background shadow-lg flex items-center justify-center overflow-hidden">
                       {selectedEvent.teacherImageUrl ? (
                         <Image 
                           src={selectedEvent.teacherImageUrl} 
@@ -409,7 +409,7 @@ export default function CalendarManageEventDialog() {
                           className="w-full h-full object-cover" 
                         />
                       ) : (
-                        <span className="text-lg font-bold text-white">
+                        <span className="text-lg font-bold text-primary-foreground">
                           {selectedEvent.teacherName?.charAt(0) || 'T'}
                         </span>
                       )}
@@ -560,7 +560,7 @@ export default function CalendarManageEventDialog() {
                   {t('common.close')}
                 </Button>
                 {selectedEvent.isLive ? (
-                  <Button className="bg-green-600 hover:bg-green-700" asChild>
+                  <Button className="bg-success text-success-foreground hover:bg-success/90" asChild>
                     <Link href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}>
                       <Video className="mr-2 h-4 w-4" />
                       {t('dashboard.enterLive')}
@@ -582,8 +582,8 @@ export default function CalendarManageEventDialog() {
                 
                 {/* Series vs Single Logic */}
                 {isSeries && (
-                  <div className="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-md border border-amber-200 dark:border-amber-900 space-y-3">
-                    <FormLabel className="text-base font-semibold text-amber-900 dark:text-amber-100">
+                  <div className="bg-warning/10 p-4 rounded-md border border-warning/30 space-y-3">
+                    <FormLabel className="text-base font-semibold text-warning-foreground">
                       {t('schedule.updateSchedule') || "Update Scope"}
                     </FormLabel>
                     
@@ -599,7 +599,7 @@ export default function CalendarManageEventDialog() {
                       }}
                       className="flex flex-col gap-3"
                     >
-                      <div className="flex items-start space-x-3 p-3 rounded-md border border-amber-200 dark:border-amber-800 bg-white dark:bg-gray-900 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors">
+                      <div className="flex items-start space-x-3 p-3 rounded-md border border-warning/30 bg-background cursor-pointer hover:bg-warning/10 transition-colors">
                         <RadioGroupItem value="single" id="r1" className="mt-0.5" />
                         <div className="flex-1">
                           <FormLabel htmlFor="r1" className="font-medium cursor-pointer">
@@ -611,7 +611,7 @@ export default function CalendarManageEventDialog() {
                         </div>
                       </div>
                       
-                      <div className="flex items-start space-x-3 p-3 rounded-md border border-amber-200 dark:border-amber-800 bg-white dark:bg-gray-900 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors">
+                      <div className="flex items-start space-x-3 p-3 rounded-md border border-warning/30 bg-background cursor-pointer hover:bg-warning/10 transition-colors">
                         <RadioGroupItem value="series" id="r2" className="mt-0.5" />
                         <div className="flex-1">
                           <FormLabel htmlFor="r2" className="font-medium cursor-pointer">
@@ -673,14 +673,14 @@ export default function CalendarManageEventDialog() {
                   
                   {/* ✅ Warning for series updates */}
                   {updateMode === "series" && (
-                    <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-300 dark:border-amber-700 rounded-md p-3 space-y-2">
+                    <div className="bg-warning/10 border-2 border-warning/40 rounded-md p-3 space-y-2">
                       <div className="flex items-start gap-2">
-                        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-semibold text-sm text-amber-900 dark:text-amber-100">
+                          <p className="font-semibold text-sm text-warning-foreground">
                             {t('schedule.cannotEditSeriesLessons') || "Lessons locked for series updates"}
                           </p>
-                          <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                          <p className="text-xs text-warning-foreground/80 mt-1">
                             {t('schedule.cannotEditSeriesLessonsDesc') || "To add lessons, switch to 'Just this event' mode. Lessons must be assigned individually to prevent repetition conflicts."}
                           </p>
                         </div>

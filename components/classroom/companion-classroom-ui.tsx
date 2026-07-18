@@ -229,7 +229,7 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
             onMouseDown={(e) => e.preventDefault()}
             onClick={toggleWhiteboard}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${
-              isBroadcasting ? "bg-destructive hover:bg-destructive/90 text-primary-foreground" : "bg-primary hover:bg-primary/90 text-primary-foreground"
+              isBroadcasting ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : "bg-primary hover:bg-primary/90 text-primary-foreground"
             }`}
           >
             {isBroadcasting ? <StopCircle className="w-4 h-4" /> : <MonitorUp className="w-4 h-4" />}
@@ -256,7 +256,7 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
 
         {/* Phone landscape: compact icon-only controls pill in the top-right corner */}
         {isPhoneLandscape && (
-          <div className="absolute top-2 right-2 z-[35] flex items-center gap-1.5 bg-black/60 backdrop-blur-md rounded-full px-2.5 py-1.5 border border-white/20 shadow-2xl">
+          <div className="absolute top-2 right-2 z-[35] flex items-center gap-1.5 bg-inverse/60 backdrop-blur-md rounded-full px-2.5 py-1.5 border border-inverse-foreground/20 shadow-2xl">
             {/* Present / Stop */}
             <button
               onMouseDown={(e) => e.preventDefault()}
@@ -264,7 +264,7 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
               title={isBroadcasting ? (t("classroom.stopPresenting") || "Stop Presenting") : (t("classroom.presentBoard") || "Present")}
               className={`w-9 h-9 rounded-full flex items-center justify-center transition-all border-2 ${
                 isBroadcasting
-                  ? 'bg-destructive/80 text-primary-foreground border-destructive/50'
+                  ? 'bg-destructive/80 text-destructive-foreground border-destructive/50'
                   : 'bg-primary/80 text-primary-foreground border-primary/50'
               }`}
             >
@@ -276,20 +276,20 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
               <button
                 onClick={onToggleFullscreen}
                 title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                className="w-9 h-9 rounded-full flex items-center justify-center transition-all bg-white/20 text-white border-2 border-white/30 hover:bg-white/30"
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-all bg-inverse-foreground/20 text-inverse-foreground border-2 border-inverse-foreground/30 hover:bg-inverse-foreground/30"
               >
                 {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>
             )}
 
-            <div className="w-px h-4 bg-white/30" />
+            <div className="w-px h-4 bg-inverse-foreground/30" />
 
             {/* Leave */}
             <button
               onMouseDown={(e) => e.preventDefault()}
               onClick={handleLeave}
               title={t("classroom.leave") || "Leave"}
-              className="w-9 h-9 rounded-full flex items-center justify-center bg-destructive/70 hover:bg-destructive/90 text-primary-foreground border-2 border-destructive/50 transition-colors"
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-destructive/70 hover:bg-destructive/90 text-destructive-foreground border-2 border-destructive/50 transition-colors"
             >
               <LogOut className="w-4 h-4" />
             </button>

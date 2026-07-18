@@ -74,7 +74,7 @@ export function OverviewCard({
                                             className="rounded-lg object-cover transition-all group-hover:brightness-75"
                                         />
                                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Expand className="h-6 w-6 text-white" />
+                                            <Expand className="h-6 w-6 text-inverse-foreground" />
                                         </div>
                                     </div>
                                 ) : (

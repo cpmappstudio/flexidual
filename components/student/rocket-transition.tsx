@@ -30,14 +30,14 @@ export function RocketTransition({ isLaunching, onComplete }: RocketTransitionPr
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[9999] bg-gradient-to-b from-blue-900 via-purple-900 to-pink-900 flex items-center justify-center"
+          className="fixed inset-0 z-[9999] bg-gradient-to-b from-inverse via-primary to-secondary flex items-center justify-center"
         >
           {/* Stars background */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             {stars.map((star) => (
               <motion.div
                 key={star.id}
-                className="absolute w-1 h-1 bg-white rounded-full"
+                className="absolute w-1 h-1 bg-inverse-foreground rounded-full"
                 style={{
                   left: star.left,
                   top: star.top,
@@ -63,7 +63,7 @@ export function RocketTransition({ isLaunching, onComplete }: RocketTransitionPr
             onAnimationComplete={onComplete}
             className="relative"
           >
-            <Rocket className="w-32 h-32 text-orange-400" strokeWidth={1.5} />
+            <Rocket className="w-32 h-32 text-secondary" strokeWidth={1.5} />
             
             {/* Fire trail */}
             <motion.div
@@ -78,7 +78,7 @@ export function RocketTransition({ isLaunching, onComplete }: RocketTransitionPr
                 ease: "easeInOut",
               }}
             >
-              <div className="bg-gradient-to-b from-yellow-400 via-orange-500 to-red-600 h-24 w-full rounded-b-full blur-sm" />
+              <div className="bg-gradient-to-b from-warning via-secondary to-destructive h-24 w-full rounded-b-full blur-sm" />
             </motion.div>
           </motion.div>
 
@@ -89,10 +89,10 @@ export function RocketTransition({ isLaunching, onComplete }: RocketTransitionPr
             transition={{ delay: 0.3 }}
             className="absolute bottom-32 text-center"
           >
-            <h2 className="text-4xl font-bold text-white mb-2">
+            <h2 className="text-4xl font-bold text-inverse-foreground mb-2">
               🚀 {t('launchingClass')}
             </h2>
-            <p className="text-xl text-blue-200">{t('getReady')}</p>
+            <p className="text-xl text-inverse-foreground/70">{t('getReady')}</p>
           </motion.div>
         </motion.div>
       )}

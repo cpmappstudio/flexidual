@@ -132,7 +132,7 @@ function ParticipantTile({
   const borderSize = variant === "mini" ? "border-1" : "border-2";
 
   return (
-    <div className={`relative bg-muted overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px_rgba(34,197,94,0.4)] z-20" : ""} ${className}`}>
+    <div className={`relative bg-muted overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px] shadow-success/40 z-20" : ""} ${className}`}>
       {isVideoEnabled ? (
         <VideoTrack 
           trackRef={{ participant, source: Track.Source.Camera, publication: cameraTrack as TrackPublication }} 
@@ -140,7 +140,7 @@ function ParticipantTile({
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-secondary">
-          <div className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-white ${borderSize} border-white/10 shadow-xl overflow-hidden bg-gradient-to-tr from-yellow-500 to-orange-500 transition-all`}>
+          <div className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-secondary-foreground ${borderSize} border-secondary-foreground/10 shadow-xl overflow-hidden bg-secondary transition-all`}>
             {imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={imageUrl} alt={participant.name || participant.identity} className="w-full h-full object-cover" />
@@ -153,19 +153,19 @@ function ParticipantTile({
       
       {showLabel && variant === "stage" ? (
         <div className="absolute bottom-3 left-3 flex items-center gap-2 z-10">
-          <div className="bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-lg flex items-center gap-2 border border-white/10 shadow-md">
+          <div className="bg-inverse/70 backdrop-blur-sm px-3 py-1.5 rounded-lg flex items-center gap-2 border border-inverse-foreground/10 shadow-md">
             {roleBadge && (
               <span className="text-[10px] font-bold text-primary-foreground bg-primary px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0">
                 {roleBadge}
               </span>
             )}
-            <span className="text-sm font-bold text-white truncate max-w-[200px]">
+            <span className="text-sm font-bold text-inverse-foreground truncate max-w-[200px]">
               {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
             </span>
           </div>
         </div>
       ) : showLabel ? (
-        <div className="absolute bottom-1 left-1 bg-black/60 px-2 py-1 rounded text-[10px] text-white font-medium truncate max-w-[90%] backdrop-blur-sm">
+        <div className="absolute bottom-1 left-1 bg-inverse/60 px-2 py-1 rounded text-[10px] text-inverse-foreground font-medium truncate max-w-[90%] backdrop-blur-sm">
           {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
         </div>
       ) : null}
@@ -173,18 +173,18 @@ function ParticipantTile({
         <button
           onClick={onLowerHand}
           title={onLowerHand ? "Lower hand" : undefined}
-          className={`absolute top-1 right-1 bg-amber-500 rounded-full p-0.5 shadow-sm transition-colors ${
-            onLowerHand ? 'cursor-pointer hover:bg-amber-600' : 'cursor-default pointer-events-none'
+          className={`absolute top-1 right-1 bg-warning rounded-full p-0.5 shadow-sm transition-colors ${
+            onLowerHand ? 'cursor-pointer hover:bg-warning/90' : 'cursor-default pointer-events-none'
           }`}
         >
-          <Hand className="w-3 h-3 text-white" />
+          <Hand className="w-3 h-3 text-warning-foreground" />
         </button>
       )}
       {audioMuted && (
         <div className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${
           variant === "stage" ? "bottom-3 right-3 p-1.5" : "bottom-1 right-1 p-1"
         }`}>
-          <MicOff className={`text-white ${variant === "stage" ? "w-4 h-4" : "w-3 h-3"}`} />
+          <MicOff className={`text-destructive-foreground ${variant === "stage" ? "w-4 h-4" : "w-3 h-3"}`} />
         </div>
       )}
     </div>
@@ -528,9 +528,9 @@ export function ActiveClassroomUI({
             const name = participant.name || participant.identity;
             toast.custom(
               (toastId) => (
-                <div className="bg-card border border-amber-400/60 rounded-xl shadow-lg p-3 w-72 flex items-start gap-3">
-                  <div className="bg-amber-100 dark:bg-amber-900/40 p-2 rounded-full flex-shrink-0">
-                    <Hand className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <div className="bg-card border border-warning/60 rounded-xl shadow-lg p-3 w-72 flex items-start gap-3">
+                  <div className="bg-warning/10 p-2 rounded-full flex-shrink-0">
+                    <Hand className="w-4 h-4 text-warning" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-card-foreground truncate">{name}</p>
@@ -546,7 +546,7 @@ export function ActiveClassroomUI({
                       setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
                       toast.dismiss(toastId);
                     }}
-                    className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-800/60 border border-amber-300 dark:border-amber-700 rounded-lg px-2 py-1 flex-shrink-0 transition-colors"
+                    className="text-[10px] font-bold text-warning bg-warning/10 hover:bg-warning/20 border border-warning/30 rounded-lg px-2 py-1 flex-shrink-0 transition-colors"
                   >
                     {t('classroom.lowerHand')}
                   </button>
@@ -987,9 +987,9 @@ export function ActiveClassroomUI({
       </AlertDialog>
 
       {needsClick && (
-        <div className="absolute inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="absolute inset-0 z-[999] bg-inverse/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-card text-card-foreground rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl border border-border">
-                <VolumeX className="w-12 h-12 text-orange-500 mx-auto mb-4" />
+                <VolumeX className="w-12 h-12 text-secondary mx-auto mb-4" />
                 <h3 className="text-xl font-bold mb-2">{t('classroom.enableAudio')}</h3>
                 <button onClick={async () => { await room.startAudio(); setNeedsClick(false); }} className="w-full py-3 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors rounded-lg font-bold">{t('classroom.startClass')}</button>
             </div>
@@ -1022,13 +1022,13 @@ export function ActiveClassroomUI({
               {lessonTitle && <span className="text-[10px] text-muted-foreground truncate">&middot; {lessonTitle}</span>}
             </div>
             {isRecording && (
-              <div className="flex items-center gap-1 bg-red-500/10 px-1.5 py-0.5 rounded-full border border-red-500/20 flex-shrink-0">
-                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-[9px] font-bold text-red-500 uppercase tracking-wide">REC</span>
+              <div className="flex items-center gap-1 bg-destructive/10 px-1.5 py-0.5 rounded-full border border-destructive/20 flex-shrink-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                <span className="text-[9px] font-bold text-destructive uppercase tracking-wide">REC</span>
               </div>
             )}
-            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0 ${teacher ? 'bg-green-500/20 border-green-400/30' : 'bg-orange-500/20 border-orange-400/30'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${teacher ? 'bg-green-500 dark:bg-green-400 animate-pulse' : 'bg-orange-500 dark:bg-orange-400'}`} />
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0 ${teacher ? 'bg-success/20 border-success/30' : 'bg-secondary/20 border-secondary/30'}`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-secondary'}`} />
               <span className="text-[9px] font-bold text-foreground/70 uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
             </div>
           </div>
@@ -1043,9 +1043,9 @@ export function ActiveClassroomUI({
             </div>
             <div className="flex items-center gap-2">
               {isRecording && (
-                <div className="flex items-center gap-1.5 bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20">
-                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-xs font-bold text-red-500 uppercase tracking-wide">REC</span>
+                <div className="flex items-center gap-1.5 bg-destructive/10 px-3 py-1 rounded-full border border-destructive/20">
+                  <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+                  <span className="text-xs font-bold text-destructive uppercase tracking-wide">REC</span>
                 </div>
               )}
               <div className="flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
@@ -1061,7 +1061,7 @@ export function ActiveClassroomUI({
       <div className={`col-start-1 row-start-2 min-h-0 z-10 flex flex-col relative ${isPhoneLandscape ? 'p-1' : 'p-3 md:p-4 py-2 md:py-4'}`}>
         <div ref={stageRef} className="flex-1 bg-muted rounded-2xl shadow-xl overflow-hidden relative border-4 border-border flex items-center justify-center group min-h-0">
           {amIIncognito && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/60 text-white backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1.5 shadow-sm pointer-events-none">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-inverse/60 text-inverse-foreground backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1.5 shadow-sm pointer-events-none">
               <Eye className="w-3 h-3 shrink-0" /> {t('classroom.observingIncognito')}
             </div>
           )}
@@ -1073,8 +1073,8 @@ export function ActiveClassroomUI({
                   onClick={() => setFollowViewport(v => !v)}
                   className={`pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg border transition-all ${
                     followViewport
-                      ? 'bg-green-500/90 text-white border-green-400/50 hover:bg-green-600/90'
-                      : 'bg-black/60 text-white/80 border-white/20 hover:bg-black/80'
+                      ? 'bg-success/90 text-success-foreground border-success/50 hover:bg-success/80'
+                      : 'bg-inverse/60 text-inverse-foreground/80 border-inverse-foreground/20 hover:bg-inverse/80'
                   }`}
                 >
                   {followViewport ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
@@ -1085,7 +1085,7 @@ export function ActiveClassroomUI({
                 <button
                   onClick={onToggleFullscreen}
                   title={isFullscreen ? (t('classroom.exitFullscreen') || 'Exit fullscreen') : (t('classroom.enterFullscreen') || 'Fullscreen')}
-                  className="pointer-events-auto w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center shadow-lg border border-white/20 transition-all"
+                  className="pointer-events-auto w-8 h-8 rounded-full bg-inverse/60 hover:bg-inverse/80 text-inverse-foreground flex items-center justify-center shadow-lg border border-inverse-foreground/20 transition-all"
                 >
                   {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                 </button>
@@ -1102,7 +1102,7 @@ export function ActiveClassroomUI({
             <>
               <div
                 key={activeScreenTrack.publication.trackSid}
-                className={`w-full h-full flex items-center justify-center origin-center bg-black relative select-none ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
+                className={`w-full h-full flex items-center justify-center origin-center bg-inverse relative select-none ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
                 onMouseDown={zoom > 1 ? (e) => {
                   e.preventDefault();
@@ -1122,10 +1122,10 @@ export function ActiveClassroomUI({
                 />
 
                 {(!activeScreenTrack.publication.isSubscribed || !activeScreenTrack.publication.track) && (
-                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 backdrop-blur-sm z-50">
-                      <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
-                      <p className="text-white font-bold text-lg">{t('classroom.loadingShare')}</p>
-                      <p className="text-white/50 text-xs mt-2 font-mono">
+                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-inverse/90 backdrop-blur-sm z-50">
+                      <Loader2 className="w-12 h-12 text-info animate-spin mb-4" />
+                      <p className="text-inverse-foreground font-bold text-lg">{t('classroom.loadingShare')}</p>
+                      <p className="text-inverse-foreground/50 text-xs mt-2 font-mono">
                         {t('classroom.presenterSharing', { name: activeScreenTrack.participant.name || t('classroom.presenter') })}
                       </p>
                    </div>
@@ -1155,12 +1155,12 @@ export function ActiveClassroomUI({
                   </div>
                 ) : (
                   <div className="z-10 flex flex-col items-center justify-center p-8">
-                      <div className="w-32 h-32 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center border-2 border-white/20 mb-6 shadow-lg overflow-hidden">
+                      <div className="w-32 h-32 bg-secondary rounded-full flex items-center justify-center border-2 border-inverse-foreground/20 mb-6 shadow-lg overflow-hidden">
                         {getImageUrl(teacher) ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={getImageUrl(teacher)!} alt={teacher.name || ""} className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-5xl font-bold text-white">{teacher.name?.charAt(0) || "T"}</span>
+                          <span className="text-5xl font-bold text-secondary-foreground">{teacher.name?.charAt(0) || "T"}</span>
                         )}
                       </div>
                       <h2 className="text-2xl font-bold text-foreground">{teacher.name || t('classroom.teacher')}</h2>
@@ -1214,7 +1214,7 @@ export function ActiveClassroomUI({
               }`}
             >
               <div
-                className="flex items-center gap-2 bg-black/60 backdrop-blur-md rounded-full px-4 py-2.5 border border-white/20 shadow-2xl pointer-events-auto"
+                className="flex items-center gap-2 bg-inverse/60 backdrop-blur-md rounded-full px-4 py-2.5 border border-inverse-foreground/20 shadow-2xl pointer-events-auto"
                 onClick={showStageControls}
               >
                 {amIAuthority && !amITeacher && !actualTeacher && (
@@ -1222,8 +1222,8 @@ export function ActiveClassroomUI({
                     onClick={togglePresenterMode}
                     className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
                       isLocalAdminPresenting
-                        ? 'bg-green-500/80 text-white border-green-400'
-                        : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                        ? 'bg-success/80 text-success-foreground border-success'
+                        : 'bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30'
                     }`}
                   >
                     <Crown className="w-5 h-5" />
@@ -1238,12 +1238,12 @@ export function ActiveClassroomUI({
                   disabled={waitingForApproval}
                   className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
                     isSharingLocally
-                      ? 'bg-green-500/80 text-white border-green-400'
+                      ? 'bg-success/80 text-success-foreground border-success'
                       : shareApproved
-                        ? 'bg-blue-500/80 text-white border-blue-400 animate-pulse'
+                        ? 'bg-info/80 text-info-foreground border-info animate-pulse'
                         : waitingForApproval
-                          ? 'bg-yellow-500/80 text-white border-yellow-400 cursor-wait'
-                          : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                          ? 'bg-warning/80 text-warning-foreground border-warning cursor-wait'
+                          : 'bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30'
                   }`}
                 >
                   {waitingForApproval ? <Hand className="w-5 h-5 animate-pulse" /> : <MonitorUp className="w-5 h-5" />}
@@ -1255,8 +1255,8 @@ export function ActiveClassroomUI({
                     title={isRecording ? t('classroom.stopRecording') : t('classroom.startRecording')}
                     className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
                       isRecording
-                        ? 'bg-red-500/80 text-white border-red-400 animate-pulse'
-                        : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                        ? 'bg-destructive/80 text-destructive-foreground border-destructive animate-pulse'
+                        : 'bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30'
                     } ${isTogglingRecord ? 'opacity-50 cursor-wait' : ''}`}
                   >
                     {isTogglingRecord ? (
@@ -1274,24 +1274,24 @@ export function ActiveClassroomUI({
                     title={hasCompanion ? (t('classroom.companionActive') || 'Companion active') : (t('classroom.connectTablet') || 'Connect Tablet')}
                     className={`w-11 h-11 rounded-full flex items-center justify-center relative transition-all shadow-lg border-2 ${
                       hasCompanion
-                        ? 'bg-green-500/80 text-white border-green-400'
-                        : 'bg-white/20 text-white border-white/30 hover:bg-white/30'
+                        ? 'bg-success/80 text-success-foreground border-success'
+                        : 'bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30'
                     }`}
                   >
                     <TabletSmartphone className="w-5 h-5" />
                     {hasCompanion && (
-                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-black/60 animate-pulse" />
+                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-success rounded-full border-2 border-inverse/60 animate-pulse" />
                     )}
                   </button>
                 )}
-                <div className="w-px h-6 bg-white/30 mx-1" />
+                <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
                 {onToggleFullscreen && (
                   <FullscreenButtonCompact isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
                 )}
-                <div className="w-px h-6 bg-white/30 mx-1" />
+                <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
                 <button
                   onClick={handleLeaveClick}
-                  className="w-11 h-11 rounded-full bg-red-500/80 hover:bg-red-600/80 text-white flex items-center justify-center shadow-lg border-2 border-red-400/60 transition-colors"
+                  className="w-11 h-11 rounded-full bg-destructive/80 hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center shadow-lg border-2 border-destructive/60 transition-colors"
                 >
                   <LogOut className="w-5 h-5" />
                 </button>
@@ -1367,7 +1367,7 @@ export function ActiveClassroomUI({
                       </p>
                     </div>
                   )}
-                  <div className="flex flex-col items-center justify-center p-6 bg-white rounded-xl shadow-inner my-4">
+                  <div className="my-4 flex flex-col items-center justify-center rounded-xl bg-whiteboard p-6 shadow-inner">
                     {companionUrl ? (
                       <QRCodeSVG value={companionUrl} size={220} level="M" includeMargin={true} />
                     ) : (
@@ -1408,7 +1408,7 @@ export function ActiveClassroomUI({
                 className={`
                   w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border
                   ${isRecording
-                    ? 'bg-red-500/20 hover:bg-red-500/30 text-red-500 border-red-500/50 animate-pulse'
+                    ? 'bg-destructive/20 hover:bg-destructive/30 text-destructive border-destructive/50 animate-pulse'
                     : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border'}
                 `}
               >
@@ -1421,7 +1421,7 @@ export function ActiveClassroomUI({
             <button
               onClick={handleLeaveClick}
               title={t('classroom.leave')}
-              className="w-12 h-12 rounded-full bg-destructive hover:bg-destructive/90 text-white flex items-center justify-center shadow-md transition-colors"
+              className="w-12 h-12 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center shadow-md transition-colors"
             >
               <LogOut className="w-5 h-5" />
             </button>
@@ -1440,12 +1440,12 @@ export function ActiveClassroomUI({
           {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
             <>
               <div className="hidden md:flex landscape:flex items-center gap-0.5">
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-primary-foreground/20 transition-colors disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-primary-foreground/20 transition-colors disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
               </div>
               <div className="flex md:hidden landscape:hidden items-center gap-0.5">
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-white/20 transition-colors disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-primary-foreground/20 transition-colors disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-primary-foreground/20 transition-colors disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
             </>
           )}
@@ -1467,7 +1467,7 @@ export function ActiveClassroomUI({
               variant="grid"
               participant={p}
               className={`flex-shrink-0 rounded-xl landscape:rounded-2xl border-2 overflow-hidden aspect-square w-24 h-24 sm:w-28 sm:h-28 landscape:w-full landscape:h-auto snap-start snap-always
-                ${raisedHands.has(p.identity) ? 'border-amber-500 shadow-[0_0_8px_2px] shadow-amber-500/40' : 'border-border'}`}
+                ${raisedHands.has(p.identity) ? 'border-warning shadow-[0_0_8px_2px] shadow-warning/40' : 'border-border'}`}
               raisedHand={raisedHands.has(p.identity)}
               onLowerHand={(amITeacher || isLocalAdminPresenting) ? () => forceLowerHand(p.identity) : undefined}
               youLabel={t('classroom.youShort')}

@@ -95,7 +95,13 @@
     "globalSystem": "Sistema Global",
     "yourOrganizations": "Suas Organizações",
     "schoolFilter": "Filtro de Escola",
-    "filterBySchool": "Filtrar todas as páginas por escola"
+    "filterBySchool": "Filtrar todas as páginas por escola",
+    "institutions": "Instituições",
+    "createInstitution": "Criar instituição",
+    "createCampus": "Criar campus",
+    "noInstitutions": "Nenhuma instituição",
+    "noCampusSelected": "Nenhum campus selecionado",
+    "institutionOverview": "Visão geral da instituição"
   },
   "navigation": {
     "dashboard": "Painel geral",

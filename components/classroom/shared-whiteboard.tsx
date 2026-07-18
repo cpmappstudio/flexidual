@@ -31,7 +31,7 @@ const Excalidraw = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-full flex items-center justify-center bg-white text-muted-foreground text-sm">
+      <div className="flex h-full w-full items-center justify-center bg-whiteboard text-sm text-muted-foreground">
         Loading whiteboard…
       </div>
     ),
@@ -114,7 +114,9 @@ async function compressImage(
       // Fill white background for JPEG (which has no alpha channel)
       const outputType = mimeType === "image/png" ? "image/png" : "image/jpeg";
       if (outputType === "image/jpeg") {
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = getComputedStyle(document.documentElement)
+          .getPropertyValue("--whiteboard")
+          .trim();
         ctx.fillRect(0, 0, w, h);
       }
       ctx.drawImage(img, 0, 0, w, h);
@@ -526,7 +528,7 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
   );
 
   return (
-    <div className="w-full h-full relative bg-white rounded-lg overflow-hidden border border-border touch-none overscroll-none">
+    <div className="relative h-full w-full touch-none overflow-hidden overscroll-none rounded-lg border border-border bg-whiteboard">
       <Excalidraw
         initialData={initialData}
         excalidrawAPI={(api: ExcalidrawImperativeAPI) => {

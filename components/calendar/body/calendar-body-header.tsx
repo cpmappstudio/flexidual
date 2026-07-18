@@ -25,7 +25,7 @@ export default function CalendarBodyHeader({
       <span
         className={cn(
           'text-[10px] font-medium',
-          isToday ? 'text-deep-koamaru' : 'text-muted-foreground'
+          isToday ? 'text-primary' : 'text-muted-foreground'
         )}
       >
         {format(date, 'EEE', { locale: dateLocale })}
@@ -34,7 +34,7 @@ export default function CalendarBodyHeader({
         <span
           className={cn(
             'text-[10px] font-medium',
-            isToday ? 'text-deep-koamaru font-bold' : 'text-foreground'
+            isToday ? 'text-primary font-bold' : 'text-foreground'
           )}
         >
           {format(date, 'dd', { locale: dateLocale })}

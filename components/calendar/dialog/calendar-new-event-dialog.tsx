@@ -282,7 +282,7 @@ export default function CalendarNewEventDialog() {
           }) 
         }),
         duration: 3000,
-        icon: <CalendarClock className="h-4 w-4 text-blue-500" />
+        icon: <CalendarClock className="h-4 w-4 text-info" />
       });
     }
   }, [daysOfWeek, anchorDate, form, t]);
@@ -372,7 +372,7 @@ export default function CalendarNewEventDialog() {
               
               {/* ✅ Warning for recurring + lessons */}
               {isRecurring && (
-                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
+                <div className="bg-warning/10 border border-warning/30 rounded-md p-3 text-sm text-warning-foreground">
                   <p className="font-medium">
                     ⚠️ {t('schedule.recurringNoLessonsTitle') || "Recurring schedules cannot have lessons"}
                   </p>
