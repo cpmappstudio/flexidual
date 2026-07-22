@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useMutation } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { MapPin, Plus, Edit, Hash, Building2 } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { EntityDialog } from "@/components/ui/entity-dialog"
+import { TimeZoneInput } from "@/components/ui/time-zone-input"
 
 type CampusDialogProps = {
     trigger?: React.ReactNode
@@ -32,6 +33,10 @@ export function CampusDialog(props: CampusDialogProps) {
 
     const createCampus = useMutation(api.campuses.create)
     const updateCampus = useMutation(api.campuses.update)
+    const schoolId = props.campus
+        ? props.campus.schoolId
+        : props.parentInstitution._id
+    const school = useQuery(api.schools.get, { id: schoolId })
 
     const [isOpen, setIsOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -41,6 +46,7 @@ export function CampusDialog(props: CampusDialogProps) {
         name: "",
         slug: "",
         code: "",
+        timeZone: "",
         status: "active",
     })
 
@@ -54,6 +60,7 @@ export function CampusDialog(props: CampusDialogProps) {
                     name: props.campus.name,
                     slug: props.campus.slug,
                     code: props.campus.code || "",
+                    timeZone: props.campus.timeZone || "",
                     status: props.campus.isActive ? "active" : "inactive",
                 })
                 setIsAutoSlug(false)
@@ -62,6 +69,7 @@ export function CampusDialog(props: CampusDialogProps) {
                     name: "", 
                     slug: "", 
                     code: "",
+                    timeZone: "",
                     status: "active" 
                 })
                 setIsAutoSlug(true)
@@ -90,7 +98,8 @@ export function CampusDialog(props: CampusDialogProps) {
                     id: props.campus._id,
                     name: formData.name,
                     slug: formData.slug,
-                    code: formData.code || undefined,
+                    code: formData.code || null,
+                    timeZone: formData.timeZone || null,
                     isActive: formData.status === "active",
                 })
                 toast.success(t("updated"))
@@ -100,6 +109,7 @@ export function CampusDialog(props: CampusDialogProps) {
                     name: formData.name,
                     slug: formData.slug,
                     code: formData.code || undefined,
+                    timeZone: formData.timeZone || undefined,
                 })
                 toast.success(t("created"))
             }
@@ -189,6 +199,19 @@ export function CampusDialog(props: CampusDialogProps) {
                             />
                         </div>
                     </div>
+                </div>
+
+                <div className="grid gap-2">
+                    <Label htmlFor="campus-time-zone">{t("timeZone")}</Label>
+                    <TimeZoneInput
+                        id="campus-time-zone"
+                        value={formData.timeZone}
+                        onChange={(event) => setFormData({...formData, timeZone: event.target.value})}
+                        placeholder={school?.timeZone || "America/New_York"}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        {formData.timeZone || school?.timeZone || "—"}
+                    </p>
                 </div>
 
                 {isEditing && (

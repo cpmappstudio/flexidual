@@ -17,6 +17,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_SCHEDULE_END_MINUTES,
+  DEFAULT_SCHEDULE_START_MINUTES,
+} from "@/lib/academic-settings";
 
 export type CourseClassFormat = "live" | "ignitia" | "abeka";
 
@@ -39,9 +43,10 @@ interface CourseWeeklyCalendarProps {
   onChangeAction: (value: CourseWeeklySlot[]) => void;
   courseName: string;
   teacherName?: string;
+  startMinutes?: number;
+  endMinutes?: number;
 }
 
-const MINUTES_PER_DAY = 24 * 60;
 const SNAP_MINUTES = 15;
 
 const formatClasses: Record<CourseClassFormat, string> = {
@@ -53,20 +58,32 @@ const formatClasses: Record<CourseClassFormat, string> = {
 function getPointerMinutes(
   event: React.PointerEvent<HTMLDivElement>,
   isStart: boolean,
+  windowStartMinutes: number,
+  windowEndMinutes: number,
 ) {
   const rect = event.currentTarget.getBoundingClientRect();
   const surfaceHeight = event.currentTarget.scrollHeight || rect.height;
   const ratio = (event.clientY - rect.top) / surfaceHeight;
-  const minutes = Math.round(
-    (Math.max(0, Math.min(1, ratio)) * MINUTES_PER_DAY) / SNAP_MINUTES,
-  ) * SNAP_MINUTES;
+  const minutes =
+    Math.round(
+      (windowStartMinutes +
+        Math.max(0, Math.min(1, ratio)) *
+          (windowEndMinutes - windowStartMinutes)) /
+        SNAP_MINUTES,
+    ) * SNAP_MINUTES;
 
   return isStart
-    ? Math.min(minutes, MINUTES_PER_DAY - SNAP_MINUTES)
-    : Math.min(minutes, MINUTES_PER_DAY);
+    ? Math.max(
+        windowStartMinutes,
+        Math.min(minutes, windowEndMinutes - SNAP_MINUTES),
+      )
+    : Math.max(windowStartMinutes, Math.min(minutes, windowEndMinutes));
 }
 
-function normalizeSelection(selection: DraftSelection) {
+function normalizeSelection(
+  selection: DraftSelection,
+  windowEndMinutes: number,
+) {
   const startMinutes = Math.min(
     selection.anchorMinutes,
     selection.currentMinutes,
@@ -81,7 +98,7 @@ function normalizeSelection(selection: DraftSelection) {
     startMinutes,
     endMinutes:
       endMinutes === startMinutes
-        ? Math.min(startMinutes + SNAP_MINUTES, MINUTES_PER_DAY)
+        ? Math.min(startMinutes + SNAP_MINUTES, windowEndMinutes)
         : endMinutes,
   };
 }
@@ -97,12 +114,13 @@ export function CourseWeeklyCalendar({
   onChangeAction,
   courseName,
   teacherName,
+  startMinutes = DEFAULT_SCHEDULE_START_MINUTES,
+  endMinutes = DEFAULT_SCHEDULE_END_MINUTES,
 }: CourseWeeklyCalendarProps) {
   const t = useTranslations();
   const [draft, setDraft] = useState<DraftSelection>();
-  const [pending, setPending] = useState<
-    ReturnType<typeof normalizeSelection>
-  >();
+  const [pending, setPending] =
+    useState<ReturnType<typeof normalizeSelection>>();
 
   const startSelection = (
     dayOfWeek: number,
@@ -111,7 +129,7 @@ export function CourseWeeklyCalendar({
     if (event.button !== 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    const minutes = getPointerMinutes(event, true);
+    const minutes = getPointerMinutes(event, true, startMinutes, endMinutes);
     setDraft({
       dayOfWeek,
       anchorMinutes: minutes,
@@ -124,10 +142,13 @@ export function CourseWeeklyCalendar({
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
     if (!draft || draft.dayOfWeek !== dayOfWeek) return;
-    const currentMinutes = getPointerMinutes(event, false);
-    setDraft((current) =>
-      current ? { ...current, currentMinutes } : current,
+    const currentMinutes = getPointerMinutes(
+      event,
+      false,
+      startMinutes,
+      endMinutes,
     );
+    setDraft((current) => (current ? { ...current, currentMinutes } : current));
   };
 
   const finishSelection = (
@@ -135,10 +156,18 @@ export function CourseWeeklyCalendar({
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
     if (!draft || draft.dayOfWeek !== dayOfWeek) return;
-    const selection = normalizeSelection({
-      ...draft,
-      currentMinutes: getPointerMinutes(event, false),
-    });
+    const selection = normalizeSelection(
+      {
+        ...draft,
+        currentMinutes: getPointerMinutes(
+          event,
+          false,
+          startMinutes,
+          endMinutes,
+        ),
+      },
+      endMinutes,
+    );
     setDraft(undefined);
     setPending(selection);
   };
@@ -178,9 +207,10 @@ export function CourseWeeklyCalendar({
     },
     isDraft = false,
   ) => {
-    const top = (selection.startMinutes / MINUTES_PER_DAY) * 100;
+    const windowMinutes = endMinutes - startMinutes;
+    const top = ((selection.startMinutes - startMinutes) / windowMinutes) * 100;
     const height =
-      ((selection.endMinutes - selection.startMinutes) / MINUTES_PER_DAY) * 100;
+      ((selection.endMinutes - selection.startMinutes) / windowMinutes) * 100;
 
     return (
       <div
@@ -236,11 +266,17 @@ export function CourseWeeklyCalendar({
 
   return (
     <>
-      <div className="h-[680px] overflow-hidden rounded-lg border bg-sidebar">
+      <div
+        className="overflow-hidden rounded-lg border bg-sidebar"
+        style={{
+          height: ((endMinutes - startMinutes) / 60) * 48 + 30,
+        }}
+      >
         <CalendarWeekTimeGrid
           date={new Date()}
-          initialScrollHour={7}
-          className="[--calendar-hour-height:3rem] xl:[--calendar-hour-height:3rem] 2xl:[--calendar-hour-height:3rem]"
+          startMinutes={startMinutes}
+          endMinutes={endMinutes}
+          className="[--calendar-hour-height:3rem] [&>div]:overflow-y-hidden xl:[--calendar-hour-height:3rem] 2xl:[--calendar-hour-height:3rem]"
           renderDayAction={(day) => {
             const dayOfWeek = day.getDay();
             const daySlots = value.filter(
@@ -248,21 +284,20 @@ export function CourseWeeklyCalendar({
             );
             const draftSelection =
               draft?.dayOfWeek === dayOfWeek
-                ? normalizeSelection(draft)
+                ? normalizeSelection(draft, endMinutes)
                 : undefined;
 
             return (
               <CalendarTimeGridDay
                 date={day}
                 onlyDayHeader
+                startMinutes={startMinutes}
+                endMinutes={endMinutes}
                 surfaceProps={{
                   className: "cursor-crosshair touch-none select-none",
-                  onPointerDown: (event) =>
-                    startSelection(dayOfWeek, event),
-                  onPointerMove: (event) =>
-                    updateSelection(dayOfWeek, event),
-                  onPointerUp: (event) =>
-                    finishSelection(dayOfWeek, event),
+                  onPointerDown: (event) => startSelection(dayOfWeek, event),
+                  onPointerMove: (event) => updateSelection(dayOfWeek, event),
+                  onPointerUp: (event) => finishSelection(dayOfWeek, event),
                   onPointerCancel: () => setDraft(undefined),
                 }}
               >

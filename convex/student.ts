@@ -1,22 +1,108 @@
 import { query, mutation } from "./_generated/server";
 import { getCurrentUserFromAuth } from "./users";
 import { v } from "convex/values";
+import { getInstitutionGrades } from "./model/grades";
+import { getStudentGradeCode } from "./model/membership";
+import { isStudentEnrolled } from "./model/enrollments";
 
 export const getStudentDashboardStats = query({
+  args: {},
+  returns: v.union(
+    v.null(),
+    v.object({
+      student: v.object({
+        fullName: v.string(),
+        email: v.optional(v.string()),
+        username: v.optional(v.string()),
+        imageUrl: v.optional(v.string()),
+        grade: v.optional(v.string()),
+        gradeName: v.optional(v.string()),
+        school: v.optional(v.string()),
+      }),
+      overall: v.object({
+        activeCourses: v.number(),
+        totalSessions: v.number(),
+        attendanceRate: v.number(),
+        completedSessions: v.number(),
+      }),
+      classes: v.array(
+        v.object({
+          classId: v.id("classes"),
+          className: v.string(),
+          curriculumTitle: v.string(),
+          description: v.optional(v.string()),
+          teacher: v.object({
+            fullName: v.string(),
+            imageUrl: v.optional(v.string()),
+          }),
+          stats: v.object({
+            totalClasses: v.number(),
+            completedClasses: v.number(),
+            attendedClasses: v.number(),
+            progressPercentage: v.number(),
+          }),
+          icon: v.union(v.string(), v.null()),
+          nextSession: v.optional(v.number()),
+        }),
+      ),
+    }),
+  ),
   handler: async (ctx) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return null;
 
-    const allClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
+    const enrollmentRows = await ctx.db
+      .query("classEnrollments")
+      .withIndex("by_student", (q) => q.eq("studentId", user._id))
       .collect();
-
-    const myClasses = allClasses.filter((c) => c.students.includes(user._id));
+    const normalizedClasses = (
+      await Promise.all(enrollmentRows.map((row) => ctx.db.get(row.classId)))
+    ).filter((classData) => classData?.isActive);
+    const legacyClasses = (
+      await ctx.db
+        .query("classes")
+        .withIndex("by_active", (q) => q.eq("isActive", true))
+        .collect()
+    ).filter(
+      (classData) =>
+        !classData.enrollmentsMigratedAt &&
+        classData.students?.includes(user._id),
+    );
+    const myClasses = [
+      ...new Map(
+        [...normalizedClasses, ...legacyClasses]
+          .filter((classData) => classData !== null)
+          .map((classData) => [classData!._id, classData!]),
+      ).values(),
+    ];
 
     if (myClasses.length === 0) {
       return null; 
     }
+
+    const firstClass = myClasses[0];
+    const [firstCurriculum, firstCampus] = await Promise.all([
+      ctx.db.get(firstClass.curriculumId),
+      firstClass.campusId ? ctx.db.get(firstClass.campusId) : null,
+    ]);
+    const schoolId = firstCampus?.schoolId ?? firstCurriculum?.schoolId;
+    const gradeCode = schoolId
+      ? await getStudentGradeCode(
+          ctx,
+          user._id,
+          schoolId,
+          firstClass.campusId,
+        )
+      : undefined;
+    const gradeName = gradeCode && schoolId
+      ? (await getInstitutionGrades(ctx, schoolId)).find(
+          (grade) => grade.code === gradeCode,
+        )?.name
+      : undefined;
+    const mySessions = await ctx.db
+      .query("class_sessions")
+      .withIndex("by_student_date", (q) => q.eq("studentId", user._id))
+      .collect();
 
     // --- Per-class stats ---
     const classStats = await Promise.all(
@@ -42,11 +128,6 @@ export const getStudentDashboardStats = query({
         const pastSchedules = schedules.filter((s) => s.scheduledEnd < now);
         const scheduleIds = new Set(schedules.map(s => s._id));
         
-        const mySessions = await ctx.db
-          .query("class_sessions")
-          .withIndex("by_student_date", (q) => q.eq("studentId", user._id))
-          .collect();
-
         const classSessions = mySessions.filter(s => scheduleIds.has(s.scheduleId));
         
         let attendedCount = 0;
@@ -70,7 +151,13 @@ export const getStudentDashboardStats = query({
         return {
           classId: classData._id,
           className: classData.name,
-          curriculumTitle: curriculum?.title || classData.classType === "abeka" ? "Abeka Curriculum" : classData.classType === "ignitia" ? "Ignitia Curriculum" : "Curriculum",
+          curriculumTitle:
+            curriculum?.title ??
+            (classData.classType === "abeka"
+              ? "Abeka Curriculum"
+              : classData.classType === "ignitia"
+                ? "Ignitia Curriculum"
+                : "Curriculum"),
           description: classData.description,
           teacher: teacher
             ? { fullName: teacher.fullName, imageUrl: teacher.imageUrl }
@@ -110,7 +197,8 @@ export const getStudentDashboardStats = query({
             email: user.email,
             username: user.username,
             imageUrl: user.imageUrl,
-            grade: user.grade,
+            grade: gradeCode,
+            gradeName,
             school: user.school,
         },
         overall: {
@@ -129,9 +217,14 @@ export const updateClassIcon = mutation({
     classId: v.id("classes"),
     icon: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) throw new Error("Unauthorized");
+    const classData = await ctx.db.get(args.classId);
+    if (!classData || !(await isStudentEnrolled(ctx, classData, user._id))) {
+      throw new Error("Unauthorized");
+    }
 
     const existingPref = await ctx.db
       .query("studentClassPreferences")

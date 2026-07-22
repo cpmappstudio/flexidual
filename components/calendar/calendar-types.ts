@@ -1,95 +1,94 @@
 import type { Id } from "@/convex/_generated/dataModel";
 
-export type CalendarProps = {
-  events: CalendarEvent[]
-  setEvents: (events: CalendarEvent[]) => void
-  mode: Mode
-  setMode: (mode: Mode) => void
-  date: Date
-  setDate: (date: Date) => void
+export type CalendarContextType = {
+  events: CalendarEvent[];
+  mode: Mode;
+  setMode: (mode: Mode) => void;
+  date: Date;
+  setDate: (date: Date) => void;
+  scheduleStartMinutes: number;
+  scheduleEndMinutes: number;
 
-  isLoading?: boolean
-  userId?: Id<"users">
-}
+  isLoading?: boolean;
+  userId?: Id<"users">;
 
-export type CalendarContextType = CalendarProps & {
+  manageEventDialogOpen: boolean;
+  setManageEventDialogOpen: (open: boolean) => void;
+  selectedEvent: CalendarEvent | null;
+  setSelectedEvent: (event: CalendarEvent | null) => void;
 
-  manageEventDialogOpen: boolean
-  setManageEventDialogOpen: (open: boolean) => void
-  selectedEvent: CalendarEvent | null
-  setSelectedEvent: (event: CalendarEvent | null) => void
-
-  refetchEvents?: () => void
-  selectedTeacherId: Id<"users"> | null
-  onTeacherChange: (id: Id<"users"> | null) => void
-  selectedCurriculumId: Id<"curriculums"> | null
-  onCurriculumChange: (id: Id<"curriculums"> | null) => void
-}
+  refetchEvents?: () => void;
+  selectedTeacherId: Id<"users"> | null;
+  onTeacherChange: (id: Id<"users"> | null) => void;
+  selectedCurriculumId: Id<"curriculums"> | null;
+  onCurriculumChange: (id: Id<"curriculums"> | null) => void;
+};
 
 export type CalendarEvent = {
-  id: string
-  _id: Id<"classSchedule">
-  
+  id: string;
+  _id: Id<"classSchedule">;
+
   // Core scheduling info
-  scheduleId: Id<"classSchedule">
-  lessonIds?: Id<"lessons">[]
-  classId: Id<"classes">
-  curriculumId: Id<"curriculums">
-  sessionType: "live" | "ignitia" | "abeka"
-  
+  scheduleId: Id<"classSchedule">;
+  lessonIds?: Id<"lessons">[];
+  classId: Id<"classes">;
+  curriculumId: Id<"curriculums">;
+  sessionType: "live" | "ignitia" | "abeka";
+
   // Display fields
-  title: string
-  description?: string
-  start: Date
-  end: Date
-  color: string
-  
+  title: string;
+  description?: string;
+  start: Date;
+  end: Date;
+  timeZone: string;
+  color: string;
+
   // Class/Curriculum context
-  className: string
-  curriculumTitle: string
-  
+  className: string;
+  curriculumTitle: string;
+
   // ✅ Added: Full lesson data for display
   lessons?: {
-    _id: Id<"lessons">
-    title: string
-    order: number
-  }[]
-  
+    _id: Id<"lessons">;
+    title: string;
+    order: number;
+  }[];
+
   // LiveKit room info
-  roomName?: string
-  isLive: boolean
-  
+  roomName?: string;
+  isLive: boolean;
+
   // Status
-  status: "scheduled" | "active" | "completed" | "cancelled"
+  status: "scheduled" | "active" | "completed" | "cancelled";
 
   // Recurrence
-  isRecurring?: boolean
-  recurrenceRule?: string
-  recurrenceParentId?: Id<"classSchedule">
-  teacherName?: string
-  teacherImageUrl?: string
+  isRecurring?: boolean;
+  recurrenceRule?: string;
+  recurrenceParentId?: Id<"classSchedule">;
+  teacherName?: string;
+  teacherImageUrl?: string;
 
   // Recordings
-  hasRecording?: boolean
-}
+  hasRecording?: boolean;
+};
 
 // For scheduling new lessons
 export type SchedulableClass = {
-  _id: Id<"classes">
-  name: string
-  curriculumId: Id<"curriculums">
-  curriculumTitle: string
-  curriculumCode?: string
-  color: string
-  teacherId: Id<"users">
+  _id: Id<"classes">;
+  name: string;
+  curriculumId: Id<"curriculums">;
+  curriculumTitle: string;
+  curriculumCode?: string;
+  color: string;
+  teacherId: Id<"users">;
   lessons: {
-    _id: Id<"lessons">
-    title: string
-    description?: string
-    order: number
-    isScheduled?: boolean // If this lesson already has a schedule
-  }[]
-}
+    _id: Id<"lessons">;
+    title: string;
+    description?: string;
+    order: number;
+    isScheduled?: boolean; // If this lesson already has a schedule
+  }[];
+};
 
-export const calendarModes = ['month', 'week', 'day'] as const
-export type Mode = (typeof calendarModes)[number]
+export const calendarModes = ["month", "week", "day"] as const;
+export type Mode = (typeof calendarModes)[number];

@@ -11,6 +11,7 @@ export interface StudentScheduleEvent {
   className: string
   start: number
   end: number
+  timeZone: string
   roomName: string
   isLive: boolean
   color: string

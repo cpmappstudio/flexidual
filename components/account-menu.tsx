@@ -5,6 +5,7 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { Building2, LogOut, Settings2, UserRound } from "lucide-react";
 import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -46,6 +47,12 @@ export function AccountMenu({ className }: { className?: string }) {
     user?.primaryEmailAddress?.emailAddress ||
     t("fallbackUser");
   const email = user?.primaryEmailAddress?.emailAddress || "";
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 
   const changeLocale = (nextLocale: AppLocale) => {
     if (nextLocale !== locale) router.replace(pathname, { locale: nextLocale });
@@ -80,13 +87,23 @@ export function AccountMenu({ className }: { className?: string }) {
         align="end"
         sideOffset={8}
       >
-        <DropdownMenuLabel className="flex flex-col gap-1 p-3 font-normal">
-          <span className="truncate text-sm font-medium">{name}</span>
-          {email && (
-            <span className="truncate text-xs text-muted-foreground">
-              {email}
-            </span>
-          )}
+        <DropdownMenuLabel className="flex items-center gap-2 p-3 font-normal">
+          <Avatar className="size-10 border">
+            <AvatarImage
+              className="object-cover"
+              src={user?.imageUrl}
+              alt={name}
+            />
+            <AvatarFallback className="text-xs font-medium">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{name}</p>
+            {email && (
+              <p className="truncate text-xs text-muted-foreground">{email}</p>
+            )}
+          </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useAction, useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import type { Id } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -29,7 +30,6 @@ import { Badge } from "@/components/ui/badge"
 import { EntityDialog } from "@/components/ui/entity-dialog"
 import { useAlert } from "@/components/providers/alert-provider"
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
-import { GRADE_VALUES } from "@/lib/types/academic"
 import { useParams } from "next/navigation"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { User } from "./users-table";
@@ -118,6 +118,25 @@ export function UserDialog({
     const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug })
     const schools = useQuery(api.schools.list, { isActive: true })
     const campuses = useQuery(api.campuses.list, { isActive: true })
+    const gradeSchoolId =
+        orgContext?.type === "school"
+            ? orgContext._id
+            : orgContext?.type === "campus"
+                ? campuses?.find(campus => campus._id === orgContext._id)?.schoolId
+                : formData.targetSchoolId || campuses?.find(campus => campus._id === formData.targetCampusId)?.schoolId
+    const grades = useQuery(
+        api.grades.list,
+        isOpen && gradeSchoolId
+            ? { schoolId: gradeSchoolId as Id<"schools"> }
+            : "skip",
+    )
+
+    useEffect(() => {
+        if (!grades || !formData.grade) return
+        if (!grades.some(grade => grade.code === formData.grade)) {
+            setFormData(current => ({ ...current, grade: "" }))
+        }
+    }, [formData.grade, grades])
 
     useEffect(() => {
         if (isOpen) {
@@ -138,7 +157,7 @@ export function UserDialog({
                     lastName: user.lastName || "",
                     email: user.email || "",
                     username: user.username || "",
-                    password: user.externalPassword || "", 
+                    password: "",
                     role: (user.role as UserRole) ?? (defaultRole || rolesToDisplay[0]),
                     status: user.isActive ? "active" : "inactive",
                     grade: user.grade || "",
@@ -185,7 +204,11 @@ export function UserDialog({
         const hasValidEmail = formData.email.trim().length > 0;
         const hasValidUsername = formData.username.trim().length > 0 && formData.password.trim().length > 0;
         
-        if (!hasName || (!hasValidEmail && !hasValidUsername)) return;
+        if (
+            !hasName ||
+            (!hasValidEmail && !hasValidUsername) ||
+            (formData.role === "student" && !formData.grade)
+        ) return;
 
         const newUser: PendingUser = {
             id: Math.random().toString(36).substr(2, 9),
@@ -360,6 +383,13 @@ export function UserDialog({
 
     const handleDelete = () => {
         if (!user) return;
+        const deleteOrgType =
+            user.orgType === "system" ||
+            user.orgType === "school" ||
+            user.orgType === "campus"
+                ? user.orgType
+                : orgContext?.type;
+        if (!deleteOrgType) return;
         showAlert({
             title: t("user.deleteTitle") || "Delete User",
             description: t("user.deleteDescription", { name: user.fullName }) || "Are you sure you want to delete this user?",
@@ -368,7 +398,14 @@ export function UserDialog({
             variant: "destructive",
             onConfirm: async () => {
                 try {
-                    await deleteUser({ userId: user._id });
+                    await deleteUser({
+                        userId: user._id,
+                        orgType: deleteOrgType,
+                        orgId:
+                            deleteOrgType === "system"
+                                ? undefined
+                                : user.orgId ?? orgContext?._id,
+                    });
                     toast.success(t("user.deleted"));
                     setIsOpen(false);
                 } catch {
@@ -431,6 +468,11 @@ export function UserDialog({
             title={isEditing ? t("common.editUser") || "Edit User" : t("common.newUsers")}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
+            submitDisabled={
+                queue.length === 0 &&
+                formData.role === "student" &&
+                !formData.grade
+            }
             submitLabel={submitLabel}
             maxWidth={isEditing ? "sm:max-w-[600px]" : "sm:max-w-[700px]"}
             leftActions={
@@ -578,18 +620,18 @@ export function UserDialog({
                                 </p>
                             </div>
                             <div className="grid gap-2 pb-6">
-                                <Label htmlFor="grade">{t('student.grade')}</Label>
+                                <Label htmlFor="grade">{t('student.grade')} <span className="text-destructive">*</span></Label>
                                 <Select 
                                     value={formData.grade} 
                                     onValueChange={(v) => setFormData({...formData, grade: v})}
                                 >
-                                    <SelectTrigger>
+                                    <SelectTrigger disabled={!gradeSchoolId || grades?.length === 0}>
                                         <SelectValue placeholder={t('student.selectGrade')} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {GRADE_VALUES.map((code) => (
-                                            <SelectItem key={code} value={code}>
-                                                {t(`student.grades.${code}`)}
+                                        {grades?.map((grade) => (
+                                            <SelectItem key={grade._id} value={grade.code}>
+                                                {grade.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -761,7 +803,8 @@ export function UserDialog({
                                 className="gap-2"
                                 disabled={
                                     (!formData.firstName || !formData.lastName) || 
-                                    (!formData.email && (!formData.username || !formData.password))
+                                    (!formData.email && (!formData.username || !formData.password)) ||
+                                    (formData.role === "student" && !formData.grade)
                                 }
                             >
                                 <Plus className="h-4 w-4" />
@@ -820,7 +863,9 @@ export function UserDialog({
                                                             {t(`navigation.${u.role}s`)}
                                                         </Badge>
                                                         {u.grade && (
-                                                            <Badge variant="secondary" className="text-[10px] h-5">{u.grade}</Badge>
+                                                            <Badge variant="secondary" className="text-[10px] h-5">
+                                                                {grades?.find((grade) => grade.code === u.grade)?.name ?? u.grade}
+                                                            </Badge>
                                                         )}
                                                     </div>
                                                     <div className="text-muted-foreground text-xs">{u.email || u.username}</div>

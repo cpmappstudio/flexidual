@@ -1,7 +1,12 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Building2, ShieldCheck } from "lucide-react";
+import {
+  Building2,
+  CalendarRange,
+  GraduationCap,
+  ShieldCheck,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import {
@@ -29,6 +34,8 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { context, basePath, profilePath } = useSettingsContext();
   const campusesPath = `${basePath}/campuses`;
+  const academicPath = `${basePath}/academic`;
+  const gradesPath = `${basePath}/grades`;
   const items = [
     ...(context?.canManageInstitution
       ? [
@@ -42,6 +49,18 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
             href: campusesPath,
             label: t("campusesLabel"),
             icon: Building2,
+            exact: false,
+          },
+          {
+            href: academicPath,
+            label: t("academicLabel"),
+            icon: CalendarRange,
+            exact: false,
+          },
+          {
+            href: gradesPath,
+            label: t("gradesLabel"),
+            icon: GraduationCap,
             exact: false,
           },
         ]
@@ -106,6 +125,22 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
                         isActive={pathname.startsWith(campusesPath)}
                       >
                         <Link href={campusesPath}>{t("campusesLabel")}</Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        asChild
+                        isActive={pathname.startsWith(academicPath)}
+                      >
+                        <Link href={academicPath}>{t("academicLabel")}</Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        asChild
+                        isActive={pathname.startsWith(gradesPath)}
+                      >
+                        <Link href={gradesPath}>{t("gradesLabel")}</Link>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                   </SidebarMenuSub>

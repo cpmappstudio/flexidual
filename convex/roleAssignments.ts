@@ -1,7 +1,97 @@
 import { v } from "convex/values";
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { getCurrentUserOrThrow } from "./users";
+import { canManageClasses, hasOrgRole, hasSystemRole } from "./permissions";
+import { validateGradeCodes } from "./model/grades";
+import { resolveMembershipSchoolId } from "./model/membership";
+import { roleValidator } from "./model/roles";
+
+const roleAssignmentValidator = v.object({
+  _id: v.id("roleAssignments"),
+  _creationTime: v.number(),
+  userId: v.id("users"),
+  orgId: v.optional(v.string()),
+  orgType: v.union(
+    v.literal("system"),
+    v.literal("school"),
+    v.literal("campus"),
+  ),
+  role: roleValidator,
+  schoolId: v.optional(v.id("schools")),
+  gradeCode: v.optional(v.string()),
+  assignedAt: v.number(),
+  assignedBy: v.optional(v.id("users")),
+});
+
+async function assertCanManageAssignment(
+  ctx: Parameters<typeof hasSystemRole>[0],
+  userId: Id<"users">,
+  orgType: "system" | "school" | "campus",
+  orgId: string | undefined,
+  role: string,
+) {
+  const isSuperadmin = await hasSystemRole(ctx, userId, ["superadmin"]);
+  if (orgType === "system" || role === "superadmin") {
+    if (!isSuperadmin) throw new Error("Unauthorized");
+    return;
+  }
+  if (!orgId) throw new Error("Organization is required");
+
+  if (orgType === "school") {
+    const schoolId = ctx.db.normalizeId("schools", orgId);
+    if (
+      !schoolId ||
+      !(await hasOrgRole(ctx, userId, schoolId, "school", ["admin"]))
+    ) {
+      throw new Error("Unauthorized");
+    }
+    return;
+  }
+
+  const campusId = ctx.db.normalizeId("campuses", orgId);
+  const campus = campusId ? await ctx.db.get(campusId) : null;
+  if (
+    !campusId ||
+    !campus ||
+    !(await canManageClasses(ctx, userId, campusId, campus.schoolId))
+  ) {
+    throw new Error("Unauthorized");
+  }
+}
+
+async function assignmentData(
+  ctx: Parameters<typeof hasSystemRole>[0],
+  args: {
+    orgType: "system" | "school" | "campus";
+    orgId?: string;
+    role: "superadmin" | "admin" | "principal" | "teacher" | "tutor" | "student";
+    gradeCode?: string;
+  },
+) {
+  const schoolId = await resolveMembershipSchoolId(
+    ctx,
+    args.orgType,
+    args.orgId,
+  );
+  if (args.orgType !== "system" && !schoolId) {
+    throw new Error("Invalid organization");
+  }
+  if (args.role === "student") {
+    if (!args.gradeCode) throw new Error("A grade is required for students");
+    if (
+      !schoolId ||
+      (await validateGradeCodes(ctx, schoolId, [args.gradeCode])).length > 0
+    ) {
+      throw new Error("Invalid grade");
+    }
+  }
+  return {
+    schoolId,
+    gradeCode: args.role === "student" ? args.gradeCode : undefined,
+  };
+}
 
 // ============================================================================
 // INTERNAL HELPERS (For Syncing to Clerk)
@@ -9,6 +99,7 @@ import { Id } from "./_generated/dataModel";
 
 export const getUserAssignmentsInternal = internalQuery({
   args: { userId: v.id("users") },
+  returns: v.array(roleAssignmentValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("roleAssignments")
@@ -18,15 +109,19 @@ export const getUserAssignmentsInternal = internalQuery({
 });
 
 export const getOrgSlugInternal = internalQuery({
-  args: { orgId: v.string(), orgType: v.string() },
+  args: {
+    orgId: v.string(),
+    orgType: v.union(v.literal("school"), v.literal("campus")),
+  },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
     if (args.orgType === "school") {
       const school = await ctx.db.get(args.orgId as Id<"schools">);
-      return school?.slug;
+      return school?.slug ?? null;
     }
     if (args.orgType === "campus") {
       const campus = await ctx.db.get(args.orgId as Id<"campuses">);
-      return campus?.slug;
+      return campus?.slug ?? null;
     }
     return null;
   },
@@ -39,11 +134,12 @@ export const getOrgSlugInternal = internalQuery({
  */
 export const syncRolesToClerk = internalAction({
   args: { userId: v.id("users"), clerkId: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
 
-    if (args.clerkId.startsWith("temp_")) return; // Don't sync temp accounts
+    if (args.clerkId.startsWith("temp_")) return null;
 
     // 1. Fetch all their role assignments
     const assignments = await ctx.runQuery(internal.roleAssignments.getUserAssignmentsInternal, { 
@@ -54,7 +150,10 @@ export const syncRolesToClerk = internalAction({
     const rolesMap: Record<string, string> = {};
 
     // Superadmins are global — no org-specific roles needed in metadata.
-    const isSuperadmin = assignments.some(a => a.orgType === "system" && a.role === "superadmin");
+    const isSuperadmin = assignments.some(
+      (assignment: { orgType: string; role: string }) =>
+        assignment.orgType === "system" && assignment.role === "superadmin",
+    );
     if (isSuperadmin) {
       rolesMap["system"] = "superadmin";
     } else {
@@ -73,7 +172,7 @@ export const syncRolesToClerk = internalAction({
     }
 
     // 3. Push to Clerk
-    await fetch(`https://api.clerk.com/v1/users/${args.clerkId}`, {
+    const response = await fetch(`https://api.clerk.com/v1/users/${args.clerkId}`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${clerkSecretKey}`,
@@ -83,6 +182,8 @@ export const syncRolesToClerk = internalAction({
         public_metadata: { roles: rolesMap },
       }),
     });
+    if (!response.ok) throw new Error("Clerk role synchronization failed");
+    return null;
   },
 });
 
@@ -92,6 +193,7 @@ export const getOrgAssignmentsInternal = internalQuery({
     orgId: v.string(),
     orgType: v.union(v.literal("school"), v.literal("campus")),
   },
+  returns: v.array(roleAssignmentValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("roleAssignments")
@@ -107,6 +209,7 @@ export const syncOrgUsersToClerk = internalAction({
     orgId: v.string(),
     orgType: v.union(v.literal("school"), v.literal("campus")),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const assignments = await ctx.runQuery(internal.roleAssignments.getOrgAssignmentsInternal, args);
     const seen = new Set<string>();
@@ -114,7 +217,9 @@ export const syncOrgUsersToClerk = internalAction({
       const uid = assignment.userId as string;
       if (seen.has(uid)) continue;
       seen.add(uid);
-      const user = await ctx.runQuery(api.users.getUser, { userId: assignment.userId });
+      const user = await ctx.runQuery(internal.users.getUserInternal, {
+        userId: assignment.userId,
+      });
       if (user && !user.clerkId.startsWith("temp_")) {
         await ctx.runAction(internal.roleAssignments.syncRolesToClerk, {
           userId: assignment.userId,
@@ -122,13 +227,24 @@ export const syncOrgUsersToClerk = internalAction({
         });
       }
     }
+    return null;
   },
 });
 
 // Rebuilds Clerk public_metadata.roles for EVERY user from the Convex roleAssignments table.
 // Run this once to heal all corrupted metadata after the grade/school metadata bug.
 export const healAllUserRoles = action({
+  args: {},
+  returns: v.object({
+    synced: v.number(),
+    skipped: v.number(),
+    errors: v.number(),
+  }),
   handler: async (ctx) => {
+    await ctx.runQuery(internal.users.assertCanManageUsers, {
+      orgType: "system",
+      roles: ["superadmin"],
+    });
     const users = await ctx.runQuery(internal.users.getAllUsersInternal);
     let synced = 0, skipped = 0, errors = 0;
     for (const user of users) {
@@ -157,15 +273,20 @@ export const assignRole = mutation({
     userId: v.id("users"),
     orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
     orgId: v.optional(v.string()), 
-    role: v.union(
-      v.literal("superadmin"), v.literal("admin"), v.literal("principal"), 
-      v.literal("teacher"), v.literal("tutor"), v.literal("student")
-    ),
+    role: roleValidator,
+    gradeCode: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
-    // 1. Authorization: Only Superadmins or Admins can assign roles
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthorized");
+    const currentUser = await getCurrentUserOrThrow(ctx);
+    await assertCanManageAssignment(
+      ctx,
+      currentUser._id,
+      args.orgType,
+      args.orgId,
+      args.role,
+    );
+    const contextual = await assignmentData(ctx, args);
 
     // Check if assignment already exists to prevent duplicates
     const existing = await ctx.db
@@ -190,7 +311,11 @@ export const assignRole = mutation({
 
     if (existing) {
       // Update existing role
-      await ctx.db.patch(existing._id, { role: args.role, assignedAt: Date.now() });
+      await ctx.db.patch(existing._id, {
+        role: args.role,
+        ...contextual,
+        assignedAt: Date.now(),
+      });
     } else {
       // Create new assignment
       await ctx.db.insert("roleAssignments", {
@@ -198,6 +323,7 @@ export const assignRole = mutation({
         orgType: args.orgType,
         orgId: args.orgId,
         role: args.role,
+        ...contextual,
         assignedAt: Date.now(),
       });
     }
@@ -210,27 +336,7 @@ export const assignRole = mutation({
         clerkId: user.clerkId,
       });
     }
-  },
-});
-
-export const getUserRoleInOrg = query({
-  args: {
-    userId: v.id("users"),
-    orgId: v.optional(v.string()),
-    orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
-  },
-  handler: async (ctx, args) => {
-    const assignments = await ctx.db
-      .query("roleAssignments")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .filter((q) => q.eq(q.field("orgType"), args.orgType))
-      .collect();
-
-    const match = args.orgId
-      ? assignments.find(a => a.orgId === args.orgId)
-      : assignments.find(a => !a.orgId); // system level has no orgId
-
-    return match?.role ?? null;
+    return null;
   },
 });
 
@@ -239,13 +345,12 @@ export const assignRoleInternal = internalMutation({
     userId: v.id("users"),
     orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
     orgId: v.optional(v.string()), 
-    role: v.union(
-      v.literal("superadmin"), v.literal("admin"), v.literal("principal"), 
-      v.literal("teacher"), v.literal("tutor"), v.literal("student")
-    ),
+    role: roleValidator,
+    gradeCode: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
-    // No auth check needed here since it's an internal mutation
+    const contextual = await assignmentData(ctx, args);
     
     const existing = await ctx.db
       .query("roleAssignments")
@@ -268,17 +373,21 @@ export const assignRoleInternal = internalMutation({
     }
 
     if (existing) {
-      await ctx.db.patch(existing._id, { role: args.role, assignedAt: Date.now() });
+      await ctx.db.patch(existing._id, {
+        role: args.role,
+        ...contextual,
+        assignedAt: Date.now(),
+      });
     } else {
       await ctx.db.insert("roleAssignments", {
         userId: args.userId,
         orgType: args.orgType,
         orgId: args.orgId,
         role: args.role,
+        ...contextual,
         assignedAt: Date.now(),
       });
     }
-
     const user = await ctx.db.get(args.userId);
     if (user && !user.clerkId.startsWith("temp_")) {
       await ctx.scheduler.runAfter(0, internal.roleAssignments.syncRolesToClerk, {
@@ -286,24 +395,113 @@ export const assignRoleInternal = internalMutation({
         clerkId: user.clerkId,
       });
     }
+    return null;
   },
 });
 
 export const getUserRoles = query({
   args: { userId: v.id("users") },
+  returns: v.array(
+    v.object({
+      _id: v.id("roleAssignments"),
+      _creationTime: v.number(),
+      userId: v.id("users"),
+      orgId: v.optional(v.string()),
+      orgType: v.union(
+        v.literal("system"),
+        v.literal("school"),
+        v.literal("campus"),
+      ),
+      role: roleValidator,
+      schoolId: v.optional(v.id("schools")),
+      gradeCode: v.optional(v.string()),
+      assignedAt: v.number(),
+      assignedBy: v.optional(v.id("users")),
+    }),
+  ),
   handler: async (ctx, args) => {
-    return await ctx.db
+    const currentUser = await getCurrentUserOrThrow(ctx);
+    const isSuperadmin = await hasSystemRole(ctx, currentUser._id, [
+      "superadmin",
+    ]);
+    const assignments = await ctx.db
       .query("roleAssignments")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .collect();
+    if (isSuperadmin) return assignments;
+
+    const visible = [];
+    for (const assignment of assignments) {
+      if (!assignment.orgId || assignment.orgType === "system") continue;
+      if (assignment.orgType === "school") {
+        const schoolId = ctx.db.normalizeId("schools", assignment.orgId);
+        if (
+          schoolId &&
+          (await hasOrgRole(ctx, currentUser._id, schoolId, "school", [
+            "admin",
+          ]))
+        ) {
+          visible.push(assignment);
+        }
+        continue;
+      }
+
+      const campusId = ctx.db.normalizeId("campuses", assignment.orgId);
+      const campus = campusId ? await ctx.db.get(campusId) : null;
+      if (
+        campusId &&
+        campus &&
+        (await canManageClasses(
+          ctx,
+          currentUser._id,
+          campusId,
+          campus.schoolId,
+        ))
+      ) {
+        visible.push(assignment);
+      }
+    }
+    return visible;
   },
+});
+
+export const getAssignmentInternal = internalQuery({
+  args: {
+    userId: v.id("users"),
+    orgType: v.union(
+      v.literal("system"),
+      v.literal("school"),
+      v.literal("campus"),
+    ),
+    orgId: v.optional(v.string()),
+  },
+  returns: v.union(roleAssignmentValidator, v.null()),
+  handler: async (ctx, args) =>
+    await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user_org", (q) =>
+        q
+          .eq("userId", args.userId)
+          .eq("orgId", args.orgId)
+          .eq("orgType", args.orgType),
+      )
+      .first(),
 });
 
 export const removeRole = mutation({
   args: { assignmentId: v.id("roleAssignments") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const assignment = await ctx.db.get(args.assignmentId);
-    if (!assignment) return;
+    if (!assignment) return null;
+    const currentUser = await getCurrentUserOrThrow(ctx);
+    await assertCanManageAssignment(
+      ctx,
+      currentUser._id,
+      assignment.orgType,
+      assignment.orgId,
+      assignment.role,
+    );
 
     await ctx.db.delete(args.assignmentId);
 
@@ -315,5 +513,6 @@ export const removeRole = mutation({
         clerkId: user.clerkId,
       });
     }
+    return null;
   },
 });

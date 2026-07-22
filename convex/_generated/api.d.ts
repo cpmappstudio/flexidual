@@ -13,15 +13,22 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as academicSettings from "../academicSettings.js";
 import type * as campuses from "../campuses.js";
 import type * as classes from "../classes.js";
 import type * as cron from "../cron.js";
 import type * as curriculums from "../curriculums.js";
+import type * as grades from "../grades.js";
 import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
 import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
+import type * as model_enrollments from "../model/enrollments.js";
+import type * as model_grades from "../model/grades.js";
 import type * as model_liveAccess from "../model/liveAccess.js";
+import type * as model_membership from "../model/membership.js";
+import type * as model_roles from "../model/roles.js";
+import type * as model_timeZone from "../model/timeZone.js";
 import type * as organizations from "../organizations.js";
 import type * as permissions from "../permissions.js";
 import type * as recordings from "../recordings.js";
@@ -29,7 +36,6 @@ import type * as roleAssignments from "../roleAssignments.js";
 import type * as schedule from "../schedule.js";
 import type * as schools from "../schools.js";
 import type * as seed from "../seed.js";
-import type * as seedCPCA from "../seedCPCA.js";
 import type * as student from "../student.js";
 import type * as types from "../types.js";
 import type * as users from "../users.js";
@@ -45,15 +51,22 @@ import type * as whiteboardSessions from "../whiteboardSessions.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  academicSettings: typeof academicSettings;
   campuses: typeof campuses;
   classes: typeof classes;
   cron: typeof cron;
   curriculums: typeof curriculums;
+  grades: typeof grades;
   http: typeof http;
   lessons: typeof lessons;
   livekit: typeof livekit;
   migration: typeof migration;
+  "model/enrollments": typeof model_enrollments;
+  "model/grades": typeof model_grades;
   "model/liveAccess": typeof model_liveAccess;
+  "model/membership": typeof model_membership;
+  "model/roles": typeof model_roles;
+  "model/timeZone": typeof model_timeZone;
   organizations: typeof organizations;
   permissions: typeof permissions;
   recordings: typeof recordings;
@@ -61,7 +74,6 @@ declare const fullApi: ApiFromModules<{
   schedule: typeof schedule;
   schools: typeof schools;
   seed: typeof seed;
-  seedCPCA: typeof seedCPCA;
   student: typeof student;
   types: typeof types;
   users: typeof users;

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Plus, Edit, Link as LinkIcon } from "lucide-react"
 import { toast } from "sonner"
 import { EntityDialog } from "@/components/ui/entity-dialog"
+import { getBrowserTimeZone, TimeZoneInput } from "@/components/ui/time-zone-input"
 
 interface SchoolDialogProps {
     school?: Doc<"schools">
@@ -32,6 +33,7 @@ export function SchoolDialog({ school, trigger, open, onOpenChange }: SchoolDial
     const [formData, setFormData] = useState({
         name: "",
         slug: "",
+        timeZone: "",
         status: "active",
     })
 
@@ -44,11 +46,12 @@ export function SchoolDialog({ school, trigger, open, onOpenChange }: SchoolDial
                 setFormData({
                     name: school.name,
                     slug: school.slug,
+                    timeZone: school.timeZone ?? getBrowserTimeZone(),
                     status: school.isActive ? "active" : "inactive",
                 })
                 setIsAutoSlug(false)
             } else {
-                setFormData({ name: "", slug: "", status: "active" })
+                setFormData({ name: "", slug: "", timeZone: getBrowserTimeZone(), status: "active" })
                 setIsAutoSlug(true)
             }
         }
@@ -81,6 +84,7 @@ export function SchoolDialog({ school, trigger, open, onOpenChange }: SchoolDial
                     id: school._id,
                     name: formData.name,
                     slug: formData.slug,
+                    timeZone: formData.timeZone,
                     isActive: formData.status === "active",
                 })
                 toast.success("School updated successfully")
@@ -88,6 +92,7 @@ export function SchoolDialog({ school, trigger, open, onOpenChange }: SchoolDial
                 await createSchool({
                     name: formData.name,
                     slug: formData.slug,
+                    timeZone: formData.timeZone,
                 })
                 toast.success("School created successfully")
             }
@@ -134,6 +139,17 @@ export function SchoolDialog({ school, trigger, open, onOpenChange }: SchoolDial
                             required 
                         />
                     </div>
+                </div>
+
+                <div className="grid gap-2">
+                    <Label htmlFor="school-time-zone">Time zone</Label>
+                    <TimeZoneInput
+                        id="school-time-zone"
+                        value={formData.timeZone}
+                        onChange={(event) => setFormData({...formData, timeZone: event.target.value})}
+                        placeholder="America/New_York"
+                        required
+                    />
                 </div>
 
                 <div className="grid gap-2">

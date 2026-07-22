@@ -8,9 +8,18 @@ import Calendar from "@/components/calendar/calendar";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { format, isSameDay, startOfDay } from "date-fns";
+import {
+  endOfDay,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+} from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import CalendarProvider from "@/components/calendar/calendar-provider";
 
@@ -19,9 +28,11 @@ import { useCalendarContext } from "@/components/calendar/calendar-context";
 import { useTranslations, useLocale } from "next-intl";
 
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types";
+import { TZDate } from "@date-fns/tz";
 import { ScheduleItem } from "@/components/schedule/schedule-item";
 
 import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
+import { useSettingsContext } from "@/hooks/use-settings-context";
 
 const localeMap = {
   en: enUS,
@@ -110,6 +121,7 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
                     description: event.description,
                     start: event.start,
                     end: event.end,
+                    timeZone: event.timeZone,
                     roomName: event.roomName || "",
                     sessionType: event.sessionType,
                     isLive: event.isLive,
@@ -138,25 +150,65 @@ function CalendarContent() {
   const [mode, setMode] = useState<Mode>("month");
   const [date, setDate] = useState<Date>(new Date());
 
-  const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null);
-  const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null);
+  const [selectedTeacherId, setSelectedTeacherId] =
+    useState<Id<"users"> | null>(null);
+  const [selectedCurriculumId, setSelectedCurriculumId] =
+    useState<Id<"curriculums"> | null>(null);
 
   const { user } = useCurrentUser();
 
-
   const searchParams = useSearchParams();
+  const params = useParams();
+  const orgSlug = (params.orgSlug as string) || "system";
+  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
   const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
 
   // Global school/campus filter
-  const { selectedSchoolId, selectedCampusId, isAvailable } = useAdminSchoolFilter();
+  const { selectedSchoolId, selectedCampusId, isAvailable } =
+    useAdminSchoolFilter();
+  const { context: settingsContext } = useSettingsContext();
+  const calendarSchoolId = settingsContext?.institution._id;
+  const calendarCampusId =
+    orgContext?.type === "campus"
+      ? (orgContext._id as Id<"campuses">)
+      : orgContext?.type === "system" && selectedCampusId !== "all"
+        ? (selectedCampusId as Id<"campuses">)
+        : undefined;
+  const scheduleWindow = useQuery(
+    api.academicSettings.getScheduleWindow,
+    calendarSchoolId
+      ? { schoolId: calendarSchoolId, campusId: calendarCampusId }
+      : "skip",
+  );
+  const visibleRange = useMemo(() => {
+    const weekOptions = { weekStartsOn: 0 as const };
+    const start =
+      mode === "day"
+        ? startOfDay(date)
+        : mode === "week"
+          ? startOfWeek(date, weekOptions)
+          : startOfWeek(startOfMonth(date), weekOptions);
+    const end =
+      mode === "day"
+        ? endOfDay(date)
+        : mode === "week"
+          ? endOfWeek(date, weekOptions)
+          : endOfWeek(endOfMonth(date), weekOptions);
+    const timeZoneBuffer = 24 * 60 * 60 * 1000;
+    return {
+      from: start.getTime() - timeZoneBuffer,
+      to: end.getTime() + timeZoneBuffer,
+    };
+  }, [date, mode]);
 
   const scheduleData = useQuery(api.schedule.getMySchedule, {
+    ...visibleRange,
     teacherId: selectedTeacherId ?? undefined,
     ...(isAvailable && selectedCampusId !== "all"
       ? { campusId: selectedCampusId as Id<"campuses"> }
       : isAvailable && selectedSchoolId !== "all"
-      ? { schoolId: selectedSchoolId as Id<"schools"> }
-      : {}),
+        ? { schoolId: selectedSchoolId as Id<"schools"> }
+        : {}),
   });
 
   const allEvents = useMemo(() => {
@@ -172,8 +224,9 @@ function CalendarContent() {
       sessionType: e.sessionType,
       title: e.title,
       description: e.description,
-      start: new Date(e.start),
-      end: new Date(e.end),
+      start: new TZDate(e.start, e.timeZone),
+      end: new TZDate(e.end, e.timeZone),
+      timeZone: e.timeZone,
       color: e.color,
       className: e.className,
       curriculumTitle: e.curriculumTitle,
@@ -202,56 +255,47 @@ function CalendarContent() {
     return result;
   }, [allEvents, classIdParam, selectedCurriculumId]);
 
-  const [, setEvents] = useState<CalendarEvent[]>([]);
-
-  useMemo(() => {
-    setEvents(filteredEvents);
-  }, [filteredEvents]);
-
   if (scheduleData === undefined) {
     return <Skeleton className="h-full min-h-0 w-full" />;
   }
 
   return (
     <CalendarProvider
-        events={filteredEvents}
-        setEvents={setEvents}
-        mode={mode}
-        setMode={setMode}
-        date={date}
-        setDate={setDate}
-        userId={user?._id}
-        selectedTeacherId={selectedTeacherId}
-        onTeacherChange={setSelectedTeacherId}
-        selectedCurriculumId={selectedCurriculumId}
-        onCurriculumChange={setSelectedCurriculumId}
-      >
-        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-          <Tabs defaultValue="month" className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-            <TabsContent
-              value="month"
-              className="m-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
-            >
-              <Calendar
-                events={filteredEvents}
-                setEvents={setEvents}
-                mode={mode}
-                setMode={setMode}
-                date={date}
-                setDate={setDate}
-              />
-            </TabsContent>
+      events={filteredEvents}
+      mode={mode}
+      setMode={setMode}
+      date={date}
+      setDate={setDate}
+      scheduleStartMinutes={scheduleWindow?.startMinutes}
+      scheduleEndMinutes={scheduleWindow?.endMinutes}
+      userId={user?._id}
+      selectedTeacherId={selectedTeacherId}
+      onTeacherChange={setSelectedTeacherId}
+      selectedCurriculumId={selectedCurriculumId}
+      onCurriculumChange={setSelectedCurriculumId}
+    >
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+        <Tabs
+          defaultValue="month"
+          className="flex h-full min-h-0 w-full flex-col overflow-hidden"
+        >
+          <TabsContent
+            value="month"
+            className="m-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
+          >
+            <Calendar />
+          </TabsContent>
 
-            <TabsContent
-              value="agenda"
-              className="flex-1 min-h-0 overflow-y-auto m-0 p-4 data-[state=active]:block"
-            >
-              <AgendaView filteredEvents={filteredEvents} />
-            </TabsContent>
-          </Tabs>
+          <TabsContent
+            value="agenda"
+            className="flex-1 min-h-0 overflow-y-auto m-0 p-4 data-[state=active]:block"
+          >
+            <AgendaView filteredEvents={filteredEvents} />
+          </TabsContent>
+        </Tabs>
 
-          <CalendarManageEventDialog />
-        </div>
+        <CalendarManageEventDialog />
+      </div>
     </CalendarProvider>
   );
 }
@@ -260,9 +304,7 @@ export default function CalendarPage() {
   return (
     <div className="flex h-[calc(100svh-var(--header-height)-2rem)] min-h-0 w-full overflow-hidden md:h-[calc(100svh-var(--header-height)-3rem)]">
       <div className="h-full min-h-0 flex-1 overflow-hidden">
-        <Suspense
-          fallback={<Skeleton className="h-full min-h-0 w-full" />}
-        >
+        <Suspense fallback={<Skeleton className="h-full min-h-0 w-full" />}>
           <CalendarContent />
         </Suspense>
       </div>

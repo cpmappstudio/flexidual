@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { format, startOfWeek, addDays, isSameDay, startOfDay } from "date-fns"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Calendar as CalendarIcon, ChevronDown, ChevronUp } from "lucide-react"
@@ -28,17 +28,15 @@ export function ClassWeekOverview({ schedules, variant = "vertical" }: ClassWeek
   const today = new Date()
   const startOfCurrentWeek = startOfWeek(today, { weekStartsOn: 0 })
 
-  const weekDays = useMemo(() => {
-    return Array.from({ length: 5 }).map((_, i) => {
-      const date = addDays(startOfCurrentWeek, i + 1)
-      const dayStart = startOfDay(date).getTime()
-      const dayEnd = dayStart + 86400000
-      const dayEvents = schedules.filter(s =>
-        s.start >= dayStart && s.start < dayEnd
-      ).sort((a, b) => a.start - b.start)
-      return { date, isToday: isSameDay(date, today), events: dayEvents }
-    })
-  }, [schedules, startOfCurrentWeek, today])
+  const weekDays = Array.from({ length: 5 }).map((_, i) => {
+    const date = addDays(startOfCurrentWeek, i + 1)
+    const dayStart = startOfDay(date).getTime()
+    const dayEnd = dayStart + 86400000
+    const dayEvents = schedules.filter(s =>
+      s.start >= dayStart && s.start < dayEnd
+    ).sort((a, b) => a.start - b.start)
+    return { date, isToday: isSameDay(date, today), events: dayEvents }
+  })
 
   const hasEvents = weekDays.some(d => d.events.length > 0)
   const isHorizontal = variant === "horizontal"

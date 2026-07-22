@@ -15,6 +15,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Hand, MicOff } from "lucide-react";
 import { SharedWhiteboard } from "@/components/classroom/shared-whiteboard";
+import Image from "next/image";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 
 // Module-level singleton — unauthenticated Convex client for public queries.
@@ -81,9 +82,16 @@ function RecordingTile({
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-secondary">
-          <div className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-secondary-foreground shadow-xl overflow-hidden bg-secondary`}>
+          <div className={`${avatarSize} relative rounded-full flex items-center justify-center font-bold text-secondary-foreground shadow-xl overflow-hidden bg-secondary`}>
             {imageUrl ? (
-              <img src={imageUrl} alt={name} className="w-full h-full object-cover" />
+              <Image
+                src={imageUrl}
+                alt={name}
+                fill
+                sizes={variant === "stage" ? "128px" : "64px"}
+                className="object-cover"
+                unoptimized
+              />
             ) : (
               name.charAt(0).toUpperCase()
             )}
@@ -119,7 +127,7 @@ function RecordingTile({
 }
 
 // --- The Core Layout Architecture ---
-function RecordingLayout() {
+function RecordingLayout({ recordingToken }: { recordingToken: string }) {
   const room = useRoomContext();
   const remoteParticipants = useRemoteParticipants(); // Excludes the bot
   const screenTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false });
@@ -197,7 +205,12 @@ function RecordingLayout() {
           className="absolute inset-2 overflow-hidden rounded-2xl border-2 border-border bg-whiteboard shadow-xl"
           style={{ display: isWhiteboardActive ? "block" : "none" }}
         >
-          <SharedWhiteboard roomName={room.name} isReadonly={true} followViewport={true} />
+          <SharedWhiteboard
+            roomName={room.name}
+            isReadonly={true}
+            followViewport={true}
+            recordingToken={recordingToken}
+          />
           {teacher && (
             <div className="absolute bottom-4 left-4 w-48 h-36 rounded-xl overflow-hidden shadow-2xl border-2 border-border z-50">
               <RecordingTile participant={teacher} variant="grid" roleBadge="Teacher" />
@@ -240,13 +253,14 @@ function RecordingContent() {
   const searchParams = useSearchParams();
   const url = searchParams.get("url");
   const token = searchParams.get("token");
+  const recordingToken = searchParams.get("whiteboardToken");
 
-  if (!url || !token) return null;
+  if (!url || !token || !recordingToken) return null;
 
   return (
     <LiveKitRoom serverUrl={url} token={token} audio={true} video={true}>
       <RecordingTrigger />
-      <RecordingLayout />
+      <RecordingLayout recordingToken={recordingToken} />
     </LiveKitRoom>
   );
 }

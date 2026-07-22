@@ -1,7 +1,6 @@
 "use client"
 
 import { useConvexAuth, useQuery } from "convex/react"
-import { useUser } from "@clerk/nextjs"
 import { api } from "@/convex/_generated/api"
 
 /**
@@ -18,16 +17,13 @@ import { api } from "@/convex/_generated/api"
  */
 export function useCurrentUser() {
     const { isLoading: isConvexLoading, isAuthenticated: isConvexAuthenticated } = useConvexAuth()
-    const { user: clerkUser } = useUser()
-
-    // Query the current user from Convex database using Clerk ID
     const convexUser = useQuery(
         api.users.getCurrentUser,
-        clerkUser?.id ? { clerkId: clerkUser.id } : "skip"
+        isConvexAuthenticated ? {} : "skip"
     )
 
     // Combine the authentication state with the user existence check
-    const isLoading = isConvexLoading || (isConvexAuthenticated && clerkUser && convexUser === null)
+    const isLoading = isConvexLoading || (isConvexAuthenticated && convexUser === undefined)
     const isAuthenticated = isConvexAuthenticated && convexUser !== null
 
     return {

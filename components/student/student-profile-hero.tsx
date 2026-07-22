@@ -18,6 +18,7 @@ interface StudentProfileHeroProps {
         username?: string
         imageUrl?: string
         grade?: string
+        gradeName?: string
         school?: string
     }
     stats: {
@@ -32,7 +33,6 @@ interface StudentProfileHeroProps {
 
 export function StudentProfileHero({ student, stats, disableCamera, classes }: StudentProfileHeroProps) {
     const t = useTranslations('student.profile')
-    const tGrades = useTranslations('student.grades')
 
     const [isCameraOn, setIsCameraOn] = useState(false)
     const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
@@ -101,7 +101,7 @@ export function StudentProfileHero({ student, stats, disableCamera, classes }: S
     }, [])
 
     const gradeLabel = student.grade
-        ? tGrades(student.grade as string)
+        ? student.gradeName ?? student.grade
         : null
 
     // Calculate exact numbers from the rate

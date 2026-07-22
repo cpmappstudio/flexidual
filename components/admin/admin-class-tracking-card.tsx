@@ -8,12 +8,14 @@ import { enUS, es, ptBR } from "date-fns/locale"
 import { useLocale } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Id } from "@/convex/_generated/dataModel"
+import { TZDate } from "@date-fns/tz"
 
 // Strongly typed interfaces matching the Convex query return types
 interface ScheduleItemType {
     scheduleId: Id<"classSchedule">;
     title: string;
     start: number;
+    timeZone: string;
     attendanceSummary?: {
         present: number;
         total: number;
@@ -101,18 +103,19 @@ export function AdminClassTrackingCard({ classData, schedules }: AdminClassTrack
                                 pastSchedules.map(schedule => {
                                     const tStatus = schedule.teacherAttendance?.status
                                     const isPresent = tStatus === "present" || tStatus === "partial" || tStatus === "excused"
+                                    const startDate = new TZDate(schedule.start, schedule.timeZone)
                                     
                                     return (
                                         <div key={schedule.scheduleId} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:px-4 hover:bg-muted/30 transition-colors gap-3">
                                             {/* Date & Title */}
                                             <div className="flex items-center gap-4 min-w-0">
                                                 <div className="flex flex-col items-center justify-center min-w-[50px] text-center p-1.5 bg-background rounded border border-border shrink-0">
-                                                    <span className="text-[10px] font-semibold text-muted-foreground uppercase">{format(schedule.start, "MMM", { locale: dateLocale })}</span>
-                                                    <span className="text-base font-bold text-foreground leading-none my-0.5">{format(schedule.start, "d", { locale: dateLocale })}</span>
+                                                    <span className="text-[10px] font-semibold text-muted-foreground uppercase">{format(startDate, "MMM", { locale: dateLocale })}</span>
+                                                    <span className="text-base font-bold text-foreground leading-none my-0.5">{format(startDate, "d", { locale: dateLocale })}</span>
                                                 </div>
                                                 <div className="truncate">
                                                     <p className="text-sm font-medium text-foreground truncate">{schedule.title}</p>
-                                                    <p className="text-xs text-muted-foreground mt-0.5">{format(schedule.start, "h:mm a", { locale: dateLocale })}</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">{format(startDate, "h:mm a", { locale: dateLocale })} · {schedule.timeZone}</p>
                                                 </div>
                                             </div>
 

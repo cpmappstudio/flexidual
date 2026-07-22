@@ -8,6 +8,7 @@ import { ActiveClassroomUI } from "./active-classroom-ui";
 import { StudentClassroomUI } from "./student-classroom-ui";
 import { Loader2, CalendarClock, School, LogOut, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
+import { TZDate } from "@date-fns/tz";
 import { Button } from "@/components/ui/button";
 import { useRouter, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -139,10 +140,8 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
     const fetchToken = async () => {
       try {
-        const participantName = convexUser.fullName || convexUser.firstName || "Unknown";
         const jwt = await getToken({
           roomName,
-          participantName,
           isCompanion
         });
         setToken(jwt);
@@ -264,7 +263,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
                     {t('classroom.shouldHaveStarted')}
                   </p>
                   <p className="text-2xl font-mono font-bold text-destructive">
-                    {format(sessionStatus.start, "h:mm a")}
+                    {format(new TZDate(sessionStatus.start, sessionStatus.timeZone), "h:mm a")} · {sessionStatus.timeZone}
                   </p>
                 </>
               ) : (
@@ -275,11 +274,11 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
                   <p className={`text-3xl font-mono font-bold ${
                     isUrgent ? 'text-accent-foreground' : 'text-foreground'
                   }`}>
-                    {isUrgent ? getCountdown(sessionStatus.start) : format(sessionStatus.start, "h:mm a")}
+                    {isUrgent ? getCountdown(sessionStatus.start) : `${format(new TZDate(sessionStatus.start, sessionStatus.timeZone), "h:mm a")} · ${sessionStatus.timeZone}`}
                   </p>
                   {!isUrgent && (
                     <p className="text-sm text-muted-foreground mt-1">
-                      {format(sessionStatus.start, "EEEE, MMMM do")}
+                      {format(new TZDate(sessionStatus.start, sessionStatus.timeZone), "EEEE, MMMM do")}
                     </p>
                   )}
                 </>
@@ -388,6 +387,8 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             lessonTitle={lessonTitles}
             sessionIsLive={isClassLive}
             curriculumGradeCodes={scheduleDetails?.curriculum?.gradeCodes ?? []}
+            classGradeCode={scheduleDetails?.class?.gradeCode}
+            availableGrades={scheduleDetails?.grades ?? []}
             liveAccess={scheduleDetails?.liveAccess}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}

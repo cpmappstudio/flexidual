@@ -56,7 +56,6 @@ import { DeviceToggleButton } from "./device-toggle-button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { GRADE_VALUES } from "@/lib/types/academic";
 
 // --- Constants ---
 const SCREEN_SHARE_OPTIONS = { updateOnlyOn: [], onlySubscribed: false };
@@ -199,20 +198,20 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
     active: false, startMouse: { x: 0, y: 0 }, startPos: { x: 0, y: 0 },
   });
 
-  const clampPos = (x: number, y: number) => {
+  const clampPos = useCallback((x: number, y: number) => {
     const el = containerRef.current;
     if (!el) return { x, y };
     return {
       x: Math.max(PIP_MARGIN, Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, x)),
       y: Math.max(PIP_MARGIN, Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, y)),
     };
-  };
+  }, [containerRef]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     setPos({ x: PIP_MARGIN, y: el.offsetHeight - PIP_H - PIP_MARGIN });
-  }, []);
+  }, [containerRef]);
 
   // Re-clamp position whenever the container is resized (e.g. orientation change)
   useEffect(() => {
@@ -258,7 +257,7 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, []);
+  }, [clampPos]);
 
   if (!pos) return null;
 
@@ -298,6 +297,8 @@ interface ActiveClassroomUIProps {
   lessonTitle?: string;
   sessionIsLive: boolean;
   curriculumGradeCodes: string[];
+  classGradeCode?: string;
+  availableGrades: Array<{ code: string; name: string }>;
   liveAccess?: LiveAccess;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
@@ -310,6 +311,8 @@ export function ActiveClassroomUI({
   lessonTitle,
   sessionIsLive,
   curriculumGradeCodes,
+  classGradeCode,
+  availableGrades,
   liveAccess,
   isFullscreen = false,
   onToggleFullscreen,
@@ -351,8 +354,11 @@ export function ActiveClassroomUI({
   const [followViewport, setFollowViewport] = useState(true);
   const [pendingFullscreen, setPendingFullscreen] = useState(false);
   const [showQR, setShowQR] = useState(false);
-  const suggestedGradeCodes = Array.from(new Set([...curriculumGradeCodes, "09", "10", "11", "12"]))
-    .filter((gradeCode) => GRADE_VALUES.includes(gradeCode as (typeof GRADE_VALUES)[number]));
+  const suggestedGradeCodes = classGradeCode
+    ? [classGradeCode]
+    : curriculumGradeCodes;
+  const suggestedGradeKey = suggestedGradeCodes.join("\u0000");
+  const liveGradeKey = liveAccess?.allowedGradeCodes.join("\u0000") ?? "";
   const [accessMode, setAccessMode] = useState<LiveAccess["mode"]>(liveAccess?.mode ?? "private");
   const [selectedGradeCodes, setSelectedGradeCodes] = useState<string[]>(
     liveAccess?.mode === "school" ? liveAccess.allowedGradeCodes : suggestedGradeCodes
@@ -368,6 +374,20 @@ export function ActiveClassroomUI({
   const panDragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPan: { x: number; y: number } }>({
     active: false, startMouse: { x: 0, y: 0 }, startPan: { x: 0, y: 0 },
   });
+
+  useEffect(() => {
+    if (sessionIsLive || hasStartedSession) return;
+    setAccessMode(liveAccess?.mode ?? "private");
+    const gradeKey =
+      liveAccess?.mode === "school" ? liveGradeKey : suggestedGradeKey;
+    setSelectedGradeCodes(gradeKey ? gradeKey.split("\u0000") : []);
+  }, [
+    hasStartedSession,
+    liveAccess?.mode,
+    liveGradeKey,
+    sessionIsLive,
+    suggestedGradeKey,
+  ]);
 
   const updateClassmatesScroll = useCallback(() => {
     const el = classmateTilesRef.current;
@@ -385,7 +405,10 @@ export function ActiveClassroomUI({
     stageControlsTimerRef.current = setTimeout(() => setStageControlsVisible(false), 3000);
   }, []);
 
-  const playHandChime = () => {
+  const amITeacher = currentUserRole === "teacher";
+  const amIAuthority = currentUserRole ? isAuthority(currentUserRole) : false;
+
+  const playHandChime = useCallback(() => {
     if (!amIAuthority) return;
     try {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
@@ -406,11 +429,9 @@ export function ActiveClassroomUI({
         osc.stop(t0 + delay + 0.35);
       });
     } catch { /* non-critical */ }
-  };
+  }, [amIAuthority]);
 
   // --- ROLE & PARTICIPANT LOGIC ---
-  const amITeacher = currentUserRole === "teacher";
-  const amIAuthority = currentUserRole ? isAuthority(currentUserRole) : false;
   const actualTeacher = participants.find((p) => {
     const role = p.isLocal ? currentUserRole : getRole(p);
     return role === "teacher";
@@ -581,7 +602,7 @@ export function ActiveClassroomUI({
 
     room.on("dataReceived", handleData);
     return () => { room.off("dataReceived", handleData); };
-  }, [room, amIAuthority, amITeacher, isSharingLocally, localParticipant, t]);
+  }, [room, amIAuthority, amITeacher, isSharingLocally, localParticipant, playHandChime, t]);
 
   useEffect(() => {
     const handleMediaError = (error: Error) => {
@@ -704,8 +725,7 @@ export function ActiveClassroomUI({
       // so the teacher routes back instantly without being held hostage by the network request.
       toggleRecording({ 
         roomName, 
-        start: false, 
-        filePrefix: "" // Prefix doesn't matter for stopping
+        start: false,
       }).catch(console.error);
     }
 
@@ -727,16 +747,10 @@ export function ActiveClassroomUI({
     if (isTogglingRecord) return;
     setIsTogglingRecord(true);
     try {
-      const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
-      const cleanClassName = (className || 'Class').replace(/\s+/g, '-');
-      const cleanLesson = (lessonTitle || 'Lesson').replace(/\s+/g, '-');
-      const uniqueSuffix = Date.now();
-
       // Store the result of the mutation
       const result = await toggleRecording({
         roomName,
         start,
-        filePrefix: `${dateStr}_${cleanClassName}_${cleanLesson}_${roomName}_${uniqueSuffix}`,
       });
       
       // If the backend guard blocked it, show the error and stop
@@ -912,16 +926,16 @@ export function ActiveClassroomUI({
             <div className="space-y-3">
               <Label>{t('classroom.selectGrades')}</Label>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {GRADE_VALUES.map((gradeCode) => (
-                  <Label key={gradeCode} htmlFor={`live-grade-${gradeCode}`} className="flex cursor-pointer items-center gap-2 rounded-md border p-2 font-normal">
+                {availableGrades.map((grade) => (
+                  <Label key={grade.code} htmlFor={`live-grade-${grade.code}`} className="flex cursor-pointer items-center gap-2 rounded-md border p-2 font-normal">
                     <Checkbox
-                      id={`live-grade-${gradeCode}`}
-                      checked={selectedGradeCodes.includes(gradeCode)}
+                      id={`live-grade-${grade.code}`}
+                      checked={selectedGradeCodes.includes(grade.code)}
                       onCheckedChange={(checked) => setSelectedGradeCodes((current) =>
-                        checked ? [...current, gradeCode] : current.filter((code) => code !== gradeCode)
+                        checked ? [...current, grade.code] : current.filter((code) => code !== grade.code)
                       )}
                     />
-                    {t(`student.grades.${gradeCode}`)}
+                    {grade.name}
                   </Label>
                 ))}
               </div>

@@ -1,12 +1,45 @@
 import { v } from "convex/values";
-import { mutation, query, internalQuery, QueryCtx } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  MutationCtx,
+  mutation,
+  query,
+} from "./_generated/server";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
-import { hasSystemRole, canManageClasses } from "./permissions";
-import { internal } from "./_generated/api";
-import { GRADE_VALUES } from "../lib/types/academic";
+import {
+  canAccessClass,
+  canManageClasses,
+  hasSystemRole,
+} from "./permissions";
 import { canStudentAccessLiveClass } from "./model/liveAccess";
+import { getClassTimeZone } from "./model/timeZone";
+import {
+  getInstitutionGrades,
+  validateGradeCodes,
+} from "./model/grades";
+import {
+  getStudentGradeCode,
+  getStudentSchoolIds,
+} from "./model/membership";
+import {
+  isStudentEnrolled,
+  listClassStudentIds,
+} from "./model/enrollments";
+import {
+  civilDayNumber,
+  isValidTimeZone,
+  localDateTimeToUtc,
+  shiftZonedDateTime,
+  toCivilDate,
+  utcToLocalDateTime,
+} from "../lib/time-zone";
+import {
+  DEFAULT_SCHEDULE_END_MINUTES,
+  DEFAULT_SCHEDULE_START_MINUTES,
+} from "../lib/academic-settings";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -18,32 +51,121 @@ const MIN_PARTIAL_SECONDS = 120;
 const STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 /** A session with no leftAt is considered a dropped connection if older than this */
 const SESSION_STALE_MS = 4 * 60 * 60 * 1000;
+const DEFAULT_SCHEDULE_HISTORY_MS = 14 * 24 * 60 * 60 * 1000;
+const DEFAULT_SCHEDULE_FUTURE_MS = 60 * 24 * 60 * 60 * 1000;
 
 const liveAccessValidator = v.object({
   mode: v.union(v.literal("private"), v.literal("school")),
   allowedGradeCodes: v.array(v.string()),
 });
+const scheduleFields = {
+  _id: v.id("classSchedule"),
+  _creationTime: v.number(),
+  classId: v.id("classes"),
+  lessonIds: v.optional(v.array(v.id("lessons"))),
+  sessionType: v.optional(
+    v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka")),
+  ),
+  title: v.optional(v.string()),
+  description: v.optional(v.string()),
+  scheduledStart: v.number(),
+  scheduledEnd: v.number(),
+  isRecurring: v.optional(v.boolean()),
+  recurrenceRule: v.optional(v.string()),
+  recurrenceParentId: v.optional(v.id("classSchedule")),
+  roomName: v.string(),
+  isLive: v.optional(v.boolean()),
+  liveAccess: v.optional(liveAccessValidator),
+  status: v.union(
+    v.literal("scheduled"),
+    v.literal("active"),
+    v.literal("completed"),
+    v.literal("cancelled"),
+  ),
+  completedAt: v.optional(v.number()),
+  createdAt: v.number(),
+  createdBy: v.id("users"),
+};
+const scheduleValidator = v.object(scheduleFields);
+const sessionStatusValidator = v.object({
+  scheduleId: v.id("classSchedule"),
+  isActive: v.boolean(),
+  isLive: v.boolean(),
+  status: v.union(
+    v.literal("scheduled"),
+    v.literal("active"),
+    v.literal("completed"),
+    v.literal("cancelled"),
+  ),
+  start: v.number(),
+  end: v.number(),
+  timeZone: v.string(),
+  roomName: v.string(),
+  canJoin: v.boolean(),
+});
+const scheduleEventValidator = v.object({
+  scheduleId: v.id("classSchedule"),
+  title: v.string(),
+  description: v.string(),
+  className: v.string(),
+  curriculumTitle: v.string(),
+  color: v.string(),
+  start: v.number(),
+  end: v.number(),
+  timeZone: v.string(),
+  roomName: v.string(),
+  isLive: v.boolean(),
+  sessionType: v.union(
+    v.literal("live"),
+    v.literal("ignitia"),
+    v.literal("abeka"),
+  ),
+  status: v.union(
+    v.literal("scheduled"),
+    v.literal("active"),
+    v.literal("completed"),
+    v.literal("cancelled"),
+  ),
+  lessonIds: v.array(v.id("lessons")),
+  lessons: v.array(
+    v.object({
+      _id: v.id("lessons"),
+      title: v.string(),
+      order: v.number(),
+    }),
+  ),
+  classId: v.id("classes"),
+  curriculumId: v.id("curriculums"),
+  isRecurring: v.boolean(),
+  recurrenceRule: v.optional(v.string()),
+  recurrenceParentId: v.optional(v.id("classSchedule")),
+  teacherName: v.string(),
+  teacherImageUrl: v.optional(v.string()),
+  teacherAttendance: v.optional(
+    v.object({ status: v.string(), minutes: v.number() }),
+  ),
+  attendance: v.string(),
+  minutesAttended: v.number(),
+  isStudentActive: v.boolean(),
+  attendanceSummary: v.optional(
+    v.object({
+      present: v.number(),
+      partial: v.number(),
+      missed: v.number(),
+      total: v.number(),
+    }),
+  ),
+  hasRecording: v.boolean(),
+});
 
 
-
-async function getStudentSchoolIds(ctx: QueryCtx, userId: Id<"users">) {
-  const assignments = await ctx.db
-    .query("roleAssignments")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .collect();
-  const campusIds = assignments
-    .filter((assignment) => assignment.role === "student" && assignment.orgType === "campus" && assignment.orgId)
-    .map((assignment) => assignment.orgId as Id<"campuses">);
-  const campuses = await Promise.all(campusIds.map((campusId) => ctx.db.get(campusId)));
-  return new Set(campuses.flatMap((campus) => campus ? [campus.schoolId] : []));
-}
 
 // ============================================================================
 // HELPERS
 // ============================================================================
 
 async function validateScheduleOverlap(
-  ctx: any,
+  ctx: MutationCtx,
   {
     teacherId, // Now it naturally accepts undefined
     classId,
@@ -51,7 +173,7 @@ async function validateScheduleOverlap(
     end,
     excludeScheduleId
   }: {
-    teacherId?: Id<"users">, // <-- Make optional here
+    teacherId?: Id<"users">,
     classId: Id<"classes">,
     start: number,
     end: number,
@@ -61,19 +183,17 @@ async function validateScheduleOverlap(
   // 1. Check if the CLASS is already busy
   const classConflicts = await ctx.db
     .query("classSchedule")
-    .withIndex("by_class", (q: any) => q.eq("classId", classId))
-    .filter((q: any) =>
-      q.and(
-        q.neq(q.field("status"), "cancelled"),
-        q.lt(q.field("scheduledStart"), end),
-        q.gt(q.field("scheduledEnd"), start)
-      )
+    .withIndex("by_class", (q) =>
+      q.eq("classId", classId).lt("scheduledStart", end),
     )
     .collect();
 
-  const realClassConflicts = excludeScheduleId
-    ? classConflicts.filter((s: any) => s._id !== excludeScheduleId)
-    : classConflicts;
+  const realClassConflicts = classConflicts.filter(
+    (schedule) =>
+      schedule.status !== "cancelled" &&
+      schedule.scheduledEnd > start &&
+      schedule._id !== excludeScheduleId,
+  );
 
   if (realClassConflicts.length > 0) {
     const conflict = realClassConflicts[0];
@@ -90,30 +210,35 @@ async function validateScheduleOverlap(
   if (teacherId) {
     const teacherClasses = await ctx.db
       .query("classes")
-      .withIndex("by_teacher", (q: any) => q.eq("teacherId", teacherId).eq("isActive", true))
+      .withIndex("by_teacher", (q) =>
+        q.eq("teacherId", teacherId).eq("isActive", true),
+      )
       .collect();
 
-    const teacherClassIds = new Set(teacherClasses.map((c: any) => c._id));
+    const teacherClassIds = new Set(teacherClasses.map((c) => c._id));
 
     if (teacherClassIds.size > 0) {
       const potentialOverlaps = await ctx.db
         .query("classSchedule")
-        .withIndex("by_date_range", (q: any) => q.gte("scheduledStart", start - 24 * 60 * 60 * 1000))
-        .filter((q: any) =>
-          q.and(
-            q.neq(q.field("status"), "cancelled"),
-            q.lt(q.field("scheduledStart"), end),
-            q.gt(q.field("scheduledEnd"), start)
-          )
+        .withIndex("by_date_range", (q) =>
+          q
+            .gte("scheduledStart", start - 24 * 60 * 60 * 1000)
+            .lt("scheduledStart", end),
         )
         .collect();
 
-      const teacherConflict = potentialOverlaps.find((s: any) =>
-        teacherClassIds.has(s.classId) && s._id !== excludeScheduleId
+      const teacherConflict = potentialOverlaps.find(
+        (schedule) =>
+          schedule.status !== "cancelled" &&
+          schedule.scheduledEnd > start &&
+          teacherClassIds.has(schedule.classId) &&
+          schedule._id !== excludeScheduleId,
       );
 
       if (teacherConflict) {
-        const conflictClass = teacherClasses.find((c: any) => c._id === teacherConflict.classId);
+        const conflictClass = teacherClasses.find(
+          (classData) => classData._id === teacherConflict.classId,
+        );
 
         throw new ConvexError({
           code: "TEACHER_SCHEDULE_CONFLICT",
@@ -125,28 +250,133 @@ async function validateScheduleOverlap(
   }
 }
 
-function getFirstValidRecurrenceDate(
-  startDateMs: number,
-  daysOfWeek: number[] | undefined
-): number {
-  if (!daysOfWeek || daysOfWeek.length === 0) return startDateMs;
+export async function canAccessSchedule(
+  ctx: Parameters<typeof getCurrentUserOrThrow>[0],
+  userId: Id<"users">,
+  schedule: Doc<"classSchedule">,
+) {
+  const classData = await ctx.db.get(schedule.classId);
+  if (!classData) return false;
+  if (await canAccessClass(ctx, userId, classData)) return true;
 
-  const start = new Date(startDateMs);
-  const startDay = start.getDay();
+  const [curriculum, campus, studentSchoolIds] = await Promise.all([
+    ctx.db.get(classData.curriculumId),
+    classData.campusId ? ctx.db.get(classData.campusId) : null,
+    getStudentSchoolIds(ctx, userId),
+  ]);
+  const classSchoolId = campus?.schoolId ?? curriculum?.schoolId;
+  const studentGrade = classSchoolId
+    ? await getStudentGradeCode(
+        ctx,
+        userId,
+        classSchoolId,
+        classData.campusId,
+      )
+    : undefined;
+  return canStudentAccessLiveClass({
+    isEnrolled: await isStudentEnrolled(ctx, classData, userId),
+    liveAccess: schedule.liveAccess,
+    studentGrade,
+    classSchoolId,
+    studentSchoolIds,
+  });
+}
 
-  if (daysOfWeek.includes(startDay)) return startDateMs;
+async function validateClassScheduleTime(
+  ctx: MutationCtx,
+  classData: Doc<"classes">,
+  localStart: string,
+  durationMinutes: number,
+) {
+  const [curriculum, campus, period] = await Promise.all([
+    ctx.db.get(classData.curriculumId),
+    classData.campusId ? ctx.db.get(classData.campusId) : null,
+    classData.academicPeriodId
+      ? ctx.db.get(classData.academicPeriodId)
+      : null,
+  ]);
+  const schoolId = campus?.schoolId ?? curriculum?.schoolId;
+  const school = schoolId ? await ctx.db.get(schoolId) : null;
+  if (!school) throw new ConvexError("INSTITUTION_NOT_FOUND");
 
-  const sortedDays = [...daysOfWeek].sort((a, b) => a - b);
-  const nextInWeek = sortedDays.find(d => d > startDay);
-
-  let daysToAdd = 0;
-  if (nextInWeek !== undefined) {
-    daysToAdd = nextInWeek - startDay;
-  } else {
-    daysToAdd = (7 - startDay) + sortedDays[0];
+  const localDate = localStart.slice(0, 10);
+  if (
+    period &&
+    (localDate < toCivilDate(period.startDate) ||
+      localDate > toCivilDate(period.endDate))
+  ) {
+    throw new ConvexError("OUTSIDE_ACADEMIC_PERIOD");
   }
 
-  return startDateMs + (daysToAdd * 24 * 60 * 60 * 1000);
+  const hour = Number(localStart.slice(11, 13));
+  const minute = Number(localStart.slice(14, 16));
+  const startMinutes = hour * 60 + minute;
+  const windowStart =
+    school.scheduleStartMinutes ?? DEFAULT_SCHEDULE_START_MINUTES;
+  const windowEnd = school.scheduleEndMinutes ?? DEFAULT_SCHEDULE_END_MINUTES;
+  if (
+    !Number.isInteger(startMinutes) ||
+    startMinutes < windowStart ||
+    startMinutes + durationMinutes > windowEnd
+  ) {
+    throw new ConvexError("OUTSIDE_SCHEDULE_WINDOW");
+  }
+}
+
+async function deleteScheduleWithDependencies(
+  ctx: MutationCtx,
+  schedule: Doc<"classSchedule">,
+) {
+  const [sessions, recordings, whiteboard] = await Promise.all([
+    ctx.db
+      .query("class_sessions")
+      .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+      .collect(),
+    ctx.db
+      .query("recordings")
+      .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+      .collect(),
+    ctx.db
+      .query("whiteboardSessions")
+      .withIndex("by_roomName", (q) => q.eq("roomName", schedule.roomName))
+      .unique(),
+  ]);
+  if (whiteboard) {
+    await Promise.allSettled(
+      Object.values(whiteboard.fileRefs ?? {}).map((file) =>
+        ctx.storage.delete(file.storageId),
+      ),
+    );
+  }
+  await Promise.all([
+    ...sessions.map((session) => ctx.db.delete(session._id)),
+    ...recordings.map((recording) => ctx.db.delete(recording._id)),
+    ...(whiteboard ? [ctx.db.delete(whiteboard._id)] : []),
+  ]);
+  await ctx.db.delete(schedule._id);
+}
+
+function getSessionStatusData(
+  schedule: Doc<"classSchedule">,
+  timeZone: string,
+) {
+  const now = Date.now();
+  const isTimeWindowActive =
+    now >= schedule.scheduledStart - 10 * 60 * 1000 &&
+    now <= schedule.scheduledEnd + 5 * 60 * 1000;
+  const isStale = now > schedule.scheduledEnd + STALE_THRESHOLD_MS;
+  return {
+    scheduleId: schedule._id,
+    isActive:
+      isTimeWindowActive || (schedule.status === "active" && !isStale),
+    isLive: schedule.isLive === true,
+    status: schedule.status,
+    start: schedule.scheduledStart,
+    end: schedule.scheduledEnd,
+    timeZone,
+    roomName: schedule.roomName,
+    canJoin: schedule.status === "active" || schedule.status === "scheduled",
+  };
 }
 
 // ============================================================================
@@ -166,7 +396,9 @@ export const getMySchedule = query({
     teacherId: v.optional(v.id("users")),
     schoolId: v.optional(v.id("schools")),
     campusId: v.optional(v.id("campuses")),
+    classId: v.optional(v.id("classes")),
   },
+  returns: v.array(scheduleEventValidator),
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return [];
@@ -174,61 +406,152 @@ export const getMySchedule = query({
     const isSuperAdmin = await hasSystemRole(ctx, user._id, ["superadmin"]);
 
     // Check if they hold any admin role assignments
-    const adminAssignments = await ctx.db.query("roleAssignments")
+    const userAssignments = await ctx.db.query("roleAssignments")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter(q => q.or(q.eq(q.field("role"), "admin"), q.eq(q.field("role"), "principal")))
       .collect();
+    const adminAssignments = userAssignments.filter(
+      (assignment) =>
+        assignment.role === "admin" || assignment.role === "principal",
+    );
 
     const isAdmin = isSuperAdmin || adminAssignments.length > 0;
-    const adminSchoolIds = adminAssignments.filter(a => a.orgType === "school").map(a => a.orgId);
-    const adminCampusIds = adminAssignments.filter(a => a.orgType === "campus").map(a => a.orgId);
+    const adminSchoolIds = adminAssignments.flatMap((assignment) =>
+      assignment.orgType === "school" && assignment.orgId
+        ? [assignment.orgId]
+        : [],
+    );
+    const adminCampusIds = adminAssignments.flatMap((assignment) =>
+      assignment.orgType === "campus" && assignment.orgId
+        ? [assignment.orgId]
+        : [],
+    );
 
-    let myClasses: any[] = [];
+    let myClasses: Doc<"classes">[] = [];
 
-    if (isAdmin) {
-      let baseClasses = [];
-      if (args.teacherId) {
-        baseClasses = await ctx.db.query("classes")
-          .withIndex("by_teacher", q => q.eq("teacherId", args.teacherId!).eq("isActive", true))
-          .collect();
-      } else {
-        baseClasses = await ctx.db.query("classes")
-          .withIndex("by_active", q => q.eq("isActive", true))
-          .collect();
+    if (args.classId) {
+      const classData = await ctx.db.get(args.classId);
+      if (
+        classData?.isActive &&
+        (await canAccessClass(ctx, user._id, classData))
+      ) {
+        myClasses = [classData];
       }
-
-      if (isSuperAdmin) {
-        myClasses = baseClasses;
+    } else if (isAdmin) {
+      if (isSuperAdmin && !args.schoolId && !args.campusId) {
+        myClasses = args.teacherId
+          ? await ctx.db
+              .query("classes")
+              .withIndex("by_teacher", (q) =>
+                q.eq("teacherId", args.teacherId).eq("isActive", true),
+              )
+              .collect()
+          : await ctx.db
+              .query("classes")
+              .withIndex("by_active", (q) => q.eq("isActive", true))
+              .collect();
       } else {
-         for (const c of baseClasses) {
-            if (c.campusId && adminCampusIds.includes(c.campusId)) { myClasses.push(c); continue; }
-            const curr = await ctx.db.get(c.curriculumId);
-            if (curr?.schoolId && adminSchoolIds.includes(curr.schoolId)) { myClasses.push(c); }
-         }
-      }
-
-      if (args.campusId) {
-        myClasses = myClasses.filter(c => c.campusId === args.campusId);
-      } else if (args.schoolId) {
-        const schoolCampuses = await ctx.db
-          .query("campuses")
-          .withIndex("by_school", q => q.eq("schoolId", args.schoolId!))
-          .collect();
-        const campusIdSet = new Set(schoolCampuses.map(c => c._id));
-        myClasses = myClasses.filter(c => c.campusId && campusIdSet.has(c.campusId));
+        const requestedSchoolIds = args.campusId
+          ? []
+          : args.schoolId
+            ? [args.schoolId]
+            : adminSchoolIds
+              .map((id) => ctx.db.normalizeId("schools", id))
+              .filter((id): id is Id<"schools"> => id !== null);
+        const schoolCampuses = (
+          await Promise.all(
+            requestedSchoolIds.map((schoolId) =>
+              ctx.db
+                .query("campuses")
+                .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+                .collect(),
+            ),
+          )
+        ).flat();
+        const requestedCampusIds = args.campusId
+          ? [args.campusId]
+          : args.schoolId
+            ? schoolCampuses.map((campus) => campus._id)
+            : [
+                ...adminCampusIds
+                  .map((id) => ctx.db.normalizeId("campuses", id))
+                  .filter((id): id is Id<"campuses"> => id !== null),
+                ...schoolCampuses.map((campus) => campus._id),
+              ];
+        const [campusClasses, schoolCurriculums] = await Promise.all([
+          Promise.all(
+            [...new Set(requestedCampusIds)].map((campusId) =>
+              ctx.db
+                .query("classes")
+                .withIndex("by_campus", (q) =>
+                  q.eq("campusId", campusId).eq("isActive", true),
+                )
+                .collect(),
+            ),
+          ),
+          Promise.all(
+            requestedSchoolIds.map((schoolId) =>
+              ctx.db
+                .query("curriculums")
+                .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+                .collect(),
+            ),
+          ),
+        ]);
+        const legacySchoolClasses = await Promise.all(
+          schoolCurriculums.flat().map((curriculum) =>
+            ctx.db
+              .query("classes")
+              .withIndex("by_curriculum", (q) =>
+                q.eq("curriculumId", curriculum._id),
+              )
+              .collect(),
+          ),
+        );
+        const accessible = new Map(
+          [...campusClasses.flat(), ...legacySchoolClasses.flat()]
+            .filter(
+              (classData) =>
+                classData.isActive &&
+                (!args.teacherId || classData.teacherId === args.teacherId),
+            )
+            .map((classData) => [classData._id, classData]),
+        );
+        const access = await Promise.all(
+          [...accessible.values()].map((classData) =>
+            canAccessClass(ctx, user._id, classData),
+          ),
+        );
+        myClasses = [...accessible.values()].filter((_, index) => access[index]);
       }
     } else {
       const teachingClasses = await ctx.db.query("classes")
         .withIndex("by_teacher", q => q.eq("teacherId", user._id).eq("isActive", true))
         .collect();
 
-      const allClasses = await ctx.db.query("classes")
-        .withIndex("by_active", q => q.eq("isActive", true))
+      const enrollmentRows = await ctx.db
+        .query("classEnrollments")
+        .withIndex("by_student", (q) => q.eq("studentId", user._id))
         .collect();
+      const enrolledClasses = (
+        await Promise.all(
+          enrollmentRows.map((row) => ctx.db.get(row.classId)),
+        )
+      ).filter((classData): classData is Doc<"classes"> =>
+        Boolean(classData?.isActive),
+      );
+      // Remove this legacy scan after backfillClassEnrollments has run in every deployment.
+      const legacyClasses = (
+        await ctx.db
+          .query("classes")
+          .withIndex("by_active", (q) => q.eq("isActive", true))
+          .collect()
+      ).filter(
+        (classData) =>
+          !classData.enrollmentsMigratedAt &&
+          classData.students?.includes(user._id),
+      );
 
-      const enrolledClasses = allClasses.filter(c => c.students.includes(user._id));
-
-      const combined = [...teachingClasses, ...enrolledClasses];
+      const combined = [...teachingClasses, ...enrolledClasses, ...legacyClasses];
       const uniqueIds = new Set();
       myClasses = combined.filter(c => {
         if(uniqueIds.has(c._id)) return false;
@@ -240,20 +563,51 @@ export const getMySchedule = query({
     if (myClasses.length === 0) return [];
 
     const classIds = myClasses.map(c => c._id);
+    const classMap = new Map(myClasses.map((classData) => [classData._id, classData]));
+    const classesNeedingRosters = myClasses.filter(
+      (classData) =>
+        isAdmin ||
+        classData.teacherId === user._id ||
+        classData.tutorId === user._id,
+    );
+    const studentIdsByClass = new Map(
+      await Promise.all(
+        classesNeedingRosters.map(async (classData) => [
+          classData._id,
+          await listClassStudentIds(ctx, classData),
+        ] as const),
+      ),
+    );
+    const now = Date.now();
+    const from =
+      args.from ??
+      (args.classId ? undefined : now - DEFAULT_SCHEDULE_HISTORY_MS);
+    const to =
+      args.to ??
+      (args.classId ? undefined : now + DEFAULT_SCHEDULE_FUTURE_MS);
+    if (from !== undefined && to !== undefined && from > to) {
+      throw new ConvexError("INVALID_DATE_RANGE");
+    }
 
     const scheduleItems = await Promise.all(
       classIds.map(id =>
         ctx.db
           .query("classSchedule")
-          .withIndex("by_class", (q) => q.eq("classId", id))
+          .withIndex("by_class", (q) => {
+            const range = q.eq("classId", id);
+            if (from !== undefined && to !== undefined) {
+              return range.gte("scheduledStart", from).lte("scheduledStart", to);
+            }
+            if (from !== undefined) return range.gte("scheduledStart", from);
+            if (to !== undefined) return range.lte("scheduledStart", to);
+            return range;
+          })
           .collect()
       )
     );
 
     let flatSchedule = scheduleItems.flat();
 
-    if (args.from) flatSchedule = flatSchedule.filter(s => s.scheduledStart >= args.from!);
-    if (args.to) flatSchedule = flatSchedule.filter(s => s.scheduledStart <= args.to!);
     if (args.status) flatSchedule = flatSchedule.filter(s => s.status === args.status);
 
     const uniqueCurriculumIds = new Set(myClasses.map(c => c.curriculumId));
@@ -270,33 +624,64 @@ export const getMySchedule = query({
     const teacherMap = new Map(teachers.filter(Boolean).map(t => [t!._id, t!]));
     const lessonMap = new Map(lessons.filter(Boolean).map(l => [l!._id, l!]));
 
-    // We only load attendance data if the user is an admin or the active teacher/student
     const allSessionsForSchedules = await Promise.all(
-      flatSchedule.map(s =>
-        ctx.db
-          .query("class_sessions")
-          .withIndex("by_schedule", (q) => q.eq("scheduleId", s._id))
-          .collect()
-      )
+      flatSchedule.map((schedule) => {
+        const classData = classMap.get(schedule.classId);
+        const needsFullAttendance =
+          isAdmin ||
+          classData?.teacherId === user._id ||
+          classData?.tutorId === user._id;
+        return needsFullAttendance
+          ? ctx.db
+              .query("class_sessions")
+              .withIndex("by_schedule", (q) =>
+                q.eq("scheduleId", schedule._id),
+              )
+              .collect()
+          : ctx.db
+              .query("class_sessions")
+              .withIndex("by_student_schedule", (q) =>
+                q.eq("studentId", user._id).eq("scheduleId", schedule._id),
+              )
+              .collect();
+      }),
     );
 
     const sessionsBySchedule = new Map(flatSchedule.map((s, idx) => [s._id, allSessionsForSchedules[idx] || []]));
 
-    // Join recording availability — check all schedules (a session can be recorded and still show as scheduled)
-    const allScheduleIds = flatSchedule.map(s => s._id);
-    const scheduleIdsWithRecordings: Set<string> = allScheduleIds.length > 0
-      ? new Set(await ctx.runQuery(internal.recordings.getCompletedScheduleIds, { scheduleIds: allScheduleIds }))
-      : new Set<string>();
+    const completedRecordings = await Promise.all(
+      flatSchedule.map((schedule) =>
+        ctx.db
+          .query("recordings")
+          .withIndex("by_schedule", (q) =>
+            q.eq("scheduleId", schedule._id).eq("status", "complete"),
+          )
+          .first(),
+      ),
+    );
+    const scheduleIdsWithRecordings = new Set(
+      completedRecordings
+        .filter((recording) => recording !== null)
+        .map((recording) => recording.scheduleId),
+    );
 
     const results = await Promise.all(
       flatSchedule.map(async (item) => {
-        const classData = myClasses.find(c => c._id === item.classId);
+        const classData = classMap.get(item.classId);
         if (!classData) return null;
 
         const curriculum = curriculumMap.get(classData.curriculumId);
-        const teacher = teacherMap.get(classData.teacherId);
+        const teacher = classData.teacherId
+          ? teacherMap.get(classData.teacherId)
+          : undefined;
+        // ponytail: UTC only protects legacy rows until their institution confirms a zone.
+        const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
 
-        const isClassAdminOrTeacher = isAdmin || classData.teacherId === user._id;
+        const isClassAdminOrTeacher =
+          isAdmin ||
+          classData.teacherId === user._id ||
+          classData.tutorId === user._id;
+        const classStudents = studentIdsByClass.get(classData._id) ?? [];
 
         const scheduledLessons = (item.lessonIds || []).map(id => lessonMap.get(id)).filter(Boolean);
         const title = item.title || (scheduledLessons[0]?.title) || "Class Session";
@@ -310,13 +695,11 @@ export const getMySchedule = query({
 
         const sessions = sessionsBySchedule.get(item._id) || [];
 
-        let attendanceStatus: "upcoming" | "present" | "absent" | "partial" | "in-progress" | "late" = "upcoming";
+        let attendanceStatus: "upcoming" | "present" | "absent" | "partial" | "in-progress" | "late" | "excused" = "upcoming";
         let timeInClass = 0;
         let isStudentActive = false;
 
-        let attendanceSummary = { present: 0, partial: 0, missed: 0, total: classData.students.length };
-        const now = Date.now();
-
+        const attendanceSummary = { present: 0, partial: 0, missed: 0, total: classStudents.length };
         // Student Stats Calculation
         if (!isClassAdminOrTeacher) {
           const studentSessions = sessions.filter(s => s.studentId === user._id);
@@ -329,7 +712,7 @@ export const getMySchedule = query({
           const manualRecord = studentSessions.find(s => s.attendanceStatus);
 
           if (manualRecord?.attendanceStatus) {
-            attendanceStatus = manualRecord.attendanceStatus as any;
+            attendanceStatus = manualRecord.attendanceStatus;
           } else {
             timeInClass = studentSessions.reduce((sum, s) => {
               const sessionStart = s.joinedAt;
@@ -371,7 +754,7 @@ export const getMySchedule = query({
 
           const scheduledDuration = (item.scheduledEnd - item.scheduledStart) / 1000;
 
-          for (const studentId of classData.students) {
+          for (const studentId of classStudents) {
             const stats = studentStats.get(studentId);
             let status = "absent";
 
@@ -441,6 +824,7 @@ export const getMySchedule = query({
           color: curriculum?.color || "#3b82f6",
           start: item.scheduledStart,
           end: item.scheduledEnd,
+          timeZone,
           roomName: item.roomName,
           isLive: effectiveIsLive,
           sessionType: item.sessionType || "live",
@@ -482,6 +866,7 @@ export const listAccessibleLiveClasses = query({
     className: v.string(),
     start: v.number(),
     end: v.number(),
+    timeZone: v.string(),
     roomName: v.string(),
     isLive: v.boolean(),
     color: v.string(),
@@ -512,10 +897,19 @@ export const listAccessibleLiveClasses = query({
         classData.campusId ? ctx.db.get(classData.campusId) : null,
       ]);
       const classSchoolId = classData.campusId ? campus?.schoolId : curriculum?.schoolId;
+      const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
+      const studentGrade = classSchoolId
+        ? await getStudentGradeCode(
+            ctx,
+            user._id,
+            classSchoolId,
+            classData.campusId,
+          )
+        : undefined;
       const authorized = canStudentAccessLiveClass({
-        isEnrolled: classData.students.includes(user._id),
+        isEnrolled: await isStudentEnrolled(ctx, classData, user._id),
         liveAccess: schedule.liveAccess,
-        studentGrade: user.grade,
+        studentGrade,
         classSchoolId,
         studentSchoolIds,
       });
@@ -528,6 +922,7 @@ export const listAccessibleLiveClasses = query({
         className: classData.name,
         start: schedule.scheduledStart,
         end: schedule.scheduledEnd,
+        timeZone,
         roomName: schedule.roomName,
         isLive: true as const,
         color: curriculum?.color || "#3b82f6",
@@ -547,14 +942,69 @@ export const listAccessibleLiveClasses = query({
 
 export const get = query({
   args: { id: v.id("classSchedule") },
-  handler: async (ctx, args) => await ctx.db.get(args.id),
+  returns: v.union(scheduleValidator, v.null()),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const schedule = await ctx.db.get(args.id);
+    if (!schedule) return null;
+    if (!(await canAccessSchedule(ctx, user._id, schedule))) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
+    return schedule;
+  },
 });
 
 export const getWithDetails = query({
   args: { id: v.id("classSchedule") },
+  returns: v.union(
+    v.null(),
+    v.object({
+      ...scheduleFields,
+      lessons: v.array(
+        v.object({
+          _id: v.id("lessons"),
+          title: v.string(),
+          description: v.optional(v.string()),
+          content: v.optional(v.string()),
+          order: v.number(),
+        }),
+      ),
+      class: v.object({
+        _id: v.id("classes"),
+        name: v.string(),
+        studentCount: v.number(),
+        gradeCode: v.optional(v.string()),
+        timeZone: v.string(),
+      }),
+      curriculum: v.union(
+        v.null(),
+        v.object({
+          _id: v.id("curriculums"),
+          title: v.string(),
+          code: v.optional(v.string()),
+          color: v.optional(v.string()),
+          gradeCodes: v.optional(v.array(v.string())),
+        }),
+      ),
+      grades: v.array(v.object({ code: v.string(), name: v.string() })),
+      teacher: v.union(
+        v.null(),
+        v.object({
+          _id: v.id("users"),
+          fullName: v.string(),
+          email: v.optional(v.string()),
+          avatarStorageId: v.optional(v.id("_storage")),
+        }),
+      ),
+    }),
+  ),
   handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
     const schedule = await ctx.db.get(args.id);
     if (!schedule) return null;
+    if (!(await canAccessSchedule(ctx, user._id, schedule))) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
 
     const classData = await ctx.db.get(schedule.classId);
     if (!classData) return null;
@@ -568,14 +1018,29 @@ export const getWithDetails = query({
       ctx.db.get(classData.curriculumId),
       classData.teacherId ? ctx.db.get(classData.teacherId) : null,
     ]);
+    const campus = classData.campusId
+      ? await ctx.db.get(classData.campusId)
+      : null;
+    const schoolId = campus?.schoolId ?? curriculum?.schoolId;
+    const grades = schoolId ? await getInstitutionGrades(ctx, schoolId) : [];
 
     return {
       ...schedule,
       lessons: validLessons.map(l => ({
         _id: l!._id, title: l!.title, description: l!.description, content: l!.content, order: l!.order,
       })),
-      class: { _id: classData._id, name: classData.name, studentCount: classData.students.length },
+      class: {
+        _id: classData._id,
+        name: classData.name,
+        studentCount: (await listClassStudentIds(ctx, classData)).length,
+        gradeCode: classData.gradeCode,
+        timeZone: (await getClassTimeZone(ctx, classData)) ?? "UTC",
+      },
       curriculum: curriculum ? { _id: curriculum._id, title: curriculum.title, code: curriculum.code, color: curriculum.color, gradeCodes: curriculum.gradeCodes } : null,
+      grades: grades.map((grade) => ({
+        code: grade.code,
+        name: grade.name,
+      })),
       teacher: teacher ? { _id: teacher._id, fullName: teacher.fullName, email: teacher.email, avatarStorageId: teacher.avatarStorageId } : null,
     };
   },
@@ -583,49 +1048,42 @@ export const getWithDetails = query({
 
 export const getByRoomName = query({
   args: { roomName: v.string() },
-  handler: async (ctx, args) => await ctx.db.query("classSchedule").withIndex("by_room", (q) => q.eq("roomName", args.roomName)).first(),
+  returns: v.union(scheduleValidator, v.null()),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (!schedule) return null;
+    if (!(await canAccessSchedule(ctx, user._id, schedule))) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
+    return schedule;
+  },
 });
 
 export const getSessionStatus = query({
   args: { sessionId: v.string() },
-  returns: v.union(v.object({
-    scheduleId: v.id("classSchedule"),
-    isActive: v.boolean(),
-    isLive: v.boolean(),
-    status: v.union(v.literal("scheduled"), v.literal("active"), v.literal("completed"), v.literal("cancelled")),
-    start: v.number(),
-    end: v.number(),
-    roomName: v.string(),
-    canJoin: v.boolean(),
-  }), v.null()),
+  returns: v.union(sessionStatusValidator, v.null()),
   handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
     let schedule = await ctx.db.query("classSchedule").withIndex("by_room", (q) => q.eq("roomName", args.sessionId)).first();
 
     if (!schedule) {
-      const allSchedules = await ctx.db.query("classSchedule").withIndex("by_status", (q) => q.eq("status", "active")).collect();
-      schedule = allSchedules.find(s => s._id === args.sessionId) || null;
+      const scheduleId = ctx.db.normalizeId("classSchedule", args.sessionId);
+      schedule = scheduleId ? await ctx.db.get(scheduleId) : null;
     }
 
     if (!schedule) return null;
+    if (!(await canAccessSchedule(ctx, user._id, schedule))) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
+    const classData = await ctx.db.get(schedule.classId);
+    if (!classData) return null;
+    const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
 
-    const now = Date.now();
-    const joinWindowStart = schedule.scheduledStart - (10 * 60 * 1000);
-    const joinWindowEnd = schedule.scheduledEnd + (5 * 60 * 1000);
-
-    const isTimeWindowActive = now >= joinWindowStart && now <= joinWindowEnd;
-    const isStale = now > (schedule.scheduledEnd + STALE_THRESHOLD_MS);
-    const isExplicitlyActive = schedule.status === "active" && !isStale;
-
-    return {
-      scheduleId: schedule._id,
-      isActive: isTimeWindowActive || isExplicitlyActive,
-      isLive: schedule.isLive === true,
-      status: schedule.status,
-      start: schedule.scheduledStart,
-      end: schedule.scheduledEnd,
-      roomName: schedule.roomName,
-      canJoin: schedule.status === "active" || schedule.status === "scheduled",
-    };
+    return getSessionStatusData(schedule, timeZone);
   },
 });
 
@@ -639,6 +1097,7 @@ export const checkLiveKitAccess = internalQuery({
     roomAdmin: v.boolean(),
     canJoinEarly: v.boolean(),
     computedRole: v.union(v.literal("teacher"), v.literal("student")),
+    session: sessionStatusValidator,
   }), v.null()),
   handler: async (ctx, args) => {
     const schedule = await ctx.db
@@ -666,10 +1125,18 @@ export const checkLiveKitAccess = internalQuery({
     let authorized = isRoomAdmin;
     if (!authorized) {
       const studentSchoolIds = await getStudentSchoolIds(ctx, args.userId);
+      const studentGrade = classSchoolId
+        ? await getStudentGradeCode(
+            ctx,
+            args.userId,
+            classSchoolId,
+            classData.campusId,
+          )
+        : undefined;
       authorized = canStudentAccessLiveClass({
-        isEnrolled: classData.students.includes(args.userId),
+        isEnrolled: await isStudentEnrolled(ctx, classData, args.userId),
         liveAccess: schedule.liveAccess,
-        studentGrade: user.grade,
+        studentGrade,
         classSchoolId,
         studentSchoolIds,
       });
@@ -680,13 +1147,24 @@ export const checkLiveKitAccess = internalQuery({
       roomAdmin: isRoomAdmin,
       canJoinEarly: isRoomAdmin,
       computedRole: isRoomAdmin ? "teacher" as const : "student" as const,
+      session: getSessionStatusData(
+        schedule,
+        (await getClassTimeZone(ctx, classData)) ?? "UTC",
+      ),
     };
   }
 });
 
 export const getUsedLessons = query({
   args: { classId: v.id("classes") },
+  returns: v.array(v.id("lessons")),
   handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const classData = await ctx.db.get(args.classId);
+    if (!classData) return [];
+    if (!(await canAccessClass(ctx, user._id, classData))) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
     const schedules = await ctx.db.query("classSchedule").withIndex("by_class", (q) => q.eq("classId", args.classId)).collect();
     const usedLessons = new Set<Id<"lessons">>();
     schedules.forEach(s => { if (s.lessonIds) s.lessonIds.forEach(id => usedLessons.add(id)); });
@@ -696,6 +1174,18 @@ export const getUsedLessons = query({
 
 export const getAttendanceDetails = query({
   args: { scheduleId: v.id("classSchedule") },
+  returns: v.array(
+    v.object({
+      studentId: v.id("users"),
+      fullName: v.string(),
+      email: v.optional(v.string()),
+      imageUrl: v.optional(v.string()),
+      totalMinutes: v.number(),
+      status: v.string(),
+      isManual: v.boolean(),
+      lastSeen: v.union(v.number(), v.null()),
+    }),
+  ),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -711,7 +1201,8 @@ export const getAttendanceDetails = query({
 
     if (!isClassTeacher && !isAuthorizedAdmin) throw new Error("Unauthorized");
 
-    const students = await Promise.all(classData.students.map(id => ctx.db.get(id)));
+    const studentIds = await listClassStudentIds(ctx, classData);
+    const students = await Promise.all(studentIds.map(id => ctx.db.get(id)));
     const validStudents = students.filter(s => s !== null);
 
     const sessions = await ctx.db.query("class_sessions").withIndex("by_schedule", (q) => q.eq("scheduleId", args.scheduleId)).collect();
@@ -763,253 +1254,22 @@ export const getAttendanceDetails = query({
 // MUTATIONS
 // ============================================================================
 
-export const createSchedule = mutation({
-  args: {
-    classId: v.id("classes"),
-    lessonIds: v.optional(v.array(v.id("lessons"))),
-    title: v.optional(v.string()),
-    description: v.optional(v.string()),
-    scheduledStart: v.number(),
-    scheduledEnd: v.number(),
-    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka"))),
-  },
-  handler: async (ctx, args) => {
-    const user = await getCurrentUserOrThrow(ctx);
-
-    const classData = await ctx.db.get(args.classId);
-    if (!classData) throw new Error("Class not found");
-    const curriculum = await ctx.db.get(classData.curriculumId);
-
-    const isClassTeacher = classData.teacherId === user._id;
-    const isAuthorizedAdmin = await canManageClasses(ctx, user._id, classData.campusId, curriculum?.schoolId);
-
-    if (!isClassTeacher && !isAuthorizedAdmin) {
-      throw new Error("Only administrators or the class teacher can create schedules");
-    }
-
-    if (args.lessonIds && args.lessonIds.length > 0) {
-      const usedLessons = await ctx.db.query("classSchedule").withIndex("by_class", (q) => q.eq("classId", args.classId)).collect();
-      const allUsedLessonIds = new Set<string>();
-      usedLessons.forEach(s => { if (s.lessonIds) s.lessonIds.forEach(id => allUsedLessonIds.add(id)); });
-
-      for (const lessonId of args.lessonIds) {
-        if (allUsedLessonIds.has(lessonId)) throw new ConvexError({ code: "LESSON_ALREADY_SCHEDULED", lessonId: lessonId });
-        const lesson = await ctx.db.get(lessonId);
-        if (!lesson) throw new Error("Lesson not found");
-        if (lesson.curriculumId !== classData.curriculumId) throw new Error("Lesson does not belong to this class's curriculum");
-      }
-    }
-
-    if (args.scheduledEnd <= args.scheduledStart) throw new Error("End time must be after start time");
-
-    await validateScheduleOverlap(ctx, {
-      teacherId: classData.teacherId,
-      classId: args.classId,
-      start: args.scheduledStart,
-      end: args.scheduledEnd
-    });
-
-    const roomName = `class-${args.classId}-${Date.now()}`;
-
-    return await ctx.db.insert("classSchedule", {
-      classId: args.classId,
-      lessonIds: args.lessonIds,
-      title: args.title,
-      description: args.description,
-      sessionType: args.sessionType || "live",
-      scheduledStart: args.scheduledStart,
-      scheduledEnd: args.scheduledEnd,
-      roomName,
-      isLive: false,
-      isRecurring: false,
-      status: "scheduled",
-      createdAt: Date.now(),
-      createdBy: user._id,
-    });
-  },
-});
-
-export const createRecurringSchedule = mutation({
-  args: {
-    classId: v.id("classes"),
-    lessonIds: v.optional(v.array(v.id("lessons"))),
-    title: v.optional(v.string()),
-    description: v.optional(v.string()),
-    scheduledStart: v.number(),
-    scheduledEnd: v.number(),
-    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka"))),
-    timezoneOffset: v.number(),
-    recurrence: v.object({
-      type: v.union(v.literal("daily"), v.literal("weekly"), v.literal("biweekly"), v.literal("monthly")),
-      daysOfWeek: v.optional(v.array(v.number())),
-      endDate: v.optional(v.number()),
-      occurrences: v.optional(v.number()),
-    }),
-  },
-  handler: async (ctx, args) => {
-    const user = await getCurrentUserOrThrow(ctx);
-
-    const classData = await ctx.db.get(args.classId);
-    if (!classData) throw new Error("Class not found");
-    const curriculum = await ctx.db.get(classData.curriculumId);
-
-    const isClassTeacher = classData.teacherId === user._id;
-    const isAuthorizedAdmin = await canManageClasses(ctx, user._id, classData.campusId, curriculum?.schoolId);
-
-    if (!isClassTeacher && !isAuthorizedAdmin) {
-      throw new Error("Only administrators or the class teacher can create schedules");
-    }
-
-    if (args.lessonIds && args.lessonIds.length > 0) {
-      throw new Error("Cannot assign lessons to a recurring schedule series. Please schedule lessons to individual sessions after creation.");
-    }
-
-    if (args.scheduledEnd <= args.scheduledStart) throw new Error("End time must be after start time");
-
-    const offsetMs = args.timezoneOffset * 60 * 1000;
-    const localStart = args.scheduledStart - offsetMs;
-    const localEnd = args.scheduledEnd - offsetMs;
-
-    let localEffectiveStart = localStart;
-    let localEffectiveEnd = localEnd;
-
-    if (args.recurrence.daysOfWeek && args.recurrence.daysOfWeek.length > 0) {
-      const adjustedLocalStart = getFirstValidRecurrenceDate(localStart, args.recurrence.daysOfWeek);
-      if (adjustedLocalStart !== localStart) {
-        const diff = adjustedLocalStart - localStart;
-        localEffectiveStart = adjustedLocalStart;
-        localEffectiveEnd = localEnd + diff;
-      }
-    }
-
-    const duration = localEffectiveEnd - localEffectiveStart;
-    const localOccurrences = generateRecurrenceOccurrences(localEffectiveStart, args.recurrence);
-
-    if (localOccurrences.length === 0) throw new Error("No valid occurrences generated");
-
-    const realEffectiveStart = localEffectiveStart + offsetMs;
-    const realEffectiveEnd = localEffectiveEnd + offsetMs;
-    const realOccurrences = localOccurrences.map(t => t + offsetMs);
-
-    await validateScheduleOverlap(ctx, {
-      teacherId: classData.teacherId,
-      classId: args.classId,
-      start: realEffectiveStart,
-      end: realEffectiveEnd
-    });
-
-    const parentRoomName = `class-${args.classId}-series-${Date.now()}`;
-
-    const parentId = await ctx.db.insert("classSchedule", {
-      classId: args.classId,
-      lessonIds: [],
-      title: args.title,
-      description: args.description,
-      scheduledStart: realEffectiveStart,
-      scheduledEnd: realEffectiveEnd,
-      roomName: parentRoomName,
-      isLive: false,
-      sessionType: args.sessionType || "live",
-      isRecurring: true,
-      recurrenceRule: JSON.stringify(args.recurrence),
-      status: "scheduled",
-      createdAt: Date.now(),
-      createdBy: user._id,
-    });
-
-    const childIds = [];
-    for (let i = 1; i < realOccurrences.length; i++) {
-      const start = realOccurrences[i];
-      const end = start + duration;
-
-      const childId = await ctx.db.insert("classSchedule", {
-        classId: args.classId,
-        lessonIds: [],
-        title: args.title,
-        description: args.description,
-        scheduledStart: start,
-        scheduledEnd: end,
-        roomName: `${parentRoomName}-${i}`,
-        isLive: false,
-        sessionType: args.sessionType || "live",
-        isRecurring: true,
-        recurrenceParentId: parentId,
-        status: "scheduled",
-        createdAt: Date.now(),
-        createdBy: user._id,
-      });
-
-      childIds.push(childId);
-    }
-
-    return { parentId, childIds, totalOccurrences: realOccurrences.length };
-  },
-});
-
-export const scheduleLesson = mutation({
-  args: {
-    classId: v.id("classes"),
-    lessonIds: v.array(v.id("lessons")),
-    scheduledStart: v.number(),
-    scheduledEnd: v.number(),
-    sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka"))),
-  },
-  handler: async (ctx, args) => {
-    const user = await getCurrentUserOrThrow(ctx);
-
-    const classData = await ctx.db.get(args.classId);
-    if (!classData) throw new Error("Class not found");
-    const curriculum = await ctx.db.get(classData.curriculumId);
-
-    const isClassTeacher = classData.teacherId === user._id;
-    const isAuthorizedAdmin = await canManageClasses(ctx, user._id, classData.campusId, curriculum?.schoolId);
-
-    if (!isClassTeacher && !isAuthorizedAdmin) {
-      throw new Error("Only administrators or the class teacher can schedule lessons");
-    }
-
-    const lesson = await ctx.db.get(args.lessonIds[0]);
-    if (!lesson) throw new Error("Lesson not found");
-    if (lesson.curriculumId !== classData.curriculumId) throw new Error("Lesson does not belong to this class's curriculum");
-
-    if (args.scheduledEnd <= args.scheduledStart) throw new Error("End time must be after start time");
-
-    await validateScheduleOverlap(ctx, {
-      teacherId: classData.teacherId,
-      classId: args.classId,
-      start: args.scheduledStart,
-      end: args.scheduledEnd
-    });
-
-    const roomName = `class-${args.classId}-lesson-${args.lessonIds[0]}-${Date.now()}`;
-
-    return await ctx.db.insert("classSchedule", {
-      classId: args.classId,
-      lessonIds: args.lessonIds,
-      scheduledStart: args.scheduledStart,
-      scheduledEnd: args.scheduledEnd,
-      sessionType: args.sessionType || "live",
-      roomName,
-      isLive: false,
-      status: "scheduled",
-      createdAt: Date.now(),
-      createdBy: user._id,
-    });
-  },
-});
-
 export const updateSchedule = mutation({
   args: {
     id: v.id("classSchedule"),
     lessonIds: v.optional(v.array(v.id("lessons"))),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
-    scheduledStart: v.optional(v.number()),
-    scheduledEnd: v.optional(v.number()),
+    localStart: v.optional(v.string()),
+    durationMinutes: v.optional(v.number()),
     status: v.optional(v.union(v.literal("scheduled"), v.literal("active"), v.literal("completed"), v.literal("cancelled"))),
     sessionType: v.optional(v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka"))),
     updateSeries: v.optional(v.boolean()),
   },
+  returns: v.object({
+    updated: v.number(),
+    type: v.union(v.literal("series"), v.literal("single")),
+  }),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -1044,14 +1304,43 @@ export const updateSchedule = mutation({
     }
 
     const oldStart = schedule.scheduledStart;
-    const newStart = args.scheduledStart ?? oldStart;
-    const timeShiftDelta = newStart - oldStart;
-
     const oldEnd = schedule.scheduledEnd;
-    const newEnd = args.scheduledEnd ?? oldEnd;
-    const newDuration = newEnd - newStart;
+    if ((args.localStart === undefined) !== (args.durationMinutes === undefined)) {
+      throw new ConvexError("INVALID_LOCAL_DATE_TIME");
+    }
+    if (
+      args.durationMinutes !== undefined &&
+      (!Number.isInteger(args.durationMinutes) ||
+        args.durationMinutes < 15 ||
+        args.durationMinutes > 8 * 60)
+    ) {
+      throw new ConvexError("INVALID_SCHEDULE_DURATION");
+    }
+    const timeZone = await getClassTimeZone(ctx, classData);
+    if (!timeZone || !isValidTimeZone(timeZone)) {
+      throw new ConvexError("TIME_ZONE_REQUIRED");
+    }
+    let newStart = oldStart;
+    if (args.localStart !== undefined) {
+      try {
+        newStart = localDateTimeToUtc(args.localStart, timeZone);
+      } catch {
+        throw new ConvexError("INVALID_LOCAL_DATE_TIME");
+      }
+    }
+    const newDuration =
+      args.durationMinutes !== undefined
+        ? args.durationMinutes * 60 * 1000
+        : oldEnd - oldStart;
+    const newEnd = newStart + newDuration;
 
-    if (args.scheduledStart !== undefined || args.scheduledEnd !== undefined) {
+    if (args.localStart !== undefined) {
+      await validateClassScheduleTime(
+        ctx,
+        classData,
+        args.localStart,
+        newDuration / 60_000,
+      );
       await validateScheduleOverlap(ctx, {
         teacherId: classData.teacherId,
         classId: classData._id,
@@ -1061,7 +1350,7 @@ export const updateSchedule = mutation({
       });
     }
 
-    const metadataUpdates: any = {};
+    const metadataUpdates: Partial<Doc<"classSchedule">> = {};
     if (args.title !== undefined) metadataUpdates.title = args.title;
     if (args.sessionType !== undefined) metadataUpdates.sessionType = args.sessionType;
     if (args.description !== undefined) metadataUpdates.description = args.description;
@@ -1081,19 +1370,51 @@ export const updateSchedule = mutation({
       itemsToUpdate.push(...children);
 
       const uniqueItems = Array.from(new Map(itemsToUpdate.map(item => [item._id, item])).values());
-      const DAY_MS = 24 * 60 * 60 * 1000;
+      const oldLocalStart = utcToLocalDateTime(oldStart, timeZone);
+      const newLocalStart = args.localStart ?? oldLocalStart;
+      const dayShift =
+        civilDayNumber(newLocalStart.slice(0, 10)) -
+        civilDayNumber(oldLocalStart.slice(0, 10));
+      const newHour = Number(newLocalStart.slice(11, 13));
+      const newMinute = Number(newLocalStart.slice(14, 16));
 
-      for (const item of uniqueItems) {
-        const updatePatch: any = { ...metadataUpdates };
-        const timeDiffMs = item.scheduledStart - oldStart;
-        const daysDifference = Math.round(timeDiffMs / DAY_MS);
-
-        const itemNewStart = newStart + (daysDifference * DAY_MS);
+      const futureItems = uniqueItems.filter(
+        (candidate) => candidate.scheduledStart >= oldStart,
+      );
+      for (const item of futureItems) {
+        const updatePatch: Partial<Doc<"classSchedule">> = {
+          ...metadataUpdates,
+        };
+        let itemNewStart = item.scheduledStart;
+        try {
+          itemNewStart = shiftZonedDateTime(
+            item.scheduledStart,
+            timeZone,
+            dayShift,
+            newHour,
+            newMinute,
+          );
+        } catch {
+          throw new ConvexError("INVALID_LOCAL_DATE_TIME");
+        }
         const itemNewEnd = itemNewStart + newDuration;
 
         const needsTimeUpdate = item.scheduledStart !== itemNewStart || item.scheduledEnd !== itemNewEnd;
 
         if (needsTimeUpdate) {
+          await validateClassScheduleTime(
+            ctx,
+            classData,
+            utcToLocalDateTime(itemNewStart, timeZone),
+            newDuration / 60_000,
+          );
+          await validateScheduleOverlap(ctx, {
+            teacherId: classData.teacherId,
+            classId: classData._id,
+            start: itemNewStart,
+            end: itemNewEnd,
+            excludeScheduleId: item._id,
+          });
           updatePatch.scheduledStart = itemNewStart;
           updatePatch.scheduledEnd = itemNewEnd;
         }
@@ -1102,13 +1423,15 @@ export const updateSchedule = mutation({
           await ctx.db.patch(item._id, updatePatch);
         }
       }
-      return { updated: uniqueItems.length, type: "series" };
+      return { updated: futureItems.length, type: "series" as const };
     } else {
       const singleUpdates = { ...metadataUpdates };
-      if (args.scheduledStart !== undefined) singleUpdates.scheduledStart = newStart;
-      if (args.scheduledEnd !== undefined) singleUpdates.scheduledEnd = newEnd;
+      if (args.localStart !== undefined) {
+        singleUpdates.scheduledStart = newStart;
+        singleUpdates.scheduledEnd = newEnd;
+      }
       await ctx.db.patch(args.id, singleUpdates);
-      return { updated: 1, type: "single" };
+      return { updated: 1, type: "single" as const };
     }
   },
 });
@@ -1119,6 +1442,10 @@ export const cancelSchedule = mutation({
     cancelSeries: v.optional(v.boolean()),
     reason: v.optional(v.string()),
   },
+  returns: v.object({
+    cancelled: v.number(),
+    type: v.union(v.literal("series"), v.literal("single")),
+  }),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -1149,13 +1476,13 @@ export const cancelSchedule = mutation({
           description: args.reason ? `${child.description || ''}\n\nCancellation reason: ${args.reason}` : child.description
         });
       }
-      return { cancelled: series.length + 1, type: "series" };
+      return { cancelled: series.length + 1, type: "series" as const };
     } else {
       await ctx.db.patch(args.id, {
         status: "cancelled" as const,
         description: args.reason ? `${schedule.description || ''}\n\nCancellation reason: ${args.reason}` : schedule.description
       });
-      return { cancelled: 1, type: "single" };
+      return { cancelled: 1, type: "single" as const };
     }
   },
 });
@@ -1165,6 +1492,10 @@ export const deleteSchedule = mutation({
     id: v.id("classSchedule"),
     deleteSeries: v.optional(v.boolean()),
   },
+  returns: v.object({
+    deleted: v.number(),
+    type: v.union(v.literal("series"), v.literal("single")),
+  }),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -1183,13 +1514,16 @@ export const deleteSchedule = mutation({
       const parentId = schedule.recurrenceParentId || schedule._id;
       const series = await ctx.db.query("classSchedule").withIndex("by_recurrence_parent", (q) => q.eq("recurrenceParentId", parentId)).collect();
 
-      await ctx.db.delete(parentId);
-      for (const child of series) await ctx.db.delete(child._id);
+      const parent = await ctx.db.get(parentId);
+      if (parent) await deleteScheduleWithDependencies(ctx, parent);
+      for (const child of series) {
+        await deleteScheduleWithDependencies(ctx, child);
+      }
 
-      return { deleted: series.length + 1, type: "series" };
+      return { deleted: series.length + 1, type: "series" as const };
     } else {
-      await ctx.db.delete(args.id);
-      return { deleted: 1, type: "single" };
+      await deleteScheduleWithDependencies(ctx, schedule);
+      return { deleted: 1, type: "single" as const };
     }
   },
 });
@@ -1223,7 +1557,14 @@ export const markLive = mutation({
       if (!args.liveAccess) throw new ConvexError("Live access policy is required when starting a class");
       const allowedGradeCodes = args.liveAccess.mode === "private"
         ? []
-        : [...new Set(args.liveAccess.allowedGradeCodes.filter((code) => GRADE_VALUES.includes(code as (typeof GRADE_VALUES)[number])))];
+        : [...new Set(args.liveAccess.allowedGradeCodes)];
+      if (
+        classSchoolId &&
+        (await validateGradeCodes(ctx, classSchoolId, allowedGradeCodes))
+          .length > 0
+      ) {
+        throw new ConvexError("INVALID_GRADE");
+      }
       if (args.liveAccess.mode === "school" && allowedGradeCodes.length === 0) {
         throw new ConvexError("At least one grade is required for school access");
       }
@@ -1252,6 +1593,7 @@ export const markLive = mutation({
 
 export const logStudentPresence = mutation({
   args: { scheduleId: v.id("classSchedule"), action: v.union(v.literal("join"), v.literal("leave")) },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
     const now = Date.now();
@@ -1260,7 +1602,8 @@ export const logStudentPresence = mutation({
 
     const classData = await ctx.db.get(schedule.classId);
     if (!classData) throw new Error("Class not found");
-    if (!classData.students.includes(user._id)) return null;
+    if (!(await isStudentEnrolled(ctx, classData, user._id))) return null;
+    const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
 
     if (args.action === "join") {
       await ctx.db.insert("class_sessions", {
@@ -1268,12 +1611,16 @@ export const logStudentPresence = mutation({
         studentId: user._id,
         joinedAt: now,
         roomName: schedule.roomName,
-        sessionDate: new Date().toISOString().split('T')[0],
+        sessionDate: utcToLocalDateTime(now, timeZone).slice(0, 10),
       });
     } else {
       const activeSession = await ctx.db.query("class_sessions")
-        .withIndex("by_student_schedule", (q) => q.eq("studentId", user._id).eq("scheduleId", args.scheduleId))
-        .filter(q => q.eq(q.field("leftAt"), undefined))
+        .withIndex("by_student_schedule", (q) =>
+          q
+            .eq("studentId", user._id)
+            .eq("scheduleId", args.scheduleId)
+            .eq("leftAt", undefined),
+        )
         .first();
 
       if (activeSession) {
@@ -1290,6 +1637,7 @@ export const updateAttendance = mutation({
     studentId: v.id("users"),
     status: v.union(v.literal("present"), v.literal("absent"), v.literal("partial"), v.literal("excused"))
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -1303,12 +1651,13 @@ export const updateAttendance = mutation({
     const isAuthorizedAdmin = await canManageClasses(ctx, user._id, classData.campusId, curriculum?.schoolId);
 
     if (!isClassTeacher && !isAuthorizedAdmin) throw new Error("Unauthorized");
+    const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
 
     const existingSessions = await ctx.db.query("class_sessions")
       .withIndex("by_student_schedule", (q) => q.eq("studentId", args.studentId).eq("scheduleId", args.scheduleId))
       .collect();
 
-    let targetSession = existingSessions.find(s => s.attendanceStatus) || existingSessions[0];
+    const targetSession = existingSessions.find(s => s.attendanceStatus) || existingSessions[0];
 
     if (targetSession) {
       await ctx.db.patch(targetSession._id, {
@@ -1324,7 +1673,10 @@ export const updateAttendance = mutation({
         leftAt: Date.now(),
         durationSeconds: 0,
         roomName: schedule.roomName,
-        sessionDate: new Date(schedule.scheduledStart).toISOString().split('T')[0],
+        sessionDate: utcToLocalDateTime(
+          schedule.scheduledStart,
+          timeZone,
+        ).slice(0, 10),
         attendanceStatus: args.status,
         manualMarkedBy: user._id,
         manualMarkedAt: Date.now()
@@ -1333,7 +1685,9 @@ export const updateAttendance = mutation({
   }
 });
 
-export const cleanupStaleSessions = mutation({
+export const cleanupStaleSessions = internalMutation({
+  args: {},
+  returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
     const activeSchedules = await ctx.db.query("classSchedule").withIndex("by_status", (q) => q.eq("status", "active")).collect();
@@ -1342,8 +1696,9 @@ export const cleanupStaleSessions = mutation({
       if (now <= schedule.scheduledEnd) continue; // class time hasn't ended yet
 
       const openSessions = await ctx.db.query("class_sessions")
-        .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
-        .filter(q => q.eq(q.field("leftAt"), undefined))
+        .withIndex("by_schedule", (q) =>
+          q.eq("scheduleId", schedule._id).eq("leftAt", undefined),
+        )
         .collect();
 
       // A session is genuinely active if it isn't older than SESSION_STALE_MS
@@ -1367,61 +1722,6 @@ export const cleanupStaleSessions = mutation({
         }
       }
     }
+    return null;
   }
 });
-
-function generateRecurrenceOccurrences(
-  startTime: number,
-  recurrence: { type: "daily" | "weekly" | "biweekly" | "monthly"; daysOfWeek?: number[]; endDate?: number; occurrences?: number; }
-): number[] {
-  const occurrences: number[] = [];
-  const maxOccurrences = recurrence.occurrences || 52;
-  const endDate = recurrence.endDate || (startTime + (365 * 24 * 60 * 60 * 1000));
-  const startDate = new Date(startTime);
-  const startDayOfWeek = startDate.getDay();
-
-  if (recurrence.type === "daily") {
-    let current = startTime;
-    while (occurrences.length < maxOccurrences && current <= endDate) {
-      const currentDate = new Date(current);
-      const dayOfWeek = currentDate.getDay();
-      if (!recurrence.daysOfWeek || recurrence.daysOfWeek.includes(dayOfWeek)) occurrences.push(current);
-      current += (24 * 60 * 60 * 1000);
-    }
-    return occurrences;
-  }
-
-  if (recurrence.type === "weekly" || recurrence.type === "biweekly") {
-    const interval = recurrence.type === "weekly" ? 7 : 14;
-    const daysToGenerate = recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0 ? recurrence.daysOfWeek : [startDayOfWeek];
-    let weekStart = startTime;
-
-    while (occurrences.length < maxOccurrences && weekStart <= endDate) {
-      for (const targetDay of daysToGenerate) {
-        let daysToAdd = targetDay - startDayOfWeek;
-        if (daysToAdd < 0) daysToAdd += 7;
-        const occurrenceTime = weekStart + (daysToAdd * 24 * 60 * 60 * 1000);
-        if (occurrenceTime >= startTime && occurrenceTime <= endDate && occurrences.length < maxOccurrences) {
-          occurrences.push(occurrenceTime);
-        }
-      }
-      weekStart += (interval * 24 * 60 * 60 * 1000);
-    }
-    return occurrences.sort((a, b) => a - b);
-  }
-
-  if (recurrence.type === "monthly") {
-    let current = startTime;
-    while (occurrences.length < maxOccurrences && current <= endDate) {
-      const currentDate = new Date(current);
-      const dayOfWeek = currentDate.getDay();
-      if (!recurrence.daysOfWeek || recurrence.daysOfWeek.includes(dayOfWeek)) occurrences.push(current);
-      const nextDate = new Date(current);
-      nextDate.setMonth(nextDate.getMonth() + 1);
-      current = nextDate.getTime();
-    }
-    return occurrences;
-  }
-
-  return occurrences;
-}

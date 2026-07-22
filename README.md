@@ -130,7 +130,6 @@ flexidual
 │  │  ├─ calendar-provider.tsx
 │  │  ├─ calendar-tailwind-classes.ts
 │  │  ├─ calendar-types.ts
-│  │  ├─ calendar-with-data.tsx
 │  │  ├─ calendar.tsx
 │  │  ├─ dialog
 │  │  │  ├─ calendar-manage-event-dialog.tsx
@@ -205,7 +204,6 @@ flexidual
 │  │  └─ lessons
 │  │     └─ lesson-dialog.tsx
 │  ├─ team-switcher.tsx
-│  ├─ theme-provider.tsx
 │  ├─ ui
 │  │  ├─ accordion.tsx
 │  │  ├─ alert-dialog.tsx
@@ -273,7 +271,6 @@ flexidual
 │  ├─ schema.ts
 │  ├─ schools.ts
 │  ├─ seed.ts
-│  ├─ seedCPCA.ts
 │  ├─ student.ts
 │  ├─ tsconfig.json
 │  ├─ types.ts
@@ -293,11 +290,8 @@ flexidual
 │  ├─ request.ts
 │  └─ routing.ts
 ├─ lib
-│  ├─ date-utils.ts
 │  ├─ error-utils.ts
-│  ├─ grade-utils.ts
 │  ├─ locale-setup.ts
-│  ├─ location-data.ts
 │  ├─ rbac.ts
 │  ├─ table
 │  │  ├─ types.ts
@@ -305,8 +299,6 @@ flexidual
 │  ├─ teachers
 │  │  └─ teacher-detail.ts
 │  ├─ types
-│  │  ├─ academic.ts
-│  │  ├─ schedule.ts
 │  │  ├─ student.ts
 │  │  └─ table.ts
 │  └─ utils.ts
@@ -331,8 +323,6 @@ flexidual
 ├─ README.md
 ├─ scripts
 │  ├─ healUserRoles.ts
-│  ├─ migrate.ts
-│  └─ seedUsers.ts
 ├─ tsconfig.json
 └─ typings
    └─ recharts.d.ts

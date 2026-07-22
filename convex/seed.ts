@@ -1,6 +1,7 @@
 import { v } from "convex/values";
-import { mutation, MutationCtx } from "./_generated/server";
+import { internalMutation, MutationCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
+import { DEFAULT_INSTITUTION_GRADES } from "../lib/grades";
 
 const UX_DEMO_CURRICULUM_CODE = "UX-DEMO-01";
 const UX_DEMO_CLASS_NAME = "UX Demo - Integrated Biology Studio";
@@ -189,12 +190,12 @@ async function getDemoCampus(ctx: MutationCtx): Promise<Doc<"campuses">> {
 
 async function getUserByRole(
   ctx: MutationCtx,
-  role: string,
+  role: Doc<"roleAssignments">["role"],
   campusId?: Id<"campuses">,
 ): Promise<Doc<"users"> | null> {
   const assignments = await ctx.db
     .query("roleAssignments")
-    .filter((q) => q.eq(q.field("role"), role))
+    .withIndex("by_role", (q) => q.eq("role", role))
     .collect();
 
   const scoped = campusId
@@ -215,7 +216,7 @@ async function getStudents(
 ): Promise<Doc<"users">[]> {
   const assignments = await ctx.db
     .query("roleAssignments")
-    .filter((q) => q.eq(q.field("role"), "student"))
+    .withIndex("by_role", (q) => q.eq("role", "student"))
     .collect();
 
   const scoped = assignments.filter(
@@ -261,15 +262,13 @@ async function getUserCampus(
   ctx: MutationCtx,
   userId: Id<"users">,
 ): Promise<Doc<"campuses"> | null> {
-  const campusAssignment = await ctx.db
+  const assignments = await ctx.db
     .query("roleAssignments")
-    .filter((q) =>
-      q.and(
-        q.eq(q.field("userId"), userId),
-        q.eq(q.field("orgType"), "campus"),
-      ),
-    )
-    .first();
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  const campusAssignment = assignments.find(
+    (assignment) => assignment.orgType === "campus" && assignment.orgId,
+  );
 
   if (!campusAssignment) return null;
   return await ctx.db.get(campusAssignment.orgId as Id<"campuses">);
@@ -304,10 +303,11 @@ async function deleteSchedulesForClass(
   }
 }
 
-export const run = mutation({
+export const run = internalMutation({
   args: {
     clearExisting: v.optional(v.boolean()),
   },
+  returns: v.object({ message: v.string() }),
   handler: async (ctx, args) => {
     // 1. CLEAR EXISTING DATA (Optional)
     if (args.clearExisting) {
@@ -391,6 +391,17 @@ export const run = mutation({
       createdAt: Date.now(),
       createdBy: adminId,
     });
+    await Promise.all(
+      DEFAULT_INSTITUTION_GRADES.map((grade, order) =>
+        ctx.db.insert("institutionGrades", {
+          schoolId,
+          ...grade,
+          order,
+          createdAt: Date.now(),
+          createdBy: adminId,
+        }),
+      ),
+    );
 
     const campusId = await ctx.db.insert("campuses", {
       schoolId: schoolId,
@@ -406,6 +417,7 @@ export const run = mutation({
       userId: adminId,
       orgType: "school",
       orgId: schoolId,
+      schoolId,
       role: "admin",
       assignedAt: Date.now(),
     });
@@ -413,6 +425,7 @@ export const run = mutation({
       userId: teacherId,
       orgType: "campus",
       orgId: campusId,
+      schoolId,
       role: "teacher",
       assignedAt: Date.now(),
     });
@@ -421,7 +434,9 @@ export const run = mutation({
         userId: studentId,
         orgType: "campus",
         orgId: campusId,
+        schoolId,
         role: "student",
+        gradeCode: "07",
         assignedAt: Date.now(),
       });
     }
@@ -560,8 +575,18 @@ export const run = mutation({
   },
 });
 
-export const createClassesUxDemo = mutation({
+export const createClassesUxDemo = internalMutation({
   args: {},
+  returns: v.object({
+    message: v.string(),
+    classId: v.id("classes"),
+    curriculumId: v.id("curriculums"),
+    school: v.optional(v.string()),
+    campus: v.optional(v.string()),
+    lessons: v.optional(v.number()),
+    students: v.optional(v.number()),
+    schedules: v.optional(v.number()),
+  }),
   handler: async (ctx) => {
     const existingCurriculum = await ctx.db
       .query("curriculums")
@@ -569,13 +594,15 @@ export const createClassesUxDemo = mutation({
       .first();
 
     if (existingCurriculum) {
-      const existingClass = await ctx.db
+      const curriculumClasses = await ctx.db
         .query("classes")
         .withIndex("by_curriculum", (q) =>
           q.eq("curriculumId", existingCurriculum._id),
         )
-        .filter((q) => q.eq(q.field("name"), UX_DEMO_CLASS_NAME))
-        .first();
+        .collect();
+      const existingClass = curriculumClasses.find(
+        (classData) => classData.name === UX_DEMO_CLASS_NAME,
+      );
 
       if (existingClass) {
         return {
@@ -786,8 +813,16 @@ export const createClassesUxDemo = mutation({
   },
 });
 
-export const createClassesTableDemo = mutation({
+export const createClassesTableDemo = internalMutation({
   args: {},
+  returns: v.object({
+    message: v.string(),
+    teacher: v.string(),
+    campus: v.string(),
+    created: v.number(),
+    updated: v.number(),
+    total: v.number(),
+  }),
   handler: async (ctx) => {
     const teacher = await findUserByName(ctx, "betancourt");
     if (!teacher) {
@@ -827,11 +862,13 @@ export const createClassesTableDemo = mutation({
 
       if (!curriculum) continue;
 
-      const existingClass = await ctx.db
+      const curriculumClasses = await ctx.db
         .query("classes")
         .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculum._id))
-        .filter((q) => q.eq(q.field("name"), demoClass.name))
-        .first();
+        .collect();
+      const existingClass = curriculumClasses.find(
+        (classData) => classData.name === demoClass.name,
+      );
       const selectedStudents = students
         .slice(0, Math.min(demoClass.studentCount, students.length))
         .map((student) => student._id);
@@ -875,8 +912,16 @@ export const createClassesTableDemo = mutation({
   },
 });
 
-export const createAdvancedLiteratureLessonsDemo = mutation({
+export const createAdvancedLiteratureLessonsDemo = internalMutation({
   args: {},
+  returns: v.object({
+    message: v.string(),
+    className: v.string(),
+    curriculumTitle: v.string(),
+    created: v.number(),
+    updated: v.number(),
+    total: v.number(),
+  }),
   handler: async (ctx) => {
     const classDoc = await getClassByName(ctx, ADVANCED_LITERATURE_CLASS_NAME);
     if (!classDoc) {
@@ -947,8 +992,14 @@ export const createAdvancedLiteratureLessonsDemo = mutation({
   },
 });
 
-export const clearClassesTableDemo = mutation({
+export const clearClassesTableDemo = internalMutation({
   args: {},
+  returns: v.object({
+    message: v.string(),
+    curriculums: v.number(),
+    classes: v.number(),
+    lessons: v.number(),
+  }),
   handler: async (ctx) => {
     const demoCurriculums = await ctx.db.query("curriculums").collect();
     const targetCurriculums = demoCurriculums.filter((curriculum) =>
@@ -990,8 +1041,13 @@ export const clearClassesTableDemo = mutation({
   },
 });
 
-export const clearClassesUxDemo = mutation({
+export const clearClassesUxDemo = internalMutation({
   args: {},
+  returns: v.object({
+    message: v.string(),
+    classes: v.optional(v.number()),
+    lessons: v.optional(v.number()),
+  }),
   handler: async (ctx) => {
     const curriculum = await ctx.db
       .query("curriculums")

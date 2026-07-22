@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { TZDate } from "@date-fns/tz";
 import {
   ArrowRight,
   Calendar as CalendarIcon,
@@ -46,6 +47,7 @@ type ClassScheduleItem = {
   description?: string;
   start: number;
   end: number;
+  timeZone: string;
   roomName: string;
   sessionType?: "live" | "ignitia" | "abeka";
   isLive?: boolean;
@@ -78,7 +80,7 @@ export default function ClassDetailPage() {
     classData ? { curriculumId: classData.curriculumId } : "skip",
   );
 
-  const allScheduleItems = useQuery(api.schedule.getMySchedule, {});
+  const allScheduleItems = useQuery(api.schedule.getMySchedule, { classId });
   const classSchedule = allScheduleItems
     ?.filter((s) => s.classId === classId)
     .sort((a, b) => a.start - b.start);
@@ -463,11 +465,11 @@ function CurriculumOverview({
               const scheduledMetaLabel = scheduledItem
                 ? sessionFormatLabel
                   ? t("class.curriculumScheduledMetaWithPlatform", {
-                      date: format(scheduledItem.start, "MMM d, h:mm a"),
+                      date: `${format(new TZDate(scheduledItem.start, scheduledItem.timeZone), "MMM d, h:mm a")} · ${scheduledItem.timeZone}`,
                       platform: sessionFormatLabel,
                     })
                   : t("class.curriculumScheduledMeta", {
-                      date: format(scheduledItem.start, "MMM d, h:mm a"),
+                      date: `${format(new TZDate(scheduledItem.start, scheduledItem.timeZone), "MMM d, h:mm a")} · ${scheduledItem.timeZone}`,
                     })
                 : null;
 

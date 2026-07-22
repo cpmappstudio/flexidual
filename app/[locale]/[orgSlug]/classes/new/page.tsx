@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
-import { endOfDay, startOfDay } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { type DateRange } from "react-day-picker";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -20,15 +18,23 @@ import {
   CourseWeeklySlot,
 } from "@/components/teaching/classes/course-weekly-calendar";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
+import { useSettingsContext } from "@/hooks/use-settings-context";
 import { Link, useRouter } from "@/i18n/navigation";
 import { getRoleForOrg } from "@/lib/rbac";
-
-
+import { todayInTimeZone } from "@/lib/time-zone";
 
 export default function CreateCoursePage() {
   const t = useTranslations();
+  const locale = useLocale();
   const params = useParams();
   const router = useRouter();
   const orgSlug = (params.orgSlug as string) || "system";
@@ -37,22 +43,42 @@ export default function CreateCoursePage() {
   const isAdmin =
     role === "admin" || role === "principal" || role === "superadmin";
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
-  const curriculums = useQuery(api.curriculums.list, {
-    includeInactive: false,
-  });
+  const { selectedCampusId } = useAdminSchoolFilter();
+  const { context: settingsContext, basePath: settingsBasePath } =
+    useSettingsContext();
+  const schoolId = settingsContext?.institution._id;
+  const campusId =
+    orgContext?.type === "campus"
+      ? (orgContext._id as Id<"campuses">)
+      : orgContext?.type === "system" && selectedCampusId !== "all"
+        ? (selectedCampusId as Id<"campuses">)
+        : undefined;
+  const curriculums = useQuery(
+    api.curriculums.list,
+    isAdmin && schoolId ? { includeInactive: false, schoolId } : "skip",
+  );
   const teachers = useQuery(
     api.users.getUsers,
-    isAdmin && orgContext
+    isAdmin && campusId
       ? {
           role: "teacher",
-          orgType: orgContext.type,
-          orgId: orgContext._id,
+          orgType: "campus",
+          orgId: campusId,
         }
       : "skip",
   );
+  const academicSettings = useQuery(
+    api.academicSettings.get,
+    isAdmin && schoolId ? { schoolId, campusId } : "skip",
+  );
+  const grades = useQuery(
+    api.grades.list,
+    isAdmin && schoolId ? { schoolId } : "skip",
+  );
   const createCourse = useMutation(api.classes.createWithSchedule);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [academicPeriod, setAcademicPeriod] = useState<DateRange>();
+  const [academicPeriodId, setAcademicPeriodId] = useState("");
+  const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
   const [weeklySlots, setWeeklySlots] = useState<CourseWeeklySlot[]>([]);
   const [formData, setFormData] = useState<CourseFormData>({
     name: "",
@@ -60,21 +86,81 @@ export default function CreateCoursePage() {
     academicYear: "",
     curriculumId: "",
     teacherId: "",
+    gradeCode: "",
   });
+
+  const availablePeriods = useMemo(() => {
+    if (!academicSettings?.timeZone) return [];
+    const today = todayInTimeZone(academicSettings.timeZone);
+    return academicSettings.periods.filter((period) => period.endDate >= today);
+  }, [academicSettings]);
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        dateStyle: "medium",
+        timeZone: "UTC",
+      }),
+    [locale],
+  );
+  const suggestedName = useMemo(() => {
+    const curriculum = curriculums?.find(
+      (item) => item._id === formData.curriculumId,
+    );
+    const teacher = teachers?.find((item) => item._id === formData.teacherId);
+    const period = availablePeriods.find(
+      (item) => item._id === academicPeriodId,
+    );
+
+    return curriculum && teacher && period
+      ? `${curriculum.title} · ${teacher.fullName} · ${period.name}`
+      : "";
+  }, [
+    academicPeriodId,
+    availablePeriods,
+    curriculums,
+    formData.curriculumId,
+    formData.teacherId,
+    teachers,
+  ]);
+
+  useEffect(() => {
+    if (availablePeriods.some((period) => period._id === academicPeriodId)) {
+      return;
+    }
+    const today = academicSettings?.timeZone
+      ? todayInTimeZone(academicSettings.timeZone)
+      : "";
+    const currentPeriod = availablePeriods.find(
+      (period) => period.startDate <= today && period.endDate >= today,
+    );
+    setAcademicPeriodId(
+      currentPeriod?._id ??
+        (availablePeriods.length === 1 ? availablePeriods[0]._id : ""),
+    );
+  }, [academicPeriodId, academicSettings?.timeZone, availablePeriods]);
+
+  useEffect(() => {
+    if (isNameManuallyEdited) return;
+    setFormData((current) =>
+      current.name === suggestedName
+        ? current
+        : { ...current, name: suggestedName },
+    );
+  }, [isNameManuallyEdited, suggestedName]);
 
   const isSubmitDisabled =
     !formData.name.trim() ||
     !formData.curriculumId ||
     !formData.teacherId ||
-    !academicPeriod?.from ||
-    !academicPeriod.to ||
+    !formData.gradeCode ||
+    !campusId ||
+    !academicPeriodId ||
+    !academicSettings?.timeZone ||
     weeklySlots.length === 0;
-
-
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isSubmitDisabled || !academicPeriod?.from || !academicPeriod.to) return;
+    if (isSubmitDisabled || !campusId) return;
     setIsSubmitting(true);
 
     try {
@@ -83,13 +169,9 @@ export default function CreateCoursePage() {
         description: formData.description.trim() || undefined,
         curriculumId: formData.curriculumId as Id<"curriculums">,
         teacherId: formData.teacherId as Id<"users">,
-        campusId:
-          orgContext?.type === "campus"
-            ? (orgContext._id as Id<"campuses">)
-            : undefined,
-        startDate: startOfDay(academicPeriod.from).getTime(),
-        endDate: endOfDay(academicPeriod.to).getTime(),
-        timezoneOffset: new Date().getTimezoneOffset(),
+        gradeCode: formData.gradeCode,
+        campusId,
+        academicPeriodId: academicPeriodId as Id<"academicPeriods">,
         weeklySlots: weeklySlots.map((slot) => ({
           dayOfWeek: slot.dayOfWeek,
           startMinutes: slot.startMinutes,
@@ -107,7 +189,7 @@ export default function CreateCoursePage() {
 
   return (
     <div className="w-full space-y-8">
-      <header className="sticky top-[var(--header-height)] z-30 isolate flex items-center justify-between gap-4 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:-z-10 after:h-[calc(100%+2rem)] after:bg-gradient-to-b after:from-background after:via-background/80 after:to-background/0 after:content-['']">
+      <header className="sticky top-[var(--header-height)] z-30 isolate flex items-center justify-between gap-4 py-2 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:-z-10 after:h-[calc(100%+2rem)] after:bg-gradient-to-b after:from-background after:via-background/80 after:to-background/0 after:content-['']">
         <h1 className="text-2xl font-bold sm:text-3xl">{t("class.new")}</h1>
         <div className="flex shrink-0 items-center gap-2">
           <Button variant="outline" type="button" asChild>
@@ -129,46 +211,144 @@ export default function CreateCoursePage() {
         onSubmit={handleSubmit}
         className="space-y-10"
       >
-        <section className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+        <section>
+          {!campusId && (
+            <p className="mb-4 text-sm text-destructive">
+              {t("class.selectCampusFirst")}
+            </p>
+          )}
           <CourseFormFields
             formData={formData}
             setFormDataAction={setFormData}
             curriculums={curriculums}
             teachers={teachers}
+            grades={grades}
             isAdmin={isAdmin}
             nameRequired
             showAcademicYear={false}
+            primaryFieldsClassName="lg:grid-cols-2"
+            curriculumEmptyState={
+              <p className="text-sm text-muted-foreground">
+                {t("class.noCurriculums")}{" "}
+                <Link
+                  href={`/${orgSlug}/curriculums`}
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  {t("class.manageCurriculums")}
+                </Link>
+              </p>
+            }
+            teacherEmptyState={
+              <p className="text-sm text-muted-foreground">
+                {t("class.noTeachers")}{" "}
+                <Link
+                  href={`/${orgSlug}/users`}
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  {t("class.manageTeachers")}
+                </Link>
+              </p>
+            }
+            gradeEmptyState={
+              <p className="text-sm text-muted-foreground">
+                {t("class.noGrades")}{" "}
+                <Link
+                  href={settingsBasePath + "/grades"}
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  {t("class.configureGrades")}
+                </Link>
+              </p>
+            }
+            onNameChangeAction={(name) => {
+              setIsNameManuallyEdited(true);
+              setFormData((current) => ({ ...current, name }));
+            }}
+            academicPeriodField={
+              <div className="grid gap-2">
+                <Label>
+                  {t("class.academicPeriod")}{" "}
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={academicPeriodId}
+                  onValueChange={setAcademicPeriodId}
+                >
+                  <SelectTrigger className="w-full bg-sidebar">
+                    <SelectValue
+                      placeholder={t("class.selectAcademicPeriod")}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availablePeriods.map((period) => (
+                      <SelectItem key={period._id} value={period._id}>
+                        {period.name} ·{" "}
+                        {dateFormatter.format(
+                          new Date(`${period.startDate}T00:00:00Z`),
+                        )}{" "}
+                        –{" "}
+                        {dateFormatter.format(
+                          new Date(`${period.endDate}T00:00:00Z`),
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {schoolId &&
+                  academicSettings &&
+                  availablePeriods.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      {t("class.noAcademicPeriods")}{" "}
+                      {settingsContext?.canManageInstitution && (
+                        <Link
+                          href={settingsBasePath + "/academic"}
+                          className="font-medium text-primary underline-offset-4 hover:underline"
+                        >
+                          {t("class.configureAcademicPeriods")}
+                        </Link>
+                      )}
+                    </p>
+                  )}
+                {!schoolId && (
+                  <p className="text-sm text-muted-foreground">
+                    {t("class.selectInstitutionFirst")}
+                  </p>
+                )}
+                {schoolId && academicSettings && !academicSettings.timeZone && (
+                  <p className="text-sm text-destructive">
+                    {t("class.timeZoneRequired")}{" "}
+                    {settingsContext?.canManageInstitution && (
+                      <Link
+                        href={settingsBasePath}
+                        className="font-medium underline-offset-4 hover:underline"
+                      >
+                        {t("class.configureTimeZone")}
+                      </Link>
+                    )}
+                  </p>
+                )}
+              </div>
+            }
           />
-
-          <div className="space-y-2">
-            <Label>
-              {t("class.academicPeriod")} {" "}
-              <span className="text-destructive">*</span>
-            </Label>
-            <Calendar
-              mode="range"
-              defaultMonth={academicPeriod?.from}
-              selected={academicPeriod}
-              onSelect={setAcademicPeriod}
-              numberOfMonths={2}
-              className="rounded-lg border"
-            />
-          </div>
         </section>
 
         <section className="space-y-5">
-          <h2 className="text-xl font-semibold">{t("class.weeklySchedule")}</h2>
+          <h2 className="text-xl font-semibold">
+            {t("class.weeklySchedule")}
+            {academicSettings?.timeZone && ` · ${academicSettings.timeZone}`}
+          </h2>
           <CourseWeeklyCalendar
             value={weeklySlots}
             onChangeAction={setWeeklySlots}
             courseName={formData.name}
+            startMinutes={academicSettings?.scheduleStartMinutes}
+            endMinutes={academicSettings?.scheduleEndMinutes}
             teacherName={
               teachers?.find((teacher) => teacher._id === formData.teacherId)
                 ?.fullName
             }
           />
         </section>
-
       </form>
     </div>
   );

@@ -11,17 +11,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  getBrowserTimeZone,
+  TimeZoneInput,
+} from "@/components/ui/time-zone-input";
 import { useSettingsContext } from "@/hooks/use-settings-context";
+import { isValidTimeZone } from "@/lib/time-zone";
 
 export function InstitutionSettings() {
   const t = useTranslations("settings.institutionSettings");
   const { context, isLoading } = useSettingsContext();
   const updateInstitution = useMutation(api.schools.updateInstitutionSettings);
   const [name, setName] = React.useState("");
+  const [timeZone, setTimeZone] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
 
   React.useEffect(() => {
-    if (context?.institution) setName(context.institution.name);
+    if (!context?.institution) return;
+    setName(context.institution.name);
+    setTimeZone(context.institution.timeZone ?? getBrowserTimeZone());
   }, [context?.institution]);
 
   if (isLoading) {
@@ -43,7 +51,9 @@ export function InstitutionSettings() {
 
   const institution = context.institution;
   const hasChanges =
-    name.trim() !== institution.name && name.trim().length >= 2;
+    name.trim().length >= 2 &&
+    isValidTimeZone(timeZone) &&
+    (name.trim() !== institution.name || timeZone !== institution.timeZone);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -51,7 +61,7 @@ export function InstitutionSettings() {
 
     setIsSaving(true);
     try {
-      await updateInstitution({ id: institution._id, name });
+      await updateInstitution({ id: institution._id, name, timeZone });
       toast.success(t("saved"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("saveError"));
@@ -71,6 +81,16 @@ export function InstitutionSettings() {
             value={name}
             onChange={(event) => setName(event.target.value)}
             minLength={2}
+            required
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="institution-time-zone">{t("timeZone")}</Label>
+          <TimeZoneInput
+            id="institution-time-zone"
+            value={timeZone}
+            onChange={(event) => setTimeZone(event.target.value)}
+            placeholder="America/New_York"
             required
           />
         </div>

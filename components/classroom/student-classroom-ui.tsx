@@ -152,20 +152,20 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
     active: false, startMouse: { x: 0, y: 0 }, startPos: { x: 0, y: 0 },
   });
 
-  const clampPos = (x: number, y: number) => {
+  const clampPos = useCallback((x: number, y: number) => {
     const el = containerRef.current;
     if (!el) return { x, y };
     return {
       x: Math.max(PIP_MARGIN, Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, x)),
       y: Math.max(PIP_MARGIN, Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, y)),
     };
-  };
+  }, [containerRef]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     setPos({ x: PIP_MARGIN, y: el.offsetHeight - PIP_H - PIP_MARGIN });
-  }, []);
+  }, [containerRef]);
 
   // Re-clamp position whenever the container is resized (e.g. orientation change)
   useEffect(() => {
@@ -211,7 +211,7 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, []);
+  }, [clampPos]);
 
   if (!pos) return null;
 

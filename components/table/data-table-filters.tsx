@@ -50,13 +50,11 @@ export function DataTableFilters<TData>({
     }, []);
 
     // Check if any filters are active
-    const hasActiveFilters = React.useMemo(() => {
-        return filterConfigs.some((config) => {
-            const column = table.getColumn(config.id);
-            const filterValue = column?.getFilterValue() as string[] | undefined;
-            return filterValue && filterValue.length > 0;
-        });
-    }, [table, filterConfigs, table.getState().columnFilters]);
+    const hasActiveFilters = filterConfigs.some((config) => {
+        const column = table.getColumn(config.id);
+        const filterValue = column?.getFilterValue() as string[] | undefined;
+        return filterValue && filterValue.length > 0;
+    });
 
     const clearAllFilters = () => {
         filterConfigs.forEach((config) => {

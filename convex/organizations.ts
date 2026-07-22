@@ -1,7 +1,7 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { query } from "./_generated/server";
 import { getCurrentUserOrThrow } from "./users";
-import { hasOrgRole, hasSystemRole } from "./permissions";
+import { canAccessSchool, hasOrgRole, hasSystemRole } from "./permissions";
 
 /**
  * Resolves a URL slug into a concrete Organization ID and Type.
@@ -9,9 +9,31 @@ import { hasOrgRole, hasSystemRole } from "./permissions";
  */
 export const resolveSlug = query({
   args: { slug: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      type: v.literal("system"),
+      _id: v.optional(v.id("schools")),
+      name: v.string(),
+    }),
+    v.object({
+      type: v.literal("school"),
+      _id: v.id("schools"),
+      name: v.string(),
+    }),
+    v.object({
+      type: v.literal("campus"),
+      _id: v.id("campuses"),
+      name: v.string(),
+    }),
+  ),
   handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
     // 1. Check if it's the global system dashboard
     if (args.slug === "system" || args.slug === "admin") {
+      if (!(await hasSystemRole(ctx, user._id, ["superadmin"]))) {
+        throw new ConvexError("PERMISSION_DENIED");
+      }
       return { type: "system" as const, _id: undefined, name: "Global System" };
     }
 
@@ -22,6 +44,9 @@ export const resolveSlug = query({
       .first();
 
     if (school) {
+      if (!(await canAccessSchool(ctx, user._id, school._id))) {
+        throw new ConvexError("PERMISSION_DENIED");
+      }
       return { type: "school" as const, _id: school._id, name: school.name };
     }
 
@@ -32,6 +57,9 @@ export const resolveSlug = query({
       .first();
 
     if (campus) {
+      if (!(await canAccessSchool(ctx, user._id, campus.schoolId))) {
+        throw new ConvexError("PERMISSION_DENIED");
+      }
       return { type: "campus" as const, _id: campus._id, name: campus.name };
     }
 
@@ -52,6 +80,7 @@ export const getSettingsContext = query({
         name: v.string(),
         slug: v.string(),
         isActive: v.boolean(),
+        timeZone: v.optional(v.string()),
       }),
       canManageInstitution: v.boolean(),
     }),
@@ -71,6 +100,7 @@ export const getSettingsContext = query({
           name: school.name,
           slug: school.slug,
           isActive: school.isActive,
+          timeZone: school.timeZone,
         },
         canManageInstitution: true,
       };
@@ -115,6 +145,7 @@ export const getSettingsContext = query({
         name: institution.name,
         slug: institution.slug,
         isActive: institution.isActive,
+        timeZone: institution.timeZone,
       },
       canManageInstitution,
     };

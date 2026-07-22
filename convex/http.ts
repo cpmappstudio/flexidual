@@ -12,8 +12,9 @@ type WebhookEvent = {
         email_addresses?: Array<{ email_address: string }>;
         first_name?: string;
         last_name?: string;
+        username?: string;
         image_url?: string;
-        [key: string]: any;
+        public_metadata?: Record<string, unknown>;
     };
 };
 
@@ -43,7 +44,19 @@ http.route({
             case "user.created":
             case "user.updated":
                 await ctx.runMutation(internal.users.upsertFromClerk, {
-                    data: event.data as any, // Clerk webhook data
+                    data: {
+                        id: event.data.id,
+                        email_addresses: event.data.email_addresses,
+                        first_name: event.data.first_name,
+                        last_name: event.data.last_name,
+                        username: event.data.username,
+                        image_url: event.data.image_url,
+                        public_metadata: {
+                            ...(typeof event.data.public_metadata?.school === "string"
+                                ? { school: event.data.public_metadata.school }
+                                : {}),
+                        },
+                    },
                 });
                 break;
 

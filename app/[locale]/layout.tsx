@@ -1,6 +1,5 @@
 import ConvexClientProvider from "@/components/convex-client-provider";
 import { ClerkProvider } from "@clerk/nextjs";
-import { ThemeProvider } from "@/components/theme-provider"
 import { shadcn } from "@clerk/themes"
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
@@ -36,29 +35,21 @@ export default async function LocaleLayout({
     const clerkLocalization = locale === 'es' ? esES : locale === 'pt-BR' ? ptBR : enUS;
 
     return (
-        <ThemeProvider
-            attribute="class"
-            defaultTheme="light"
-            forcedTheme="light"
-            enableSystem={false}
-            disableTransitionOnChange
+        <ClerkProvider
+            appearance={{
+                baseTheme: shadcn,
+            }}
+            localization={clerkLocalization}
+            afterSignOutUrl={`/${locale}/sign-in`}
         >
-            <ClerkProvider
-                appearance={{
-                    baseTheme: shadcn,
-                }}
-                localization={clerkLocalization}
-                afterSignOutUrl={`/${locale}/sign-in`}
-            >
-                <ConvexClientProvider>
-                    <NextIntlClientProvider messages={messages}>
-                        <AlertProvider>
-                            {children}
-                        </AlertProvider>
-                    </NextIntlClientProvider>
-                </ConvexClientProvider>
-            </ClerkProvider>
-        </ThemeProvider>
+            <ConvexClientProvider>
+                <NextIntlClientProvider messages={messages}>
+                    <AlertProvider>
+                        {children}
+                    </AlertProvider>
+                </NextIntlClientProvider>
+            </ConvexClientProvider>
+        </ClerkProvider>
     );
 }
 

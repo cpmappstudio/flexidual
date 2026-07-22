@@ -1,10 +1,24 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
-import { GRADE_VALUES } from "../lib/types/academic";
 import { ConvexError } from "convex/values";
 import { hasSystemRole, hasOrgRole, canManageCurriculums, isPrincipalOfSchool } from "./permissions";
 import { Id } from "./_generated/dataModel";
+import { validateGradeCodes } from "./model/grades";
+
+const curriculumValidator = v.object({
+  _id: v.id("curriculums"),
+  _creationTime: v.number(),
+  title: v.string(),
+  description: v.optional(v.string()),
+  code: v.optional(v.string()),
+  color: v.optional(v.string()),
+  isActive: v.boolean(),
+  createdAt: v.number(),
+  createdBy: v.id("users"),
+  gradeCodes: v.optional(v.array(v.string())),
+  schoolId: v.optional(v.id("schools")),
+});
 
 // ============================================================================
 // QUERIES
@@ -21,6 +35,7 @@ export const list = query({
     includeInactive: v.optional(v.boolean()),
     schoolId: v.optional(v.id("schools")),
   },
+  returns: v.union(v.array(curriculumValidator), v.null()),
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return null;
@@ -30,12 +45,14 @@ export const list = query({
     // 1. SUPERADMINS: Full Access (with optional school filter)
     if (isSuperAdmin) {
       if (args.schoolId) {
-        const q = ctx.db.query("curriculums")
-          .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId!));
-        if (!args.includeInactive) {
-          return await q.filter((q) => q.eq(q.field("isActive"), true)).order("desc").collect();
-        }
-        return await q.order("desc").collect();
+        return await ctx.db
+          .query("curriculums")
+          .withIndex("by_school", (q) => {
+            const range = q.eq("schoolId", args.schoolId!);
+            return args.includeInactive ? range : range.eq("isActive", true);
+          })
+          .order("desc")
+          .collect();
       }
 
       if (!args.includeInactive) {
@@ -50,17 +67,20 @@ export const list = query({
     // 2. Resolve Contextual Access (Admin of Schools & Taught Classes)
     
     // Find schools where they are an admin
-    const adminAssignments = await ctx.db.query("roleAssignments")
+    const assignments = await ctx.db.query("roleAssignments")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => q.and(q.eq(q.field("orgType"), "school"), q.eq(q.field("role"), "admin")))
       .collect();
+    const adminAssignments = assignments.filter(
+      (assignment) =>
+        assignment.orgType === "school" && assignment.role === "admin",
+    );
     const adminSchoolIds = adminAssignments.map((a) => a.orgId);
 
     // Find schools where they are a principal
-    const principalAssignments = await ctx.db.query("roleAssignments")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) => q.and(q.eq(q.field("orgType"), "campus"), q.eq(q.field("role"), "principal")))
-      .collect();
+    const principalAssignments = assignments.filter(
+      (assignment) =>
+        assignment.orgType === "campus" && assignment.role === "principal",
+    );
     
     const principalCampuses = await Promise.all(
         principalAssignments.map(a => ctx.db.get(a.orgId as Id<"campuses">))
@@ -77,21 +97,33 @@ export const list = query({
       .collect();
     const taughtCurriculumIds = myClasses.map((c) => c.curriculumId);
 
-    // Fetch all curriculums and filter in memory based on contextual access
-    const allCurriculums = await ctx.db.query("curriculums").order("desc").collect();
+    const schoolIds = args.schoolId
+      ? validSchoolIds.filter((schoolId) => schoolId === args.schoolId)
+      : validSchoolIds;
+    const [schoolCurriculums, taughtCurriculums] = await Promise.all([
+      Promise.all(
+        schoolIds.map((schoolId) =>
+          ctx.db
+            .query("curriculums")
+            .withIndex("by_school", (q) =>
+              q.eq("schoolId", schoolId as Id<"schools">),
+            )
+            .collect(),
+        ),
+      ),
+      Promise.all(taughtCurriculumIds.map((id) => ctx.db.get(id))),
+    ]);
+    const accessible = new Map(
+      [...schoolCurriculums.flat(), ...taughtCurriculums]
+        .filter((item) => item !== null)
+        .map((item) => [item!._id, item!]),
+    );
 
-    return allCurriculums.filter((c) => {
-      // Respect inactive filter
-      if (!args.includeInactive && !c.isActive) return false;
-      
-      // Allow if they are an admin or principal of the curriculum's school network
-      if (c.schoolId && validSchoolIds.includes(c.schoolId)) return true;
-      
-      // Allow if they actively teach this curriculum
-      if (taughtCurriculumIds.some(id => id === c._id)) return true;
-      
-      return false;
-    });
+    return [...accessible.values()].filter(
+      (curriculum) =>
+        (args.includeInactive || curriculum.isActive) &&
+        (!args.schoolId || curriculum.schoolId === args.schoolId),
+    );
   },
 });
 
@@ -100,6 +132,7 @@ export const list = query({
  */
 export const get = query({
   args: { id: v.id("curriculums") },
+  returns: v.union(curriculumValidator, v.null()),
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return null;
@@ -120,67 +153,16 @@ export const get = query({
     }
 
     // 3. Check Teacher Assignment
-    const isTeachingCurriculum = await ctx.db
+    const teachingClasses = await ctx.db
       .query("classes")
       .withIndex("by_teacher", (q) => q.eq("teacherId", user._id).eq("isActive", true))
-      .filter((q) => q.eq(q.field("curriculumId"), args.id))
-      .first();
+      .collect();
 
-    if (isTeachingCurriculum) return curriculum;
+    if (teachingClasses.some((classData) => classData.curriculumId === args.id)) {
+      return curriculum;
+    }
 
     return null; // Access denied
-  },
-});
-
-/**
- * Get curriculum with lesson count
- * Useful for dashboard/admin views
- */
-export const getWithStats = query({
-  args: { id: v.id("curriculums") },
-  handler: async (ctx, args) => {
-    const curriculum = await ctx.db.get(args.id);
-    if (!curriculum) return null;
-
-    const lessons = await ctx.db
-      .query("lessons")
-      .withIndex("by_curriculum_active", (q) => q.eq("curriculumId", args.id).eq("isActive", true))
-      .collect();
-
-    const classes = await ctx.db
-      .query("classes")
-      .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.id))
-      .collect();
-
-    return {
-      ...curriculum,
-      stats: {
-        lessonCount: lessons.length,
-        activeClassCount: classes.filter(c => c.isActive).length,
-        totalClassCount: classes.length,
-      }
-    };
-  },
-});
-
-/**
- * Check if curriculum code is unique
- */
-export const isCodeAvailable = query({
-  args: { 
-    code: v.string(),
-    excludeId: v.optional(v.id("curriculums"))
-  },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("curriculums")
-      .withIndex("by_code", (q) => q.eq("code", args.code))
-      .first();
-
-    if (!existing) return true;
-    if (args.excludeId && existing._id === args.excludeId) return true;
-    
-    return false;
   },
 });
 
@@ -200,6 +182,7 @@ export const create = mutation({
     color: v.optional(v.string()),
     gradeCodes: v.optional(v.array(v.string())),
   },
+  returns: v.id("curriculums"),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -217,8 +200,12 @@ export const create = mutation({
       if (isAvailable) throw new Error(`Curriculum code "${args.code}" already exists`);
     }
 
-    if (args.gradeCodes) {
-      const invalidCodes = args.gradeCodes.filter(g => !(GRADE_VALUES as readonly string[]).includes(g));
+    if (args.gradeCodes && args.schoolId) {
+      const invalidCodes = await validateGradeCodes(
+        ctx,
+        args.schoolId,
+        args.gradeCodes,
+      );
       if (invalidCodes.length > 0) {
         throw new ConvexError({ code: "INVALID_GRADE", grades: invalidCodes.join(", ") });
       }
@@ -230,6 +217,7 @@ export const create = mutation({
       description: args.description,
       code: args.code,
       color: args.color || "#3b82f6",
+      gradeCodes: args.gradeCodes,
       isActive: true,
       createdAt: Date.now(),
       createdBy: user._id,
@@ -252,6 +240,10 @@ export const createBatch = mutation({
       gradeCodes: v.optional(v.array(v.string())),
     })),
   },
+  returns: v.object({
+    count: v.number(),
+    ids: v.array(v.id("curriculums")),
+  }),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -264,8 +256,26 @@ export const createBatch = mutation({
         targetSchoolId = campus?.schoolId;
     }
 
+    if (!targetSchoolId) throw new ConvexError("INSTITUTION_REQUIRED");
+    if (!(await canManageCurriculums(ctx, user._id, targetSchoolId))) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
+
     const createdIds = [];
     for (const item of args.curriculums) {
+      if (item.gradeCodes) {
+        const invalidCodes = await validateGradeCodes(
+          ctx,
+          targetSchoolId,
+          item.gradeCodes,
+        );
+        if (invalidCodes.length > 0) {
+          throw new ConvexError({
+            code: "INVALID_GRADE",
+            grades: invalidCodes.join(", "),
+          });
+        }
+      }
       const id = await ctx.db.insert("curriculums", {
         title: item.title,
         description: item.description,
@@ -297,6 +307,7 @@ export const update = mutation({
     isActive: v.optional(v.boolean()),
     gradeCodes: v.optional(v.array(v.string())),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -308,8 +319,12 @@ export const update = mutation({
       throw new Error("Only administrators can update curriculums");
     }
 
-    if (args.gradeCodes) {
-      const invalidCodes = args.gradeCodes.filter(g => !(GRADE_VALUES as readonly string[]).includes(g));
+    if (args.gradeCodes && curriculum.schoolId) {
+      const invalidCodes = await validateGradeCodes(
+        ctx,
+        curriculum.schoolId,
+        args.gradeCodes,
+      );
       if (invalidCodes.length > 0) throw new ConvexError({ code: "INVALID_GRADE" });
     }
 
@@ -323,6 +338,7 @@ export const update = mutation({
 
     const { id, ...updates } = args;
     await ctx.db.patch(id, updates);
+    return null;
   },
 });
 
@@ -331,10 +347,8 @@ export const update = mutation({
  * WARNING: This cascades to lessons. Use with caution.
  */
 export const remove = mutation({
-  args: { 
-    id: v.id("curriculums"),
-    force: v.optional(v.boolean()), 
-  },
+  args: { id: v.id("curriculums") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -348,10 +362,11 @@ export const remove = mutation({
       .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.id))
       .collect();
 
-    const activeClasses = classes.filter(c => c.isActive);
-    
-    if (activeClasses.length > 0 && !args.force) {
-      throw new Error(`Cannot delete curriculum with ${activeClasses.length} active class(es).`);
+    if (classes.length > 0) {
+      throw new ConvexError({
+        code: "CURRICULUM_IN_USE",
+        message: `Cannot delete a curriculum used by ${classes.length} class(es).`,
+      });
     }
 
     await ctx.db.delete(args.id);
@@ -365,7 +380,7 @@ export const remove = mutation({
     for (const lesson of lessons) {
       if (lesson.resourceStorageIds) {
         for (const storageId of lesson.resourceStorageIds) {
-          try { await ctx.storage.delete(storageId); } catch (e) {}
+          try { await ctx.storage.delete(storageId); } catch {}
         }
       }
       await ctx.db.delete(lesson._id);
@@ -378,6 +393,7 @@ export const remove = mutation({
  */
 export const archive = mutation({
   args: { id: v.id("curriculums") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 

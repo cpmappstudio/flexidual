@@ -1,22 +1,24 @@
-import { QueryCtx } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import { MutationCtx, QueryCtx } from "./_generated/server";
+import { Doc, Id } from "./_generated/dataModel";
+import { resolveMembershipSchoolId } from "./model/membership";
+import { isStudentEnrolled } from "./model/enrollments";
 
 /**
  * Checks if a user has a specific system-wide role (like superadmin or global admin)
  */
 export async function hasSystemRole(
-  ctx: QueryCtx, 
-  userId: Id<"users">, 
-  allowedRoles: string[]
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  allowedRoles: string[],
 ): Promise<boolean> {
-  // Query by user first, then filter by orgType to satisfy Convex index rules
   const assignments = await ctx.db
     .query("roleAssignments")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .filter((q) => q.eq(q.field("orgType"), "system"))
+    .withIndex("by_user_org", (q) =>
+      q.eq("userId", userId).eq("orgId", undefined).eq("orgType", "system"),
+    )
     .collect();
 
-  return assignments.some(a => allowedRoles.includes(a.role));
+  return assignments.some((a) => allowedRoles.includes(a.role));
 }
 
 /**
@@ -28,31 +30,58 @@ export async function hasOrgRole(
   userId: Id<"users">,
   orgId: string, // Can be schoolId or campusId
   orgType: "school" | "campus",
-  allowedRoles: string[]
+  allowedRoles: string[],
 ): Promise<boolean> {
   // 1. Check if they are a system superadmin (override)
   const isSuperAdmin = await hasSystemRole(ctx, userId, ["superadmin"]);
   if (isSuperAdmin) return true;
 
-  // 2. Query by user, then filter by context to avoid composite index order errors
   const assignments = await ctx.db
     .query("roleAssignments")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .filter((q) => 
-      q.and(
-        q.eq(q.field("orgId"), orgId),
-        q.eq(q.field("orgType"), orgType)
-      )
+    .withIndex("by_user_org", (q) =>
+      q.eq("userId", userId).eq("orgId", orgId).eq("orgType", orgType),
     )
     .collect();
 
-  return assignments.some(a => allowedRoles.includes(a.role));
+  return assignments.some((a) => allowedRoles.includes(a.role));
+}
+
+export function canManageInstitution(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  schoolId: Id<"schools">,
+) {
+  return hasOrgRole(ctx, userId, schoolId, "school", ["admin"]);
+}
+
+export async function canAccessSchool(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  schoolId: Id<"schools">,
+) {
+  if (await hasSystemRole(ctx, userId, ["superadmin"])) return true;
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+
+  for (const assignment of assignments) {
+    const assignmentSchoolId =
+      assignment.schoolId ??
+      (await resolveMembershipSchoolId(
+        ctx,
+        assignment.orgType,
+        assignment.orgId,
+      ));
+    if (assignmentSchoolId === schoolId) return true;
+  }
+  return false;
 }
 
 export async function canModifyCurriculumContent(
   ctx: QueryCtx,
   userId: Id<"users">,
-  curriculumId: Id<"curriculums">
+  curriculumId: Id<"curriculums">,
 ): Promise<boolean> {
   const curriculum = await ctx.db.get(curriculumId);
   if (!curriculum) return false;
@@ -65,24 +94,60 @@ export async function canModifyCurriculumContent(
   if (!curriculum.schoolId) return false;
 
   // 2. School Admins AND Campus Principals can do anything within their school network
-  const isSchoolAdmin = await hasOrgRole(ctx, userId, curriculum.schoolId, "school", ["admin"]);
+  const isSchoolAdmin = await hasOrgRole(
+    ctx,
+    userId,
+    curriculum.schoolId,
+    "school",
+    ["admin"],
+  );
   if (isSchoolAdmin) return true;
-  
-  const isPrincipal = await isPrincipalOfSchool(ctx, userId, curriculum.schoolId);
+
+  const isPrincipal = await isPrincipalOfSchool(
+    ctx,
+    userId,
+    curriculum.schoolId,
+  );
   if (isPrincipal) return true;
 
-  // 3. Teachers can only modify if they are assigned to a class using it
-  const isTeacher = await hasOrgRole(ctx, userId, curriculum.schoolId, "school", ["teacher"]);
-  if (isTeacher) {
-    const hasClass = await ctx.db
-      .query("classes")
-      .withIndex("by_teacher", (q) => q.eq("teacherId", userId).eq("isActive", true))
-      .filter((q) => q.eq(q.field("curriculumId"), curriculumId))
-      .first();
-    
-    return !!hasClass; // Returns true if they have a class, false otherwise
+  const classes = await ctx.db
+    .query("classes")
+    .withIndex("by_teacher", (q) =>
+      q.eq("teacherId", userId).eq("isActive", true),
+    )
+    .collect();
+  return classes.some((classData) => classData.curriculumId === curriculumId);
+}
+
+export async function canAccessCurriculumContent(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  curriculumId: Id<"curriculums">,
+): Promise<boolean> {
+  const curriculum = await ctx.db.get(curriculumId);
+  if (!curriculum) return false;
+  if (await hasSystemRole(ctx, userId, ["superadmin"])) return true;
+  if (
+    curriculum.schoolId &&
+    (await canManageCurriculums(ctx, userId, curriculum.schoolId))
+  ) {
+    return true;
   }
 
+  const classes = await ctx.db
+    .query("classes")
+    .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculumId))
+    .collect();
+  for (const classData of classes) {
+    if (
+      classData.isActive &&
+      (classData.teacherId === userId ||
+        classData.tutorId === userId ||
+        (await isStudentEnrolled(ctx, classData, userId)))
+    ) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -90,77 +155,121 @@ export async function canManageClasses(
   ctx: QueryCtx,
   userId: Id<"users">,
   campusId?: Id<"campuses">,
-  schoolId?: Id<"schools">
+  schoolId?: Id<"schools">,
 ): Promise<boolean> {
   // 1. Superadmin override
   if (await hasSystemRole(ctx, userId, ["superadmin"])) return true;
-  
+
   // 2. Campus Admin/Principal check
-  if (campusId && await hasOrgRole(ctx, userId, campusId, "campus", ["admin", "principal"])) return true;
-  
+  if (
+    campusId &&
+    (await hasOrgRole(ctx, userId, campusId, "campus", ["admin", "principal"]))
+  )
+    return true;
+
   // 3. School Admin check (School Admins can manage classes in any of their campuses)
-  if (schoolId && await hasOrgRole(ctx, userId, schoolId, "school", ["admin"])) return true;
-  
+  if (
+    schoolId &&
+    (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"]))
+  )
+    return true;
+
   return false;
+}
+
+export async function canAccessClass(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  classData: Doc<"classes">,
+): Promise<boolean> {
+  if (await hasSystemRole(ctx, userId, ["superadmin"])) return true;
+  if (
+    classData.teacherId === userId ||
+    classData.tutorId === userId ||
+    (await isStudentEnrolled(ctx, classData, userId))
+  ) {
+    return true;
+  }
+
+  const [campus, curriculum] = await Promise.all([
+    classData.campusId ? ctx.db.get(classData.campusId) : null,
+    ctx.db.get(classData.curriculumId),
+  ]);
+
+  return await canManageClasses(
+    ctx,
+    userId,
+    classData.campusId,
+    campus?.schoolId ?? curriculum?.schoolId,
+  );
+}
+
+export async function canManageRoom(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  roomName: string,
+): Promise<boolean> {
+  const schedule = await ctx.db
+    .query("classSchedule")
+    .withIndex("by_room", (q) => q.eq("roomName", roomName))
+    .first();
+  if (!schedule) return false;
+
+  const classData = await ctx.db.get(schedule.classId);
+  if (!classData) return false;
+  if (classData.teacherId === userId || classData.tutorId === userId) {
+    return true;
+  }
+
+  const [campus, curriculum] = await Promise.all([
+    classData.campusId ? ctx.db.get(classData.campusId) : null,
+    ctx.db.get(classData.curriculumId),
+  ]);
+  return await canManageClasses(
+    ctx,
+    userId,
+    classData.campusId,
+    campus?.schoolId ?? curriculum?.schoolId,
+  );
 }
 
 export async function canManageCurriculums(
   ctx: QueryCtx,
   userId: Id<"users">,
-  schoolId?: Id<"schools">
+  schoolId?: Id<"schools">,
 ): Promise<boolean> {
   // 1. Superadmin override
   if (await hasSystemRole(ctx, userId, ["superadmin"])) return true;
-  
+
   // 2. School Admin & Principal check
   if (schoolId) {
-      if (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"])) return true;
-      if (await isPrincipalOfSchool(ctx, userId, schoolId)) return true;
+    if (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"]))
+      return true;
+    if (await isPrincipalOfSchool(ctx, userId, schoolId)) return true;
   }
-  
+
   return false;
-}
-
-export async function hasAnyOrgRole(
-  ctx: QueryCtx,
-  userId: Id<"users">,
-  allowedRoles: string[]
-): Promise<boolean> {
-  const assignments = await ctx.db
-    .query("roleAssignments")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .filter((q) => q.neq(q.field("orgType"), "system"))
-    .collect();
-
-  return assignments.some(a => allowedRoles.includes(a.role));
-}
-
-export async function getUserIdsByRole(
-  ctx: QueryCtx,
-  allowedRoles: string[]
-): Promise<Set<Id<"users">>> {
-  const assignments = await ctx.db.query("roleAssignments").collect();
-  return new Set(
-    assignments.filter(a => allowedRoles.includes(a.role)).map(a => a.userId)
-  );
 }
 
 export async function isPrincipalOfSchool(
   ctx: QueryCtx,
   userId: Id<"users">,
-  schoolId: Id<"schools">
+  schoolId: Id<"schools">,
 ): Promise<boolean> {
   const assignments = await ctx.db
     .query("roleAssignments")
     .withIndex("by_user", (q) => q.eq("userId", userId))
-    .filter((q) => q.and(q.eq(q.field("role"), "principal"), q.eq(q.field("orgType"), "campus")))
     .collect();
+  const principalAssignments = assignments.filter(
+    (assignment) =>
+      assignment.role === "principal" && assignment.orgType === "campus",
+  );
 
-  if (assignments.length === 0) return false;
+  if (principalAssignments.length === 0) return false;
 
   // Resolve the campuses to find their parent schoolId
   const campuses = await Promise.all(
-    assignments.map((a) => ctx.db.get(a.orgId as Id<"campuses">))
+    principalAssignments.map((a) => ctx.db.get(a.orgId as Id<"campuses">)),
   );
 
   return campuses.some((c) => c?.schoolId === schoolId);

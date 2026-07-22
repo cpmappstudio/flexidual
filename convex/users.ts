@@ -1,10 +1,45 @@
-import { v } from "convex/values";
-import { mutation, query, internalMutation, QueryCtx, action, internalQuery, internalAction } from "./_generated/server";
-import { api, internal } from "./_generated/api";
-import { GRADE_VALUES } from "../lib/types/academic";
-import { ConvexError } from "convex/values";
-import { Id } from "./_generated/dataModel";
+import { ConvexError, v } from "convex/values";
+import { query, internalMutation, QueryCtx, MutationCtx, action, internalQuery, internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { Doc, Id } from "./_generated/dataModel";
 import { createClerkClient } from "@clerk/backend";
+import { canManageClasses, hasOrgRole, hasSystemRole } from "./permissions";
+import { roleValidator } from "./model/roles";
+import { resolveMembershipSchoolId } from "./model/membership";
+
+const publicUserFields = {
+  _id: v.id("users"),
+  _creationTime: v.number(),
+  clerkId: v.string(),
+  email: v.optional(v.string()),
+  username: v.optional(v.string()),
+  firstName: v.string(),
+  lastName: v.string(),
+  fullName: v.string(),
+  imageUrl: v.optional(v.string()),
+  avatarStorageId: v.optional(v.id("_storage")),
+  isActive: v.boolean(),
+  createdAt: v.number(),
+  lastLoginAt: v.optional(v.number()),
+  grade: v.optional(v.string()),
+  school: v.optional(v.string()),
+};
+const publicUserValidator = v.object(publicUserFields);
+const internalUserValidator = v.object({
+  ...publicUserFields,
+  externalPassword: v.optional(v.string()),
+});
+const imageSyncUserValidator = v.object({
+  _id: v.id("users"),
+  clerkId: v.string(),
+  imageUrl: v.optional(v.string()),
+});
+const imageSyncResultValidator = v.object({
+  scanned: v.number(),
+  updated: v.number(),
+  skipped: v.number(),
+  failed: v.number(),
+});
 
 type UserJSON = {
   id: string;
@@ -13,12 +48,40 @@ type UserJSON = {
   last_name?: string;
   username?: string;
   image_url?: string;
-  public_metadata?: Record<string, any>;
-  [key: string]: any;
+  public_metadata?: { school?: string };
 };
 
 function getClerkClient(secretKey: string) {
   return createClerkClient({ secretKey });
+}
+
+function toPublicUser(user: Doc<"users">) {
+  const { externalPassword, ...publicUser } = user;
+  void externalPassword;
+  return publicUser;
+}
+
+async function deactivateUser(ctx: MutationCtx, user: Doc<"users">) {
+  if (user.avatarStorageId) {
+    await ctx.storage.delete(user.avatarStorageId).catch(() => undefined);
+  }
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", user._id))
+    .collect();
+  await Promise.all(assignments.map((assignment) => ctx.db.delete(assignment._id)));
+  await ctx.db.patch(user._id, {
+    email: undefined,
+    username: undefined,
+    firstName: "",
+    lastName: "",
+    fullName: "Deleted user",
+    imageUrl: undefined,
+    avatarStorageId: undefined,
+    grade: undefined,
+    school: undefined,
+    isActive: false,
+  });
 }
 
 function toUserJSON(clerkUser: {
@@ -28,7 +91,7 @@ function toUserJSON(clerkUser: {
   lastName?: string | null;
   username?: string | null;
   imageUrl?: string | null;
-  publicMetadata?: Record<string, any>;
+  publicMetadata?: Record<string, unknown>;
 }): UserJSON {
   return {
     id: clerkUser.id,
@@ -39,7 +102,11 @@ function toUserJSON(clerkUser: {
     last_name: clerkUser.lastName ?? undefined,
     username: clerkUser.username ?? undefined,
     image_url: clerkUser.imageUrl ?? undefined,
-    public_metadata: clerkUser.publicMetadata ?? {},
+    public_metadata: {
+      ...(typeof clerkUser.publicMetadata?.school === "string"
+        ? { school: clerkUser.publicMetadata.school }
+        : {}),
+    },
   };
 }
 
@@ -48,34 +115,11 @@ function toUserJSON(clerkUser: {
 // ============================================================================
 
 export const getCurrentUser = query({
-  args: { clerkId: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .first();
-  },
-});
-
-export const getUser = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    return await ctx.db.get(args.userId);
-  },
-});
-
-export const checkEmailExists = query({
-  args: {
-    email: v.string(),
-    excludeUserId: v.optional(v.id("users")),
-  },
-  handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first();
-
-    return !!(user && (!args.excludeUserId || user._id !== args.excludeUserId));
+  args: {},
+  returns: v.union(publicUserValidator, v.null()),
+  handler: async (ctx) => {
+    const user = await getCurrentUserFromAuth(ctx);
+    return user ? toPublicUser(user) : null;
   },
 });
 
@@ -86,7 +130,56 @@ export const getUsers = query({
     orgType: v.optional(v.union(v.literal("system"), v.literal("school"), v.literal("campus"))),
     orgId: v.optional(v.string()),
   },
+  returns: v.array(
+    v.object({
+      ...publicUserFields,
+      role: v.optional(roleValidator),
+      orgId: v.optional(v.string()),
+      orgType: v.optional(
+        v.union(
+          v.literal("system"),
+          v.literal("school"),
+          v.literal("campus"),
+        ),
+      ),
+    }),
+  ),
   handler: async (ctx, args) => {
+    const currentUser = await getCurrentUserOrThrow(ctx);
+    const isSuperadmin = await hasSystemRole(ctx, currentUser._id, [
+      "superadmin",
+    ]);
+    if (!args.orgType || args.orgType === "system") {
+      if (!isSuperadmin) throw new ConvexError("PERMISSION_DENIED");
+    } else if (!args.orgId) {
+      throw new ConvexError("ORGANIZATION_REQUIRED");
+    } else if (args.orgType === "school") {
+      const schoolId = ctx.db.normalizeId("schools", args.orgId);
+      if (
+        !schoolId ||
+        !(await hasOrgRole(ctx, currentUser._id, schoolId, "school", [
+          "admin",
+        ]))
+      ) {
+        throw new ConvexError("PERMISSION_DENIED");
+      }
+    } else {
+      const campusId = ctx.db.normalizeId("campuses", args.orgId);
+      const campus = campusId ? await ctx.db.get(campusId) : null;
+      if (
+        !campusId ||
+        !campus ||
+        !(await canManageClasses(
+          ctx,
+          currentUser._id,
+          campusId,
+          campus.schoolId,
+        ))
+      ) {
+        throw new ConvexError("PERMISSION_DENIED");
+      }
+    }
+
     let assignments = [];
 
     // 1. Hierarchical Role Fetching using Indexes
@@ -126,15 +219,17 @@ export const getUsers = query({
     if (args.role === "admin") {
       const superadminAssignments = await ctx.db
         .query("roleAssignments")
-        .filter((q) => 
-          q.and(
-            q.eq(q.field("orgType"), "system"),
-            q.eq(q.field("role"), "superadmin")
-          )
+        .withIndex("by_org", (q) =>
+          q.eq("orgId", undefined).eq("orgType", "system"),
         )
         .collect();
-        
-      assignments = [...assignments, ...superadminAssignments];
+
+      assignments = [
+        ...assignments,
+        ...superadminAssignments.filter(
+          (assignment) => assignment.role === "superadmin",
+        ),
+      ];
     }
 
     // 2. Apply Role Filter
@@ -148,7 +243,14 @@ export const getUsers = query({
 
     const validUserIds = new Set(assignments.map((a) => a.userId));
 
-    let users = await ctx.db.query("users").collect();
+    let users =
+      (args.orgType && args.orgType !== "system") || args.role
+        ? (
+            await Promise.all(
+              [...validUserIds].map((userId) => ctx.db.get(userId)),
+            )
+          ).filter((user): user is Doc<"users"> => user !== null)
+        : await ctx.db.query("users").collect();
 
     if (args.isActive !== undefined) {
       users = users.filter(u => u.isActive === args.isActive);
@@ -160,11 +262,12 @@ export const getUsers = query({
         .filter(u => validUserIds.has(u._id))
         .map(u => {
            const specificAssignment = assignments.find(a => a.userId === u._id);
-           return { 
-             ...u, 
+           return {
+             ...toPublicUser(u),
              role: specificAssignment?.role,
              orgId: specificAssignment?.orgId,
-             orgType: specificAssignment?.orgType
+             orgType: specificAssignment?.orgType,
+             grade: specificAssignment?.gradeCode ?? u.grade,
            };
         });
     }
@@ -174,11 +277,12 @@ export const getUsers = query({
         const userAssignments = assignments.filter(a => a.userId === u._id);
         // Prefer their system assignment if they have one, else pick their first org assignment
         const bestAssignment = userAssignments.find(a => a.orgType === "system") || userAssignments[0];
-        return { 
-            ...u, 
+        return {
+            ...toPublicUser(u),
             role: bestAssignment?.role,
             orgId: bestAssignment?.orgId,
-            orgType: bestAssignment?.orgType
+            orgType: bestAssignment?.orgType,
+            grade: bestAssignment?.gradeCode ?? u.grade,
         };
     });
   },
@@ -186,18 +290,72 @@ export const getUsers = query({
 
 export const getAvatarUrl = query({
   args: { storageId: v.id("_storage") },
+  returns: v.union(v.string(), v.null()),
   handler: async (ctx, args) => {
+    await getCurrentUserOrThrow(ctx);
     return await ctx.storage.getUrl(args.storageId);
   },
 });
 
 export const getTeachers = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      _id: v.id("users"),
+      fullName: v.string(),
+      email: v.optional(v.string()),
+      imageUrl: v.optional(v.string()),
+    }),
+  ),
   handler: async (ctx) => {
-    // 1. Find all users who have a "teacher" or "tutor" role assignment
-    const assignments = await ctx.db.query("roleAssignments").collect();
-    const teacherUserIds = new Set(
-      assignments.filter(a => a.role === "teacher" || a.role === "tutor").map(a => a.userId)
-    );
+    const currentUser = await getCurrentUserOrThrow(ctx);
+    const isSuperadmin = await hasSystemRole(ctx, currentUser._id, [
+      "superadmin",
+    ]);
+    const accessibleSchoolIds = new Set<Id<"schools">>();
+    if (!isSuperadmin) {
+      const currentAssignments = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", currentUser._id))
+        .collect();
+      for (const assignment of currentAssignments) {
+        const schoolId =
+          assignment.schoolId ??
+          (await resolveMembershipSchoolId(
+            ctx,
+            assignment.orgType,
+            assignment.orgId,
+          ));
+        if (schoolId) accessibleSchoolIds.add(schoolId);
+      }
+    }
+
+    const assignments = (
+      await Promise.all(
+        (["teacher", "tutor"] as const).map((role) =>
+          ctx.db
+            .query("roleAssignments")
+            .withIndex("by_role", (q) => q.eq("role", role))
+            .collect(),
+        ),
+      )
+    ).flat();
+    const teacherUserIds = new Set<Id<"users">>();
+    for (const assignment of assignments) {
+      if (assignment.role !== "teacher" && assignment.role !== "tutor") {
+        continue;
+      }
+      const schoolId =
+        assignment.schoolId ??
+        (await resolveMembershipSchoolId(
+          ctx,
+          assignment.orgType,
+          assignment.orgId,
+        ));
+      if (isSuperadmin || (schoolId && accessibleSchoolIds.has(schoolId))) {
+        teacherUserIds.add(assignment.userId);
+      }
+    }
 
     // 2. Fetch their user profiles
     const teachers = [];
@@ -220,11 +378,7 @@ export const getTeachers = query({
 // MUTATIONS (Convex Only)
 // ============================================================================
 
-export const generateUploadUrl = mutation(async (ctx) => {
-  return await ctx.storage.generateUploadUrl();
-});
-
-export const updateUser = mutation({
+export const updateUserInternal = internalMutation({
   args: {
     userId: v.id("users"),
     updates: v.object({
@@ -232,22 +386,21 @@ export const updateUser = mutation({
       lastName: v.optional(v.string()),
       email: v.optional(v.string()),
       username: v.optional(v.string()),
-      externalPassword: v.optional(v.string()),
       avatarStorageId: v.optional(v.union(v.id("_storage"), v.null())),
-      grade: v.optional(v.string()),
       school: v.optional(v.string()),
       isActive: v.optional(v.boolean()),
     }),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
     if (!user) throw new Error("User not found");
 
-    if (args.updates.grade && !(GRADE_VALUES as readonly string[]).includes(args.updates.grade)) {
-      throw new ConvexError({ code: "INVALID_GRADE", grades: args.updates.grade });
-    }
-
-    const updates: any = { ...args.updates, lastLoginAt: Date.now() };
+    const updates: Partial<Doc<"users">> = {
+      ...args.updates,
+      avatarStorageId: args.updates.avatarStorageId ?? undefined,
+      lastLoginAt: Date.now(),
+    };
 
     if (args.updates.firstName || args.updates.lastName) {
       updates.fullName = `${args.updates.firstName || user.firstName} ${args.updates.lastName || user.lastName}`.trim();
@@ -256,40 +409,18 @@ export const updateUser = mutation({
     if (updates.avatarStorageId === null) updates.avatarStorageId = undefined;
 
     await ctx.db.patch(args.userId, updates);
+    return null;
   },
 });
 
-export const deleteUserAvatar = mutation({
+export const deleteUserInternal = internalMutation({
   args: { userId: v.id("users") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
     if (!user) throw new Error("User not found");
-
-    if (user.avatarStorageId) {
-      try { await ctx.storage.delete(user.avatarStorageId); } catch (e) {}
-    }
-
-    await ctx.db.patch(args.userId, { avatarStorageId: undefined, lastLoginAt: Date.now() });
-  },
-});
-
-export const deleteUser = mutation({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.userId);
-    if (!user) throw new Error("User not found");
-
-    if (user.avatarStorageId) {
-      try { await ctx.storage.delete(user.avatarStorageId); } catch (e) {}
-    }
-    
-    // Cleanup role assignments
-    const assignments = await ctx.db.query("roleAssignments").withIndex("by_user", q => q.eq("userId", args.userId)).collect();
-    for (const a of assignments) {
-       await ctx.db.delete(a._id);
-    }
-
-    await ctx.db.delete(args.userId);
+    await deactivateUser(ctx, user);
+    return null;
   },
 });
 
@@ -298,7 +429,22 @@ export const deleteUser = mutation({
 // ============================================================================
 
 export const upsertFromClerk = internalMutation({
-  args: { data: v.any() },
+  args: {
+    data: v.object({
+      id: v.string(),
+      email_addresses: v.optional(
+        v.array(v.object({ email_address: v.string() })),
+      ),
+      first_name: v.optional(v.string()),
+      last_name: v.optional(v.string()),
+      username: v.optional(v.string()),
+      image_url: v.optional(v.string()),
+      public_metadata: v.optional(
+        v.object({ school: v.optional(v.string()) }),
+      ),
+    }),
+  },
+  returns: v.null(),
   handler: async (ctx, { data }: { data: UserJSON }) => {
     const email = data.email_addresses?.[0]?.email_address;
     const username = data.username ?? undefined;
@@ -306,7 +452,6 @@ export const upsertFromClerk = internalMutation({
     const lastName = data.last_name || "";
     
     const publicMetadata = data.public_metadata || {};
-    const grade = publicMetadata.grade;
     const school = publicMetadata.school;
 
     const existingUser = await ctx.db
@@ -322,8 +467,7 @@ export const upsertFromClerk = internalMutation({
       lastName,
       fullName: `${firstName} ${lastName}`.trim() || email || username || "Unknown User",
       imageUrl: data.image_url ?? undefined,
-      grade,
-      school,
+      ...(typeof school === "string" ? { school } : {}),
       isActive: true,
       lastLoginAt: Date.now(),
     };
@@ -333,30 +477,105 @@ export const upsertFromClerk = internalMutation({
     } else {
       await ctx.db.insert("users", { ...userData, createdAt: Date.now() });
     }
+    return null;
   },
 });
 
 export const deleteFromClerk = internalMutation({
   args: { clerkUserId: v.string() },
+  returns: v.null(),
   handler: async (ctx, { clerkUserId }) => {
     const user = await ctx.db.query("users").withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkUserId)).first();
 
     if (user) {
-      if (user.avatarStorageId) {
-        try { await ctx.storage.delete(user.avatarStorageId); } catch (e) {}
-      }
-      
-      const assignments = await ctx.db.query("roleAssignments").withIndex("by_user", q => q.eq("userId", user._id)).collect();
-      for (const a of assignments) await ctx.db.delete(a._id);
-
-      await ctx.db.delete(user._id);
+      await deactivateUser(ctx, user);
     }
+    return null;
+  },
+});
+
+export const getUserInternal = internalQuery({
+  args: { userId: v.id("users") },
+  returns: v.union(internalUserValidator, v.null()),
+  handler: async (ctx, args) => await ctx.db.get(args.userId),
+});
+
+export const getUserByClerkIdInternal = internalQuery({
+  args: { clerkId: v.string() },
+  returns: v.union(internalUserValidator, v.null()),
+  handler: async (ctx, args) =>
+    await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first(),
+});
+
+export const assertCanManageUsers = internalQuery({
+  args: {
+    orgType: v.union(
+      v.literal("system"),
+      v.literal("school"),
+      v.literal("campus"),
+    ),
+    orgId: v.optional(v.string()),
+    roles: v.array(roleValidator),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUserOrThrow(ctx);
+    const isSuperadmin = await hasSystemRole(ctx, currentUser._id, [
+      "superadmin",
+    ]);
+    if (
+      args.orgType === "system" ||
+      args.roles.includes("superadmin")
+    ) {
+      if (!isSuperadmin) throw new Error("Unauthorized");
+      return null;
+    }
+    if (!args.orgId) throw new Error("Organization is required");
+
+    if (args.orgType === "school") {
+      const schoolId = ctx.db.normalizeId("schools", args.orgId);
+      if (
+        !schoolId ||
+        !(await hasOrgRole(ctx, currentUser._id, schoolId, "school", [
+          "admin",
+        ]))
+      ) {
+        throw new Error("Unauthorized");
+      }
+      return null;
+    }
+
+    const campusId = ctx.db.normalizeId("campuses", args.orgId);
+    const campus = campusId ? await ctx.db.get(campusId) : null;
+    if (
+      !campusId ||
+      !campus ||
+      !(await canManageClasses(
+        ctx,
+        currentUser._id,
+        campusId,
+        campus.schoolId,
+      ))
+    ) {
+      throw new Error("Unauthorized");
+    }
+    return null;
   },
 });
 
 // ============================================================================
 // CLERK INTEGRATION ACTIONS
 // ============================================================================
+
+type CreateUserResult = {
+  email?: string;
+  identifier?: string;
+  status: "success" | "error";
+  reason?: string;
+};
 
 export const createUsersWithClerk = action({
   args: {
@@ -366,7 +585,7 @@ export const createUsersWithClerk = action({
       email: v.optional(v.string()),
       username: v.optional(v.string()),
       password: v.optional(v.string()),
-      role: v.string(),
+      role: roleValidator,
       grade: v.optional(v.string()),
       school: v.optional(v.string()),
       imageBase64: v.optional(v.string()),
@@ -375,22 +594,45 @@ export const createUsersWithClerk = action({
     orgId: v.optional(v.string()),
     sendInvitation: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
+  returns: v.array(v.object({
+    email: v.optional(v.string()),
+    identifier: v.optional(v.string()),
+    status: v.union(v.literal("success"), v.literal("error")),
+    reason: v.optional(v.string()),
+  })),
+  handler: async (ctx, args): Promise<CreateUserResult[]> => {
+    await ctx.runQuery(internal.users.assertCanManageUsers, {
+      orgType: args.orgType,
+      orgId: args.orgId,
+      roles: args.users.map((user) => user.role),
+    });
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
     const clerk = getClerkClient(clerkSecretKey);
 
-    const results = [];
+    const invalidGradeCodes: string[] = await ctx.runQuery(
+      internal.grades.validateForOrganization,
+      {
+        orgType: args.orgType,
+        orgId: args.orgId,
+        codes: args.users.flatMap((user) => (user.grade ? [user.grade] : [])),
+      },
+    );
+    const invalidGrades = new Set<string>(invalidGradeCodes);
+    const results: CreateUserResult[] = [];
 
     for (const user of args.users) {
       try {
-        if (user.grade && !(GRADE_VALUES as readonly string[]).includes(user.grade)) {
+        if (user.role === "student" && !user.grade) {
+          throw new Error("A grade is required for students");
+        }
+        if (user.grade && invalidGrades.has(user.grade)) {
            results.push({ identifier: user.email || user.username, status: "error", reason: `Invalid grade: ${user.grade}` });
            continue;
         }
 
         // 1. Create in Clerk
-        const clerkPayload: any = {
+        const clerkPayload: Record<string, unknown> = {
             first_name: user.firstName,
             last_name: user.lastName,
             public_metadata: {},
@@ -446,7 +688,10 @@ export const createUsersWithClerk = action({
         await ctx.runMutation(internal.users.upsertFromClerk, { data: syncedClerkUser });
 
         // 3. Retrieve the newly created Convex User ID
-        const newConvexUser = await ctx.runQuery(api.users.getCurrentUser, { clerkId: clerkUser.id });
+        const newConvexUser = await ctx.runQuery(
+          internal.users.getUserByClerkIdInternal,
+          { clerkId: clerkUser.id },
+        );
         if (!newConvexUser) throw new Error("Failed to sync identity to database");
 
         // 4. Create the Role Assignment (This triggers the syncRolesToClerk background job automatically!)
@@ -454,15 +699,16 @@ export const createUsersWithClerk = action({
           userId: newConvexUser._id,
           orgType: args.orgType,
           orgId: args.orgId,
-          role: user.role as any,
+          role: user.role,
+          gradeCode: user.role === "student" ? user.grade : undefined,
         });
 
-        if (user.password || user.username) {
-            await ctx.runMutation(api.users.updateUser, {
+        if (user.username || user.school) {
+            await ctx.runMutation(internal.users.updateUserInternal, {
                 userId: newConvexUser._id,
                 updates: {
                     username: user.username,
-                    externalPassword: user.password 
+                    school: user.school,
                 }
             });
         }
@@ -498,7 +744,7 @@ export const updateUserWithClerk = action({
       email: v.optional(v.string()),
       username: v.optional(v.string()),
       password: v.optional(v.string()),
-      role: v.optional(v.string()),
+      role: v.optional(roleValidator),
       grade: v.optional(v.string()),
       school: v.optional(v.string()),
       isActive: v.optional(v.boolean()),
@@ -508,41 +754,76 @@ export const updateUserWithClerk = action({
     orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
     orgId: v.optional(v.string()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
+    const targetAssignment = await ctx.runQuery(
+      internal.roleAssignments.getAssignmentInternal,
+      {
+        userId: args.userId,
+        orgType: args.orgType,
+        orgId: args.orgId,
+      },
+    );
+    if (!targetAssignment) throw new Error("User is not a member of this organization");
+    await ctx.runQuery(internal.users.assertCanManageUsers, {
+      orgType: args.orgType,
+      orgId: args.orgId,
+      roles: args.updates.role ? [args.updates.role] : [],
+    });
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
     const clerk = getClerkClient(clerkSecretKey);
 
-    const user = await ctx.runQuery(api.users.getUser, { userId: args.userId });
+    const user = await ctx.runQuery(internal.users.getUserInternal, { userId: args.userId });
     if (!user) throw new Error("User not found");
+    const effectiveRole = args.updates.role ?? targetAssignment.role;
+    const effectiveGrade = args.updates.grade ?? targetAssignment.gradeCode;
+    if (effectiveRole === "student" && !effectiveGrade) {
+      throw new Error("A grade is required for students");
+    }
 
-    if (args.updates.grade && !(GRADE_VALUES as readonly string[]).includes(args.updates.grade)) {
-      throw new ConvexError({ code: "INVALID_GRADE", grades: args.updates.grade });
+    if (args.updates.grade) {
+      const invalidGrades = await ctx.runQuery(
+        internal.grades.validateForOrganization,
+        {
+          orgType: args.orgType,
+          orgId: args.orgId,
+          codes: [args.updates.grade],
+        },
+      );
+      if (invalidGrades.length > 0) {
+        throw new Error(`Invalid grade: ${args.updates.grade}`);
+      }
     }
 
     // 1. Update Core Identity in Convex
-    const { password, role, imageBase64, ...convexUpdates } = args.updates;
-    await ctx.runMutation(api.users.updateUser, { 
+    await ctx.runMutation(internal.users.updateUserInternal, {
       userId: args.userId, 
       updates: {
-        ...convexUpdates,
-        ...(password ? { externalPassword: password } : {}),
+        firstName: args.updates.firstName,
+        lastName: args.updates.lastName,
+        email: args.updates.email,
+        username: args.updates.username,
+        school: args.updates.school,
+        isActive: args.updates.isActive,
       }
     });
 
     // 2. Update Role Assignment if role changed
-    if (args.updates.role) {
+    if (args.updates.role || args.updates.grade !== undefined) {
       await ctx.runMutation(internal.roleAssignments.assignRoleInternal, {
         userId: args.userId,
         orgType: args.orgType,
         orgId: args.orgId,
-        role: args.updates.role as any,
+        role: effectiveRole,
+        gradeCode:
+          effectiveRole === "student" ? effectiveGrade : undefined,
       });
     }
 
     // 3. Update basic details in Clerk (if not a temp user)
     if (!user.clerkId.startsWith("temp_")) {
-      const clerkUpdates: any = {};
+      const clerkUpdates: Record<string, unknown> = {};
       if (args.updates.firstName) clerkUpdates.first_name = args.updates.firstName;
       if (args.updates.lastName) clerkUpdates.last_name = args.updates.lastName;
       if (args.updates.username) clerkUpdates.username = args.updates.username;
@@ -614,9 +895,11 @@ export const updateUserWithClerk = action({
         const clerkUserRes = await fetch(`https://api.clerk.com/v1/users/${user.clerkId}`, {
           headers: { Authorization: `Bearer ${clerkSecretKey}` },
         });
-        const clerkUser = await clerkUserRes.json();
+        const clerkUser = (await clerkUserRes.json()) as {
+          email_addresses?: Array<{ id: string }>;
+        };
         const oldEmails = (clerkUser.email_addresses ?? []).filter(
-          (e: any) => e.id !== newEmailData.id
+          (email) => email.id !== newEmailData.id
         );
         for (const old of oldEmails) {
           await fetch(`https://api.clerk.com/v1/email_addresses/${old.id}`, {
@@ -626,21 +909,41 @@ export const updateUserWithClerk = action({
         }
       }
     }
+    return null;
   },
 });
 
 export const deleteUserWithClerk = action({
-  args: { userId: v.id("users") },
+  args: {
+    userId: v.id("users"),
+    orgType: v.union(
+      v.literal("system"),
+      v.literal("school"),
+      v.literal("campus"),
+    ),
+    orgId: v.optional(v.string()),
+  },
+  returns: v.null(),
   handler: async (ctx, args) => {
+    const assignment = await ctx.runQuery(
+      internal.roleAssignments.getAssignmentInternal,
+      args,
+    );
+    if (!assignment) throw new Error("User is not a member of this organization");
+    await ctx.runQuery(internal.users.assertCanManageUsers, {
+      orgType: args.orgType,
+      orgId: args.orgId,
+      roles: [assignment.role],
+    });
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
 
-    const user = await ctx.runQuery(api.users.getUser, { userId: args.userId });
+    const user = await ctx.runQuery(internal.users.getUserInternal, { userId: args.userId });
     if (!user) throw new Error("User not found");
 
     if (user.clerkId.startsWith("temp_")) {
-      await ctx.runMutation(api.users.deleteUser, { userId: args.userId });
-      return;
+      await ctx.runMutation(internal.users.deleteUserInternal, { userId: args.userId });
+      return null;
     }
 
     const response = await fetch(`https://api.clerk.com/v1/users/${user.clerkId}`, {
@@ -649,6 +952,7 @@ export const deleteUserWithClerk = action({
     });
 
     if (!response.ok) throw new Error("Clerk API error");
+    return null;
   },
 });
 
@@ -672,9 +976,15 @@ export async function getCurrentUserFromAuth(ctx: QueryCtx) {
     .first();
 }
 
-export const getAllUsersInternal = internalQuery({ handler: async (ctx) => await ctx.db.query("users").collect() })
+export const getAllUsersInternal = internalQuery({
+  args: {},
+  returns: v.array(internalUserValidator),
+  handler: async (ctx) => await ctx.db.query("users").collect(),
+});
 
 export const getStudentUsersInternal = internalQuery({
+  args: {},
+  returns: v.array(imageSyncUserValidator),
   handler: async (ctx) => {
     const assignments = await ctx.db.query("roleAssignments").collect();
     const studentUserIds = new Set(
@@ -698,6 +1008,8 @@ export const getStudentUsersInternal = internalQuery({
 });
 
 export const getUsersForImageSyncInternal = internalQuery({
+  args: {},
+  returns: v.array(imageSyncUserValidator),
   handler: async (ctx) => {
     const users = await ctx.db.query("users").collect();
     return users.map((user) => ({
@@ -713,6 +1025,7 @@ export const patchUserImageUrl = internalMutation({
     userId: v.id("users"),
     imageUrl: v.optional(v.string()),
   },
+  returns: v.object({ updated: v.boolean() }),
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
     if (!user) throw new Error("User not found");
@@ -727,6 +1040,8 @@ export const patchUserImageUrl = internalMutation({
 });
 
 export const syncAllStudentImages = internalMutation({
+  args: {},
+  returns: v.object({ scheduled: v.boolean() }),
   handler: async (ctx) => {
     await ctx.scheduler.runAfter(0, internal.users.syncAllStudentImagesWorker, {});
     return { scheduled: true };
@@ -734,12 +1049,14 @@ export const syncAllStudentImages = internalMutation({
 });
 
 export const syncAllStudentImagesWorker = internalAction({
+  args: {},
+  returns: imageSyncResultValidator,
   handler: async (ctx) => {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
 
     const clerk = getClerkClient(clerkSecretKey);
-    const students = await ctx.runQuery(internal.users.getStudentUsersInternal);
+    const students = await ctx.runQuery(internal.users.getStudentUsersInternal, {});
 
     let scanned = 0;
     let updated = 0;
@@ -775,6 +1092,8 @@ export const syncAllStudentImagesWorker = internalAction({
 });
 
 export const syncAllUserImages = internalMutation({
+  args: {},
+  returns: v.object({ scheduled: v.boolean() }),
   handler: async (ctx) => {
     await ctx.scheduler.runAfter(0, internal.users.syncAllUserImagesWorker, {});
     return { scheduled: true };
@@ -782,12 +1101,14 @@ export const syncAllUserImages = internalMutation({
 });
 
 export const syncAllUserImagesWorker = internalAction({
+  args: {},
+  returns: imageSyncResultValidator,
   handler: async (ctx) => {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
 
     const clerk = getClerkClient(clerkSecretKey);
-    const users = await ctx.runQuery(internal.users.getUsersForImageSyncInternal);
+    const users = await ctx.runQuery(internal.users.getUsersForImageSyncInternal, {});
 
     let scanned = 0;
     let updated = 0;

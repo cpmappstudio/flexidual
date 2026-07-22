@@ -3,7 +3,6 @@
 import { motion } from "framer-motion"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { useState, useEffect, RefObject, useCallback } from "react"
-import { useTheme } from "next-themes"
 
 interface ScrollIndicatorProps {
   containerRef: RefObject<HTMLDivElement | null>
@@ -12,8 +11,6 @@ interface ScrollIndicatorProps {
 export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
   const [canScrollDown, setCanScrollDown] = useState(false)
   const [canScrollUp, setCanScrollUp] = useState(false)
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark'
 
   const checkScroll = useCallback(() => {
     const container = containerRef.current
@@ -53,13 +50,10 @@ export function ScrollIndicator({ containerRef }: ScrollIndicatorProps) {
     }
   }, [containerRef, checkScroll])
 
-  const gradientDown = isDark
-      ? 'linear-gradient(to top, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
-      : 'linear-gradient(to top, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
-
-    const gradientUp = isDark
-      ? 'linear-gradient(to bottom, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
-      : 'linear-gradient(to bottom, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
+  const gradientDown =
+    'linear-gradient(to top, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
+  const gradientUp =
+    'linear-gradient(to bottom, color-mix(in oklch, var(--card) 95%, transparent) 0%, transparent 100%)'
 
   return (
     <>

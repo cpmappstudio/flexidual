@@ -8,24 +8,16 @@ import { DraggableLessonCard } from "@/components/student/draggable-lesson-card"
 import { ClassroomDropZone } from "@/components/student/classroom-drop-zone"
 import { ScrollIndicator } from "@/components/student/scroll-indicator"
 import { FlexidualLogo } from "@/components/ui/flexidual-logo"
+import { AccountMenu } from "@/components/account-menu"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { LogOut, History, Calendar as CalendarIcon, Settings, BellRing, BookOpen, GraduationCap, Menu, X, Volume2, VolumeX } from "lucide-react"
+import { History, Calendar as CalendarIcon, BellRing, BookOpen, GraduationCap, Menu, X, Volume2, VolumeX } from "lucide-react"
 import { useTranslations, useLocale } from "next-intl"
 import { enUS, es, ptBR } from "date-fns/locale"
-import { SignOutButton } from "@clerk/nextjs"
 import { StudentScheduleEvent } from "@/lib/types/student"
 
-import { LangToggle } from "@/components/lang-toggle"
 import { StudentProfileHero } from "@/components/student/student-profile-hero"
 import { StudentClassCard } from "@/components/student/student-class-card"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu"
-import Image from "next/image"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -130,6 +122,8 @@ export default function StudentHubPage() {
   const audioCtxRef = useRef<AudioContext | null>(null)
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const soundEnabledRef = useRef(soundEnabled)
+  const startAlarmRef = useRef<() => void>(() => {})
+  const handleLessonTapRef = useRef<(lesson: StudentScheduleEvent) => void>(() => {})
 
   const playRocketSound = () => {
     if (!soundEnabledRef.current) return
@@ -282,7 +276,7 @@ export default function StudentHubPage() {
 
             if (minutesLeft <= 5 && minutesLeft > 0 && !notifiedLessons.has(lesson.scheduleId)) {
               if (soundEnabledRef.current) {
-                startAlarm()
+                startAlarmRef.current()
               }
 
               toast.custom(
@@ -294,7 +288,7 @@ export default function StudentHubPage() {
                       toast.dismiss(lesson.scheduleId)
                     }}
                     onGoToClass={() => {
-                      handleLessonTap(lesson)
+                      handleLessonTapRef.current(lesson)
                       toast.dismiss(lesson.scheduleId)
                     }}
                     title={t('schedule.classStartingSoon')}
@@ -398,6 +392,9 @@ export default function StudentHubPage() {
     }
   }
 
+  startAlarmRef.current = startAlarm
+  handleLessonTapRef.current = handleLessonTap
+
   const toggleSound = () => {
     const nextState = !soundEnabled
     setSoundEnabled(nextState)
@@ -466,33 +463,7 @@ export default function StudentHubPage() {
             {soundEnabled ? <Volume2 className="w-4 h-4 lg:w-5 lg:h-5" /> : <VolumeX className="w-4 h-4 lg:w-5 lg:h-5" />}
           </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full hover:bg-accent h-9 w-9 lg:h-10 lg:w-10">
-                <Settings className="w-4 h-4 lg:w-5 lg:h-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>{t('common.language')}</DropdownMenuLabel>
-              <div className="px-2 py-1"><LangToggle showText={true} /></div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <div className="w-10 h-10 lg:w-14 lg:h-14 rounded-full bg-gradient-to-br from-primary to-secondary border-2 lg:border-4 border-card shadow-lg flex items-center justify-center overflow-hidden">
-            {user?.imageUrl ? (
-              <Image src={user.imageUrl} alt="avatar" width={56} height={56} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-lg lg:text-2xl font-bold text-primary-foreground">
-                {(user?.firstName || user?.username || 'S').charAt(0).toUpperCase()}
-              </span>
-            )}
-          </div>
-
-          <SignOutButton>
-            <Button variant="ghost" size="icon" className="rounded-full text-destructive hover:bg-destructive/10 h-9 w-9 lg:h-10 lg:w-10">
-              <LogOut className="w-4 h-4 lg:w-5 lg:h-5" />
-            </Button>
-          </SignOutButton>
+          <AccountMenu />
         </div>
       </div>
 

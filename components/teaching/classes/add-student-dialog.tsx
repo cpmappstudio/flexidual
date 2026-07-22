@@ -1,65 +1,76 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useMutation, useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import { Id } from "@/convex/_generated/dataModel"
-import { Button } from "@/components/ui/button"
+import { useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Loader2, Plus, Search, UserPlus, Filter } from "lucide-react"
-import { toast } from "sonner"
-import Image from "next/image"
-import { useLocale, useTranslations } from "next-intl"
-import { parseConvexError, getErrorMessage } from "@/lib/error-utils"
-import { Badge } from "@/components/ui/badge"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Loader2, Plus, Search, UserPlus, Filter } from "lucide-react";
+import { toast } from "sonner";
+import Image from "next/image";
+import { useLocale, useTranslations } from "next-intl";
+import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
+import { Badge } from "@/components/ui/badge";
 
 interface AddStudentDialogProps {
-  classId: Id<"classes">
-  curriculumId?: Id<"curriculums">
+  classId: Id<"classes">;
+  curriculumId?: Id<"curriculums">;
 }
 
-export function AddStudentDialog({ classId, curriculumId }: AddStudentDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState("")
-  const t = useTranslations()
-  const locale = useLocale()
-  
-  // 1. Fetch Curriculum to get target grades
-  const curriculum = useQuery(api.curriculums.get, 
-    curriculumId ? { id: curriculumId } : "skip"
-  )
+export function AddStudentDialog({
+  classId,
+  curriculumId,
+}: AddStudentDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const t = useTranslations();
+  const locale = useLocale();
 
-  const gradeCodes = curriculum?.gradeCodes || []
+  // 1. Fetch Curriculum to get target grades
+  const curriculum = useQuery(
+    api.curriculums.get,
+    curriculumId ? { id: curriculumId } : "skip",
+  );
+  const classData = useQuery(api.classes.get, { id: classId });
+
+  const gradeCodes = classData?.gradeCode
+    ? [classData.gradeCode]
+    : curriculum?.gradeCodes || [];
+  const grades = useQuery(
+    api.grades.list,
+    curriculum?.schoolId ? { schoolId: curriculum.schoolId } : "skip",
+  );
+  const gradeNames = new Map(grades?.map((grade) => [grade.code, grade.name]));
 
   // 2. Search Query - Removed the "length >= 2" check
   const searchResults = useQuery(api.classes.searchStudents, {
-    searchQuery: search, 
-    excludeClassId: classId,
-    gradeCodes: gradeCodes.length > 0 ? gradeCodes : undefined
-  })
+    searchQuery: search,
+    classId,
+  });
 
-  const addStudent = useMutation(api.classes.addStudent)
+  const addStudent = useMutation(api.classes.addStudent);
 
   const handleAdd = async (studentId: Id<"users">, name: string) => {
     try {
-      await addStudent({ classId, studentId })
-      toast.success(t("class.studentAdded", { name }))
+      await addStudent({ classId, studentId });
+      toast.success(t("class.studentAdded", { name }));
     } catch (error) {
-      const parsedError = parseConvexError(error)
+      const parsedError = parseConvexError(error);
       if (parsedError) {
-        toast.error(getErrorMessage(parsedError, t, locale))
+        toast.error(getErrorMessage(parsedError, t, locale));
       } else {
-        toast.error(t("errors.operationFailed"))
+        toast.error(t("errors.operationFailed"));
       }
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -73,23 +84,27 @@ export function AddStudentDialog({ classId, curriculumId }: AddStudentDialogProp
         <DialogHeader>
           <DialogTitle>{t("class.enrollStudent")}</DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-4 pt-4">
           {gradeCodes.length > 0 && (
             <div className="bg-info/10 p-3 rounded-md flex items-start gap-3 border border-info/30">
-                <Filter className="h-4 w-4 text-info mt-1" />
-                <div className="text-sm">
-                    <p className="font-medium text-info">
-                        {t('student.filteringByGrade')}
-                    </p>
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                        {gradeCodes.map(code => (
-                            <Badge key={code} variant="secondary" className="bg-card/50 text-xs">
-                                {t(`student.grades.${code}`)}
-                            </Badge>
-                        ))}
-                    </div>
+              <Filter className="h-4 w-4 text-info mt-1" />
+              <div className="text-sm">
+                <p className="font-medium text-info">
+                  {t("student.filteringByGrade")}
+                </p>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {gradeCodes.map((code) => (
+                    <Badge
+                      key={code}
+                      variant="secondary"
+                      className="bg-card/50 text-xs"
+                    >
+                      {gradeNames.get(code) ?? code}
+                    </Badge>
+                  ))}
                 </div>
+              </div>
             </div>
           )}
 
@@ -110,21 +125,25 @@ export function AddStudentDialog({ classId, curriculumId }: AddStudentDialogProp
               </div>
             ) : searchResults.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                 <p>{t("student.noResults")}</p>
-                 {gradeCodes.length > 0 && (
-                     <p className="text-xs mt-1 opacity-70">
-                        Try clearing filters or adding students to the platform first.
-                     </p>
-                 )}
+                <p>{t("student.noResults")}</p>
+                {gradeCodes.length > 0 && (
+                  <p className="text-xs mt-1 opacity-70">
+                    Try clearing filters or adding students to the platform
+                    first.
+                  </p>
+                )}
               </div>
             ) : (
               searchResults.map((student) => (
-                <div key={student._id} className="flex items-center justify-between p-2 rounded-lg border hover:bg-muted/50 transition-colors">
+                <div
+                  key={student._id}
+                  className="flex items-center justify-between p-2 rounded-lg border hover:bg-muted/50 transition-colors"
+                >
                   <div className="flex items-center gap-3">
                     <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-border bg-muted">
                       {student.imageUrl ? (
-                        <Image 
-                          src={student.imageUrl} 
+                        <Image
+                          src={student.imageUrl}
                           alt={student.fullName}
                           height={64}
                           width={64}
@@ -139,19 +158,29 @@ export function AddStudentDialog({ classId, curriculumId }: AddStudentDialogProp
 
                     <div className="text-sm">
                       <div className="flex items-center gap-2">
-                          <p className="font-medium">{student.fullName}</p>
-                          {student.grade && (
-                              <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-muted-foreground">
-                                  {t(`student.grades.${student.grade}`)}
-                              </Badge>
-                          )}
+                        <p className="font-medium">{student.fullName}</p>
+                        {student.grade && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 px-1.5 text-muted-foreground"
+                          >
+                            {gradeNames.get(student.grade) ?? student.grade}
+                          </Badge>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground">{student.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {student.email}
+                      </p>
                     </div>
                   </div>
-                  <Button size="sm" variant="secondary" className="h-8" onClick={() => handleAdd(student._id, student.fullName)}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-8"
+                    onClick={() => handleAdd(student._id, student.fullName)}
+                  >
                     <Plus className="h-3.5 w-3.5 mr-1" />
-                    {t('common.add')}
+                    {t("common.add")}
                   </Button>
                 </div>
               ))
@@ -160,5 +189,5 @@ export function AddStudentDialog({ classId, curriculumId }: AddStudentDialogProp
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

@@ -1,7 +1,28 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { getCurrentUserFromAuth } from "./users";
-import { hasSystemRole } from "./permissions";
+import { canAccessClass } from "./permissions";
+
+const recordingValidator = v.object({
+  _id: v.id("recordings"),
+  _creationTime: v.number(),
+  scheduleId: v.id("classSchedule"),
+  roomName: v.string(),
+  egressId: v.string(),
+  status: v.union(
+    v.literal("starting"),
+    v.literal("active"),
+    v.literal("complete"),
+    v.literal("failed"),
+    v.literal("aborted"),
+  ),
+  fileKey: v.optional(v.string()),
+  url: v.optional(v.string()),
+  durationMs: v.optional(v.number()),
+  fileSize: v.optional(v.number()),
+  startedAt: v.number(),
+  completedAt: v.optional(v.number()),
+});
 
 // ============================================================================
 // INTERNAL MUTATIONS (called by livekit.ts and http.ts webhook handler)
@@ -18,6 +39,7 @@ export const createRecording = internalMutation({
     egressId: v.string(),
     startedAt: v.number(),
   },
+  returns: v.id("recordings"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("recordings", {
       scheduleId: args.scheduleId,
@@ -49,6 +71,7 @@ export const updateFromWebhook = internalMutation({
     fileSize: v.optional(v.number()),
     completedAt: v.optional(v.number()),
   },
+  returns: v.union(v.id("recordings"), v.null()),
   handler: async (ctx, args) => {
     const recording = await ctx.db
       .query("recordings")
@@ -82,34 +105,12 @@ export const updateFromWebhook = internalMutation({
  */
 export const getByRoom = internalQuery({
   args: { roomName: v.string() },
+  returns: v.array(recordingValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("recordings")
       .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
       .collect();
-  },
-});
-
-/**
- * Check if a set of scheduleIds has any complete recordings — used by getMySchedule.
- * Returns a Set of scheduleIds that have at least one complete recording.
- */
-export const getCompletedScheduleIds = internalQuery({
-  args: { scheduleIds: v.array(v.id("classSchedule")) },
-  handler: async (ctx, args) => {
-    if (args.scheduleIds.length === 0) return [];
-
-    const allRecordings = await Promise.all(
-      args.scheduleIds.map((id) =>
-        ctx.db
-          .query("recordings")
-          .withIndex("by_schedule", (q) => q.eq("scheduleId", id))
-          .filter((q) => q.eq(q.field("status"), "complete"))
-          .first()
-      )
-    );
-
-    return args.scheduleIds.filter((_, idx) => allRecordings[idx] !== null);
   },
 });
 
@@ -125,6 +126,17 @@ export const getCompletedScheduleIds = internalQuery({
  */
 export const getBySchedule = query({
   args: { scheduleId: v.id("classSchedule") },
+  returns: v.array(
+    v.object({
+      _id: v.id("recordings"),
+      egressId: v.string(),
+      url: v.union(v.string(), v.null()),
+      durationMs: v.union(v.number(), v.null()),
+      fileSize: v.union(v.number(), v.null()),
+      startedAt: v.number(),
+      completedAt: v.union(v.number(), v.null()),
+    }),
+  ),
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return [];
@@ -135,43 +147,21 @@ export const getBySchedule = query({
     const classData = await ctx.db.get(schedule.classId);
     if (!classData) return [];
 
-    // Authorization: teacher, any admin, enrolled student, or student who has attended
-    const isTeacher = classData.teacherId === user._id || classData.tutorId === user._id;
-    const isEnrolledStudent = classData.students.includes(user._id);
-    const isSuperAdmin = await hasSystemRole(ctx, user._id, ["superadmin"]);
-
-    if (!isTeacher && !isEnrolledStudent && !isSuperAdmin) {
-      // Check admin/principal role assignment
-      const adminAssignment = await ctx.db
-        .query("roleAssignments")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
-        .filter((q) =>
-          q.or(
-            q.eq(q.field("role"), "admin"),
-            q.eq(q.field("role"), "principal")
-          )
+    if (!(await canAccessClass(ctx, user._id, classData))) {
+      const attendedSession = await ctx.db
+        .query("class_sessions")
+        .withIndex("by_student_schedule", (q) =>
+          q.eq("studentId", user._id).eq("scheduleId", args.scheduleId),
         )
         .first();
-
-      if (adminAssignment) {
-        // Admin/principal — allowed
-      } else {
-        // Last resort: student who has ever attended this class session
-        const attendedSession = await ctx.db
-          .query("class_sessions")
-          .withIndex("by_student_schedule", (q) =>
-            q.eq("studentId", user._id).eq("scheduleId", args.scheduleId)
-          )
-          .first();
-
-        if (!attendedSession) return [];
-      }
+      if (!attendedSession) return [];
     }
 
     const recordings = await ctx.db
       .query("recordings")
-      .withIndex("by_schedule", (q) => q.eq("scheduleId", args.scheduleId))
-      .filter((q) => q.eq(q.field("status"), "complete"))
+      .withIndex("by_schedule", (q) =>
+        q.eq("scheduleId", args.scheduleId).eq("status", "complete"),
+      )
       .collect();
 
     return recordings.map((r) => ({

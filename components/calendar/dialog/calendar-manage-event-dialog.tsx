@@ -49,6 +49,7 @@ import { CalendarEvent } from "../calendar-types";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 import { useParams } from "next/navigation"
 import { RecordingPlayerModal } from "@/components/recording-player-modal"
+import { utcToLocalDateTime } from "@/lib/time-zone";
 
 // Helper function to format recurrence pattern
 function formatRecurrencePattern(
@@ -163,7 +164,7 @@ export default function CalendarManageEventDialog() {
       return {
         title: "",
         description: "",
-        start: new Date().toISOString(),
+        start: new Date().toISOString().slice(0, 16),
         duration: 60,
         lessonIds: [],
         sessionType: "live" as const,
@@ -175,7 +176,10 @@ export default function CalendarManageEventDialog() {
     return {
       title: selectedEvent.title,
       description: selectedEvent.description || "",
-      start: selectedEvent.start.toISOString(),
+      start: utcToLocalDateTime(
+        selectedEvent.start.getTime(),
+        selectedEvent.timeZone,
+      ),
       duration: Math.round(durationMs / (60 * 1000)),
       lessonIds: selectedEvent.lessonIds || [],
       sessionType: (selectedEvent as CalendarEvent).sessionType || "live",
@@ -208,7 +212,10 @@ export default function CalendarManageEventDialog() {
       form.reset({
         title: selectedEvent.title,
         description: selectedEvent.description || "",
-        start: selectedEvent.start.toISOString(),
+        start: utcToLocalDateTime(
+          selectedEvent.start.getTime(),
+          selectedEvent.timeZone,
+        ),
         duration: eventDuration,
         lessonIds: selectedEvent.lessonIds || [],
         sessionType: (selectedEvent as CalendarEvent).sessionType || "live",
@@ -250,14 +257,12 @@ export default function CalendarManageEventDialog() {
       const finalLessonIds = values.lessonIds && values.lessonIds.length > 0
         ? values.lessonIds.map(id => id as Id<"lessons">)
         : undefined;
-      const startMs = new Date(values.start).getTime();
-
       await updateSchedule({
         id: selectedEvent.scheduleId,
         title: values.title,
         description: values.description,
-        scheduledStart: startMs,
-        scheduledEnd: startMs + (values.duration * 60 * 1000),
+        localStart: values.start,
+        durationMinutes: values.duration,
         lessonIds: finalLessonIds,
         sessionType: values.sessionType,
         updateSeries: updateMode === "series",
@@ -793,7 +798,10 @@ export default function CalendarManageEventDialog() {
                   <FormField control={form.control} name="start" render={({ field }) => (
                     <FormItem>
                       <FormLabel>{t('schedule.dateTime')}</FormLabel>
-                      <DateTimePicker field={field} />
+                      <DateTimePicker
+                        field={field}
+                        timeZone={selectedEvent.timeZone}
+                      />
                       <FormMessage />
                     </FormItem>
                   )} />

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink, MonitorPlay } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getTranslations } from "next-intl/server";
+import { auth } from "@clerk/nextjs/server";
 
 interface ClassroomPageProps {
   params: Promise<{
@@ -26,6 +27,11 @@ function parseRoomName(roomName: string): { classId: Id<"classes">; lessonId: Id
   return null;
 }
 
+async function getConvexToken() {
+  const { getToken } = await auth();
+  return (await getToken({ template: "convex" })) ?? undefined;
+}
+
 export async function generateMetadata(props: ClassroomPageProps) {
   const params = await props.params;
   const roomName = decodeURIComponent(params.roomName);
@@ -36,9 +42,10 @@ export async function generateMetadata(props: ClassroomPageProps) {
   }
 
   try {
+    const token = await getConvexToken();
     const [classData, lesson] = await Promise.all([
-      fetchQuery(api.classes.get, { id: parsed.classId }),
-      fetchQuery(api.lessons.get, { id: parsed.lessonId }),
+      fetchQuery(api.classes.get, { id: parsed.classId }, { token }),
+      fetchQuery(api.lessons.get, { id: parsed.lessonId }, { token }),
     ]);
 
     if (classData && lesson) {
@@ -57,9 +64,14 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
   const searchParams = await props.searchParams;
   const roomName = decodeURIComponent(params.roomName);
   const isCompanion = searchParams.companion === "true";
+  const token = await getConvexToken();
 
   // 1. Fetch the schedule to determine the type
-  const schedule = await fetchQuery(api.schedule.getByRoomName, { roomName });
+  const schedule = await fetchQuery(
+    api.schedule.getByRoomName,
+    { roomName },
+    { token },
+  );
   const isIgnitia = schedule?.sessionType === "ignitia";
   const isAbeka = schedule?.sessionType === "abeka";
   const isVirtual = isIgnitia || isAbeka;

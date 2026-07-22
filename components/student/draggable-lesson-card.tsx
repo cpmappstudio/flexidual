@@ -10,6 +10,7 @@ import { StudentScheduleEvent } from "@/lib/types/student"
 import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 import { RecordingPlayerModal } from "@/components/recording-player-modal"
+import { TZDate } from "@date-fns/tz"
 
 interface DraggableLessonCardProps {
   lesson: StudentScheduleEvent
@@ -29,6 +30,8 @@ export function DraggableLessonCard({
   const t = useTranslations('student')
   const locale = useLocale()
   const dateLocale = locale === 'es' ? es : locale === 'pt-BR' ? ptBR : enUS
+  const startDate = new TZDate(lesson.start, lesson.timeZone)
+  const endDate = new TZDate(lesson.end, lesson.timeZone)
 
   const [now, setNow] = useState(Date.now())
 
@@ -224,10 +227,10 @@ export function DraggableLessonCard({
           style={{ borderColor: (!isMissed && !isIgnitia && !isLate && !isUrgent && !isInClass) ? lesson.color : undefined }}
         >
           <span className="text-xs font-bold text-muted-foreground">
-            {format(lesson.start, "MMM", { locale: dateLocale })}
+            {format(startDate, "MMM", { locale: dateLocale })}
           </span>
           <span className={cn("text-2xl font-black text-foreground", isLate ? "text-destructive" : "")}>
-            {format(lesson.start, "d")}
+            {format(startDate, "d")}
           </span>
         </div>
 
@@ -254,7 +257,7 @@ export function DraggableLessonCard({
             <div className={cn("flex items-center gap-1 px-2 py-1 rounded-full", isLate ? "bg-destructive/15 text-destructive font-bold" : "bg-background/80 text-foreground")}>
               <Clock className="w-3 h-3" />
               <span className="font-bold">
-                {format(lesson.start, "h:mm a", { locale: dateLocale })} - {format(lesson.end, "h:mm a", { locale: dateLocale })}
+                {format(startDate, "h:mm a", { locale: dateLocale })} - {format(endDate, "h:mm a", { locale: dateLocale })} · {lesson.timeZone}
               </span>
             </div>
             {(lesson.minutesAttended > 0) && (

@@ -2,7 +2,8 @@
 
 import { ConvexError, v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
+import { randomUUID } from "node:crypto";
 import { 
   AccessToken, 
   EgressClient, 
@@ -15,8 +16,7 @@ import {
 
 export const getToken = action({
   args: {
-    roomName: v.string(), 
-    participantName: v.string(),
+    roomName: v.string(),
     isCompanion: v.optional(v.boolean()),
   },
   returns: v.string(),
@@ -24,7 +24,9 @@ export const getToken = action({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("Not authenticated");
 
-    const user = await ctx.runQuery(api.users.getCurrentUser, { clerkId: identity.subject });
+    const user = await ctx.runQuery(internal.users.getUserByClerkIdInternal, {
+      clerkId: identity.subject,
+    });
     if (!user) throw new ConvexError("User not found");
 
     // Check backend authorization to join this specific room
@@ -37,13 +39,7 @@ export const getToken = action({
       throw new ConvexError("You are not authorized to join this session.");
     }
     
-    const sessionStatus = await ctx.runQuery(api.schedule.getSessionStatus, { 
-      sessionId: args.roomName 
-    });
-
-    if (!sessionStatus) {
-      throw new ConvexError("Session not found");
-    }
+    const sessionStatus = access.session;
 
     if (sessionStatus.status === "cancelled") {
       throw new ConvexError("This session has been cancelled");
@@ -74,8 +70,8 @@ export const getToken = action({
       : identity.subject;
 
     const finalName = args.isCompanion 
-      ? `${args.participantName} (Companion)` 
-      : args.participantName;
+      ? `${user.fullName} (Companion)`
+      : user.fullName;
 
     const at = new AccessToken(apiKey, apiSecret, {
       identity: finalIdentity,
@@ -106,14 +102,15 @@ export const toggleRecording = action({
   args: {
     roomName: v.string(),
     start: v.boolean(),
-    filePrefix: v.string(),
   },
   returns: v.object({ success: v.boolean(), message: v.string() }),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("Not authenticated");
 
-    const user = await ctx.runQuery(api.users.getCurrentUser, { clerkId: identity.subject });
+    const user = await ctx.runQuery(internal.users.getUserByClerkIdInternal, {
+      clerkId: identity.subject,
+    });
     if (!user) throw new ConvexError("User not found");
     const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, {
       userId: user._id,
@@ -145,37 +142,58 @@ export const toggleRecording = action({
       }
 
       // Proceed with starting the recording
+      if (
+        !process.env.S3_ACCESS_KEY ||
+        !process.env.S3_SECRET_KEY ||
+        !process.env.S3_REGION ||
+        !process.env.S3_BUCKET
+      ) {
+        throw new Error("Recording storage credentials are not configured.");
+      }
+
       const s3Upload = new S3Upload({
-        accessKey: process.env.S3_ACCESS_KEY ?? "",
-        secret: process.env.S3_SECRET_KEY ?? "",
-        region: process.env.S3_REGION ?? "",
-        bucket: process.env.S3_BUCKET ?? "",
-        endpoint: process.env.S3_ENDPOINT, 
+        accessKey: process.env.S3_ACCESS_KEY,
+        secret: process.env.S3_SECRET_KEY,
+        region: process.env.S3_REGION,
+        bucket: process.env.S3_BUCKET,
+        endpoint: process.env.S3_ENDPOINT,
       });
 
       const fileOutput = new EncodedFileOutput({
         fileType: EncodedFileType.MP4,
-        filepath: `${args.filePrefix}.mp4`,
+        filepath: `recordings/${access.session.scheduleId}/${Date.now()}-${randomUUID()}.mp4`,
         output: { case: "s3", value: s3Upload },
       });
 
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
       if (!baseUrl) throw new Error("NEXT_PUBLIC_APP_URL is not defined in environment variables.");
 
-      // Look up the schedule before starting — done here so we have scheduleId ready
-      const schedule = await ctx.runQuery(api.schedule.getByRoomName, { roomName: args.roomName });
-
-      // startRoomCompositeEgress returns EgressInfo which includes egressId directly
-      const egressInfo = await egressClient.startRoomCompositeEgress(
-        args.roomName,
-        fileOutput,
-        { customBaseUrl: `${baseUrl}/recording` }
-      );
+      const recordingToken = randomUUID();
+      await ctx.runMutation(internal.whiteboardSessions.setRecordingToken, {
+        roomName: args.roomName,
+        recordingToken,
+      });
+      let egressInfo;
+      try {
+        egressInfo = await egressClient.startRoomCompositeEgress(
+          args.roomName,
+          fileOutput,
+          {
+            customBaseUrl: `${baseUrl}/recording?whiteboardToken=${encodeURIComponent(recordingToken)}`,
+          },
+        );
+      } catch (error) {
+        await ctx.runMutation(internal.whiteboardSessions.setRecordingToken, {
+          roomName: args.roomName,
+          recordingToken: undefined,
+        });
+        throw error;
+      }
 
       // Persist the egress using the egressId from the return value (no second listEgress needed)
-      if (schedule && egressInfo.egressId) {
+      if (egressInfo.egressId) {
         await ctx.runMutation(internal.recordings.createRecording, {
-          scheduleId: schedule._id,
+          scheduleId: access.session.scheduleId,
           roomName: args.roomName,
           egressId: egressInfo.egressId,
           startedAt: Date.now(),
@@ -199,6 +217,10 @@ export const toggleRecording = action({
         await Promise.all(
           activeEgresses.map((e) => egressClient.stopEgress(e.egressId))
         );
+        await ctx.runMutation(internal.whiteboardSessions.setRecordingToken, {
+          roomName: args.roomName,
+          recordingToken: undefined,
+        });
         return { success: true, message: "Recording stopped" };
       }
 
@@ -214,6 +236,14 @@ export const toggleRecording = action({
  */
 export const processEgressWebhook = internalAction({
   args: { body: v.string(), authorization: v.string() },
+  returns: v.union(
+    v.object({ ok: v.literal(true) }),
+    v.object({
+      ok: v.literal(false),
+      error: v.string(),
+      status: v.number(),
+    }),
+  ),
   handler: async (ctx, { body, authorization }) => {
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
@@ -282,14 +312,24 @@ export const processEgressWebhook = internalAction({
         ...(completedAt !== undefined && { completedAt }),
       });
     }
+    if (
+      info.roomName &&
+      (status === "complete" || status === "failed" || status === "aborted")
+    ) {
+      await ctx.runMutation(internal.whiteboardSessions.setRecordingToken, {
+        roomName: info.roomName,
+        recordingToken: undefined,
+      });
+    }
 
     return { ok: true as const };
   },
 });
 
-export const forceCleanupEgress = action({
+export const forceCleanupEgress = internalAction({
   args: {},
-  handler: async (ctx) => {
+  returns: v.object({ message: v.string(), stopped: v.number() }),
+  handler: async () => {
     const url = process.env.LIVEKIT_URL;
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
@@ -311,17 +351,17 @@ export const forceCleanupEgress = action({
     );
 
     if (stuckSessions.length === 0) {
-      return { message: "No stuck sessions found. You are clear!" };
+      return { message: "No stuck sessions found. You are clear!", stopped: 0 };
     }
 
     // Forcefully stop all of them
-    const results = await Promise.allSettled(
+    await Promise.allSettled(
       stuckSessions.map((e) => egressClient.stopEgress(e.egressId))
     );
 
     return { 
       message: `Attempted to stop ${stuckSessions.length} stuck sessions.`,
-      results 
+      stopped: stuckSessions.length,
     };
   },
 });

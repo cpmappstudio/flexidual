@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/tooltip";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { useState } from "react";
+import { TZDate } from "@date-fns/tz";
 
 const localeMap = {
   en: enUS,
@@ -67,6 +68,7 @@ interface ScheduleItemProps {
     isRecurring?: boolean;
     recurrenceParentId?: Id<"classSchedule">;
     hasRecording?: boolean;
+    timeZone: string;
   };
   classId?: Id<"classes">;
   isPast?: boolean;
@@ -96,10 +98,14 @@ export function ScheduleItem({
   const [recordingOpen, setRecordingOpen] = useState(false);
 
   // Convert to Date if needed
-  const startDate =
-    schedule.start instanceof Date ? schedule.start : new Date(schedule.start);
-  const endDate =
-    schedule.end instanceof Date ? schedule.end : new Date(schedule.end);
+  const startDate = new TZDate(
+    schedule.start instanceof Date ? schedule.start.getTime() : schedule.start,
+    schedule.timeZone,
+  );
+  const endDate = new TZDate(
+    schedule.end instanceof Date ? schedule.end.getTime() : schedule.end,
+    schedule.timeZone,
+  );
 
   const handleClick = () => {
     if (onEventClick) {
@@ -107,7 +113,7 @@ export function ScheduleItem({
     }
   };
 
-  const timeRange = `${format(startDate, "h:mm a", { locale: dateLocale })} - ${format(endDate, "h:mm a", { locale: dateLocale })}`;
+  const timeRange = `${format(startDate, "h:mm a", { locale: dateLocale })} - ${format(endDate, "h:mm a", { locale: dateLocale })} · ${schedule.timeZone}`;
   const platformLabel = isIgnitia
     ? "Ignitia"
     : isAbeka
@@ -349,6 +355,7 @@ export function ScheduleItem({
                 sessionType: schedule.sessionType || "live",
                 isRecurring: schedule.isRecurring,
                 recurrenceParentId: schedule.recurrenceParentId,
+                timeZone: schedule.timeZone,
               }}
               trigger={
                 <Button size="sm" variant="outline">
@@ -576,6 +583,7 @@ export function ScheduleItem({
                   sessionType: schedule.sessionType || "live",
                   isRecurring: schedule.isRecurring,
                   recurrenceParentId: schedule.recurrenceParentId,
+                  timeZone: schedule.timeZone,
                 }}
                 trigger={
                   <Button size="sm" variant="outline">

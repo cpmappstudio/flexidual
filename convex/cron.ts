@@ -1,5 +1,5 @@
 import { cronJobs } from "convex/server";
-import { api } from "./_generated/api";
+import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
@@ -7,7 +7,7 @@ const crons = cronJobs();
 crons.interval(
   "Cleanup stale LiveKit sessions",
   { minutes: 15 },
-  api.schedule.cleanupStaleSessions
+  internal.schedule.cleanupStaleSessions
 );
 
 export default crons;

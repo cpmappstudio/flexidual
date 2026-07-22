@@ -13,11 +13,20 @@ export const hours = Array.from({ length: 24 }, (_, i) => i)
 
 export default function CalendarBodyMarginDayMargin({
   className,
+  startMinutes = 0,
+  endMinutes = 24 * 60,
 }: {
   className?: string
+  startMinutes?: number
+  endMinutes?: number
 }) {
   const locale = useLocale()
   const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
+  const durationMinutes = endMinutes - startMinutes
+  const markers = hours.filter((hour) => {
+    const minutes = hour * 60
+    return minutes > startMinutes && minutes < endMinutes
+  })
 
   return (
     <div
@@ -27,15 +36,22 @@ export default function CalendarBodyMarginDayMargin({
       )}
     >
       <div className="sticky top-0 left-0 z-20 h-7 border-b bg-sidebar" />
-      <div className="flex flex-col">
-        {hours.map((hour) => (
-          <div key={hour} className="relative h-(--calendar-hour-height) first:mt-0">
-            {hour !== 0 && (
-              <span className="absolute text-xs xl:text-sm text-muted-foreground -top-2 xl:-top-2.5 left-1 xl:left-2">
-                {format(new Date().setHours(hour, 0, 0, 0), 'h a', { locale: dateLocale })}
-              </span>
-            )}
-          </div>
+      <div
+        className="relative"
+        style={{
+          height: `calc(var(--calendar-hour-height) * ${durationMinutes / 60})`,
+        }}
+      >
+        {markers.map((hour) => (
+          <span
+            key={hour}
+            className="absolute left-1 -translate-y-1/2 text-xs text-muted-foreground xl:left-2 xl:text-sm"
+            style={{
+              top: `${((hour * 60 - startMinutes) / durationMinutes) * 100}%`,
+            }}
+          >
+            {format(new Date().setHours(hour, 0, 0, 0), 'h a', { locale: dateLocale })}
+          </span>
         ))}
       </div>
     </div>

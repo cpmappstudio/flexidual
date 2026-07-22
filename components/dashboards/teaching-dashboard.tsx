@@ -15,6 +15,11 @@ import { getRoleForOrg } from "@/lib/rbac"
 import { format, isToday, isTomorrow, startOfDay, addDays } from "date-fns"
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
+import { TZDate } from "@date-fns/tz"
+
+function zonedStart(event: { start: number; timeZone: string }) {
+  return new TZDate(event.start, event.timeZone)
+}
 
 export default function TeachingDashboard() {
   const t = useTranslations()
@@ -155,17 +160,17 @@ export default function TeachingDashboard() {
                     <div className="time-badge">
                       <Clock className="w-4 h-4 text-info" />
                       <span className="font-semibold">
-                        {format(nextLesson.start, "h:mm a")}
+                        {format(zonedStart(nextLesson), "h:mm a")} · {nextLesson.timeZone}
                       </span>
                     </div>
                     <div className="time-badge">
                       <CalendarIcon className="w-4 h-4 text-primary" />
                       <span className="font-medium">
-                        {isToday(nextLesson.start)
+                        {isToday(zonedStart(nextLesson))
                           ? t('dashboard.today')
-                          : isTomorrow(nextLesson.start)
+                          : isTomorrow(zonedStart(nextLesson))
                           ? t('dashboard.tomorrow')
-                          : format(nextLesson.start, "EEEE, MMM d")}
+                          : format(zonedStart(nextLesson), "EEEE, MMM d")}
                       </span>
                     </div>
                   </div>
@@ -242,10 +247,10 @@ export default function TeachingDashboard() {
                     >
                       <div className="lesson-time-box">
                         <span className="text-xs font-bold text-muted-foreground">
-                          {format(lesson.start, "h:mm")}
+                          {format(zonedStart(lesson), "h:mm")}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {format(lesson.start, "a")}
+                          {format(zonedStart(lesson), "a")}
                         </span>
                       </div>
 
@@ -286,13 +291,13 @@ export default function TeachingDashboard() {
                     >
                       <div className="upcoming-date-box">
                         <span className="text-xs font-bold text-secondary uppercase">
-                          {format(lesson.start, "MMM")}
+                          {format(zonedStart(lesson), "MMM")}
                         </span>
                         <span className="text-2xl font-bold">
-                          {format(lesson.start, "d")}
+                          {format(zonedStart(lesson), "d")}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {format(lesson.start, "h:mm a")}
+                          {format(zonedStart(lesson), "h:mm a")} · {lesson.timeZone}
                         </span>
                       </div>
 
@@ -386,7 +391,7 @@ export default function TeachingDashboard() {
                                 {evt.title}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {format(evt.start, "h:mm a")}
+                                {format(zonedStart(evt), "h:mm a")}
                               </p>
                             </div>
                           ))}

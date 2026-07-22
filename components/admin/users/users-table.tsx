@@ -3,7 +3,8 @@
 import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Doc, Id } from "@/convex/_generated/dataModel";
+import type { Id } from "@/convex/_generated/dataModel";
+import type { FunctionReturnType } from "convex/server";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { UserDialog } from "./user-dialog";
@@ -17,11 +18,7 @@ import { createSortableHeader, createSearchColumn } from "@/components/table/col
 import type { FilterConfig } from "@/lib/table/types";
 import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
-export type User = Doc<"users"> & { 
-  role?: string; 
-  orgId?: string; 
-  orgType?: string; 
-};
+export type User = FunctionReturnType<typeof api.users.getUsers>[number];
 
 interface UsersTableProps {
   roleFilter?: UserRole;

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ComponentType, MutableRefObject } from "react";
 import dynamic from "next/dynamic";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useRoomContext } from "@livekit/components-react";
@@ -69,7 +69,7 @@ type WhiteboardMessage = WhiteboardPointerMsg | WhiteboardViewportMsg;
 const WB_STORAGE_PREFIX = "wb_";
 
 /** Cached Convex CDN reference for a single uploaded image */
-type FileRef = { url: string; mimeType: string; storageId: string };
+type FileRef = { url: string; mimeType: string; storageId: Id<"_storage"> };
 /** Map from Excalidraw file ID → Convex CDN ref */
 type FileRefMap = Record<string, FileRef>;
 
@@ -170,11 +170,11 @@ export interface SharedWhiteboardProps {
    * follows the broadcaster. Set to false to let the viewer pan/zoom independently.
    */
   followViewport?: boolean;
+  recordingToken?: string;
 }
 
-export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, broadcastRef, cleanupRef, followViewport = true }: SharedWhiteboardProps) {
+export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, broadcastRef, cleanupRef, followViewport = true, recordingToken }: SharedWhiteboardProps) {
   const room = useRoomContext();
-  const convex = useConvex();
   const generateUploadUrl = useMutation(api.whiteboardFiles.generateUploadUrl);
   const deleteSessionFiles = useMutation(api.whiteboardFiles.deleteSessionFiles);
   const upsertScene = useMutation(api.whiteboardSessions.upsertScene);
@@ -184,7 +184,7 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
   // Writers (isReadonly=false) skip the query — they write, not read.
   const sceneData = useQuery(
     api.whiteboardSessions.getScene,
-    isReadonly ? { roomName } : "skip",
+    isReadonly ? { roomName, recordingToken } : "skip",
   );
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -307,37 +307,32 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
   const uploadAndBroadcastFile = useCallback(async (file: BinaryFileData) => {
     sentFileIdsRef.current.add(file.id);
     try {
-      const uploadUrl = await generateUploadUrl();
+      const uploadUrl = await generateUploadUrl({ roomName });
       const { blob, mimeType: uploadMimeType } = await compressImage(file.dataURL, file.mimeType);
       const uploadResponse = await fetch(uploadUrl, {
         method: "POST",
         body: blob,
         headers: { "Content-Type": uploadMimeType },
       });
-      const { storageId } = (await uploadResponse.json()) as { storageId: string };
-      const url = await convex.query(api.whiteboardFiles.getServingUrl, {
-        storageId: storageId as Id<"_storage">,
-      });
-      if (!url) return;
-
-      // Cache locally so a page refresh doesn't lose the mapping
-      fileRefsRef.current[file.id] = { url, mimeType: uploadMimeType, storageId };
-      persistFileRefs();
-
-      // Publish via Convex — readers pick it up from getScene subscription
-      await addFileRefMutation({
+      if (!uploadResponse.ok) throw new Error("Whiteboard image upload failed");
+      const { storageId } = (await uploadResponse.json()) as {
+        storageId: Id<"_storage">;
+      };
+      const fileRef = await addFileRefMutation({
         roomName,
         fileId: file.id,
-        url,
-        mimeType: uploadMimeType,
         storageId,
         created: file.created,
       });
+
+      // Cache locally so a page refresh doesn't lose the mapping
+      fileRefsRef.current[file.id] = fileRef;
+      persistFileRefs();
     } catch (err) {
       console.error("[Whiteboard] Image upload failed:", err);
       sentFileIdsRef.current.delete(file.id);
     }
-  }, [generateUploadUrl, convex, persistFileRefs, addFileRefMutation, roomName]);
+  }, [generateUploadUrl, persistFileRefs, addFileRefMutation, roomName]);
 
   /**
    * No-op: Convex reactive queries automatically deliver the current scene
@@ -350,11 +345,8 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
 
   /** Delete all Convex storage objects and the session document; wipe localStorage. */
   const cleanupSession = useCallback(async () => {
-    const storageIds = Object.values(fileRefsRef.current).map((r) => r.storageId);
     try {
-      if (storageIds.length > 0) {
-        await deleteSessionFiles({ storageIds: storageIds as Id<"_storage">[] });
-      }
+      await deleteSessionFiles({ roomName });
       await clearSessionMutation({ roomName });
     } catch (err) {
       console.error("[Whiteboard] Failed to delete session files:", err);

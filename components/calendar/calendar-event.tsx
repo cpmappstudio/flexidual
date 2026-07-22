@@ -30,18 +30,20 @@ function getOverlappingEvents(
 
 // Get responsive hour height based on screen size
 function getHourHeight(): number {
-  if (typeof window === 'undefined') return 64;
-  
+  if (typeof window === "undefined") return 64;
+
   const width = window.innerWidth;
-  if (width >= 1536) return 96;  // 2xl: 24 (6rem)
-  if (width >= 1280) return 80;  // xl: 20 (5rem)
-  return 64;                      // default: 16 (4rem)
+  if (width >= 1536) return 96; // 2xl: 24 (6rem)
+  if (width >= 1280) return 80; // xl: 20 (5rem)
+  return 64; // default: 16 (4rem)
 }
 
 function calculateEventPosition(
   event: CalendarEventType,
   allEvents: CalendarEventType[],
   hourHeight: number,
+  scheduleStartMinutes: number,
+  scheduleEndMinutes: number,
 ): EventPosition {
   const overlappingEvents = getOverlappingEvents(event, allEvents);
   const group = [event, ...overlappingEvents].sort(
@@ -62,8 +64,12 @@ function calculateEventPosition(
     endMinutes = 59;
   }
 
-  const topPosition = startHour * hourHeight + (startMinutes / 60) * hourHeight;
-  const duration = endHour * 60 + endMinutes - (startHour * 60 + startMinutes);
+  const eventStartMinutes = startHour * 60 + startMinutes;
+  const eventEndMinutes = endHour * 60 + endMinutes;
+  const visibleStart = Math.max(eventStartMinutes, scheduleStartMinutes);
+  const visibleEnd = Math.min(eventEndMinutes, scheduleEndMinutes);
+  const topPosition = ((visibleStart - scheduleStartMinutes) / 60) * hourHeight;
+  const duration = Math.max(0, visibleEnd - visibleStart);
   const height = (duration / 60) * hourHeight;
 
   return {
@@ -83,9 +89,15 @@ export default function CalendarEvent({
   month?: boolean;
   className?: string;
 }) {
-  const { events, setSelectedEvent, setManageEventDialogOpen, date } =
-    useCalendarContext();
-  
+  const {
+    events,
+    setSelectedEvent,
+    setManageEventDialogOpen,
+    date,
+    scheduleStartMinutes,
+    scheduleEndMinutes,
+  } = useCalendarContext();
+
   const [hourHeight, setHourHeight] = useState(getHourHeight());
 
   // Update hour height on window resize
@@ -94,11 +106,29 @@ export default function CalendarEvent({
       setHourHeight(getHourHeight());
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const style = month ? {} : calculateEventPosition(event, events, hourHeight);
+  const eventStartMinutes =
+    event.start.getHours() * 60 + event.start.getMinutes();
+  const eventEndMinutes = event.end.getHours() * 60 + event.end.getMinutes();
+  if (
+    !month &&
+    (eventEndMinutes <= scheduleStartMinutes ||
+      eventStartMinutes >= scheduleEndMinutes)
+  ) {
+    return null;
+  }
+  const style = month
+    ? {}
+    : calculateEventPosition(
+        event,
+        events,
+        hourHeight,
+        scheduleStartMinutes,
+        scheduleEndMinutes,
+      );
 
   const isEventInCurrentMonth = isSameMonth(event.start, date);
   const animationKey = `${event.id}-${
@@ -117,9 +147,9 @@ export default function CalendarEvent({
           : event.color;
   const statusClasses = getCalendarColorClasses(statusColor);
 
-  const tooltipText = month 
-    ? `${event.curriculumTitle} - ${event.teacherName} - ${format(event.start, "h:mm a")}`
-    : `${event.curriculumTitle}\n${event.title}\n${event.className}\n${format(event.start, "h:mm a")} - ${format(event.end, "h:mm a")}`;
+  const tooltipText = month
+    ? `${event.curriculumTitle} - ${event.teacherName} - ${format(event.start, "h:mm a")} · ${event.timeZone}`
+    : `${event.curriculumTitle}\n${event.title}\n${event.className}\n${format(event.start, "h:mm a")} - ${format(event.end, "h:mm a")} · ${event.timeZone}`;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -187,7 +217,7 @@ export default function CalendarEvent({
               <p className={cn("font-bold truncate", month && "text-xs")}>
                 {event.curriculumTitle}
               </p>
-              
+
               <p
                 className={cn(
                   "text-sm truncate font-medium",
@@ -196,12 +226,9 @@ export default function CalendarEvent({
               >
                 {event.title}
               </p>
-              
+
               <p
-                className={cn(
-                  "text-xs truncate opacity-80",
-                  month && "hidden",
-                )}
+                className={cn("text-xs truncate opacity-80", month && "hidden")}
               >
                 {event.className}
               </p>
@@ -219,12 +246,15 @@ export default function CalendarEvent({
                 </div>
               )}
             </div>
-            
+
             <p className={cn("text-sm", month && "text-xs flex-shrink-0")}>
               <span>{format(event.start, "h:mm a")}</span>
               <span className={cn("mx-1", month && "hidden")}>-</span>
               <span className={cn(month && "hidden")}>
                 {format(event.end, "h:mm a")}
+              </span>
+              <span className={cn("ml-1 text-xs", month && "hidden")}>
+                · {event.timeZone}
               </span>
             </p>
           </motion.div>

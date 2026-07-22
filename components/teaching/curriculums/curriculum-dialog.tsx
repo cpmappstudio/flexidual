@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Doc } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ import { EntityDialog } from "@/components/ui/entity-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CurriculumLessonList } from "./curriculum-lesson-list";
 import { useAlert } from "@/components/providers/alert-provider";
 import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
@@ -29,6 +30,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 // Multi-tenant imports
 import { useParams } from "next/navigation";
+import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 interface CurriculumDialogProps {
   curriculum?: Doc<"curriculums">;
@@ -56,19 +58,37 @@ export function CurriculumDialog({
   const { showAlert } = useAlert();
   const isEditing = !!curriculum;
   const isMobile = useIsMobile();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setIsOpen = controlledOnOpenChange || setInternalOpen;
 
   // 1. Resolve Multi-Tenant Context
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
+  const campus = useQuery(
+    api.campuses.get,
+    orgContext?.type === "campus" ? { id: orgContext._id } : "skip",
+  );
+  const { selectedSchoolId } = useAdminSchoolFilter();
+  const gradeSchoolId =
+    curriculum?.schoolId ??
+    (orgContext?.type === "school"
+      ? orgContext._id
+      : orgContext?.type === "campus"
+        ? campus?.schoolId
+        : selectedSchoolId !== "all"
+          ? (selectedSchoolId as Id<"schools">)
+          : undefined);
+  const grades = useQuery(
+    api.grades.list,
+    isOpen && gradeSchoolId ? { schoolId: gradeSchoolId } : "skip",
+  );
 
   const createBatch = useMutation(api.curriculums.createBatch);
   const update = useMutation(api.curriculums.update);
   const remove = useMutation(api.curriculums.remove);
 
-  const [internalOpen, setInternalOpen] = useState(false);
-  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
-  const setIsOpen = controlledOnOpenChange || setInternalOpen;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [queue, setQueue] = useState<PendingCurriculum[]>([]);
 
@@ -168,8 +188,10 @@ export function CurriculumDialog({
 
         // 2. Pass context so the backend links it to the right School!
         await createBatch({
-          orgType: orgContext.type,
-          orgId: orgContext._id,
+          orgType:
+            orgContext.type === "system" ? "school" : orgContext.type,
+          orgId:
+            orgContext.type === "system" ? gradeSchoolId : orgContext._id,
           curriculums: finalQueue.map((q) => ({
             title: q.title,
             code: q.code || undefined,
@@ -329,18 +351,31 @@ export function CurriculumDialog({
 
               <div className="grid gap-2">
                 <Label>{t("curriculum.targetGrades")}</Label>
-                <Input
-                  value={formData.gradeCodes.join(", ")}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      gradeCodes: e.target.value
-                        .split(",")
-                        .map((s) => s.trim()),
-                    })
-                  }
-                  placeholder={t("curriculumDialog.placeholders.targetGrades")}
-                />
+                <div className="grid grid-cols-2 gap-2 rounded-md border p-2">
+                  {grades?.map((grade) => (
+                    <Label
+                      key={grade._id}
+                      htmlFor={`curriculum-grade-${grade._id}`}
+                      className="flex cursor-pointer items-center gap-2 rounded-sm p-1.5 font-normal hover:bg-muted"
+                    >
+                      <Checkbox
+                        id={`curriculum-grade-${grade._id}`}
+                        checked={formData.gradeCodes.includes(grade.code)}
+                        onCheckedChange={(checked) =>
+                          setFormData((current) => ({
+                            ...current,
+                            gradeCodes: checked
+                              ? [...current.gradeCodes, grade.code]
+                              : current.gradeCodes.filter(
+                                  (code) => code !== grade.code,
+                                ),
+                          }))
+                        }
+                      />
+                      {grade.name}
+                    </Label>
+                  ))}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {t("curriculum.targetGradesHelp")}
                 </p>

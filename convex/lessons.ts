@@ -1,7 +1,35 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getCurrentUserOrThrow } from "./users";
-import { canModifyCurriculumContent } from "./permissions";
+import {
+  canAccessCurriculumContent,
+  canModifyCurriculumContent,
+} from "./permissions";
+
+const lessonFields = {
+  _id: v.id("lessons"),
+  _creationTime: v.number(),
+  curriculumId: v.id("curriculums"),
+  title: v.string(),
+  description: v.optional(v.string()),
+  content: v.optional(v.string()),
+  order: v.number(),
+  resourceStorageIds: v.optional(v.array(v.id("_storage"))),
+  isActive: v.boolean(),
+  createdAt: v.number(),
+  createdBy: v.id("users"),
+};
+const lessonValidator = v.object(lessonFields);
+
+async function requireCurriculumAccess(
+  ctx: Parameters<typeof getCurrentUserOrThrow>[0],
+  curriculumId: Parameters<typeof canAccessCurriculumContent>[2],
+) {
+  const user = await getCurrentUserOrThrow(ctx);
+  if (!(await canAccessCurriculumContent(ctx, user._id, curriculumId))) {
+    throw new ConvexError("PERMISSION_DENIED");
+  }
+}
 
 // ============================================================================
 // QUERIES
@@ -15,7 +43,9 @@ export const listByCurriculum = query({
     curriculumId: v.id("curriculums"),
     includeInactive: v.optional(v.boolean()),
   },
+  returns: v.array(lessonValidator),
   handler: async (ctx, args) => {
+    await requireCurriculumAccess(ctx, args.curriculumId);
     let lessons;
     
     if (args.includeInactive) {
@@ -42,8 +72,12 @@ export const listByCurriculum = query({
  */
 export const get = query({
   args: { id: v.id("lessons") },
+  returns: v.union(lessonValidator, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const lesson = await ctx.db.get(args.id);
+    if (!lesson) return null;
+    await requireCurriculumAccess(ctx, lesson.curriculumId);
+    return lesson;
   },
 });
 
@@ -53,9 +87,14 @@ export const get = query({
  */
 export const getWithResources = query({
   args: { id: v.id("lessons") },
+  returns: v.union(
+    v.object({ ...lessonFields, resourceUrls: v.array(v.string()) }),
+    v.null(),
+  ),
   handler: async (ctx, args) => {
     const lesson = await ctx.db.get(args.id);
     if (!lesson) return null;
+    await requireCurriculumAccess(ctx, lesson.curriculumId);
 
     let resourceUrls: string[] = [];
     
@@ -75,15 +114,6 @@ export const getWithResources = query({
   },
 });
 
-/**
- * Generate upload URL for lesson resources
- */
-export const generateResourceUploadUrl = mutation({
-  handler: async (ctx) => {
-    return await ctx.storage.generateUploadUrl();
-  },
-});
-
 // ============================================================================
 // MUTATIONS
 // ============================================================================
@@ -100,6 +130,7 @@ export const create = mutation({
     order: v.optional(v.number()),
     resourceStorageIds: v.optional(v.array(v.id("_storage"))),
   },
+  returns: v.id("lessons"),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -147,6 +178,13 @@ export const createBatch = mutation({
       content: v.optional(v.string()),
     }))
   },
+  returns: v.array(
+    v.object({
+      title: v.string(),
+      status: v.union(v.literal("success"), v.literal("error")),
+      reason: v.optional(v.string()),
+    }),
+  ),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -181,9 +219,9 @@ export const createBatch = mutation({
           createdBy: user._id,
         });
 
-        results.push({ title: item.title, status: "success" });
+        results.push({ title: item.title, status: "success" as const });
       } catch (e) {
-        results.push({ title: item.title, status: "error", reason: (e as Error).message });
+        results.push({ title: item.title, status: "error" as const, reason: (e as Error).message });
       }
     }
 
@@ -203,6 +241,7 @@ export const update = mutation({
     isActive: v.optional(v.boolean()),
     resourceStorageIds: v.optional(v.array(v.id("_storage"))),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -226,6 +265,7 @@ export const update = mutation({
  */
 export const remove = mutation({
   args: { id: v.id("lessons") },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -282,15 +322,25 @@ export const reorder = mutation({
       })
     ),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
     if (args.updates.length === 0) return;
 
-    // Verify access against the first lesson's curriculum
-    // (A single drag-and-drop operation only spans one curriculum)
-    const firstLesson = await ctx.db.get(args.updates[0].id);
+    const lessons = await Promise.all(
+      args.updates.map((update) => ctx.db.get(update.id)),
+    );
+    const firstLesson = lessons[0];
     if (!firstLesson) throw new Error("Lesson not found");
+    if (
+      lessons.some(
+        (lesson) =>
+          !lesson || lesson.curriculumId !== firstLesson.curriculumId,
+      )
+    ) {
+      throw new ConvexError("INVALID_REORDER_REQUEST");
+    }
 
     const isAuthorized = await canModifyCurriculumContent(ctx, user._id, firstLesson.curriculumId);
     if (!isAuthorized) {
@@ -314,6 +364,7 @@ export const duplicate = mutation({
     id: v.id("lessons"),
     newTitle: v.optional(v.string()),
   },
+  returns: v.id("lessons"),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
@@ -341,7 +392,9 @@ export const duplicate = mutation({
       description: original.description,
       content: original.content,
       order: maxOrder + 1,
-      resourceStorageIds: original.resourceStorageIds, // Reuse same files
+      // Storage objects are owned by one lesson. Reusing IDs would make deleting
+      // either lesson break the other's attachments.
+      resourceStorageIds: undefined,
       isActive: true,
       createdAt: Date.now(),
       createdBy: user._id,

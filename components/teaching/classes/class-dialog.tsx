@@ -34,6 +34,7 @@ function getFormData(classDoc: Doc<"classes">): CourseFormData {
     academicYear: classDoc.academicYear || "",
     curriculumId: classDoc.curriculumId,
     teacherId: classDoc.teacherId || "",
+    gradeCode: classDoc.gradeCode || "",
   };
 }
 
@@ -72,6 +73,15 @@ export function ClassDialog({
   const setIsOpen = controlledOnOpenChange || setInternalOpen;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(() => getFormData(classDoc));
+  const selectedCurriculum = curriculums?.find(
+    (curriculum) => curriculum._id === formData.curriculumId,
+  );
+  const grades = useQuery(
+    api.grades.list,
+    isAdmin && selectedCurriculum?.schoolId
+      ? { schoolId: selectedCurriculum.schoolId }
+      : "skip",
+  );
 
   useEffect(() => {
     if (isOpen) setFormData(getFormData(classDoc));
@@ -86,8 +96,8 @@ export function ClassDialog({
         classId: classDoc._id,
         name: formData.name,
         description: formData.description || undefined,
-        academicYear: formData.academicYear || undefined,
         curriculumId: formData.curriculumId as Id<"curriculums">,
+        gradeCode: formData.gradeCode || undefined,
         teacherId: formData.teacherId
           ? (formData.teacherId as Id<"users">)
           : undefined,
@@ -134,6 +144,7 @@ export function ClassDialog({
       title={t("class.edit")}
       onSubmit={handleSubmit}
       isSubmitting={isSubmitting}
+      submitDisabled={!formData.gradeCode}
       submitLabel={t("common.saveChanges")}
       maxWidth="sm:max-w-[700px]"
       leftActions={
@@ -163,7 +174,9 @@ export function ClassDialog({
             setFormDataAction={setFormData}
             curriculums={curriculums}
             teachers={teachers}
+            grades={grades}
             isAdmin={isAdmin}
+            showAcademicYear={false}
           />
         </TabsContent>
 
