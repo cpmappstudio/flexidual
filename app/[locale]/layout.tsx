@@ -8,7 +8,7 @@ import { notFound } from 'next/navigation';
 import { setRequestLocale } from 'next-intl/server';
 import { hasLocale } from 'next-intl';
 import { routing } from '@/i18n/routing';
-import { enUS, esES } from '@clerk/localizations';
+import { enUS, esES, ptBR } from '@clerk/localizations';
 import { AlertProvider } from "@/components/providers/alert-provider";
 
 export default async function LocaleLayout({
@@ -33,7 +33,7 @@ export default async function LocaleLayout({
     const messages = await getMessages();
 
     // Configurar localización de Clerk según el idioma
-    const clerkLocalization = locale === 'es' ? esES : enUS;
+    const clerkLocalization = locale === 'es' ? esES : locale === 'pt-BR' ? ptBR : enUS;
 
     return (
         <ThemeProvider

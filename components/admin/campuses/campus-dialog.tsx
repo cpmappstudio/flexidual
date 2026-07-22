@@ -1,29 +1,35 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import { Id, Doc } from "@/convex/_generated/dataModel"
+import type { Doc } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MapPin, Plus, Edit, Hash, Building2 } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { EntityDialog } from "@/components/ui/entity-dialog"
 
-interface CampusDialogProps {
-    campus?: Doc<"campuses">
-    defaultSchoolId?: Id<"schools">
+type CampusDialogProps = {
     trigger?: React.ReactNode
     open?: boolean 
     onOpenChange?: (open: boolean) => void
-}
+} & (
+    | { campus: Doc<"campuses">; parentInstitution?: never }
+    | {
+        campus?: undefined
+        parentInstitution: Pick<Doc<"schools">, "_id" | "name">
+    }
+)
 
-export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenChange }: CampusDialogProps) {
-    const isEditing = !!campus
-    
-    const schools = useQuery(api.schools.list, { isActive: true })
+export function CampusDialog(props: CampusDialogProps) {
+    const { trigger, open, onOpenChange } = props
+    const isEditing = !!props.campus
+    const t = useTranslations("settings.campuses")
+
     const createCampus = useMutation(api.campuses.create)
     const updateCampus = useMutation(api.campuses.update)
 
@@ -35,7 +41,6 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
         name: "",
         slug: "",
         code: "",
-        schoolId: defaultSchoolId || "",
         status: "active",
     })
 
@@ -44,13 +49,12 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
 
     useEffect(() => {
         if (effectiveOpen) {
-            if (campus) {
+            if (props.campus) {
                 setFormData({
-                    name: campus.name,
-                    slug: campus.slug,
-                    code: campus.code || "",
-                    schoolId: campus.schoolId,
-                    status: campus.isActive ? "active" : "inactive",
+                    name: props.campus.name,
+                    slug: props.campus.slug,
+                    code: props.campus.code || "",
+                    status: props.campus.isActive ? "active" : "inactive",
                 })
                 setIsAutoSlug(false)
             } else {
@@ -58,13 +62,12 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
                     name: "", 
                     slug: "", 
                     code: "",
-                    schoolId: defaultSchoolId || (schools?.[0]?._id ?? ""), 
                     status: "active" 
                 })
                 setIsAutoSlug(true)
             }
         }
-    }, [effectiveOpen, campus, defaultSchoolId, schools])
+    }, [effectiveOpen, props.campus])
 
     const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newName = e.target.value
@@ -79,35 +82,30 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!formData.schoolId) {
-            toast.error("Please select a parent school.")
-            return
-        }
-
         setIsSubmitting(true)
 
         try {
-            if (isEditing && campus) {
+            if (props.campus) {
                 await updateCampus({
-                    id: campus._id,
+                    id: props.campus._id,
                     name: formData.name,
                     slug: formData.slug,
                     code: formData.code || undefined,
                     isActive: formData.status === "active",
                 })
-                toast.success("Campus updated successfully")
+                toast.success(t("updated"))
             } else {
                 await createCampus({
-                    schoolId: formData.schoolId as Id<"schools">,
+                    schoolId: props.parentInstitution._id,
                     name: formData.name,
                     slug: formData.slug,
                     code: formData.code || undefined,
                 })
-                toast.success("Campus created successfully")
+                toast.success(t("created"))
             }
             handleOpenChange(false)
         } catch (error) {
-            toast.error((error as Error).message || "An error occurred")
+            toast.error((error as Error).message || t("saveError"))
         } finally {
             setIsSubmitting(false)
         }
@@ -119,7 +117,7 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
         </Button>
     ) : (
         <Button className="gap-2" type="button">
-            <Plus className="h-4 w-4" /> Add Campus
+            <Plus className="h-4 w-4" /> {t("add")}
         </Button>
     )
 
@@ -128,49 +126,36 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
             open={effectiveOpen}
             onOpenChange={handleOpenChange}
             trigger={trigger === undefined ? defaultTrigger : trigger}
-            title={isEditing ? "Edit Campus" : "Create New Campus"}
-            description={isEditing ? "Update campus details and settings." : "Add a new campus to a school network."}
+            title={isEditing ? t("editTitle") : t("createTitle")}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
-            submitLabel={isEditing ? "Save Changes" : "Create Campus"}
+            submitLabel={isEditing ? t("save") : t("create")}
         >
             <div className="grid gap-6 py-2">
                 
-                {!isEditing && (
+                {!props.campus && (
                     <div className="grid gap-2">
-                        <Label htmlFor="schoolId">Parent School</Label>
-                        <Select 
-                            value={formData.schoolId}
-                            onValueChange={(v) => setFormData({...formData, schoolId: v})}
-                            disabled={!!defaultSchoolId}
-                        >
-                            <SelectTrigger>
-                                <div className="flex items-center gap-2">
-                                    <Building2 className="w-4 h-4 text-muted-foreground" />
-                                    <SelectValue placeholder="Select a school..." />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                                {schools?.map(school => (
-                                    <SelectItem key={school._id} value={school._id}>
-                                        {school.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <Label>{t("institution")}</Label>
+                        <div className="flex items-center gap-2 text-sm">
+                            <Building2 className="size-4 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 truncate font-medium">
+                                {props.parentInstitution.name}
+                            </span>
+                        </div>
                     </div>
                 )}
 
                 <div className="grid gap-2">
-                    <Label htmlFor="name">Campus Name</Label>
+                    <Label htmlFor="name">{t("name")}</Label>
                     <div className="relative">
                         <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input 
                             id="name" 
-                            placeholder="e.g. North Campus"
+                            placeholder={t("namePlaceholder")}
                             value={formData.name}
                             onChange={handleNameChange}
                             className="pl-9"
+                            minLength={2}
                             required 
                         />
                     </div>
@@ -178,7 +163,7 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
-                        <Label htmlFor="slug">URL Slug</Label>
+                        <Label htmlFor="slug">{t("identifier")}</Label>
                         <Input 
                             id="slug" 
                             placeholder="north-campus"
@@ -192,12 +177,12 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="code">Campus Code (Optional)</Label>
+                        <Label htmlFor="code">{t("code")}</Label>
                         <div className="relative">
                             <Hash className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input 
                                 id="code" 
-                                placeholder="e.g. NC-01"
+                                placeholder={t("codePlaceholder")}
                                 value={formData.code}
                                 onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})}
                                 className="pl-9"
@@ -208,7 +193,7 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
 
                 {isEditing && (
                     <div className="grid gap-2">
-                        <Label htmlFor="status">Status</Label>
+                        <Label htmlFor="status">{t("status")}</Label>
                         <Select 
                             value={formData.status}
                             onValueChange={(v) => setFormData({...formData, status: v})}
@@ -217,8 +202,8 @@ export function CampusDialog({ campus, defaultSchoolId, trigger, open, onOpenCha
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="active">Active</SelectItem>
-                                <SelectItem value="inactive">Inactive</SelectItem>
+                                <SelectItem value="active">{t("active")}</SelectItem>
+                                <SelectItem value="inactive">{t("inactive")}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

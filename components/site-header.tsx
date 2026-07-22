@@ -1,6 +1,6 @@
 "use client"
 
-import { UserButton } from "@clerk/nextjs"
+import { AccountMenu } from "@/components/account-menu"
 import { FlexidualLogo } from "@/components/ui/flexidual-logo"
 import { useSidebar } from "@/components/ui/sidebar"
 
@@ -23,14 +23,8 @@ export function SiteHeader() {
             className="h-10 shrink-0 sm:h-12"
           />
         </button>
-        <div className="ml-auto flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-foreground/10 ring-1 ring-primary-foreground/20">
-          <UserButton
-            appearance={{
-              elements: {
-                avatarBox: "size-8",
-              },
-            }}
-          />
+        <div className="ml-auto flex size-10 shrink-0 items-center justify-center rounded-full bg-sidebar ring-1 ring-sidebar-border">
+          <AccountMenu className="hover:bg-sidebar-accent" />
         </div>
       </div>
     </header>

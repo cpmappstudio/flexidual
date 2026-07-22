@@ -1,8 +1,8 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getCurrentUserOrThrow } from "./users";
-import { hasSystemRole } from "./permissions";
+import { hasOrgRole, hasSystemRole } from "./permissions";
 
 export const list = query({
   args: { isActive: v.optional(v.boolean()) },
@@ -85,5 +85,45 @@ export const update = mutation({
         orgType: "school",
       });
     }
+  },
+});
+
+export const updateInstitutionSettings = mutation({
+  args: {
+    id: v.id("schools"),
+    name: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const school = await ctx.db.get(args.id);
+    if (!school) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "School not found" });
+    }
+
+    const canManage =
+      (await hasSystemRole(ctx, user._id, ["superadmin"])) ||
+      (await hasOrgRole(ctx, user._id, school._id, "school", ["admin"]));
+
+    if (!canManage) {
+      throw new ConvexError({
+        code: "FORBIDDEN",
+        message: "Only institution administrators can update these settings.",
+      });
+    }
+
+    const name = args.name.trim();
+    if (name.length < 2) {
+      throw new ConvexError({
+        code: "INVALID_NAME",
+        message: "Institution name must contain at least two characters.",
+      });
+    }
+
+    if (name !== school.name) {
+      await ctx.db.patch(args.id, { name });
+    }
+
+    return null;
   },
 });

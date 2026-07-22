@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Building2, MapPin, Plus } from "lucide-react"
+import { Building2, MapPin, Plus, Settings2 } from "lucide-react"
 import { useAuth } from "@clerk/nextjs"
 import { useParams, usePathname } from "next/navigation"
 import { useRouter } from "@/i18n/navigation"
@@ -80,6 +80,7 @@ export function OrgSwitcher() {
 
     if (selectedSchoolId !== school._id) setSelectedSchoolId(school._id)
     if (campus && selectedCampusId !== campus._id) setSelectedCampusId(campus._id)
+    if (!campus && selectedCampusId !== "all") setSelectedCampusId("all")
   }, [
     isSuperAdmin,
     isSystemDashboard,
@@ -101,6 +102,7 @@ export function OrgSwitcher() {
   const activeSchool = isSystemDashboard
     ? visibleSchools.find((school) => school._id === selectedSchoolId) ?? visibleSchools[0]
     : routeSchool ?? visibleSchools.find((school) => school._id === activeCampus?.schoolId) ?? visibleSchools[0]
+  const campusSchool = visibleSchools.find((school) => school._id === campusSchoolId)
 
   const selectSchool = (schoolSlug: string) => {
     router.push(`/${schoolSlug}`)
@@ -197,6 +199,7 @@ export function OrgSwitcher() {
               ) : (
                 visibleSchools.map((school) => {
                   const schoolCampuses = visibleCampuses.filter((campus) => campus.schoolId === school._id)
+                  const manageCampusesLabel = t("manageCampuses", { institution: school.name })
                   return (
                     <DropdownMenuSub key={school._id}>
                       <DropdownMenuSubTrigger className="gap-2 p-2">
@@ -214,7 +217,24 @@ export function OrgSwitcher() {
                               <span className="min-w-0 flex-1 whitespace-normal break-words">{t("institutionOverview")}</span>
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuLabel className="text-xs text-muted-foreground">{t("campuses")}</DropdownMenuLabel>
+                          <div className="flex items-center">
+                            <DropdownMenuLabel className="min-w-0 flex-1 text-xs text-muted-foreground">
+                              {t("campuses")}
+                            </DropdownMenuLabel>
+                            {isSuperAdmin && (
+                              <DropdownMenuItem
+                                className="size-7 cursor-pointer justify-center p-0"
+                                aria-label={manageCampusesLabel}
+                                title={manageCampusesLabel}
+                                onSelect={() => {
+                                  setSelectedSchoolId(school._id)
+                                  router.push("/admin/settings/campuses")
+                                }}
+                              >
+                                <Settings2 className="size-4" />
+                              </DropdownMenuItem>
+                            )}
+                          </div>
                           {schoolCampuses.map((campus) => (
                             <DropdownMenuItem
                               key={campus._id}
@@ -266,14 +286,16 @@ export function OrgSwitcher() {
       </SidebarMenu>
 
       <SchoolDialog trigger={null} open={schoolDialogOpen} onOpenChange={setSchoolDialogOpen} />
-      <CampusDialog
-        trigger={null}
-        defaultSchoolId={campusSchoolId ?? undefined}
-        open={campusSchoolId !== null}
-        onOpenChange={(open) => {
-          if (!open) setCampusSchoolId(null)
-        }}
-      />
+      {campusSchool && (
+        <CampusDialog
+          trigger={null}
+          parentInstitution={{ _id: campusSchool._id, name: campusSchool.name }}
+          open
+          onOpenChange={(open) => {
+            if (!open) setCampusSchoolId(null)
+          }}
+        />
+      )}
     </>
   )
 }

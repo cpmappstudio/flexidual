@@ -26,6 +26,7 @@ export default function CampusesPage() {
     )
 
     const schoolMap = new Map(schools?.map(s => [s._id, s.name]) || [])
+    const selectedSchool = schools?.find(school => school._id === selectedSchoolId)
 
     return (
         <div className="container mx-auto p-6 space-y-6">
@@ -36,7 +37,11 @@ export default function CampusesPage() {
                         {t("admin.campusesDescription")}
                     </p>
                 </div>
-                <CampusDialog />
+                {selectedSchool && (
+                    <CampusDialog
+                        parentInstitution={{ _id: selectedSchool._id, name: selectedSchool.name }}
+                    />
+                )}
             </div>
 
             <Card>
