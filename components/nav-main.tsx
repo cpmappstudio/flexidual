@@ -25,11 +25,13 @@ export function NavMain() {
     access?.canViewPeople ??
     (role === "admin" || role === "principal" || role === "superadmin")
 
-  if (!isLoaded || role === "student") return null
+  if (!isLoaded) return null
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{t('navigation.platform')}</SidebarGroupLabel>
+      {role !== "student" && (
+        <SidebarGroupLabel>{t('navigation.platform')}</SidebarGroupLabel>
+      )}
       <SidebarMenu>
         
         <SidebarMenuItem>

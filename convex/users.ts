@@ -60,7 +60,7 @@ type UserJSON = {
   last_name?: string;
   username?: string;
   image_url?: string;
-  public_metadata?: { school?: string };
+  public_metadata?: { grade?: string; school?: string };
 };
 
 function getClerkClient(secretKey: string) {
@@ -117,6 +117,9 @@ function toUserJSON(clerkUser: {
     username: clerkUser.username ?? undefined,
     image_url: clerkUser.imageUrl ?? undefined,
     public_metadata: {
+      ...(typeof clerkUser.publicMetadata?.grade === "string"
+        ? { grade: clerkUser.publicMetadata.grade }
+        : {}),
       ...(typeof clerkUser.publicMetadata?.school === "string"
         ? { school: clerkUser.publicMetadata.school }
         : {}),
@@ -398,7 +401,12 @@ export const upsertFromClerk = internalMutation({
       last_name: v.optional(v.string()),
       username: v.optional(v.string()),
       image_url: v.optional(v.string()),
-      public_metadata: v.optional(v.object({ school: v.optional(v.string()) })),
+      public_metadata: v.optional(
+        v.object({
+          grade: v.optional(v.string()),
+          school: v.optional(v.string()),
+        }),
+      ),
     }),
   },
   returns: v.null(),
@@ -436,7 +444,16 @@ export const upsertFromClerk = internalMutation({
     if (existingUser) {
       await ctx.db.patch(existingUser._id, userData);
     } else {
-      await ctx.db.insert("users", { ...userData, createdAt: Date.now() });
+      await ctx.db.insert("users", {
+        ...userData,
+        ...(typeof publicMetadata.grade === "string"
+          ? { grade: publicMetadata.grade }
+          : {}),
+        ...(typeof publicMetadata.school === "string"
+          ? { school: publicMetadata.school }
+          : {}),
+        createdAt: Date.now(),
+      });
     }
     return null;
   },

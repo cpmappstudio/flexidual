@@ -657,6 +657,11 @@
     "noClassesEnrolled": "Você ainda não está matriculado em nenhum curso.",
     "grade": "Série",
     "school": "Escola",
+    "today": {
+      "noClasses": "Você não tem aulas hoje",
+      "laterToday": "Mais tarde hoje",
+      "doneForToday": "Isso é tudo por hoje"
+    },
     "profile": {
       "level": "Nível",
       "rookie": "Novato",
@@ -668,6 +673,15 @@
       "totalSessions": "Total Agendado",
       "sessionsCompleted": "{count} aulas concluídas",
       "currentLevel": "Nível Atual",
+      "classAttendance": "Presença nas aulas",
+      "attendanceSummary": "Você participou de {attended} de {completed} {completed, plural, one {aula realizada} other {aulas realizadas}}.",
+      "noCompletedClassesYet": "Ainda não há aulas realizadas.",
+      "classesAttended": "Aulas assistidas",
+      "classesAttendedShort": "Assistidas",
+      "classesNotAttended": "Não assistidas",
+      "classesNotAttendedShort": "Não assistidas",
+      "upcomingClasses": "Próximas aulas",
+      "upcomingClassesShort": "Próximas",
       "overallProgress": "Progresso Geral",
       "behindTarget": "% Atrás do Objetivo",
       "actualProgress": "% Atual",

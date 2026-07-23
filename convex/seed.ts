@@ -8,6 +8,8 @@ const UX_DEMO_CLASS_NAME = "UX Demo - Integrated Biology Studio";
 const CLASSES_TABLE_DEMO_CODE_PREFIX = "CLASSES-TABLE-DEMO";
 const ADVANCED_LITERATURE_CLASS_NAME =
   "Advanced Literature Seminar - Comparative Essays and Guided Reading Workshop";
+const LAURA_TODAY_DEMO_USERNAME = "student_lau";
+const LAURA_TODAY_DEMO_ROOM_PREFIX = "student-lau-today-demo";
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
@@ -105,6 +107,29 @@ const classesTableDemoClasses = [
   },
 ] as const;
 
+const LAURA_COURSE_LOAD_TARGET = 18;
+const LAURA_COURSE_LOAD_CODE_PREFIX = "LAURA-COURSE-LOAD-DEMO";
+const lauraCourseLoadDemoCourses = [
+  ["Creative Writing Studio", "Language Arts - Creative Writing"],
+  ["Reading Fluency Lab", "Language Arts - Reading Fluency"],
+  ["Geometry Explorers", "Mathematics - Geometry Foundations"],
+  ["Statistics and Data Lab", "Mathematics - Statistics and Data"],
+  ["Physical Science Workshop", "Science - Physical Science"],
+  ["Life Science Investigations", "Science - Life Science"],
+  ["Civics and Community", "Social Studies - Civics"],
+  ["Digital Citizenship", "Technology - Digital Citizenship"],
+  ["Media Arts Lab", "Arts - Digital Media"],
+  ["Music Appreciation", "Arts - Music Appreciation"],
+  ["Health and Wellness", "Health - Personal Wellness"],
+  ["Study Skills Seminar", "Academic Skills - Study Habits"],
+  ["Research Methods", "Academic Skills - Research"],
+  ["Environmental Science", "Science - Environmental Systems"],
+  ["Entrepreneurship Basics", "Career Readiness - Entrepreneurship"],
+  ["Public Speaking", "Communication - Public Speaking"],
+  ["Financial Literacy", "Mathematics - Financial Literacy"],
+  ["Intro to Computer Science", "Technology - Computer Science"],
+] as const;
+
 const advancedLiteratureLessons = [
   {
     title: "Seminar norms and close reading routines",
@@ -168,6 +193,23 @@ function nextDate(dayOffset: number, hour: number, minute = 0) {
   const date = new Date(Date.now() + dayOffset * DAY);
   date.setHours(hour, minute, 0, 0);
   return date.getTime();
+}
+
+function todayInBogota(hour: number, minute = 0) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const dateParts = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return Date.parse(
+    `${dateParts.year}-${dateParts.month}-${dateParts.day}T${hour
+      .toString()
+      .padStart(2, "0")}:${minute.toString().padStart(2, "0")}:00-05:00`,
+  );
 }
 
 async function getDemoCampus(ctx: MutationCtx): Promise<Doc<"campuses">> {
@@ -908,6 +950,291 @@ export const createClassesTableDemo = internalMutation({
       created: createdClassIds.length,
       updated: updatedClassIds.length,
       total: classesTableDemoClasses.length,
+    };
+  },
+});
+
+export const createLauraTodaySchedule = internalMutation({
+  args: {},
+  returns: v.object({
+    message: v.string(),
+    student: v.string(),
+    schedules: v.array(
+      v.object({
+        className: v.string(),
+        roomName: v.string(),
+        start: v.string(),
+        end: v.string(),
+      }),
+    ),
+  }),
+  handler: async (ctx) => {
+    const student = (await ctx.db.query("users").collect()).find(
+      (user) => user.username === LAURA_TODAY_DEMO_USERNAME,
+    );
+    if (!student) {
+      throw new Error(`Student ${LAURA_TODAY_DEMO_USERNAME} was not found.`);
+    }
+
+    const classes = (
+      await ctx.db
+        .query("classes")
+        .withIndex("by_active", (q) => q.eq("isActive", true))
+        .collect()
+    )
+      .filter((classData) => classData.students?.includes(student._id))
+      .sort((a, b) => {
+        const preferredOrder = [
+          "UI Content",
+          "Advanced Literature",
+          "Integrated STEM",
+          "Data Science",
+          "Pre-Algebra",
+          "World History",
+          "Life Science",
+        ];
+        const aIndex = preferredOrder.findIndex((name) =>
+          a.name.includes(name),
+        );
+        const bIndex = preferredOrder.findIndex((name) =>
+          b.name.includes(name),
+        );
+        return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+      });
+
+    if (classes.length === 0) {
+      throw new Error("Laura is not assigned to any active legacy classes.");
+    }
+
+    const now = Date.now();
+    const createdAt = now;
+    const schoolDaySlots = [
+      [8, 0, 8, 45],
+      [8, 55, 9, 40],
+      [9, 50, 10, 35],
+      [10, 45, 11, 30],
+      [11, 40, 12, 25],
+      [13, 15, 14, 0],
+      [14, 10, 14, 55],
+      [15, 5, 15, 50],
+      [16, 0, 16, 45],
+      [16, 45, 17, 0],
+    ] as const;
+    const scheduled = [];
+
+    for (const [index, slot] of schoolDaySlots.entries()) {
+      const classData = classes[index % classes.length];
+      const [startHour, startMinute, endHour, endMinute] = slot;
+      const start = todayInBogota(startHour, startMinute);
+      const end = todayInBogota(endHour, endMinute);
+      const roomName = `${LAURA_TODAY_DEMO_ROOM_PREFIX}-${classData._id}-${index}`;
+      const existing = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_room", (q) => q.eq("roomName", roomName))
+        .first();
+
+      const scheduleData = {
+        classId: classData._id,
+        lessonIds: [],
+        title: "Class Session",
+        description:
+          "Demo session for reviewing a full student school-day upcoming UI.",
+        scheduledStart: start,
+        scheduledEnd: end,
+        sessionType: "live" as const,
+        roomName,
+        isLive: false,
+        isRecurring: false,
+        status: "scheduled" as const,
+        createdAt: existing?.createdAt ?? createdAt + index,
+        createdBy: classData.teacherId ?? student._id,
+      };
+
+      if (existing) {
+        await ctx.db.patch(existing._id, scheduleData);
+      } else {
+        await ctx.db.insert("classSchedule", scheduleData);
+      }
+
+      scheduled.push({
+        className: classData.name,
+        roomName,
+        start: new Date(start).toISOString(),
+        end: new Date(end).toISOString(),
+      });
+    }
+
+    return {
+      message: "Laura today demo schedule is ready.",
+      student: student.fullName,
+      schedules: scheduled,
+    };
+  },
+});
+
+export const createLauraCourseLoadDemo = internalMutation({
+  args: {},
+  returns: v.object({
+    message: v.string(),
+    student: v.string(),
+    targetCourses: v.number(),
+    beforeCourses: v.number(),
+    afterCourses: v.number(),
+    created: v.number(),
+    updated: v.number(),
+    enrolled: v.number(),
+    courses: v.array(v.string()),
+  }),
+  handler: async (ctx) => {
+    const student = (await ctx.db.query("users").collect()).find(
+      (user) => user.username === LAURA_TODAY_DEMO_USERNAME,
+    );
+    if (!student) {
+      throw new Error(`Student ${LAURA_TODAY_DEMO_USERNAME} was not found.`);
+    }
+
+    const teacher =
+      (await findUserByName(ctx, "betancourt")) ||
+      (await getUserByRole(ctx, "teacher"));
+    if (!teacher) throw new Error("No active teacher was found.");
+
+    const campus =
+      (await getUserCampus(ctx, student._id)) ||
+      (await getUserCampus(ctx, teacher._id)) ||
+      (await getDemoCampus(ctx));
+    const school = await ctx.db.get(campus.schoolId);
+    if (!school) throw new Error("Demo campus has no parent school.");
+
+    const admin = (await getUserByRole(ctx, "admin")) || teacher;
+    const now = Date.now();
+    const enrollmentRows = await ctx.db
+      .query("classEnrollments")
+      .withIndex("by_student", (q) => q.eq("studentId", student._id))
+      .collect();
+    const lauraClassIds = new Set<Id<"classes">>();
+
+    for (const enrollment of enrollmentRows) {
+      const classData = await ctx.db.get(enrollment.classId);
+      if (classData?.isActive) lauraClassIds.add(classData._id);
+    }
+
+    const legacyClasses = await ctx.db
+      .query("classes")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .collect();
+    for (const classData of legacyClasses) {
+      if (
+        !classData.enrollmentsMigratedAt &&
+        classData.students?.includes(student._id)
+      ) {
+        lauraClassIds.add(classData._id);
+      }
+    }
+
+    const beforeCourses = lauraClassIds.size;
+    let created = 0;
+    let updated = 0;
+    let enrolled = 0;
+    const courses: string[] = [];
+
+    for (const [index, course] of lauraCourseLoadDemoCourses.entries()) {
+      if (lauraClassIds.size >= LAURA_COURSE_LOAD_TARGET) break;
+
+      const [className, curriculumTitle] = course;
+      const curriculumCode = `${LAURA_COURSE_LOAD_CODE_PREFIX}-${String(
+        index + 1,
+      ).padStart(2, "0")}`;
+      let curriculum = await ctx.db
+        .query("curriculums")
+        .withIndex("by_code", (q) => q.eq("code", curriculumCode))
+        .first();
+
+      if (!curriculum) {
+        const curriculumId = await ctx.db.insert("curriculums", {
+          title: curriculumTitle,
+          description: "Demo curriculum for reviewing student course load UI.",
+          code: curriculumCode,
+          color: "#0ea5e9",
+          schoolId: school._id,
+          isActive: true,
+          createdAt: now + index,
+          createdBy: admin._id,
+        });
+        curriculum = await ctx.db.get(curriculumId);
+      }
+
+      if (!curriculum) continue;
+
+      const curriculumClasses = await ctx.db
+        .query("classes")
+        .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculum._id))
+        .collect();
+      const existingClass = curriculumClasses.find(
+        (classData) => classData.name === className,
+      );
+      const students = Array.from(
+        new Set([...(existingClass?.students ?? []), student._id]),
+      );
+      const classData = {
+        curriculumId: curriculum._id,
+        campusId: campus._id,
+        teacherId: teacher._id,
+        tutorId: undefined,
+        students,
+        academicYear: "2026-2027",
+        classType: "standard" as const,
+        startDate: nextDate(-10 + index, 8),
+        endDate: nextDate(100 + index, 15),
+        isActive: true,
+      };
+
+      const classId = existingClass
+        ? existingClass._id
+        : await ctx.db.insert("classes", {
+            name: className,
+            description: "Demo class for reviewing student course load UI.",
+            ...classData,
+            createdAt: now + index,
+            createdBy: admin._id,
+          });
+
+      if (existingClass) {
+        await ctx.db.patch(existingClass._id, classData);
+        updated++;
+      } else {
+        created++;
+      }
+
+      const existingEnrollment = await ctx.db
+        .query("classEnrollments")
+        .withIndex("by_class", (q) =>
+          q.eq("classId", classId).eq("studentId", student._id),
+        )
+        .unique();
+      if (!existingEnrollment) {
+        await ctx.db.insert("classEnrollments", {
+          classId,
+          studentId: student._id,
+          enrolledAt: now + index,
+          enrolledBy: admin._id,
+        });
+        enrolled++;
+      }
+
+      lauraClassIds.add(classId);
+      courses.push(className);
+    }
+
+    return {
+      message: "Laura course load demo is ready.",
+      student: student.fullName,
+      targetCourses: LAURA_COURSE_LOAD_TARGET,
+      beforeCourses,
+      afterCourses: lauraClassIds.size,
+      created,
+      updated,
+      enrolled,
+      courses,
     };
   },
 });

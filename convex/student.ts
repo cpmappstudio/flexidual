@@ -75,9 +75,26 @@ export const getStudentDashboardStats = query({
           .map((classData) => [classData!._id, classData!]),
       ).values(),
     ];
+    const studentProfile = {
+      fullName: user.fullName,
+      email: user.email,
+      username: user.username,
+      imageUrl: user.imageUrl,
+      grade: user.grade,
+      school: user.school,
+    };
 
     if (myClasses.length === 0) {
-      return null; 
+      return {
+        student: studentProfile,
+        overall: {
+          activeCourses: 0,
+          totalSessions: 0,
+          attendanceRate: 100,
+          completedSessions: 0,
+        },
+        classes: [],
+      };
     }
 
     const firstClass = myClasses[0];
@@ -109,16 +126,16 @@ export const getStudentDashboardStats = query({
       myClasses.map(async (classData) => {
         const [teacher, curriculum] = await Promise.all([
           classData.teacherId ? ctx.db.get(classData.teacherId) : null,
-          ctx.db.get(classData.curriculumId)
+          ctx.db.get(classData.curriculumId),
         ]);
 
         const userPreference = await ctx.db
           .query("studentClassPreferences")
-          .withIndex("by_student_class", (q) => 
-            q.eq("studentId", user._id).eq("classId", classData._id)
+          .withIndex("by_student_class", (q) =>
+            q.eq("studentId", user._id).eq("classId", classData._id),
           )
           .unique();
-        
+
         const schedules = await ctx.db
           .query("classSchedule")
           .withIndex("by_class", (q) => q.eq("classId", classData._id))
@@ -127,27 +144,32 @@ export const getStudentDashboardStats = query({
         const pastSchedules = schedules.filter(
           (schedule) => schedule.scheduledEnd < args.now,
         );
-        const scheduleIds = new Set(schedules.map(s => s._id));
-        
-        const classSessions = mySessions.filter(s => scheduleIds.has(s.scheduleId));
-        
+        const scheduleIds = new Set(schedules.map((s) => s._id));
+        const classSessions = mySessions.filter((s) =>
+          scheduleIds.has(s.scheduleId),
+        );
+
         let attendedCount = 0;
         const processedSchedules = new Set();
-        classSessions.forEach(session => {
-            if (processedSchedules.has(session.scheduleId)) return;
-            if (session.attendanceStatus === 'present' || session.attendanceStatus === 'partial') {
-                attendedCount++;
-                processedSchedules.add(session.scheduleId);
-                return;
-            }
-            if ((session.durationSeconds || 0) > 600) { 
-                 attendedCount++;
-                 processedSchedules.add(session.scheduleId);
-            }
+        classSessions.forEach((session) => {
+          if (processedSchedules.has(session.scheduleId)) return;
+          if (
+            session.attendanceStatus === "present" ||
+            session.attendanceStatus === "partial"
+          ) {
+            attendedCount++;
+            processedSchedules.add(session.scheduleId);
+            return;
+          }
+          if ((session.durationSeconds || 0) > 600) {
+            attendedCount++;
+            processedSchedules.add(session.scheduleId);
+          }
         });
 
         const totalPast = pastSchedules.length;
-        const progress = totalPast === 0 ? 0 : Math.round((attendedCount / totalPast) * 100);
+        const progress =
+          totalPast === 0 ? 0 : Math.round((attendedCount / totalPast) * 100);
 
         return {
           classId: classData._id,
@@ -162,11 +184,14 @@ export const getStudentDashboardStats = query({
           description: classData.description,
           teacher: teacher
             ? { fullName: teacher.fullName, imageUrl: teacher.imageUrl }
-            : { 
-                fullName: classData.classType === "abeka" ? "Abeka Virtual" 
-                        : classData.classType === "ignitia" ? "Ignitia Virtual" 
-                        : "System", 
-                imageUrl: undefined 
+            : {
+                fullName:
+                  classData.classType === "abeka"
+                    ? "Abeka Virtual"
+                    : classData.classType === "ignitia"
+                      ? "Ignitia Virtual"
+                      : "System",
+                imageUrl: undefined,
               },
           stats: {
             totalClasses: schedules.length,
@@ -177,38 +202,45 @@ export const getStudentDashboardStats = query({
           icon: userPreference?.icon || null,
           nextSession: schedules
             .filter((schedule) => schedule.scheduledStart > args.now)
-            .sort((a, b) => a.scheduledStart - b.scheduledStart)[0]?.scheduledStart
+            .sort((a, b) => a.scheduledStart - b.scheduledStart)[0]
+            ?.scheduledStart,
         };
-      })
+      }),
     );
 
     // --- Overall stats ---
     const totalCourses = classStats.length;
-    const totalSessions = classStats.reduce((acc, c) => acc + c.stats.totalClasses, 0);
-    const totalAttended = classStats.reduce((acc, c) => acc + c.stats.attendedClasses, 0);
-    const totalPastSessions = classStats.reduce((acc, c) => acc + c.stats.completedClasses, 0);
-    
-    const overallAttendance = totalPastSessions === 0 
-        ? 100 
+    const totalSessions = classStats.reduce(
+      (acc, c) => acc + c.stats.totalClasses,
+      0,
+    );
+    const totalAttended = classStats.reduce(
+      (acc, c) => acc + c.stats.attendedClasses,
+      0,
+    );
+    const totalPastSessions = classStats.reduce(
+      (acc, c) => acc + c.stats.completedClasses,
+      0,
+    );
+
+    const overallAttendance =
+      totalPastSessions === 0
+        ? 100
         : Math.round((totalAttended / totalPastSessions) * 100);
 
     return {
-        student: {
-            fullName: user.fullName,
-            email: user.email,
-            username: user.username,
-            imageUrl: user.imageUrl,
-            grade: gradeCode,
-            gradeName,
-            school: user.school,
-        },
-        overall: {
-            activeCourses: totalCourses,
-            totalSessions,
-            attendanceRate: overallAttendance,
-            completedSessions: totalPastSessions
-        },
-        classes: classStats
+      student: {
+        ...studentProfile,
+        grade: gradeCode,
+        gradeName,
+      },
+      overall: {
+        activeCourses: totalCourses,
+        totalSessions,
+        attendanceRate: overallAttendance,
+        completedSessions: totalPastSessions,
+      },
+      classes: classStats,
     };
   },
 });
@@ -230,7 +262,7 @@ export const updateClassIcon = mutation({
     const existingPref = await ctx.db
       .query("studentClassPreferences")
       .withIndex("by_student_class", (q) =>
-        q.eq("studentId", user._id).eq("classId", args.classId)
+        q.eq("studentId", user._id).eq("classId", args.classId),
       )
       .unique();
 

@@ -26,20 +26,13 @@ export default async function OrgLayout({
     redirect(`/${locale}`);
   }
 
-  // THE ADAPTIVE SHELL:
-  // Students get a raw container because their page component handles its own UI
-  if (role === "student") {
-    return <div className="student-app-wrapper">{children}</div>;
-  }
-
-  // Teachers, Admins, and Principals get the standard dashboard shell
   return (
     <SidebarProvider open className="flex-col [--header-height:4rem]">
       <SiteHeader />
-      <div className="flex flex-1">
+      <div className="flex min-h-0 flex-1">
         <AppSidebar />
         <SidebarInset>
-          <div className="flex flex-1 flex-col gap-4 px-4 py-4 md:px-6 md:py-6">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
             {children}
           </div>
         </SidebarInset>
