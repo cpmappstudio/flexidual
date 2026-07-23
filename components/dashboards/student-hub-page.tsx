@@ -445,9 +445,9 @@ export default function StudentHubPage() {
   };
 
   return (
-    <div className="flex w-full min-w-0 flex-col xl:h-[calc(100svh-var(--header-height)-2rem)] xl:overflow-hidden">
+    <div className="flex w-full min-w-0 flex-col xl:h-[calc(100svh-var(--header-height)-2rem)]">
       {!activeLesson && !isLaunching && (
-        <div className="flex min-h-0 flex-col gap-4 xl:flex-1 xl:overflow-hidden">
+        <div className="flex min-h-0 flex-col gap-4 xl:flex-1">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate text-xl font-bold text-foreground">
@@ -464,9 +464,9 @@ export default function StudentHubPage() {
             </div>
           </div>
 
-          <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="contents xl:grid xl:min-h-0 xl:grid-rows-[minmax(260px,280px)_minmax(0,1fr)] xl:gap-5">
-              <section className="order-1 flex min-h-0 flex-col rounded-[2rem] bg-card p-4 shadow-lg ring-1 ring-border sm:p-5 xl:order-none xl:justify-center">
+          <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="contents xl:grid xl:min-h-0 xl:grid-rows-[minmax(260px,280px)_minmax(0,1fr)] xl:gap-4">
+              <section className="order-1 flex min-h-0 flex-col rounded-[2rem] bg-card p-4 shadow-md ring-1 ring-border/80 sm:p-5 xl:order-none xl:justify-center">
                 <div className="grid w-full gap-4 xl:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)] xl:items-center">
                   <div className="flex w-full items-center gap-3 text-left xl:flex-col xl:text-center">
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-[4px] border-warning bg-primary/10 shadow-inner sm:h-20 sm:w-20 xl:h-28 xl:w-28">
@@ -548,7 +548,7 @@ export default function StudentHubPage() {
                 </div>
               </section>
 
-              <section className="relative isolate order-3 flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card p-5 shadow-lg ring-1 ring-border after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:z-10 after:hidden after:h-24 after:bg-gradient-to-b after:from-card after:via-card/90 after:to-card/0 after:content-[''] xl:order-none xl:min-h-0 xl:after:block">
+              <section className="relative isolate order-3 flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card p-5 shadow-md ring-1 ring-border/80 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:z-10 after:hidden after:h-24 after:bg-gradient-to-b after:from-card after:via-card/90 after:to-card/0 after:content-[''] xl:order-none xl:min-h-0 xl:after:block">
                 <div className="relative z-20">
                   <h2 className="text-xl font-bold text-foreground">
                     {t("student.myClasses")}
