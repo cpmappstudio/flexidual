@@ -1,0 +1,33 @@
+{
+  "Invite": {
+    "title": "Accept invitation",
+    "platformTitle": "Join the platform",
+    "organizationTitle": "Join {organizationName}",
+    "emailLabel": "Email",
+    "emailDescription": "This invitation is tied to this email address.",
+    "passwordLabel": "Create password",
+    "passwordPlaceholder": "Create a secure password",
+    "passwordHint": "Use at least 8 characters.",
+    "alreadyHaveAccount": "Already have an account?",
+    "signInInstead": "Sign in instead",
+    "acceptInviteTitle": "You've been invited",
+    "platformAcceptInviteDescription": "Set your password and complete your profile to join the platform.",
+    "organizationAcceptInviteDescription": "Set your password and complete your profile to join {organizationName}.",
+    "acceptInviteSubmit": "Accept invitation",
+    "acceptInviteSubmitting": "Setting up account...",
+    "acceptExistingInvite": "Accept invitation",
+    "acceptExistingInviteSubmitting": "Accepting...",
+    "profileCompleted": "Your access is ready.",
+    "inviteInvalid": "This invitation link is invalid.",
+    "inviteExpired": "This invitation has expired.",
+    "inviteRevoked": "This invitation is no longer available.",
+    "inviteAccepted": "This invitation has already been accepted.",
+    "wrongAccountTitle": "This invitation belongs to a different account",
+    "wrongAccountDescription": "Sign out and continue with the invited email address.",
+    "signOutAndContinue": "Sign out",
+    "accountExists": "This email already has an account. Sign in to continue.",
+    "createAccountError": "We couldn't create your account.",
+    "inviteClaimError": "We couldn't complete your invitation.",
+    "emailMismatch": "This invitation belongs to a different email address."
+  }
+}

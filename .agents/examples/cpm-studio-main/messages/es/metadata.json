@@ -1,0 +1,20 @@
+{
+  "Metadata": {
+    "title": "CPM Studio",
+    "description": "Plataforma educativa construida con Next.js y Convex.",
+    "pages": {
+      "campuses": "Campus",
+      "academicManagement": "Gestión académica",
+      "changelog": "Novedades",
+      "institutions": "Instituciones",
+      "liveClasses": "Flexidual",
+      "liveClassesCalendar": "Calendario",
+      "liveClassesCourses": "Cursos",
+      "people": "Personas",
+      "profileSelection": "Seleccionar perfil",
+      "teamSettings": "Configuración del equipo",
+      "signIn": "Iniciar sesión",
+      "invite": "Aceptar invitación"
+    }
+  }
+}

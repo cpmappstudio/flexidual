@@ -64,11 +64,13 @@ function SortableGradeRow({
   position,
   onEdit,
   onDelete,
+  readOnly,
 }: {
   grade: Grade;
   position: number;
   onEdit: (grade: Grade) => void;
   onDelete: (grade: Grade) => void;
+  readOnly: boolean;
 }) {
   const t = useTranslations("settings.grades");
   const commonT = useTranslations("common");
@@ -79,7 +81,7 @@ function SortableGradeRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: grade._id });
+  } = useSortable({ id: grade._id, disabled: readOnly });
 
   return (
     <TableRow
@@ -87,7 +89,7 @@ function SortableGradeRow({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={isDragging ? "relative z-10 bg-muted shadow-sm" : undefined}
     >
-      <TableCell className="w-12">
+      {!readOnly && <TableCell className="w-12">
         <Button
           type="button"
           variant="ghost"
@@ -99,10 +101,10 @@ function SortableGradeRow({
         >
           <GripVertical />
         </Button>
-      </TableCell>
+      </TableCell>}
       <TableCell className="w-24 text-muted-foreground">{position}</TableCell>
       <TableCell className="font-medium">{grade.name}</TableCell>
-      <TableCell className="w-20 text-right">
+      {!readOnly && <TableCell className="w-20 text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -128,7 +130,7 @@ function SortableGradeRow({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </TableCell>
+      </TableCell>}
     </TableRow>
   );
 }
@@ -139,7 +141,7 @@ export function GradesSettings() {
   const { context, isLoading } = useSettingsContext();
   const grades = useQuery(
     api.grades.list,
-    context?.canManageInstitution
+    context?.canViewInstitutionSettings
       ? { schoolId: context.institution._id }
       : "skip",
   );
@@ -166,11 +168,11 @@ export function GradesSettings() {
     if (grades) setOrderedGrades(grades);
   }, [grades]);
 
-  if (isLoading || (context?.canManageInstitution && grades === undefined)) {
+  if (isLoading || (context?.canViewInstitutionSettings && grades === undefined)) {
     return <Skeleton className="h-72 w-full rounded-xl" />;
   }
 
-  if (!context?.canManageInstitution) {
+  if (!context?.canViewInstitutionSettings) {
     return (
       <section>
         <h2 className="border-b pb-3 text-xl font-semibold">
@@ -179,6 +181,7 @@ export function GradesSettings() {
       </section>
     );
   }
+  const readOnly = !context.canManageInstitution;
 
   const openCreateDialog = () => {
     setEditingGrade(null);
@@ -263,10 +266,12 @@ export function GradesSettings() {
         <h2 className="min-w-0 text-xl font-semibold">
           {t("title")} — {context.institution.name}
         </h2>
-        <Button size="sm" onClick={openCreateDialog}>
-          <Plus />
-          {t("add")}
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={openCreateDialog}>
+            <Plus />
+            {t("add")}
+          </Button>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-md border">
@@ -279,12 +284,14 @@ export function GradesSettings() {
           <Table className="bg-card">
             <TableHeader className="bg-primary/95">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-12" />
+                {!readOnly && <TableHead className="w-12" />}
                 <TableHead className="w-24 text-muted">{t("order")}</TableHead>
                 <TableHead className="text-muted">{t("name")}</TableHead>
-                <TableHead className="w-20 text-right text-muted">
-                  {t("actions")}
-                </TableHead>
+                {!readOnly && (
+                  <TableHead className="w-20 text-right text-muted">
+                    {t("actions")}
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -300,13 +307,14 @@ export function GradesSettings() {
                       position={index + 1}
                       onEdit={openEditDialog}
                       onDelete={setDeleteTarget}
+                      readOnly={readOnly}
                     />
                   ))}
                 </SortableContext>
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={readOnly ? 2 : 4}
                     className="h-24 text-center text-muted-foreground"
                   >
                     {t("empty")}
@@ -318,7 +326,7 @@ export function GradesSettings() {
         </DndContext>
       </div>
 
-      <EntityDialog
+      {!readOnly && <EntityDialog
         open={dialogOpen}
         onOpenChange={(open) => {
           if (!isSubmitting) setDialogOpen(open);
@@ -356,9 +364,9 @@ export function GradesSettings() {
             />
           </div>
         </div>
-      </EntityDialog>
+      </EntityDialog>}
 
-      <AlertDialog
+      {!readOnly && <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open && !isDeleting) setDeleteTarget(null);
@@ -388,7 +396,7 @@ export function GradesSettings() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
     </section>
   );
 }

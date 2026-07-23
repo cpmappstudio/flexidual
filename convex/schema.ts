@@ -72,6 +72,7 @@ export default defineSchema({
   })
     .index("by_active", ["isActive"])
     .index("by_code", ["code"])
+    .index("by_school_code", ["schoolId", "code"])
     .index("by_school", ["schoolId", "isActive"]),
 
   /**
@@ -140,11 +141,18 @@ export default defineSchema({
     campusId: v.optional(v.id("campuses")),
   })
     .index("by_teacher", ["teacherId", "isActive"])
+    .index("by_tutor", ["tutorId", "isActive"])
     .index("by_curriculum", ["curriculumId", "isActive"])
     .index("by_academic_period", ["academicPeriodId"])
     .index("by_grade", ["gradeCode"])
     .index("by_active", ["isActive"])
-    .index("by_campus", ["campusId", "isActive"]),
+    .index("by_campus", ["campusId", "isActive"])
+    .index("by_campus_period_grade", [
+      "campusId",
+      "academicPeriodId",
+      "gradeCode",
+      "isActive",
+    ]),
 
   classEnrollments: defineTable({
     classId: v.id("classes"),
@@ -207,7 +215,7 @@ export default defineSchema({
     createdBy: v.id("users"),
   })
     .index("by_class", ["classId", "scheduledStart"])
-    .index("by_date_range", ["scheduledStart"])
+    .index("by_class_recurrence_parent", ["classId", "recurrenceParentId"])
     .index("by_room", ["roomName"])
     .index("by_status", ["status", "scheduledStart"])
     .index("by_recurrence_parent", ["recurrenceParentId"]),
@@ -305,7 +313,7 @@ export default defineSchema({
   /**
    * CAMPUSES (Second-Level Tenant)
    * Physical or logical branches of a school.
-   * Managed by: Principals
+   * Managed by institution administrators; principals have read-only settings access.
    */
   campuses: defineTable({
     schoolId: v.id("schools"),
@@ -408,7 +416,7 @@ export default defineSchema({
    */
   whiteboardSessions: defineTable({
     roomName: v.string(),
-    elements: v.any(), // ExcalidrawElements array
+    elements: v.array(v.any()), // ExcalidrawElements array
     recordingToken: v.optional(v.string()),
     fileRefs: v.optional(
       v.record(

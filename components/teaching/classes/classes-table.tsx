@@ -1,47 +1,65 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "convex/react";
-import { Doc } from "@/convex/_generated/dataModel";
+import { Doc, Id } from "@/convex/_generated/dataModel";
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { ClassDialog } from "./class-dialog";
 import { useTranslations } from "next-intl";
-import { useParams } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
-import { getRoleForOrg } from "@/lib/rbac";
 import { DataTable } from "@/components/table/data-table";
-import { createSearchColumn, createSortableHeader } from "@/components/table/column-helpers";
+import {
+  createSearchColumn,
+  createSortableHeader,
+} from "@/components/table/column-helpers";
 import { Link, useRouter } from "@/i18n/navigation";
 import { Edit, Plus } from "lucide-react";
-import { api } from "@/convex/_generated/api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useOrgBasePath } from "@/hooks/use-org-base-path";
 
 interface ClassesTableProps {
-  data: Doc<"classes">[];
+  data: ClassTableRow[];
   curriculums?: Doc<"curriculums">[];
+  academicPeriods?: Doc<"academicPeriods">[];
+  teachers?: {
+    _id: Id<"users">;
+    fullName: string;
+    email?: string;
+    imageUrl?: string;
+  }[];
   customFilter?: React.ReactNode;
+  canManage?: boolean;
 }
 
-export function ClassesTable({ data, curriculums, customFilter }: ClassesTableProps) {
-  const t = useTranslations();
-  const params = useParams();
-  const router = useRouter();
-  const orgSlug = (params.orgSlug as string) || "system";
-  const { sessionClaims } = useAuth();
-  const role = getRoleForOrg(sessionClaims, orgSlug);
-  const isAdmin = role === "admin" || role === "principal" || role === "superadmin";
-  const teachers = useQuery(api.users.getTeachers, isAdmin ? {} : "skip");
+type ClassTableRow = Doc<"classes"> & { studentCount: number };
 
-  const [editingClass, setEditingClass] = React.useState<Doc<"classes"> | null>(null);
+export function ClassesTable({
+  data,
+  curriculums,
+  academicPeriods,
+  teachers,
+  customFilter,
+  canManage = false,
+}: ClassesTableProps) {
+  const t = useTranslations();
+  const router = useRouter();
+  const basePath = useOrgBasePath();
+
+  const [editingClass, setEditingClass] = React.useState<Doc<"classes"> | null>(
+    null,
+  );
 
   const getCurriculumName = (id: string) => {
-    return curriculums?.find((c) => c._id === id)?.title || "Unknown Curriculum";
+    return (
+      curriculums?.find((c) => c._id === id)?.title || "Unknown Curriculum"
+    );
   };
 
   const getTeacher = (id?: string) => {
     return teachers?.find((teacher) => teacher._id === id);
   };
+
+  const getAcademicPeriodName = (id?: Id<"academicPeriods">) =>
+    academicPeriods?.find((period) => period._id === id)?.name || "-";
 
   const getClassTypeLabel = (classDoc: Doc<"classes">) => {
     if (classDoc.classType === "ignitia") return "Ignitia";
@@ -101,15 +119,15 @@ export function ClassesTable({ data, curriculums, customFilter }: ClassesTablePr
     </>
   );
 
-  const columns: ColumnDef<Doc<"classes">, unknown>[] = [
+  const columns: ColumnDef<ClassTableRow, unknown>[] = [
     {
-      ...createSearchColumn<Doc<"classes">>(["name"]),
+      ...createSearchColumn<ClassTableRow>(["name"]),
       accessorFn: (row) =>
         [
           row.name,
           getCurriculumName(row.curriculumId),
-          isAdmin ? getTeacherOrTypeLabel(row) : getClassTypeLabel(row),
-          row.academicYear,
+          getTeacherOrTypeLabel(row),
+          getAcademicPeriodName(row.academicPeriodId),
         ]
           .filter(Boolean)
           .join(" ")
@@ -130,24 +148,22 @@ export function ClassesTable({ data, curriculums, customFilter }: ClassesTablePr
                 {getCurriculumName(row.original.curriculumId)}
               </span>
             </div>
-            {isAdmin && (
-              <div className="inline-flex items-center text-xs">
-                <span className="font-mono">{t("navigation.teacher")}:</span>
-                <span className="break-words text-muted-foreground whitespace-normal">
-                  {getTeacherOrTypeLabel(row.original)}
-                </span>
-              </div>
-            )}
             <div className="inline-flex items-center text-xs">
-              <span className="font-mono">{t("class.academicYear")}:</span>
+              <span className="font-mono">{t("navigation.teacher")}:</span>
+              <span className="break-words text-muted-foreground whitespace-normal">
+                {getTeacherOrTypeLabel(row.original)}
+              </span>
+            </div>
+            <div className="inline-flex items-center text-xs">
+              <span className="font-mono">{t("class.academicPeriod")}:</span>
               <span className="text-muted-foreground">
-                {row.original.academicYear || "-"}
+                {getAcademicPeriodName(row.original.academicPeriodId)}
               </span>
             </div>
             <div className="inline-flex items-center text-xs">
               <span className="font-mono">{t("navigation.students")}:</span>
               <span className="text-muted-foreground">
-                {row.original.students?.length || 0}
+                {row.original.studentCount}
               </span>
             </div>
           </div>
@@ -164,63 +180,64 @@ export function ClassesTable({ data, curriculums, customFilter }: ClassesTablePr
         </span>
       ),
     },
-    ...(isAdmin
-      ? [
-          {
-            id: "teacher",
-            accessorFn: (row: Doc<"classes">) => getTeacherOrTypeLabel(row),
-            header: createSortableHeader(t("navigation.teacher")),
-            meta: { className: "hidden lg:table-cell" },
-            cell: ({ row }: { row: { original: Doc<"classes"> } }) =>
-              renderTeacher(row.original),
-          } satisfies ColumnDef<Doc<"classes">, unknown>,
-        ]
-      : []),
+    {
+      id: "teacher",
+      accessorFn: (row: ClassTableRow) => getTeacherOrTypeLabel(row),
+      header: createSortableHeader(t("navigation.teacher")),
+      meta: { className: "hidden lg:table-cell" },
+      cell: ({ row }: { row: { original: ClassTableRow } }) =>
+        renderTeacher(row.original),
+    },
     {
       id: "students",
-      accessorFn: (row) => row.students?.length || 0,
+      accessorFn: (row) => row.studentCount,
       header: createSortableHeader(t("navigation.students")),
       meta: { className: "hidden lg:table-cell" },
       cell: ({ row }) => (
         <div className="flex items-center gap-2 text-sm">
-          {row.original.students?.length || 0}
+          {row.original.studentCount}
         </div>
       ),
     },
     {
-      accessorKey: "academicYear",
-      header: createSortableHeader(t("class.academicYear")),
+      id: "academicPeriod",
+      accessorFn: (row) => getAcademicPeriodName(row.academicPeriodId),
+      header: createSortableHeader(t("class.academicPeriod")),
       meta: { className: "hidden xl:table-cell" },
       cell: ({ row }) => (
         <div className="flex items-center gap-2 text-sm">
-          {row.original.academicYear || "-"}
+          {getAcademicPeriodName(row.original.academicPeriodId)}
         </div>
       ),
     },
     // Edit action column — admins only
-    ...(isAdmin ? [{
-      id: "actions",
-      cell: ({ row }: { row: { original: Doc<"classes"> } }) => (
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="icon"
-            title={t("class.edit")}
-            onClick={(e) => {
-              e.stopPropagation(); // prevent row click from also firing
-              setEditingClass(row.original);
-            }}
-          >
-            <Edit className="h-4 w-4" />
-          </Button>
-        </div>
-      ),
-    }] as ColumnDef<Doc<"classes">, unknown>[] : []),
+    ...(canManage
+      ? ([
+          {
+            id: "actions",
+            cell: ({ row }: { row: { original: ClassTableRow } }) => (
+              <div className="flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={t("class.edit")}
+                  onClick={(e) => {
+                    e.stopPropagation(); // prevent row click from also firing
+                    setEditingClass(row.original);
+                  }}
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+              </div>
+            ),
+          },
+        ] as ColumnDef<ClassTableRow, unknown>[])
+      : []),
   ];
 
   return (
     <div className="space-y-4">
-      {editingClass && (
+      {canManage && editingClass && (
         <ClassDialog
           classDoc={editingClass}
           open={true}
@@ -237,9 +254,9 @@ export function ClassesTable({ data, curriculums, customFilter }: ClassesTablePr
         emptyMessage={t("common.noResults")}
         customFilter={customFilter}
         createAction={
-          isAdmin ? (
+          canManage ? (
             <Button asChild>
-              <Link href={`/${orgSlug}/classes/new`}>
+              <Link href={`${basePath}/classes/new`}>
                 <Plus className="h-4 w-4" />
                 {t("class.createClass")}
               </Link>
@@ -247,7 +264,7 @@ export function ClassesTable({ data, curriculums, customFilter }: ClassesTablePr
           ) : undefined
         }
         pageSize={10}
-        onRowClick={(cls) => router.push(`/${orgSlug}/classes/${cls._id}`)}
+        onRowClick={(cls) => router.push(`${basePath}/classes/${cls._id}`)}
       />
     </div>
   );

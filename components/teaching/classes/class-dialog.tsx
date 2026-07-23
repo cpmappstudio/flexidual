@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useAuth } from "@clerk/nextjs";
 import { useParams } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { BookOpen, Edit, Trash2, Users } from "lucide-react";
 import { api } from "@/convex/_generated/api";
@@ -14,24 +14,23 @@ import { Button } from "@/components/ui/button";
 import { EntityDialog } from "@/components/ui/entity-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getRoleForOrg } from "@/lib/rbac";
-import {
-  CourseFormData,
-  CourseFormFields,
-} from "./course-form-fields";
+import { CourseFormData, CourseFormFields } from "./course-form-fields";
 import { StudentManager } from "./student-manager";
+import { useSettingsContext } from "@/hooks/use-settings-context";
+import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
 
 interface ClassDialogProps {
   classDoc: Doc<"classes">;
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onDeletedAction?: () => void;
 }
 
 function getFormData(classDoc: Doc<"classes">): CourseFormData {
   return {
     name: classDoc.name,
     description: classDoc.description || "",
-    academicYear: classDoc.academicYear || "",
     curriculumId: classDoc.curriculumId,
     teacherId: classDoc.teacherId || "",
     gradeCode: classDoc.gradeCode || "",
@@ -43,8 +42,10 @@ export function ClassDialog({
   trigger,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  onDeletedAction,
 }: ClassDialogProps) {
   const t = useTranslations();
+  const locale = useLocale();
   const { showAlert } = useAlert();
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
@@ -53,9 +54,15 @@ export function ClassDialog({
   const isAdmin =
     role === "admin" || role === "principal" || role === "superadmin";
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
-  const curriculums = useQuery(api.curriculums.list, {
-    includeInactive: false,
-  });
+  const { context: settingsContext } = useSettingsContext();
+  const schoolId =
+    orgContext?.type === "school"
+      ? (orgContext._id as Id<"schools">)
+      : settingsContext?.institution._id;
+  const curriculums = useQuery(
+    api.curriculums.list,
+    schoolId ? { includeInactive: false, schoolId } : "skip",
+  );
   const teachers = useQuery(
     api.users.getUsers,
     isAdmin && orgContext
@@ -123,8 +130,14 @@ export function ClassDialog({
           await deleteClass({ id: classDoc._id });
           toast.success(t("class.deleted"));
           setIsOpen(false);
-        } catch {
-          toast.error(t("errors.operationFailed"));
+          onDeletedAction?.();
+        } catch (error: unknown) {
+          const parsedError = parseConvexError(error);
+          toast.error(
+            parsedError
+              ? getErrorMessage(parsedError, t, locale)
+              : t("errors.operationFailed"),
+          );
         }
       },
     });
@@ -176,7 +189,6 @@ export function ClassDialog({
             teachers={teachers}
             grades={grades}
             isAdmin={isAdmin}
-            showAcademicYear={false}
           />
         </TabsContent>
 

@@ -1,9 +1,13 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { ConvexError } from "convex/values";
-import { hasSystemRole, hasOrgRole, canManageCurriculums, isPrincipalOfSchool } from "./permissions";
-import { Id } from "./_generated/dataModel";
+import {
+  hasSystemRole,
+  canAccessCurriculumContent,
+  canManageCurriculums,
+} from "./permissions";
+import type { Id } from "./_generated/dataModel";
 import { validateGradeCodes } from "./model/grades";
 
 const curriculumValidator = v.object({
@@ -20,6 +24,40 @@ const curriculumValidator = v.object({
   schoolId: v.optional(v.id("schools")),
 });
 
+function normalizeCurriculumTitle(value: string) {
+  const title = value.trim();
+  if (!title || title.length > 150) {
+    throw new ConvexError("INVALID_CURRICULUM_TITLE");
+  }
+  return title;
+}
+
+function normalizeCurriculumCode(value?: string) {
+  const code = value?.trim();
+  if (code && code.length > 50) {
+    throw new ConvexError("INVALID_CURRICULUM_CODE");
+  }
+  return code || undefined;
+}
+
+async function assertCurriculumCodeAvailable(
+  ctx: MutationCtx,
+  schoolId: Id<"schools"> | undefined,
+  code: string | undefined,
+  excludeId?: Id<"curriculums">,
+) {
+  if (!code) return;
+  const existing = await ctx.db
+    .query("curriculums")
+    .withIndex("by_school_code", (q) =>
+      q.eq("schoolId", schoolId).eq("code", code),
+    )
+    .first();
+  if (existing && existing._id !== excludeId) {
+    throw new ConvexError("CURRICULUM_CODE_IN_USE");
+  }
+}
+
 // ============================================================================
 // QUERIES
 // ============================================================================
@@ -28,10 +66,10 @@ const curriculumValidator = v.object({
  * List curriculums with strict role-based access
  * - Superadmins: See all
  * - School Admins: See curriculums for their schools
- * - Teachers/Tutors: Only see curriculums for active classes they teach
+ * - Campus staff: See the shared curriculum catalog for assigned campuses
  */
 export const list = query({
-  args: { 
+  args: {
     includeInactive: v.optional(v.boolean()),
     schoolId: v.optional(v.id("schools")),
   },
@@ -56,18 +94,21 @@ export const list = query({
       }
 
       if (!args.includeInactive) {
-        return await ctx.db.query("curriculums")
+        return await ctx.db
+          .query("curriculums")
           .withIndex("by_active", (q) => q.eq("isActive", true))
-          .order("desc").collect();
+          .order("desc")
+          .collect();
       }
 
       return await ctx.db.query("curriculums").order("desc").collect();
     }
 
     // 2. Resolve Contextual Access (Admin of Schools & Taught Classes)
-    
+
     // Find schools where they are an admin
-    const assignments = await ctx.db.query("roleAssignments")
+    const assignments = await ctx.db
+      .query("roleAssignments")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
     const adminAssignments = assignments.filter(
@@ -76,24 +117,29 @@ export const list = query({
     );
     const adminSchoolIds = adminAssignments.map((a) => a.orgId);
 
-    // Find schools where they are a principal
-    const principalAssignments = assignments.filter(
+    // Campus staff can inspect the institution-wide catalog.
+    const campusStaffAssignments = assignments.filter(
       (assignment) =>
-        assignment.orgType === "campus" && assignment.role === "principal",
+        assignment.orgType === "campus" &&
+        ["principal", "teacher", "tutor"].includes(assignment.role),
     );
-    
-    const principalCampuses = await Promise.all(
-        principalAssignments.map(a => ctx.db.get(a.orgId as Id<"campuses">))
+
+    const staffCampuses = await Promise.all(
+      campusStaffAssignments.map((a) => ctx.db.get(a.orgId as Id<"campuses">)),
     );
-    const principalSchoolIds = principalCampuses.map(c => c?.schoolId).filter(Boolean);
+    const staffSchoolIds = staffCampuses
+      .map((c) => c?.schoolId)
+      .filter(Boolean);
 
     // Combine all valid school IDs for this user
-    const validSchoolIds = [...new Set([...adminSchoolIds, ...principalSchoolIds])];
+    const validSchoolIds = [...new Set([...adminSchoolIds, ...staffSchoolIds])];
 
     // Find curriculums tied to active classes they teach
     const myClasses = await ctx.db
       .query("classes")
-      .withIndex("by_teacher", (q) => q.eq("teacherId", user._id).eq("isActive", true))
+      .withIndex("by_teacher", (q) =>
+        q.eq("teacherId", user._id).eq("isActive", true),
+      )
       .collect();
     const taughtCurriculumIds = myClasses.map((c) => c.curriculumId);
 
@@ -136,33 +182,13 @@ export const get = query({
   handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return null;
-    
+
     const curriculum = await ctx.db.get(args.id);
     if (!curriculum) return null;
 
-    // 1. Check Superadmin
-    if (await hasSystemRole(ctx, user._id, ["superadmin"])) return curriculum;
-
-    // 2. Check School Admin
-    if (curriculum.schoolId) {
-      const isSchoolAdmin = await hasOrgRole(ctx, user._id, curriculum.schoolId, "school", ["admin"]);
-      if (isSchoolAdmin) return curriculum;
-      
-      const isPrincipal = await isPrincipalOfSchool(ctx, user._id, curriculum.schoolId);
-      if (isPrincipal) return curriculum;
-    }
-
-    // 3. Check Teacher Assignment
-    const teachingClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_teacher", (q) => q.eq("teacherId", user._id).eq("isActive", true))
-      .collect();
-
-    if (teachingClasses.some((classData) => classData.curriculumId === args.id)) {
-      return curriculum;
-    }
-
-    return null; // Access denied
+    return (await canAccessCurriculumContent(ctx, user._id, args.id))
+      ? curriculum
+      : null;
   },
 });
 
@@ -185,20 +211,21 @@ export const create = mutation({
   returns: v.id("curriculums"),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
+    const title = normalizeCurriculumTitle(args.title);
+    const code = normalizeCurriculumCode(args.code);
 
-    const isAuthorized = await canManageCurriculums(ctx, user._id, args.schoolId);
+    const isAuthorized = await canManageCurriculums(
+      ctx,
+      user._id,
+      args.schoolId,
+    );
     if (!isAuthorized) {
-      throw new Error("Only administrators can create curriculums for this school");
+      throw new Error(
+        "Only administrators can create curriculums for this school",
+      );
     }
 
-    if (args.code) {
-      const isAvailable = await ctx.db
-        .query("curriculums")
-        .withIndex("by_code", (q) => q.eq("code", args.code))
-        .first();
-      
-      if (isAvailable) throw new Error(`Curriculum code "${args.code}" already exists`);
-    }
+    await assertCurriculumCodeAvailable(ctx, args.schoolId, code);
 
     if (args.gradeCodes && args.schoolId) {
       const invalidCodes = await validateGradeCodes(
@@ -207,17 +234,20 @@ export const create = mutation({
         args.gradeCodes,
       );
       if (invalidCodes.length > 0) {
-        throw new ConvexError({ code: "INVALID_GRADE", grades: invalidCodes.join(", ") });
+        throw new ConvexError({
+          code: "INVALID_GRADE",
+          grades: invalidCodes.join(", "),
+        });
       }
     }
 
     return await ctx.db.insert("curriculums", {
-      title: args.title,
+      title,
       schoolId: args.schoolId,
       description: args.description,
-      code: args.code,
+      code,
       color: args.color || "#3b82f6",
-      gradeCodes: args.gradeCodes,
+      gradeCodes: args.gradeCodes ?? [],
       isActive: true,
       createdAt: Date.now(),
       createdBy: user._id,
@@ -231,14 +261,18 @@ export const create = mutation({
  */
 export const createBatch = mutation({
   args: {
-    orgType: v.optional(v.union(v.literal("system"), v.literal("school"), v.literal("campus"))),
+    orgType: v.optional(
+      v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
+    ),
     orgId: v.optional(v.string()),
-    curriculums: v.array(v.object({
-      title: v.string(),
-      description: v.optional(v.string()),
-      code: v.optional(v.string()),
-      gradeCodes: v.optional(v.array(v.string())),
-    })),
+    curriculums: v.array(
+      v.object({
+        title: v.string(),
+        description: v.optional(v.string()),
+        code: v.optional(v.string()),
+        gradeCodes: v.optional(v.array(v.string())),
+      }),
+    ),
   },
   returns: v.object({
     count: v.number(),
@@ -247,13 +281,17 @@ export const createBatch = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
+    if (args.curriculums.length === 0 || args.curriculums.length > 50) {
+      throw new ConvexError("INVALID_CURRICULUM_BATCH");
+    }
+
     let targetSchoolId: Id<"schools"> | undefined = undefined;
 
     if (args.orgType === "school" && args.orgId) {
-        targetSchoolId = args.orgId as Id<"schools">;
+      targetSchoolId = args.orgId as Id<"schools">;
     } else if (args.orgType === "campus" && args.orgId) {
-        const campus = await ctx.db.get(args.orgId as Id<"campuses">);
-        targetSchoolId = campus?.schoolId;
+      const campus = await ctx.db.get(args.orgId as Id<"campuses">);
+      targetSchoolId = campus?.schoolId;
     }
 
     if (!targetSchoolId) throw new ConvexError("INSTITUTION_REQUIRED");
@@ -261,21 +299,38 @@ export const createBatch = mutation({
       throw new ConvexError("PERMISSION_DENIED");
     }
 
+    const curriculums = args.curriculums.map((item) => ({
+      ...item,
+      title: normalizeCurriculumTitle(item.title),
+      code: normalizeCurriculumCode(item.code),
+      gradeCodes: [...new Set(item.gradeCodes ?? [])],
+    }));
+    const codes = curriculums.flatMap((item) =>
+      item.code ? [item.code] : [],
+    );
+    if (new Set(codes).size !== codes.length) {
+      throw new ConvexError("CURRICULUM_CODE_IN_USE");
+    }
+    await Promise.all(
+      codes.map((code) =>
+        assertCurriculumCodeAvailable(ctx, targetSchoolId, code),
+      ),
+    );
+
+    const invalidCodes = await validateGradeCodes(
+      ctx,
+      targetSchoolId,
+      [...new Set(curriculums.flatMap((item) => item.gradeCodes))],
+    );
+    if (invalidCodes.length > 0) {
+      throw new ConvexError({
+        code: "INVALID_GRADE",
+        grades: invalidCodes.join(", "),
+      });
+    }
+
     const createdIds = [];
-    for (const item of args.curriculums) {
-      if (item.gradeCodes) {
-        const invalidCodes = await validateGradeCodes(
-          ctx,
-          targetSchoolId,
-          item.gradeCodes,
-        );
-        if (invalidCodes.length > 0) {
-          throw new ConvexError({
-            code: "INVALID_GRADE",
-            grades: invalidCodes.join(", "),
-          });
-        }
-      }
+    for (const item of curriculums) {
       const id = await ctx.db.insert("curriculums", {
         title: item.title,
         description: item.description,
@@ -289,7 +344,7 @@ export const createBatch = mutation({
       });
       createdIds.push(id);
     }
-    
+
     return { count: createdIds.length, ids: createdIds };
   },
 });
@@ -314,9 +369,28 @@ export const update = mutation({
     const curriculum = await ctx.db.get(args.id);
     if (!curriculum) throw new Error("Curriculum not found");
 
-    const isAuthorized = await canManageCurriculums(ctx, user._id, curriculum.schoolId);
+    const isAuthorized = await canManageCurriculums(
+      ctx,
+      user._id,
+      curriculum.schoolId,
+    );
     if (!isAuthorized) {
       throw new Error("Only administrators can update curriculums");
+    }
+
+    const title =
+      args.title === undefined
+        ? undefined
+        : normalizeCurriculumTitle(args.title);
+    const code =
+      args.code === undefined ? undefined : normalizeCurriculumCode(args.code);
+    if (args.code !== undefined) {
+      await assertCurriculumCodeAvailable(
+        ctx,
+        curriculum.schoolId,
+        code,
+        curriculum._id,
+      );
     }
 
     if (args.gradeCodes && curriculum.schoolId) {
@@ -325,18 +399,13 @@ export const update = mutation({
         curriculum.schoolId,
         args.gradeCodes,
       );
-      if (invalidCodes.length > 0) throw new ConvexError({ code: "INVALID_GRADE" });
-    }
-
-    if (args.code && args.code !== curriculum.code) {
-      const existing = await ctx.db
-        .query("curriculums")
-        .withIndex("by_code", (q) => q.eq("code", args.code))
-        .first();
-      if (existing && existing._id !== args.id) throw new Error(`Curriculum code already exists`);
+      if (invalidCodes.length > 0)
+        throw new ConvexError({ code: "INVALID_GRADE" });
     }
 
     const { id, ...updates } = args;
+    if (title !== undefined) updates.title = title;
+    if (args.code !== undefined) updates.code = code;
     await ctx.db.patch(id, updates);
     return null;
   },
@@ -348,13 +417,21 @@ export const update = mutation({
  */
 export const remove = mutation({
   args: { id: v.id("curriculums") },
-  returns: v.null(),
+  returns: v.union(
+    v.object({ deleted: v.literal(true) }),
+    v.object({
+      deleted: v.literal(false),
+      reason: v.literal("CURRICULUM_IN_USE"),
+      classCount: v.number(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
+    const curriculum = await ctx.db.get(args.id);
+    if (!curriculum) return { deleted: true } as const;
 
-    // Strict Superadmin-only for hard deletes
-    if (!(await hasSystemRole(ctx, user._id, ["superadmin"]))) {
-      throw new Error("Only system superadmins can delete curriculums");
+    if (!(await canManageCurriculums(ctx, user._id, curriculum.schoolId))) {
+      throw new ConvexError("PERMISSION_DENIED");
     }
 
     const classes = await ctx.db
@@ -363,28 +440,33 @@ export const remove = mutation({
       .collect();
 
     if (classes.length > 0) {
-      throw new ConvexError({
-        code: "CURRICULUM_IN_USE",
-        message: `Cannot delete a curriculum used by ${classes.length} class(es).`,
-      });
+      return {
+        deleted: false,
+        reason: "CURRICULUM_IN_USE",
+        classCount: classes.length,
+      } as const;
     }
 
     await ctx.db.delete(args.id);
-    
+
     // Cascade delete lessons
     const lessons = await ctx.db
       .query("lessons")
       .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.id))
       .collect();
-      
+
     for (const lesson of lessons) {
       if (lesson.resourceStorageIds) {
         for (const storageId of lesson.resourceStorageIds) {
-          try { await ctx.storage.delete(storageId); } catch {}
+          try {
+            await ctx.storage.delete(storageId);
+          } catch {}
         }
       }
       await ctx.db.delete(lesson._id);
     }
+
+    return { deleted: true } as const;
   },
 });
 
@@ -400,7 +482,11 @@ export const archive = mutation({
     const curriculum = await ctx.db.get(args.id);
     if (!curriculum) throw new Error("Curriculum not found");
 
-    const isAuthorized = await canManageCurriculums(ctx, user._id, curriculum.schoolId);
+    const isAuthorized = await canManageCurriculums(
+      ctx,
+      user._id,
+      curriculum.schoolId,
+    );
     if (!isAuthorized) {
       throw new Error("Only administrators can archive curriculums");
     }

@@ -1,12 +1,12 @@
 import { v } from "convex/values";
-import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./users";
 import { canManageClasses, hasOrgRole, hasSystemRole } from "./permissions";
 import { validateGradeCodes } from "./model/grades";
 import { resolveMembershipSchoolId } from "./model/membership";
-import { roleValidator } from "./model/roles";
+import { isRoleValidForOrganization, roleValidator } from "./model/roles";
 
 const roleAssignmentValidator = v.object({
   _id: v.id("roleAssignments"),
@@ -33,9 +33,9 @@ async function assertCanManageAssignment(
   role: string,
 ) {
   const isSuperadmin = await hasSystemRole(ctx, userId, ["superadmin"]);
+  if (isSuperadmin) return;
   if (orgType === "system" || role === "superadmin") {
-    if (!isSuperadmin) throw new Error("Unauthorized");
-    return;
+    throw new Error("Unauthorized");
   }
   if (!orgId) throw new Error("Organization is required");
 
@@ -52,6 +52,13 @@ async function assertCanManageAssignment(
 
   const campusId = ctx.db.normalizeId("campuses", orgId);
   const campus = campusId ? await ctx.db.get(campusId) : null;
+  if (
+    campus &&
+    role === "principal" &&
+    !(await hasOrgRole(ctx, userId, campus.schoolId, "school", ["admin"]))
+  ) {
+    throw new Error("Unauthorized");
+  }
   if (
     !campusId ||
     !campus ||
@@ -70,6 +77,9 @@ async function assignmentData(
     gradeCode?: string;
   },
 ) {
+  if (!isRoleValidForOrganization(args.role, args.orgType)) {
+    throw new Error("Role is not valid for this organization level");
+  }
   const schoolId = await resolveMembershipSchoolId(
     ctx,
     args.orgType,
@@ -91,6 +101,119 @@ async function assignmentData(
     schoolId,
     gradeCode: args.role === "student" ? args.gradeCode : undefined,
   };
+}
+
+async function scheduleRoleSync(
+  ctx: MutationCtx,
+  userIds: Iterable<Id<"users">>,
+) {
+  for (const userId of new Set(userIds)) {
+    const user = await ctx.db.get(userId);
+    if (user && !user.clerkId.startsWith("temp_")) {
+      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncRolesToClerk, {
+        userId,
+        clerkId: user.clerkId,
+      });
+    }
+  }
+}
+
+export async function upsertRoleAssignment(
+  ctx: MutationCtx,
+  args: {
+    userId: Id<"users">;
+    orgType: "system" | "school" | "campus";
+    orgId?: string;
+    role: "superadmin" | "admin" | "principal" | "teacher" | "tutor" | "student";
+    gradeCode?: string;
+  },
+  assignedBy?: Id<"users">,
+) {
+  const contextual = await assignmentData(ctx, args);
+  const affectedUsers = new Set<Id<"users">>([args.userId]);
+
+  if (args.role === "superadmin") {
+    const existingAssignments = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    for (const assignment of existingAssignments) {
+      if (assignment.orgType !== "system" || assignment.role !== "superadmin") {
+        await ctx.db.delete(assignment._id);
+      }
+    }
+  }
+
+  if (args.role === "principal" && args.orgType === "campus" && args.orgId) {
+    const campusAssignments = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_org", (q) =>
+        q.eq("orgId", args.orgId).eq("orgType", "campus"),
+      )
+      .collect();
+    for (const assignment of campusAssignments) {
+      if (
+        assignment.role === "principal" &&
+        assignment.userId !== args.userId
+      ) {
+        affectedUsers.add(assignment.userId);
+        await ctx.db.delete(assignment._id);
+      }
+    }
+  }
+
+  const existing = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user_org", (q) =>
+      q
+        .eq("userId", args.userId)
+        .eq("orgId", args.orgId)
+        .eq("orgType", args.orgType),
+    )
+    .first();
+
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      role: args.role,
+      ...contextual,
+      assignedAt: Date.now(),
+      assignedBy,
+    });
+  } else {
+    await ctx.db.insert("roleAssignments", {
+      userId: args.userId,
+      orgType: args.orgType,
+      orgId: args.orgId,
+      role: args.role,
+      ...contextual,
+      assignedAt: Date.now(),
+      assignedBy,
+    });
+  }
+
+  await scheduleRoleSync(ctx, affectedUsers);
+}
+
+export async function clearCampusPrincipalAssignments(
+  ctx: MutationCtx,
+  campusId: Id<"campuses">,
+) {
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_org", (q) =>
+      q.eq("orgId", campusId).eq("orgType", "campus"),
+    )
+    .collect();
+  const principals = assignments.filter(
+    (assignment) => assignment.role === "principal",
+  );
+  await Promise.all(
+    principals.map((assignment) => ctx.db.delete(assignment._id)),
+  );
+  await scheduleRoleSync(
+    ctx,
+    principals.map((assignment) => assignment.userId),
+  );
 }
 
 // ============================================================================
@@ -286,56 +409,7 @@ export const assignRole = mutation({
       args.orgId,
       args.role,
     );
-    const contextual = await assignmentData(ctx, args);
-
-    // Check if assignment already exists to prevent duplicates
-    const existing = await ctx.db
-      .query("roleAssignments")
-      .withIndex("by_user_org", (q) => 
-        q.eq("userId", args.userId).eq("orgId", args.orgId).eq("orgType", args.orgType)
-      )
-      .first();
-
-    if (args.role === "superadmin") {
-      const existingAssignments = await ctx.db
-        .query("roleAssignments")
-        .withIndex("by_user", (q) => q.eq("userId", args.userId))
-        .collect();
-        
-      for (const e of existingAssignments) {
-        if (e.orgType !== "system" || e.role !== "superadmin") {
-           await ctx.db.delete(e._id);
-        }
-      }
-    }
-
-    if (existing) {
-      // Update existing role
-      await ctx.db.patch(existing._id, {
-        role: args.role,
-        ...contextual,
-        assignedAt: Date.now(),
-      });
-    } else {
-      // Create new assignment
-      await ctx.db.insert("roleAssignments", {
-        userId: args.userId,
-        orgType: args.orgType,
-        orgId: args.orgId,
-        role: args.role,
-        ...contextual,
-        assignedAt: Date.now(),
-      });
-    }
-
-    // 2. Trigger background sync to Clerk
-    const user = await ctx.db.get(args.userId);
-    if (user && !user.clerkId.startsWith("temp_")) {
-      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncRolesToClerk, {
-        userId: args.userId,
-        clerkId: user.clerkId,
-      });
-    }
+    await upsertRoleAssignment(ctx, args, currentUser._id);
     return null;
   },
 });
@@ -350,51 +424,7 @@ export const assignRoleInternal = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const contextual = await assignmentData(ctx, args);
-    
-    const existing = await ctx.db
-      .query("roleAssignments")
-      .withIndex("by_user_org", (q) => 
-        q.eq("userId", args.userId).eq("orgId", args.orgId).eq("orgType", args.orgType)
-      )
-      .first();
-
-    if (args.role === "superadmin") {
-      const existingAssignments = await ctx.db
-        .query("roleAssignments")
-        .withIndex("by_user", (q) => q.eq("userId", args.userId))
-        .collect();
-        
-      for (const e of existingAssignments) {
-        if (e.orgType !== "system" || e.role !== "superadmin") {
-           await ctx.db.delete(e._id);
-        }
-      }
-    }
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        role: args.role,
-        ...contextual,
-        assignedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("roleAssignments", {
-        userId: args.userId,
-        orgType: args.orgType,
-        orgId: args.orgId,
-        role: args.role,
-        ...contextual,
-        assignedAt: Date.now(),
-      });
-    }
-    const user = await ctx.db.get(args.userId);
-    if (user && !user.clerkId.startsWith("temp_")) {
-      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncRolesToClerk, {
-        userId: args.userId,
-        clerkId: user.clerkId,
-      });
-    }
+    await upsertRoleAssignment(ctx, args);
     return null;
   },
 });

@@ -35,7 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
+import type { FunctionReturnType } from "convex/server";
 import { useSettingsContext } from "@/hooks/use-settings-context";
 
 export function CampusesSettings() {
@@ -44,22 +44,24 @@ export function CampusesSettings() {
   const { context, isLoading } = useSettingsContext();
   const campuses = useQuery(
     api.campuses.listForInstitutionSettings,
-    context?.canManageInstitution
+    context?.canViewInstitutionSettings
       ? { schoolId: context.institution._id }
       : "skip",
   );
   const removeCampus = useMutation(api.campuses.remove);
-  const [deleteTarget, setDeleteTarget] =
-    React.useState<Doc<"campuses"> | null>(null);
+  type Campus = FunctionReturnType<
+    typeof api.campuses.listForInstitutionSettings
+  >[number];
+  const [deleteTarget, setDeleteTarget] = React.useState<Campus | null>(null);
   const [editTarget, setEditTarget] =
-    React.useState<Doc<"campuses"> | null>(null);
+    React.useState<Campus | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
 
-  if (isLoading || (context?.canManageInstitution && campuses === undefined)) {
+  if (isLoading || (context?.canViewInstitutionSettings && campuses === undefined)) {
     return <Skeleton className="h-72 w-full rounded-xl" />;
   }
 
-  if (!context?.canManageInstitution) {
+  if (!context?.canViewInstitutionSettings) {
     return (
       <section className="grid gap-3">
         <h2 className="border-b pb-3 text-xl font-semibold">
@@ -98,18 +100,20 @@ export function CampusesSettings() {
         <h2 className="min-w-0 text-xl font-semibold">
           {t("title")} — {context.institution.name}
         </h2>
-        <CampusDialog
-          parentInstitution={{
-            _id: context.institution._id,
-            name: context.institution.name,
-          }}
-          trigger={
-            <Button size="sm">
-              <Plus />
-              {t("add")}
-            </Button>
-          }
-        />
+        {context.canManageInstitution && (
+          <CampusDialog
+            parentInstitution={{
+              _id: context.institution._id,
+              name: context.institution.name,
+            }}
+            trigger={
+              <Button size="sm">
+                <Plus />
+                {t("add")}
+              </Button>
+            }
+          />
+        )}
       </div>
 
       <div className="overflow-hidden rounded-md border">
@@ -119,10 +123,13 @@ export function CampusesSettings() {
               <TableHead className="text-muted">{t("name")}</TableHead>
               <TableHead className="text-muted">{t("codeColumn")}</TableHead>
               <TableHead className="text-muted">{t("identifier")}</TableHead>
+              <TableHead className="text-muted">{t("principal")}</TableHead>
               <TableHead className="text-muted">{t("status")}</TableHead>
-              <TableHead className="text-right text-muted">
-                {t("actions")}
-              </TableHead>
+              {context.canManageInstitution && (
+                <TableHead className="text-right text-muted">
+                  {t("actions")}
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -136,12 +143,13 @@ export function CampusesSettings() {
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     /{campus.slug}
                   </TableCell>
+                  <TableCell>{campus.principal?.fullName ?? "—"}</TableCell>
                   <TableCell>
                     <Badge variant={campus.isActive ? "default" : "secondary"}>
                       {campus.isActive ? t("active") : t("inactive")}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
+                  {context.canManageInstitution && <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -167,13 +175,13 @@ export function CampusesSettings() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </TableCell>
+                  </TableCell>}
                 </TableRow>
               ))
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={context.canManageInstitution ? 6 : 5}
                   className="h-24 text-center text-muted-foreground"
                 >
                   {t("empty")}

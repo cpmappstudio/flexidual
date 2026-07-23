@@ -1,0 +1,23 @@
+{
+  "TenantProfileSelection": {
+    "title": "¿Quién va a entrar?",
+    "profileLabel": "{name}, perfil de {type}",
+    "profileTypes": {
+      "guardian": "responsable",
+      "student": "estudiante"
+    },
+    "pinDialog": {
+      "title": "Ingresa el PIN del responsable",
+      "pinLabel": "PIN",
+      "pinHint": "Usa el PIN de 4 dígitos del responsable.",
+      "unlock": "Entrar",
+      "unlocking": "Verificando...",
+      "errors": {
+        "invalid": "Ese PIN es incorrecto.",
+        "invalidFormat": "Usa exactamente 4 dígitos.",
+        "locked": "Demasiados intentos fallidos. Inténtalo de nuevo más tarde.",
+        "generic": "No pudimos verificar el PIN. Inténtalo de nuevo."
+      }
+    }
+  }
+}

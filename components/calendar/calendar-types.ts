@@ -16,12 +16,6 @@ export type CalendarContextType = {
   setManageEventDialogOpen: (open: boolean) => void;
   selectedEvent: CalendarEvent | null;
   setSelectedEvent: (event: CalendarEvent | null) => void;
-
-  refetchEvents?: () => void;
-  selectedTeacherId: Id<"users"> | null;
-  onTeacherChange: (id: Id<"users"> | null) => void;
-  selectedCurriculumId: Id<"curriculums"> | null;
-  onCurriculumChange: (id: Id<"curriculums"> | null) => void;
 };
 
 export type CalendarEvent = {
@@ -33,6 +27,8 @@ export type CalendarEvent = {
   lessonIds?: Id<"lessons">[];
   classId: Id<"classes">;
   curriculumId: Id<"curriculums">;
+  teacherId?: Id<"users">;
+  gradeCode?: string;
   sessionType: "live" | "ignitia" | "abeka";
 
   // Display fields

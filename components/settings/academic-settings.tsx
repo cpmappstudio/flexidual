@@ -83,7 +83,7 @@ export function AcademicSettings() {
   const { context, isLoading } = useSettingsContext();
   const settings = useQuery(
     api.academicSettings.get,
-    context?.canManageInstitution
+    context?.canViewInstitutionSettings
       ? { schoolId: context.institution._id }
       : "skip",
   );
@@ -118,11 +118,11 @@ export function AcademicSettings() {
     [locale],
   );
 
-  if (isLoading || (context?.canManageInstitution && settings === undefined)) {
+  if (isLoading || (context?.canViewInstitutionSettings && settings === undefined)) {
     return <Skeleton className="h-72 w-full rounded-xl" />;
   }
 
-  if (!context?.canManageInstitution || !settings) {
+  if (!context?.canViewInstitutionSettings || !settings) {
     return (
       <section>
         <h2 className="border-b pb-3 text-xl font-semibold">
@@ -131,6 +131,7 @@ export function AcademicSettings() {
       </section>
     );
   }
+  const readOnly = !context.canManageInstitution;
 
   const resetPeriodForm = () => {
     setEditingPeriod(null);
@@ -234,10 +235,12 @@ export function AcademicSettings() {
       <div className="grid gap-3">
         <div className="flex items-center justify-between gap-4">
           <h3 className="text-lg font-semibold">{t("periods")}</h3>
-          <Button size="sm" onClick={() => openPeriodDialog()}>
-            <Plus />
-            {t("addPeriod")}
-          </Button>
+          {!readOnly && (
+            <Button size="sm" onClick={() => openPeriodDialog()}>
+              <Plus />
+              {t("addPeriod")}
+            </Button>
+          )}
         </div>
 
         <div className="overflow-hidden rounded-md border">
@@ -247,9 +250,11 @@ export function AcademicSettings() {
                 <TableHead className="text-muted">{t("name")}</TableHead>
                 <TableHead className="text-muted">{t("dateRange")}</TableHead>
                 <TableHead className="text-muted">{t("status")}</TableHead>
-                <TableHead className="w-20 text-right text-muted">
-                  {t("actions")}
-                </TableHead>
+                {!readOnly && (
+                  <TableHead className="w-20 text-right text-muted">
+                    {t("actions")}
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -284,7 +289,7 @@ export function AcademicSettings() {
                           {t(status)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      {!readOnly && <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -312,14 +317,14 @@ export function AcademicSettings() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </TableCell>
+                      </TableCell>}
                     </TableRow>
                   );
                 })
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={readOnly ? 3 : 4}
                     className="h-24 text-center text-muted-foreground"
                   >
                     {t("emptyPeriods")}
@@ -331,7 +336,7 @@ export function AcademicSettings() {
         </div>
       </div>
 
-      <EntityDialog
+      {!readOnly && <EntityDialog
         open={periodDialogOpen}
         onOpenChange={(open) => {
           if (!isSubmittingPeriod) setPeriodDialogOpen(open);
@@ -384,9 +389,9 @@ export function AcademicSettings() {
             </Popover>
           </div>
         </div>
-      </EntityDialog>
+      </EntityDialog>}
 
-      <AlertDialog
+      {!readOnly && <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open && !isDeletingPeriod) setDeleteTarget(null);
@@ -418,7 +423,7 @@ export function AcademicSettings() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
 
       <form className="grid gap-3" onSubmit={handleSaveWindow}>
         <h3 className="text-lg font-semibold">
@@ -437,6 +442,7 @@ export function AcademicSettings() {
                 onChange={(event) => setStartTime(event.target.value)}
                 className="pl-9"
                 required
+                disabled={readOnly}
               />
             </div>
           </div>
@@ -452,15 +458,18 @@ export function AcademicSettings() {
                 onChange={(event) => setEndTime(event.target.value)}
                 className="pl-9"
                 required
+                disabled={readOnly}
               />
             </div>
           </div>
-          <Button
-            type="submit"
-            disabled={isSavingWindow || !startTime || !endTime}
-          >
-            {t("saveWindow")}
-          </Button>
+          {!readOnly && (
+            <Button
+              type="submit"
+              disabled={isSavingWindow || !startTime || !endTime}
+            >
+              {t("saveWindow")}
+            </Button>
+          )}
         </div>
       </form>
     </section>

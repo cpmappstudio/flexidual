@@ -29,6 +29,7 @@
     "archived": "Archivado",
     "name": "Nombre",
     "selectStatus": "Seleccionar estado",
+    "allStatuses": "Todos los estados",
     "theme": "Tema",
     "light": "Claro",
     "dark": "Oscuro",
@@ -76,6 +77,8 @@
     "campusesLabel": "Campus",
     "academicLabel": "Calendario académico",
     "gradesLabel": "Grados",
+    "curriculumsLabel": "Currículos",
+    "administratorsLabel": "Administradores",
     "profileAndSecurity": "Perfil y seguridad",
     "signOut": "Cerrar sesión",
     "institutionSettings": {
@@ -108,6 +111,8 @@
       "codeColumn": "Código",
       "codePlaceholder": "Ej. CN-01",
       "timeZone": "Zona horaria propia (opcional)",
+      "principal": "Principal",
+      "unassignedPrincipal": "Sin principal asignado",
       "status": "Estado",
       "active": "Activo",
       "inactive": "Inactivo",
@@ -189,6 +194,16 @@
       "deleteError": "No se pudo eliminar el grado.",
       "deleteInUse": "Este grado ya está en uso y no se puede eliminar.",
       "unavailable": "La configuración de grados no está disponible"
+    },
+    "curriculums": {
+      "title": "Currículos",
+      "unavailable": "La configuración de currículos no está disponible"
+    },
+    "administrators": {
+      "title": "Administradores",
+      "principals": "Directores",
+      "admins": "Admins",
+      "unavailable": "La configuración de administradores no está disponible"
     }
   },
   "days": {
@@ -234,8 +249,9 @@
     "schedule": "Horario",
     "teaching": "Enseñanza",
     "admin": "Admin",
-    "administration": "Administración",
-    "platform": "Plataforma",
+    "administration": "Comunidad del campus",
+    "platform": "Académico",
+    "selectCampus": "Selecciona un campus para gestionar su comunidad.",
     "student": "Estudiante",
     "students": "Estudiantes",
     "studentsDescription": "Aprendices inscritos.",
@@ -277,7 +293,7 @@
     "moreClasses": "+{count} más",
     "noClassesToday": "Sin clases",
     "teachingDashboard": "Panel de Enseñanza",
-    "manageCurriculums": "Gestiona tus currículos, lecciones y próximas clases.",
+    "manageCurriculums": "Gestiona tus lecciones y próximas clases.",
     "nextClass": "Próxima Clase",
     "classInSession": "Clase en curso",
     "enterLive": "Entrar a Clase en Vivo",
@@ -353,6 +369,8 @@
     "waitingForApproval": "Esperando aprobación",
     "shareScreen": "Compartir Pantalla",
     "leave": "Salir",
+    "leaveClassTitle": "¿Salir de esta clase?",
+    "leaveClassDescription": "Te desconectarás de la clase en vivo y volverás a la página anterior.",
     "classmates": "Compañeros ({count})",
     "waitingForStudents": "Esperando...",
     "youAreFirst": "¡Eres el primero!",
@@ -418,6 +436,7 @@
     "new": "Nuevo Currículo",
     "edit": "Editar Currículo",
     "deleteConfirm": "¿Eliminar este currículo? Todas las lecciones asociadas serán eliminadas.",
+    "deleteInUse": "Este currículo no se puede eliminar porque está siendo usado por {count, plural, one {# curso} other {# cursos}}.",
     "created": "Currículo creado",
     "updated": "Currículo actualizado",
     "deleted": "Currículo eliminado",
@@ -435,9 +454,9 @@
     "curriculumsToCreate": "Currículos para Crear ({count})",
     "descriptionInputPlaceholder": "Agrega una breve descripción de este currículo, por ejemplo, visión general del curso, público objetivo o temas clave cubiertos.",
     "addBatchCurriculumsInstruction": "Agrega currículos arriba para construir tu lista.",
-    "targetGrades": "Grados Objetivo (Separados por comas)",
+    "targetGrades": "Grados disponibles",
     "targetGradesPlaceholder": "ej. 04, 05",
-    "targetGradesHelp": "Utilizado para filtrar asignaciones de estudiantes"
+    "targetGradesHelp": "Este currículo solo está disponible para los grados seleccionados."
   },
   "lesson": {
     "title": "Título de la Lección",
@@ -490,8 +509,8 @@
     "title": "Cursos",
     "name": "Nombre del Curso",
     "year": "Año",
-    "academicYear": "Año Académico",
     "academicPeriod": "Periodo académico",
+    "allAcademicPeriods": "Todos los periodos académicos",
     "selectAcademicPeriod": "Seleccionar un periodo académico",
     "noAcademicPeriods": "No hay periodos académicos actuales o próximos.",
     "configureAcademicPeriods": "Configurar periodos",
@@ -500,6 +519,7 @@
     "timeZoneRequired": "La institución necesita una zona horaria oficial antes de crear cursos.",
     "configureTimeZone": "Configurar zona horaria",
     "weeklySchedule": "Horario semanal",
+    "showExistingSchedules": "Mostrar horarios de cursos existentes",
     "classTimeOverlap": "Este horario se solapa con otra clase.",
     "namePlaceholder": "ej., Ciencia 101 - Otoño 2024",
     "new": "Crear curso",
@@ -511,6 +531,8 @@
     "deleted": "Curso eliminado",
     "curriculum": "Currículo",
     "selectCurriculum": "Seleccionar un currículo",
+    "selectGradeFirst": "Selecciona primero un grado",
+    "noCurriculumsForGrade": "No hay currículos disponibles para este grado.",
     "grade": "Grado",
     "selectGrade": "Seleccionar un grado",
     "noGrades": "Esta institución no tiene grados configurados.",
@@ -577,7 +599,7 @@
     "scheduleSession": "Nueva clase",
     "autoNameHint": "Dejar vacío para generar automáticamente",
     "autoNamePattern": "Formato automático: Currículo - Profesor - Año (Sec #)",
-    "deleteConfirm": "¿Eliminar este curso? Todos los estudiantes inscritos serán desvinculados.",
+    "deleteConfirm": "¿Eliminar este curso? Sus horarios, historial de clases e inscripciones se eliminarán permanentemente.",
     "typeStandard": "Estándar (Profesor)",
     "notFound": "Curso no encontrado"
   },
@@ -677,6 +699,7 @@
       "09": "9no Grado"
     },
     "selectGrade": "Seleccionar Grado",
+    "allGrades": "Todos los grados",
     "filteringByGrade": "Filtrando por Grado:",
     "chooseIcon": "Elige un ícono",
     "chooseIconTitle": "Elige un ícono para este curso"
@@ -853,6 +876,9 @@
     "mySchedule": "Mi Horario",
     "classSchedule": "Horario del Curso",
     "filtering": "Filtrando: {className}",
+    "allCourses": "Todos los cursos",
+    "allTeachers": "Todos los profesores",
+    "allGrades": "Todos los grados",
     "monthView": "Vista Mensual",
     "agendaList": "Lista de Agenda",
     "noUpcoming": "No hay lecciones próximas programadas.",
@@ -891,14 +917,7 @@
       "selectRole": "Selecciona un rol",
       "selectGrade": "Selecciona el grado"
     },
-    "addToList": "Añadir a la lista",
-    "usersToAdd": "Usuarios por agregar ({count})",
-    "clearList": "Limpiar lista",
-    "emptyListInstruction": "Completa los datos arriba. Puedes añadir varios usuarios a esta lista para agregarlos todos a la vez.",
-    "createMultiple": "Agregar {count} usuarios",
     "createSingle": "Agregar usuario",
-    "successBatch": "{count} usuarios agregados con éxito.",
-    "warningBatch": "{success} agregados, {failed} fallaron.",
     "profileImage": "Imagen de perfil",
     "revokeRole": "Revocar acceso",
     "revoke": "Revocar rol",
@@ -913,7 +932,7 @@
     "failedUpload": "Error al subir la imagen",
     "clickToUpload": "Haz clic en el avatar para subir una imagen.",
     "recommendedDimensions": "Tamaño recomendado: 256x256px",
-    "authSection": "Autenticación (Proporciona al menos uno)",
+    "authSection": "Autenticación",
     "emailOptionalHint": "(Opcional si usa Nombre de Usuario)",
     "usernameLabel": "Nombre de Usuario (Opcional)",
     "passwordLabel": "Contraseña",
@@ -947,7 +966,6 @@
   "classDialog": {
     "placeholders": {
       "name": "Dejar vacío para generar automáticamente",
-      "academicYear": "ej. 2025-2026",
       "description": "Agrega una breve descripción...",
       "searchCurriculum": "Buscar por nombre...",
       "searchTeacher": "Buscar profesores..."
@@ -968,7 +986,9 @@
     "classNotFound": "Curso no encontrado",
     "classScheduleConflict": "Este curso ya tiene una clase programada a las {conflictTime}",
     "teacherScheduleConflict": "El profesor ya está enseñando \"{className}\" a las {conflictTime}",
-    "invalidGrade": "Configuración de grado inválida: {grades}. Por favor, revisa tu selección."
+    "invalidGrade": "Configuración de grado inválida: {grades}. Por favor, revisa tu selección.",
+    "curriculumCodeInUse": "Ese código de currículo ya está en uso en esta institución.",
+    "invalidCurriculumTitle": "Ingresa un título de currículo de entre 1 y 150 caracteres."
   },
   "table": {
     "columns": "Columnas",

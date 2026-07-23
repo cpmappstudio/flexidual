@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
+import { useCurrentMinute } from "@/hooks/use-current-minute"
 
 interface AttendanceDialogProps {
   scheduleId: Id<"classSchedule">
@@ -23,6 +24,7 @@ interface AttendanceDialogProps {
 
 export function AttendanceDialog({ scheduleId, trigger, open, onOpenChange, title }: AttendanceDialogProps) {
   const t = useTranslations()
+  const now = useCurrentMinute()
   const [internalOpen, setInternalOpen] = useState(false)
   const isControlled = open !== undefined
   const isOpen = isControlled ? open : internalOpen
@@ -32,7 +34,10 @@ export function AttendanceDialog({ scheduleId, trigger, open, onOpenChange, titl
     onOpenChange?.(val)
   }
 
-  const stats = useQuery(api.schedule.getAttendanceDetails, isOpen ? { scheduleId } : "skip")
+  const stats = useQuery(
+    api.schedule.getAttendanceDetails,
+    isOpen ? { scheduleId, now } : "skip",
+  )
   const updateStatus = useMutation(api.schedule.updateAttendance)
 
   const handleStatusChange = async (studentId: Id<"users">, newStatus: string) => {

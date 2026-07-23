@@ -28,6 +28,7 @@
     "archived": "Archived",
     "name": "Name",
     "selectStatus": "Select status",
+    "allStatuses": "All statuses",
     "theme": "Theme",
     "light": "Light",
     "dark": "Dark",
@@ -76,6 +77,8 @@
     "campusesLabel": "Campuses",
     "academicLabel": "Academic calendar",
     "gradesLabel": "Grades",
+    "curriculumsLabel": "Curriculums",
+    "administratorsLabel": "Administrators",
     "profileAndSecurity": "Profile and security",
     "signOut": "Sign out",
     "institutionSettings": {
@@ -108,6 +111,8 @@
       "codeColumn": "Code",
       "codePlaceholder": "e.g. NC-01",
       "timeZone": "Time zone override (optional)",
+      "principal": "Principal",
+      "unassignedPrincipal": "No principal assigned",
       "status": "Status",
       "active": "Active",
       "inactive": "Inactive",
@@ -189,6 +194,16 @@
       "deleteError": "Could not delete the grade.",
       "deleteInUse": "This grade is already in use and cannot be deleted.",
       "unavailable": "Grade settings are unavailable"
+    },
+    "curriculums": {
+      "title": "Curriculums",
+      "unavailable": "Curriculum settings are unavailable"
+    },
+    "administrators": {
+      "title": "Administrators",
+      "principals": "Principals",
+      "admins": "Admins",
+      "unavailable": "Administrator settings are unavailable"
     }
   },
   "days": {
@@ -234,8 +249,9 @@
     "schedule": "Schedule",
     "teaching": "Teaching",
     "admin": "Admin",
-    "administration": "Administration",
-    "platform": "Platform",
+    "administration": "Campus community",
+    "platform": "Academic",
+    "selectCampus": "Select a campus to manage its community.",
     "student": "Student",
     "students": "Students",
     "studentsDescription": "Enrolled learners.",
@@ -277,7 +293,7 @@
     "moreClasses": "+{count} more",
     "noClassesToday": "No classes",
     "teachingDashboard": "Teaching Dashboard",
-    "manageCurriculums": "Manage your curriculums, lessons, and upcoming classes.",
+    "manageCurriculums": "Manage your lessons and upcoming classes.",
     "nextClass": "Up Next",
     "classInSession": "Class in progress",
     "enterLive": "Enter Live Class",
@@ -353,6 +369,8 @@
     "waitingForApproval": "Waiting for approval",
     "shareScreen": "Share Screen",
     "leave": "Leave",
+    "leaveClassTitle": "Leave this class?",
+    "leaveClassDescription": "You will disconnect from the live class and return to the previous page.",
     "classmates": "Classmates ({count})",
     "waitingForStudents": "Waiting...",
     "youAreFirst": "You are first!",
@@ -418,6 +436,7 @@
     "new": "New Curriculum",
     "edit": "Edit Curriculum",
     "deleteConfirm": "Delete this curriculum? All associated lessons will be deleted.",
+    "deleteInUse": "This curriculum cannot be deleted because it is used by {count, plural, one {# course} other {# courses}}.",
     "created": "Curriculum created",
     "updated": "Curriculum updated",
     "deleted": "Curriculum deleted",
@@ -435,9 +454,9 @@
     "curriculumsToCreate": "Curriculums to Create ({count})",
     "descriptionInputPlaceholder": "Add a brief description of this curriculum, e.g. course overview, target audience, or key topics covered.",
     "addBatchCurriculumsInstruction": "Add curriculums above to build your list.",
-    "targetGrades": "Target Grades (Comma separated)",
+    "targetGrades": "Target grades",
     "targetGradesPlaceholder": "e.g. 04, 05",
-    "targetGradesHelp": "Used for filtering student assignments"
+    "targetGradesHelp": "This curriculum is available only for the selected grades."
   },
   "lesson": {
     "title": "Lesson Title",
@@ -490,8 +509,8 @@
     "title": "Courses",
     "name": "Course Name",
     "year": "Year",
-    "academicYear": "Academic year",
     "academicPeriod": "Academic period",
+    "allAcademicPeriods": "All academic periods",
     "selectAcademicPeriod": "Select an academic period",
     "noAcademicPeriods": "No current or upcoming academic periods are available.",
     "configureAcademicPeriods": "Configure periods",
@@ -500,6 +519,7 @@
     "timeZoneRequired": "The institution needs an official time zone before courses can be created.",
     "configureTimeZone": "Configure time zone",
     "weeklySchedule": "Weekly schedule",
+    "showExistingSchedules": "Show existing course schedules",
     "classTimeOverlap": "This time overlaps another class.",
     "namePlaceholder": "e.g. Science 101 - Fall 2024",
     "new": "Create course",
@@ -511,6 +531,8 @@
     "deleted": "Course deleted",
     "curriculum": "Curriculum",
     "selectCurriculum": "Select a curriculum",
+    "selectGradeFirst": "Select a grade first",
+    "noCurriculumsForGrade": "No curriculums are available for this grade.",
     "grade": "Grade",
     "selectGrade": "Select a grade",
     "noGrades": "No grades are configured for this institution.",
@@ -577,7 +599,7 @@
     "scheduleSession": "New class",
     "autoNameHint": "Leave empty to auto-generate",
     "autoNamePattern": "Auto-format: Curriculum - Teacher - Year (Sec #)",
-    "deleteConfirm": "Delete this course? All enrolled students will be unenrolled.",
+    "deleteConfirm": "Delete this course? Its schedules, class history, and student enrollments will be permanently removed.",
     "typeStandard": "Standard (Teacher)",
     "notFound": "Course not found"
   },
@@ -677,6 +699,7 @@
       "09": "9th Grade"
     },
     "selectGrade": "Select Grade",
+    "allGrades": "All grades",
     "filteringByGrade": "Filtering by grade:",
     "chooseIcon": "Choose Icon",
     "chooseIconTitle": "Choose an icon for this course"
@@ -853,6 +876,9 @@
     "mySchedule": "My Schedule",
     "classSchedule": "Course Schedule",
     "filtering": "Filtering: {className}",
+    "allCourses": "All courses",
+    "allTeachers": "All teachers",
+    "allGrades": "All grades",
     "monthView": "Month View",
     "agendaList": "Agenda List",
     "noUpcoming": "No upcoming lessons scheduled.",
@@ -891,14 +917,7 @@
       "selectRole": "Select a role",
       "selectGrade": "Select a grade"
     },
-    "addToList": "Add to list",
-    "usersToAdd": "Users to add ({count})",
-    "clearList": "Clear list",
-    "emptyListInstruction": "Fill in the details above. You can add multiple users to this list and add them all at once.",
-    "createMultiple": "Add {count} users",
     "createSingle": "Add user",
-    "successBatch": "{count} users added successfully.",
-    "warningBatch": "{success} added, {failed} failed.",
     "profileImage": "Profile Image",
     "revokeRole": "Revoke Access",
     "revoke": "Revoke role",
@@ -913,7 +932,7 @@
     "failedUpload": "Failed to upload picture",
     "clickToUpload": "Click the avatar to upload a picture.",
     "recommendedDimensions": "Recommended size: 256x256px",
-    "authSection": "Authentication (Provide at least one)",
+    "authSection": "Authentication",
     "emailOptionalHint": "(Optional if using Username)",
     "usernameLabel": "Username (Optional)",
     "passwordLabel": "Password",
@@ -947,7 +966,6 @@
   "classDialog": {
     "placeholders": {
       "name": "Leave empty to auto-generate",
-      "academicYear": "e.g. 2025-2026",
       "description": "Add a brief description...",
       "searchCurriculum": "Search by name...",
       "searchTeacher": "Search teachers..."
@@ -968,7 +986,9 @@
     "classNotFound": "Course not found",
     "classScheduleConflict": "This course already has a class scheduled at {conflictTime}",
     "teacherScheduleConflict": "Teacher is already teaching \"{className}\" at {conflictTime}",
-    "invalidGrade": "Invalid grade configuration: {grades}. Please check your selection."
+    "invalidGrade": "Invalid grade configuration: {grades}. Please check your selection.",
+    "curriculumCodeInUse": "That curriculum code is already in use in this institution.",
+    "invalidCurriculumTitle": "Enter a curriculum title between 1 and 150 characters."
   },
   "table": {
     "columns": "Columns",

@@ -1,0 +1,1 @@
+export const MAX_GUARDIAN_STUDENT_PROFILES = 8;

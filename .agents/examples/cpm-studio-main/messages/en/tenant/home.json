@@ -1,0 +1,49 @@
+{
+  "TenantHome": {
+    "title": "Campuses",
+    "nameLabel": "Campus name",
+    "imageLabel": "Campus image",
+    "namePlaceholder": "Northbridge Downtown…",
+    "create": "Create",
+    "creating": "Creating…",
+    "createCard": "Create",
+    "createDialogTitle": "Create",
+    "createDialogDescription": "Create a new campus and get your workspace ready in seconds.",
+    "active": "Active",
+    "inactive": "Inactive",
+    "openCampus": "Open campus",
+    "backToCampuses": "Back to campuses",
+    "campusSlugLabel": "Campus slug",
+    "tenantLabel": "Tenant",
+    "detailPlaceholder": "This is a visual placeholder for the campus detail route while backend logic is still pending.",
+    "modulesLabel": "Campus modules",
+    "emptyModules": "No campus modules are active for this institution yet.",
+    "errorPrefix": "Error",
+    "genericError": "We couldn't complete this action right now. Please try again.",
+    "campusActions": {
+      "actions": "Actions",
+      "activate": "Activate campus",
+      "activated": "Campus activated.",
+      "deactivate": "Deactivate campus",
+      "deactivated": "Campus deactivated.",
+      "open": "Open actions for {name}",
+      "deactivateDialog": {
+        "title": "Deactivate campus?",
+        "description": "This will block access to {name} until an admin activates it again.",
+        "cancel": "Cancel",
+        "confirm": "Deactivate"
+      }
+    },
+    "createDialog": {
+      "success": "Campus created."
+    },
+    "createDialogErrors": {
+      "nameRequired": "Enter a campus name.",
+      "nameInvalid": "Use a name with at least one letter or number.",
+      "slugUnavailable": "That campus name generated a slug that is already in use. Try a different name.",
+      "imageInvalidType": "Upload an image file.",
+      "imageTooLarge": "The campus image must be smaller than 5 MB.",
+      "imageUploadFailed": "We couldn't upload the campus image. Please try again."
+    }
+  }
+}

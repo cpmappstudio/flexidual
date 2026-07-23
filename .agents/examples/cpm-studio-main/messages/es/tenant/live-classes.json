@@ -1,0 +1,109 @@
+{
+  "TenantLiveClasses": {
+    "title": "Flexidual",
+    "description": "Flexidual ya está habilitado para este campus. Esta primera superficie mantiene visible y accesible el módulo mientras construimos sesiones, asistencia y flujos de participación en las siguientes iteraciones.",
+    "statusLabel": "Estado",
+    "statusValue": "Habilitado",
+    "campusLabel": "Campus",
+    "capabilityLabel": "Capacidad",
+    "capabilityValue": "liveClasses.core",
+    "nextStepsTitle": "Siguientes pasos",
+    "nextStepSessions": "Definir el primer modelo de sesión en vivo y su operación básica por campus.",
+    "nextStepAttendance": "Agregar estado de asistencia y trazabilidad básica de presencia sobre la sesión activa.",
+    "nextStepParticipants": "Conectar docentes, estudiantes y controles de participación a la superficie del aula en vivo.",
+    "calendar": {
+      "title": "Calendario",
+      "description": "Revisa la programación centralizada de sesiones para este campus. Esta ruta será la superficie operativa para crear, mover y gestionar sesiones de clase.",
+      "highlightsTitle": "Capacidades previstas",
+      "highlightScheduling": "Crear y gestionar sesiones recurrentes y extraordinarias desde una sola superficie de calendario.",
+      "highlightConflicts": "Visualizar conflictos de horario del profesor, clases extra y excepciones sin duplicar flujos dentro de cada curso.",
+      "highlightContext": "Mantener el detalle del curso enfocado en contexto y dejar el CRUD de agenda en el calendario centralizado."
+    },
+    "courses": {
+      "title": "Cursos",
+      "createCourse": "Nuevo curso",
+      "curriculumLabel": "Currículo",
+      "detailDescription": "Esta primera superficie de detalle del curso es intencionalmente ligera. Confirma el flujo de navegación desde la grilla de cursos y nos da una base estable para evolucionar sesiones, contenido y personas en las siguientes iteraciones.",
+      "detail": {
+        "backToCourses": "Volver a cursos",
+        "heroDescription": "Mantén el contexto de este curso en un solo lugar mientras los cambios de agenda siguen ocurriendo en el calendario centralizado.",
+        "academicPeriodLabel": "Periodo académico",
+        "teacherLabel": "Profesor",
+        "studentsLabel": "Estudiantes",
+        "campusLabel": "Campus",
+        "openCalendar": "Abrir calendario",
+        "tabs": {
+          "sessions": "Sesiones de clase",
+          "content": "Contenido",
+          "people": "Personas"
+        },
+        "sessions": {
+          "title": "Sesiones de clase",
+          "description": "Una vista semanal contextual de las sesiones programadas para este curso.",
+          "weeklySchedule": "Agenda semanal",
+          "weeklyScheduleDescription": "Vista de solo lectura. Para crear, mover o cancelar una sesión, usa el calendario centralizado.",
+          "scheduledThisWeek": "Programadas esta semana",
+          "completed": "Completadas",
+          "nextSession": "Próxima sesión",
+          "upcomingSessions": "Próximas sesiones",
+          "recentSessions": "Sesiones recientes",
+          "noSessions": "No hay sesiones programadas.",
+          "noSessionsYet": "Aún no hay sesiones para mostrar.",
+          "days": {
+            "monday": "Lunes",
+            "tuesday": "Martes",
+            "wednesday": "Miércoles",
+            "thursday": "Jueves",
+            "friday": "Viernes"
+          }
+        },
+        "content": {
+          "title": "Contenido del curso",
+          "description": "Las lecciones heredadas del currículo permanecen visibles aquí mientras las adiciones específicas del curso viven a su lado.",
+          "curriculumBase": "Currículo base",
+          "curriculumBaseDescription": "Secuencia compartida de aprendizaje heredada del currículo.",
+          "courseExtensions": "Adiciones del curso",
+          "courseExtensionsDescription": "Lecciones creadas solo para este curso sin modificar el currículo.",
+          "customLessonEyebrow": "Lección personalizada",
+          "objectives": "Objetivos",
+          "plannedUse": "Uso previsto",
+          "lessonPlacement": "Ubicación en el curso",
+          "currentFocus": "Foco actual"
+        },
+        "people": {
+          "description": "Asignación docente y listado activo de este curso.",
+          "teacher": "Profesor",
+          "students": "Estudiantes",
+          "contact": "Contacto",
+          "activeRoster": "Listado activo",
+          "guardianLinked": "Estudiante vinculado a guardian",
+          "table": {
+            "student": "Estudiante",
+            "grade": "Grado",
+            "guardian": "Responsable",
+            "linked": "Vinculado",
+            "notLinked": "Sin vínculo",
+            "empty": "Todavía no hay estudiantes en este curso.",
+            "actionsMenu": "Abrir acciones del estudiante",
+            "actionsLabel": "Acciones del estudiante",
+            "copyStudentName": "Copiar nombre",
+            "copyGradeLevel": "Copiar grado",
+            "copyGuardianStatus": "Copiar estado del responsable",
+            "copySuccess": "{label} copiado.",
+            "copyError": "No pudimos copiar este valor."
+          }
+        }
+      },
+      "filters": {
+        "search": "Buscar cursos",
+        "searchPlaceholder": "Buscar por nombre del curso",
+        "academicPeriod": "Periodo académico",
+        "allAcademicPeriods": "Todos los periodos académicos"
+      },
+      "highlightsTitle": "Capacidades previstas",
+      "highlightContext": "Abrir un curso para revisar en un solo lugar su agenda contextual, contenido de aprendizaje y personas inscritas.",
+      "highlightContent": "Distinguir el contenido heredado del currículo del contenido específico del curso sin mezclar ambos modelos.",
+      "highlightPeople": "Mostrar la asignación docente y los estudiantes inscritos en cada curso manteniendo un camino claro de regreso al calendario centralizado."
+    }
+  }
+}

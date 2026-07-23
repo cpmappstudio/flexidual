@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -31,8 +31,9 @@ import { CalendarEvent, Mode } from "@/components/calendar/calendar-types";
 import { TZDate } from "@date-fns/tz";
 import { ScheduleItem } from "@/components/schedule/schedule-item";
 
-import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 import { useSettingsContext } from "@/hooks/use-settings-context";
+import { useStaffAccess } from "@/hooks/use-staff-access";
+import { useCurrentMinute } from "@/hooks/use-current-minute";
 
 const localeMap = {
   en: enUS,
@@ -152,8 +153,11 @@ function CalendarContent() {
 
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
-  const [selectedCurriculumId, setSelectedCurriculumId] =
-    useState<Id<"curriculums"> | null>(null);
+  const [selectedCourseId, setSelectedCourseId] =
+    useState<Id<"classes"> | null>(null);
+  const [selectedGradeCode, setSelectedGradeCode] = useState<string | null>(
+    null,
+  );
 
   const { user } = useCurrentUser();
 
@@ -163,17 +167,55 @@ function CalendarContent() {
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
   const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
 
-  // Global school/campus filter
-  const { selectedSchoolId, selectedCampusId, isAvailable } =
-    useAdminSchoolFilter();
   const { context: settingsContext } = useSettingsContext();
+  const { access } = useStaffAccess();
+  const canViewAllCampusCourses = access?.canManageCampus ?? false;
+  const now = useCurrentMinute();
   const calendarSchoolId = settingsContext?.institution._id;
   const calendarCampusId =
     orgContext?.type === "campus"
       ? (orgContext._id as Id<"campuses">)
-      : orgContext?.type === "system" && selectedCampusId !== "all"
-        ? (selectedCampusId as Id<"campuses">)
-        : undefined;
+      : undefined;
+  const scopeKey = orgContext
+    ? `${orgContext.type}:${orgContext._id}`
+    : undefined;
+  const filterOptions = useQuery(
+    api.classes.listFilterOptions,
+    orgContext
+      ? {
+          schoolId:
+            orgContext.type === "school"
+              ? (orgContext._id as Id<"schools">)
+              : undefined,
+          campusId: calendarCampusId,
+        }
+      : "skip",
+  );
+  const grades = useQuery(
+    api.grades.list,
+    calendarSchoolId ? { schoolId: calendarSchoolId } : "skip",
+  );
+  const gradeOptions = useMemo(() => {
+    if (!grades) return [];
+    if (canViewAllCampusCourses) {
+      return grades.map((grade) => ({
+        value: grade.code,
+        label: grade.name,
+      }));
+    }
+
+    const assignedGradeCodes = new Set(
+      filterOptions?.courses.flatMap((course) =>
+        course.gradeCode ? [course.gradeCode] : [],
+      ) ?? [],
+    );
+    return grades
+      .filter((grade) => assignedGradeCodes.has(grade.code))
+      .map((grade) => ({
+        value: grade.code,
+        label: grade.name,
+      }));
+  }, [canViewAllCampusCourses, filterOptions?.courses, grades]);
   const scheduleWindow = useQuery(
     api.academicSettings.getScheduleWindow,
     calendarSchoolId
@@ -201,15 +243,43 @@ function CalendarContent() {
     };
   }, [date, mode]);
 
-  const scheduleData = useQuery(api.schedule.getMySchedule, {
-    ...visibleRange,
-    teacherId: selectedTeacherId ?? undefined,
-    ...(isAvailable && selectedCampusId !== "all"
-      ? { campusId: selectedCampusId as Id<"campuses"> }
-      : isAvailable && selectedSchoolId !== "all"
-        ? { schoolId: selectedSchoolId as Id<"schools"> }
-        : {}),
-  });
+  const scheduleResult = useQuery(
+    api.schedule.getMySchedule,
+    orgContext
+      ? {
+          ...visibleRange,
+          now,
+          includeAttendance: false,
+          ...(orgContext.type === "campus"
+            ? { campusId: orgContext._id }
+            : orgContext.type === "school"
+              ? { schoolId: orgContext._id }
+              : {}),
+        }
+      : "skip",
+  );
+  const [retainedSchedule, setRetainedSchedule] = useState<{
+    scopeKey: string;
+    data: Exclude<typeof scheduleResult, undefined>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (scheduleResult !== undefined && scopeKey) {
+      setRetainedSchedule({ scopeKey, data: scheduleResult });
+    }
+  }, [scheduleResult, scopeKey]);
+
+  useEffect(() => {
+    setSelectedCourseId(classIdParam);
+    setSelectedTeacherId(null);
+    setSelectedGradeCode(null);
+  }, [classIdParam, scopeKey]);
+
+  const scheduleData =
+    scheduleResult ??
+    (retainedSchedule && retainedSchedule.scopeKey === scopeKey
+      ? retainedSchedule.data
+      : undefined);
 
   const allEvents = useMemo(() => {
     if (!scheduleData) return [];
@@ -221,6 +291,8 @@ function CalendarContent() {
       lessonIds: e.lessonIds,
       classId: e.classId,
       curriculumId: e.curriculumId,
+      teacherId: e.teacherId,
+      gradeCode: e.gradeCode,
       sessionType: e.sessionType,
       title: e.title,
       description: e.description,
@@ -244,16 +316,20 @@ function CalendarContent() {
   const filteredEvents = useMemo(() => {
     let result = allEvents;
 
-    if (classIdParam) {
-      result = result.filter((e) => e.classId === classIdParam);
+    if (selectedCourseId) {
+      result = result.filter((event) => event.classId === selectedCourseId);
     }
 
-    if (selectedCurriculumId && !classIdParam) {
-      result = result.filter((e) => e.curriculumId === selectedCurriculumId);
+    if (selectedTeacherId) {
+      result = result.filter((event) => event.teacherId === selectedTeacherId);
+    }
+
+    if (selectedGradeCode) {
+      result = result.filter((event) => event.gradeCode === selectedGradeCode);
     }
 
     return result;
-  }, [allEvents, classIdParam, selectedCurriculumId]);
+  }, [allEvents, selectedCourseId, selectedGradeCode, selectedTeacherId]);
 
   if (scheduleData === undefined) {
     return <Skeleton className="h-full min-h-0 w-full" />;
@@ -269,10 +345,6 @@ function CalendarContent() {
       scheduleStartMinutes={scheduleWindow?.startMinutes}
       scheduleEndMinutes={scheduleWindow?.endMinutes}
       userId={user?._id}
-      selectedTeacherId={selectedTeacherId}
-      onTeacherChange={setSelectedTeacherId}
-      selectedCurriculumId={selectedCurriculumId}
-      onCurriculumChange={setSelectedCurriculumId}
     >
       <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
         <Tabs
@@ -283,7 +355,28 @@ function CalendarContent() {
             value="month"
             className="m-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
           >
-            <Calendar />
+            <Calendar
+              filters={{
+                courses:
+                  filterOptions?.courses.map((course) => ({
+                    value: course._id,
+                    label: course.name,
+                  })) ?? [],
+                teachers:
+                  filterOptions?.teachers.map((teacher) => ({
+                    value: teacher._id,
+                    label: teacher.fullName,
+                  })) ?? [],
+                grades: gradeOptions,
+                showTeacherFilter: canViewAllCampusCourses,
+                selectedCourseId,
+                selectedTeacherId,
+                selectedGradeCode,
+                onCourseChange: setSelectedCourseId,
+                onTeacherChange: setSelectedTeacherId,
+                onGradeChange: setSelectedGradeCode,
+              }}
+            />
           </TabsContent>
 
           <TabsContent
@@ -294,7 +387,7 @@ function CalendarContent() {
           </TabsContent>
         </Tabs>
 
-        <CalendarManageEventDialog />
+        <CalendarManageEventDialog readOnly={!access?.canManageCampus} />
       </div>
     </CalendarProvider>
   );

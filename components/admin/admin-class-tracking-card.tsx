@@ -30,7 +30,7 @@ interface AdminClassTrackingCardProps {
     classData: {
         name: string;
         curriculumTitle?: string;
-        students: Id<"users">[];
+        studentCount: number;
     };
     schedules: ScheduleItemType[];
 }
@@ -64,7 +64,7 @@ export function AdminClassTrackingCard({ classData, schedules }: AdminClassTrack
                     </h3>
                     <div className="flex items-center gap-3 mt-1.5">
                         <span className="text-xs text-muted-foreground">
-                            <span className="font-semibold text-foreground">{classData.students?.length || 0}</span> students
+                            <span className="font-semibold text-foreground">{classData.studentCount}</span> students
                         </span>
                         <span className="text-border select-none">|</span>
                         <span className="text-xs text-muted-foreground">

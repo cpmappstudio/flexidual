@@ -1,0 +1,109 @@
+{
+  "TenantLiveClasses": {
+    "title": "Flexidual",
+    "description": "Flexidual is now enabled for this campus. This first surface keeps the module visible and reachable while sessions, attendance, and participant flows are built in the next iterations.",
+    "statusLabel": "Status",
+    "statusValue": "Enabled",
+    "campusLabel": "Campus",
+    "capabilityLabel": "Capability",
+    "capabilityValue": "liveClasses.core",
+    "nextStepsTitle": "Next steps",
+    "nextStepSessions": "Define the first live session model and operational schedule for each campus.",
+    "nextStepAttendance": "Add attendance state and basic presence tracking on top of the active session.",
+    "nextStepParticipants": "Connect teachers, students, and participation controls to the live classroom surface.",
+    "calendar": {
+      "title": "Calendar",
+      "description": "Review the centralized session schedule for this campus. This route will become the operational surface for creating, moving, and managing class sessions.",
+      "highlightsTitle": "Planned capabilities",
+      "highlightScheduling": "Create and manage recurring and one-off class sessions from a single calendar surface.",
+      "highlightConflicts": "Visualize teacher schedule conflicts, extra sessions, and exceptions without duplicating flows inside each course.",
+      "highlightContext": "Keep the course detail focused on context and let the centralized calendar handle scheduling CRUD."
+    },
+    "courses": {
+      "title": "Courses",
+      "createCourse": "New course",
+      "curriculumLabel": "Curriculum",
+      "detailDescription": "This first course detail surface is intentionally lightweight. It confirms the navigation flow from the course grid and gives us a stable place to evolve sessions, content, and people in the next iterations.",
+      "detail": {
+        "backToCourses": "Back to courses",
+        "heroDescription": "Keep this course's context in one place while scheduling changes continue to happen in the centralized calendar.",
+        "academicPeriodLabel": "Academic period",
+        "teacherLabel": "Teacher",
+        "studentsLabel": "Students",
+        "campusLabel": "Campus",
+        "openCalendar": "Open calendar",
+        "tabs": {
+          "sessions": "Class sessions",
+          "content": "Content",
+          "people": "People"
+        },
+        "sessions": {
+          "title": "Class sessions",
+          "description": "A contextual weekly view of the sessions scheduled for this course.",
+          "weeklySchedule": "Weekly schedule",
+          "weeklyScheduleDescription": "Read-only view. To create, move, or cancel a session, use the centralized calendar.",
+          "scheduledThisWeek": "Scheduled this week",
+          "completed": "Completed",
+          "nextSession": "Next session",
+          "upcomingSessions": "Upcoming sessions",
+          "recentSessions": "Recent sessions",
+          "noSessions": "No sessions scheduled.",
+          "noSessionsYet": "No sessions to show yet.",
+          "days": {
+            "monday": "Monday",
+            "tuesday": "Tuesday",
+            "wednesday": "Wednesday",
+            "thursday": "Thursday",
+            "friday": "Friday"
+          }
+        },
+        "content": {
+          "title": "Course content",
+          "description": "Inherited curriculum lessons stay visible here while course-specific additions live alongside them.",
+          "curriculumBase": "Curriculum base",
+          "curriculumBaseDescription": "Shared learning sequence inherited from the curriculum.",
+          "courseExtensions": "Course additions",
+          "courseExtensionsDescription": "Lessons created only for this course without modifying the curriculum.",
+          "customLessonEyebrow": "Custom lesson",
+          "objectives": "Objectives",
+          "plannedUse": "Planned use",
+          "lessonPlacement": "Course placement",
+          "currentFocus": "Current focus"
+        },
+        "people": {
+          "description": "Teacher assignment and active roster for this course.",
+          "teacher": "Teacher",
+          "students": "Students",
+          "contact": "Contact",
+          "activeRoster": "Active roster",
+          "guardianLinked": "Guardian-linked student",
+          "table": {
+            "student": "Student",
+            "grade": "Grade",
+            "guardian": "Guardian",
+            "linked": "Linked",
+            "notLinked": "Not linked",
+            "empty": "There are no students in this course yet.",
+            "actionsMenu": "Open student actions",
+            "actionsLabel": "Student actions",
+            "copyStudentName": "Copy name",
+            "copyGradeLevel": "Copy grade",
+            "copyGuardianStatus": "Copy guardian status",
+            "copySuccess": "{label} copied.",
+            "copyError": "We could not copy this value."
+          }
+        }
+      },
+      "filters": {
+        "search": "Search courses",
+        "searchPlaceholder": "Search by course name",
+        "academicPeriod": "Academic period",
+        "allAcademicPeriods": "All academic periods"
+      },
+      "highlightsTitle": "Planned capabilities",
+      "highlightContext": "Open a course to review its contextual schedule, learning content, and enrolled people in one place.",
+      "highlightContent": "Distinguish inherited curriculum content from course-specific content without mixing both models.",
+      "highlightPeople": "Show the teaching assignment and enrolled students for each course while preserving a clean path back to the centralized calendar."
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "PlatformAdmin": {
+    "title": "Instituciones",
+    "nameLabel": "Nombre de la institución",
+    "imageLabel": "Imagen de la institución",
+    "namePlaceholder": "Institución Central…",
+    "create": "Crear",
+    "creating": "Creando…",
+    "createCard": "Crear",
+    "createDialogTitle": "Crear",
+    "createDialogDescription": "Crea una nueva institución y deja tu espacio de trabajo listo en segundos.",
+    "active": "Activa",
+    "inactive": "Inactiva",
+    "goToApp": "Ir a la app",
+    "organizationActions": {
+      "actions": "Acciones",
+      "activate": "Activar organización",
+      "activated": "Organización activada.",
+      "deactivate": "Desactivar organización",
+      "deactivated": "Organización desactivada.",
+      "deactivateDialog": {
+        "title": "¿Desactivar organización?",
+        "description": "Esto bloqueará el acceso a {name} hasta que un admin de plataforma la active de nuevo.",
+        "cancel": "Cancelar",
+        "confirm": "Desactivar"
+      },
+      "open": "Abrir acciones de {name}"
+    },
+    "loadMore": "Cargar más",
+    "loadingMore": "Cargando…",
+    "loadingFirstPage": "Cargando instituciones…",
+    "errorPrefix": "Error",
+    "genericError": "No se pudo continuar.",
+    "createDialogErrors": {
+      "nameRequired": "Ingresa un nombre para la institución.",
+      "nameInvalid": "Usa un nombre con al menos una letra o un número.",
+      "slugUnavailable": "No pudimos generar una URL disponible para la institución. Prueba con otro nombre.",
+      "imageInvalidType": "Sube un archivo de imagen.",
+      "imageTooLarge": "La imagen de la institución debe ser menor de 5 MB.",
+      "imageUploadFailed": "No pudimos subir la imagen de la institución. Inténtalo de nuevo."
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "SignIn": {
+    "title": "Accede a tu espacio de trabajo",
+    "subtitle": "Inicia sesión con tu correo y contraseña para continuar.",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "passwordHint": "La contraseña debe tener al menos 8 caracteres.",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "submitSignIn": "Continuar",
+    "sendResetCode": "Enviar código de restablecimiento",
+    "submitResetPassword": "Restablecer contraseña",
+    "loading": "Enviando...",
+    "errorPrefix": "Error",
+    "genericError": "No se pudo continuar.",
+    "invalidCredentials": "Correo o contraseña inválidos.",
+    "accessDeniedTitle": "Esta cuenta no puede acceder a esta zona",
+    "accessDeniedDescription": "Cierra sesión y usa una cuenta con el acceso correspondiente para continuar.",
+    "signOut": "Cerrar sesión",
+    "resetRequestError": "No pudimos iniciar el restablecimiento de contraseña. Inténtalo de nuevo.",
+    "resetVerificationError": "No pudimos restablecer tu contraseña. Revisa el código e inténtalo de nuevo.",
+    "resetTitle": "Restablece tu contraseña",
+    "resetSubtitle": "Te enviaremos un código de verificación a tu correo.",
+    "resetCodeTitle": "Revisa tu correo",
+    "resetCodeSubtitle": "Introduce el código de verificación y elige una nueva contraseña.",
+    "verificationCode": "Código de verificación",
+    "newPassword": "Nueva contraseña",
+    "changeEmail": "Cambiar correo",
+    "backToSignIn": "Volver a iniciar sesión"
+  }
+}

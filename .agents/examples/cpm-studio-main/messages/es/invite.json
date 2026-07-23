@@ -1,0 +1,33 @@
+{
+  "Invite": {
+    "title": "Aceptar invitación",
+    "platformTitle": "Únete a la plataforma",
+    "organizationTitle": "Únete a {organizationName}",
+    "emailLabel": "Correo",
+    "emailDescription": "Esta invitación está asociada a este correo.",
+    "passwordLabel": "Crea tu contraseña",
+    "passwordPlaceholder": "Crea una contraseña segura",
+    "passwordHint": "Usa al menos 8 caracteres.",
+    "alreadyHaveAccount": "¿Ya tienes cuenta?",
+    "signInInstead": "Inicia sesión",
+    "acceptInviteTitle": "Tienes una invitación",
+    "platformAcceptInviteDescription": "Define tu contraseña y completa tu perfil para unirte a la plataforma.",
+    "organizationAcceptInviteDescription": "Define tu contraseña y completa tu perfil para unirte a {organizationName}.",
+    "acceptInviteSubmit": "Aceptar invitación",
+    "acceptInviteSubmitting": "Configurando tu cuenta...",
+    "acceptExistingInvite": "Aceptar invitación",
+    "acceptExistingInviteSubmitting": "Aceptando...",
+    "profileCompleted": "Tu acceso ya está listo.",
+    "inviteInvalid": "Este enlace de invitación no es válido.",
+    "inviteExpired": "Esta invitación venció.",
+    "inviteRevoked": "Esta invitación ya no está disponible.",
+    "inviteAccepted": "Esta invitación ya fue aceptada.",
+    "wrongAccountTitle": "Esta invitación pertenece a otra cuenta",
+    "wrongAccountDescription": "Cierra sesión y continúa con el correo invitado.",
+    "signOutAndContinue": "Cerrar sesión",
+    "accountExists": "Este correo ya tiene una cuenta. Inicia sesión para continuar.",
+    "createAccountError": "No pudimos crear tu cuenta.",
+    "inviteClaimError": "No pudimos completar tu invitación.",
+    "emailMismatch": "Esta invitación pertenece a otro correo."
+  }
+}

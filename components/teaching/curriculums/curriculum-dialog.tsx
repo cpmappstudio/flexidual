@@ -30,10 +30,10 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 // Multi-tenant imports
 import { useParams } from "next/navigation";
-import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 interface CurriculumDialogProps {
   curriculum?: Doc<"curriculums">;
+  schoolId?: Id<"schools">;
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -49,6 +49,7 @@ type PendingCurriculum = {
 
 export function CurriculumDialog({
   curriculum,
+  schoolId,
   trigger,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
@@ -70,16 +71,14 @@ export function CurriculumDialog({
     api.campuses.get,
     orgContext?.type === "campus" ? { id: orgContext._id } : "skip",
   );
-  const { selectedSchoolId } = useAdminSchoolFilter();
   const gradeSchoolId =
     curriculum?.schoolId ??
+    schoolId ??
     (orgContext?.type === "school"
       ? orgContext._id
       : orgContext?.type === "campus"
         ? campus?.schoolId
-        : selectedSchoolId !== "all"
-          ? (selectedSchoolId as Id<"schools">)
-          : undefined);
+        : undefined);
   const grades = useQuery(
     api.grades.list,
     isOpen && gradeSchoolId ? { schoolId: gradeSchoolId } : "skip",
@@ -152,7 +151,7 @@ export function CurriculumDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!orgContext) {
+    if (!orgContext && !schoolId) {
       toast.error("Loading context... please wait.");
       return;
     }
@@ -167,8 +166,7 @@ export function CurriculumDialog({
           code: formData.code || undefined,
           description: formData.description || undefined,
           isActive: formData.isActive,
-          gradeCodes:
-            formData.gradeCodes.length > 0 ? formData.gradeCodes : undefined,
+          gradeCodes: formData.gradeCodes,
         });
         toast.success(t("curriculum.updated"));
         setIsOpen(false);
@@ -188,18 +186,21 @@ export function CurriculumDialog({
 
         // 2. Pass context so the backend links it to the right School!
         await createBatch({
-          orgType:
-            orgContext.type === "system" ? "school" : orgContext.type,
-          orgId:
-            orgContext.type === "system" ? gradeSchoolId : orgContext._id,
+          orgType: schoolId
+            ? "school"
+            : orgContext!.type === "system"
+              ? "school"
+              : orgContext!.type,
+          orgId: schoolId
+            ? schoolId
+            : orgContext!.type === "system"
+              ? gradeSchoolId
+              : orgContext!._id,
           curriculums: finalQueue.map((q) => ({
             title: q.title,
             code: q.code || undefined,
             description: q.description || undefined,
-            gradeCodes:
-              q.gradeCodes && q.gradeCodes.length > 0
-                ? q.gradeCodes
-                : undefined,
+            gradeCodes: q.gradeCodes ?? [],
           })),
         });
 
@@ -231,11 +232,22 @@ export function CurriculumDialog({
       variant: "destructive",
       onConfirm: async () => {
         try {
-          await remove({ id: curriculum._id });
+          const result = await remove({ id: curriculum._id });
+          if (!result.deleted) {
+            toast.error(
+              t("curriculum.deleteInUse", { count: result.classCount }),
+            );
+            return;
+          }
           toast.success(t("curriculum.deleted"));
           setIsOpen(false);
-        } catch {
-          toast.error(t("errors.operationFailed"));
+        } catch (error: unknown) {
+          const parsedError = parseConvexError(error);
+          toast.error(
+            parsedError
+              ? getErrorMessage(parsedError, t, locale)
+              : t("errors.operationFailed"),
+          );
         }
       },
     });
@@ -462,7 +474,9 @@ export function CurriculumDialog({
           <div className="space-y-2 hidden md:block">
             <div className="flex items-center justify-between">
               <Label>
-                {t("curriculumDialog.curriculumsToAdd", { count: queue.length })}
+                {t("curriculumDialog.curriculumsToAdd", {
+                  count: queue.length,
+                })}
               </Label>
               {queue.length > 0 && (
                 <Button

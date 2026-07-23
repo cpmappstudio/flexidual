@@ -1,0 +1,79 @@
+{
+  "TenantOnboarding": {
+    "title": "Choose the services that will be available to your institution",
+    "continue": "Continue",
+    "backToServices": "Back",
+    "continueDisabledHint": "Select at least one service to continue.",
+    "saveError": "We couldn't update the enabled modules. Please try again.",
+    "empty": {
+      "title": "No modules are ready yet",
+      "description": "This onboarding is already connected to the real registry, but there are no implemented modules available for activation yet."
+    },
+    "inviteTeammates": {
+      "title": "Invite your institution's team",
+      "pendingDescription": "The people you add here will receive an invitation to join your workspace.",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "name@institution.edu",
+      "roleLabel": "Role",
+      "roles": {
+        "admin": "Admin",
+        "member": "Member"
+      },
+      "addInvite": "Add",
+      "removeInvite": "Remove invite",
+      "messageLabel": "Message (optional)",
+      "messagePlaceholder": "Add a short message to help your teammates understand why they are being invited.",
+      "finish": "Finish"
+    },
+    "steps": {
+      "services": {
+        "title": "Select Services"
+      },
+      "inviteTeammates": {
+        "title": "Invite Teammates"
+      }
+    },
+    "services": {
+      "dismissal": {
+        "title": "Dismissal Operations",
+        "description": "Coordinate pickup and departures with more order and control."
+      },
+      "academics": {
+        "title": "Academic Management",
+        "description": "Manage students, courses, and grading."
+      },
+      "teaching": {
+        "title": "Faculty Tracking",
+        "description": "Track teaching progress and curriculum coverage in real time."
+      },
+      "billing": {
+        "title": "Admissions and Payments",
+        "description": "Manage applications, documents, and payments in one flow."
+      },
+      "liveClasses": {
+        "title": "Flexidual",
+        "description": "Enable live classes, attendance, and participation for your campuses."
+      }
+    },
+    "modules": {
+      "dismissal": {
+        "description": "Coordinate pickup and departures with live queue visibility and tighter operational control."
+      },
+      "academics": {
+        "description": "Manage the institutional academic structure, periods, courses, and final grading workflows."
+      },
+      "library": {
+        "description": "Publish digital library collections and let enrolled users browse institutional documents."
+      },
+      "teaching": {
+        "description": "Track curriculum delivery, lessons, and classroom evidence for teachers and coordinators."
+      },
+      "billing": {
+        "description": "Create charges, recurring collections, and family billing flows from one operational surface."
+      },
+      "liveClasses": {
+        "description": "Run live classes, track attendance, and manage session participation through Flexidual."
+      }
+    }
+  }
+}

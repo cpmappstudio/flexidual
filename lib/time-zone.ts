@@ -1,7 +1,37 @@
-import { TZDateMini } from "@date-fns/tz";
-
 const CIVIL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const LOCAL_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getFormatter(timeZone: string) {
+  let formatter = formatterCache.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    formatterCache.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
+function getZonedParts(timestamp: number, timeZone: string) {
+  const parts = Object.fromEntries(
+    getFormatter(timeZone)
+      .formatToParts(new Date(timestamp))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const { year, month, day, hour, minute } = parts;
+  if ([year, month, day, hour, minute].some(Number.isNaN)) {
+    throw new Error("INVALID_LOCAL_DATE_TIME");
+  }
+  return { year, month, day, hour, minute };
+}
 
 export function isValidTimeZone(timeZone: string) {
   try {
@@ -48,32 +78,49 @@ export function localDateTimeToUtc(value: string, timeZone: string) {
     throw new Error("INVALID_LOCAL_DATE_TIME");
   }
   const [, year, month, day, hour, minute] = match.map(Number);
-  const zoned = new TZDateMini(
-    year,
-    month - 1,
-    day,
-    hour,
-    minute,
-    0,
-    0,
-    timeZone,
-  );
-
+  const intendedTimestamp = Date.UTC(year, month - 1, day, hour, minute);
+  const intendedDate = new Date(intendedTimestamp);
   if (
-    zoned.getFullYear() !== year ||
-    zoned.getMonth() !== month - 1 ||
-    zoned.getDate() !== day ||
-    zoned.getHours() !== hour ||
-    zoned.getMinutes() !== minute
+    intendedDate.getUTCFullYear() !== year ||
+    intendedDate.getUTCMonth() !== month - 1 ||
+    intendedDate.getUTCDate() !== day ||
+    intendedDate.getUTCHours() !== hour ||
+    intendedDate.getUTCMinutes() !== minute
   ) {
     throw new Error("INVALID_LOCAL_DATE_TIME");
   }
-  return zoned.getTime();
+
+  let timestamp = intendedTimestamp;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const zoned = getZonedParts(timestamp, timeZone);
+    const renderedTimestamp = Date.UTC(
+      zoned.year,
+      zoned.month - 1,
+      zoned.day,
+      zoned.hour,
+      zoned.minute,
+    );
+    const adjustment = intendedTimestamp - renderedTimestamp;
+    timestamp += adjustment;
+    if (adjustment === 0) break;
+  }
+
+  const result = getZonedParts(timestamp, timeZone);
+  if (
+    result.year !== year ||
+    result.month !== month ||
+    result.day !== day ||
+    result.hour !== hour ||
+    result.minute !== minute
+  ) {
+    throw new Error("INVALID_LOCAL_DATE_TIME");
+  }
+  return timestamp;
 }
 
 export function utcToLocalDateTime(timestamp: number, timeZone: string) {
-  const date = new TZDateMini(timestamp, timeZone);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const date = getZonedParts(timestamp, timeZone);
+  return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}T${String(date.hour).padStart(2, "0")}:${String(date.minute).padStart(2, "0")}`;
 }
 
 export function todayInTimeZone(timeZone: string) {

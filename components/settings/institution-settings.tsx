@@ -36,7 +36,7 @@ export function InstitutionSettings() {
     return <Skeleton className="h-72 w-full rounded-xl" />;
   }
 
-  if (!context?.canManageInstitution) {
+  if (!context?.canViewInstitutionSettings) {
     return (
       <section className="grid gap-3">
         <h2 className="border-b pb-3 text-xl font-semibold">
@@ -50,6 +50,7 @@ export function InstitutionSettings() {
   }
 
   const institution = context.institution;
+  const readOnly = !context.canManageInstitution;
   const hasChanges =
     name.trim().length >= 2 &&
     isValidTimeZone(timeZone) &&
@@ -82,6 +83,7 @@ export function InstitutionSettings() {
             onChange={(event) => setName(event.target.value)}
             minLength={2}
             required
+            disabled={readOnly}
           />
         </div>
         <div className="grid gap-2">
@@ -92,6 +94,7 @@ export function InstitutionSettings() {
             onChange={(event) => setTimeZone(event.target.value)}
             placeholder="America/New_York"
             required
+            disabled={readOnly}
           />
         </div>
         <div className="grid gap-2">
@@ -108,14 +111,16 @@ export function InstitutionSettings() {
             {institution.isActive ? t("active") : t("inactive")}
           </Badge>
         </div>
-        <Button
-          type="submit"
-          className="ml-auto w-fit"
-          disabled={!hasChanges || isSaving}
-        >
-          {isSaving && <Loader2 className="animate-spin" />}
-          {t("save")}
-        </Button>
+        {!readOnly && (
+          <Button
+            type="submit"
+            className="ml-auto w-fit"
+            disabled={!hasChanges || isSaving}
+          >
+            {isSaving && <Loader2 className="animate-spin" />}
+            {t("save")}
+          </Button>
+        )}
       </form>
     </section>
   );

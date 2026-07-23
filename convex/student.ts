@@ -6,7 +6,7 @@ import { getStudentGradeCode } from "./model/membership";
 import { isStudentEnrolled } from "./model/enrollments";
 
 export const getStudentDashboardStats = query({
-  args: {},
+  args: { now: v.number() },
   returns: v.union(
     v.null(),
     v.object({
@@ -47,7 +47,7 @@ export const getStudentDashboardStats = query({
       ),
     }),
   ),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return null;
 
@@ -124,8 +124,9 @@ export const getStudentDashboardStats = query({
           .withIndex("by_class", (q) => q.eq("classId", classData._id))
           .collect();
 
-        const now = Date.now();
-        const pastSchedules = schedules.filter((s) => s.scheduledEnd < now);
+        const pastSchedules = schedules.filter(
+          (schedule) => schedule.scheduledEnd < args.now,
+        );
         const scheduleIds = new Set(schedules.map(s => s._id));
         
         const classSessions = mySessions.filter(s => scheduleIds.has(s.scheduleId));
@@ -175,7 +176,7 @@ export const getStudentDashboardStats = query({
           },
           icon: userPreference?.icon || null,
           nextSession: schedules
-            .filter(s => s.scheduledStart > now)
+            .filter((schedule) => schedule.scheduledStart > args.now)
             .sort((a, b) => a.scheduledStart - b.scheduledStart)[0]?.scheduledStart
         };
       })

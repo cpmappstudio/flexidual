@@ -32,6 +32,14 @@ export type CourseWeeklySlot = {
   sessionType: CourseClassFormat;
 };
 
+export type CourseWeeklyGuide = {
+  id: string;
+  dayOfWeek: number;
+  startMinutes: number;
+  endMinutes: number;
+  label: string;
+};
+
 interface DraftSelection {
   dayOfWeek: number;
   anchorMinutes: number;
@@ -45,6 +53,7 @@ interface CourseWeeklyCalendarProps {
   teacherName?: string;
   startMinutes?: number;
   endMinutes?: number;
+  backgroundSlots?: CourseWeeklyGuide[];
 }
 
 const SNAP_MINUTES = 15;
@@ -116,6 +125,7 @@ export function CourseWeeklyCalendar({
   teacherName,
   startMinutes = DEFAULT_SCHEDULE_START_MINUTES,
   endMinutes = DEFAULT_SCHEDULE_END_MINUTES,
+  backgroundSlots = [],
 }: CourseWeeklyCalendarProps) {
   const t = useTranslations();
   const [draft, setDraft] = useState<DraftSelection>();
@@ -264,6 +274,29 @@ export function CourseWeeklyCalendar({
     );
   };
 
+  const renderBackgroundSlot = (slot: CourseWeeklyGuide) => {
+    const visibleStart = Math.max(slot.startMinutes, startMinutes);
+    const visibleEnd = Math.min(slot.endMinutes, endMinutes);
+    if (visibleEnd <= visibleStart) return null;
+
+    const windowMinutes = endMinutes - startMinutes;
+    const top = ((visibleStart - startMinutes) / windowMinutes) * 100;
+    const height = ((visibleEnd - visibleStart) / windowMinutes) * 100;
+
+    return (
+      <div
+        key={slot.id}
+        className="pointer-events-none absolute inset-x-1 overflow-hidden rounded-md border border-dashed border-muted-foreground/30 bg-muted/70 px-1.5 py-1 text-[10px] text-muted-foreground opacity-70"
+        style={{ top: `${top}%`, height: `${height}%` }}
+      >
+        <span className="block truncate font-medium">{slot.label}</span>
+        <span className="block truncate">
+          {formatMinutes(slot.startMinutes)}–{formatMinutes(slot.endMinutes)}
+        </span>
+      </div>
+    );
+  };
+
   return (
     <>
       <div
@@ -280,6 +313,9 @@ export function CourseWeeklyCalendar({
           renderDayAction={(day) => {
             const dayOfWeek = day.getDay();
             const daySlots = value.filter(
+              (slot) => slot.dayOfWeek === dayOfWeek,
+            );
+            const dayBackgroundSlots = backgroundSlots.filter(
               (slot) => slot.dayOfWeek === dayOfWeek,
             );
             const draftSelection =
@@ -301,6 +337,7 @@ export function CourseWeeklyCalendar({
                   onPointerCancel: () => setDraft(undefined),
                 }}
               >
+                {dayBackgroundSlots.map(renderBackgroundSlot)}
                 {daySlots.map((slot) => renderSelection(slot))}
                 {draftSelection && renderSelection(draftSelection, true)}
               </CalendarTimeGridDay>

@@ -2,9 +2,7 @@
 
 import * as React from "react";
 import { ListFilter, X, Check } from "lucide-react";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { Doc, Id } from "@/convex/_generated/dataModel";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -29,15 +27,28 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type TeacherOption = {
+  _id: Id<"users">;
+  fullName: string;
+  email?: string;
+  imageUrl?: string;
+};
 
 interface ClassCombinedFilterProps {
   selectedTeacherId: Id<"users"> | null;
   onSelectTeacher: (id: Id<"users"> | null) => void;
   selectedCurriculumId: Id<"curriculums"> | null;
   onSelectCurriculum: (id: Id<"curriculums"> | null) => void;
-  selectedSchoolId?: string;
-  selectedCampusId?: string;
-  onSelectCampus?: (id: string) => void;
+  curriculums: Doc<"curriculums">[];
+  teachers: TeacherOption[];
   isAdmin: boolean;
 }
 
@@ -46,37 +57,16 @@ export function ClassCombinedFilter({
   onSelectTeacher,
   selectedCurriculumId,
   onSelectCurriculum,
-  selectedSchoolId = "all",
-  selectedCampusId = "all",
-  onSelectCampus,
+  curriculums,
+  teachers,
   isAdmin,
 }: ClassCombinedFilterProps) {
   const t = useTranslations();
-
-  const teachers = useQuery(api.users.getTeachers);
-  const curriculums = useQuery(api.curriculums.list, {
-    includeInactive: false,
-  });
-  const campuses = useQuery(
-    api.campuses.list,
-    selectedSchoolId !== "all"
-      ? { schoolId: selectedSchoolId as Id<"schools">, isActive: true }
-      : "skip",
-  );
-
-  const shouldShowCampusFilter =
-    isAdmin && selectedSchoolId !== "all" && !!onSelectCampus;
-  const hasCampusFilter = shouldShowCampusFilter && selectedCampusId !== "all";
-  const hasActiveFilters = !!(
-    selectedTeacherId ||
-    selectedCurriculumId ||
-    hasCampusFilter
-  );
+  const hasActiveFilters = Boolean(selectedTeacherId || selectedCurriculumId);
 
   const clearAllFilters = () => {
     onSelectTeacher(null);
     onSelectCurriculum(null);
-    onSelectCampus?.("all");
   };
 
   return (
@@ -91,83 +81,13 @@ export function ClassCombinedFilter({
           )}
         >
           <ListFilter className="size-3.5" />
+          <span className="sr-only">{t("table.filters")}</span>
         </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-[200px]">
         <DropdownMenuLabel>{t("table.filters")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-
-        {shouldShowCampusFilter && (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="flex items-center justify-between">
-              <span>{t("admin.campuses")}</span>
-              {hasCampusFilter && (
-                <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                  1
-                </Badge>
-              )}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-[260px] p-0" sideOffset={8}>
-              <Command>
-                <CommandInput placeholder={t("userDialog.selectCampus")} />
-                <CommandList className="max-h-[220px]">
-                  <CommandEmpty>{t("admin.noCampusesFound")}</CommandEmpty>
-                  <CommandGroup>
-                    <CommandItem
-                      value={t("admin.allCampuses")}
-                      onSelect={() => onSelectCampus?.("all")}
-                      className="flex items-center gap-2"
-                    >
-                      <Check
-                        className={cn(
-                          "size-4 shrink-0",
-                          selectedCampusId === "all" ? "opacity-100" : "opacity-0",
-                        )}
-                      />
-                      <span className="font-medium text-sm">
-                        {t("admin.allCampuses")}
-                      </span>
-                    </CommandItem>
-                    {campuses?.map((campus) => (
-                      <CommandItem
-                        key={campus._id}
-                        value={`${campus.name} ${campus.code ?? ""}`}
-                        onSelect={() =>
-                          onSelectCampus?.(
-                            selectedCampusId === campus._id
-                              ? "all"
-                              : campus._id,
-                          )
-                        }
-                        className="flex items-center gap-2"
-                      >
-                        <Check
-                          className={cn(
-                            "size-4 shrink-0",
-                            selectedCampusId === campus._id
-                              ? "opacity-100"
-                              : "opacity-0",
-                          )}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate text-sm">
-                            {campus.name}
-                          </p>
-                          {campus.code && (
-                            <p className="text-xs text-muted-foreground truncate">
-                              {campus.code}
-                            </p>
-                          )}
-                        </div>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )}
 
         {/* Curriculum filter */}
         <DropdownMenuSub>
@@ -309,5 +229,40 @@ export function ClassCombinedFilter({
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+export function ClassAcademicPeriodFilter({
+  periods,
+  value,
+  onValueChange,
+}: {
+  periods: Doc<"academicPeriods">[];
+  value: Id<"academicPeriods"> | null;
+  onValueChange: (id: Id<"academicPeriods"> | null) => void;
+}) {
+  const t = useTranslations("class");
+
+  return (
+    <Select
+      value={value ?? "all"}
+      onValueChange={(nextValue) =>
+        onValueChange(
+          nextValue === "all" ? null : (nextValue as Id<"academicPeriods">),
+        )
+      }
+    >
+      <SelectTrigger className="w-44" aria-label={t("academicPeriod")}>
+        <SelectValue placeholder={t("allAcademicPeriods")} />
+      </SelectTrigger>
+      <SelectContent align="end">
+        <SelectItem value="all">{t("allAcademicPeriods")}</SelectItem>
+        {periods.map((period) => (
+          <SelectItem key={period._id} value={period._id}>
+            {period.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

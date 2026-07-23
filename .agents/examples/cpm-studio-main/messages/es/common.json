@@ -1,0 +1,95 @@
+{
+  "Common": {
+    "appName": "CPM Studio",
+    "actions": {
+      "loading": "Cargando…"
+    },
+    "fallbackUserName": "Usuario",
+    "campuses": "Campus",
+    "home": "Inicio",
+    "institutions": "Instituciones",
+    "overview": "Resumen",
+    "people": "Personas",
+    "academicManagement": "Gestión académica",
+    "modules": {
+      "dismissal": "Despacho",
+      "academics": "Académico",
+      "library": "Biblioteca",
+      "teaching": "Docencia",
+      "billing": "Cobros",
+      "liveClasses": "Flexidual"
+    },
+    "moduleNavigation": {
+      "liveClasses": {
+        "calendar": "Calendario",
+        "courses": "Cursos"
+      }
+    },
+    "imageCropper": {
+      "title": "Recortar imagen",
+      "description": "Ajusta tu imagen antes de usarla.",
+      "zoom": "Zoom",
+      "confirm": "Usar imagen",
+      "errors": {
+        "cropFailed": "No pudimos recortar tu imagen. Inténtalo de nuevo."
+      }
+    },
+    "identity": {
+      "firstNameLabel": "Nombre",
+      "firstNamePlaceholder": "Nombre",
+      "lastNameLabel": "Apellido",
+      "lastNamePlaceholder": "Apellido",
+      "nameRequired": "Agrega al menos un nombre o un apellido."
+    },
+    "imageUpload": {
+      "upload": "Subir",
+      "remove": "Eliminar",
+      "requirements": "PNG, JPG, WEBP o SVG de hasta 5 MB.",
+      "errors": {
+        "invalidType": "Sube un archivo de imagen.",
+        "tooLarge": "Tu imagen debe ser menor de 5 MB.",
+        "uploadFailed": "No pudimos subir tu imagen. Inténtalo de nuevo."
+      }
+    },
+    "teamSettings": "Configuración del equipo",
+    "switchProfile": "Cambiar perfil",
+    "changelog": "Novedades",
+    "support": "Centro de ayuda",
+    "sidebar": {
+      "groupLabel": "Plataforma",
+      "collapseLabel": "Colapsar",
+      "collapseTooltip": "Colapsar barra lateral",
+      "expandLabel": "Expandir",
+      "expandTooltip": "Expandir barra lateral",
+      "openTooltip": "Abrir barra lateral"
+    },
+    "profileSettings": "Configuración del perfil",
+    "theme": "Tema",
+    "themeLight": "Claro",
+    "themeDark": "Oscuro",
+    "themeSystem": "Sistema",
+    "language": "Idioma",
+    "languageEnglish": "Inglés",
+    "languageSpanish": "Español",
+    "switcher": {
+      "selectCampus": "Seleccionar Campus",
+      "backToCampus": "Volver a Campus",
+      "selectInstitution": "Seleccionar Institución"
+    },
+    "signOut": "Cerrar sesión",
+    "routeStatus": {
+      "actions": {
+        "goHome": "Ir al inicio",
+        "tryAgain": "Intentar de nuevo"
+      },
+      "error": {
+        "title": "Algo salió mal",
+        "description": "No pudimos cargar esta página en este momento. Inténtalo de nuevo."
+      },
+      "notFound": {
+        "title": "Página no encontrada",
+        "description": "No encontramos la página que estabas buscando."
+      }
+    }
+  }
+}

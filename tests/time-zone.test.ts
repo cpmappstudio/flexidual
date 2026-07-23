@@ -9,16 +9,38 @@ import {
 
 test("IANA zones apply DST rules instead of freezing an offset", () => {
   assert.equal(
-    new Date(localDateTimeToUtc("2026-01-12T08:00", "America/New_York")).toISOString(),
+    new Date(
+      localDateTimeToUtc("2026-01-12T08:00", "America/New_York"),
+    ).toISOString(),
     "2026-01-12T13:00:00.000Z",
   );
   assert.equal(
-    new Date(localDateTimeToUtc("2026-07-13T08:00", "America/New_York")).toISOString(),
+    new Date(
+      localDateTimeToUtc("2026-07-13T08:00", "America/New_York"),
+    ).toISOString(),
     "2026-07-13T12:00:00.000Z",
   );
   assert.equal(
-    new Date(localDateTimeToUtc("2026-07-13T08:00", "America/Tegucigalpa")).toISOString(),
+    new Date(
+      localDateTimeToUtc("2026-07-13T08:00", "America/Tegucigalpa"),
+    ).toISOString(),
     "2026-07-13T14:00:00.000Z",
+  );
+});
+
+test("academic period boundaries convert at midnight in the Convex runtime path", () => {
+  assert.equal(
+    new Date(
+      localDateTimeToUtc("2026-10-01T00:00", "America/Bogota"),
+    ).toISOString(),
+    "2026-10-01T05:00:00.000Z",
+  );
+});
+
+test("nonexistent civil times are rejected during a DST transition", () => {
+  assert.throws(
+    () => localDateTimeToUtc("2026-03-08T02:30", "America/New_York"),
+    /INVALID_LOCAL_DATE_TIME/,
   );
 });
 
@@ -40,13 +62,7 @@ test("weekly occurrences retain 8 AM when New York enters DST", () => {
 
 test("rescheduling a series preserves its civil time across DST", () => {
   const winter = localDateTimeToUtc("2026-03-02T08:00", "America/New_York");
-  const followingWeek = shiftZonedDateTime(
-    winter,
-    "America/New_York",
-    7,
-    8,
-    0,
-  );
+  const followingWeek = shiftZonedDateTime(winter, "America/New_York", 7, 8, 0);
   assert.equal(
     utcToLocalDateTime(followingWeek, "America/New_York"),
     "2026-03-09T08:00",

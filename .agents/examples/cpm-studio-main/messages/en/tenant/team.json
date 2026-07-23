@@ -1,0 +1,84 @@
+{
+  "TenantTeam": {
+    "appName": "CPM Studio",
+    "title": "Team",
+    "membersTab": "Members",
+    "invitesTab": "Invites",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "inviteMember": "Invite member",
+    "genericError": "Something went wrong. Please try again.",
+    "organizationActions": {
+      "actions": "Actions",
+      "activate": "Activate organization",
+      "activated": "Organization activated.",
+      "deactivate": "Deactivate organization",
+      "deactivated": "Organization deactivated.",
+      "deactivateDialog": {
+        "title": "Deactivate organization?",
+        "description": "This will block tenant access until a platform admin activates the organization again.",
+        "cancel": "Cancel",
+        "confirm": "Deactivate"
+      }
+    },
+    "organizationInformation": {
+      "imageLabel": "Image",
+      "nameLabel": "Name",
+      "slugPreviewLabel": "Slug",
+      "slugPreviewDescription": "The tenant URL updates from this slug after saving.",
+      "unsavedChanges": "Unsaved changes",
+      "resetChanges": "Reset",
+      "saveChanges": "Save",
+      "saved": "Institution information saved.",
+      "errors": {
+        "nameRequired": "Add an institution name.",
+        "nameInvalid": "Use a name that can generate a valid tenant slug.",
+        "slugUnavailable": "That slug is already in use."
+      }
+    },
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "member": "Member"
+    },
+    "inviteDialog": {
+      "title": "Invite a team member",
+      "description": "Send access to this institution and choose the role this person should have.",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "Email address",
+      "roleLabel": "Role",
+      "submit": "Invite",
+      "inviting": "Inviting…",
+      "success": "Invitation sent.",
+      "errors": {
+        "alreadyPending": "There is already a pending invitation for this email.",
+        "alreadyMember": "This user already has access to this institution.",
+        "emailNotConfigured": "Invitation email is not configured yet.",
+        "baseUrlNotConfigured": "The invitation URL is not configured yet.",
+        "emailSendFailed": "We couldn't send the invitation email."
+      }
+    },
+    "membersTable": {
+      "member": "Member",
+      "role": "Role",
+      "loading": "Loading members…",
+      "empty": "No institution members yet.",
+      "actionsMenu": "Open member actions",
+      "removeMember": "Remove member",
+      "roleUpdated": "Role updated.",
+      "memberRemoved": "Member removed."
+    },
+    "invitesTable": {
+      "email": "Email",
+      "role": "Role",
+      "invitedBy": "Invited by",
+      "sent": "Sent",
+      "loading": "Loading invites…",
+      "empty": "No pending invites.",
+      "actionsMenu": "Open invite actions",
+      "cancelInvite": "Cancel invite",
+      "roleUpdated": "Invitation updated.",
+      "inviteCancelled": "Invitation cancelled."
+    }
+  }
+}

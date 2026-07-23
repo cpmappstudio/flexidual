@@ -4,88 +4,100 @@ import { useState, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
-import { useCurrentUser } from "@/hooks/use-current-user";
 import { useParams } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
-import { getRoleForOrg } from "@/lib/rbac";
 import { Card } from "@/components/ui/card";
 import { School } from "lucide-react";
-import { startOfWeek, addDays } from "date-fns";
 
-import { ClassCombinedFilter } from "@/components/teaching/classes/class-combined-filter";
+import {
+  ClassAcademicPeriodFilter,
+  ClassCombinedFilter,
+} from "@/components/teaching/classes/class-combined-filter";
 import { ClassesTable } from "@/components/teaching/classes/classes-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslations } from "next-intl";
-import { ClassWeekOverview } from "@/components/teaching/classes/class-week-overview";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/i18n/navigation";
 
-import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
+import { useStaffAccess } from "@/hooks/use-staff-access";
+import { useSettingsContext } from "@/hooks/use-settings-context";
 
 export default function MyClassesPage() {
-  const { user, isLoading: isUserLoading } = useCurrentUser();
-  const params = useParams();
-  
-  let currentSlug = (params.orgSlug as string) || "system";
-  if (currentSlug === "admin") currentSlug = "system";
+  const params = useParams<{ orgSlug: string }>();
+  const basePath = `/${params.orgSlug}`;
+  const orgContext = useQuery(api.organizations.resolveSlug, {
+    slug: params.orgSlug,
+  });
 
-  const orgContext = useQuery(api.organizations.resolveSlug, { slug: currentSlug });
-  const isSystemDashboard = orgContext?.type === "system";
-  
-  const { sessionClaims } = useAuth();
-  const role = getRoleForOrg(sessionClaims, currentSlug);
-  const isAdmin = role === "admin" || role === "principal" || role === "superadmin";
-  
-  const [selectedTeacherId, setSelectedTeacherId] = useState<Id<"users"> | null>(null);
-  const [selectedCurriculumId, setSelectedCurriculumId] = useState<Id<"curriculums"> | null>(null);
+  const { access, isLoading: isAccessLoading } = useStaffAccess();
+  const { context: settingsContext, isLoading: isSettingsLoading } =
+    useSettingsContext();
+  const canManage = access?.canManageCampus ?? false;
 
-  const { selectedSchoolId, selectedCampusId, setSelectedCampusId } =
-    useAdminSchoolFilter();
+  const [selectedTeacherId, setSelectedTeacherId] =
+    useState<Id<"users"> | null>(null);
+  const [selectedCurriculumId, setSelectedCurriculumId] =
+    useState<Id<"curriculums"> | null>(null);
+  const [selectedAcademicPeriodId, setSelectedAcademicPeriodId] =
+    useState<Id<"academicPeriods"> | null>(null);
 
-  let querySchoolId = undefined;
-  let queryCampusId = undefined;
+  const querySchoolId =
+    orgContext?.type === "school" ? orgContext._id : undefined;
+  const queryCampusId =
+    orgContext?.type === "campus" ? orgContext._id : undefined;
+  const institutionSchoolId = querySchoolId ?? settingsContext?.institution._id;
 
-  if (isSystemDashboard) {
-    if (selectedCampusId !== "all") queryCampusId = selectedCampusId;
-    if (selectedSchoolId !== "all") querySchoolId = selectedSchoolId;
-  } else if (orgContext?.type === "school") {
-    querySchoolId = orgContext._id;
-  } else if (orgContext?.type === "campus") {
-    queryCampusId = orgContext._id;
-  }
-  
-  const queryArgs = isAdmin 
-    ? { 
-        teacherId: selectedTeacherId || undefined,
-        schoolId: querySchoolId as Id<"schools"> | undefined,
-        campusId: queryCampusId as Id<"campuses"> | undefined,
-      } 
-    : (user ? { teacherId: user._id } : "skip");
-
-  const allClasses = useQuery(api.classes.list, queryArgs);
-  const curriculums = useQuery(api.curriculums.list, {});
-
-  const startOfCurrentWeek = startOfWeek(new Date(), { weekStartsOn: 0 });
-  const endOfCurrentWeek = addDays(startOfCurrentWeek, 7);
-
-  const scheduleArgs = (queryArgs === "skip" || isAdmin) ? "skip" : {
-    ...queryArgs,
-    from: startOfCurrentWeek.getTime(),
-    to: endOfCurrentWeek.getTime()
-  };
-
-  const weekSchedules = useQuery(api.schedule.getMySchedule, scheduleArgs);
-
+  const tableData = useQuery(
+    api.classes.listOverview,
+    access
+      ? {
+          schoolId: querySchoolId as Id<"schools"> | undefined,
+          campusId: queryCampusId as Id<"campuses"> | undefined,
+        }
+      : "skip",
+  );
+  const curriculums = useQuery(
+    api.curriculums.list,
+    institutionSchoolId
+      ? { includeInactive: true, schoolId: institutionSchoolId }
+      : "skip",
+  );
+  const academicSettings = useQuery(
+    api.academicSettings.get,
+    institutionSchoolId
+      ? {
+          schoolId: institutionSchoolId,
+          campusId: queryCampusId as Id<"campuses"> | undefined,
+        }
+      : "skip",
+  );
   const classes = useMemo(() => {
-    if (!allClasses) return undefined;
-    if (!selectedCurriculumId) return allClasses;
-    return allClasses.filter((cls) => cls.curriculumId === selectedCurriculumId);
-  }, [allClasses, selectedCurriculumId]);
+    if (!tableData) return undefined;
+    return tableData.classes.filter(
+      (classData) =>
+        (!selectedTeacherId || classData.teacherId === selectedTeacherId) &&
+        (!selectedCurriculumId ||
+          classData.curriculumId === selectedCurriculumId) &&
+        (!selectedAcademicPeriodId ||
+          classData.academicPeriodId === selectedAcademicPeriodId),
+    );
+  }, [
+    selectedAcademicPeriodId,
+    selectedCurriculumId,
+    selectedTeacherId,
+    tableData,
+  ]);
   const hasTableFilters = Boolean(
-    selectedTeacherId || selectedCurriculumId || selectedCampusId !== "all",
+    selectedTeacherId || selectedCurriculumId || selectedAcademicPeriodId,
   );
 
-  if (isUserLoading || classes === undefined) {
+  if (
+    isAccessLoading ||
+    isSettingsLoading ||
+    classes === undefined ||
+    curriculums === undefined ||
+    academicSettings === undefined ||
+    tableData === undefined
+  ) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-12 w-48" />
@@ -98,47 +110,51 @@ export default function MyClassesPage() {
     );
   }
 
-  const renderWeekOverview = () => {
-    if (isAdmin) return null;
-    if (weekSchedules === undefined)
-      return <Skeleton className="h-16 w-full rounded-xl" />;
-    if (weekSchedules.length > 0)
-      return <ClassWeekOverview schedules={weekSchedules} variant="compact" />;
-    return null;
-  };
-
   return (
     <div className="space-y-6">
-      {renderWeekOverview()}
-
       {classes.length === 0 && !hasTableFilters ? (
-        <EmptyState isAdmin={isAdmin} />
+        <EmptyState canManage={canManage} basePath={basePath} />
       ) : (
         <ClassesTable
           data={classes}
           curriculums={curriculums ?? undefined}
+          academicPeriods={academicSettings?.periods}
+          teachers={tableData.teachers}
           customFilter={
-            <ClassCombinedFilter
-              selectedTeacherId={selectedTeacherId}
-              onSelectTeacher={setSelectedTeacherId}
-              selectedCurriculumId={selectedCurriculumId}
-              onSelectCurriculum={setSelectedCurriculumId}
-              selectedSchoolId={selectedSchoolId}
-              selectedCampusId={selectedCampusId}
-              onSelectCampus={setSelectedCampusId}
-              isAdmin={isAdmin}
-            />
+            <>
+              <ClassAcademicPeriodFilter
+                periods={academicSettings?.periods ?? []}
+                value={selectedAcademicPeriodId}
+                onValueChange={setSelectedAcademicPeriodId}
+              />
+              <ClassCombinedFilter
+                selectedTeacherId={selectedTeacherId}
+                onSelectTeacher={setSelectedTeacherId}
+                selectedCurriculumId={selectedCurriculumId}
+                onSelectCurriculum={setSelectedCurriculumId}
+                curriculums={
+                  curriculums?.filter((curriculum) => curriculum.isActive) ?? []
+                }
+                teachers={tableData.teachers}
+                isAdmin={canManage}
+              />
+            </>
           }
+          canManage={canManage}
         />
       )}
     </div>
   );
 }
 
-function EmptyState({ isAdmin }: { isAdmin: boolean }) {
+function EmptyState({
+  canManage,
+  basePath,
+}: {
+  canManage: boolean;
+  basePath: string;
+}) {
   const t = useTranslations();
-  const params = useParams();
-  const orgSlug = (params.orgSlug as string) || "system";
 
   return (
     <Card className="flex flex-col items-center justify-center p-8 text-center border-dashed">
@@ -147,13 +163,11 @@ function EmptyState({ isAdmin }: { isAdmin: boolean }) {
       </div>
       <h3 className="text-lg font-semibold">{t("class.noActive")}</h3>
       <p className="text-muted-foreground mb-4 max-w-sm">
-        {isAdmin ? t("class.createPrompt") : t("class.notAssigned")}
+        {canManage ? t("class.createPrompt") : t("class.notAssigned")}
       </p>
-      {isAdmin && (
+      {canManage && (
         <Button asChild>
-          <Link href={`/${orgSlug}/classes/new`}>
-            {t("class.createClass")}
-          </Link>
+          <Link href={`${basePath}/classes/new`}>{t("class.createClass")}</Link>
         </Button>
       )}
     </Card>

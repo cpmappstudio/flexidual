@@ -1,0 +1,43 @@
+{
+  "PlatformAdmin": {
+    "title": "Institutions",
+    "nameLabel": "Institution name",
+    "imageLabel": "Institution image",
+    "namePlaceholder": "Northbridge Institute…",
+    "create": "Create",
+    "creating": "Creating…",
+    "createCard": "Create",
+    "createDialogTitle": "Create",
+    "createDialogDescription": "Create a new institution and get your workspace ready in seconds.",
+    "active": "Active",
+    "inactive": "Inactive",
+    "goToApp": "Go to app",
+    "organizationActions": {
+      "actions": "Actions",
+      "activate": "Activate organization",
+      "activated": "Organization activated.",
+      "deactivate": "Deactivate organization",
+      "deactivated": "Organization deactivated.",
+      "deactivateDialog": {
+        "title": "Deactivate organization?",
+        "description": "This will block access to {name} until a platform admin activates it again.",
+        "cancel": "Cancel",
+        "confirm": "Deactivate"
+      },
+      "open": "Open actions for {name}"
+    },
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "loadingFirstPage": "Loading institutions…",
+    "errorPrefix": "Error",
+    "genericError": "Unable to continue.",
+    "createDialogErrors": {
+      "nameRequired": "Enter an institution name.",
+      "nameInvalid": "Use a name with at least one letter or number.",
+      "slugUnavailable": "We couldn't generate an available institution URL. Try a different name.",
+      "imageInvalidType": "Upload an image file.",
+      "imageTooLarge": "The institution image must be smaller than 5 MB.",
+      "imageUploadFailed": "We couldn't upload the institution image. Please try again."
+    }
+  }
+}

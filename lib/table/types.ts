@@ -1,4 +1,8 @@
-import type { ColumnDef, ColumnFiltersState, SortingState } from "@tanstack/react-table";
+import type {
+  ColumnDef,
+  ColumnFiltersState,
+  SortingState,
+} from "@tanstack/react-table";
 
 export interface FilterOption {
   value: string;
@@ -20,6 +24,8 @@ export interface DataTableProps<TData> {
   columnsMenuLabel?: string;
   exportButtonLabel?: string;
   filterConfigs?: FilterConfig[];
+  filterVariant?: "menu" | "select";
+  filterAllLabel?: string;
   filtersMenuLabel?: string;
   previousLabel?: string;
   nextLabel?: string;

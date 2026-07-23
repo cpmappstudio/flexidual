@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { useParams } from "next/navigation";
@@ -26,11 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
+import { Switch } from "@/components/ui/switch";
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { Link, useRouter } from "@/i18n/navigation";
-import { getRoleForOrg } from "@/lib/rbac";
 import { todayInTimeZone } from "@/lib/time-zone";
+import { useStaffAccess } from "@/hooks/use-staff-access";
 
 export default function CreateCoursePage() {
   const t = useTranslations();
@@ -38,21 +37,16 @@ export default function CreateCoursePage() {
   const params = useParams();
   const router = useRouter();
   const orgSlug = (params.orgSlug as string) || "system";
-  const { sessionClaims } = useAuth();
-  const role = getRoleForOrg(sessionClaims, orgSlug);
-  const isAdmin =
-    role === "admin" || role === "principal" || role === "superadmin";
+  const { access, isLoading: isAccessLoading } = useStaffAccess();
+  const isAdmin = access?.canManageCampus ?? false;
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
-  const { selectedCampusId } = useAdminSchoolFilter();
   const { context: settingsContext, basePath: settingsBasePath } =
     useSettingsContext();
   const schoolId = settingsContext?.institution._id;
   const campusId =
     orgContext?.type === "campus"
       ? (orgContext._id as Id<"campuses">)
-      : orgContext?.type === "system" && selectedCampusId !== "all"
-        ? (selectedCampusId as Id<"campuses">)
-        : undefined;
+      : undefined;
   const curriculums = useQuery(
     api.curriculums.list,
     isAdmin && schoolId ? { includeInactive: false, schoolId } : "skip",
@@ -79,15 +73,35 @@ export default function CreateCoursePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [academicPeriodId, setAcademicPeriodId] = useState("");
   const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
+  const [showExistingSchedules, setShowExistingSchedules] = useState(true);
   const [weeklySlots, setWeeklySlots] = useState<CourseWeeklySlot[]>([]);
   const [formData, setFormData] = useState<CourseFormData>({
     name: "",
     description: "",
-    academicYear: "",
     curriculumId: "",
     teacherId: "",
     gradeCode: "",
   });
+  const scheduleGuides = useQuery(
+    api.classes.listWeeklyScheduleGuides,
+    isAdmin &&
+      showExistingSchedules &&
+      campusId &&
+      academicPeriodId &&
+      formData.gradeCode
+      ? {
+          campusId,
+          academicPeriodId: academicPeriodId as Id<"academicPeriods">,
+          gradeCode: formData.gradeCode,
+        }
+      : "skip",
+  );
+
+  useEffect(() => {
+    if (!isAccessLoading && access && !access.canManageCampus) {
+      router.replace(`/${orgSlug}/classes`);
+    }
+  }, [access, isAccessLoading, orgSlug, router]);
 
   const availablePeriods = useMemo(() => {
     if (!academicSettings?.timeZone) return [];
@@ -225,13 +239,12 @@ export default function CreateCoursePage() {
             grades={grades}
             isAdmin={isAdmin}
             nameRequired
-            showAcademicYear={false}
             primaryFieldsClassName="lg:grid-cols-2"
             curriculumEmptyState={
               <p className="text-sm text-muted-foreground">
                 {t("class.noCurriculums")}{" "}
                 <Link
-                  href={`/${orgSlug}/curriculums`}
+                  href={`${settingsBasePath}/curriculums`}
                   className="font-medium text-primary underline-offset-4 hover:underline"
                 >
                   {t("class.manageCurriculums")}
@@ -242,7 +255,7 @@ export default function CreateCoursePage() {
               <p className="text-sm text-muted-foreground">
                 {t("class.noTeachers")}{" "}
                 <Link
-                  href={`/${orgSlug}/users`}
+                  href={`/${orgSlug}/professors`}
                   className="font-medium text-primary underline-offset-4 hover:underline"
                 >
                   {t("class.manageTeachers")}
@@ -333,14 +346,37 @@ export default function CreateCoursePage() {
         </section>
 
         <section className="space-y-5">
-          <h2 className="text-xl font-semibold">
-            {t("class.weeklySchedule")}
-            {academicSettings?.timeZone && ` · ${academicSettings.timeZone}`}
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">
+              {t("class.weeklySchedule")}
+              {academicSettings?.timeZone && ` · ${academicSettings.timeZone}`}
+            </h2>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-existing-course-schedules"
+                checked={showExistingSchedules}
+                onCheckedChange={setShowExistingSchedules}
+                disabled={!formData.gradeCode || !academicPeriodId}
+              />
+              <Label
+                htmlFor="show-existing-course-schedules"
+                className="cursor-pointer font-normal"
+              >
+                {t("class.showExistingSchedules")}
+              </Label>
+            </div>
+          </div>
           <CourseWeeklyCalendar
             value={weeklySlots}
             onChangeAction={setWeeklySlots}
             courseName={formData.name}
+            backgroundSlots={scheduleGuides?.map((guide) => ({
+              id: guide.scheduleId,
+              dayOfWeek: guide.dayOfWeek,
+              startMinutes: guide.startMinutes,
+              endMinutes: guide.endMinutes,
+              label: guide.className,
+            }))}
             startMinutes={academicSettings?.scheduleStartMinutes}
             endMinutes={academicSettings?.scheduleEndMinutes}
             teacherName={

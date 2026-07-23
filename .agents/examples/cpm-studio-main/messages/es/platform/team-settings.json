@@ -1,0 +1,55 @@
+{
+  "PlatformTeam": {
+    "appName": "CPM Studio",
+    "title": "Team",
+    "membersTab": "Miembros",
+    "invitesTab": "Invitados",
+    "loadMore": "Cargar más",
+    "loadingMore": "Cargando…",
+    "inviteUser": "Invitar usuario",
+    "genericError": "Algo salió mal. Inténtalo de nuevo.",
+    "roles": {
+      "superadmin": "Superadmin",
+      "viewer": "Solo lectura"
+    },
+    "inviteDialog": {
+      "title": "Invitar miembro",
+      "description": "Envía acceso a la plataforma y define el rol que tendrá esta persona.",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Correo electrónico",
+      "roleLabel": "Rol",
+      "submit": "Invitar",
+      "inviting": "Invitando…",
+      "success": "Invitación enviada.",
+      "errors": {
+        "alreadyPending": "Ya existe una invitación pendiente para este correo.",
+        "alreadyMember": "Este usuario ya tiene acceso a la plataforma.",
+        "emailNotConfigured": "El correo de invitaciones todavía no está configurado.",
+        "baseUrlNotConfigured": "La URL de invitación todavía no está configurada.",
+        "emailSendFailed": "No pudimos enviar el correo de invitación."
+      }
+    },
+    "membersTable": {
+      "member": "Miembro",
+      "role": "Rol",
+      "loading": "Cargando miembros…",
+      "empty": "Todavía no hay miembros de plataforma.",
+      "actionsMenu": "Abrir acciones del miembro",
+      "removeMember": "Eliminar miembro",
+      "roleUpdated": "Rol actualizado.",
+      "memberRemoved": "Miembro eliminado."
+    },
+    "invitesTable": {
+      "email": "Correo",
+      "role": "Rol",
+      "invitedBy": "Invitado por",
+      "sent": "Enviada",
+      "loading": "Cargando invitaciones…",
+      "empty": "No hay invitaciones pendientes.",
+      "actionsMenu": "Abrir acciones de la invitación",
+      "cancelInvite": "Cancelar invitación",
+      "roleUpdated": "Invitación actualizada.",
+      "inviteCancelled": "Invitación cancelada."
+    }
+  }
+}

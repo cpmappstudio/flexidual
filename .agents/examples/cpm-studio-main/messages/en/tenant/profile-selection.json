@@ -1,0 +1,23 @@
+{
+  "TenantProfileSelection": {
+    "title": "Who is entering?",
+    "profileLabel": "{name}, {type}",
+    "profileTypes": {
+      "guardian": "guardian profile",
+      "student": "student profile"
+    },
+    "pinDialog": {
+      "title": "Enter guardian PIN",
+      "pinLabel": "PIN",
+      "pinHint": "Use the 4-digit guardian PIN.",
+      "unlock": "Enter",
+      "unlocking": "Checking...",
+      "errors": {
+        "invalid": "That PIN is incorrect.",
+        "invalidFormat": "Use exactly 4 digits.",
+        "locked": "Too many failed attempts. Please try again later.",
+        "generic": "Unable to verify the PIN. Please try again."
+      }
+    }
+  }
+}

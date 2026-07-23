@@ -1,0 +1,21 @@
+{
+  "TenantAcademicManagement": {
+    "navigation": {
+      "people": "Academic People",
+      "structure": "Academic Structure",
+      "students": "Students",
+      "teachers": "Teachers",
+      "academicPeriods": "Academic Periods",
+      "curriculumOfferings": "Curriculum Offerings",
+      "selectSection": "Select academic section"
+    },
+    "sections": {
+      "academicPeriods": {
+        "title": "Academic Periods"
+      },
+      "curriculumOfferings": {
+        "title": "Curriculum Offerings"
+      }
+    }
+  }
+}

@@ -25,6 +25,8 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
       if (data === "INVALID_STUDENT" || data.includes("INVALID_STUDENT")) return { code: "INVALID_STUDENT" }
       if (data === "INVALID_STUDENTS" || data.includes("INVALID_STUDENTS")) return { code: "INVALID_STUDENTS" }
       if (data === "STUDENT_ALREADY_ENROLLED" || data.includes("STUDENT_ALREADY_ENROLLED")) return { code: "STUDENT_ALREADY_ENROLLED" }
+      if (data === "CURRICULUM_CODE_IN_USE" || data.includes("CURRICULUM_CODE_IN_USE")) return { code: "CURRICULUM_CODE_IN_USE" }
+      if (data === "INVALID_CURRICULUM_TITLE" || data.includes("INVALID_CURRICULUM_TITLE")) return { code: "INVALID_CURRICULUM_TITLE" }
       if (data.includes("same curriculum")) return { code: "CURRICULUM_CONFLICT" }
     }
   }
@@ -83,6 +85,10 @@ export function getErrorMessage(
       return t("errors.invalidGrade", {
         grades: error.grades || "Unknown"
       })
+    case "CURRICULUM_CODE_IN_USE":
+      return t("errors.curriculumCodeInUse")
+    case "INVALID_CURRICULUM_TITLE":
+      return t("errors.invalidCurriculumTitle")
     default:
       return t("errors.operationFailed")
   }

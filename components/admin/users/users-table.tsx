@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
@@ -14,15 +14,24 @@ import { useTranslations } from "next-intl";
 import { UserRole } from "@/convex/types";
 import { useParams } from "next/navigation";
 import { DataTable } from "@/components/table/data-table";
-import { createSortableHeader, createSearchColumn } from "@/components/table/column-helpers";
+import {
+  createSortableHeader,
+  createSearchColumn,
+} from "@/components/table/column-helpers";
 import type { FilterConfig } from "@/lib/table/types";
-import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
 export type User = FunctionReturnType<typeof api.users.getUsers>[number];
 
 interface UsersTableProps {
   roleFilter?: UserRole;
   allowedRoles?: UserRole[];
+  scope?: {
+    orgType: "school" | "campus";
+    orgId: string;
+  };
+  requireCampusSelection?: boolean;
+  hideRole?: boolean;
+  readOnly?: boolean;
 }
 
 function UserAvatar({ user }: { user: User }) {
@@ -35,7 +44,13 @@ function UserAvatar({ user }: { user: User }) {
 
   return (
     <Avatar className="h-8 w-8">
-      {finalSrc && <AvatarImage className="object-cover" src={finalSrc} alt={user.fullName} />}
+      {finalSrc && (
+        <AvatarImage
+          className="object-cover"
+          src={finalSrc}
+          alt={user.fullName}
+        />
+      )}
       <AvatarFallback>
         {user.fullName?.substring(0, 2).toUpperCase() || "U"}
       </AvatarFallback>
@@ -43,58 +58,90 @@ function UserAvatar({ user }: { user: User }) {
   );
 }
 
-const ROLE_OPTIONS = [
-  "superadmin",
-  "admin",
-  "principal",
-  "teacher",
-  "tutor",
-  "student",
-] as const;
-
-export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
+export function UsersTable({
+  roleFilter,
+  allowedRoles,
+  scope,
+  requireCampusSelection = false,
+  hideRole = false,
+  readOnly = false,
+}: UsersTableProps) {
   const t = useTranslations();
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
 
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
-  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
-  const isSystemDashboard = orgContext?.type === "system";
+  const orgContext = useQuery(
+    api.organizations.resolveSlug,
+    isAuthenticated ? { slug: orgSlug } : "skip",
+  );
+  const queryOrgType =
+    orgContext?.type === "school" || orgContext?.type === "campus"
+      ? orgContext.type
+      : undefined;
+  const queryOrgId = queryOrgType ? orgContext?._id : undefined;
 
-  // Superadmin filtering state
-  const { selectedSchoolId, selectedCampusId } = useAdminSchoolFilter();
-
-  // Compute effective scope for the users query
-  let queryOrgType = orgContext?.type;
-  let queryOrgId = orgContext?._id;
-
-  if (isSystemDashboard) {
-    if (selectedCampusId !== "all") {
-      queryOrgType = "campus";
-      queryOrgId = selectedCampusId as Id<"campuses">;
-    } else if (selectedSchoolId !== "all") {
-      queryOrgType = "school";
-      queryOrgId = selectedSchoolId as Id<"schools">;
-    }
-  }
-
-  const users = useQuery(api.users.getUsers, orgContext ? { 
-    role: roleFilter,
-    orgType: queryOrgType,
-    orgId: queryOrgId
-  } : "skip");
+  const effectiveScope =
+    scope ??
+    (queryOrgType && queryOrgId
+      ? { orgType: queryOrgType, orgId: queryOrgId }
+      : undefined);
+  const campusSelectionSchoolId =
+    requireCampusSelection && effectiveScope?.orgType === "school"
+      ? (effectiveScope.orgId as Id<"schools">)
+      : undefined;
+  const campus = useQuery(
+    api.campuses.get,
+    isAuthenticated && effectiveScope?.orgType === "campus"
+      ? { id: effectiveScope.orgId as Id<"campuses"> }
+      : "skip",
+  );
+  const gradeSchoolId =
+    effectiveScope?.orgType === "school"
+      ? (effectiveScope.orgId as Id<"schools">)
+      : campus?.schoolId;
+  const grades = useQuery(
+    api.grades.list,
+    isAuthenticated && roleFilter === "student" && gradeSchoolId
+      ? { schoolId: gradeSchoolId }
+      : "skip",
+  );
+  const users = useQuery(
+    api.users.getUsers,
+    isAuthenticated && (orgContext || scope)
+      ? {
+          role: roleFilter,
+          roles: allowedRoles,
+          orgType: effectiveScope?.orgType,
+          orgId: effectiveScope?.orgId,
+        }
+      : "skip",
+  );
 
   const [editingUser, setEditingUser] = React.useState<User | null>(null);
+  const isStudentTable = roleFilter === "student";
 
-  const filterConfigs: FilterConfig[] = [
-    {
-      id: "role",
-      label: t("teacher.role"),
-      options: ROLE_OPTIONS.map((role) => ({
-        value: role,
-        label: t(`navigation.${role}s`),
-      })),
-    },
-  ];
+  const filterConfigs: FilterConfig[] = isStudentTable
+    ? [
+        {
+          id: "grade",
+          label: t("student.grade"),
+          options: (grades ?? []).map((grade) => ({
+            value: grade.code,
+            label: grade.name,
+          })),
+        },
+      ]
+    : [
+        {
+          id: "isActive",
+          label: t("common.status"),
+          options: [
+            { value: "active", label: t("common.active") },
+            { value: "inactive", label: t("common.inactive") },
+          ],
+        },
+      ];
 
   const userHeader = (
     <>
@@ -117,9 +164,6 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
             <div className="flex flex-col">
               <div className="flex">
                 <span className="font-medium">{row.getValue("fullName")}</span>
-                <Badge variant="role" className="ml-2 lg:hidden">
-                  {row.getValue("role")}
-                </Badge>
               </div>
               <div className="lg:hidden">
                 <span className="font-mono">{t("teacher.email")}:</span>
@@ -137,18 +181,28 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
       header: createSortableHeader(t("teacher.email")),
       meta: { className: "hidden lg:table-cell" },
     },
-    {
-      accessorKey: "role",
-      header: createSortableHeader(t("teacher.role")),
-      meta: { className: "hidden lg:table-cell" },
-      filterFn: (row, id, filterValues: string[]) => {
-        return filterValues.includes(row.getValue(id) as string);
-      },
-      cell: ({ row }) => <Badge variant="role">{row.getValue("role")}</Badge>,
-    },
+    ...(isStudentTable
+      ? [
+          {
+            accessorKey: "grade",
+            header: createSortableHeader(t("student.grade")),
+            filterFn: (row, id, filterValues: string[]) =>
+              filterValues.includes((row.getValue(id) as string) ?? ""),
+            cell: ({ row }) => {
+              const gradeCode = row.original.grade;
+              const gradeName = grades?.find(
+                (grade) => grade.code === gradeCode,
+              )?.name;
+              return gradeName ?? gradeCode ?? "-";
+            },
+          } satisfies ColumnDef<User, unknown>,
+        ]
+      : []),
     {
       accessorKey: "isActive",
       header: createSortableHeader(t("common.status")),
+      filterFn: (row, _id, filterValues: string[]) =>
+        filterValues.includes(row.original.isActive ? "active" : "inactive"),
       cell: ({ row }) => (
         <Badge variant={row.original.isActive ? "active" : "inactive"}>
           {row.original.isActive ? t("common.active") : t("common.inactive")}
@@ -157,14 +211,19 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
     },
   ];
 
-  if (!users) return <Skeleton className="h-96 w-full" />;
+  if (isAuthLoading || !isAuthenticated || !users) {
+    return <Skeleton className="h-96 w-full" />;
+  }
 
   return (
     <div className="space-y-4">
-      {editingUser && (
+      {!readOnly && editingUser && (
         <UserDialog
           user={editingUser}
           allowedRoles={allowedRoles}
+          scope={effectiveScope}
+          campusSelectionSchoolId={campusSelectionSchoolId}
+          hideRole={hideRole}
           open={true}
           onOpenChange={(open) => {
             if (!open) setEditingUser(null);
@@ -180,11 +239,21 @@ export function UsersTable({ roleFilter, allowedRoles }: UsersTableProps) {
         filterPlaceholder={t("common.searchByName")}
         emptyMessage={t("common.noResults")}
         filterConfigs={filterConfigs}
-        createAction={
-          <UserDialog defaultRole={roleFilter} allowedRoles={allowedRoles} />
+        filterVariant="select"
+        filterAllLabel={
+          isStudentTable ? t("student.allGrades") : t("common.allStatuses")
+        }
+        createAction={readOnly ? undefined :
+          <UserDialog
+            defaultRole={roleFilter}
+            allowedRoles={allowedRoles}
+            scope={effectiveScope}
+            campusSelectionSchoolId={campusSelectionSchoolId}
+            hideRole={hideRole}
+          />
         }
         pageSize={10}
-        onRowClick={(user) => setEditingUser(user)}
+        onRowClick={readOnly ? undefined : (user) => setEditingUser(user)}
       />
     </div>
   );

@@ -1,8 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
-import { getRoleForOrg, isSuperAdmin } from "@/lib/rbac";
-import StudentHubPage from "@/components/dashboards/student-hub-page";
-import TeachingDashboard from "@/components/dashboards/teaching-dashboard";
-import AdminDashboard from "@/components/dashboards/admin-dashboard";
+import { getRouteRole, isSuperAdmin } from "@/lib/rbac";
+import { RoleDashboard } from "@/components/dashboards/role-dashboard";
 
 export default async function OrgDashboardPage({
   params,
@@ -11,23 +9,24 @@ export default async function OrgDashboardPage({
 }) {
   const { orgSlug } = await params;
   const { sessionClaims } = await auth();
-  
-  const effectiveOrgSlug = orgSlug === "admin" ? "system" : orgSlug;
-  
-  const role = getRoleForOrg(sessionClaims, effectiveOrgSlug);
+
+  const role = getRouteRole(sessionClaims, orgSlug);
   const superAdmin = isSuperAdmin(sessionClaims);
 
   // Serve the exact UI based on their context
   if (role === "student") {
-    return <StudentHubPage />;
-  }
-  
-  if (role === "teacher" || role === "tutor") {
-    return <TeachingDashboard />;
+    return <RoleDashboard student />;
   }
 
-  if (role === "admin" || role === "superadmin" || role === "principal" || superAdmin) {
-    return <AdminDashboard />;
+  if (
+    role === "admin" ||
+    role === "superadmin" ||
+    role === "principal" ||
+    role === "teacher" ||
+    role === "tutor" ||
+    superAdmin
+  ) {
+    return <RoleDashboard student={false} />;
   }
 
   return <div>Role pending or unauthorized.</div>;

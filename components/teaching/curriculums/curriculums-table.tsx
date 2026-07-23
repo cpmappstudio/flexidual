@@ -14,9 +14,14 @@ import { useTranslations } from "next-intl";
 import { DataTable } from "@/components/table/data-table";
 import { createSearchColumn, createSortableHeader } from "@/components/table/column-helpers";
 import type { FilterConfig } from "@/lib/table/types";
-import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider";
 
-export function CurriculumsTable() {
+export function CurriculumsTable({
+  schoolId,
+  readOnly = false,
+}: {
+  schoolId?: Id<"schools">;
+  readOnly?: boolean;
+}) {
   const t = useTranslations();
   const params = useParams();
   const pathname = usePathname();
@@ -26,16 +31,9 @@ export function CurriculumsTable() {
   
   const orgSlug = (params.orgSlug as string) || "system";
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
-  const isSystemDashboard = orgContext?.type === "system";
-
-  // Global school filter from sidebar context
-  const { selectedSchoolId } = useAdminSchoolFilter();
-
   // Determine effective school ID for the query
-  let querySchoolId = undefined;
-  if (isSystemDashboard && selectedSchoolId !== "all") {
-    querySchoolId = selectedSchoolId as Id<"schools">;
-  } else if (orgContext?.type === "school") {
+  let querySchoolId = schoolId;
+  if (!querySchoolId && orgContext?.type === "school") {
     querySchoolId = orgContext._id as Id<"schools">;
   }
 
@@ -147,9 +145,10 @@ export function CurriculumsTable() {
 
   return (
     <div className="space-y-4">
-      {editingCurriculum && (
+      {!readOnly && editingCurriculum && (
         <CurriculumDialog
           curriculum={editingCurriculum}
+          schoolId={querySchoolId}
           open={true}
           onOpenChange={handleDialogOpenChange}
           trigger={<span className="hidden" />}
@@ -163,9 +162,13 @@ export function CurriculumsTable() {
         filterPlaceholder={t("common.searchByName")}
         emptyMessage={t("common.noResults")}
         filterConfigs={filterConfigs}
-        createAction={<CurriculumDialog />}
+        createAction={
+          readOnly ? undefined : <CurriculumDialog schoolId={querySchoolId} />
+        }
         pageSize={10}
-        onRowClick={(curriculum) => setEditingCurriculum(curriculum)}
+        onRowClick={
+          readOnly ? undefined : (curriculum) => setEditingCurriculum(curriculum)
+        }
       />
     </div>
   );

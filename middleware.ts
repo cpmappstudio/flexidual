@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import createIntlMiddleware from 'next-intl/middleware'
 import { routing } from './i18n/routing'
 import { getLocaleFromPathname } from './lib/locale-setup'
-import { getRolesFromClaims, isSuperAdmin, getRoleForOrg, getRoleBasePath } from './lib/rbac'
+import { getHighestStaffRole, getRolesFromClaims, isSuperAdmin, getRoleForOrg } from './lib/rbac'
 
 const intlMiddleware = createIntlMiddleware(routing)
 
@@ -56,6 +56,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
 
     const roles = getRolesFromClaims(authObject.sessionClaims)
     const userIsSuperAdmin = isSuperAdmin(authObject.sessionClaims)
+    const highestStaffRole = getHighestStaffRole(authObject.sessionClaims)
 
     // Check if they have ANY roles at all
     if (!roles || Object.keys(roles).length === 0) {
@@ -70,22 +71,22 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
 
     // 4. Root Routing (Log in -> Where do I go?)
     if (pathWithoutLocale === '/') {
-      if (userIsSuperAdmin) {
-        return NextResponse.redirect(new URL(`/${locale}/admin`, req.url))
-      }
-
       const firstOrgSlug = Object.keys(roles).find(k => k !== "system")
       if (firstOrgSlug) {
-        const targetPath = getRoleBasePath(locale, firstOrgSlug)
-        return NextResponse.redirect(new URL(targetPath, req.url))
+        return NextResponse.redirect(new URL(`/${locale}/${firstOrgSlug}`, req.url))
       }
       return intlMiddleware(req)
     }
 
-    // 5. Protect System Admin Routes
-    if (pathWithoutLocale.startsWith('/admin')) {
-      if (userIsSuperAdmin) return intlMiddleware(req)
-      return NextResponse.redirect(new URL(`/${locale}`, req.url))
+    // 5. Retire the former shared /admin namespace. Old bookmarks keep their
+    // subpath when the session has a concrete organization assignment.
+    if (pathWithoutLocale === '/admin' || pathWithoutLocale.startsWith('/admin/')) {
+      const firstOrgSlug = Object.keys(roles).find(k => k !== "system")
+      const legacySubPath = pathWithoutLocale.slice('/admin'.length)
+      const destination = firstOrgSlug
+        ? `/${locale}/${firstOrgSlug}${legacySubPath}`
+        : `/${locale}`
+      return NextResponse.redirect(new URL(destination, req.url))
     }
 
     // 6. Dynamic Context Routing (/[locale]/[orgSlug]/...)
@@ -96,15 +97,24 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
       const subPath = orgMatch[2] || ""
 
       // Ignore standard Next.js / structural folders
-      if (["api", "_next", "sign-in", "pending-role", "admin"].includes(orgSlug)) {
+      if (["api", "_next", "sign-in", "pending-role"].includes(orgSlug)) {
         return intlMiddleware(req)
       }
 
       const orgRole = getRoleForOrg(authObject.sessionClaims, orgSlug)
+      const adminMayResolveChildCampus = highestStaffRole === "admin"
 
       // If they don't have a role in this org, and aren't a superadmin, kick them out
-      if (!orgRole && !userIsSuperAdmin) {
+      if (!orgRole && !userIsSuperAdmin && !adminMayResolveChildCampus) {
         return NextResponse.redirect(new URL(`/${locale}`, req.url))
+      }
+
+      const isPeopleRoute = /^\/(students|professors)(\/|$)/.test(subPath)
+      const canViewPeople = ["superadmin", "admin", "principal"].includes(
+        orgRole ?? highestStaffRole ?? "",
+      )
+      if (isPeopleRoute && !canViewPeople) {
+        return NextResponse.redirect(new URL(`/${locale}/${orgSlug}`, req.url))
       }
 
       // Base org routing (e.g. they typed /boston-public but no sub-path)

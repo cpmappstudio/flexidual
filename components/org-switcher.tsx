@@ -1,17 +1,15 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Building2, MapPin, Plus, Settings2 } from "lucide-react"
-import { useAuth } from "@clerk/nextjs"
-import { useParams, usePathname } from "next/navigation"
-import { useRouter } from "@/i18n/navigation"
-import { getRolesFromClaims } from "@/lib/rbac"
-import { useQuery } from "convex/react"
-import { api } from "@/convex/_generated/api"
-import type { Id } from "@/convex/_generated/dataModel"
-import { useAdminSchoolFilter } from "@/components/providers/admin-school-filter-provider"
-import { SchoolDialog } from "@/components/admin/schools/school-dialog"
-import { CampusDialog } from "@/components/admin/campuses/campus-dialog"
+import * as React from "react";
+import { Building2, MapPin, Plus, Settings2 } from "lucide-react";
+import { useParams } from "next/navigation";
+import { useConvexAuth, useQuery } from "convex/react";
+import { useTranslations } from "next-intl";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { useRouter } from "@/i18n/navigation";
+import { SchoolDialog } from "@/components/admin/schools/school-dialog";
+import { CampusDialog } from "@/components/admin/campuses/campus-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,169 +21,153 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar"
-import { useTranslations } from "next-intl"
+} from "@/components/ui/sidebar";
 
 export function OrgSwitcher() {
-  const t = useTranslations("admin")
-  const { isMobile, setOpenMobile } = useSidebar()
-  const { sessionClaims } = useAuth()
-  const params = useParams()
-  const pathname = usePathname()
-  const router = useRouter()
-  const roles = getRolesFromClaims(sessionClaims)
-  const isSuperAdmin = roles?.system === "superadmin"
-  const isSystemDashboard = params.orgSlug === "admin" || pathname.includes("/admin")
-  const currentSlug = params.orgSlug as string | undefined
+  const t = useTranslations("admin");
+  const { isMobile, setOpenMobile } = useSidebar();
+  const { orgSlug } = useParams<{ orgSlug?: string }>();
+  const router = useRouter();
+  const { isAuthenticated } = useConvexAuth();
+  const options = useQuery(
+    api.organizations.getSwitcherOptions,
+    isAuthenticated ? {} : "skip",
+  );
+  const [schoolDialogOpen, setSchoolDialogOpen] = React.useState(false);
+  const [campusSchoolId, setCampusSchoolId] =
+    React.useState<Id<"schools"> | null>(null);
 
-  const {
-    selectedSchoolId,
-    setSelectedSchoolId,
-    selectedCampusId,
-    setSelectedCampusId,
-  } = useAdminSchoolFilter()
-  const schools = useQuery(api.schools.list, { isActive: true })
-  const campuses = useQuery(api.campuses.list, { isActive: true })
-  const [schoolDialogOpen, setSchoolDialogOpen] = React.useState(false)
-  const [campusSchoolId, setCampusSchoolId] = React.useState<Id<"schools"> | null>(null)
+  const schools = React.useMemo(() => options?.schools ?? [], [options?.schools]);
+  const campuses = React.useMemo(
+    () => options?.campuses ?? [],
+    [options?.campuses],
+  );
+  const manageableSchoolIds = React.useMemo(
+    () => new Set(options?.manageableSchoolIds ?? []),
+    [options?.manageableSchoolIds],
+  );
+  const isRestrictedStaff =
+    !options?.canCreateInstitutions && manageableSchoolIds.size === 0;
+  const flattenInstitution = isRestrictedStaff && schools.length === 1;
+  const isInteractive =
+    !isRestrictedStaff || schools.length > 1 || campuses.length > 1;
 
-  const visibleSchools = React.useMemo(() => {
-    if (!schools || !campuses || !roles) return []
+  const routeCampus = campuses.find((campus) => campus.slug === orgSlug);
+  const routeSchool = schools.find((school) => school.slug === orgSlug);
+  const activeSchool =
+    routeSchool ??
+    schools.find((school) => school._id === routeCampus?.schoolId) ??
+    schools[0];
+  const activeCampus =
+    routeCampus ??
+    (!routeSchool
+      ? campuses.find((campus) => campus.schoolId === activeSchool?._id)
+      : undefined);
 
-    return schools
-      .filter((school) => isSuperAdmin || roles[school.slug] || campuses.some((campus) => campus.schoolId === school._id && roles[campus.slug]))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [campuses, isSuperAdmin, roles, schools])
+  if (!options || schools.length === 0) return null;
 
-  const visibleCampuses = React.useMemo(() => {
-    if (!campuses || !roles) return []
+  const campusSchool = schools.find((school) => school._id === campusSchoolId);
 
-    return campuses
-      .filter((campus) => isSuperAdmin || !!roles[campus.slug])
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [campuses, isSuperAdmin, roles])
+  const selectCampus = (campusId: Id<"campuses">) => {
+    const campus = campuses.find((item) => item._id === campusId);
+    if (campus) router.push(`/${campus.slug}`);
+    if (isMobile) setOpenMobile(false);
+  };
 
-  React.useEffect(() => {
-    if (!isSystemDashboard || !isSuperAdmin || visibleSchools.length === 0) return
-
-    const school = visibleSchools.find((item) => item._id === selectedSchoolId) ?? visibleSchools[0]
-    const schoolCampuses = visibleCampuses.filter((campus) => campus.schoolId === school._id)
-    const campus = schoolCampuses.find((item) => item._id === selectedCampusId) ?? schoolCampuses[0]
-
-    if (selectedSchoolId !== school._id) setSelectedSchoolId(school._id)
-    if (campus && selectedCampusId !== campus._id) setSelectedCampusId(campus._id)
-    if (!campus && selectedCampusId !== "all") setSelectedCampusId("all")
-  }, [
-    isSuperAdmin,
-    isSystemDashboard,
-    selectedCampusId,
-    selectedSchoolId,
-    setSelectedCampusId,
-    setSelectedSchoolId,
-    visibleCampuses,
-    visibleSchools,
-  ])
-
-  if (!roles || Object.keys(roles).length === 0) return null
-
-  const routeCampus = visibleCampuses.find((campus) => campus.slug === currentSlug)
-  const routeSchool = visibleSchools.find((school) => school.slug === currentSlug)
-  const activeCampus = isSystemDashboard
-    ? visibleCampuses.find((campus) => campus._id === selectedCampusId)
-    : routeCampus
-  const activeSchool = isSystemDashboard
-    ? visibleSchools.find((school) => school._id === selectedSchoolId) ?? visibleSchools[0]
-    : routeSchool ?? visibleSchools.find((school) => school._id === activeCampus?.schoolId) ?? visibleSchools[0]
-  const campusSchool = visibleSchools.find((school) => school._id === campusSchoolId)
-
-  const selectSchool = (schoolSlug: string) => {
-    router.push(`/${schoolSlug}`)
-    if (isMobile) setOpenMobile(false)
-  }
-
-  const selectCampus = (schoolId: Id<"schools">, campusId: Id<"campuses">, campusSlug: string) => {
-    if (isSystemDashboard) {
-      setSelectedSchoolId(schoolId)
-      setSelectedCampusId(campusId)
-    } else {
-      router.push(`/${campusSlug}`)
-    }
-    if (isMobile) setOpenMobile(false)
-  }
+  const label = (
+    <div className="grid min-w-0 flex-1 gap-1 text-left leading-tight">
+      <span className="whitespace-normal break-words text-base font-bold leading-snug text-primary">
+        {activeCampus?.name ?? activeSchool.name}
+      </span>
+      {activeCampus && (
+        <span className="whitespace-normal break-words text-sm text-muted-foreground">
+          {activeSchool.name}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <>
       <SidebarMenu>
         <SidebarMenuItem>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <SidebarMenuButton
-                size="lg"
-                className="h-auto min-h-14 items-start px-2 py-2 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-              >
-                <div className="grid min-w-0 flex-1 gap-1 text-left leading-tight">
-                  <span className="whitespace-normal break-words text-base font-bold leading-snug text-primary">
-                    {activeCampus?.name ?? activeSchool?.name ?? t("noInstitutions")}
-                  </span>
-                  <span className="whitespace-normal break-words text-sm text-muted-foreground">
-                    {activeSchool?.name ?? t("noInstitutions")}
-                  </span>
-                </div>
-              </SidebarMenuButton>
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent
-              className="max-h-[70vh] w-[calc(100vw-2rem)] max-w-80 overflow-y-auto rounded-lg sm:min-w-64"
-              align="start"
-              side={isMobile ? "bottom" : "right"}
-              sideOffset={4}
-              collisionPadding={16}
+          {!isInteractive ? (
+            <SidebarMenuButton
+              size="lg"
+              className="h-auto min-h-14 cursor-default items-start px-2 py-2"
             >
-              <DropdownMenuLabel className="text-xs text-muted-foreground">
-                {t("institutions")}
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-
-              {isMobile ? (
-                visibleSchools.map((school) => {
-                  const schoolCampuses = visibleCampuses.filter((campus) => campus.schoolId === school._id)
-                  return (
+              {label}
+            </SidebarMenuButton>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  size="lg"
+                  className="h-auto min-h-14 items-start px-2 py-2 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                >
+                  {label}
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="max-h-[70vh] w-[calc(100vw-2rem)] max-w-80 overflow-y-auto rounded-lg sm:min-w-64"
+                align="start"
+                side={isMobile ? "bottom" : "right"}
+                sideOffset={4}
+                collisionPadding={16}
+              >
+                {flattenInstitution ? (
+                  <>
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      {t("campuses")}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {campuses.map((campus) => (
+                      <DropdownMenuItem
+                        key={campus._id}
+                        className="cursor-pointer gap-2"
+                        onSelect={() =>
+                          selectCampus(campus._id)
+                        }
+                      >
+                        <MapPin className="size-4" />
+                        <span className="min-w-0 flex-1 whitespace-normal break-words">
+                          {campus.name}
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                ) : isMobile ? (
+                  schools.map((school) => (
                     <React.Fragment key={school._id}>
                       <DropdownMenuLabel className="flex items-center gap-2 px-2 py-2 text-sm">
-                        <Building2 className="size-4 shrink-0" />
-                        <span className="min-w-0 whitespace-normal break-words font-medium">{school.name}</span>
+                        <Building2 className="size-4" />
+                        <span className="min-w-0 whitespace-normal break-words">
+                          {school.name}
+                        </span>
                       </DropdownMenuLabel>
-                      {!isSystemDashboard && roles[school.slug] && (
+                      {campuses
+                        .filter((campus) => campus.schoolId === school._id)
+                        .map((campus) => (
+                          <DropdownMenuItem
+                            key={campus._id}
+                            className="cursor-pointer gap-2 pl-6"
+                            onSelect={() =>
+                              selectCampus(campus._id)
+                            }
+                          >
+                            <MapPin className="size-4" />
+                            {campus.name}
+                          </DropdownMenuItem>
+                        ))}
+                      {manageableSchoolIds.has(school._id) && (
                         <DropdownMenuItem
-                          className={`min-h-10 cursor-pointer pl-6 ${routeSchool?._id === school._id ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}`}
-                          onSelect={() => selectSchool(school.slug)}
-                        >
-                          <Building2 className="size-4" />
-                          <span className="min-w-0 whitespace-normal break-words">{t("institutionOverview")}</span>
-                        </DropdownMenuItem>
-                      )}
-                      {schoolCampuses.map((campus) => (
-                        <DropdownMenuItem
-                          key={campus._id}
-                          className={`min-h-10 cursor-pointer gap-2 pl-6 ${activeCampus?._id === campus._id ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}`}
-                          onSelect={() => selectCampus(school._id, campus._id, campus.slug)}
-                        >
-                          <MapPin className="size-4" />
-                          <span className="min-w-0 whitespace-normal break-words">{campus.name}</span>
-                        </DropdownMenuItem>
-                      ))}
-                      {schoolCampuses.length === 0 && (
-                        <DropdownMenuItem className="pl-6" disabled>{t("noCampusesFound")}</DropdownMenuItem>
-                      )}
-                      {isSuperAdmin && (
-                        <DropdownMenuItem
-                          className="min-h-10 cursor-pointer pl-6"
+                          className="cursor-pointer pl-6"
                           onSelect={() => setCampusSchoolId(school._id)}
                         >
                           <Plus className="size-4" />
@@ -194,108 +176,109 @@ export function OrgSwitcher() {
                       )}
                       <DropdownMenuSeparator />
                     </React.Fragment>
-                  )
-                })
-              ) : (
-                visibleSchools.map((school) => {
-                  const schoolCampuses = visibleCampuses.filter((campus) => campus.schoolId === school._id)
-                  const manageCampusesLabel = t("manageCampuses", { institution: school.name })
-                  return (
-                    <DropdownMenuSub key={school._id}>
-                      <DropdownMenuSubTrigger className="gap-2 p-2">
-                        <Building2 className="size-4" />
-                        <span className="min-w-0 flex-1 whitespace-normal break-words font-medium">{school.name}</span>
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuPortal>
-                        <DropdownMenuSubContent className="min-w-56">
-                          {!isSystemDashboard && roles[school.slug] && (
-                            <DropdownMenuItem
-                              className={`cursor-pointer ${routeSchool?._id === school._id ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}`}
-                              onSelect={() => selectSchool(school.slug)}
-                            >
-                              <Building2 className="size-4" />
-                              <span className="min-w-0 flex-1 whitespace-normal break-words">{t("institutionOverview")}</span>
-                            </DropdownMenuItem>
-                          )}
-                          <div className="flex items-center">
-                            <DropdownMenuLabel className="min-w-0 flex-1 text-xs text-muted-foreground">
-                              {t("campuses")}
-                            </DropdownMenuLabel>
-                            {isSuperAdmin && (
+                  ))
+                ) : (
+                  schools.map((school) => {
+                    const schoolCampuses = campuses.filter(
+                      (campus) => campus.schoolId === school._id,
+                    );
+                    const canManage = manageableSchoolIds.has(school._id);
+                    return (
+                      <DropdownMenuSub key={school._id}>
+                        <DropdownMenuSubTrigger className="gap-2 p-2">
+                          <Building2 className="size-4" />
+                          <span className="min-w-0 flex-1 whitespace-normal break-words font-medium">
+                            {school.name}
+                          </span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuPortal>
+                          <DropdownMenuSubContent className="min-w-56">
+                            <div className="flex items-center">
+                              <DropdownMenuLabel className="min-w-0 flex-1 text-xs text-muted-foreground">
+                                {t("campuses")}
+                              </DropdownMenuLabel>
+                              {canManage && (
+                                <DropdownMenuItem
+                                  className="size-7 cursor-pointer justify-center p-0"
+                                  aria-label={t("manageCampuses", {
+                                    institution: school.name,
+                                  })}
+                                  onSelect={() => {
+                                    router.push(`/${school.slug}/settings/campuses`);
+                                  }}
+                                >
+                                  <Settings2 className="size-4" />
+                                </DropdownMenuItem>
+                              )}
+                            </div>
+                            {schoolCampuses.map((campus) => (
                               <DropdownMenuItem
-                                className="size-7 cursor-pointer justify-center p-0"
-                                aria-label={manageCampusesLabel}
-                                title={manageCampusesLabel}
-                                onSelect={() => {
-                                  setSelectedSchoolId(school._id)
-                                  router.push("/admin/settings/campuses")
-                                }}
+                                key={campus._id}
+                                className="cursor-pointer gap-2"
+                                onSelect={() =>
+                                  selectCampus(campus._id)
+                                }
                               >
-                                <Settings2 className="size-4" />
+                                <MapPin className="size-4" />
+                                <span className="min-w-0 flex-1 whitespace-normal break-words">
+                                  {campus.name}
+                                </span>
                               </DropdownMenuItem>
+                            ))}
+                            {canManage && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="cursor-pointer"
+                                  onSelect={() =>
+                                    setCampusSchoolId(school._id)
+                                  }
+                                >
+                                  <Plus className="size-4" />
+                                  {t("createCampus")}
+                                </DropdownMenuItem>
+                              </>
                             )}
-                          </div>
-                          {schoolCampuses.map((campus) => (
-                            <DropdownMenuItem
-                              key={campus._id}
-                              className={`cursor-pointer gap-2 ${activeCampus?._id === campus._id ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}`}
-                              onSelect={() => selectCampus(school._id, campus._id, campus.slug)}
-                            >
-                              <MapPin className="size-4" />
-                              <span className="min-w-0 flex-1 whitespace-normal break-words">{campus.name}</span>
-                            </DropdownMenuItem>
-                          ))}
-                          {schoolCampuses.length === 0 && (
-                            <DropdownMenuItem disabled>{t("noCampusesFound")}</DropdownMenuItem>
-                          )}
-                          {isSuperAdmin && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="cursor-pointer"
-                                onSelect={() => setCampusSchoolId(school._id)}
-                              >
-                                <Plus className="size-4" />
-                                {t("createCampus")}
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuSubContent>
-                      </DropdownMenuPortal>
-                    </DropdownMenuSub>
-                  )
-                })
-              )}
+                          </DropdownMenuSubContent>
+                        </DropdownMenuPortal>
+                      </DropdownMenuSub>
+                    );
+                  })
+                )}
 
-              {visibleSchools.length === 0 && (
-                <DropdownMenuItem disabled>{t("noInstitutions")}</DropdownMenuItem>
-              )}
-
-              {isSuperAdmin && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer" onSelect={() => setSchoolDialogOpen(true)}>
-                    <Plus className="size-4" />
-                    {t("createInstitution")}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {options.canCreateInstitutions && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onSelect={() => setSchoolDialogOpen(true)}
+                    >
+                      <Plus className="size-4" />
+                      {t("createInstitution")}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </SidebarMenuItem>
       </SidebarMenu>
 
-      <SchoolDialog trigger={null} open={schoolDialogOpen} onOpenChange={setSchoolDialogOpen} />
+      <SchoolDialog
+        trigger={null}
+        open={schoolDialogOpen}
+        onOpenChange={setSchoolDialogOpen}
+      />
       {campusSchool && (
         <CampusDialog
           trigger={null}
           parentInstitution={{ _id: campusSchool._id, name: campusSchool.name }}
           open
           onOpenChange={(open) => {
-            if (!open) setCampusSchoolId(null)
+            if (!open) setCampusSchoolId(null);
           }}
         />
       )}
     </>
-  )
+  );
 }

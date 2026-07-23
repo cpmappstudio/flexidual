@@ -1,10 +1,19 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query, type QueryCtx } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getCurrentUserOrThrow } from "./users";
-import { canAccessSchool, hasOrgRole } from "./permissions";
+import {
+  canAccessCampus,
+  canAccessSchool,
+  canViewInstitutionSettings,
+  hasOrgRole,
+} from "./permissions";
 import type { Id } from "./_generated/dataModel";
 import { isValidTimeZone } from "../lib/time-zone";
+import {
+  clearCampusPrincipalAssignments,
+  upsertRoleAssignment,
+} from "./roleAssignments";
 
 const campusValidator = v.object({
   _id: v.id("campuses"),
@@ -26,6 +35,18 @@ const campusValidator = v.object({
   isActive: v.boolean(),
   createdAt: v.number(),
   createdBy: v.id("users"),
+});
+
+const principalValidator = v.object({
+  _id: v.id("users"),
+  fullName: v.string(),
+  email: v.optional(v.string()),
+  imageUrl: v.optional(v.string()),
+});
+
+const campusWithPrincipalValidator = v.object({
+  ...campusValidator.fields,
+  principal: v.union(principalValidator, v.null()),
 });
 
 function normalizeCampusName(value: string) {
@@ -74,6 +95,48 @@ async function assertCanManageSchool(
   }
 }
 
+async function setCampusPrincipal(
+  ctx: MutationCtx,
+  campusId: Id<"campuses">,
+  schoolId: Id<"schools">,
+  principalId: Id<"users"> | null,
+  assignedBy: Id<"users">,
+) {
+  if (!principalId) {
+    await clearCampusPrincipalAssignments(ctx, campusId);
+    return;
+  }
+
+  const [principal, assignments] = await Promise.all([
+    ctx.db.get(principalId),
+    ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", principalId))
+      .collect(),
+  ]);
+  const isPrincipalInInstitution = assignments.some(
+    (assignment) =>
+      assignment.role === "principal" && assignment.schoolId === schoolId,
+  );
+  if (!principal?.isActive || !isPrincipalInInstitution) {
+    throw new ConvexError({
+      code: "INVALID_PRINCIPAL",
+      message: "The selected principal does not belong to this institution.",
+    });
+  }
+
+  await upsertRoleAssignment(
+    ctx,
+    {
+      userId: principalId,
+      orgType: "campus",
+      orgId: campusId,
+      role: "principal",
+    },
+    assignedBy,
+  );
+}
+
 export const list = query({
   args: {
     schoolId: v.optional(v.id("schools")),
@@ -114,7 +177,7 @@ export const list = query({
 
     const access = await Promise.all(
       campuses.map((campus) =>
-        canAccessSchool(ctx, user._id, campus.schoolId),
+        canAccessCampus(ctx, user._id, campus._id, campus.schoolId),
       ),
     );
     return campuses.filter((_, index) => access[index]);
@@ -128,7 +191,9 @@ export const get = query({
     const user = await getCurrentUserOrThrow(ctx);
     const campus = await ctx.db.get(args.id);
     if (!campus) return null;
-    if (!(await canAccessSchool(ctx, user._id, campus.schoolId))) {
+    if (
+      !(await canAccessCampus(ctx, user._id, campus._id, campus.schoolId))
+    ) {
       throw new ConvexError("PERMISSION_DENIED");
     }
     return campus;
@@ -137,17 +202,87 @@ export const get = query({
 
 export const listForInstitutionSettings = query({
   args: { schoolId: v.id("schools") },
-  returns: v.array(campusValidator),
+  returns: v.array(campusWithPrincipalValidator),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    if (!(await canViewInstitutionSettings(ctx, user._id, args.schoolId))) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
+
+    const [campuses, assignments] = await Promise.all([
+      ctx.db
+        .query("campuses")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .collect(),
+      ctx.db
+        .query("roleAssignments")
+        .withIndex("by_school_role_grade", (q) =>
+          q.eq("schoolId", args.schoolId).eq("role", "principal"),
+        )
+        .collect(),
+    ]);
+    const principalByCampus = new Map(
+      assignments
+        .filter((assignment) => assignment.orgType === "campus" && assignment.orgId)
+        .map((assignment) => [assignment.orgId!, assignment.userId]),
+    );
+    const principals = new Map(
+      (
+        await Promise.all(
+          [...new Set(principalByCampus.values())].map((id) => ctx.db.get(id)),
+        )
+      )
+        .filter((principal) => principal?.isActive)
+        .map((principal) => [principal!._id, principal!]),
+    );
+
+    return campuses
+      .map((campus) => {
+        const principal = principals.get(principalByCampus.get(campus._id)!);
+        return {
+          ...campus,
+          principal: principal
+            ? {
+                _id: principal._id,
+                fullName: principal.fullName,
+                email: principal.email,
+                imageUrl: principal.imageUrl,
+              }
+            : null,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+export const listPrincipalCandidates = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.array(principalValidator),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
     await assertCanManageSchool(ctx, user._id, args.schoolId);
-
-    const campuses = await ctx.db
-      .query("campuses")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+    const assignments = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_school_role_grade", (q) =>
+        q.eq("schoolId", args.schoolId).eq("role", "principal"),
+      )
       .collect();
+    const principals = (
+      await Promise.all(
+        [...new Set(assignments.map((item) => item.userId))].map((id) =>
+          ctx.db.get(id),
+        ),
+      )
+    ).filter((principal) => principal?.isActive);
 
-    return campuses.sort((a, b) => a.name.localeCompare(b.name));
+    return principals
+      .map((principal) => ({
+        _id: principal!._id,
+        fullName: principal!.fullName,
+        email: principal!.email,
+        imageUrl: principal!.imageUrl,
+      }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName));
   },
 });
 
@@ -158,6 +293,7 @@ export const create = mutation({
     slug: v.string(),
     code: v.optional(v.string()),
     timeZone: v.optional(v.string()),
+    principalId: v.optional(v.id("users")),
   },
   returns: v.id("campuses"),
   handler: async (ctx, args) => {
@@ -197,7 +333,7 @@ export const create = mutation({
       });
     }
 
-    return await ctx.db.insert("campuses", {
+    const campusId = await ctx.db.insert("campuses", {
       schoolId: args.schoolId,
       name,
       slug,
@@ -207,6 +343,16 @@ export const create = mutation({
       createdAt: Date.now(),
       createdBy: user._id,
     });
+    if (args.principalId) {
+      await setCampusPrincipal(
+        ctx,
+        campusId,
+        args.schoolId,
+        args.principalId,
+        user._id,
+      );
+    }
+    return campusId;
   },
 });
 
@@ -218,6 +364,7 @@ export const update = mutation({
     code: v.optional(v.union(v.string(), v.null())),
     timeZone: v.optional(v.union(v.string(), v.null())),
     isActive: v.optional(v.boolean()),
+    principalId: v.optional(v.union(v.id("users"), v.null())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -263,6 +410,16 @@ export const update = mutation({
         ? { timeZone: timeZone ?? undefined }
         : {}),
     });
+
+    if (args.principalId !== undefined) {
+      await setCampusPrincipal(
+        ctx,
+        id,
+        campus.schoolId,
+        args.principalId,
+        user._id,
+      );
+    }
 
     // When the slug changes, all users' Clerk metadata must be rebuilt with the new key
     if (slug && slug !== campus.slug) {

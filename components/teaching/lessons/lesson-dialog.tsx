@@ -9,11 +9,10 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Pencil, Trash2, PlusCircle, X, Layers } from "lucide-react"
+import { Plus, Pencil, Trash2, X, Layers } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 import { EntityDialog } from "@/components/ui/entity-dialog"
-import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { useAlert } from "@/components/providers/alert-provider"
@@ -210,7 +209,7 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
             {!defaultCurriculumId && (
                 <div className="grid gap-2 p-4 bg-muted/30 rounded-lg border">
                     <Label>{t('navigation.curriculums')} <span className="text-destructive">*</span></Label>
-                    <div className="flex gap-2">
+                    <div>
                         <Select 
                             value={formData.curriculumId} 
                             onValueChange={(val) => setFormData({...formData, curriculumId: val})}
@@ -224,13 +223,6 @@ export function LessonDialog({ curriculumId: defaultCurriculumId, lesson, trigge
                                 ))}
                             </SelectContent>
                         </Select>
-                        <CurriculumDialog 
-                            trigger={
-                                <Button type="button" variant="outline" size="icon" title="Create new curriculum">
-                                    <PlusCircle className="h-4 w-4" />
-                                </Button>
-                            }
-                        />
                     </div>
                 </div>
             )}

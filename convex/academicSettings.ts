@@ -4,8 +4,9 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import {
   canAccessSchool,
-  canManageClasses,
   canManageInstitution,
+  canViewCampusOperations,
+  canViewInstitutionSettings,
 } from "./permissions";
 import { getCurrentUserOrThrow } from "./users";
 import {
@@ -92,9 +93,15 @@ export const get = query({
       }
     }
 
-    if (
-      !(await canManageClasses(ctx, user._id, args.campusId, args.schoolId))
-    ) {
+    const canRead = campus
+      ? await canViewCampusOperations(
+          ctx,
+          user._id,
+          campus._id,
+          args.schoolId,
+        )
+      : await canViewInstitutionSettings(ctx, user._id, args.schoolId);
+    if (!canRead) {
       throw new ConvexError("PERMISSION_DENIED");
     }
 

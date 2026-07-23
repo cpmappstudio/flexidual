@@ -90,7 +90,8 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   const logPresence = useMutation(api.schedule.logStudentPresence);
 
   const sessionStatus = useQuery(api.schedule.getSessionStatus, { 
-    sessionId: roomName 
+    sessionId: roomName,
+    now: Math.floor(now / 60_000) * 60_000,
   });
 
   const scheduleDetails = useQuery(
@@ -351,7 +352,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   // Active Classroom
   return (
-    <div ref={containerRef} className={`w-full h-full overflow-hidden rounded-lg ${className}`}>
+    <div ref={containerRef} className={`h-full w-full overflow-hidden ${className}`}>
       {!isStudentView && <SidebarAutoCollapser />}
       <LiveKitRoom
         video={false}
@@ -375,7 +376,6 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             roomName={roomName}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
-            onLeave={handleDisconnect}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
           />

@@ -1,0 +1,7 @@
+{
+  "TenantLayout": {
+    "workspace": "Espacio de trabajo",
+    "role": "Rol",
+    "platformAdmin": "Administrador de plataforma"
+  }
+}

@@ -2,37 +2,30 @@
 
 import { useMemo } from "react"
 import Image from "next/image"
-import { useParams } from "next/navigation"
 import { useAuth } from "@clerk/nextjs"
 import { Link, usePathname } from "@/i18n/navigation"
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { useTranslations } from "next-intl"
-import { getRoleForOrg } from "@/lib/rbac" 
+import { getHighestStaffRole } from "@/lib/rbac"
+import { useStaffAccess } from "@/hooks/use-staff-access"
+import { useOrgBasePath } from "@/hooks/use-org-base-path"
 
 export function NavMain() {
   const t = useTranslations()
   const pathname = usePathname()
-  const params = useParams()
-  
-  // 1. Extract context AND normalize the URL
-  let currentSlug = params.orgSlug as string
-  if (currentSlug === "admin" || pathname.startsWith("/admin")) {
-    currentSlug = "system"
-  }
-
   const { sessionClaims, isLoaded } = useAuth()
-
-  // 2. Evaluate role for THIS specific context
-  const role = useMemo(() => getRoleForOrg(sessionClaims, currentSlug), [sessionClaims, currentSlug])
-  
-  const isTeacher = role === "teacher" || role === "tutor"
-  const isAdmin = role === "admin" || role === "principal" || role === "superadmin"
-  const isGlobalSystem = currentSlug === "system"
+  const { access } = useStaffAccess()
+  const basePath = useOrgBasePath()
+  const fallbackRole = useMemo(
+    () => getHighestStaffRole(sessionClaims),
+    [sessionClaims],
+  )
+  const role = access?.role ?? fallbackRole
+  const canViewPeople =
+    access?.canViewPeople ??
+    (role === "admin" || role === "principal" || role === "superadmin")
 
   if (!isLoaded || role === "student") return null
-
-  // Base URL for all links in this tenant
-  const basePath = isGlobalSystem ? "/admin" : `/${currentSlug}`
 
   return (
     <SidebarGroup>
@@ -52,7 +45,7 @@ export function NavMain() {
           </SidebarMenuButton>
         </SidebarMenuItem>
 
-        {(isTeacher || isAdmin) && (
+        {role && (
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
@@ -61,7 +54,7 @@ export function NavMain() {
             >
               <Link href={`${basePath}/classes`}>
                 <Image src="/classes-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
-                <span>{isAdmin ? t('navigation.allClasses') : t('navigation.myClasses')}</span>
+                <span>{t('navigation.allClasses')}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -81,31 +74,31 @@ export function NavMain() {
         </SidebarMenuItem>
 
 
-        {isAdmin && (
+        {canViewPeople && (
           <>
             <SidebarGroupLabel className="mt-4">{t('navigation.administration')}</SidebarGroupLabel>
             <SidebarMenuItem>
               <SidebarMenuButton
                 asChild
-                isActive={pathname.includes(`${basePath}/users`)}
+                isActive={pathname.includes(`${basePath}/students`)}
                 className="h-12 gap-3 px-2 text-base"
               >
-                <Link href={`${basePath}/users`}>
-                  <Image src="/messages-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
-                  <span>{t('navigation.allUsers')}</span>
+                <Link href={`${basePath}/students`}>
+                  <Image src="/students-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
+                  <span>{t('navigation.students')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            
+
             <SidebarMenuItem>
               <SidebarMenuButton
                 asChild
-                isActive={pathname.includes(`${basePath}/curriculums`)}
+                isActive={pathname.includes(`${basePath}/professors`)}
                 className="h-12 gap-3 px-2 text-base"
               >
-                <Link href={`${basePath}/curriculums`}>
-                  <Image src="/resources-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
-                  <span>{t('navigation.allCurriculums')}</span>
+                <Link href={`${basePath}/professors`}>
+                  <Image src="/professors-icon.svg" alt="" width={32} height={32} aria-hidden="true" />
+                  <span>{t('navigation.teachers')}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

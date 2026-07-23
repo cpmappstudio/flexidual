@@ -1,0 +1,79 @@
+{
+  "TenantOnboarding": {
+    "title": "Elige los servicios que estarán disponibles para tu institución",
+    "continue": "Continuar",
+    "backToServices": "Volver",
+    "continueDisabledHint": "Selecciona al menos un servicio para continuar.",
+    "saveError": "No pudimos actualizar los módulos habilitados. Inténtalo de nuevo.",
+    "empty": {
+      "title": "Aún no hay módulos listos",
+      "description": "Este onboarding ya está conectado al registry real, pero todavía no hay módulos implementados disponibles para activación."
+    },
+    "inviteTeammates": {
+      "title": "Invita a tu equipo institucional",
+      "pendingDescription": "Las personas que agregues aquí recibirán una invitación para unirse a tu workspace.",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "nombre@institucion.edu",
+      "roleLabel": "Rol",
+      "roles": {
+        "admin": "Administrador",
+        "member": "Miembro"
+      },
+      "addInvite": "Agregar",
+      "removeInvite": "Eliminar invitación",
+      "messageLabel": "Mensaje (opcional)",
+      "messagePlaceholder": "Agrega un mensaje corto para ayudar a tu equipo a entender por qué está siendo invitado.",
+      "finish": "Finalizar"
+    },
+    "steps": {
+      "services": {
+        "title": "Seleccionar servicios"
+      },
+      "inviteTeammates": {
+        "title": "Invitar miembros"
+      }
+    },
+    "services": {
+      "dismissal": {
+        "title": "Salida Escolar",
+        "description": "Coordina recogidas y salidas con más orden y control."
+      },
+      "academics": {
+        "title": "Gestión Académica",
+        "description": "Administra estudiantes, cursos y calificaciones."
+      },
+      "teaching": {
+        "title": "Seguimiento Docente",
+        "description": "Da seguimiento al avance docente y curricular en tiempo real."
+      },
+      "billing": {
+        "title": "Admisiones y Pagos",
+        "description": "Gestiona solicitudes, documentos y pagos en un solo flujo."
+      },
+      "liveClasses": {
+        "title": "Flexidual",
+        "description": "Habilita clases en vivo, asistencia y participación para tus campus."
+      }
+    },
+    "modules": {
+      "dismissal": {
+        "description": "Coordina salidas y recogidas con visibilidad en tiempo real y más control operativo."
+      },
+      "academics": {
+        "description": "Gestiona la estructura académica institucional, periodos, cursos y flujos de notas finales."
+      },
+      "library": {
+        "description": "Publica colecciones de biblioteca digital y permite acceso a documentos institucionales."
+      },
+      "teaching": {
+        "description": "Da seguimiento al currículo, lessons y evidencias de clase para docentes y coordinadores."
+      },
+      "billing": {
+        "description": "Crea cobros, recurrencias y flujos de facturación familiar desde una sola superficie."
+      },
+      "liveClasses": {
+        "description": "Ejecuta clases en vivo, registra asistencia y gestiona participación con Flexidual."
+      }
+    }
+  }
+}

@@ -1,10 +1,11 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
 import { getCurrentUserOrThrow } from "./users";
 import {
   canAccessCurriculumContent,
   canModifyCurriculumContent,
 } from "./permissions";
+import type { Id } from "./_generated/dataModel";
 
 const lessonFields = {
   _id: v.id("lessons"),
@@ -20,6 +21,20 @@ const lessonFields = {
   createdBy: v.id("users"),
 };
 const lessonValidator = v.object(lessonFields);
+
+async function validateResourceStorageIds(
+  ctx: MutationCtx,
+  storageIds: Id<"_storage">[],
+) {
+  const uniqueStorageIds = [...new Set(storageIds)];
+  const metadata = await Promise.all(
+    uniqueStorageIds.map((storageId) => ctx.db.system.get(storageId)),
+  );
+  if (metadata.some((item) => item === null)) {
+    throw new ConvexError("LESSON_RESOURCE_NOT_FOUND");
+  }
+  return uniqueStorageIds;
+}
 
 async function requireCurriculumAccess(
   ctx: Parameters<typeof getCurrentUserOrThrow>[0],
@@ -39,7 +54,7 @@ async function requireCurriculumAccess(
  * List lessons by curriculum (ordered)
  */
 export const listByCurriculum = query({
-  args: { 
+  args: {
     curriculumId: v.id("curriculums"),
     includeInactive: v.optional(v.boolean()),
   },
@@ -47,17 +62,19 @@ export const listByCurriculum = query({
   handler: async (ctx, args) => {
     await requireCurriculumAccess(ctx, args.curriculumId);
     let lessons;
-    
+
     if (args.includeInactive) {
       lessons = await ctx.db
         .query("lessons")
-        .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
+        .withIndex("by_curriculum", (q) =>
+          q.eq("curriculumId", args.curriculumId),
+        )
         .collect();
     } else {
       lessons = await ctx.db
         .query("lessons")
-        .withIndex("by_curriculum_active", (q) => 
-          q.eq("curriculumId", args.curriculumId).eq("isActive", true)
+        .withIndex("by_curriculum_active", (q) =>
+          q.eq("curriculumId", args.curriculumId).eq("isActive", true),
         )
         .collect();
     }
@@ -97,19 +114,19 @@ export const getWithResources = query({
     await requireCurriculumAccess(ctx, lesson.curriculumId);
 
     let resourceUrls: string[] = [];
-    
+
     if (lesson.resourceStorageIds && lesson.resourceStorageIds.length > 0) {
       resourceUrls = await Promise.all(
         lesson.resourceStorageIds.map(async (storageId) => {
           const url = await ctx.storage.getUrl(storageId);
           return url || "";
-        })
+        }),
       );
     }
 
     return {
       ...lesson,
-      resourceUrls: resourceUrls.filter(url => url !== ""),
+      resourceUrls: resourceUrls.filter((url) => url !== ""),
     };
   },
 });
@@ -134,7 +151,11 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    const isAuthorized = await canModifyCurriculumContent(ctx, user._id, args.curriculumId);
+    const isAuthorized = await canModifyCurriculumContent(
+      ctx,
+      user._id,
+      args.curriculumId,
+    );
     if (!isAuthorized) {
       throw new Error("Not authorized to add lessons to this curriculum.");
     }
@@ -144,12 +165,18 @@ export const create = mutation({
     if (order === undefined) {
       const lessons = await ctx.db
         .query("lessons")
-        .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
+        .withIndex("by_curriculum", (q) =>
+          q.eq("curriculumId", args.curriculumId),
+        )
         .collect();
-      
+
       const maxOrder = lessons.reduce((max, l) => Math.max(max, l.order), 0);
       order = maxOrder + 1;
     }
+
+    const resourceStorageIds = args.resourceStorageIds
+      ? await validateResourceStorageIds(ctx, args.resourceStorageIds)
+      : undefined;
 
     return await ctx.db.insert("lessons", {
       curriculumId: args.curriculumId,
@@ -157,7 +184,7 @@ export const create = mutation({
       description: args.description,
       content: args.content,
       order,
-      resourceStorageIds: args.resourceStorageIds,
+      resourceStorageIds,
       isActive: true,
       createdAt: Date.now(),
       createdBy: user._id,
@@ -172,11 +199,13 @@ export const create = mutation({
 export const createBatch = mutation({
   args: {
     curriculumId: v.id("curriculums"),
-    lessons: v.array(v.object({
-      title: v.string(),
-      description: v.optional(v.string()),
-      content: v.optional(v.string()),
-    }))
+    lessons: v.array(
+      v.object({
+        title: v.string(),
+        description: v.optional(v.string()),
+        content: v.optional(v.string()),
+      }),
+    ),
   },
   returns: v.array(
     v.object({
@@ -188,7 +217,11 @@ export const createBatch = mutation({
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
 
-    const isAuthorized = await canModifyCurriculumContent(ctx, user._id, args.curriculumId);
+    const isAuthorized = await canModifyCurriculumContent(
+      ctx,
+      user._id,
+      args.curriculumId,
+    );
     if (!isAuthorized) {
       throw new Error("Not authorized to add lessons to this curriculum.");
     }
@@ -196,10 +229,15 @@ export const createBatch = mutation({
     // 1. Get current max order
     const existingLessons = await ctx.db
       .query("lessons")
-      .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
+      .withIndex("by_curriculum", (q) =>
+        q.eq("curriculumId", args.curriculumId),
+      )
       .collect();
-    
-    let currentOrder = existingLessons.reduce((max, l) => Math.max(max, l.order), 0);
+
+    let currentOrder = existingLessons.reduce(
+      (max, l) => Math.max(max, l.order),
+      0,
+    );
 
     const results = [];
 
@@ -221,7 +259,11 @@ export const createBatch = mutation({
 
         results.push({ title: item.title, status: "success" as const });
       } catch (e) {
-        results.push({ title: item.title, status: "error" as const, reason: (e as Error).message });
+        results.push({
+          title: item.title,
+          status: "error" as const,
+          reason: (e as Error).message,
+        });
       }
     }
 
@@ -250,13 +292,33 @@ export const update = mutation({
       throw new Error("Lesson not found");
     }
 
-    const isAuthorized = await canModifyCurriculumContent(ctx, user._id, lesson.curriculumId);
+    const isAuthorized = await canModifyCurriculumContent(
+      ctx,
+      user._id,
+      lesson.curriculumId,
+    );
     if (!isAuthorized) {
       throw new Error("Not authorized to update this lesson.");
     }
 
+    const resourceStorageIds =
+      args.resourceStorageIds === undefined
+        ? undefined
+        : await validateResourceStorageIds(ctx, args.resourceStorageIds);
+    const removedStorageIds =
+      resourceStorageIds === undefined
+        ? []
+        : (lesson.resourceStorageIds ?? []).filter(
+            (storageId) => !resourceStorageIds.includes(storageId),
+          );
     const { id, ...updates } = args;
+    if (resourceStorageIds !== undefined) {
+      updates.resourceStorageIds = resourceStorageIds;
+    }
     await ctx.db.patch(id, updates);
+    await Promise.allSettled(
+      removedStorageIds.map((storageId) => ctx.storage.delete(storageId)),
+    );
   },
 });
 
@@ -274,23 +336,37 @@ export const remove = mutation({
       throw new Error("Lesson not found");
     }
 
-    const isAuthorized = await canModifyCurriculumContent(ctx, user._id, lesson.curriculumId);
+    const isAuthorized = await canModifyCurriculumContent(
+      ctx,
+      user._id,
+      lesson.curriculumId,
+    );
     if (!isAuthorized) {
       throw new Error("Not authorized to delete this lesson.");
     }
 
-    const allSchedules = await ctx.db
-      .query("classSchedule")
+    const classes = await ctx.db
+      .query("classes")
+      .withIndex("by_curriculum", (q) =>
+        q.eq("curriculumId", lesson.curriculumId),
+      )
       .collect();
-    
-    const schedules = allSchedules.filter(schedule => 
-      schedule.lessonIds && schedule.lessonIds.includes(args.id)
+    const classSchedules = await Promise.all(
+      classes.map((classData) =>
+        ctx.db
+          .query("classSchedule")
+          .withIndex("by_class", (q) => q.eq("classId", classData._id))
+          .collect(),
+      ),
     );
+    const schedules = classSchedules
+      .flat()
+      .filter((schedule) => schedule.lessonIds?.includes(args.id));
 
     if (schedules.length > 0) {
       throw new Error(
         `Cannot delete lesson with ${schedules.length} scheduled session(s). ` +
-        `Remove from schedule first.`
+          `Remove from schedule first.`,
       );
     }
 
@@ -319,7 +395,7 @@ export const reorder = mutation({
       v.object({
         id: v.id("lessons"),
         order: v.number(),
-      })
+      }),
     ),
   },
   returns: v.null(),
@@ -335,22 +411,25 @@ export const reorder = mutation({
     if (!firstLesson) throw new Error("Lesson not found");
     if (
       lessons.some(
-        (lesson) =>
-          !lesson || lesson.curriculumId !== firstLesson.curriculumId,
+        (lesson) => !lesson || lesson.curriculumId !== firstLesson.curriculumId,
       )
     ) {
       throw new ConvexError("INVALID_REORDER_REQUEST");
     }
 
-    const isAuthorized = await canModifyCurriculumContent(ctx, user._id, firstLesson.curriculumId);
+    const isAuthorized = await canModifyCurriculumContent(
+      ctx,
+      user._id,
+      firstLesson.curriculumId,
+    );
     if (!isAuthorized) {
       throw new Error("Not authorized to reorder these lessons.");
     }
 
     await Promise.all(
-      args.updates.map((update) => 
-        ctx.db.patch(update.id, { order: update.order })
-      )
+      args.updates.map((update) =>
+        ctx.db.patch(update.id, { order: update.order }),
+      ),
     );
   },
 });
@@ -360,7 +439,7 @@ export const reorder = mutation({
  * Creates a copy with incremented order
  */
 export const duplicate = mutation({
-  args: { 
+  args: {
     id: v.id("lessons"),
     newTitle: v.optional(v.string()),
   },
@@ -373,7 +452,11 @@ export const duplicate = mutation({
       throw new Error("Lesson not found");
     }
 
-    const isAuthorized = await canModifyCurriculumContent(ctx, user._id, original.curriculumId);
+    const isAuthorized = await canModifyCurriculumContent(
+      ctx,
+      user._id,
+      original.curriculumId,
+    );
     if (!isAuthorized) {
       throw new Error("Not authorized to duplicate this lesson.");
     }
@@ -381,9 +464,11 @@ export const duplicate = mutation({
     // Get max order to place duplicate at end
     const lessons = await ctx.db
       .query("lessons")
-      .withIndex("by_curriculum", (q) => q.eq("curriculumId", original.curriculumId))
+      .withIndex("by_curriculum", (q) =>
+        q.eq("curriculumId", original.curriculumId),
+      )
       .collect();
-    
+
     const maxOrder = lessons.reduce((max, l) => Math.max(max, l.order), 0);
 
     return await ctx.db.insert("lessons", {

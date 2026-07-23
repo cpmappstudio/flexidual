@@ -9,22 +9,20 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
-import {
-  canAccessClass,
-  canManageClasses,
-  hasSystemRole,
-} from "./permissions";
+import { canAccessClass, canManageClasses, hasSystemRole } from "./permissions";
 import {
   DEFAULT_SCHEDULE_END_MINUTES,
   DEFAULT_SCHEDULE_START_MINUTES,
 } from "../lib/academic-settings";
 import {
   addCivilDays,
+  civilDayNumber,
   getWeeklyOccurrenceStarts,
   isValidTimeZone,
   localDateTimeToUtc,
   toCivilDate,
   todayInTimeZone,
+  utcToLocalDateTime,
 } from "../lib/time-zone";
 import { getClassTimeZone } from "./model/timeZone";
 import { validateGradeCodes } from "./model/grades";
@@ -38,6 +36,9 @@ import {
   isStudentEnrolled,
   listClassStudentIds,
 } from "./model/enrollments";
+import { hasOnlyInstructorStaffRoles } from "./model/roles";
+import { deleteSchedulesWithDependencies } from "./model/scheduleDeletion";
+import { isCurriculumAvailableForGrade } from "../lib/curriculum";
 
 const classFields = {
   _id: v.id("classes"),
@@ -63,7 +64,16 @@ const classFields = {
   createdBy: v.id("users"),
   campusId: v.optional(v.id("campuses")),
 };
-const classValidator = v.object(classFields);
+const classTableRowValidator = v.object({
+  ...classFields,
+  studentCount: v.number(),
+});
+const teacherOptionValidator = v.object({
+  _id: v.id("users"),
+  fullName: v.string(),
+  email: v.optional(v.string()),
+  imageUrl: v.optional(v.string()),
+});
 
 async function getInstitutionStudents(
   ctx: QueryCtx | MutationCtx,
@@ -98,105 +108,306 @@ async function getClassAcademicYear(
   classData: Doc<"classes">,
 ) {
   if (!classData.academicPeriodId) return classData.academicYear;
-  return (await ctx.db.get(classData.academicPeriodId))?.name ?? classData.academicYear;
+  return (
+    (await ctx.db.get(classData.academicPeriodId))?.name ??
+    classData.academicYear
+  );
+}
+
+type ClassListFilters = {
+  isActive?: boolean;
+  schoolId?: Id<"schools">;
+  campusId?: Id<"campuses">;
+};
+
+async function listAccessibleClasses(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  args: ClassListFilters,
+) {
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  const instructorOnly = hasOnlyInstructorStaffRoles(
+    assignments.map((assignment) => assignment.role),
+  );
+
+  let validCampusIds: Set<string> | null = null;
+  if (args.campusId) {
+    validCampusIds = new Set([args.campusId]);
+  } else if (args.schoolId) {
+    const campuses = await ctx.db
+      .query("campuses")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId!))
+      .collect();
+    validCampusIds = new Set(campuses.map((campus) => campus._id));
+  }
+
+  if (instructorOnly) {
+    const [teachingClasses, tutoringClasses] = await Promise.all([
+      ctx.db
+        .query("classes")
+        .withIndex("by_teacher", (q) =>
+          q.eq("teacherId", userId).eq("isActive", args.isActive ?? true),
+        )
+        .collect(),
+      ctx.db
+        .query("classes")
+        .withIndex("by_tutor", (q) =>
+          q.eq("tutorId", userId).eq("isActive", args.isActive ?? true),
+        )
+        .collect(),
+    ]);
+    return [
+      ...new Map(
+        [...teachingClasses, ...tutoringClasses].map((classData) => [
+          classData._id,
+          classData,
+        ]),
+      ).values(),
+    ].filter(
+      (classData) =>
+        !validCampusIds ||
+        (classData.campusId && validCampusIds.has(classData.campusId)),
+    );
+  }
+
+  let classes: Doc<"classes">[];
+  if (validCampusIds) {
+    classes = (
+      await Promise.all(
+        [...validCampusIds].map((campusId) =>
+          ctx.db
+            .query("classes")
+            .withIndex("by_campus", (q) =>
+              q
+                .eq("campusId", campusId as Id<"campuses">)
+                .eq("isActive", args.isActive ?? true),
+            )
+            .collect(),
+        ),
+      )
+    ).flat();
+  } else {
+    classes = await ctx.db
+      .query("classes")
+      .withIndex("by_active", (q) => q.eq("isActive", args.isActive ?? true))
+      .collect();
+  }
+
+  if (validCampusIds) {
+    classes = classes.filter(
+      (classData) =>
+        classData.campusId && validCampusIds!.has(classData.campusId),
+    );
+  }
+  const access = await Promise.all(
+    classes.map((classData) => canAccessClass(ctx, userId, classData)),
+  );
+  return classes.filter((_, index) => access[index]);
+}
+
+async function getTeacherOptions(ctx: QueryCtx, classes: Doc<"classes">[]) {
+  const teacherIds = [
+    ...new Set(
+      classes.flatMap((classData) =>
+        classData.teacherId ? [classData.teacherId] : [],
+      ),
+    ),
+  ];
+  const teachers = (
+    await Promise.all(teacherIds.map((teacherId) => ctx.db.get(teacherId)))
+  ).filter((teacher): teacher is Doc<"users"> => Boolean(teacher?.isActive));
+
+  return teachers
+    .map((teacher) => ({
+      _id: teacher._id,
+      fullName: teacher.fullName,
+      email: teacher.email,
+      imageUrl: teacher.imageUrl,
+    }))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
 }
 
 // ============================================================================
 // QUERIES
 // ============================================================================
 
-/**
- * List all classes with optional filters
- */
-export const list = query({
+export const listOverview = query({
   args: {
-    teacherId: v.optional(v.id("users")),
-    curriculumId: v.optional(v.id("curriculums")),
-    isActive: v.optional(v.boolean()),
     schoolId: v.optional(v.id("schools")),
     campusId: v.optional(v.id("campuses")),
   },
-  returns: v.array(classValidator),
+  returns: v.object({
+    classes: v.array(classTableRowValidator),
+    teachers: v.array(teacherOptionValidator),
+    uniqueStudentCount: v.number(),
+  }),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
-    // 1. Resolve hierarchical constraints first
-    let validCampusIds: Set<string> | null = null;
+    const classes = await listAccessibleClasses(ctx, user._id, {
+      ...args,
+      isActive: true,
+    });
+    const [studentIdsByClass, teachers] = await Promise.all([
+      Promise.all(
+        classes.map((classData) => listClassStudentIds(ctx, classData)),
+      ),
+      getTeacherOptions(ctx, classes),
+    ]);
+    const rows = classes.map((classData, index) => ({
+      ...classData,
+      students: [],
+      studentCount: studentIdsByClass[index].length,
+    }));
+    const uniqueStudentCount = new Set(studentIdsByClass.flat()).size;
 
-    if (args.campusId) {
-      validCampusIds = new Set([args.campusId]);
-    } else if (args.schoolId) {
-      const campuses = await ctx.db
-        .query("campuses")
-        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId!))
-        .collect();
-      validCampusIds = new Set(campuses.map((c) => c._id));
+    return { classes: rows, teachers, uniqueStudentCount };
+  },
+});
+
+export const listFilterOptions = query({
+  args: {
+    schoolId: v.optional(v.id("schools")),
+    campusId: v.optional(v.id("campuses")),
+  },
+  returns: v.object({
+    courses: v.array(
+      v.object({
+        _id: v.id("classes"),
+        name: v.string(),
+        teacherId: v.optional(v.id("users")),
+        gradeCode: v.optional(v.string()),
+      }),
+    ),
+    teachers: v.array(teacherOptionValidator),
+  }),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const classes = await listAccessibleClasses(ctx, user._id, {
+      ...args,
+      isActive: true,
+    });
+    return {
+      courses: classes
+        .map((classData) => ({
+          _id: classData._id,
+          name: classData.name,
+          teacherId: classData.teacherId,
+          gradeCode: classData.gradeCode,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      teachers: await getTeacherOptions(ctx, classes),
+    };
+  },
+});
+
+export const listWeeklyScheduleGuides = query({
+  args: {
+    campusId: v.id("campuses"),
+    academicPeriodId: v.id("academicPeriods"),
+    gradeCode: v.string(),
+  },
+  returns: v.array(
+    v.object({
+      scheduleId: v.id("classSchedule"),
+      classId: v.id("classes"),
+      className: v.string(),
+      dayOfWeek: v.number(),
+      startMinutes: v.number(),
+      endMinutes: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const [campus, academicPeriod] = await Promise.all([
+      ctx.db.get(args.campusId),
+      ctx.db.get(args.academicPeriodId),
+    ]);
+    if (
+      !campus ||
+      !academicPeriod ||
+      academicPeriod.schoolId !== campus.schoolId
+    ) {
+      throw new ConvexError("INVALID_SCHEDULE_GUIDE_FILTERS");
+    }
+    if (!(await canManageClasses(ctx, user._id, campus._id, campus.schoolId))) {
+      throw new ConvexError("PERMISSION_DENIED");
     }
 
-    // 2. Fetch using the most optimized existing index
-    let classes;
-
-    if (args.teacherId) {
-      classes = await ctx.db
+    const [school, classes] = await Promise.all([
+      ctx.db.get(campus.schoolId),
+      ctx.db
         .query("classes")
-        .withIndex("by_teacher", (q) =>
+        .withIndex("by_campus_period_grade", (q) =>
           q
-            .eq("teacherId", args.teacherId!)
-            .eq("isActive", args.isActive ?? true),
+            .eq("campusId", campus._id)
+            .eq("academicPeriodId", academicPeriod._id)
+            .eq("gradeCode", args.gradeCode)
+            .eq("isActive", true),
         )
-        .collect();
-    } else if (args.curriculumId) {
-      classes = await ctx.db
-        .query("classes")
-        .withIndex("by_curriculum", (q) => {
-          const range = q.eq("curriculumId", args.curriculumId!);
-          return args.isActive === undefined
-            ? range
-            : range.eq("isActive", args.isActive);
-        })
-        .collect();
-    } else if (validCampusIds) {
-      classes = (
-        await Promise.all(
-          [...validCampusIds].map((campusId) =>
-            ctx.db
-              .query("classes")
-              .withIndex("by_campus", (q) =>
-                q
-                  .eq("campusId", campusId as Id<"campuses">)
-                  .eq("isActive", args.isActive ?? true),
-              )
-              .collect(),
-          ),
-        )
-      ).flat();
-    } else {
-      const allClasses = await ctx.db
-        .query("classes")
-        .withIndex("by_active", (q) => q.eq("isActive", args.isActive ?? true))
-        .collect();
+        .collect(),
+    ]);
+    const rows = await Promise.all(
+      classes.map(async (classData) => {
+        const timeZone =
+          classData.timeZone ?? campus.timeZone ?? school?.timeZone;
+        if (!timeZone) return [];
 
-      classes = allClasses;
-    }
+        const schedules = await ctx.db
+          .query("classSchedule")
+          .withIndex("by_class_recurrence_parent", (q) =>
+            q.eq("classId", classData._id).eq("recurrenceParentId", undefined),
+          )
+          .collect();
 
-    // 3. Apply the organizational filter in-memory if requested
-    if (validCampusIds) {
-      classes = classes.filter(
-        (c) => c.campusId && validCampusIds!.has(c.campusId),
+        return schedules.flatMap((schedule) => {
+          if (
+            schedule.status === "cancelled" ||
+            !schedule.isRecurring ||
+            schedule.recurrenceParentId
+          ) {
+            return [];
+          }
+          const localStart = utcToLocalDateTime(
+            schedule.scheduledStart,
+            timeZone,
+          );
+          const localEnd = utcToLocalDateTime(schedule.scheduledEnd, timeZone);
+          if (localStart.slice(0, 10) !== localEnd.slice(0, 10)) return [];
+
+          const startMinutes =
+            Number(localStart.slice(11, 13)) * 60 +
+            Number(localStart.slice(14, 16));
+          const endMinutes =
+            Number(localEnd.slice(11, 13)) * 60 +
+            Number(localEnd.slice(14, 16));
+
+          return [
+            {
+              scheduleId: schedule._id,
+              classId: classData._id,
+              className: classData.name,
+              dayOfWeek: new Date(
+                civilDayNumber(localStart.slice(0, 10)) * 86_400_000,
+              ).getUTCDay(),
+              startMinutes,
+              endMinutes,
+            },
+          ];
+        });
+      }),
+    );
+
+    return rows
+      .flat()
+      .sort(
+        (a, b) =>
+          a.dayOfWeek - b.dayOfWeek ||
+          a.startMinutes - b.startMinutes ||
+          a.className.localeCompare(b.className),
       );
-    }
-
-    const access = await Promise.all(
-      classes.map((classData) => canAccessClass(ctx, user._id, classData)),
-    );
-    return await Promise.all(
-      classes
-        .filter((_, index) => access[index])
-        .map(async (classData) => ({
-          ...classData,
-          students: await listClassStudentIds(ctx, classData),
-          academicYear: await getClassAcademicYear(ctx, classData),
-        })),
-    );
   },
 });
 
@@ -343,61 +554,6 @@ export const getWithDetails = query({
           avatarStorageId: s!.avatarStorageId,
         })),
     };
-  },
-});
-
-/**
- * Get my classes (for current user - student or teacher)
- */
-export const getMyClasses = query({
-  args: {},
-  returns: v.array(classValidator),
-  handler: async (ctx) => {
-    const user = await getCurrentUserFromAuth(ctx);
-    if (!user) return [];
-
-    // Get classes where they are the assigned teacher
-    const teachingClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_teacher", (q) =>
-        q.eq("teacherId", user._id).eq("isActive", true),
-      )
-      .collect();
-
-    const enrollmentRows = await ctx.db
-      .query("classEnrollments")
-      .withIndex("by_student", (q) => q.eq("studentId", user._id))
-      .collect();
-    const studentClasses = (
-      await Promise.all(enrollmentRows.map((row) => ctx.db.get(row.classId)))
-    ).filter((classData) => classData?.isActive);
-    const legacyClasses = (
-      await ctx.db
-        .query("classes")
-        .withIndex("by_active", (q) => q.eq("isActive", true))
-        .collect()
-    ).filter(
-      (classData) =>
-        !classData.enrollmentsMigratedAt &&
-        classData.students?.includes(user._id),
-    );
-
-    // Combine and remove duplicates
-    const combined = [...teachingClasses, ...studentClasses, ...legacyClasses];
-    const uniqueIds = new Set();
-    const uniqueClasses = combined.filter((c): c is Doc<"classes"> => {
-      if (!c) return false;
-      if (uniqueIds.has(c._id)) return false;
-      uniqueIds.add(c._id);
-      return true;
-    });
-    return await Promise.all(
-      uniqueClasses.map(async (classData) => ({
-        ...classData,
-        students: await listClassStudentIds(ctx, classData),
-        academicYear: await getClassAcademicYear(ctx, classData),
-      })),
-    );
   },
 });
 
@@ -671,8 +827,7 @@ export const createWithSchedule = mutation({
     if (
       (await validateGradeCodes(ctx, curriculum.schoolId, [args.gradeCode]))
         .length > 0 ||
-      (curriculum.gradeCodes?.length &&
-        !curriculum.gradeCodes.includes(args.gradeCode))
+      !isCurriculumAvailableForGrade(curriculum.gradeCodes, args.gradeCode)
     ) {
       throw new ConvexError("INVALID_GRADE");
     }
@@ -775,22 +930,23 @@ export const createWithSchedule = mutation({
           q.eq("teacherId", args.teacherId).eq("isActive", true),
         )
         .collect();
-      const teacherClassIds = new Set(
-        teacherClasses.map((classData) => classData._id),
-      );
-      const existingSchedules = await ctx.db
-        .query("classSchedule")
-        .withIndex("by_date_range", (q) =>
-          q
-            .gte("scheduledStart", startDate - DAY_MS)
-            .lte("scheduledStart", endDate),
+      const teacherSchedules = (
+        await Promise.all(
+          teacherClasses.map((classData) =>
+            ctx.db
+              .query("classSchedule")
+              .withIndex("by_class", (q) =>
+                q
+                  .eq("classId", classData._id)
+                  .gte("scheduledStart", startDate - DAY_MS)
+                  .lte("scheduledStart", endDate),
+              )
+              .collect(),
+          ),
         )
-        .collect();
-      const teacherSchedules = existingSchedules.filter(
-        (schedule) =>
-          schedule.status !== "cancelled" &&
-          teacherClassIds.has(schedule.classId),
-      );
+      )
+        .flat()
+        .filter((schedule) => schedule.status !== "cancelled");
 
       for (const plannedClass of liveClasses) {
         const conflict = teacherSchedules.find(
@@ -887,7 +1043,6 @@ export const update = mutation({
     curriculumId: v.optional(v.id("curriculums")),
     gradeCode: v.optional(v.string()),
     tutorId: v.optional(v.union(v.id("users"), v.null())),
-    academicYear: v.optional(v.string()),
     startDate: v.optional(v.number()),
     endDate: v.optional(v.number()),
     isActive: v.optional(v.boolean()),
@@ -913,7 +1068,7 @@ export const update = mutation({
 
     if (!isAuthorizedAdmin) {
       throw new ConvexError(
-        "PERMISSION_DENIED: Only administrators or the assigned teacher can modify this class.",
+        "PERMISSION_DENIED: Only administrators or campus principals can modify this class.",
       );
     }
 
@@ -937,8 +1092,10 @@ export const update = mutation({
           effectiveGradeCode,
         ])
       ).length > 0 ||
-        (targetCurriculum.gradeCodes?.length &&
-          !targetCurriculum.gradeCodes.includes(effectiveGradeCode)))
+        !isCurriculumAvailableForGrade(
+          targetCurriculum.gradeCodes,
+          effectiveGradeCode,
+        ))
     ) {
       throw new ConvexError("INVALID_GRADE");
     }
@@ -1246,29 +1403,29 @@ export const addStudents = mutation({
  */
 export const remove = mutation({
   args: { id: v.id("classes") },
-  returns: v.null(),
+  returns: v.object({ deleted: v.literal(true) }),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
+    const classData = await ctx.db.get(args.id);
+    if (!classData) return { deleted: true } as const;
+    const curriculum = await ctx.db.get(classData.curriculumId);
 
-    const isSuperAdmin = await hasSystemRole(ctx, user._id, ["superadmin"]);
-    if (!isSuperAdmin) {
-      throw new Error("Only system superadmins can delete classes");
+    if (
+      !(await canManageClasses(
+        ctx,
+        user._id,
+        classData.campusId,
+        curriculum?.schoolId,
+      ))
+    ) {
+      throw new ConvexError("PERMISSION_DENIED");
     }
 
-    // Check for scheduled sessions
-    const schedules = await ctx.db
-      .query("classSchedule")
-      .withIndex("by_class", (q) => q.eq("classId", args.id))
-      .collect();
-
-    if (schedules.length > 0) {
-      throw new ConvexError({
-        code: "CLASS_IN_USE",
-        message: `Cannot delete a class with ${schedules.length} scheduled session(s).`,
-      });
-    }
-
-    const [enrollments, preferences] = await Promise.all([
+    const [schedules, enrollments, preferences] = await Promise.all([
+      ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", args.id))
+        .collect(),
       ctx.db
         .query("classEnrollments")
         .withIndex("by_class", (q) => q.eq("classId", args.id))
@@ -1278,6 +1435,7 @@ export const remove = mutation({
         .withIndex("by_class", (q) => q.eq("classId", args.id))
         .collect(),
     ]);
+    await deleteSchedulesWithDependencies(ctx, schedules);
     await Promise.all(
       [
         ...enrollments.map((enrollment) => enrollment._id),
@@ -1286,6 +1444,7 @@ export const remove = mutation({
     );
 
     await ctx.db.delete(args.id);
+    return { deleted: true } as const;
   },
 });
 
@@ -1325,14 +1484,54 @@ export const getSchedulableClasses = query({
         .withIndex("by_active", (q) => q.eq("isActive", true))
         .collect();
     } else {
-      // For now, non-superadmins can only schedule classes they explicitly teach
-      // (We can expand this to School Admins later if needed by querying campuses)
-      classes = await ctx.db
-        .query("classes")
-        .withIndex("by_teacher", (q) =>
-          q.eq("teacherId", user._id).eq("isActive", true),
-        )
+      const assignments = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
         .collect();
+      const managedSchoolIds = assignments
+        .flatMap((assignment) =>
+          assignment.role === "admin" &&
+          assignment.orgType === "school" &&
+          assignment.orgId
+            ? [ctx.db.normalizeId("schools", assignment.orgId)]
+            : [],
+        )
+        .filter((id): id is Id<"schools"> => id !== null);
+      const principalCampusIds = assignments
+        .flatMap((assignment) =>
+          assignment.role === "principal" &&
+          assignment.orgType === "campus" &&
+          assignment.orgId
+            ? [ctx.db.normalizeId("campuses", assignment.orgId)]
+            : [],
+        )
+        .filter((id): id is Id<"campuses"> => id !== null);
+      const schoolCampuses = (
+        await Promise.all(
+          managedSchoolIds.map((schoolId) =>
+            ctx.db
+              .query("campuses")
+              .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+              .collect(),
+          ),
+        )
+      ).flat();
+      const campusIds = new Set([
+        ...principalCampusIds,
+        ...schoolCampuses.map((campus) => campus._id),
+      ]);
+      classes = (
+        await Promise.all(
+          [...campusIds].map((campusId) =>
+            ctx.db
+              .query("classes")
+              .withIndex("by_campus", (q) =>
+                q.eq("campusId", campusId).eq("isActive", true),
+              )
+              .collect(),
+          ),
+        )
+      ).flat();
     }
 
     // Hydrate with curriculum and lessons

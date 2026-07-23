@@ -1,0 +1,30 @@
+{
+  "SignIn": {
+    "title": "Access your workspace",
+    "subtitle": "Sign in with your email and password to continue.",
+    "email": "Email",
+    "password": "Password",
+    "passwordHint": "Passwords must be at least 8 characters.",
+    "forgotPassword": "Forgot your password?",
+    "submitSignIn": "Continue",
+    "sendResetCode": "Send reset code",
+    "submitResetPassword": "Reset password",
+    "loading": "Submitting...",
+    "errorPrefix": "Error",
+    "genericError": "Unable to continue.",
+    "invalidCredentials": "Invalid email or password.",
+    "accessDeniedTitle": "This account cannot access this area",
+    "accessDeniedDescription": "Sign out and use an account with the right access to continue.",
+    "signOut": "Sign out",
+    "resetRequestError": "We couldn't start the password reset flow. Please try again.",
+    "resetVerificationError": "We couldn't reset your password. Check the code and try again.",
+    "resetTitle": "Reset your password",
+    "resetSubtitle": "We'll send a verification code to your email address.",
+    "resetCodeTitle": "Check your email",
+    "resetCodeSubtitle": "Enter the verification code and choose a new password.",
+    "verificationCode": "Verification code",
+    "newPassword": "New password",
+    "changeEmail": "Change email",
+    "backToSignIn": "Back to sign in"
+  }
+}

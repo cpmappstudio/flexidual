@@ -2,6 +2,15 @@ import { MutationCtx, QueryCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { resolveMembershipSchoolId } from "./model/membership";
 import { isStudentEnrolled } from "./model/enrollments";
+import type { UserRole } from "./model/roles";
+
+const STAFF_ROLES: UserRole[] = [
+  "superadmin",
+  "admin",
+  "principal",
+  "teacher",
+  "tutor",
+];
 
 /**
  * Checks if a user has a specific system-wide role (like superadmin or global admin)
@@ -54,6 +63,45 @@ export function canManageInstitution(
   return hasOrgRole(ctx, userId, schoolId, "school", ["admin"]);
 }
 
+export async function hasStaffAccess(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+) {
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+
+  return assignments.some((assignment) =>
+    STAFF_ROLES.includes(assignment.role),
+  );
+}
+
+export async function canViewInstitutionSettings(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  schoolId: Id<"schools">,
+) {
+  if (await canManageInstitution(ctx, userId, schoolId)) return true;
+  return await isPrincipalOfSchool(ctx, userId, schoolId);
+}
+
+export async function canViewCampusOperations(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  campusId: Id<"campuses">,
+  schoolId: Id<"schools">,
+) {
+  if (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"])) {
+    return true;
+  }
+  return await hasOrgRole(ctx, userId, campusId, "campus", [
+    "principal",
+    "teacher",
+    "tutor",
+  ]);
+}
+
 export async function canAccessSchool(
   ctx: QueryCtx,
   userId: Id<"users">,
@@ -78,6 +126,23 @@ export async function canAccessSchool(
   return false;
 }
 
+export async function canAccessCampus(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  campusId: Id<"campuses">,
+  schoolId: Id<"schools">,
+) {
+  if (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"])) {
+    return true;
+  }
+  return await hasOrgRole(ctx, userId, campusId, "campus", [
+    "principal",
+    "teacher",
+    "tutor",
+    "student",
+  ]);
+}
+
 export async function canModifyCurriculumContent(
   ctx: QueryCtx,
   userId: Id<"users">,
@@ -93,7 +158,7 @@ export async function canModifyCurriculumContent(
   // If curriculum has no school, only superadmins can touch it
   if (!curriculum.schoolId) return false;
 
-  // 2. School Admins AND Campus Principals can do anything within their school network
+  // Institution-wide curriculum content is managed only by institution admins.
   const isSchoolAdmin = await hasOrgRole(
     ctx,
     userId,
@@ -102,21 +167,7 @@ export async function canModifyCurriculumContent(
     ["admin"],
   );
   if (isSchoolAdmin) return true;
-
-  const isPrincipal = await isPrincipalOfSchool(
-    ctx,
-    userId,
-    curriculum.schoolId,
-  );
-  if (isPrincipal) return true;
-
-  const classes = await ctx.db
-    .query("classes")
-    .withIndex("by_teacher", (q) =>
-      q.eq("teacherId", userId).eq("isActive", true),
-    )
-    .collect();
-  return classes.some((classData) => classData.curriculumId === curriculumId);
+  return false;
 }
 
 export async function canAccessCurriculumContent(
@@ -139,11 +190,22 @@ export async function canAccessCurriculumContent(
     .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculumId))
     .collect();
   for (const classData of classes) {
+    const campus = classData.campusId
+      ? await ctx.db.get(classData.campusId)
+      : null;
     if (
       classData.isActive &&
       (classData.teacherId === userId ||
         classData.tutorId === userId ||
-        (await isStudentEnrolled(ctx, classData, userId)))
+        (await isStudentEnrolled(ctx, classData, userId)) ||
+        (classData.campusId &&
+          campus &&
+          (await canViewCampusOperations(
+            ctx,
+            userId,
+            classData.campusId,
+            campus.schoolId,
+          ))))
     ) {
       return true;
     }
@@ -196,6 +258,9 @@ export async function canAccessClass(
     ctx.db.get(classData.curriculumId),
   ]);
 
+  // Campus membership alone does not grant access to every course. Teachers
+  // and tutors pass only through the direct assignments above; principals and
+  // institution admins pass through canManageClasses.
   return await canManageClasses(
     ctx,
     userId,
@@ -241,11 +306,10 @@ export async function canManageCurriculums(
   // 1. Superadmin override
   if (await hasSystemRole(ctx, userId, ["superadmin"])) return true;
 
-  // 2. School Admin & Principal check
+  // 2. Institution administrators manage the shared curriculum catalog.
   if (schoolId) {
     if (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"]))
       return true;
-    if (await isPrincipalOfSchool(ctx, userId, schoolId)) return true;
   }
 
   return false;

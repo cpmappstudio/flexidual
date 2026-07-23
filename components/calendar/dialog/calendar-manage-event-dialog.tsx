@@ -116,7 +116,11 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-export default function CalendarManageEventDialog() {
+export default function CalendarManageEventDialog({
+  readOnly = false,
+}: {
+  readOnly?: boolean;
+}) {
   const t = useTranslations();
   const locale = useLocale();
   const {
@@ -332,7 +336,7 @@ export default function CalendarManageEventDialog() {
               {isEditing ? t('common.edit') : t('schedule.viewDetails')}
             </DialogTitle>
             
-            {selectedEvent.status !== "cancelled" && (
+            {!readOnly && selectedEvent.status !== "cancelled" && (
               <div className="flex gap-2">
                 {isEditing ? (
                   <Button variant="destructive" size="icon" onClick={() => setDeleteDialogOpen(true)}>

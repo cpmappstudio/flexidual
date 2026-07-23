@@ -12,12 +12,7 @@ import {
   useReactTable,
   VisibilityState,
 } from "@tanstack/react-table";
-import {
-  Download,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-} from "lucide-react";
+import { Download, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -48,6 +43,8 @@ export function DataTable<TData>({
   emptyMessage,
   exportButtonLabel,
   filterConfigs,
+  filterVariant,
+  filterAllLabel,
   filtersMenuLabel,
   resultsCountLabel,
   initialSorting,
@@ -177,6 +174,8 @@ export function DataTable<TData>({
             <DataTableFilters
               table={table}
               filterConfigs={filterConfigs}
+              variant={filterVariant}
+              allLabel={filterAllLabel}
               filtersMenuLabel={filtersMenuLabel}
             />
           )}
@@ -237,7 +236,9 @@ export function DataTable<TData>({
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                   className={
-                    onRowClick ? "cursor-pointer transition-colors hover:bg-muted/50" : undefined
+                    onRowClick
+                      ? "cursor-pointer transition-colors hover:bg-muted/50"
+                      : undefined
                   }
                   onClick={
                     onRowClick

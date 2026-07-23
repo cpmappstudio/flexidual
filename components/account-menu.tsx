@@ -134,7 +134,7 @@ export function AccountMenu({ className }: { className?: string }) {
           </div>
         </div>
         <DropdownMenuSeparator />
-        {context?.canManageInstitution && (
+        {context?.canViewInstitutionSettings && (
           <>
             <DropdownMenuItem asChild>
               <Link href={basePath} className="flex w-full items-center">

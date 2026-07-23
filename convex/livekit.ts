@@ -32,7 +32,8 @@ export const getToken = action({
     // Check backend authorization to join this specific room
     const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, { 
       userId: user._id, 
-      roomName: args.roomName 
+      roomName: args.roomName,
+      now: Date.now(),
     });
 
     if (!access || !access.authorized) {
@@ -115,6 +116,7 @@ export const toggleRecording = action({
     const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, {
       userId: user._id,
       roomName: args.roomName,
+      now: Date.now(),
     });
     if (!access?.authorized || !access.roomAdmin) {
       throw new ConvexError("Only a room administrator can control recordings");

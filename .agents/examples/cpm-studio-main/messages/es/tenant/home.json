@@ -1,0 +1,49 @@
+{
+  "TenantHome": {
+    "title": "Campus",
+    "nameLabel": "Nombre del campus",
+    "imageLabel": "Imagen del campus",
+    "namePlaceholder": "Northbridge Downtown…",
+    "create": "Crear",
+    "creating": "Creando…",
+    "createCard": "Crear",
+    "createDialogTitle": "Crear",
+    "createDialogDescription": "Crea un nuevo campus y deja tu espacio de trabajo listo en segundos.",
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "openCampus": "Abrir campus",
+    "backToCampuses": "Volver a campus",
+    "campusSlugLabel": "Slug del campus",
+    "tenantLabel": "Tenant",
+    "detailPlaceholder": "Este es un placeholder visual para la ruta de detalle del campus mientras la lógica de backend sigue pendiente.",
+    "modulesLabel": "Módulos del campus",
+    "emptyModules": "Todavía no hay módulos de campus activos para esta institución.",
+    "errorPrefix": "Error",
+    "genericError": "No pudimos completar esta acción en este momento. Inténtalo de nuevo.",
+    "campusActions": {
+      "actions": "Acciones",
+      "activate": "Activar campus",
+      "activated": "Campus activado.",
+      "deactivate": "Desactivar campus",
+      "deactivated": "Campus desactivado.",
+      "open": "Abrir acciones de {name}",
+      "deactivateDialog": {
+        "title": "¿Desactivar campus?",
+        "description": "Esto bloqueará el acceso a {name} hasta que un admin lo active de nuevo.",
+        "cancel": "Cancelar",
+        "confirm": "Desactivar"
+      }
+    },
+    "createDialog": {
+      "success": "Campus creado."
+    },
+    "createDialogErrors": {
+      "nameRequired": "Ingresa un nombre para el campus.",
+      "nameInvalid": "Usa un nombre con al menos una letra o un número.",
+      "slugUnavailable": "Ese nombre generó un slug que ya está en uso. Prueba con otro nombre.",
+      "imageInvalidType": "Sube un archivo de imagen.",
+      "imageTooLarge": "La imagen del campus debe pesar menos de 5 MB.",
+      "imageUploadFailed": "No pudimos subir la imagen del campus. Inténtalo de nuevo."
+    }
+  }
+}

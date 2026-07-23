@@ -27,22 +27,14 @@ import {
 } from "@/components/ui/select";
 
 import { Textarea } from "@/components/ui/textarea";
-import { UserDialog } from "@/components/admin/users/user-dialog";
-import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-dialog";
+import { isCurriculumAvailableForGrade } from "@/lib/curriculum";
 import { cn } from "@/lib/utils";
-import {
-  Calendar,
-  Check,
-  ChevronsUpDown,
-  PlusCircle,
-  UserPlus,
-} from "lucide-react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 export interface CourseFormData {
   name: string;
   description: string;
-  academicYear: string;
   curriculumId: string;
   teacherId: string;
   gradeCode: string;
@@ -62,7 +54,6 @@ interface CourseFormFieldsProps {
   grades?: Doc<"institutionGrades">[];
   isAdmin: boolean;
   nameRequired?: boolean;
-  showAcademicYear?: boolean;
   academicPeriodField?: ReactNode;
   curriculumEmptyState?: ReactNode;
   teacherEmptyState?: ReactNode;
@@ -79,7 +70,6 @@ export function CourseFormFields({
   grades,
   isAdmin,
   nameRequired = false,
-  showAcademicYear = true,
   academicPeriodField,
   curriculumEmptyState,
   teacherEmptyState,
@@ -90,19 +80,66 @@ export function CourseFormFields({
   const t = useTranslations();
   const [openCurriculum, setOpenCurriculum] = useState(false);
   const [openTeacher, setOpenTeacher] = useState(false);
-  const selectedCurriculum = curriculums?.find(
-    (curriculum) => curriculum._id === formData.curriculumId,
-  );
-  const availableGrades = selectedCurriculum?.gradeCodes?.length
-    ? grades?.filter((grade) =>
-        selectedCurriculum.gradeCodes?.includes(grade.code),
+  const availableCurriculums = formData.gradeCode
+    ? curriculums?.filter((curriculum) =>
+        isCurriculumAvailableForGrade(
+          curriculum.gradeCodes,
+          formData.gradeCode,
+        ),
       )
-    : grades;
+    : [];
   const gradeNames = new Map(grades?.map((grade) => [grade.code, grade.name]));
 
   return (
     <div className="grid gap-4 py-2">
       <div className={cn("grid gap-4", primaryFieldsClassName)}>
+        <div className="grid gap-2">
+          <Label>
+            {t("class.grade")} <span className="text-destructive">*</span>
+          </Label>
+          <Select
+            value={formData.gradeCode}
+            onValueChange={(gradeCode) =>
+              setFormData((current) => {
+                const curriculum = curriculums?.find(
+                  (item) => item._id === current.curriculumId,
+                );
+                const curriculumMatchesGrade =
+                  !current.curriculumId ||
+                  Boolean(
+                    curriculum &&
+                      isCurriculumAvailableForGrade(
+                        curriculum.gradeCodes,
+                        gradeCode,
+                      ),
+                  );
+
+                return {
+                  ...current,
+                  gradeCode,
+                  curriculumId: curriculumMatchesGrade
+                    ? current.curriculumId
+                    : "",
+                };
+              })
+            }
+          >
+            <SelectTrigger className="w-full bg-sidebar">
+              <SelectValue placeholder={t("class.selectGrade")} />
+            </SelectTrigger>
+            <SelectContent>
+              {grades?.map((grade) => (
+                <SelectItem key={grade._id} value={grade.code}>
+                  {grade.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {grades?.length === 0 && gradeEmptyState}
+        </div>
+
+        {academicPeriodField}
+
         <div className="grid gap-2">
           <Label>
             {t("class.curriculum")} <span className="text-destructive">*</span>
@@ -114,6 +151,7 @@ export function CourseFormFields({
                   variant="outline"
                   role="combobox"
                   aria-expanded={openCurriculum}
+                  disabled={!formData.gradeCode}
                   className="flex-1 justify-between overflow-hidden bg-sidebar text-left font-normal"
                 >
                   <span className="truncate">
@@ -122,7 +160,9 @@ export function CourseFormFields({
                           (curriculum) =>
                             curriculum._id === formData.curriculumId,
                         )?.title
-                      : t("class.selectCurriculum")}
+                      : formData.gradeCode
+                        ? t("class.selectCurriculum")
+                        : t("class.selectGradeFirst")}
                   </span>
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
@@ -135,7 +175,7 @@ export function CourseFormFields({
                   <CommandList>
                     <CommandEmpty>{t("common.noResults")}</CommandEmpty>
                     <CommandGroup>
-                      {curriculums
+                      {availableCurriculums
                         ?.slice()
                         .sort((a, b) => a.title.localeCompare(b.title))
                         .map((curriculum) => (
@@ -146,13 +186,6 @@ export function CourseFormFields({
                               setFormData((current) => ({
                                 ...current,
                                 curriculumId: curriculum._id,
-                                gradeCode:
-                                  !curriculum.gradeCodes?.length ||
-                                  curriculum.gradeCodes.includes(
-                                    current.gradeCode,
-                                  )
-                                    ? current.gradeCode
-                                    : "",
                               }));
                               setOpenCurriculum(false);
                             }}
@@ -195,51 +228,17 @@ export function CourseFormFields({
                 </Command>
               </PopoverContent>
             </Popover>
-
-            {!curriculumEmptyState && (
-              <CurriculumDialog
-                trigger={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    title={t("curriculum.createCurriculum")}
-                    className="shrink-0 bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent/80"
-                  >
-                    <PlusCircle className="h-4 w-4" />
-                  </Button>
-                }
-              />
-            )}
           </div>
           {curriculums?.length === 0 && curriculumEmptyState}
+          {formData.gradeCode &&
+            curriculums &&
+            curriculums.length > 0 &&
+            availableCurriculums?.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                {t("class.noCurriculumsForGrade")}
+              </p>
+            )}
         </div>
-
-        <div className="grid gap-2">
-          <Label>
-            {t("class.grade")} <span className="text-destructive">*</span>
-          </Label>
-          <Select
-            value={formData.gradeCode}
-            onValueChange={(gradeCode) =>
-              setFormData((current) => ({ ...current, gradeCode }))
-            }
-          >
-            <SelectTrigger className="w-full bg-sidebar">
-              <SelectValue placeholder={t("class.selectGrade")} />
-            </SelectTrigger>
-            <SelectContent>
-              {availableGrades?.map((grade) => (
-                <SelectItem key={grade._id} value={grade.code}>
-                  {grade.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {grades?.length === 0 && gradeEmptyState}
-        </div>
-
-        {academicPeriodField}
 
         {isAdmin && (
           <div className="grid gap-2">
@@ -312,36 +311,13 @@ export function CourseFormFields({
                   </Command>
                 </PopoverContent>
               </Popover>
-
-              {!teacherEmptyState && (
-                <UserDialog
-                  defaultRole="teacher"
-                  allowedRoles={["teacher"]}
-                  trigger={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      title={t("teacher.new")}
-                      className="shrink-0 bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent/80"
-                    >
-                      <UserPlus className="h-4 w-4" />
-                    </Button>
-                  }
-                />
-              )}
             </div>
             {teachers?.length === 0 && teacherEmptyState}
           </div>
         )}
       </div>
 
-      <div
-        className={cn(
-          "grid grid-cols-1 items-start gap-4",
-          showAcademicYear && "sm:grid-cols-2",
-        )}
-      >
+      <div className="grid grid-cols-1 items-start gap-4">
         <div className="flex flex-col gap-2">
           <Label className="flex items-center">
             {t("class.name")}
@@ -376,26 +352,6 @@ export function CourseFormFields({
             </p>
           )}
         </div>
-
-        {showAcademicYear && (
-          <div className="flex flex-col gap-2 sm:mt-0.5">
-            <Label>{t("class.academicYear")}</Label>
-            <div className="relative">
-              <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                value={formData.academicYear}
-                onChange={(event) =>
-                  setFormData((current) => ({
-                    ...current,
-                    academicYear: event.target.value,
-                  }))
-                }
-                placeholder={t("classDialog.placeholders.academicYear")}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="grid gap-2">

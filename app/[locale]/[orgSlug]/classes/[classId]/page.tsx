@@ -20,13 +20,13 @@ import {
 import { StudentManager } from "@/components/teaching/classes/student-manager";
 import { Button } from "@/components/ui/button";
 import { useParams } from "next/navigation";
-import { Link } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { ScheduleItem } from "@/components/schedule/schedule-item";
 import { ClassDialog } from "@/components/teaching/classes/class-dialog";
-import { useAuth } from "@clerk/nextjs";
-import { getRoleForOrg, isSuperAdmin } from "@/lib/rbac";
+import { useStaffAccess } from "@/hooks/use-staff-access";
+import { useCurrentMinute } from "@/hooks/use-current-minute";
 
 const ITEMS_PER_PAGE = 10;
 const SCHEDULES_PER_PAGE = 10;
@@ -57,21 +57,21 @@ type ClassScheduleItem = {
 
 export default function ClassDetailPage() {
   const t = useTranslations();
+  const router = useRouter();
   const params = useParams();
   const classId = params.classId as Id<"classes">;
   const [visibleUpcoming, setVisibleUpcoming] = useState(SCHEDULES_PER_PAGE);
   const [visiblePast, setVisiblePast] = useState(SCHEDULES_PER_PAGE);
   const [activeTab, setActiveTab] = useState("schedule");
   const orgSlug = (params.orgSlug as string) || "system";
-  const { sessionClaims } = useAuth();
-  const role = getRoleForOrg(sessionClaims, orgSlug);
-  const isAdmin =
-    isSuperAdmin(sessionClaims) || role === "admin" || role === "principal";
+  const { access } = useStaffAccess();
+  const queryNow = useCurrentMinute();
+  const canManageClass = access?.canManageCampus ?? false;
+  const canManageCurriculum = access?.canManageInstitution ?? false;
 
   const [roadmapPage, setRoadmapPage] = useState(1);
   const [focusedScheduleId, setFocusedScheduleId] =
     useState<Id<"classSchedule"> | null>(null);
-
 
   const classData = useQuery(api.classes.get, { id: classId });
 
@@ -80,7 +80,10 @@ export default function ClassDetailPage() {
     classData ? { curriculumId: classData.curriculumId } : "skip",
   );
 
-  const allScheduleItems = useQuery(api.schedule.getMySchedule, { classId });
+  const allScheduleItems = useQuery(api.schedule.getMySchedule, {
+    classId,
+    now: queryNow,
+  });
   const classSchedule = allScheduleItems
     ?.filter((s) => s.classId === classId)
     .sort((a, b) => a.start - b.start);
@@ -109,8 +112,6 @@ export default function ClassDetailPage() {
       window.clearTimeout(clearTimer);
     };
   }, [activeTab, focusedScheduleId, visiblePast, visibleUpcoming]);
-
-
 
   if (
     classData === undefined ||
@@ -172,9 +173,10 @@ export default function ClassDetailPage() {
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <h1 className="text-3xl font-bold">{classData.name}</h1>
-          {isAdmin && (
+          {canManageClass && (
             <ClassDialog
               classDoc={classData}
+              onDeletedAction={() => router.push(`/${orgSlug}/classes`)}
               trigger={
                 <Button variant="ghost" size="icon">
                   <Edit className="h-4 w-4 text-muted-foreground" />
@@ -262,6 +264,7 @@ export default function ClassDetailPage() {
                             <ScheduleItem
                               schedule={schedule}
                               classId={classId}
+                              showEdit={canManageClass}
                               variant="classSession"
                             />
                           </div>
@@ -317,6 +320,7 @@ export default function ClassDetailPage() {
                             schedule={schedule}
                             classId={classId}
                             isPast
+                            showEdit={canManageClass}
                             variant="classSession"
                           />
                         </div>
@@ -366,7 +370,7 @@ export default function ClassDetailPage() {
                 lessonSchedules={lessonSchedules as ClassScheduleItem[]}
                 curriculumId={classData.curriculumId}
                 orgSlug={orgSlug}
-                isAdmin={isAdmin}
+                canManageCurriculum={canManageCurriculum}
                 currentPage={roadmapPage}
                 totalPages={totalRoadmapPages}
                 onPageChange={setRoadmapPage}
@@ -379,11 +383,11 @@ export default function ClassDetailPage() {
               <StudentManager
                 classId={classId}
                 curriculumId={classData.curriculumId}
+                canManage={canManageClass}
               />
             </TabsContent>
           </Tabs>
         </div>
-
       </div>
     </div>
   );
@@ -395,7 +399,7 @@ function CurriculumOverview({
   lessonSchedules,
   curriculumId,
   orgSlug,
-  isAdmin,
+  canManageCurriculum,
   currentPage,
   totalPages,
   onPageChange,
@@ -406,7 +410,7 @@ function CurriculumOverview({
   lessonSchedules: ClassScheduleItem[];
   curriculumId: Id<"curriculums">;
   orgSlug: string;
-  isAdmin: boolean;
+  canManageCurriculum: boolean;
   currentPage: number;
   totalPages: number;
   onPageChange: React.Dispatch<React.SetStateAction<number>>;
@@ -426,7 +430,7 @@ function CurriculumOverview({
               {t("class.curriculumReadOnlyDescription")}
             </p>
           </div>
-          {isAdmin && (
+          {canManageCurriculum && (
             <Button
               variant="outline"
               size="sm"
@@ -434,7 +438,7 @@ function CurriculumOverview({
               asChild
             >
               <Link
-                href={`/${orgSlug}/curriculums?curriculumId=${curriculumId}`}
+                href={`/${orgSlug}/settings/curriculums?curriculumId=${curriculumId}`}
               >
                 {t("class.manageCurriculumInSection")}
               </Link>

@@ -1,0 +1,95 @@
+{
+  "Common": {
+    "appName": "CPM Studio",
+    "actions": {
+      "loading": "Loading…"
+    },
+    "fallbackUserName": "User",
+    "campuses": "Campuses",
+    "home": "Home",
+    "institutions": "Institutions",
+    "overview": "Overview",
+    "people": "People",
+    "academicManagement": "Academic Management",
+    "modules": {
+      "dismissal": "Dismissal",
+      "academics": "Academics",
+      "library": "Library",
+      "teaching": "Teaching",
+      "billing": "Billing",
+      "liveClasses": "Flexidual"
+    },
+    "moduleNavigation": {
+      "liveClasses": {
+        "calendar": "Calendar",
+        "courses": "Courses"
+      }
+    },
+    "imageCropper": {
+      "title": "Crop image",
+      "description": "Adjust your image before using it.",
+      "zoom": "Zoom",
+      "confirm": "Use image",
+      "errors": {
+        "cropFailed": "We couldn't crop your image. Please try again."
+      }
+    },
+    "identity": {
+      "firstNameLabel": "First name",
+      "firstNamePlaceholder": "First name",
+      "lastNameLabel": "Last name",
+      "lastNamePlaceholder": "Last name",
+      "nameRequired": "Add at least a first or last name."
+    },
+    "imageUpload": {
+      "upload": "Upload",
+      "remove": "Remove",
+      "requirements": "PNG, JPG, WEBP or SVG up to 5 MB.",
+      "errors": {
+        "invalidType": "Please upload an image file.",
+        "tooLarge": "Your image must be smaller than 5 MB.",
+        "uploadFailed": "We couldn't upload your image. Please try again."
+      }
+    },
+    "teamSettings": "Team Settings",
+    "switchProfile": "Switch Profile",
+    "changelog": "Changelog",
+    "support": "Support",
+    "sidebar": {
+      "groupLabel": "Platform",
+      "collapseLabel": "Collapse",
+      "collapseTooltip": "Collapse sidebar",
+      "expandLabel": "Expand",
+      "expandTooltip": "Expand sidebar",
+      "openTooltip": "Open sidebar"
+    },
+    "profileSettings": "Profile Settings",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
+    "language": "Language",
+    "languageEnglish": "English",
+    "languageSpanish": "Spanish",
+    "switcher": {
+      "selectCampus": "Select Campus",
+      "backToCampus": "Back to Campus",
+      "selectInstitution": "Select Institution"
+    },
+    "signOut": "Sign out",
+    "routeStatus": {
+      "actions": {
+        "goHome": "Go home",
+        "tryAgain": "Try again"
+      },
+      "error": {
+        "title": "Something went wrong",
+        "description": "We couldn't load this page right now. Please try again."
+      },
+      "notFound": {
+        "title": "Page not found",
+        "description": "We couldn't find the page you were looking for."
+      }
+    }
+  }
+}

@@ -4,15 +4,12 @@ import { useCallback, useMemo, useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { useMutation, useQuery } from "convex/react"
 import Image from "next/image"
-import { useParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
 import { Trash2 } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
-import { getRoleForOrg, isSuperAdmin } from "@/lib/rbac"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +33,7 @@ import { AddStudentDialog } from "./add-student-dialog"
 interface StudentManagerProps {
   classId: Id<"classes">
   curriculumId?: Id<"curriculums">
+  canManage?: boolean
 }
 
 type ClassStudent = {
@@ -113,20 +111,17 @@ function StudentCell({
   )
 }
 
-export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
+export function StudentManager({
+  classId,
+  curriculumId,
+  canManage = false,
+}: StudentManagerProps) {
   const t = useTranslations()
   const students = useQuery(api.classes.getStudents, { classId })
   const removeStudent = useMutation(api.classes.removeStudent)
   const [studentToRemove, setStudentToRemove] =
     useState<StudentToRemove | null>(null)
   const [isRemoving, setIsRemoving] = useState(false)
-
-  const params = useParams()
-  const orgSlug = (params.orgSlug as string) || "system"
-  const { sessionClaims } = useAuth()
-  const role = getRoleForOrg(sessionClaims, orgSlug)
-  const isAdmin =
-    isSuperAdmin(sessionClaims) || role === "admin" || role === "principal"
 
   const handleConfirmRemove = useCallback(async () => {
     if (!studentToRemove) {
@@ -171,7 +166,7 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
         ),
         meta: { className: "hidden md:table-cell" },
       },
-      ...(isAdmin
+      ...(canManage
         ? [
             {
               id: "actions",
@@ -200,7 +195,7 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
           ]
         : []),
     ],
-    [isAdmin, t],
+    [canManage, t],
   )
 
   if (students === undefined) {
@@ -213,7 +208,7 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>{t("class.studentCount", { count: students.length })}</span>
         </div>
-        {isAdmin && (
+        {canManage && (
           <AddStudentDialog classId={classId} curriculumId={curriculumId} />
         )}
       </div>
@@ -233,7 +228,7 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
         />
       )}
 
-      <AlertDialog
+      {canManage && <AlertDialog
         open={studentToRemove !== null}
         onOpenChange={handleRemoveDialogChange}
       >
@@ -267,7 +262,7 @@ export function StudentManager({ classId, curriculumId }: StudentManagerProps) {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
     </div>
   )
 }

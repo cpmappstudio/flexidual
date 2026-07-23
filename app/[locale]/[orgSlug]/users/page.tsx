@@ -1,5 +1,10 @@
-import UsersPageLayout from "@/components/admin/users/users-page-layout";
+import { redirect } from "next/navigation";
 
-export default function GlobalUsersPage() {
-    return <UsersPageLayout />;
+export default async function UsersPage({
+  params,
+}: {
+  params: Promise<{ locale: string; orgSlug: string }>;
+}) {
+  const { locale, orgSlug } = await params;
+  redirect(`/${locale}/${orgSlug}/students`);
 }

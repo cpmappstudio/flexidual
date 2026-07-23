@@ -21,15 +21,15 @@ import {
   ConnectionState,
 } from "livekit-client";
 import { 
-  Mic, MicOff, Video as VideoIcon, VideoOff, LogOut, VolumeX, 
+  Mic, MicOff, Video as VideoIcon, VideoOff, VolumeX,
   MonitorUp, ZoomIn, ZoomOut, Move, Hand, Loader2, Eye, EyeOff, Crown,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
   CircleDot, StopCircle, TabletSmartphone, Maximize2, Minimize2
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { FlexidualLogo } from "../ui/flexidual-logo";
 import { SharedWhiteboard } from "./shared-whiteboard";
+import { LeaveClassButton } from "./leave-class-button";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import {
@@ -1029,8 +1029,12 @@ export function ActiveClassroomUI({
       {/* 1. Header Row */}
       <div className={`col-start-1 row-start-1 z-10 flex flex-col ${isPhoneLandscape ? '' : 'p-3 md:p-4 pb-2 md:pb-0 justify-end'}`}>
         {isPhoneLandscape ? (
-          <div className="flex items-center gap-2 px-2 py-1 bg-card/90 backdrop-blur-md border-b border-border">
-            <FlexidualLogo stacked className="h-6 w-6 flex-shrink-0" />
+          <div className="flex items-center gap-2 px-2 py-1">
+            <span
+              role="status"
+              aria-label={teacher ? t('classroom.live') : t('classroom.waiting')}
+              className={`size-2 shrink-0 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-chart-4'}`}
+            />
             <div className="flex-1 min-w-0 flex items-center gap-1.5">
               <span className="text-xs font-bold text-card-foreground truncate">{className || t('classroom.classroom')}</span>
               {lessonTitle && <span className="text-[10px] text-muted-foreground truncate">&middot; {lessonTitle}</span>}
@@ -1041,15 +1045,15 @@ export function ActiveClassroomUI({
                 <span className="text-[9px] font-bold text-destructive uppercase tracking-wide">REC</span>
               </div>
             )}
-            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0 ${teacher ? 'bg-success/20 border-success/30' : 'bg-secondary/20 border-secondary/30'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-secondary'}`} />
-              <span className="text-[9px] font-bold text-foreground/70 uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
-            </div>
           </div>
         ) : (
-          <div className="flex justify-between items-center bg-card p-3 rounded-xl shadow-sm border border-border">
+          <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-3">
-              <FlexidualLogo />
+              <span
+                role="status"
+                aria-label={teacher ? t('classroom.live') : t('classroom.waiting')}
+                className={`size-2.5 shrink-0 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-chart-4'}`}
+              />
               <div className="flex flex-col">
                 <h2 className="text-sm font-bold text-card-foreground">{className || t('classroom.classroom')}</h2>
                 {lessonTitle && <p className="text-xs text-muted-foreground">{lessonTitle}</p>}
@@ -1062,10 +1066,6 @@ export function ActiveClassroomUI({
                   <span className="text-xs font-bold text-destructive uppercase tracking-wide">REC</span>
                 </div>
               )}
-              <div className="flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
-                <div className={`w-2.5 h-2.5 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-chart-4'}`} />
-                <span className="text-xs font-bold text-primary uppercase tracking-wide">{teacher ? t('classroom.live') : t('classroom.waiting')}</span>
-              </div>
             </div>
           </div>
         )}
@@ -1073,7 +1073,7 @@ export function ActiveClassroomUI({
 
       {/* 2. Stage Row */}
       <div className={`col-start-1 row-start-2 min-h-0 z-10 flex flex-col relative ${isPhoneLandscape ? 'p-1' : 'p-3 md:p-4 py-2 md:py-4'}`}>
-        <div ref={stageRef} className="flex-1 bg-muted rounded-2xl shadow-xl overflow-hidden relative border-4 border-border flex items-center justify-center group min-h-0">
+        <div ref={stageRef} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-muted group">
           {amIIncognito && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-inverse/60 text-inverse-foreground backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1.5 shadow-sm pointer-events-none">
               <Eye className="w-3 h-3 shrink-0" /> {t('classroom.observingIncognito')}
@@ -1303,12 +1303,10 @@ export function ActiveClassroomUI({
                   <FullscreenButtonCompact isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
                 )}
                 <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
-                <button
-                  onClick={handleLeaveClick}
-                  className="w-11 h-11 rounded-full bg-destructive/80 hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center shadow-lg border-2 border-destructive/60 transition-colors"
-                >
-                  <LogOut className="w-5 h-5" />
-                </button>
+                <LeaveClassButton
+                  onConfirm={handleLeaveClick}
+                  className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-destructive/80 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/90"
+                />
               </div>
             </div>
           )}
@@ -1317,7 +1315,7 @@ export function ActiveClassroomUI({
 
       {/* 3. Meeting Controls (row 4 on mobile, row 3 on md+) — hidden in phone landscape */}
       <div className={`col-start-1 row-start-4 landscape:col-start-1 landscape:row-start-3 xl:col-start-1 xl:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10 ${isPhoneLandscape ? 'hidden' : ''}`}>
-        <div className="h-20 bg-card rounded-2xl shadow-sm border border-border px-4 flex items-center">
+        <div className="flex h-20 items-center px-4">
           {/* Left spacer — presenter toggle when applicable */}
           <div className="flex-1 flex items-center">
             {amIAuthority && !amITeacher && !actualTeacher && (
@@ -1429,37 +1427,32 @@ export function ActiveClassroomUI({
                 {isRecording ? <StopCircle className="w-5 h-5" /> : <CircleDot className="w-5 h-5" />}
               </button>
             )}
+            <LeaveClassButton
+              onConfirm={handleLeaveClick}
+              className="flex size-12 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-md transition-colors hover:bg-destructive/90"
+            />
           </div>
-          {/* Right spacer — icon-only Leave */}
-          <div className="flex-1 flex items-center justify-end gap-2">
-            <button
-              onClick={handleLeaveClick}
-              title={t('classroom.leave')}
-              className="w-12 h-12 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground flex items-center justify-center shadow-md transition-colors"
-            >
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>
+          <div className="flex-1" />
         </div>
       </div>
 
       {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
-      <div className="col-start-1 row-start-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 xl:col-start-2 xl:row-start-1 xl:row-span-3 flex flex-col bg-card border-border shadow-xl z-0 border-y landscape:border-y-0 landscape:border-l xl:border-y-0 xl:border-l h-36 landscape:h-full xl:h-full overflow-hidden">
+      <div className="col-start-1 row-start-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 xl:col-start-2 xl:row-start-1 xl:row-span-3 z-0 flex h-36 flex-col overflow-hidden landscape:h-full xl:h-full">
 
         {/* Header + nav arrows */}
-        <div className="bg-primary text-primary-foreground flex items-center gap-2 px-3 py-1.5 md:py-2.5 border-b border-border flex-shrink-0">
+        <div className="flex flex-shrink-0 items-center gap-2 px-3 py-1.5 text-foreground md:py-2.5">
           <h3 className="flex-1 text-xs font-bold uppercase tracking-widest truncate">
             {t('classroom.classmates', { count: students.length })}
           </h3>
           {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
             <>
               <div className="hidden md:flex landscape:flex items-center gap-0.5">
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-primary-foreground/20 transition-colors disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-primary-foreground/20 transition-colors disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
               </div>
               <div className="flex md:hidden landscape:hidden items-center gap-0.5">
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-primary-foreground/20 transition-colors disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-primary-foreground/20 transition-colors disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
+                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
             </>
           )}
@@ -1468,7 +1461,7 @@ export function ActiveClassroomUI({
         {/* Responsive Tiles Auto-Grid */}
         <div
           ref={classmateTilesRef}
-          className="flex-1 min-h-0 min-w-0 bg-muted/30 p-2 md:p-3 gap-2 md:gap-3 flex flex-row items-start overflow-x-auto overflow-y-hidden snap-x snap-mandatory landscape:grid landscape:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:auto-rows-max landscape:overflow-y-auto landscape:overflow-x-hidden landscape:snap-y landscape:content-start landscape:items-start scrollbar-thin"
+          className="flex-1 min-h-0 min-w-0 p-2 md:p-3 gap-2 md:gap-3 flex flex-row items-start overflow-x-auto overflow-y-hidden snap-x snap-mandatory landscape:grid landscape:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:auto-rows-max landscape:overflow-y-auto landscape:overflow-x-hidden landscape:snap-y landscape:content-start landscape:items-start scrollbar-thin"
         >
           {sortedStudents.length === 0 && (
             <div className="md:col-span-full landscape:col-span-full flex items-center justify-center w-full text-muted-foreground text-xs italic text-center px-2 whitespace-nowrap md:whitespace-normal h-full">

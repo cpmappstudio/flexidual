@@ -2,10 +2,12 @@
 
 import type { ReactNode } from "react";
 import {
+  BookOpen,
   Building2,
   CalendarRange,
   GraduationCap,
   ShieldCheck,
+  UsersRound,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
@@ -36,35 +38,50 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
   const campusesPath = `${basePath}/campuses`;
   const academicPath = `${basePath}/academic`;
   const gradesPath = `${basePath}/grades`;
+  const curriculumsPath = `${basePath}/curriculums`;
+  const administratorsPath = `${basePath}/administrators`;
+  const institutionItems = context?.canViewInstitutionSettings
+    ? [
+        {
+          href: basePath,
+          label: t("general"),
+          icon: Building2,
+          exact: true,
+        },
+        {
+          href: campusesPath,
+          label: t("campusesLabel"),
+          icon: Building2,
+          exact: false,
+        },
+        {
+          href: academicPath,
+          label: t("academicLabel"),
+          icon: CalendarRange,
+          exact: false,
+        },
+        {
+          href: gradesPath,
+          label: t("gradesLabel"),
+          icon: GraduationCap,
+          exact: false,
+        },
+        {
+          href: curriculumsPath,
+          label: t("curriculumsLabel"),
+          icon: BookOpen,
+          exact: false,
+        },
+        {
+          href: administratorsPath,
+          label: t("administratorsLabel"),
+          icon: UsersRound,
+          exact: false,
+        },
+      ]
+    : [];
   const items = [
-    ...(context?.canManageInstitution
-      ? [
-          {
-            href: basePath,
-            label: t("general"),
-            icon: Building2,
-            exact: true,
-          },
-          {
-            href: campusesPath,
-            label: t("campusesLabel"),
-            icon: Building2,
-            exact: false,
-          },
-          {
-            href: academicPath,
-            label: t("academicLabel"),
-            icon: CalendarRange,
-            exact: false,
-          },
-          {
-            href: gradesPath,
-            label: t("gradesLabel"),
-            icon: GraduationCap,
-            exact: false,
-          },
-        ]
-      : []),
+    ...institutionItems,
     {
       href: profilePath,
       label: t("profileAndSecurity"),
@@ -102,7 +119,7 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
           className="hidden w-56 shrink-0 flex-col gap-1 md:flex"
           aria-label={t("title")}
         >
-          {context?.canManageInstitution && (
+          {context?.canViewInstitutionSettings && (
             <SidebarGroup className="p-0">
               <SidebarGroupLabel className="h-8 gap-2 px-2 text-sm font-semibold text-foreground">
                 <Building2 className="size-4" />
@@ -111,38 +128,20 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuSub className="mx-2">
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        isActive={pathname === basePath}
-                      >
-                        <Link href={basePath}>{t("general")}</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        isActive={pathname.startsWith(campusesPath)}
-                      >
-                        <Link href={campusesPath}>{t("campusesLabel")}</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        isActive={pathname.startsWith(academicPath)}
-                      >
-                        <Link href={academicPath}>{t("academicLabel")}</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        isActive={pathname.startsWith(gradesPath)}
-                      >
-                        <Link href={gradesPath}>{t("gradesLabel")}</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
+                    {institutionItems.map((item) => (
+                      <SidebarMenuSubItem key={item.href}>
+                        <SidebarMenuSubButton
+                          asChild
+                          isActive={
+                            item.exact
+                              ? pathname === item.href
+                              : pathname.startsWith(item.href)
+                          }
+                        >
+                          <Link href={item.href}>{item.label}</Link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    ))}
                   </SidebarMenuSub>
                 </SidebarMenuItem>
               </SidebarMenu>

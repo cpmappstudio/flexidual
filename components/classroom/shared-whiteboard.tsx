@@ -455,7 +455,7 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         const els = apiRef.current?.getSceneElements() ?? [];
-        void upsertScene({ roomName, elements: els });
+        void upsertScene({ roomName, elements: [...els] });
         timerRef.current = null;
       }, 80);
 

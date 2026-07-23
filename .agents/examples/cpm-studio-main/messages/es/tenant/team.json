@@ -1,0 +1,84 @@
+{
+  "TenantTeam": {
+    "appName": "CPM Studio",
+    "title": "Equipo",
+    "membersTab": "Miembros",
+    "invitesTab": "Invitaciones",
+    "loadMore": "Cargar más",
+    "loadingMore": "Cargando…",
+    "inviteMember": "Invitar miembro",
+    "genericError": "Algo salió mal. Inténtalo de nuevo.",
+    "organizationActions": {
+      "actions": "Acciones",
+      "activate": "Activar organización",
+      "activated": "Organización activada.",
+      "deactivate": "Desactivar organización",
+      "deactivated": "Organización desactivada.",
+      "deactivateDialog": {
+        "title": "¿Desactivar organización?",
+        "description": "Esto bloqueará el acceso al tenant hasta que un admin de plataforma active la organización de nuevo.",
+        "cancel": "Cancelar",
+        "confirm": "Desactivar"
+      }
+    },
+    "organizationInformation": {
+      "imageLabel": "Imagen",
+      "nameLabel": "Nombre",
+      "slugPreviewLabel": "Slug",
+      "slugPreviewDescription": "La URL del tenant se actualiza desde este slug al guardar.",
+      "unsavedChanges": "Cambios sin guardar",
+      "resetChanges": "Restablecer",
+      "saveChanges": "Guardar",
+      "saved": "Información de la institución guardada.",
+      "errors": {
+        "nameRequired": "Agrega un nombre para la institución.",
+        "nameInvalid": "Usa un nombre que pueda generar un slug válido.",
+        "slugUnavailable": "Ese slug ya está en uso."
+      }
+    },
+    "roles": {
+      "owner": "Propietario",
+      "admin": "Admin",
+      "member": "Miembro"
+    },
+    "inviteDialog": {
+      "title": "Invitar miembro",
+      "description": "Envía acceso a esta institución y define el rol que tendrá esta persona.",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Correo electrónico",
+      "roleLabel": "Rol",
+      "submit": "Invitar",
+      "inviting": "Invitando…",
+      "success": "Invitación enviada.",
+      "errors": {
+        "alreadyPending": "Ya existe una invitación pendiente para este correo.",
+        "alreadyMember": "Este usuario ya tiene acceso a esta institución.",
+        "emailNotConfigured": "El correo de invitaciones todavía no está configurado.",
+        "baseUrlNotConfigured": "La URL de invitación todavía no está configurada.",
+        "emailSendFailed": "No pudimos enviar el correo de invitación."
+      }
+    },
+    "membersTable": {
+      "member": "Miembro",
+      "role": "Rol",
+      "loading": "Cargando miembros…",
+      "empty": "Todavía no hay miembros de esta institución.",
+      "actionsMenu": "Abrir acciones del miembro",
+      "removeMember": "Eliminar miembro",
+      "roleUpdated": "Rol actualizado.",
+      "memberRemoved": "Miembro eliminado."
+    },
+    "invitesTable": {
+      "email": "Correo",
+      "role": "Rol",
+      "invitedBy": "Invitado por",
+      "sent": "Enviada",
+      "loading": "Cargando invitaciones…",
+      "empty": "No hay invitaciones pendientes.",
+      "actionsMenu": "Abrir acciones de la invitación",
+      "cancelInvite": "Cancelar invitación",
+      "roleUpdated": "Invitación actualizada.",
+      "inviteCancelled": "Invitación cancelada."
+    }
+  }
+}

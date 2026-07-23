@@ -30,7 +30,7 @@ async function requireRoomManager(
 export const upsertScene = mutation({
   args: {
     roomName: v.string(),
-    elements: v.any(),
+    elements: v.array(v.any()),
   },
   returns: v.null(),
   handler: async (ctx, { roomName, elements }) => {
@@ -117,7 +117,7 @@ export const getScene = query({
       _id: v.id("whiteboardSessions"),
       _creationTime: v.number(),
       roomName: v.string(),
-      elements: v.any(),
+      elements: v.array(v.any()),
       fileRefs: v.optional(v.record(v.string(), fileRefValidator)),
       updatedAt: v.number(),
     }),

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import type { Doc } from "@/convex/_generated/dataModel"
+import type { FunctionReturnType } from "convex/server"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,7 +20,12 @@ type CampusDialogProps = {
     open?: boolean 
     onOpenChange?: (open: boolean) => void
 } & (
-    | { campus: Doc<"campuses">; parentInstitution?: never }
+    | {
+        campus: Doc<"campuses"> & {
+            principal?: FunctionReturnType<typeof api.campuses.listPrincipalCandidates>[number] | null
+        }
+        parentInstitution?: never
+      }
     | {
         campus?: undefined
         parentInstitution: Pick<Doc<"schools">, "_id" | "name">
@@ -30,6 +36,9 @@ export function CampusDialog(props: CampusDialogProps) {
     const { trigger, open, onOpenChange } = props
     const isEditing = !!props.campus
     const t = useTranslations("settings.campuses")
+    const [isOpen, setIsOpen] = useState(false)
+    const effectiveOpen = open !== undefined ? open : isOpen
+    const handleOpenChange = onOpenChange || setIsOpen
 
     const createCampus = useMutation(api.campuses.create)
     const updateCampus = useMutation(api.campuses.update)
@@ -37,8 +46,11 @@ export function CampusDialog(props: CampusDialogProps) {
         ? props.campus.schoolId
         : props.parentInstitution._id
     const school = useQuery(api.schools.get, { id: schoolId })
+    const principals = useQuery(
+        api.campuses.listPrincipalCandidates,
+        effectiveOpen ? { schoolId } : "skip",
+    )
 
-    const [isOpen, setIsOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isAutoSlug, setIsAutoSlug] = useState(!isEditing)
     
@@ -48,10 +60,8 @@ export function CampusDialog(props: CampusDialogProps) {
         code: "",
         timeZone: "",
         status: "active",
+        principalId: "none",
     })
-
-    const effectiveOpen = open !== undefined ? open : isOpen
-    const handleOpenChange = onOpenChange || setIsOpen
 
     useEffect(() => {
         if (effectiveOpen) {
@@ -62,6 +72,7 @@ export function CampusDialog(props: CampusDialogProps) {
                     code: props.campus.code || "",
                     timeZone: props.campus.timeZone || "",
                     status: props.campus.isActive ? "active" : "inactive",
+                    principalId: props.campus.principal?._id || "none",
                 })
                 setIsAutoSlug(false)
             } else {
@@ -70,7 +81,8 @@ export function CampusDialog(props: CampusDialogProps) {
                     slug: "", 
                     code: "",
                     timeZone: "",
-                    status: "active" 
+                    status: "active",
+                    principalId: "none",
                 })
                 setIsAutoSlug(true)
             }
@@ -101,6 +113,10 @@ export function CampusDialog(props: CampusDialogProps) {
                     code: formData.code || null,
                     timeZone: formData.timeZone || null,
                     isActive: formData.status === "active",
+                    principalId:
+                        formData.principalId === "none"
+                            ? null
+                            : formData.principalId as Doc<"users">["_id"],
                 })
                 toast.success(t("updated"))
             } else {
@@ -110,6 +126,10 @@ export function CampusDialog(props: CampusDialogProps) {
                     slug: formData.slug,
                     code: formData.code || undefined,
                     timeZone: formData.timeZone || undefined,
+                    principalId:
+                        formData.principalId === "none"
+                            ? undefined
+                            : formData.principalId as Doc<"users">["_id"],
                 })
                 toast.success(t("created"))
             }
@@ -154,6 +174,28 @@ export function CampusDialog(props: CampusDialogProps) {
                         </div>
                     </div>
                 )}
+
+                <div className="grid gap-2">
+                    <Label htmlFor="principal">{t("principal")}</Label>
+                    <Select
+                        value={formData.principalId}
+                        onValueChange={(principalId) =>
+                            setFormData({...formData, principalId})
+                        }
+                    >
+                        <SelectTrigger id="principal">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="none">{t("unassignedPrincipal")}</SelectItem>
+                            {principals?.map((principal) => (
+                                <SelectItem key={principal._id} value={principal._id}>
+                                    {principal.fullName}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
 
                 <div className="grid gap-2">
                     <Label htmlFor="name">{t("name")}</Label>

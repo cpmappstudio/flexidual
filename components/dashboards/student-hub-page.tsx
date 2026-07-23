@@ -209,9 +209,13 @@ export default function StudentHubPage() {
   }
 
   // Queries
-  const events = useQuery(api.schedule.getMySchedule, {})
+  const events = useQuery(api.schedule.getMySchedule, {
+    now: Math.floor(now / 60_000) * 60_000,
+  })
   const accessibleLiveClasses = useQuery(api.schedule.listAccessibleLiveClasses)
-  const dashboardData = useQuery(api.student.getStudentDashboardStats)
+  const dashboardData = useQuery(api.student.getStudentDashboardStats, {
+    now: Math.floor(now / 60_000) * 60_000,
+  })
 
   useEffect(() => {
     const stored = localStorage.getItem('flexidual_sound_alerts');

@@ -20,10 +20,6 @@ interface CalendarProviderProps {
 
   isLoading?: boolean;
   userId?: Id<"users">;
-  selectedTeacherId: Id<"users"> | null;
-  onTeacherChange: (id: Id<"users"> | null) => void;
-  selectedCurriculumId: Id<"curriculums"> | null;
-  onCurriculumChange: (id: Id<"curriculums"> | null) => void;
   children: React.ReactNode;
 }
 
@@ -38,10 +34,6 @@ export default function CalendarProvider({
 
   isLoading = false,
   userId,
-  selectedTeacherId,
-  onTeacherChange,
-  selectedCurriculumId,
-  onCurriculumChange,
   children,
 }: CalendarProviderProps) {
   const [manageEventDialogOpen, setManageEventDialogOpen] = useState(false);
@@ -69,11 +61,6 @@ export default function CalendarProvider({
         setManageEventDialogOpen,
         selectedEvent,
         setSelectedEvent,
-
-        selectedTeacherId,
-        onTeacherChange,
-        selectedCurriculumId,
-        onCurriculumChange,
       }}
     >
       {children}
