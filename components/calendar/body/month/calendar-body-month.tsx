@@ -37,6 +37,7 @@ export default function CalendarBodyMonth() {
     displayTimeZone,
     setManageEventDialogOpen,
     setSelectedEvent,
+    isStudent,
   } = useCalendarContext();
   const locale = useLocale();
   const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS;
@@ -133,6 +134,7 @@ export default function CalendarBodyMonth() {
           events={selectedDayEvents}
           dateLocale={dateLocale}
           displayTimeZone={displayTimeZone}
+          isStudent={isStudent}
           emptyLabel={t("noEventsDay")}
           classesLabel={
             selectedDayEvents.length === 1 ? t("event") : t("events")
@@ -269,6 +271,7 @@ function MobileDayAgenda({
   events,
   dateLocale,
   displayTimeZone,
+  isStudent,
   emptyLabel,
   classesLabel,
   onEventClick,
@@ -277,6 +280,7 @@ function MobileDayAgenda({
   events: CalendarEventType[];
   dateLocale: Locale;
   displayTimeZone: string;
+  isStudent: boolean | undefined;
   emptyLabel: string;
   classesLabel: string;
   onEventClick: (event: CalendarEventType) => void;
@@ -316,8 +320,8 @@ function MobileDayAgenda({
         >
           {events.length ? (
             events.map((event) => {
-              const { primaryLabel, secondaryLabel } =
-                getCalendarEventDisplay(event);
+              const { primaryLabel, secondaryLabel, gradeLabel } =
+                getCalendarEventDisplay(event, { showGrade: !isStudent });
               const timeLabel = `${format(event.start, "h:mm a", dateContext)} - ${format(event.end, "h:mm a", dateContext)}`;
 
               return (
@@ -338,6 +342,11 @@ function MobileDayAgenda({
                       {timeLabel}
                     </span>
                   </span>
+                  {gradeLabel && (
+                    <span className="mt-1 truncate text-[10px] font-semibold uppercase text-muted-foreground">
+                      {gradeLabel}
+                    </span>
+                  )}
                   {secondaryLabel && (
                     <span className="mt-1 truncate text-xs font-medium text-muted-foreground">
                       {secondaryLabel}

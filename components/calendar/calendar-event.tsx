@@ -112,6 +112,8 @@ export default function CalendarEvent({
     scheduleStartMinutes,
     scheduleEndMinutes,
     displayTimeZone,
+    isStudent,
+    mode,
   } = useCalendarContext();
 
   const style = month
@@ -142,9 +144,20 @@ export default function CalendarEvent({
           : event.color;
   const statusClasses = getCalendarColorClasses(statusColor);
 
-  const { primaryLabel, secondaryLabel } = getCalendarEventDisplay(event);
+  const showGrade = !isStudent;
+  const { primaryLabel, secondaryLabel, gradeLabel } = getCalendarEventDisplay(
+    event,
+    {
+      showGrade,
+      includeGradeInPrimary: month,
+    },
+  );
   const timeLabel = `${format(event.start, "h:mm a", dateContext)} - ${format(event.end, "h:mm a", dateContext)}`;
   const compactTimeLabel = `${format(event.start, "h:mm", dateContext)}-${format(event.end, "h:mm a", dateContext)}`;
+  const desktopDailyLabel =
+    mode === "day" && gradeLabel
+      ? `${primaryLabel} (${gradeLabel})`
+      : primaryLabel;
   const tooltipText = month
     ? `${primaryLabel}${secondaryLabel ? ` - ${secondaryLabel}` : ""} - ${format(event.start, "h:mm a", dateContext)} · ${displayTimeZone}`
     : `${primaryLabel}\n${timeLabel}${secondaryLabel ? `\n${secondaryLabel}` : ""} · ${displayTimeZone}`;
@@ -224,17 +237,51 @@ export default function CalendarEvent({
                   month && "text-[10px]",
                 )}
               >
-                {primaryLabel}
+                {mode === "day" && gradeLabel ? (
+                  <>
+                    <span className="lg:hidden">{primaryLabel}</span>
+                    <span className="hidden lg:inline">
+                      {desktopDailyLabel}
+                    </span>
+                  </>
+                ) : (
+                  primaryLabel
+                )}
               </p>
 
               {!month && secondaryLabel && (
+                <>
+                  {gradeLabel && (
+                    <p
+                      className={cn(
+                        "truncate text-[10px] font-semibold uppercase leading-tight text-muted-foreground",
+                        compact && "text-[8px] leading-[1.05]",
+                        mode === "day" && "lg:hidden",
+                      )}
+                    >
+                      {gradeLabel}
+                    </p>
+                  )}
+                  <p
+                    className={cn(
+                      "truncate text-[11px] font-medium leading-tight opacity-80",
+                      compact && "text-[9px] leading-[1.05]",
+                    )}
+                  >
+                    {secondaryLabel}
+                  </p>
+                </>
+              )}
+
+              {!month && !secondaryLabel && gradeLabel && (
                 <p
                   className={cn(
-                    "truncate text-[11px] font-medium leading-tight opacity-80",
-                    compact && "text-[9px] leading-[1.05]",
+                    "truncate text-[10px] font-semibold uppercase leading-tight text-muted-foreground",
+                    compact && "text-[8px] leading-[1.05]",
+                    mode === "day" && "lg:hidden",
                   )}
                 >
-                  {secondaryLabel}
+                  {gradeLabel}
                 </p>
               )}
 

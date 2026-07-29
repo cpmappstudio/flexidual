@@ -19,6 +19,7 @@ export default function CalendarBodyWeekEvents() {
     displayTimeZone,
     setManageEventDialogOpen,
     setSelectedEvent,
+    isStudent,
   } = useCalendarContext();
 
   const t = useTranslations("calendar");
@@ -45,8 +46,8 @@ export default function CalendarBodyWeekEvents() {
       <p className="font-medium p-2 pb-0 font-heading">{t("eventsThisWeek")}</p>
       <div className="flex flex-col gap-2">
         {weekEvents.map((event) => {
-          const { primaryLabel, secondaryLabel } =
-            getCalendarEventDisplay(event);
+          const { primaryLabel, secondaryLabel, gradeLabel } =
+            getCalendarEventDisplay(event, { showGrade: !isStudent });
           const timeLabel = `${format(event.start, "h:mm a", dateContext)} - ${format(event.end, "h:mm a", dateContext)}`;
 
           return (
@@ -63,6 +64,11 @@ export default function CalendarBodyWeekEvents() {
               />
               <div className="flex flex-col min-w-0">
                 <p className="truncate text-xs font-semibold">{primaryLabel}</p>
+                {gradeLabel && (
+                  <p className="truncate text-[10px] font-semibold uppercase text-muted-foreground">
+                    {gradeLabel}
+                  </p>
+                )}
                 {secondaryLabel && (
                   <p className="truncate text-[11px] font-medium text-muted-foreground">
                     {secondaryLabel}

@@ -230,6 +230,10 @@ function CalendarContent() {
         label: grade.name,
       }));
   }, [canViewAllCampusCourses, filterOptions?.courses, grades]);
+  const gradeNameByCode = useMemo(
+    () => new Map((grades ?? []).map((grade) => [grade.code, grade.name])),
+    [grades],
+  );
   const scheduleWindow = useQuery(
     api.academicSettings.getScheduleWindow,
     calendarSchoolId
@@ -312,6 +316,9 @@ function CalendarContent() {
       curriculumId: e.curriculumId,
       teacherId: e.teacherId,
       gradeCode: e.gradeCode,
+      gradeLabel: e.gradeCode
+        ? (gradeNameByCode.get(e.gradeCode) ?? e.gradeCode)
+        : undefined,
       sessionType: e.sessionType,
       title: e.title,
       description: e.description,
@@ -330,7 +337,7 @@ function CalendarContent() {
       teacherImageUrl: e.teacherImageUrl,
       hasRecording: e.hasRecording,
     }));
-  }, [displayTimeZone, scheduleData]);
+  }, [displayTimeZone, gradeNameByCode, scheduleData]);
 
   const filteredEvents = useMemo(() => {
     let result = allEvents;

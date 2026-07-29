@@ -12,6 +12,7 @@ export default function CalendarBodyDayEvents() {
     displayTimeZone,
     setManageEventDialogOpen,
     setSelectedEvent,
+    isStudent,
   } = useCalendarContext();
   const t = useTranslations("calendar");
   const dayEvents = events.filter((event) =>
@@ -23,8 +24,13 @@ export default function CalendarBodyDayEvents() {
       <p className="font-medium p-2 pb-0 font-heading">{t("eventsToday")}</p>
       <div className="flex flex-col gap-2">
         {dayEvents.map((event) => {
-          const { primaryLabel, secondaryLabel } =
-            getCalendarEventDisplay(event);
+          const { primaryLabel, secondaryLabel } = getCalendarEventDisplay(
+            event,
+            {
+              showGrade: !isStudent,
+              includeGradeInPrimary: true,
+            },
+          );
           const timeLabel = `${format(event.start, "h:mm a", { in: tz(displayTimeZone) })} - ${format(event.end, "h:mm a", { in: tz(displayTimeZone) })}`;
 
           return (

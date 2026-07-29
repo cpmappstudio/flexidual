@@ -33,6 +33,7 @@ export type CalendarEvent = {
   curriculumId: Id<"curriculums">;
   teacherId?: Id<"users">;
   gradeCode?: string;
+  gradeLabel?: string;
   sessionType: "live" | "ignitia" | "abeka";
 
   // Display fields
