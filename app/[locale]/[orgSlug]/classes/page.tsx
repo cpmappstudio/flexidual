@@ -6,16 +6,14 @@ import { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
-import { School } from "lucide-react";
+import { Plus, School } from "lucide-react";
 
-import {
-  ClassAcademicPeriodFilter,
-  ClassCombinedFilter,
-} from "@/components/teaching/classes/class-combined-filter";
+import { ClassFilters } from "@/components/teaching/classes/class-combined-filter";
 import { ClassesTable } from "@/components/teaching/classes/classes-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { ResponsivePageAction } from "@/components/ui/responsive-page-action";
 import { Link } from "@/i18n/navigation";
 
 import { useStaffAccess } from "@/hooks/use-staff-access";
@@ -24,14 +22,15 @@ import { useSettingsContext } from "@/hooks/use-settings-context";
 export default function MyClassesPage() {
   const params = useParams<{ orgSlug: string }>();
   const basePath = `/${params.orgSlug}`;
-  const orgContext = useQuery(api.organizations.resolveSlug, {
-    slug: params.orgSlug,
-  });
 
   const { access, isLoading: isAccessLoading } = useStaffAccess();
   const { context: settingsContext, isLoading: isSettingsLoading } =
     useSettingsContext();
   const canManage = access?.canManageCampus ?? false;
+  const orgContext = useQuery(
+    api.organizations.resolveSlug,
+    access ? { slug: params.orgSlug } : "skip",
+  );
 
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
@@ -48,7 +47,7 @@ export default function MyClassesPage() {
 
   const tableData = useQuery(
     api.classes.listOverview,
-    access
+    access && orgContext
       ? {
           schoolId: querySchoolId as Id<"schools"> | undefined,
           campusId: queryCampusId as Id<"campuses"> | undefined,
@@ -121,24 +120,20 @@ export default function MyClassesPage() {
           academicPeriods={academicSettings?.periods}
           teachers={tableData.teachers}
           customFilter={
-            <>
-              <ClassAcademicPeriodFilter
-                periods={academicSettings?.periods ?? []}
-                value={selectedAcademicPeriodId}
-                onValueChange={setSelectedAcademicPeriodId}
-              />
-              <ClassCombinedFilter
-                selectedTeacherId={selectedTeacherId}
-                onSelectTeacher={setSelectedTeacherId}
-                selectedCurriculumId={selectedCurriculumId}
-                onSelectCurriculum={setSelectedCurriculumId}
-                curriculums={
-                  curriculums?.filter((curriculum) => curriculum.isActive) ?? []
-                }
-                teachers={tableData.teachers}
-                isAdmin={canManage}
-              />
-            </>
+            <ClassFilters
+              periods={academicSettings?.periods ?? []}
+              selectedAcademicPeriodId={selectedAcademicPeriodId}
+              onSelectAcademicPeriod={setSelectedAcademicPeriodId}
+              selectedTeacherId={selectedTeacherId}
+              onSelectTeacher={setSelectedTeacherId}
+              selectedCurriculumId={selectedCurriculumId}
+              onSelectCurriculum={setSelectedCurriculumId}
+              curriculums={
+                curriculums?.filter((curriculum) => curriculum.isActive) ?? []
+              }
+              teachers={tableData.teachers}
+              isAdmin={canManage}
+            />
           }
           canManage={canManage}
         />
@@ -166,9 +161,17 @@ function EmptyState({
         {canManage ? t("class.createPrompt") : t("class.notAssigned")}
       </p>
       {canManage && (
-        <Button asChild>
-          <Link href={`${basePath}/classes/new`}>{t("class.createClass")}</Link>
-        </Button>
+        <ResponsivePageAction>
+          <Button asChild>
+            <Link
+              href={`${basePath}/classes/new`}
+              aria-label={t("class.createClass")}
+            >
+              <Plus />
+              <span className="hidden sm:inline">{t("class.createClass")}</span>
+            </Link>
+          </Button>
+        </ResponsivePageAction>
       )}
     </Card>
   );

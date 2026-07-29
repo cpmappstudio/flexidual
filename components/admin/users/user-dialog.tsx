@@ -418,9 +418,9 @@ export function UserDialog({
       <span className="sr-only">{t("common.edit")}</span>
     </Button>
   ) : (
-    <Button className="gap-2" type="button">
+    <Button className="gap-2" type="button" aria-label={t("common.add")}>
       <Plus className="h-4 w-4" />
-      {t("common.add")}
+      <span className="hidden sm:inline">{t("common.add")}</span>
     </Button>
   );
 

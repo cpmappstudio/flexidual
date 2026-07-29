@@ -51,7 +51,7 @@ export default function CalendarHeaderDateBadge() {
   if (!filteredEvents.length) return null;
 
   return (
-    <div className="whitespace-nowrap rounded-sm border bg-sidebar px-1.5 py-0.5 text-xs">
+    <div className="hidden whitespace-nowrap rounded-sm border bg-sidebar px-1.5 py-0.5 text-xs md:block">
       {filteredEvents.length}{" "}
       {filteredEvents.length === 1 ? t("event") : t("events")}
     </div>

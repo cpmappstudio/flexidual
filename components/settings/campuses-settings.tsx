@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResponsivePageAction } from "@/components/ui/responsive-page-action";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,18 +102,23 @@ export function CampusesSettings() {
           {t("title")} — {context.institution.name}
         </h2>
         {context.canManageInstitution && (
-          <CampusDialog
-            parentInstitution={{
-              _id: context.institution._id,
-              name: context.institution.name,
-            }}
-            trigger={
-              <Button size="sm">
-                <Plus />
-                {t("add")}
-              </Button>
-            }
-          />
+          <ResponsivePageAction>
+            <CampusDialog
+              parentInstitution={{
+                _id: context.institution._id,
+                name: context.institution.name,
+              }}
+              trigger={
+                <Button
+                  size="sm"
+                  aria-label={t("add")}
+                >
+                  <Plus />
+                  <span className="hidden sm:inline">{t("add")}</span>
+                </Button>
+              }
+            />
+          </ResponsivePageAction>
         )}
       </div>
 

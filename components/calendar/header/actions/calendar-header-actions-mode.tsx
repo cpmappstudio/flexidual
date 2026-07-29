@@ -27,7 +27,7 @@ export default function CalendarHeaderActionsMode({
         <ToggleGroupItem
           key={modeValue}
           value={modeValue}
-          className="h-9 min-w-16 rounded-none border-r px-3 capitalize last:border-r-0"
+          className="h-9 min-w-0 rounded-none border-r px-2 text-xs capitalize last:border-r-0 sm:min-w-16 sm:px-3 sm:text-sm"
         >
           {t(modeValue)}
         </ToggleGroupItem>

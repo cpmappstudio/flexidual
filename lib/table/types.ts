@@ -24,7 +24,6 @@ export interface DataTableProps<TData> {
   columnsMenuLabel?: string;
   exportButtonLabel?: string;
   filterConfigs?: FilterConfig[];
-  filterVariant?: "menu" | "select";
   filterAllLabel?: string;
   filtersMenuLabel?: string;
   previousLabel?: string;

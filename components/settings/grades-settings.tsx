@@ -34,6 +34,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { ResponsivePageAction } from "@/components/ui/responsive-page-action";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -267,10 +268,16 @@ export function GradesSettings() {
           {t("title")} — {context.institution.name}
         </h2>
         {!readOnly && (
-          <Button size="sm" onClick={openCreateDialog}>
-            <Plus />
-            {t("add")}
-          </Button>
+          <ResponsivePageAction>
+            <Button
+              size="sm"
+              onClick={openCreateDialog}
+              aria-label={t("add")}
+            >
+              <Plus />
+              <span className="hidden sm:inline">{t("add")}</span>
+            </Button>
+          </ResponsivePageAction>
         )}
       </div>
 

@@ -1,32 +1,38 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import Image from "next/image"
-import { useAuth } from "@clerk/nextjs"
-import { useParams, usePathname } from "next/navigation"
-import { NavMain } from "@/components/nav-main"
+import * as React from "react";
+import Image from "next/image";
+import { useAuth } from "@clerk/nextjs";
+import { useParams, usePathname } from "next/navigation";
+import { NavMain } from "@/components/nav-main";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-} from "@/components/ui/sidebar"
+  useSidebar,
+} from "@/components/ui/sidebar";
 
-import { OrgSwitcher } from "./org-switcher"
-import { getRoleForOrg } from "@/lib/rbac"
+import { OrgSwitcher } from "./org-switcher";
+import { getRoleForOrg } from "@/lib/rbac";
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const params = useParams()
-  const pathname = usePathname()
-  const { sessionClaims } = useAuth()
+  const params = useParams();
+  const pathname = usePathname();
+  const { sessionClaims } = useAuth();
+  const { isMobile, setOpenMobile } = useSidebar();
 
-  let currentSlug = params.orgSlug as string | undefined
+  React.useEffect(() => {
+    if (isMobile) setOpenMobile(false);
+  }, [isMobile, pathname, setOpenMobile]);
+
+  let currentSlug = params.orgSlug as string | undefined;
   if (currentSlug === "admin" || pathname.startsWith("/admin")) {
-    currentSlug = "system"
+    currentSlug = "system";
   }
 
-  const role = getRoleForOrg(sessionClaims, currentSlug ?? "system")
-  const isStudent = role === "student"
+  const role = getRoleForOrg(sessionClaims, currentSlug ?? "system");
+  const isStudent = role === "student";
 
   return (
     <Sidebar
@@ -55,5 +61,5 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </div>
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }

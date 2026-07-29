@@ -278,8 +278,9 @@ export function CurriculumDialog({
             <Edit className="h-4 w-4 text-muted-foreground" />
           </Button>
         ) : (
-          <Button className="gap-2" type="button">
-            <Plus className="h-4 w-4" /> {t("common.add")}
+          <Button className="gap-2" type="button" aria-label={t("common.add")}>
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">{t("common.add")}</span>
           </Button>
         ))
       }

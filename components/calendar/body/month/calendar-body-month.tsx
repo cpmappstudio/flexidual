@@ -158,44 +158,32 @@ export default function CalendarBodyMonth() {
           ))}
         </div>
 
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={monthStart.toISOString()}
-            className="grid min-h-0 flex-1 grid-cols-7 grid-rows-[repeat(auto-fit,minmax(0,1fr))] overflow-hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{
-              duration: 0.2,
-              ease: "easeInOut",
-            }}
-          >
-            {calendarDays.map((day) => {
-              const dayEvents = visibleEvents.filter((event) =>
-                isSameDay(event.start, day, dateContext),
-              );
-              const isToday = isSameDay(day, today, dateContext);
-              const isCurrentMonth = isSameMonth(day, date, dateContext);
+        <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-[repeat(auto-fit,minmax(0,1fr))] overflow-hidden">
+          {calendarDays.map((day) => {
+            const dayEvents = visibleEvents.filter((event) =>
+              isSameDay(event.start, day, dateContext),
+            );
+            const isToday = isSameDay(day, today, dateContext);
+            const isCurrentMonth = isSameMonth(day, date, dateContext);
 
-              return (
-                <DayCell
-                  key={day.toISOString()}
-                  day={day}
-                  dayEvents={dayEvents}
-                  isToday={isToday}
-                  isCurrentMonth={isCurrentMonth}
-                  dateLocale={dateLocale}
-                  displayTimeZone={displayTimeZone}
-                  onDayClick={() => {
-                    setDate(day);
-                    setMode("day");
-                  }}
-                  t={t}
-                />
-              );
-            })}
-          </motion.div>
-        </AnimatePresence>
+            return (
+              <DayCell
+                key={day.toISOString()}
+                day={day}
+                dayEvents={dayEvents}
+                isToday={isToday}
+                isCurrentMonth={isCurrentMonth}
+                dateLocale={dateLocale}
+                displayTimeZone={displayTimeZone}
+                onDayClick={() => {
+                  setDate(day);
+                  setMode("day");
+                }}
+                t={t}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );

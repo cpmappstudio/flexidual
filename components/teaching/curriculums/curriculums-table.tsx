@@ -162,6 +162,7 @@ export function CurriculumsTable({
         filterPlaceholder={t("common.searchByName")}
         emptyMessage={t("common.noResults")}
         filterConfigs={filterConfigs}
+        filterAllLabel={t("common.allStatuses")}
         createAction={
           readOnly ? undefined : <CurriculumDialog schoolId={querySchoolId} />
         }

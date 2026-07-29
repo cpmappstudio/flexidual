@@ -216,7 +216,7 @@ export function UsersTable({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {!readOnly && editingUser && (
         <UserDialog
           user={editingUser}
@@ -239,18 +239,19 @@ export function UsersTable({
         filterPlaceholder={t("common.searchByName")}
         emptyMessage={t("common.noResults")}
         filterConfigs={filterConfigs}
-        filterVariant="select"
         filterAllLabel={
           isStudentTable ? t("student.allGrades") : t("common.allStatuses")
         }
-        createAction={readOnly ? undefined :
-          <UserDialog
-            defaultRole={roleFilter}
-            allowedRoles={allowedRoles}
-            scope={effectiveScope}
-            campusSelectionSchoolId={campusSelectionSchoolId}
-            hideRole={hideRole}
-          />
+        createAction={
+          readOnly ? undefined : (
+            <UserDialog
+              defaultRole={roleFilter}
+              allowedRoles={allowedRoles}
+              scope={effectiveScope}
+              campusSelectionSchoolId={campusSelectionSchoolId}
+              hideRole={hideRole}
+            />
+          )
         }
         pageSize={10}
         onRowClick={readOnly ? undefined : (user) => setEditingUser(user)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Suspense } from "react";
+import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -292,6 +292,16 @@ function CalendarContent() {
         }
       : "skip",
   );
+  const retainedScheduleRef = useRef<{
+    scopeKey: string;
+    data: Exclude<typeof scheduleResult, undefined>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (scheduleResult !== undefined && scopeKey) {
+      retainedScheduleRef.current = { scopeKey, data: scheduleResult };
+    }
+  }, [scheduleResult, scopeKey]);
 
   useEffect(() => {
     setSelectedCourseId(classIdParam);
@@ -299,7 +309,12 @@ function CalendarContent() {
     setSelectedGradeCode(null);
   }, [classIdParam, scopeKey]);
 
-  const scheduleData = scheduleResult;
+  const retainedSchedule = retainedScheduleRef.current;
+  const scheduleData =
+    scheduleResult ??
+    (retainedSchedule && retainedSchedule.scopeKey === scopeKey
+      ? retainedSchedule.data
+      : undefined);
   const tCalendar = useTranslations("calendar");
 
   const allEvents = useMemo(() => {

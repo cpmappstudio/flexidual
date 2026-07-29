@@ -12,7 +12,7 @@ export default function CalendarTimeZoneBadge() {
   return (
     <Badge
       variant="outline"
-      className="gap-1 bg-sidebar text-[10px] font-medium text-muted-foreground sm:text-xs"
+      className="hidden gap-1 bg-sidebar text-xs font-medium text-muted-foreground md:flex"
       title={`${t("localTime")}: ${displayTimeZone}`}
     >
       <Clock3 className="size-3" />

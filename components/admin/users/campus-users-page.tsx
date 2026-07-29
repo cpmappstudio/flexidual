@@ -22,10 +22,7 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
     api.organizations.resolveSlug,
     isAuthenticated ? { slug: params.orgSlug ?? "system" } : "skip",
   );
-  const campusId =
-    orgContext?.type === "campus"
-      ? orgContext._id
-      : undefined;
+  const campusId = orgContext?.type === "campus" ? orgContext._id : undefined;
 
   const title = isStudents ? t("students") : t("teachers");
 
@@ -46,7 +43,7 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
   }
 
   return (
-    <section className="grid gap-4">
+    <section className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
       <h1 className="border-b pb-3 text-2xl font-semibold">{title}</h1>
       {campusId ? (
         <UsersTable

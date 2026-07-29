@@ -256,9 +256,14 @@ export function ClassesTable({
         createAction={
           canManage ? (
             <Button asChild>
-              <Link href={`${basePath}/classes/new`}>
+              <Link
+                href={`${basePath}/classes/new`}
+                aria-label={t("class.createClass")}
+              >
                 <Plus className="h-4 w-4" />
-                {t("class.createClass")}
+                <span className="hidden sm:inline">
+                  {t("class.createClass")}
+                </span>
               </Link>
             </Button>
           ) : undefined

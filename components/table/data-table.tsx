@@ -17,6 +17,7 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { DataTableFilters } from "@/components/table/data-table-filters";
+import { ResponsivePageAction } from "@/components/ui/responsive-page-action";
 import {
   InputGroup,
   InputGroupAddon,
@@ -43,7 +44,6 @@ export function DataTable<TData>({
   emptyMessage,
   exportButtonLabel,
   filterConfigs,
-  filterVariant,
   filterAllLabel,
   filtersMenuLabel,
   resultsCountLabel,
@@ -150,10 +150,10 @@ export function DataTable<TData>({
   }, [onExport, table]);
 
   return (
-    <div className="w-full">
-      <div className="flex items-center gap-2 pb-4">
+    <div className="min-w-0 w-full">
+      <div className="flex min-w-0 items-center gap-2 pb-4">
         {filterColumnInstance ? (
-          <InputGroup className="bg-card">
+          <InputGroup className="w-auto min-w-0 flex-1 bg-card">
             <InputGroupAddon>
               <Search />
             </InputGroupAddon>
@@ -167,16 +167,16 @@ export function DataTable<TData>({
             />
           </InputGroup>
         ) : null}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {customFilter}
 
           {filterConfigs && filterConfigs.length > 0 && (
             <DataTableFilters
               table={table}
               filterConfigs={filterConfigs}
-              variant={filterVariant}
               allLabel={filterAllLabel}
-              filtersMenuLabel={filtersMenuLabel}
+              filtersMenuLabel={filtersMenuLabel ?? t("table.filters")}
+              clearFiltersLabel={t("table.clearFilters")}
             />
           )}
 
@@ -187,7 +187,9 @@ export function DataTable<TData>({
             </Button>
           )}
 
-          {createAction}
+          {createAction && (
+            <ResponsivePageAction>{createAction}</ResponsivePageAction>
+          )}
         </div>
       </div>
 
@@ -199,7 +201,7 @@ export function DataTable<TData>({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-md border">
+      <div className="min-w-0 overflow-hidden rounded-md border">
         <Table className="bg-card">
           <TableHeader className="bg-primary/95 sticky top-0 z-10 ">
             {table.getHeaderGroups().map((headerGroup) => (

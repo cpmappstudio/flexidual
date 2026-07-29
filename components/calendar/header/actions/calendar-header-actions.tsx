@@ -1,11 +1,11 @@
 export default function CalendarHeaderActions({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex shrink-0 flex-nowrap items-center gap-1 sm:gap-2">
       {children}
     </div>
-  )
+  );
 }

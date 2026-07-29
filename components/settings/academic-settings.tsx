@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResponsivePageAction } from "@/components/ui/responsive-page-action";
 import { Calendar } from "@/components/ui/calendar";
 import { EntityDialog } from "@/components/ui/entity-dialog";
 import {
@@ -236,10 +237,16 @@ export function AcademicSettings() {
         <div className="flex items-center justify-between gap-4">
           <h3 className="text-lg font-semibold">{t("periods")}</h3>
           {!readOnly && (
-            <Button size="sm" onClick={() => openPeriodDialog()}>
-              <Plus />
-              {t("addPeriod")}
-            </Button>
+            <ResponsivePageAction>
+              <Button
+                size="sm"
+                onClick={() => openPeriodDialog()}
+                aria-label={t("addPeriod")}
+              >
+                <Plus />
+                <span className="hidden sm:inline">{t("addPeriod")}</span>
+              </Button>
+            </ResponsivePageAction>
           )}
         </div>
 
