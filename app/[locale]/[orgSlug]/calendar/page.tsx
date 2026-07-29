@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, Suspense } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import Calendar from "@/components/calendar/calendar";
@@ -125,8 +125,6 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
                   key={event.scheduleId}
                   schedule={{
                     scheduleId: event.scheduleId,
-                    lessonIds: event.lessonIds,
-                    lessons: event.lessons,
                     classId: event.classId,
                     title: event.title || event.className,
                     description: event.description,
@@ -158,9 +156,8 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
 }
 
 function CalendarContent() {
-  const [mode, setMode] = useState<Mode>("month");
+  const [selectedMode, setSelectedMode] = useState<Mode | null>(null);
   const [date, setDate] = useState<Date>(new Date());
-  const [isCalendarInitialized, setIsCalendarInitialized] = useState(false);
 
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
@@ -171,19 +168,32 @@ function CalendarContent() {
   );
 
   const { user } = useCurrentUser();
-  const { isLoaded: isAuthLoaded, sessionClaims } = useAuth();
+  const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims } = useAuth();
+  const {
+    isAuthenticated: isConvexAuthenticated,
+    isLoading: isConvexAuthLoading,
+  } = useConvexAuth();
 
   const searchParams = useSearchParams();
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
   const role = getRoleForOrg(sessionClaims, orgSlug);
-  const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
+  const isStudent = role === "student";
+  const mode = selectedMode ?? (isStudent ? "day" : "month");
+  const isCalendarAuthReady =
+    isClerkLoaded &&
+    isSignedIn === true &&
+    !isConvexAuthLoading &&
+    isConvexAuthenticated;
+  const orgContext = useQuery(
+    api.organizations.resolveSlug,
+    isCalendarAuthReady ? { slug: orgSlug } : "skip",
+  );
   const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
 
   const { context: settingsContext } = useSettingsContext();
   const { access } = useStaffAccess();
   const canViewAllCampusCourses = access?.canManageCampus ?? false;
-  const isStudent = role === "student";
   const now = useCurrentMinute();
   const calendarSchoolId = settingsContext?.institution._id;
   const calendarCampusId =
@@ -260,23 +270,11 @@ function CalendarContent() {
   const displayTimeZone = calendarTimeZones?.displayTimeZone;
   const schedulingTimeZone = calendarTimeZones?.schedulingTimeZone;
 
-  useEffect(() => {
-    if (!isAuthLoaded) return;
-    setMode(isStudent ? "day" : "month");
-    setDate(new Date());
-    setIsCalendarInitialized(true);
-  }, [isAuthLoaded, isStudent]);
-
-  useEffect(() => {
-    if (!displayTimeZone) return;
-    setDate((currentDate) => TZDate.tz(displayTimeZone, currentDate.getTime()));
-  }, [displayTimeZone]);
-
   const visibleRange = useMemo(() => {
-    if (!displayTimeZone || !isCalendarInitialized) return null;
+    if (!displayTimeZone || !isCalendarAuthReady) return null;
     const selectedDate = dateInTimeZone(date.getTime(), displayTimeZone);
     return getCalendarUtcRange(selectedDate, mode, displayTimeZone);
-  }, [date, displayTimeZone, isCalendarInitialized, mode]);
+  }, [date, displayTimeZone, isCalendarAuthReady, mode]);
 
   const scheduleResult = useQuery(
     api.schedule.getMySchedule,
@@ -311,7 +309,6 @@ function CalendarContent() {
       id: e.scheduleId,
       _id: e.scheduleId,
       scheduleId: e.scheduleId,
-      lessonIds: e.lessonIds,
       classId: e.classId,
       curriculumId: e.curriculumId,
       teacherId: e.teacherId,
@@ -357,10 +354,7 @@ function CalendarContent() {
     return result;
   }, [allEvents, selectedCourseId, selectedGradeCode, selectedTeacherId]);
 
-  if (
-    scheduleWindow === null ||
-    (scheduleWindow && !schedulingTimeZone)
-  ) {
+  if (scheduleWindow === null || (scheduleWindow && !schedulingTimeZone)) {
     return (
       <div className="flex h-full min-h-64 items-center justify-center px-4 text-center">
         <div className="max-w-md">
@@ -378,6 +372,7 @@ function CalendarContent() {
 
   if (
     scheduleWindow === undefined ||
+    !isCalendarAuthReady ||
     !displayTimeZone ||
     !schedulingTimeZone ||
     !visibleRange ||
@@ -390,7 +385,7 @@ function CalendarContent() {
     <CalendarProvider
       events={filteredEvents}
       mode={mode}
-      setMode={setMode}
+      setMode={setSelectedMode}
       date={date}
       setDate={setDate}
       scheduleStartMinutes={scheduleWindow?.startMinutes}

@@ -704,14 +704,18 @@ export const getMySchedule = query({
               .withIndex("by_schedule", (q) =>
                 q.eq("scheduleId", schedule._id).eq("status", "complete"),
               )
-              .first(),
+              .collect(),
           ),
         )
       : [];
     const scheduleIdsWithRecordings = new Set(
-      completedRecordings
-        .filter((recording) => recording !== null)
-        .map((recording) => recording.scheduleId),
+      flatSchedule
+        .filter((_, index) =>
+          completedRecordings[index]?.some((recording) =>
+            Boolean(recording.url),
+          ),
+        )
+        .map((schedule) => schedule._id),
     );
 
     const results = await Promise.all(

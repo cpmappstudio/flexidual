@@ -10,6 +10,9 @@ const ADVANCED_LITERATURE_CLASS_NAME =
   "Advanced Literature Seminar - Comparative Essays and Guided Reading Workshop";
 const LAURA_TODAY_DEMO_USERNAME = "student_lau";
 const LAURA_TODAY_DEMO_ROOM_PREFIX = "student-lau-today-demo";
+const LAURA_RECORDING_DEMO_EGRESS_PREFIX = "laura-recording-demo";
+const LAURA_RECORDING_DEMO_URL =
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
@@ -1068,6 +1071,112 @@ export const createLauraTodaySchedule = internalMutation({
       message: "Laura today demo schedule is ready.",
       student: student.fullName,
       schedules: scheduled,
+    };
+  },
+});
+
+export const createLauraRecordingDemo = internalMutation({
+  args: {},
+  returns: v.object({
+    message: v.string(),
+    student: v.string(),
+    recordings: v.array(
+      v.object({
+        scheduleId: v.id("classSchedule"),
+        roomName: v.string(),
+        url: v.string(),
+      }),
+    ),
+  }),
+  handler: async (ctx) => {
+    const student = (await ctx.db.query("users").collect()).find(
+      (user) => user.username === LAURA_TODAY_DEMO_USERNAME,
+    );
+    if (!student) {
+      throw new Error(`Student ${LAURA_TODAY_DEMO_USERNAME} was not found.`);
+    }
+
+    const classIds = new Set<Id<"classes">>();
+    const enrollments = await ctx.db
+      .query("classEnrollments")
+      .withIndex("by_student", (query) => query.eq("studentId", student._id))
+      .collect();
+    enrollments.forEach((enrollment) => classIds.add(enrollment.classId));
+
+    const legacyClasses = await ctx.db
+      .query("classes")
+      .withIndex("by_active", (query) => query.eq("isActive", true))
+      .collect();
+    legacyClasses.forEach((classData) => {
+      if (
+        !classData.enrollmentsMigratedAt &&
+        classData.students?.includes(student._id)
+      ) {
+        classIds.add(classData._id);
+      }
+    });
+
+    const pastSchedules = (
+      await Promise.all(
+        [...classIds].map((classId) =>
+          ctx.db
+            .query("classSchedule")
+            .withIndex("by_class", (query) => query.eq("classId", classId))
+            .collect(),
+        ),
+      )
+    )
+      .flat()
+      .filter(
+        (schedule) =>
+          schedule.scheduledEnd < Date.now() &&
+          schedule.status !== "cancelled" &&
+          Boolean(schedule.roomName),
+      )
+      .sort((first, second) => second.scheduledStart - first.scheduledStart)
+      .slice(0, 2);
+
+    if (pastSchedules.length === 0) {
+      throw new Error("No past classes were found for Laura.");
+    }
+
+    const recordings = [];
+    for (const schedule of pastSchedules) {
+      const egressId = `${LAURA_RECORDING_DEMO_EGRESS_PREFIX}-${schedule._id}`;
+      const existing = await ctx.db
+        .query("recordings")
+        .withIndex("by_egress_id", (query) => query.eq("egressId", egressId))
+        .first();
+      const recordingData = {
+        scheduleId: schedule._id,
+        roomName: schedule.roomName,
+        egressId,
+        status: "complete" as const,
+        fileKey: `dev/${egressId}.mp4`,
+        url: LAURA_RECORDING_DEMO_URL,
+        durationMs: schedule.scheduledEnd - schedule.scheduledStart,
+        fileSize: 1_128_375,
+        startedAt: schedule.scheduledStart,
+        completedAt: schedule.scheduledEnd,
+      };
+
+      if (existing) {
+        await ctx.db.patch(existing._id, recordingData);
+      } else {
+        await ctx.db.insert("recordings", recordingData);
+      }
+
+      recordings.push({
+        scheduleId: schedule._id,
+        roomName: schedule.roomName,
+        url: LAURA_RECORDING_DEMO_URL,
+      });
+    }
+
+    return {
+      message: "Laura recording demo data is ready.",
+      student: student.fullName,
+      recordings,
     };
   },
 });

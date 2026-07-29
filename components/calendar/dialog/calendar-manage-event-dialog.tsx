@@ -4,9 +4,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
 import {
   Dialog,
   DialogContent,
@@ -24,8 +23,6 @@ import {
 } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { useCalendarContext } from "../calendar-context";
 import { DateTimePicker } from "@/components/calendar/form/date-time-picker";
 import {
@@ -41,13 +38,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Loader2,
   Trash2,
-  Video,
+  MoveRight,
   Pencil,
   CalendarClock,
-  BookOpen,
-  Link as LinkIcon,
-  Repeat,
-  AlertCircle,
   PlayCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -61,77 +54,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import Image from "next/image";
 import { CalendarEvent } from "../calendar-types";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 import { useParams } from "next/navigation";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { utcToLocalDateTime } from "@/lib/time-zone";
 import { getCalendarEventDisplay } from "../calendar-event-display";
-
-// Helper function to format recurrence pattern
-function formatRecurrencePattern(
-  recurrenceRule: string | undefined,
-  t: (key: string) => string,
-): { summary: string; details: string[] } | null {
-  if (!recurrenceRule) return null;
-
-  try {
-    const rule = JSON.parse(recurrenceRule);
-    const details: string[] = [];
-
-    const typeLabels = {
-      daily: t("schedule.recurrence.daily"),
-      weekly: t("schedule.recurrence.weekly"),
-      biweekly: t("schedule.recurrence.biweekly"),
-      monthly: t("schedule.recurrence.monthly"),
-    };
-
-    const summary =
-      typeLabels[rule.type as keyof typeof typeLabels] || rule.type;
-
-    if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
-      const dayLabels = [
-        t("days.sunday"),
-        t("days.monday"),
-        t("days.tuesday"),
-        t("days.wednesday"),
-        t("days.thursday"),
-        t("days.friday"),
-        t("days.saturday"),
-      ];
-
-      const selectedDays = rule.daysOfWeek
-        .map((day: number) => dayLabels[day])
-        .join(", ");
-
-      details.push(`${t("schedule.repeatOn")}: ${selectedDays}`);
-    }
-
-    if (rule.occurrences) {
-      details.push(
-        `${rule.occurrences} ${t("schedule.occurrences").toLowerCase()}`,
-      );
-    }
-
-    if (rule.endDate) {
-      const endDate = new Date(rule.endDate).toLocaleDateString();
-      details.push(`${t("schedule.until")}: ${endDate}`);
-    }
-
-    return { summary, details };
-  } catch (error) {
-    console.error("Error parsing recurrence rule:", error);
-    return null;
-  }
-}
+import { useCurrentMinute } from "@/hooks/use-current-minute";
+import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 
 const formSchema = z.object({
   title: z.string().optional(),
-  description: z.string().optional(),
   start: z.string(),
   duration: z.number().min(15).max(240),
-  lessonIds: z.array(z.string()).optional(),
   sessionType: z.enum(["live", "ignitia", "abeka"]),
 });
 
@@ -144,6 +79,7 @@ export default function CalendarManageEventDialog({
 }) {
   const t = useTranslations();
   const locale = useLocale();
+  const now = useCurrentMinute();
   const {
     manageEventDialogOpen,
     setManageEventDialogOpen,
@@ -164,25 +100,6 @@ export default function CalendarManageEventDialog({
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
 
-  // Queries for Edit Mode
-  const classData = useQuery(
-    api.classes.get,
-    selectedEvent ? { id: selectedEvent.classId } : "skip", // ✅ Removed isEditing check
-  );
-
-  // Fetch lessons for both view and edit mode
-  const lessons = useQuery(
-    api.lessons.listByCurriculum,
-    classData ? { curriculumId: classData.curriculumId } : "skip",
-  );
-
-  // Only fetch usedLessons when in edit mode (optimization)
-  const usedLessonIds = useQuery(
-    api.schedule.getUsedLessons,
-    selectedEvent && isEditing ? { classId: selectedEvent.classId } : "skip",
-  );
-
-  // Convex mutations
   const updateSchedule = useMutation(api.schedule.updateSchedule);
   const deleteSchedule = useMutation(api.schedule.deleteSchedule);
 
@@ -190,10 +107,8 @@ export default function CalendarManageEventDialog({
     if (!selectedEvent) {
       return {
         title: "",
-        description: "",
         start: new Date().toISOString().slice(0, 16),
         duration: 60,
-        lessonIds: [],
         sessionType: "live" as const,
       };
     }
@@ -203,13 +118,11 @@ export default function CalendarManageEventDialog({
 
     return {
       title: selectedEvent.title,
-      description: selectedEvent.description || "",
       start: utcToLocalDateTime(
         selectedEvent.start.getTime(),
         selectedEvent.timeZone,
       ),
       duration: Math.round(durationMs / (60 * 1000)),
-      lessonIds: selectedEvent.lessonIds || [],
       sessionType: (selectedEvent as CalendarEvent).sessionType || "live",
     };
   }, [selectedEvent]);
@@ -219,8 +132,6 @@ export default function CalendarManageEventDialog({
     defaultValues,
     values: defaultValues,
   });
-
-  const lessonIds = form.watch("lessonIds") || [];
 
   const eventDuration = useMemo(() => {
     if (!selectedEvent) return 60;
@@ -240,64 +151,27 @@ export default function CalendarManageEventDialog({
 
       form.reset({
         title: selectedEvent.title,
-        description: selectedEvent.description || "",
         start: utcToLocalDateTime(
           selectedEvent.start.getTime(),
           selectedEvent.timeZone,
         ),
         duration: eventDuration,
-        lessonIds: selectedEvent.lessonIds || [],
         sessionType: (selectedEvent as CalendarEvent).sessionType || "live",
       });
       setUpdateMode("single");
     }
   }, [manageEventDialogOpen, selectedEvent, form, eventDuration, isEditing]);
 
-  // ✅ Helper to toggle lesson selection
-  const toggleLesson = (id: string) => {
-    const current = form.getValues("lessonIds") || [];
-    const updated = current.includes(id)
-      ? current.filter((l) => l !== id)
-      : [...current, id];
-    form.setValue("lessonIds", updated);
-  };
-
-  const recurrenceInfo = useMemo(() => {
-    if (selectedEvent?.recurrenceRule) {
-      return formatRecurrencePattern(selectedEvent.recurrenceRule, t);
-    }
-    return null;
-  }, [selectedEvent?.recurrenceRule, t]);
-
   async function onSubmit(values: FormValues) {
     if (!selectedEvent?.scheduleId) return;
 
-    // ✅ Block adding lessons when updating entire series
-    if (
-      updateMode === "series" &&
-      values.lessonIds &&
-      values.lessonIds.length > 0
-    ) {
-      toast.error(
-        t("schedule.cannotUpdateSeriesWithLessons") ||
-          "Cannot add lessons when updating entire series. Edit individual occurrences instead.",
-      );
-      return;
-    }
-
     setIsSubmitting(true);
     try {
-      const finalLessonIds =
-        values.lessonIds && values.lessonIds.length > 0
-          ? values.lessonIds.map((id) => id as Id<"lessons">)
-          : undefined;
       await updateSchedule({
         id: selectedEvent.scheduleId,
         title: values.title,
-        description: values.description,
         localStart: values.start,
         durationMinutes: values.duration,
-        lessonIds: finalLessonIds,
         sessionType: values.sessionType,
         updateSeries: updateMode === "series",
       });
@@ -359,13 +233,13 @@ export default function CalendarManageEventDialog({
   const duration = Math.round(
     (selectedEvent.end.getTime() - selectedEvent.start.getTime()) / (60 * 1000),
   );
-  const { primaryLabel, secondaryLabel } =
-    getCalendarEventDisplay(selectedEvent);
+  const { primaryLabel, secondaryLabel, gradeLabel } = getCalendarEventDisplay(
+    selectedEvent,
+    { showGrade: !isStudent },
+  );
   const secondaryText = selectedEvent.teacherName
     ? `${t("common.with")} ${secondaryLabel}`
     : secondaryLabel;
-  const avatarInitial =
-    selectedEvent.teacherName?.charAt(0) ?? secondaryLabel?.charAt(0) ?? "C";
   const displayDate = selectedEvent.start.toLocaleDateString(locale, {
     weekday: "long",
     month: "long",
@@ -383,18 +257,17 @@ export default function CalendarManageEventDialog({
     minute: "2-digit",
     timeZone: displayTimeZone,
   });
-  const showCampusTime =
-    isStudent && selectedEvent.timeZone !== displayTimeZone;
-  const campusStartTime = selectedEvent.start.toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: selectedEvent.timeZone,
+  const primaryAction = getCalendarEventPrimaryAction({
+    isStudent: Boolean(isStudent),
+    now,
+    start: selectedEvent.start.getTime(),
+    end: selectedEvent.end.getTime(),
+    status: selectedEvent.status,
+    isLive: selectedEvent.isLive,
+    hasRecording: selectedEvent.hasRecording,
+    roomName: selectedEvent.roomName,
   });
-  const campusEndTime = selectedEvent.end.toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: selectedEvent.timeZone,
-  });
+  const canWatchRecording = primaryAction === "watch-recording";
 
   return (
     <>
@@ -436,33 +309,17 @@ export default function CalendarManageEventDialog({
             <div className="space-y-6 w-full min-w-0">
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold">{primaryLabel}</h2>
+                  <h2 className="text-2xl font-bold">
+                    {primaryLabel}
+                    {gradeLabel && ` (${gradeLabel})`}
+                  </h2>
                   {secondaryText && (
                     <p className="mt-1 text-sm text-muted-foreground">
                       {secondaryText}
                     </p>
                   )}
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    {/* ✅ Show lesson count */}
-                    {selectedEvent.lessonIds &&
-                    selectedEvent.lessonIds.length > 0 ? (
-                      <Badge
-                        variant="secondary"
-                        className="flex items-center gap-1"
-                      >
-                        <LinkIcon className="h-3 w-3" />
-                        {selectedEvent.lessonIds.length} {t("lesson.linked")}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="text-muted-foreground border-dashed"
-                      >
-                        {t("lesson.noLesson")}
-                      </Badge>
-                    )}
-
-                    {selectedEvent.isLive && (
+                  {selectedEvent.isLive && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <Badge variant="destructive" className="animate-pulse">
                         <span className="relative flex h-2 w-2 mr-1">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive-foreground opacity-75"></span>
@@ -470,43 +327,12 @@ export default function CalendarManageEventDialog({
                         </span>
                         {t("common.live")}
                       </Badge>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="grid gap-4 text-sm">
-                {/* Teacher Info */}
-                <div className="flex gap-3">
-                  <div className="shrink-0">
-                    <div className="w-12 h-12 rounded-full bg-primary border-2 border-background shadow-lg flex items-center justify-center overflow-hidden">
-                      {selectedEvent.teacherImageUrl ? (
-                        <Image
-                          src={selectedEvent.teacherImageUrl}
-                          alt="avatar"
-                          width={48}
-                          height={48}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-lg font-bold text-primary-foreground">
-                          {avatarInitial}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-1 flex flex-col justify-center">
-                    <p className="font-medium text-lg leading-none">
-                      {primaryLabel}
-                    </p>
-                    {secondaryText && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {secondaryText}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
                 {/* Date & Time */}
                 <div className="flex gap-3">
                   <CalendarClock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
@@ -514,136 +340,14 @@ export default function CalendarManageEventDialog({
                     <p className="font-medium">{displayDate}</p>
                     <p className="text-muted-foreground">
                       {displayStartTime} - {displayEndTime}
-                      <span className="text-xs ml-2">
-                        ({duration} {t("schedule.minutes")})
-                      </span>
+                      {!isStudent && (
+                        <span className="text-xs ml-2">
+                          ({duration} {t("schedule.minutes")})
+                        </span>
+                      )}
                     </p>
-                    {showCampusTime && (
-                      <p className="mt-1 text-xs text-muted-foreground/80">
-                        {t("calendar.campusTime", {
-                          time: `${campusStartTime} - ${campusEndTime}`,
-                        })}
-                      </p>
-                    )}
                   </div>
                 </div>
-
-                {/* Recurrence Pattern */}
-                {recurrenceInfo && (
-                  <div className="flex gap-3">
-                    <Repeat className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium flex items-center gap-2">
-                        {recurrenceInfo.summary}
-                        <Badge variant="secondary" className="text-xs">
-                          {t("schedule.recurring")}
-                        </Badge>
-                      </p>
-                      {recurrenceInfo.details.length > 0 && (
-                        <ul className="text-sm text-muted-foreground mt-1 space-y-0.5">
-                          {recurrenceInfo.details.map((detail, idx) => (
-                            <li key={idx}>• {detail}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Description */}
-                {selectedEvent.description && (
-                  <div className="flex gap-3">
-                    <BookOpen className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                    <p className="text-muted-foreground whitespace-pre-wrap">
-                      {selectedEvent.description}
-                    </p>
-                  </div>
-                )}
-
-                {/* ✅ List all linked lessons */}
-                {selectedEvent.lessonIds &&
-                  selectedEvent.lessonIds.length > 0 && (
-                    <div className="flex gap-3">
-                      <LinkIcon className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-medium mb-2">
-                          {t("schedule.linkedLessons") || "Linked Lessons"}
-                        </p>
-                        <div className="space-y-2">
-                          {selectedEvent.lessonIds.map((lessonId) => {
-                            // Find lesson details from the lessons query
-                            const lesson = lessons?.find(
-                              (l) => l._id === lessonId,
-                            );
-
-                            if (!lesson) {
-                              return (
-                                <div
-                                  key={lessonId}
-                                  className="text-sm text-muted-foreground italic"
-                                >
-                                  {t("schedule.loadingLessons") ||
-                                    "Loading lesson..."}
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <Link
-                                key={lessonId}
-                                href={`/${orgSlug}/lessons/${lessonId}`}
-                                className="block p-2 rounded-md border hover:bg-accent transition-colors group"
-                              >
-                                <div className="flex items-start gap-2">
-                                  <span className="font-semibold text-primary shrink-0">
-                                    {lesson.order}.
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-sm group-hover:text-primary transition-colors">
-                                      {lesson.title}
-                                    </p>
-                                    {lesson.description && (
-                                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                                        {lesson.description}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                {/* Recordings section — shown when there is a known recording */}
-                {selectedEvent.hasRecording && (
-                  <div className="flex gap-3">
-                    <PlayCircle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="font-medium mb-2">
-                        {t("recordings.title") || "Recordings"}
-                      </p>
-                      <Button
-                        variant="outline"
-                        className="gap-2 border-primary/40 text-primary hover:bg-primary/10 w-full sm:w-auto"
-                        onClick={() => setRecordingOpen(true)}
-                      >
-                        <PlayCircle className="h-4 w-4" />
-                        {t("recordings.watch") || "Watch Recording"}
-                      </Button>
-                      <RecordingPlayerModal
-                        scheduleId={selectedEvent.scheduleId}
-                        title={primaryLabel}
-                        className={selectedEvent.className}
-                        scheduledStart={selectedEvent.start.getTime()}
-                        open={recordingOpen}
-                        onOpenChange={setRecordingOpen}
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Action Button */}
@@ -651,7 +355,24 @@ export default function CalendarManageEventDialog({
                 <Button variant="outline" onClick={handleClose}>
                   {t("common.close")}
                 </Button>
-                {selectedEvent.isLive ? (
+                {canWatchRecording ? (
+                  <Button
+                    className="gap-2"
+                    onClick={() => setRecordingOpen(true)}
+                  >
+                    <PlayCircle className="h-4 w-4" />
+                    {t("recordings.watchRecording")}
+                  </Button>
+                ) : primaryAction === "go-to-classroom" ? (
+                  <Button asChild>
+                    <Link
+                      href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}
+                    >
+                      {t("dashboard.goToClassroom")}
+                       <MoveRight className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                ) : primaryAction === "enter-live" ? (
                   <Button
                     className="bg-success text-success-foreground hover:bg-success/90"
                     asChild
@@ -659,20 +380,32 @@ export default function CalendarManageEventDialog({
                     <Link
                       href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}
                     >
-                      <Video className="mr-2 h-4 w-4" />
                       {t("dashboard.enterLive")}
+                       <MoveRight className="h-4 w-4" />
                     </Link>
                   </Button>
-                ) : (
+                ) : primaryAction === "prepare-room" ? (
                   <Button asChild>
                     <Link
                       href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}
                     >
                       {t("classroom.prepareRoom")}
+                       <MoveRight className="h-4 w-4" />
                     </Link>
                   </Button>
-                )}
+                ) : null}
               </DialogFooter>
+              {canWatchRecording && (
+                <RecordingPlayerModal
+                  scheduleId={selectedEvent.scheduleId}
+                  title={primaryLabel}
+                  className={selectedEvent.className}
+                  scheduledStart={selectedEvent.start.getTime()}
+                  open={recordingOpen}
+                  onOpenChange={setRecordingOpen}
+                  variant={isStudent ? "student" : "default"}
+                />
+              )}
             </div>
           ) : (
             /* EDIT MODE */
@@ -690,14 +423,9 @@ export default function CalendarManageEventDialog({
 
                     <RadioGroup
                       value={updateMode}
-                      onValueChange={(v) => {
-                        const newMode = v as "single" | "series";
-                        setUpdateMode(newMode);
-                        // Clear lessons when switching to series mode
-                        if (newMode === "series") {
-                          form.setValue("lessonIds", []);
-                        }
-                      }}
+                      onValueChange={(value) =>
+                        setUpdateMode(value as "single" | "series")
+                      }
                       className="flex flex-col gap-3"
                     >
                       <div className="flex items-start space-x-3 p-3 rounded-md border border-warning/30 bg-background cursor-pointer hover:bg-warning/10 transition-colors">
@@ -715,7 +443,7 @@ export default function CalendarManageEventDialog({
                           </FormLabel>
                           <p className="text-xs text-muted-foreground mt-1">
                             {t("schedule.editOccurrenceDesc") ||
-                              "Changes only affect this occurrence. You can add/remove lessons."}
+                              "Changes only affect this class."}
                           </p>
                         </div>
                       </div>
@@ -735,7 +463,7 @@ export default function CalendarManageEventDialog({
                           </FormLabel>
                           <p className="text-xs text-muted-foreground mt-1">
                             {t("schedule.editSeriesDesc") ||
-                              "Changes affect all future occurrences. Cannot add/remove lessons."}
+                              "Changes affect this and all future classes in the series."}
                           </p>
                         </div>
                       </div>
@@ -790,156 +518,15 @@ export default function CalendarManageEventDialog({
                   )}
                 />
 
-                {/* ✅ Multi-Select Lesson UI */}
-                <div className="space-y-2">
-                  <Label>
-                    {t("lesson.selectOptional") || "Lessons (Optional)"}
-                    {lessonIds.length > 0 && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        ({lessonIds.length} selected)
-                      </span>
-                    )}
-                  </Label>
-
-                  {/* ✅ Warning for series updates */}
-                  {updateMode === "series" && (
-                    <div className="bg-warning/10 border-2 border-warning/40 rounded-md p-3 space-y-2">
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-semibold text-sm text-warning-foreground">
-                            {t("schedule.cannotEditSeriesLessons") ||
-                              "Lessons locked for series updates"}
-                          </p>
-                          <p className="text-xs text-warning-foreground/80 mt-1">
-                            {t("schedule.cannotEditSeriesLessonsDesc") ||
-                              "To add lessons, switch to 'Just this class' mode. Lessons must be assigned individually to prevent repetition conflicts."}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="border rounded-md max-h-48 overflow-y-auto">
-                    {!lessons || lessons.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-muted-foreground">
-                        {t("lesson.noneAvailable") || "No lessons available"}
-                      </div>
-                    ) : (
-                      <div className="divide-y">
-                        {lessons.map((lesson) => {
-                          const isUsed =
-                            usedLessonIds?.includes(lesson._id) &&
-                            !selectedEvent.lessonIds?.includes(lesson._id);
-                          const isSelected = lessonIds.includes(lesson._id);
-                          const isDisabled = updateMode === "series" || isUsed;
-
-                          return (
-                            <button
-                              key={lesson._id}
-                              type="button"
-                              onClick={() =>
-                                !isDisabled && toggleLesson(lesson._id)
-                              }
-                              disabled={isDisabled}
-                              className={`w-full text-left px-4 py-3 transition-colors overflow-hidden ${
-                                isDisabled
-                                  ? "opacity-40 cursor-not-allowed bg-muted/50"
-                                  : "hover:bg-accent cursor-pointer"
-                              } ${isSelected ? "bg-primary/10 border-l-4 border-primary" : ""}`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  <div
-                                    className={`flex shrink-0 h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
-                                      isSelected
-                                        ? "bg-primary border-primary"
-                                        : "border-input"
-                                    } ${isDisabled ? "opacity-50" : ""}`}
-                                  >
-                                    {isSelected && (
-                                      <svg
-                                        className="h-3 w-3 text-primary-foreground"
-                                        viewBox="0 0 12 12"
-                                        fill="none"
-                                      >
-                                        <path
-                                          d="M10 3L4.5 8.5L2 6"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                      </svg>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-sm truncate">
-                                      {lesson.order}. {lesson.title}
-                                    </div>
-                                    {lesson.description && (
-                                      <div className="text-xs text-muted-foreground truncate mt-0.5">
-                                        {lesson.description}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                {isUsed && (
-                                  <span className="text-xs bg-muted px-2 py-1 rounded">
-                                    {t("lesson.scheduled") || "Scheduled"}
-                                  </span>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
                 {/* Title */}
                 <FormField
                   control={form.control}
                   name="title"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        {t("schedule.title") || "Title"}
-                        {lessonIds.length === 0 && (
-                          <span className="text-destructive ml-1">*</span>
-                        )}
-                      </FormLabel>
+                      <FormLabel>{t("schedule.title") || "Title"}</FormLabel>
                       <FormControl>
-                        <Input
-                          {...field}
-                          placeholder={
-                            lessonIds.length > 0
-                              ? "Override lesson title (optional)"
-                              : "Required"
-                          }
-                        />
-                      </FormControl>
-                      {lessonIds.length > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          {t("schedule.titleOverrideHint") ||
-                            "Leave empty to use first lesson's title"}
-                        </p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Description */}
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t("common.description")}</FormLabel>
-                      <FormControl>
-                        <Textarea {...field} className="resize-none h-20" />
+                        <Input {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

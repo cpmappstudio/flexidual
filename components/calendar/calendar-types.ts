@@ -28,7 +28,6 @@ export type CalendarEvent = {
 
   // Core scheduling info
   scheduleId: Id<"classSchedule">;
-  lessonIds?: Id<"lessons">[];
   classId: Id<"classes">;
   curriculumId: Id<"curriculums">;
   teacherId?: Id<"users">;
@@ -48,13 +47,6 @@ export type CalendarEvent = {
   className: string;
   curriculumTitle: string;
 
-  // ✅ Added: Full lesson data for display
-  lessons?: {
-    _id: Id<"lessons">;
-    title: string;
-    order: number;
-  }[];
-
   // LiveKit room info
   roomName?: string;
   isLive: boolean;
@@ -71,24 +63,6 @@ export type CalendarEvent = {
 
   // Recordings
   hasRecording?: boolean;
-};
-
-// For scheduling new lessons
-export type SchedulableClass = {
-  _id: Id<"classes">;
-  name: string;
-  curriculumId: Id<"curriculums">;
-  curriculumTitle: string;
-  curriculumCode?: string;
-  color: string;
-  teacherId: Id<"users">;
-  lessons: {
-    _id: Id<"lessons">;
-    title: string;
-    description?: string;
-    order: number;
-    isScheduled?: boolean; // If this lesson already has a schedule
-  }[];
 };
 
 export const calendarModes = ["month", "week", "day"] as const;

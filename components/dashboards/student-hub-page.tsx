@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ArrowRight,
+  MoveRight,
   BellRing,
   CalendarDays,
   Clock,
@@ -641,6 +641,7 @@ export default function StudentHubPage() {
                         className="mt-4 h-10 rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
                       >
                         {t("dashboard.goToClassroom")}
+                         <MoveRight className="h-4 w-4" />
                       </Button>
                     )}
                   </div>
@@ -683,7 +684,6 @@ export default function StudentHubPage() {
                     <Link href={`${basePath}/calendar`}>
                       <CalendarDays className="size-4 text-info" />
                       {t("student.today.viewCalendar")}
-                      <ArrowRight className="size-3.5" />
                     </Link>
                   </Button>
                 </div>

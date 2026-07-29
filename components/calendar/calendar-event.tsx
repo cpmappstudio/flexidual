@@ -11,6 +11,7 @@ import {
   getTimeScaleUnitsAt,
 } from "@/components/calendar/calendar-time-scale";
 import { getCalendarEventDisplay } from "@/components/calendar/calendar-event-display";
+import { useTranslations } from "next-intl";
 
 interface EventPosition {
   left: string;
@@ -94,6 +95,7 @@ export default function CalendarEvent({
   timeScale,
   compact = false,
   floatingTime = false,
+  responsiveCompact = false,
   contentClassName,
 }: {
   event: CalendarEventType;
@@ -102,8 +104,10 @@ export default function CalendarEvent({
   timeScale?: CalendarTimeScale;
   compact?: boolean;
   floatingTime?: boolean;
+  responsiveCompact?: boolean;
   contentClassName?: string;
 }) {
+  const t = useTranslations();
   const {
     events,
     setSelectedEvent,
@@ -133,6 +137,7 @@ export default function CalendarEvent({
   }`;
 
   const isPast = event.end.getTime() < Date.now();
+  const showRecordingIndicator = isPast && event.hasRecording && !event.isLive;
 
   const statusColor =
     event.status === "active"
@@ -170,6 +175,7 @@ export default function CalendarEvent({
           className={cn(
             "cursor-pointer truncate rounded-md border px-2 py-1 transition-all duration-300",
             compact && "px-1.5 py-1",
+            responsiveCompact && "px-1.5 py-1 lg:px-2",
             statusClasses.event,
             !month && "absolute",
             className,
@@ -214,7 +220,7 @@ export default function CalendarEvent({
         >
           <motion.div
             className={cn(
-              "relative flex w-full flex-col",
+              "relative flex h-full w-full flex-col",
               statusClasses.text,
               month && "flex-row items-center justify-between gap-2",
             )}
@@ -223,9 +229,10 @@ export default function CalendarEvent({
             <div
               className={cn(
                 "flex min-w-0 flex-col gap-0.5 overflow-hidden",
-                floatingTime && "pr-24",
                 compact && "gap-0",
+                responsiveCompact && "gap-0 lg:gap-0.5",
                 month && "flex-row items-center gap-1 flex-1 min-w-0",
+                showRecordingIndicator && !month && "pr-5",
                 contentClassName,
               )}
             >
@@ -234,6 +241,9 @@ export default function CalendarEvent({
                   "truncate text-[13px] font-semibold leading-tight",
                   compact &&
                     "line-clamp-2 whitespace-normal text-[10px] leading-[1.05]",
+                  floatingTime && "pr-16",
+                  responsiveCompact &&
+                    "line-clamp-2 whitespace-normal pr-16 text-[10px] leading-[1.05] lg:line-clamp-1 lg:whitespace-nowrap lg:pr-0 lg:text-[13px] lg:leading-tight",
                   month && "text-[10px]",
                 )}
               >
@@ -256,6 +266,8 @@ export default function CalendarEvent({
                       className={cn(
                         "truncate text-[10px] font-semibold uppercase leading-tight text-muted-foreground",
                         compact && "text-[8px] leading-[1.05]",
+                        responsiveCompact &&
+                          "text-[8px] leading-[1.05] lg:text-[10px] lg:leading-tight",
                         mode === "day" && "lg:hidden",
                       )}
                     >
@@ -266,6 +278,8 @@ export default function CalendarEvent({
                     className={cn(
                       "truncate text-[11px] font-medium leading-tight opacity-80",
                       compact && "text-[9px] leading-[1.05]",
+                      responsiveCompact &&
+                        "text-[9px] leading-[1.05] lg:text-[11px] lg:leading-tight",
                     )}
                   >
                     {secondaryLabel}
@@ -278,6 +292,8 @@ export default function CalendarEvent({
                   className={cn(
                     "truncate text-[10px] font-semibold uppercase leading-tight text-muted-foreground",
                     compact && "text-[8px] leading-[1.05]",
+                    responsiveCompact &&
+                      "text-[8px] leading-[1.05] lg:text-[10px] lg:leading-tight",
                     mode === "day" && "lg:hidden",
                   )}
                 >
@@ -285,11 +301,12 @@ export default function CalendarEvent({
                 </p>
               )}
 
-              {!month && !floatingTime && (
+              {!month && (!floatingTime || responsiveCompact) && (
                 <p
                   className={cn(
                     "truncate text-[10px] font-normal leading-tight opacity-70",
                     compact && "text-[8px] leading-[1.05]",
+                    responsiveCompact && "hidden lg:block",
                   )}
                 >
                   {timeLabel}
@@ -302,18 +319,43 @@ export default function CalendarEvent({
                   <span>Live Now</span>
                 </div>
               )}
-              {event.hasRecording && !event.isLive && (
-                <div className="mt-0.5 flex items-center gap-1 text-[10px] font-medium leading-tight">
-                  <PlayCircle className="h-3 w-3" />
-                  <span>Recording</span>
-                </div>
-              )}
             </div>
 
-            {!month && floatingTime && (
-              <p className="absolute right-0 top-0 whitespace-nowrap text-right text-[8px] font-medium leading-none opacity-70">
+            {month && showRecordingIndicator && (
+              <span
+                className="inline-flex shrink-0 items-center justify-center rounded-full bg-primary/10 p-0.5 text-primary"
+                title={t("recordings.watchRecording")}
+                aria-label={t("recordings.watchRecording")}
+              >
+                <PlayCircle className="size-3.5" />
+              </span>
+            )}
+
+            {!month && (floatingTime || responsiveCompact) && (
+              <span
+                className={cn(
+                  "absolute right-0 top-0 whitespace-nowrap text-right text-[8px] font-medium leading-none opacity-70",
+                  responsiveCompact && "lg:hidden",
+                )}
+              >
                 {compactTimeLabel}
-              </p>
+              </span>
+            )}
+
+            {!month && showRecordingIndicator && (
+              <span
+                className={cn(
+                  "absolute right-0 inline-flex items-center justify-center rounded-full bg-primary/10 p-0.5 text-primary shadow-sm",
+                  floatingTime && "top-1/2 -translate-y-1/2",
+                  responsiveCompact &&
+                    "top-1/2 -translate-y-1/2 lg:top-0 lg:translate-y-0",
+                  !floatingTime && !responsiveCompact && "top-0",
+                )}
+                title={t("recordings.watchRecording")}
+                aria-label={t("recordings.watchRecording")}
+              >
+                <PlayCircle className="size-4" />
+              </span>
             )}
           </motion.div>
         </motion.div>

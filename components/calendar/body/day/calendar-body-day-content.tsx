@@ -1,5 +1,4 @@
 import { isSameDay } from "date-fns";
-import { Fragment } from "react";
 import { useCalendarContext } from "../../calendar-context";
 import CalendarEvent from "../../calendar-event";
 import { CalendarTimeGridDay } from "../week/calendar-week-time-grid";
@@ -49,23 +48,12 @@ export default function CalendarBodyDayContent({
     >
       {dayEvents.map((event) =>
         responsiveCompactEvents ? (
-          <Fragment key={event.id}>
-            <CalendarEvent
-              event={event}
-              className="hidden lg:block"
-              timeScale={timeScale}
-              compact={compactEvents}
-              floatingTime={floatingEventTime}
-              contentClassName={eventContentClassName}
-            />
-            <CalendarEvent
-              event={event}
-              className="lg:hidden"
-              timeScale={timeScale}
-              compact
-              floatingTime
-            />
-          </Fragment>
+          <CalendarEvent
+            key={event.id}
+            event={event}
+            timeScale={timeScale}
+            responsiveCompact
+          />
         ) : (
           <CalendarEvent
             key={event.id}
