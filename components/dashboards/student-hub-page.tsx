@@ -9,13 +9,21 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BellRing, Clock, GraduationCap } from "lucide-react";
+import {
+  ArrowRight,
+  BellRing,
+  CalendarDays,
+  Clock,
+  GraduationCap,
+} from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { format, isSameDay } from "date-fns";
 import { StudentScheduleEvent } from "@/lib/types/student";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Link } from "@/i18n/navigation";
+import { useOrgBasePath } from "@/hooks/use-org-base-path";
 
 const COURSE_CARD_ACCENTS = [
   "border-sky-200 bg-sky-50/80 before:bg-sky-400",
@@ -111,6 +119,7 @@ function CountdownToast({
 export default function StudentHubPage() {
   const t = useTranslations();
   const locale = useLocale();
+  const basePath = useOrgBasePath();
   const { isLoaded: isClerkLoaded, user } = useUser();
   const currentDateLocale =
     locale === "es" ? es : locale === "pt-BR" ? ptBR : enUS;
@@ -665,6 +674,18 @@ export default function StudentHubPage() {
                       </p>
                     )
                   )}
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="sm"
+                    className="mt-3 rounded-full bg-card/70 px-4 text-sm font-semibold text-foreground shadow-sm hover:bg-card"
+                  >
+                    <Link href={`${basePath}/calendar`}>
+                      <CalendarDays className="size-4 text-info" />
+                      {t("student.today.viewCalendar")}
+                      <ArrowRight className="size-3.5" />
+                    </Link>
+                  </Button>
                 </div>
               </section>
             </aside>

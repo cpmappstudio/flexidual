@@ -127,6 +127,18 @@ export function todayInTimeZone(timeZone: string) {
   return utcToLocalDateTime(Date.now(), timeZone).slice(0, 10);
 }
 
+export function dateInTimeZone(timestamp: number, timeZone: string) {
+  return utcToLocalDateTime(timestamp, timeZone).slice(0, 10);
+}
+
+export function getUtcDayRange(date: string, timeZone: string) {
+  if (!isValidCivilDate(date)) throw new Error("INVALID_CIVIL_DATE");
+  return {
+    from: localDateTimeToUtc(`${date}T00:00`, timeZone),
+    to: localDateTimeToUtc(`${addCivilDays(date, 1)}T00:00`, timeZone),
+  };
+}
+
 export function shiftZonedDateTime(
   timestamp: number,
   timeZone: string,

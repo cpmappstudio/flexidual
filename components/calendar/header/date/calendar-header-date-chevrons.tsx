@@ -1,6 +1,6 @@
-import { Button } from "@/components/ui/button"
-import { useCalendarContext } from "../../calendar-context"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { Button } from "@/components/ui/button";
+import { useCalendarContext } from "../../calendar-context";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   format,
   addDays,
@@ -11,48 +11,62 @@ import {
   subWeeks,
   startOfWeek,
   endOfWeek,
-} from "date-fns"
-import { enUS, es, ptBR } from "date-fns/locale"
-import { useLocale, useTranslations } from "next-intl"
-import CalendarHeaderDateBadge from "./calendar-header-date-badge"
+} from "date-fns";
+import { enUS, es, ptBR } from "date-fns/locale";
+import { useLocale, useTranslations } from "next-intl";
+import CalendarHeaderDateBadge from "./calendar-header-date-badge";
+import CalendarTimeZoneBadge from "./calendar-time-zone-badge";
+import { TZDate, tz } from "@date-fns/tz";
 
 const localeMap = {
   en: enUS,
   es,
   "pt-BR": ptBR,
-} as const
+} as const;
 
 export default function CalendarHeaderDateChevrons() {
-  const { mode, date, setDate } = useCalendarContext()
-  const locale = useLocale()
-  const tDashboard = useTranslations("dashboard")
-  const tCommon = useTranslations("common")
-  const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS
+  const { mode, date, setDate, displayTimeZone } = useCalendarContext();
+  const locale = useLocale();
+  const tDashboard = useTranslations("dashboard");
+  const tCommon = useTranslations("common");
+  const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS;
 
   function handleDateBackward() {
-    if (mode === "month") setDate(subMonths(date, 1))
-    if (mode === "week") setDate(subWeeks(date, 1))
-    if (mode === "day") setDate(subDays(date, 1))
+    if (mode === "month") setDate(subMonths(date, 1));
+    if (mode === "week") setDate(subWeeks(date, 1));
+    if (mode === "day") setDate(subDays(date, 1));
   }
 
   function handleDateForward() {
-    if (mode === "month") setDate(addMonths(date, 1))
-    if (mode === "week") setDate(addWeeks(date, 1))
-    if (mode === "day") setDate(addDays(date, 1))
+    if (mode === "month") setDate(addMonths(date, 1));
+    if (mode === "week") setDate(addWeeks(date, 1));
+    if (mode === "day") setDate(addDays(date, 1));
   }
 
   function getDateLabel() {
     if (mode === "month") {
-      return format(date, "MMMM yyyy", { locale: dateLocale })
+      return format(date, "MMMM yyyy", {
+        locale: dateLocale,
+        in: tz(displayTimeZone),
+      });
     }
 
     if (mode === "week") {
-      const weekStart = startOfWeek(date, { weekStartsOn: 1 })
-      const weekEnd = endOfWeek(date, { weekStartsOn: 1 })
-      return `${format(weekStart, "MMM d", { locale: dateLocale })} – ${format(weekEnd, "MMM d, yyyy", { locale: dateLocale })}`
+      const weekStart = startOfWeek(date, {
+        weekStartsOn: 1,
+        in: tz(displayTimeZone),
+      });
+      const weekEnd = endOfWeek(date, {
+        weekStartsOn: 1,
+        in: tz(displayTimeZone),
+      });
+      return `${format(weekStart, "MMM d", { locale: dateLocale, in: tz(displayTimeZone) })} – ${format(weekEnd, "MMM d, yyyy", { locale: dateLocale, in: tz(displayTimeZone) })}`;
     }
 
-    return format(date, "MMMM d, yyyy", { locale: dateLocale })
+    return format(date, "MMMM d, yyyy", {
+      locale: dateLocale,
+      in: tz(displayTimeZone),
+    });
   }
 
   return (
@@ -61,7 +75,7 @@ export default function CalendarHeaderDateChevrons() {
         variant="outline"
         size="sm"
         className="h-9 bg-sidebar hover:bg-accent"
-        onClick={() => setDate(new Date())}
+        onClick={() => setDate(TZDate.tz(displayTimeZone))}
       >
         {tDashboard("today")}
       </Button>
@@ -89,6 +103,7 @@ export default function CalendarHeaderDateChevrons() {
         {getDateLabel()}
       </span>
       <CalendarHeaderDateBadge />
+      <CalendarTimeZoneBadge />
     </div>
-  )
+  );
 }

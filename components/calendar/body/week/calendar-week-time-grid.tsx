@@ -2,9 +2,14 @@
 
 import * as React from "react";
 import { addDays, startOfWeek } from "date-fns";
+import { tz } from "@date-fns/tz";
 import { cn } from "@/lib/utils";
 import CalendarBodyHeader from "../calendar-body-header";
 import CalendarBodyMarginDayMargin from "../day/calendar-body-margin-day-margin";
+import {
+  CalendarTimeScale,
+  getTimeScalePercent,
+} from "../../calendar-time-scale";
 
 interface CalendarTimeGridDayProps {
   date: Date;
@@ -12,7 +17,10 @@ interface CalendarTimeGridDayProps {
   onlyDayHeader?: boolean;
   startMinutes?: number;
   endMinutes?: number;
+  timeScale?: CalendarTimeScale;
   surfaceProps?: React.ComponentPropsWithoutRef<"div">;
+  showHeader?: boolean;
+  displayTimeZone?: string;
 }
 
 export function CalendarTimeGridDay({
@@ -21,7 +29,10 @@ export function CalendarTimeGridDay({
   onlyDayHeader = false,
   startMinutes = 0,
   endMinutes = 24 * 60,
+  timeScale,
   surfaceProps,
+  showHeader = true,
+  displayTimeZone,
 }: CalendarTimeGridDayProps) {
   const { className, ...props } = surfaceProps ?? {};
   const durationMinutes = endMinutes - startMinutes;
@@ -33,11 +44,19 @@ export function CalendarTimeGridDay({
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-sidebar">
-      <CalendarBodyHeader date={date} onlyDay={onlyDayHeader} />
+      {showHeader && (
+        <CalendarBodyHeader
+          date={date}
+          onlyDay={onlyDayHeader}
+          displayTimeZone={displayTimeZone}
+        />
+      )}
       <div
         className={cn("relative shrink-0", className)}
         style={{
-          height: `calc(var(--calendar-hour-height) * ${durationMinutes / 60})`,
+          height: timeScale
+            ? `calc(var(--calendar-hour-height) * ${timeScale.totalUnits})`
+            : `calc(var(--calendar-hour-height) * ${durationMinutes / 60})`,
         }}
         {...props}
       >
@@ -46,7 +65,9 @@ export function CalendarTimeGridDay({
             key={minute}
             className="absolute inset-x-0 border-b border-border/50"
             style={{
-              top: `${((minute - startMinutes) / durationMinutes) * 100}%`,
+              top: timeScale
+                ? `${getTimeScalePercent(timeScale, minute)}%`
+                : `${((minute - startMinutes) / durationMinutes) * 100}%`,
             }}
           />
         ))}
@@ -62,6 +83,7 @@ interface CalendarWeekTimeGridProps {
   className?: string;
   startMinutes?: number;
   endMinutes?: number;
+  displayTimeZone: string;
 }
 
 export function CalendarWeekTimeGrid({
@@ -70,10 +92,15 @@ export function CalendarWeekTimeGrid({
   className,
   startMinutes = 0,
   endMinutes = 24 * 60,
+  displayTimeZone,
 }: CalendarWeekTimeGridProps) {
-  const weekStart = startOfWeek(date, { weekStartsOn: 1 });
+  const dateContext = { in: tz(displayTimeZone) };
+  const weekStart = startOfWeek(date, {
+    weekStartsOn: 1,
+    ...dateContext,
+  });
   const weekDays = Array.from({ length: 7 }, (_, index) =>
-    addDays(weekStart, index),
+    addDays(weekStart, index, dateContext),
   );
 
   return (
@@ -89,6 +116,7 @@ export function CalendarWeekTimeGrid({
             className="hidden md:block"
             startMinutes={startMinutes}
             endMinutes={endMinutes}
+            displayTimeZone={displayTimeZone}
           />
           {weekDays.map((day) => (
             <div
@@ -99,6 +127,7 @@ export function CalendarWeekTimeGrid({
                 className="block md:hidden"
                 startMinutes={startMinutes}
                 endMinutes={endMinutes}
+                displayTimeZone={displayTimeZone}
               />
               {renderDayAction(day)}
             </div>

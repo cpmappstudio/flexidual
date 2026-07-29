@@ -250,6 +250,10 @@ export const getScheduleWindow = query({
     v.object({
       startMinutes: v.number(),
       endMinutes: v.number(),
+      scopeType: v.union(v.literal("institution"), v.literal("campus")),
+      institutionTimeZone: v.optional(v.string()),
+      campusTimeZone: v.optional(v.string()),
+      schedulingTimeZone: v.optional(v.string()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -259,8 +263,8 @@ export const getScheduleWindow = query({
     if (!(await canAccessSchool(ctx, user._id, school._id))) {
       throw new ConvexError("PERMISSION_DENIED");
     }
+    const campus = args.campusId ? await ctx.db.get(args.campusId) : null;
     if (args.campusId) {
-      const campus = await ctx.db.get(args.campusId);
       if (!campus || campus.schoolId !== school._id) {
         throw new ConvexError("INVALID_CAMPUS");
       }
@@ -269,6 +273,10 @@ export const getScheduleWindow = query({
       startMinutes:
         school.scheduleStartMinutes ?? DEFAULT_SCHEDULE_START_MINUTES,
       endMinutes: school.scheduleEndMinutes ?? DEFAULT_SCHEDULE_END_MINUTES,
+      scopeType: campus ? ("campus" as const) : ("institution" as const),
+      institutionTimeZone: school.timeZone,
+      campusTimeZone: campus?.timeZone,
+      schedulingTimeZone: campus?.timeZone ?? school.timeZone,
     };
   },
 });

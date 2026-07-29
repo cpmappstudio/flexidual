@@ -8,6 +8,10 @@ export type CalendarContextType = {
   setDate: (date: Date) => void;
   scheduleStartMinutes: number;
   scheduleEndMinutes: number;
+  schedulingTimeZone: string;
+  displayTimeZone: string;
+  isUsingLocalTime: boolean;
+  isStudent?: boolean;
 
   isLoading?: boolean;
   userId?: Id<"users">;

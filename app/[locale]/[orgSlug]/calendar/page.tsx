@@ -8,16 +8,8 @@ import Calendar from "@/components/calendar/calendar";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import {
-  endOfDay,
-  endOfMonth,
-  endOfWeek,
-  format,
-  isSameDay,
-  startOfDay,
-  startOfMonth,
-  startOfWeek,
-} from "date-fns";
+import { CircleAlert } from "lucide-react";
+import { format, isSameDay, startOfDay } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCurrentUser } from "@/hooks/use-current-user";
@@ -26,14 +18,21 @@ import CalendarProvider from "@/components/calendar/calendar-provider";
 import CalendarManageEventDialog from "@/components/calendar/dialog/calendar-manage-event-dialog";
 import { useCalendarContext } from "@/components/calendar/calendar-context";
 import { useTranslations, useLocale } from "next-intl";
+import { useAuth } from "@clerk/nextjs";
 
 import { CalendarEvent, Mode } from "@/components/calendar/calendar-types";
-import { TZDate } from "@date-fns/tz";
+import { TZDate, tz } from "@date-fns/tz";
 import { ScheduleItem } from "@/components/schedule/schedule-item";
 
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
+import { getRoleForOrg } from "@/lib/rbac";
+import {
+  getCalendarUtcRange,
+  resolveCalendarTimeZones,
+} from "@/lib/calendar-time-zone";
+import { dateInTimeZone } from "@/lib/time-zone";
 
 const localeMap = {
   en: enUS,
@@ -43,7 +42,8 @@ const localeMap = {
 
 // Internal component to handle Agenda Logic using Context
 function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
-  const { setSelectedEvent, setManageEventDialogOpen } = useCalendarContext();
+  const { displayTimeZone, setSelectedEvent, setManageEventDialogOpen } =
+    useCalendarContext();
 
   const t = useTranslations();
   const locale = useLocale();
@@ -54,16 +54,21 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
     const groups: { [key: string]: { date: Date; events: CalendarEvent[] } } =
       {};
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = startOfDay(TZDate.tz(displayTimeZone), {
+      in: tz(displayTimeZone),
+    });
 
     const upcomingEvents = filteredEvents
       .filter((e) => e.start.getTime() >= today.getTime())
       .sort((a, b) => a.start.getTime() - b.start.getTime());
 
     upcomingEvents.forEach((event) => {
-      const eventDateStart = startOfDay(event.start);
-      const dateKey = format(eventDateStart, "yyyy-MM-dd");
+      const eventDateStart = startOfDay(event.start, {
+        in: tz(displayTimeZone),
+      });
+      const dateKey = format(eventDateStart, "yyyy-MM-dd", {
+        in: tz(displayTimeZone),
+      });
       if (!groups[dateKey]) {
         groups[dateKey] = { date: eventDateStart, events: [] };
       }
@@ -76,7 +81,7 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
     });
 
     return groups;
-  }, [filteredEvents]);
+  }, [displayTimeZone, filteredEvents]);
 
   const sortedDates = Object.keys(groupedEvents).sort();
 
@@ -92,7 +97,9 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
     <div className="space-y-6">
       {sortedDates.map((dateKey) => {
         const { date, events: dayEvents } = groupedEvents[dateKey];
-        const isToday = isSameDay(date, new Date());
+        const isToday = isSameDay(date, Date.now(), {
+          in: tz(displayTimeZone),
+        });
 
         return (
           <div key={dateKey} className="space-y-3">
@@ -100,7 +107,10 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
               <h3
                 className={`text-lg font-semibold ${isToday ? "text-primary" : ""}`}
               >
-                {format(date, "EEEE, MMMM d, yyyy", { locale: dateLocale })}
+                {format(date, "EEEE, MMMM d, yyyy", {
+                  locale: dateLocale,
+                  in: tz(displayTimeZone),
+                })}
               </h3>
               {isToday && (
                 <Badge variant="secondary" className="text-xs">
@@ -150,6 +160,7 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
 function CalendarContent() {
   const [mode, setMode] = useState<Mode>("month");
   const [date, setDate] = useState<Date>(new Date());
+  const [isCalendarInitialized, setIsCalendarInitialized] = useState(false);
 
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
@@ -160,16 +171,19 @@ function CalendarContent() {
   );
 
   const { user } = useCurrentUser();
+  const { isLoaded: isAuthLoaded, sessionClaims } = useAuth();
 
   const searchParams = useSearchParams();
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
+  const role = getRoleForOrg(sessionClaims, orgSlug);
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
   const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
 
   const { context: settingsContext } = useSettingsContext();
   const { access } = useStaffAccess();
   const canViewAllCampusCourses = access?.canManageCampus ?? false;
+  const isStudent = role === "student";
   const now = useCurrentMinute();
   const calendarSchoolId = settingsContext?.institution._id;
   const calendarCampusId =
@@ -222,32 +236,50 @@ function CalendarContent() {
       ? { schoolId: calendarSchoolId, campusId: calendarCampusId }
       : "skip",
   );
+  const browserTimeZone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    [],
+  );
+  const calendarTimeZones = useMemo(
+    () =>
+      scheduleWindow
+        ? resolveCalendarTimeZones({
+            scopeType: scheduleWindow.scopeType,
+            institutionTimeZone: scheduleWindow.institutionTimeZone,
+            campusTimeZone: scheduleWindow.campusTimeZone,
+            isStudent,
+            browserTimeZone,
+          })
+        : null,
+    [browserTimeZone, isStudent, scheduleWindow],
+  );
+  const displayTimeZone = calendarTimeZones?.displayTimeZone;
+  const schedulingTimeZone = calendarTimeZones?.schedulingTimeZone;
+
+  useEffect(() => {
+    if (!isAuthLoaded) return;
+    setMode(isStudent ? "day" : "month");
+    setDate(new Date());
+    setIsCalendarInitialized(true);
+  }, [isAuthLoaded, isStudent]);
+
+  useEffect(() => {
+    if (!displayTimeZone) return;
+    setDate((currentDate) => TZDate.tz(displayTimeZone, currentDate.getTime()));
+  }, [displayTimeZone]);
+
   const visibleRange = useMemo(() => {
-    const weekOptions = { weekStartsOn: 0 as const };
-    const start =
-      mode === "day"
-        ? startOfDay(date)
-        : mode === "week"
-          ? startOfWeek(date, weekOptions)
-          : startOfWeek(startOfMonth(date), weekOptions);
-    const end =
-      mode === "day"
-        ? endOfDay(date)
-        : mode === "week"
-          ? endOfWeek(date, weekOptions)
-          : endOfWeek(endOfMonth(date), weekOptions);
-    const timeZoneBuffer = 24 * 60 * 60 * 1000;
-    return {
-      from: start.getTime() - timeZoneBuffer,
-      to: end.getTime() + timeZoneBuffer,
-    };
-  }, [date, mode]);
+    if (!displayTimeZone || !isCalendarInitialized) return null;
+    const selectedDate = dateInTimeZone(date.getTime(), displayTimeZone);
+    return getCalendarUtcRange(selectedDate, mode, displayTimeZone);
+  }, [date, displayTimeZone, isCalendarInitialized, mode]);
 
   const scheduleResult = useQuery(
     api.schedule.getMySchedule,
-    orgContext
+    orgContext && visibleRange
       ? {
-          ...visibleRange,
+          from: visibleRange.from,
+          to: visibleRange.to - 1,
           now,
           includeAttendance: false,
           ...(orgContext.type === "campus"
@@ -258,16 +290,6 @@ function CalendarContent() {
         }
       : "skip",
   );
-  const [retainedSchedule, setRetainedSchedule] = useState<{
-    scopeKey: string;
-    data: Exclude<typeof scheduleResult, undefined>;
-  } | null>(null);
-
-  useEffect(() => {
-    if (scheduleResult !== undefined && scopeKey) {
-      setRetainedSchedule({ scopeKey, data: scheduleResult });
-    }
-  }, [scheduleResult, scopeKey]);
 
   useEffect(() => {
     setSelectedCourseId(classIdParam);
@@ -275,11 +297,8 @@ function CalendarContent() {
     setSelectedGradeCode(null);
   }, [classIdParam, scopeKey]);
 
-  const scheduleData =
-    scheduleResult ??
-    (retainedSchedule && retainedSchedule.scopeKey === scopeKey
-      ? retainedSchedule.data
-      : undefined);
+  const scheduleData = scheduleResult;
+  const tCalendar = useTranslations("calendar");
 
   const allEvents = useMemo(() => {
     if (!scheduleData) return [];
@@ -296,8 +315,8 @@ function CalendarContent() {
       sessionType: e.sessionType,
       title: e.title,
       description: e.description,
-      start: new TZDate(e.start, e.timeZone),
-      end: new TZDate(e.end, e.timeZone),
+      start: new TZDate(e.start, displayTimeZone),
+      end: new TZDate(e.end, displayTimeZone),
       timeZone: e.timeZone,
       color: e.color,
       className: e.className,
@@ -311,7 +330,7 @@ function CalendarContent() {
       teacherImageUrl: e.teacherImageUrl,
       hasRecording: e.hasRecording,
     }));
-  }, [scheduleData]);
+  }, [displayTimeZone, scheduleData]);
 
   const filteredEvents = useMemo(() => {
     let result = allEvents;
@@ -331,7 +350,32 @@ function CalendarContent() {
     return result;
   }, [allEvents, selectedCourseId, selectedGradeCode, selectedTeacherId]);
 
-  if (scheduleData === undefined) {
+  if (
+    scheduleWindow === null ||
+    (scheduleWindow && !schedulingTimeZone)
+  ) {
+    return (
+      <div className="flex h-full min-h-64 items-center justify-center px-4 text-center">
+        <div className="max-w-md">
+          <CircleAlert className="mx-auto size-8 text-muted-foreground" />
+          <h2 className="mt-3 text-base font-semibold">
+            {tCalendar("timeZoneUnavailable")}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {tCalendar("timeZoneUnavailableDescription")}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    scheduleWindow === undefined ||
+    !displayTimeZone ||
+    !schedulingTimeZone ||
+    !visibleRange ||
+    scheduleData === undefined
+  ) {
     return <Skeleton className="h-full min-h-0 w-full" />;
   }
 
@@ -344,6 +388,10 @@ function CalendarContent() {
       setDate={setDate}
       scheduleStartMinutes={scheduleWindow?.startMinutes}
       scheduleEndMinutes={scheduleWindow?.endMinutes}
+      schedulingTimeZone={schedulingTimeZone}
+      displayTimeZone={displayTimeZone}
+      isUsingLocalTime={calendarTimeZones.isUsingLocalTime}
+      isStudent={isStudent}
       userId={user?._id}
     >
       <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
@@ -356,6 +404,7 @@ function CalendarContent() {
             className="m-0 min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col"
           >
             <Calendar
+              isStudent={isStudent}
               filters={{
                 courses:
                   filterOptions?.courses.map((course) => ({
@@ -369,6 +418,7 @@ function CalendarContent() {
                   })) ?? [],
                 grades: gradeOptions,
                 showTeacherFilter: canViewAllCampusCourses,
+                showGradeFilter: !isStudent,
                 selectedCourseId,
                 selectedTeacherId,
                 selectedGradeCode,

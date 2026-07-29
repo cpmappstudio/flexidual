@@ -18,6 +18,7 @@ import {
 } from "@/components/teaching/classes/course-weekly-calendar";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -366,24 +367,33 @@ export default function CreateCoursePage() {
               </Label>
             </div>
           </div>
-          <CourseWeeklyCalendar
-            value={weeklySlots}
-            onChangeAction={setWeeklySlots}
-            courseName={formData.name}
-            backgroundSlots={scheduleGuides?.map((guide) => ({
-              id: guide.scheduleId,
-              dayOfWeek: guide.dayOfWeek,
-              startMinutes: guide.startMinutes,
-              endMinutes: guide.endMinutes,
-              label: guide.className,
-            }))}
-            startMinutes={academicSettings?.scheduleStartMinutes}
-            endMinutes={academicSettings?.scheduleEndMinutes}
-            teacherName={
-              teachers?.find((teacher) => teacher._id === formData.teacherId)
-                ?.fullName
-            }
-          />
+          {academicSettings === undefined ? (
+            <Skeleton className="h-96 w-full" />
+          ) : academicSettings?.timeZone ? (
+            <CourseWeeklyCalendar
+              value={weeklySlots}
+              onChangeAction={setWeeklySlots}
+              courseName={formData.name}
+              backgroundSlots={scheduleGuides?.map((guide) => ({
+                id: guide.scheduleId,
+                dayOfWeek: guide.dayOfWeek,
+                startMinutes: guide.startMinutes,
+                endMinutes: guide.endMinutes,
+                label: guide.className,
+              }))}
+              startMinutes={academicSettings.scheduleStartMinutes}
+              endMinutes={academicSettings.scheduleEndMinutes}
+              timeZone={academicSettings.timeZone}
+              teacherName={
+                teachers?.find((teacher) => teacher._id === formData.teacherId)
+                  ?.fullName
+              }
+            />
+          ) : (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              {t("class.timeZoneRequired")}
+            </div>
+          )}
         </section>
       </form>
     </div>

@@ -1,24 +1,29 @@
-"use client"
+"use client";
 
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Mode, calendarModes } from "../../calendar-types"
-import { useCalendarContext } from "../../calendar-context"
-import { useTranslations } from "next-intl"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Mode, calendarModes } from "../../calendar-types";
+import { useCalendarContext } from "../../calendar-context";
+import { useTranslations } from "next-intl";
 
-export default function CalendarHeaderActionsMode() {
-  const { mode, setMode } = useCalendarContext()
-  const t = useTranslations("calendar.modes")
+export default function CalendarHeaderActionsMode({
+  isStudent = false,
+}: {
+  isStudent?: boolean;
+}) {
+  const { mode, setMode } = useCalendarContext();
+  const t = useTranslations("calendar.modes");
+  const modes = isStudent ? [...calendarModes].reverse() : calendarModes;
 
   return (
     <ToggleGroup
       type="single"
       value={mode}
       onValueChange={(value) => {
-        if (value) setMode(value as Mode)
+        if (value) setMode(value as Mode);
       }}
       className="gap-0 overflow-hidden rounded-md border bg-sidebar"
     >
-      {calendarModes.map((modeValue) => (
+      {modes.map((modeValue) => (
         <ToggleGroupItem
           key={modeValue}
           value={modeValue}
@@ -28,5 +33,5 @@ export default function CalendarHeaderActionsMode() {
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
-  )
+  );
 }

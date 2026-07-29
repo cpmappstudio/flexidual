@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { format } from "date-fns";
+import { addDays, format, startOfWeek } from "date-fns";
+import { tz } from "@date-fns/tz";
+import { enUS, es, ptBR } from "date-fns/locale";
 import { Trash2 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
   CalendarTimeGridDay,
   CalendarWeekTimeGrid,
 } from "@/components/calendar/body/week/calendar-week-time-grid";
+import CalendarBodyMarginDayMargin from "@/components/calendar/body/day/calendar-body-margin-day-margin";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -54,9 +57,15 @@ interface CourseWeeklyCalendarProps {
   startMinutes?: number;
   endMinutes?: number;
   backgroundSlots?: CourseWeeklyGuide[];
+  timeZone: string;
 }
 
 const SNAP_MINUTES = 15;
+const localeMap = {
+  en: enUS,
+  es,
+  "pt-BR": ptBR,
+} as const;
 
 const formatClasses: Record<CourseClassFormat, string> = {
   live: "border-primary/40 bg-primary/20 text-primary",
@@ -126,11 +135,23 @@ export function CourseWeeklyCalendar({
   startMinutes = DEFAULT_SCHEDULE_START_MINUTES,
   endMinutes = DEFAULT_SCHEDULE_END_MINUTES,
   backgroundSlots = [],
+  timeZone,
 }: CourseWeeklyCalendarProps) {
   const t = useTranslations();
+  const locale = useLocale();
+  const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS;
   const [draft, setDraft] = useState<DraftSelection>();
   const [pending, setPending] =
     useState<ReturnType<typeof normalizeSelection>>();
+  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState(1);
+  const dateContext = { in: tz(timeZone) };
+  const weekStart = startOfWeek(new Date(), {
+    weekStartsOn: 1,
+    ...dateContext,
+  });
+  const weekDays = Array.from({ length: 7 }, (_, index) =>
+    addDays(weekStart, index, dateContext),
+  );
 
   const startSelection = (
     dayOfWeek: number,
@@ -297,52 +318,115 @@ export function CourseWeeklyCalendar({
     );
   };
 
+  const renderEditableDay = (day: Date, showHeader = true) => {
+    const dayOfWeek = day.getDay();
+    const daySlots = value.filter((slot) => slot.dayOfWeek === dayOfWeek);
+    const dayBackgroundSlots = backgroundSlots.filter(
+      (slot) => slot.dayOfWeek === dayOfWeek,
+    );
+    const draftSelection =
+      draft?.dayOfWeek === dayOfWeek
+        ? normalizeSelection(draft, endMinutes)
+        : undefined;
+
+    return (
+      <CalendarTimeGridDay
+        date={day}
+        onlyDayHeader
+        startMinutes={startMinutes}
+        endMinutes={endMinutes}
+        displayTimeZone={timeZone}
+        showHeader={showHeader}
+        surfaceProps={{
+          className: "cursor-crosshair touch-none select-none",
+          onPointerDown: (event) => startSelection(dayOfWeek, event),
+          onPointerMove: (event) => updateSelection(dayOfWeek, event),
+          onPointerUp: (event) => finishSelection(dayOfWeek, event),
+          onPointerCancel: () => setDraft(undefined),
+        }}
+      >
+        {dayBackgroundSlots.map(renderBackgroundSlot)}
+        {daySlots.map((slot) => renderSelection(slot))}
+        {draftSelection && renderSelection(draftSelection, true)}
+      </CalendarTimeGridDay>
+    );
+  };
+
+  const selectedDay =
+    weekDays.find((day) => day.getDay() === selectedDayOfWeek) ?? weekDays[0];
+  const calendarHeight = ((endMinutes - startMinutes) / 60) * 48;
+
   return (
     <>
+      <div className="overflow-hidden rounded-lg border bg-sidebar md:hidden">
+        <div className="grid grid-cols-7 gap-1 border-b p-2">
+          {weekDays.map((day) => {
+            const dayOfWeek = day.getDay();
+            const hasCourseSlots = value.some(
+              (slot) => slot.dayOfWeek === dayOfWeek,
+            );
+            const hasBackgroundSlots = backgroundSlots.some(
+              (slot) => slot.dayOfWeek === dayOfWeek,
+            );
+
+            return (
+              <button
+                key={day.toISOString()}
+                type="button"
+                className={cn(
+                  "flex min-h-12 min-w-0 flex-col items-center justify-center rounded-md border px-1 text-center transition-colors",
+                  selectedDayOfWeek === dayOfWeek
+                    ? "border-primary bg-primary/10 text-primary shadow-sm"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted/60",
+                )}
+                onClick={() => setSelectedDayOfWeek(dayOfWeek)}
+              >
+                <span className="text-[10px] font-semibold uppercase">
+                  {format(day, "EEE", {
+                    locale: dateLocale,
+                    ...dateContext,
+                  })}
+                </span>
+                <span
+                  className={cn(
+                    "mt-1 size-1.5 rounded-full",
+                    hasCourseSlots
+                      ? "bg-primary"
+                      : hasBackgroundSlots
+                        ? "bg-muted-foreground/50"
+                        : "bg-transparent",
+                  )}
+                />
+              </button>
+            );
+          })}
+        </div>
+
+        <div
+          className="flex overflow-hidden [--calendar-hour-height:3rem]"
+          style={{ height: calendarHeight }}
+        >
+          <CalendarBodyMarginDayMargin
+            startMinutes={startMinutes}
+            endMinutes={endMinutes}
+            displayTimeZone={timeZone}
+            showHeader={false}
+          />
+          {renderEditableDay(selectedDay, false)}
+        </div>
+      </div>
+
       <div
-        className="overflow-hidden rounded-lg border bg-sidebar"
-        style={{
-          height: ((endMinutes - startMinutes) / 60) * 48 + 30,
-        }}
+        className="hidden overflow-hidden rounded-lg border bg-sidebar md:block"
+        style={{ height: calendarHeight + 30 }}
       >
         <CalendarWeekTimeGrid
           date={new Date()}
           startMinutes={startMinutes}
           endMinutes={endMinutes}
+          displayTimeZone={timeZone}
           className="[--calendar-hour-height:3rem] [&>div]:overflow-y-hidden xl:[--calendar-hour-height:3rem] 2xl:[--calendar-hour-height:3rem]"
-          renderDayAction={(day) => {
-            const dayOfWeek = day.getDay();
-            const daySlots = value.filter(
-              (slot) => slot.dayOfWeek === dayOfWeek,
-            );
-            const dayBackgroundSlots = backgroundSlots.filter(
-              (slot) => slot.dayOfWeek === dayOfWeek,
-            );
-            const draftSelection =
-              draft?.dayOfWeek === dayOfWeek
-                ? normalizeSelection(draft, endMinutes)
-                : undefined;
-
-            return (
-              <CalendarTimeGridDay
-                date={day}
-                onlyDayHeader
-                startMinutes={startMinutes}
-                endMinutes={endMinutes}
-                surfaceProps={{
-                  className: "cursor-crosshair touch-none select-none",
-                  onPointerDown: (event) => startSelection(dayOfWeek, event),
-                  onPointerMove: (event) => updateSelection(dayOfWeek, event),
-                  onPointerUp: (event) => finishSelection(dayOfWeek, event),
-                  onPointerCancel: () => setDraft(undefined),
-                }}
-              >
-                {dayBackgroundSlots.map(renderBackgroundSlot)}
-                {daySlots.map((slot) => renderSelection(slot))}
-                {draftSelection && renderSelection(draftSelection, true)}
-              </CalendarTimeGridDay>
-            );
-          }}
+          renderDayAction={(day) => renderEditableDay(day)}
         />
       </div>
 
