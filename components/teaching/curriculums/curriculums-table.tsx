@@ -3,7 +3,12 @@
 import * as React from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +17,10 @@ import { CurriculumDialog } from "@/components/teaching/curriculums/curriculum-d
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { DataTable } from "@/components/table/data-table";
-import { createSearchColumn, createSortableHeader } from "@/components/table/column-helpers";
+import {
+  createSearchColumn,
+  createSortableHeader,
+} from "@/components/table/column-helpers";
 import type { FilterConfig } from "@/lib/table/types";
 
 export function CurriculumsTable({
@@ -28,7 +36,7 @@ export function CurriculumsTable({
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedCurriculumId = searchParams.get("curriculumId");
-  
+
   const orgSlug = (params.orgSlug as string) || "system";
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
   // Determine effective school ID for the query
@@ -37,12 +45,13 @@ export function CurriculumsTable({
     querySchoolId = orgContext._id as Id<"schools">;
   }
 
-  const data = useQuery(api.curriculums.list, { 
+  const data = useQuery(api.curriculums.list, {
     includeInactive: true,
-    schoolId: querySchoolId 
+    schoolId: querySchoolId,
   });
 
-  const [editingCurriculum, setEditingCurriculum] = useState<Doc<"curriculums"> | null>(null);
+  const [editingCurriculum, setEditingCurriculum] =
+    useState<Doc<"curriculums"> | null>(null);
 
   React.useEffect(() => {
     if (!data || !requestedCurriculumId) {
@@ -109,9 +118,7 @@ export function CurriculumsTable({
             {code && (
               <div className="lg:hidden">
                 <span className="font-mono">{t("common.code")}:</span>
-                <span className="text-muted-foreground">
-                  {code || "-"}
-                </span>
+                <span className="text-muted-foreground">{code || "-"}</span>
               </div>
             )}
           </div>
