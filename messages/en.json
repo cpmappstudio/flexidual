@@ -1024,6 +1024,10 @@
     "noRecordings": "No recordings available",
     "noRecordingsHint": "This class may still be processing or was not recorded.",
     "processing": "Recording is still processing…",
+    "loading": "Loading recording…",
+    "loadError": "Unable to load recording",
+    "loadErrorHint": "The recording is temporarily unavailable. Please try again later.",
+    "part": "Part {number}",
     "duration": "Duration",
     "fileSize": "File size"
   }

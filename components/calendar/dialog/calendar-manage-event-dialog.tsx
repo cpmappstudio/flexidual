@@ -61,6 +61,7 @@ import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { utcToLocalDateTime } from "@/lib/time-zone";
 import { getCalendarEventDisplay } from "../calendar-event-display";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 
 const formSchema = z.object({
@@ -80,6 +81,7 @@ export default function CalendarManageEventDialog({
   const t = useTranslations();
   const locale = useLocale();
   const now = useCurrentMinute();
+  const isMobile = useIsMobile();
   const {
     manageEventDialogOpen,
     setManageEventDialogOpen,
@@ -271,7 +273,10 @@ export default function CalendarManageEventDialog({
 
   return (
     <>
-      <Dialog open={manageEventDialogOpen} onOpenChange={handleClose}>
+      <Dialog
+        open={manageEventDialogOpen && !(isMobile && recordingOpen)}
+        onOpenChange={handleClose}
+      >
         <DialogContent
           className="max-w-xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
           showCloseButton={false}
@@ -369,7 +374,7 @@ export default function CalendarManageEventDialog({
                       href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}
                     >
                       {t("dashboard.goToClassroom")}
-                       <MoveRight className="h-4 w-4" />
+                      <MoveRight className="h-4 w-4" />
                     </Link>
                   </Button>
                 ) : primaryAction === "enter-live" ? (
@@ -381,7 +386,7 @@ export default function CalendarManageEventDialog({
                       href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}
                     >
                       {t("dashboard.enterLive")}
-                       <MoveRight className="h-4 w-4" />
+                      <MoveRight className="h-4 w-4" />
                     </Link>
                   </Button>
                 ) : primaryAction === "prepare-room" ? (
@@ -390,22 +395,11 @@ export default function CalendarManageEventDialog({
                       href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}
                     >
                       {t("classroom.prepareRoom")}
-                       <MoveRight className="h-4 w-4" />
+                      <MoveRight className="h-4 w-4" />
                     </Link>
                   </Button>
                 ) : null}
               </DialogFooter>
-              {canWatchRecording && (
-                <RecordingPlayerModal
-                  scheduleId={selectedEvent.scheduleId}
-                  title={primaryLabel}
-                  className={selectedEvent.className}
-                  scheduledStart={selectedEvent.start.getTime()}
-                  open={recordingOpen}
-                  onOpenChange={setRecordingOpen}
-                  variant={isStudent ? "student" : "default"}
-                />
-              )}
             </div>
           ) : (
             /* EDIT MODE */
@@ -609,6 +603,21 @@ export default function CalendarManageEventDialog({
           )}
         </DialogContent>
       </Dialog>
+
+      {canWatchRecording && (
+        <RecordingPlayerModal
+          scheduleId={selectedEvent.scheduleId}
+          title={primaryLabel}
+          secondaryLabel={secondaryLabel}
+          gradeLabel={gradeLabel}
+          scheduledStart={selectedEvent.start.getTime()}
+          scheduledEnd={selectedEvent.end.getTime()}
+          timeZone={displayTimeZone}
+          open={recordingOpen}
+          onOpenChange={setRecordingOpen}
+          variant={isStudent ? "student" : "default"}
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

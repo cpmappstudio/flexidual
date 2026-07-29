@@ -293,9 +293,13 @@ export function DraggableLessonCard({
           </button>
           <RecordingPlayerModal
             scheduleId={lesson.scheduleId}
-            title={lesson.title}
-            className={lesson.className}
+            title={lesson.className || lesson.title}
+            secondaryLabel={
+              isIgnitia ? "Ignitia" : isAbeka ? "Abeka" : undefined
+            }
             scheduledStart={lesson.start}
+            scheduledEnd={lesson.end}
+            timeZone={lesson.timeZone}
             open={recordingOpen}
             onOpenChange={setRecordingOpen}
             variant="student"

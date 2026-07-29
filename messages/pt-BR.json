@@ -1024,6 +1024,10 @@
     "noRecordings": "Nenhuma gravação disponível",
     "noRecordingsHint": "Esta aula pode ainda estar processando ou não foi gravada.",
     "processing": "A gravação ainda está sendo processada…",
+    "loading": "Carregando gravação…",
+    "loadError": "Não foi possível carregar a gravação",
+    "loadErrorHint": "A gravação está temporariamente indisponível. Tente novamente mais tarde.",
+    "part": "Parte {number}",
     "duration": "Duração",
     "fileSize": "Tamanho do arquivo"
   }

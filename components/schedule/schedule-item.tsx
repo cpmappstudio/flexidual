@@ -314,9 +314,13 @@ export function ScheduleItem({
               </Button>
               <RecordingPlayerModal
                 scheduleId={schedule.scheduleId}
-                title={schedule.title}
-                className={schedule.className}
+                title={schedule.className || schedule.title}
+                secondaryLabel={
+                  isIgnitia ? "Ignitia" : isAbeka ? "Abeka" : undefined
+                }
                 scheduledStart={startDate.getTime()}
+                scheduledEnd={endDate.getTime()}
+                timeZone={schedule.timeZone}
                 open={recordingOpen}
                 onOpenChange={setRecordingOpen}
               />
@@ -460,7 +464,9 @@ export function ScheduleItem({
             {/* Active Status */}
             {schedule.isLive &&
               (isIgnitia ? (
-                <Badge className="shrink-0 bg-secondary text-secondary-foreground">Active</Badge>
+                <Badge className="shrink-0 bg-secondary text-secondary-foreground">
+                  Active
+                </Badge>
               ) : (
                 <Badge variant="destructive" className="animate-pulse shrink-0">
                   {t("common.live")}
@@ -542,9 +548,13 @@ export function ScheduleItem({
             </Button>
             <RecordingPlayerModal
               scheduleId={schedule.scheduleId}
-              title={schedule.title}
-              className={schedule.className}
+              title={schedule.className || schedule.title}
+              secondaryLabel={
+                isIgnitia ? "Ignitia" : isAbeka ? "Abeka" : undefined
+              }
               scheduledStart={startDate.getTime()}
+              scheduledEnd={endDate.getTime()}
+              timeZone={schedule.timeZone}
               open={recordingOpen}
               onOpenChange={setRecordingOpen}
             />
@@ -598,7 +608,11 @@ export function ScheduleItem({
               <Button
                 size="sm"
                 variant={isIgnitia ? "default" : "destructive"}
-                className={isIgnitia ? "bg-secondary text-secondary-foreground hover:bg-secondary/90" : ""}
+                className={
+                  isIgnitia
+                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/90"
+                    : ""
+                }
                 asChild
               >
                 <Link href={`/${orgSlug}/classroom/${schedule.roomName}`}>

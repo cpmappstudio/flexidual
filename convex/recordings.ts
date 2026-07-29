@@ -63,7 +63,7 @@ export const updateFromWebhook = internalMutation({
       v.literal("active"),
       v.literal("complete"),
       v.literal("failed"),
-      v.literal("aborted")
+      v.literal("aborted"),
     ),
     fileKey: v.optional(v.string()),
     url: v.optional(v.string()),
@@ -79,7 +79,9 @@ export const updateFromWebhook = internalMutation({
       .first();
 
     if (!recording) {
-      console.warn(`[Recordings] No recording found for egressId: ${args.egressId}`);
+      console.warn(
+        `[Recordings] No recording found for egressId: ${args.egressId}`,
+      );
       return null;
     }
 
@@ -164,14 +166,16 @@ export const getBySchedule = query({
       )
       .collect();
 
-    return recordings.map((r) => ({
-      _id: r._id,
-      egressId: r.egressId,
-      url: r.url ?? null,
-      durationMs: r.durationMs ?? null,
-      fileSize: r.fileSize ?? null,
-      startedAt: r.startedAt,
-      completedAt: r.completedAt ?? null,
-    }));
+    return recordings
+      .sort((first, second) => first.startedAt - second.startedAt)
+      .map((recording) => ({
+        _id: recording._id,
+        egressId: recording.egressId,
+        url: recording.url ?? null,
+        durationMs: recording.durationMs ?? null,
+        fileSize: recording.fileSize ?? null,
+        startedAt: recording.startedAt,
+        completedAt: recording.completedAt ?? null,
+      }));
   },
 });

@@ -1,40 +1,43 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { useFullscreen } from "@/hooks/use-fullscreen";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Maximize2,
-  Minimize2,
-  PlayCircle,
-  Video,
-  Clock,
-  Calendar,
-  HardDrive,
-} from "lucide-react";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PlayCircle, Video, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { useTranslations } from "next-intl";
+import { enUS, es, ptBR } from "date-fns/locale";
+import { useLocale, useTranslations } from "next-intl";
+import { TZDate } from "@date-fns/tz";
+import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface RecordingPlayerProps {
   scheduleId: Id<"classSchedule">;
   title: string;
-  className?: string;
+  secondaryLabel?: string | null;
+  gradeLabel?: string | null;
   scheduledStart?: number;
+  scheduledEnd?: number;
+  timeZone: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** "student" uses the student dashboard's colourful card style; "default" keeps the cinema dark style */
   variant?: "student" | "default";
 }
 
@@ -51,75 +54,56 @@ function formatDuration(ms: number | null | undefined): string {
   return `${s}s`;
 }
 
-function formatFileSize(bytes: number | null | undefined): string {
-  if (!bytes) return "";
-  if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
-  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(0)} MB`;
-  return `${(bytes / 1024).toFixed(0)} KB`;
-}
-
 // ─── Inner video player ───────────────────────────────────────────────────────
 
 function VideoPlayer({
   url,
   durationMs,
-  fileSize,
-  completedAt,
+  showDuration,
 }: {
   url: string;
   durationMs: number | null;
-  fileSize: number | null;
-  completedAt: number | null;
+  showDuration: boolean;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { isFullscreen, isSupported, toggleFullscreen } = useFullscreen();
+  const t = useTranslations();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
-  const handleFullscreen = useCallback(() => {
-    toggleFullscreen(containerRef.current);
-  }, [toggleFullscreen]);
-
   return (
     <div className="space-y-3">
-
-
       {/* Video container */}
       <div
-        ref={containerRef}
-        className="relative bg-inverse rounded-xl overflow-hidden group"
+        className="relative mx-auto max-h-[calc(100dvh-15rem)] w-full overflow-hidden rounded-xl bg-inverse"
         style={{ aspectRatio: "16/9" }}
       >
         {isLoading && !hasError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-inverse/80 z-10">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-inverse/80">
             <div className="flex flex-col items-center gap-3 text-inverse-foreground/70">
               <PlayCircle className="h-12 w-12 animate-pulse" />
-              <span className="text-sm">Loading recording…</span>
+              <span className="text-sm">{t("recordings.loading")}</span>
             </div>
           </div>
         )}
 
         {hasError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-inverse/90 z-10">
-            <div className="flex flex-col items-center gap-3 text-inverse-foreground/70 text-center px-6">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-inverse/90">
+            <div className="flex flex-col items-center gap-3 px-6 text-center text-inverse-foreground/70">
               <Video className="h-12 w-12 opacity-50" />
-              <p className="text-sm font-medium">Unable to load recording</p>
+              <p className="text-sm font-medium">{t("recordings.loadError")}</p>
               <p className="text-xs opacity-60">
-                The file may still be processing or the link may have expired.
+                {t("recordings.loadErrorHint")}
               </p>
             </div>
           </div>
         )}
 
         <video
-          ref={videoRef}
           src={url}
           controls
           preload="metadata"
           className={cn(
-            "w-full h-full object-contain",
-            (isLoading || hasError) && "opacity-0"
+            "h-full w-full object-contain",
+            (isLoading || hasError) && "opacity-0",
           )}
           onLoadedMetadata={() => setIsLoading(false)}
           onError={() => {
@@ -128,47 +112,76 @@ function VideoPlayer({
           }}
           onCanPlay={() => setIsLoading(false)}
         />
-
-        {/* Fullscreen toggle overlay */}
-        {isSupported && !hasError && !isLoading && (
-          <button
-            onClick={handleFullscreen}
-            className="absolute bottom-3 right-3 z-20 bg-inverse/60 hover:bg-inverse/80 text-inverse-foreground rounded-md p-1.5 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-          >
-            {isFullscreen ? (
-              <Minimize2 className="h-4 w-4" />
-            ) : (
-              <Maximize2 className="h-4 w-4" />
-            )}
-          </button>
-        )}
       </div>
 
-      {/* Metadata strip */}
-      {(durationMs || fileSize || completedAt) && (
-        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-          {completedAt && (
-            <span className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              {format(new Date(completedAt), "MMM d, yyyy 'at' h:mm a")}
-            </span>
-          )}
-          {durationMs && (
-            <span className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {formatDuration(durationMs)}
-            </span>
-          )}
-          {fileSize && (
-            <span className="flex items-center gap-1">
-              <HardDrive className="h-3 w-3" />
-              {formatFileSize(fileSize)}
-            </span>
-          )}
+      {showDuration && durationMs && (
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Clock className="h-3 w-3" />
+          <span>
+            {t("recordings.duration")}: {formatDuration(durationMs)}
+          </span>
         </div>
       )}
     </div>
+  );
+}
+
+function RecordingHeader({
+  isMobile,
+  isStudent,
+  title,
+  secondaryLabel,
+  scheduleLabel,
+}: {
+  isMobile: boolean;
+  isStudent: boolean;
+  title: string;
+  secondaryLabel?: string | null;
+  scheduleLabel: string | null;
+}) {
+  const headerClassName = cn(
+    "relative isolate after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:-z-10 after:h-[calc(100%+2rem)] after:bg-gradient-to-b after:content-['']",
+    isMobile ? "px-4 pb-4 pt-6" : "px-6 pb-4 pt-5",
+    isStudent
+      ? "after:from-background after:via-background/80 after:to-background/0"
+      : "after:from-card after:via-card/80 after:to-card/0",
+  );
+  const details = (
+    <div
+      className={cn(
+        "flex min-w-0 flex-col items-center gap-1 text-muted-foreground",
+        !isMobile && "sm:items-start",
+      )}
+    >
+      {secondaryLabel && (
+        <span className="truncate text-sm font-medium">{secondaryLabel}</span>
+      )}
+      {scheduleLabel && (
+        <span className="max-w-full truncate text-xs capitalize">
+          {scheduleLabel}
+        </span>
+      )}
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <SheetHeader className={headerClassName}>
+        <SheetTitle className="line-clamp-2 px-10 text-center text-xl font-black leading-tight text-foreground">
+          {title}
+        </SheetTitle>
+        {details}
+      </SheetHeader>
+    );
+  }
+
+  return (
+    <DialogHeader className={headerClassName}>
+      <DialogTitle className="truncate text-lg font-black leading-tight text-foreground">
+        {title}
+      </DialogTitle>
+      {details}
+    </DialogHeader>
   );
 }
 
@@ -177,17 +190,22 @@ function VideoPlayer({
 export function RecordingPlayerModal({
   scheduleId,
   title,
-  className,
+  secondaryLabel,
+  gradeLabel,
   scheduledStart,
+  scheduledEnd,
+  timeZone,
   open,
   onOpenChange,
   variant = "default",
 }: RecordingPlayerProps) {
   const t = useTranslations();
+  const locale = useLocale();
+  const isMobile = useIsMobile();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const recordings = useQuery(
     api.recordings.getBySchedule,
-    open ? { scheduleId } : "skip"
+    open ? { scheduleId } : "skip",
   );
 
   // Reset selection when modal opens or recording count changes
@@ -197,169 +215,182 @@ export function RecordingPlayerModal({
 
   const isLoading = recordings === undefined;
   const isEmpty = recordings !== undefined && recordings.length === 0;
-  const activeRec = recordings ? (recordings[selectedIdx] ?? recordings[0]) : null;
+  const activeRec = recordings
+    ? (recordings[selectedIdx] ?? recordings[0])
+    : null;
 
   const isStudent = variant === "student";
+  const dateLocale = locale === "es" ? es : locale === "pt-BR" ? ptBR : enUS;
+  const scheduledStartDate =
+    scheduledStart !== undefined ? new TZDate(scheduledStart, timeZone) : null;
+  const scheduledEndDate =
+    scheduledEnd !== undefined ? new TZDate(scheduledEnd, timeZone) : null;
+  const scheduleLabel = scheduledStartDate
+    ? `${format(scheduledStartDate, "EEEE, MMMM d, yyyy", {
+        locale: dateLocale,
+      })} · ${format(scheduledStartDate, "h:mm a", {
+        locale: dateLocale,
+      })}${
+        scheduledEndDate
+          ? ` – ${format(scheduledEndDate, "h:mm a", {
+              locale: dateLocale,
+            })}`
+          : ""
+      }`
+    : null;
+  const displayTitle =
+    !isStudent && gradeLabel ? `${title} (${gradeLabel})` : title;
+
+  const content = (
+    <div
+      className={cn(
+        "min-h-0 space-y-2 overflow-hidden",
+        isMobile ? "px-4 pb-4" : "px-6",
+      )}
+    >
+      {isLoading && (
+        <div className="space-y-3">
+          <Skeleton
+            className={cn("w-full", isStudent ? "bg-primary/10" : "bg-muted")}
+            style={{ aspectRatio: "16/9" }}
+          />
+          {!isStudent && (
+            <Skeleton
+              className={cn(
+                "h-4 w-32",
+                isStudent ? "bg-primary/10" : "bg-muted",
+              )}
+            />
+          )}
+        </div>
+      )}
+
+      {isEmpty && (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          {isStudent ? (
+            <Video className="mb-3 h-12 w-12 text-primary" />
+          ) : (
+            <Video className="mb-3 h-12 w-12 text-muted-foreground" />
+          )}
+          <p className="font-bold text-foreground">
+            {t("recordings.noRecordings")}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("recordings.noRecordingsHint")}
+          </p>
+        </div>
+      )}
+
+      {recordings && recordings.length > 0 && (
+        <div className="space-y-2">
+          {/* Selector — only shown when there are multiple recordings */}
+          {recordings.length > 1 && (
+            <div
+              className={cn(
+                "flex snap-x gap-2 overflow-x-auto overscroll-x-contain pb-1",
+                isMobile && "scrollbar-hide pr-8",
+              )}
+            >
+              {recordings.map((rec, idx) => (
+                <Button
+                  key={rec._id}
+                  type="button"
+                  size="sm"
+                  variant={selectedIdx === idx ? "default" : "outline"}
+                  onClick={() => setSelectedIdx(idx)}
+                  className={cn(
+                    "shrink-0 snap-start gap-2 font-semibold",
+                    isStudent ? "rounded-full" : "rounded-lg",
+                    isStudent &&
+                      selectedIdx !== idx &&
+                      "border-primary/30 bg-primary/10 text-primary",
+                  )}
+                >
+                  <PlayCircle className="h-3.5 w-3.5" />
+                  {t("recordings.part", { number: idx + 1 })}
+                  {rec.durationMs && (
+                    <span className="opacity-70">
+                      · {formatDuration(rec.durationMs)}
+                    </span>
+                  )}
+                </Button>
+              ))}
+            </div>
+          )}
+
+          {/* Active recording player */}
+          {activeRec &&
+            (activeRec.url ? (
+              <VideoPlayer
+                key={activeRec._id}
+                url={activeRec.url}
+                durationMs={activeRec.durationMs}
+                showDuration={!isStudent && recordings.length === 1}
+              />
+            ) : (
+              <div
+                className={cn(
+                  "flex items-center gap-3 p-4 rounded-xl border",
+                  isStudent
+                    ? "bg-primary/5 border-primary/20 text-muted-foreground"
+                    : "border-border bg-muted text-muted-foreground",
+                )}
+              >
+                <Video className="h-5 w-5 flex-shrink-0" />
+                <span className="text-sm">{t("recordings.processing")}</span>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const header = (
+    <RecordingHeader
+      isMobile={isMobile}
+      isStudent={isStudent}
+      title={displayTitle}
+      secondaryLabel={secondaryLabel}
+      scheduleLabel={scheduleLabel}
+    />
+  );
+
+  if (isMobile) {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          side="bottom"
+          className={cn(
+            "max-h-[90dvh] gap-0 overflow-hidden rounded-t-[2rem] border-x border-t-2 pb-[env(safe-area-inset-bottom)] [&>button]:right-4 [&>button]:top-4 [&>button]:flex [&>button]:size-8 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-md [&>button]:border [&>button]:border-primary/40 [&>button]:bg-background/90 [&>button>svg]:size-4",
+            isStudent
+              ? "border-primary/30 bg-background"
+              : "border-border bg-card",
+          )}
+        >
+          <div
+            aria-hidden="true"
+            className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-muted-foreground/30"
+          />
+          {header}
+          {content}
+        </SheetContent>
+      </Sheet>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "max-w-5xl sm:max-w-5xl w-full p-0 overflow-hidden",
+          "grid max-h-[calc(100dvh-2rem)] w-full max-w-5xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-5xl",
           isStudent
-            ? "bg-background border-2 border-primary/30 rounded-2xl"
-            : "bg-card border-border"
+            ? "rounded-2xl border-2 border-primary/30 bg-background"
+            : "border-border bg-card",
         )}
         showCloseButton
       >
-        {/* Header */}
-        <DialogHeader
-          className={cn(
-            "px-6 pt-5 pb-3 border-b",
-            isStudent
-              ? "border-primary/20 bg-primary/5"
-              : "border-border"
-          )}
-        >
-          <div className="flex items-start gap-3">
-            <div
-              className={cn(
-                "flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center",
-                isStudent ? "bg-primary/15 border border-primary/30" : "rounded-lg bg-primary/20"
-              )}
-            >
-              <Video className="h-5 w-5 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <DialogTitle
-                className={cn(
-                  "text-lg font-black leading-tight truncate",
-                  "text-foreground"
-                )}
-              >
-                {title}
-              </DialogTitle>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                {className && (
-                  <span
-                    className={cn(
-                      "text-sm truncate",
-                      "text-muted-foreground"
-                    )}
-                  >
-                    {className}
-                  </span>
-                )}
-                {scheduledStart && (
-                  <span
-                    className={cn(
-                      "text-xs",
-                      "text-muted-foreground"
-                    )}
-                  >
-                    {format(new Date(scheduledStart), "EEEE, MMMM d, yyyy")}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </DialogHeader>
-
-        {/* Content */}
-        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
-          {isLoading && (
-            <div className="space-y-3">
-              <Skeleton
-                className={cn(
-                  "w-full",
-                  isStudent ? "bg-primary/10" : "bg-muted"
-                )}
-                style={{ aspectRatio: "16/9" }}
-              />
-              <div className="flex gap-3">
-                <Skeleton className={cn("h-4 w-32", isStudent ? "bg-primary/10" : "bg-muted")} />
-                <Skeleton className={cn("h-4 w-24", isStudent ? "bg-primary/10" : "bg-muted")} />
-              </div>
-            </div>
-          )}
-
-          {isEmpty && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              {isStudent ? (
-                <div className="text-5xl mb-3">🎬</div>
-              ) : (
-                <Video className="h-12 w-12 text-muted-foreground mb-3" />
-              )}
-              <p className="font-bold text-foreground">
-                {t("recordings.noRecordings") || "No recordings available"}
-              </p>
-              <p className="text-sm mt-1 text-muted-foreground">
-                {t("recordings.noRecordingsHint") ||
-                  "This class may still be processing or was not recorded."}
-              </p>
-            </div>
-          )}
-
-          {recordings && recordings.length > 0 && (
-            <div className="space-y-4">
-              {/* Selector — only shown when there are multiple recordings */}
-              {recordings.length > 1 && (
-                <div className="flex flex-wrap gap-2">
-                  {recordings.map((rec, idx) => (
-                    <button
-                      key={rec._id}
-                      onClick={() => setSelectedIdx(idx)}
-                      className={cn(
-                        "flex items-center gap-2 px-3 py-1.5 text-sm font-semibold transition-colors border",
-                        isStudent ? "rounded-full" : "rounded-lg",
-                        selectedIdx === idx
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : isStudent
-                            ? "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20"
-                            : "bg-muted text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground"
-                      )}
-                    >
-                      <PlayCircle className="h-3.5 w-3.5" />
-                      {rec.completedAt
-                        ? format(new Date(rec.completedAt), "MMM d, h:mm a")
-                        : `Recording ${idx + 1}`}
-                      {rec.durationMs && (
-                        <span className="opacity-60">· {formatDuration(rec.durationMs)}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Active recording player */}
-              {activeRec && (
-                activeRec.url ? (
-                  <VideoPlayer
-                    key={activeRec._id}
-                    url={activeRec.url}
-                    durationMs={activeRec.durationMs}
-                    fileSize={activeRec.fileSize}
-                    completedAt={activeRec.completedAt}
-                  />
-                ) : (
-                  <div
-                    className={cn(
-                      "flex items-center gap-3 p-4 rounded-xl border",
-                      isStudent
-                        ? "bg-primary/5 border-primary/20 text-muted-foreground"
-                        : "bg-muted border-border text-muted-foreground"
-                    )}
-                  >
-                    <Video className="h-5 w-5 flex-shrink-0" />
-                    <span className="text-sm">
-                      {t("recordings.processing") || "Recording is still processing…"}
-                    </span>
-                  </div>
-                )
-              )}
-            </div>
-          )}
-        </div>
+        {header}
+        {content}
       </DialogContent>
     </Dialog>
   );

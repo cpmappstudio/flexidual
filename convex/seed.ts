@@ -1140,13 +1140,27 @@ export const createLauraRecordingDemo = internalMutation({
       throw new Error("No past classes were found for Laura.");
     }
 
+    const schedule = pastSchedules[0];
+    const recordingCount = 3;
+    const scheduleDuration = schedule.scheduledEnd - schedule.scheduledStart;
+    const partDuration = Math.floor(scheduleDuration / recordingCount);
     const recordings = [];
-    for (const schedule of pastSchedules) {
-      const egressId = `${LAURA_RECORDING_DEMO_EGRESS_PREFIX}-${schedule._id}`;
+
+    for (let index = 0; index < recordingCount; index += 1) {
+      const partNumber = index + 1;
+      const egressId =
+        index === 0
+          ? `${LAURA_RECORDING_DEMO_EGRESS_PREFIX}-${schedule._id}`
+          : `${LAURA_RECORDING_DEMO_EGRESS_PREFIX}-${schedule._id}-part-${partNumber}`;
       const existing = await ctx.db
         .query("recordings")
         .withIndex("by_egress_id", (query) => query.eq("egressId", egressId))
         .first();
+      const startedAt = schedule.scheduledStart + partDuration * index;
+      const completedAt =
+        index === recordingCount - 1
+          ? schedule.scheduledEnd
+          : startedAt + partDuration;
       const recordingData = {
         scheduleId: schedule._id,
         roomName: schedule.roomName,
@@ -1154,10 +1168,10 @@ export const createLauraRecordingDemo = internalMutation({
         status: "complete" as const,
         fileKey: `dev/${egressId}.mp4`,
         url: LAURA_RECORDING_DEMO_URL,
-        durationMs: schedule.scheduledEnd - schedule.scheduledStart,
-        fileSize: 1_128_375,
-        startedAt: schedule.scheduledStart,
-        completedAt: schedule.scheduledEnd,
+        durationMs: completedAt - startedAt,
+        fileSize: 1_128_375 + index * 125_000,
+        startedAt,
+        completedAt,
       };
 
       if (existing) {
