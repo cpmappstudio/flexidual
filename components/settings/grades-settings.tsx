@@ -20,7 +20,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery } from "convex/react";
-import { EllipsisVertical, GripVertical, Loader2, Plus } from "lucide-react";
+import { EllipsisVertical, GripVertical, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
@@ -34,7 +34,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { ResponsivePageAction } from "@/components/ui/responsive-page-action";
+import {
+  PageCreateButton,
+  ResponsivePageAction,
+} from "@/components/ui/responsive-page-action";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -269,14 +272,7 @@ export function GradesSettings() {
         </h2>
         {!readOnly && (
           <ResponsivePageAction>
-            <Button
-              size="sm"
-              onClick={openCreateDialog}
-              aria-label={t("add")}
-            >
-              <Plus />
-              <span className="hidden sm:inline">{t("add")}</span>
-            </Button>
+            <PageCreateButton onClick={openCreateDialog} label={t("add")} />
           </ResponsivePageAction>
         )}
       </div>

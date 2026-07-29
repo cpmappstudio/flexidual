@@ -45,6 +45,7 @@ export const upsertScene = mutation({
     } else {
       await ctx.db.insert("whiteboardSessions", { roomName, elements, updatedAt: now });
     }
+    return null;
   },
 });
 
@@ -198,5 +199,6 @@ export const clearSession = mutation({
     if (existing) {
       await ctx.db.delete(existing._id);
     }
+    return null;
   },
 });

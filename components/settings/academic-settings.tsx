@@ -8,7 +8,6 @@ import {
   Clock3,
   EllipsisVertical,
   Loader2,
-  Plus,
 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import type { DateRange } from "react-day-picker";
@@ -27,7 +26,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ResponsivePageAction } from "@/components/ui/responsive-page-action";
+import {
+  PageCreateButton,
+  ResponsivePageAction,
+} from "@/components/ui/responsive-page-action";
 import { Calendar } from "@/components/ui/calendar";
 import { EntityDialog } from "@/components/ui/entity-dialog";
 import {
@@ -238,14 +240,10 @@ export function AcademicSettings() {
           <h3 className="text-lg font-semibold">{t("periods")}</h3>
           {!readOnly && (
             <ResponsivePageAction>
-              <Button
-                size="sm"
+              <PageCreateButton
                 onClick={() => openPeriodDialog()}
-                aria-label={t("addPeriod")}
-              >
-                <Plus />
-                <span className="hidden sm:inline">{t("addPeriod")}</span>
-              </Button>
+                label={t("addPeriod")}
+              />
             </ResponsivePageAction>
           )}
         </div>

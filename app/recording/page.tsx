@@ -18,9 +18,8 @@ import { SharedWhiteboard } from "@/components/classroom/shared-whiteboard";
 import Image from "next/image";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 
-// Module-level singleton — unauthenticated Convex client for public queries.
-// SharedWhiteboard's getScene query has no auth guard so this is safe.
-// Cannot use ConvexProviderWithClerk here — the LiveKit egress bot has no Clerk session.
+// Module-level unauthenticated client for the LiveKit egress browser.
+// SharedWhiteboard authorizes its read with the short-lived recording token.
 const convexClient = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 // --- Helpers (Kept DRY from your main UI) ---
@@ -29,6 +28,9 @@ const getRole = (p: Participant | undefined): string => {
   try { return JSON.parse(p.metadata).role || "student"; } 
   catch { return "student"; }
 };
+
+const isAuthority = (role: string) =>
+  role === "teacher" || role === "admin";
 
 const getImageUrl = (p: Participant | undefined): string | null => {
   if (!p || !p.metadata) return null;
@@ -134,6 +136,7 @@ function RecordingLayout({ recordingToken }: { recordingToken: string }) {
   
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
   const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
+  const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
 
   // Listen to data channels exactly like the main UI to catch hands in the recording
   useEffect(() => {
@@ -141,15 +144,27 @@ function RecordingLayout({ recordingToken }: { recordingToken: string }) {
     const handleData = (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const msg = JSON.parse(decoder.decode(payload));
-        if (msg.type === "RAISE_HAND" && participant) {
+        const senderRole = getRole(participant);
+        const senderIsAuthority = isAuthority(senderRole);
+        const senderIsStudent = senderRole === "student";
+
+        if (senderIsStudent && msg.type === "RAISE_HAND" && participant) {
           setRaisedHands((prev) => new Set(prev).add(participant.identity));
         }
-        if (msg.type === "LOWER_HAND" || msg.type === "FORCE_LOWER_HAND") {
-          if (participant) {
-            setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
-          }
+        if (senderIsStudent && msg.type === "LOWER_HAND" && participant) {
+          setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
         }
-        if (msg.type === "WHITEBOARD_STATE") {
+        if (
+          senderIsAuthority &&
+          msg.type === "FORCE_LOWER_HAND" &&
+          typeof msg.participantId === "string"
+        ) {
+          setRaisedHands((prev) => { const next = new Set(prev); next.delete(msg.participantId); return next; });
+        }
+        if (senderIsAuthority && msg.type === "ADMIN_PRESENTING" && participant) {
+          setAdminPresenterId(msg.presenting ? participant.identity : null);
+        }
+        if (senderIsAuthority && msg.type === "WHITEBOARD_STATE") {
           setIsWhiteboardActive(!!msg.active);
         }
       } catch { /* ignore */ }
@@ -159,8 +174,12 @@ function RecordingLayout({ recordingToken }: { recordingToken: string }) {
   }, [room]);
 
   // Sort and assign participants
-  const teacher = remoteParticipants.find(p => getRole(p) === "teacher" || getRole(p) === "admin");
-  const students = remoteParticipants.filter(p => getRole(p) !== "teacher" && getRole(p) !== "admin");
+  const teacher =
+    remoteParticipants.find((participant) => getRole(participant) === "teacher") ??
+    remoteParticipants.find(
+      (participant) => participant.identity === adminPresenterId,
+    );
+  const students = remoteParticipants.filter(p => getRole(p) === "student");
   const activeScreenTrack = screenTracks[0]; // Take the first active screen share
 
   return (

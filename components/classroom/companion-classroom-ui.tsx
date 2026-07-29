@@ -14,7 +14,7 @@ import { FullscreenButton } from "./fullscreen-button";
 /** localStorage key that survives companion page refreshes while the session is live. */
 const WB_PRESENTING_KEY = "wb_presenting_";
 
-export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleFullscreen, onSessionEnd }: { roomName: string; isFullscreen?: boolean; onToggleFullscreen?: () => void; onSessionEnd?: () => void }) {
+export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleFullscreen }: { roomName: string; isFullscreen?: boolean; onToggleFullscreen?: () => void }) {
   const t = useTranslations();
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
@@ -108,36 +108,6 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
     mq.addEventListener('change', handle);
     return () => mq.removeEventListener('change', handle);
   }, []);
-
-  // SESSION_END — teacher ended the main session; companion disconnects automatically
-  useEffect(() => {
-    if (!room) return;
-    const decoder = new TextDecoder();
-    const handleDataReceived = (payload: Uint8Array) => {
-      try {
-        const msg = JSON.parse(decoder.decode(payload)) as { type: string };
-        if (msg.type === "SESSION_END") {
-          void (async () => {
-            // Best-effort: tell receivers the whiteboard is gone
-            if (isBroadcastingRef.current && room.state === ConnectionState.Connected) {
-              try {
-                await localParticipant.publishData(
-                  new TextEncoder().encode(JSON.stringify({ type: "WHITEBOARD_STATE", active: false })),
-                  { reliable: true },
-                );
-              } catch { /* ignore */ }
-            }
-            localStorage.removeItem(`${WB_PRESENTING_KEY}${roomName}`);
-            await cleanupRef.current?.();
-            // Trigger disconnect via the parent (flexi-classroom.handleDisconnect)
-            onSessionEnd?.();
-          })();
-        }
-      } catch { /* ignore non-whiteboard packets */ }
-    };
-    room.on("dataReceived", handleDataReceived);
-    return () => { room.off("dataReceived", handleDataReceived); };
-  }, [room, roomName, localParticipant, onSessionEnd]);
 
   // Issue 3: Send current whiteboard state to participants who join late
   useEffect(() => {

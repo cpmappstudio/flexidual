@@ -1,6 +1,31 @@
 import type { ComponentProps } from "react";
+import { Plus } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+export function PageCreateButton({
+  label,
+  className,
+  "aria-label": ariaLabel,
+  ...props
+}: Omit<
+  ComponentProps<typeof Button>,
+  "asChild" | "children" | "size" | "variant"
+> & {
+  label: string;
+}) {
+  return (
+    <Button
+      aria-label={ariaLabel ?? label}
+      className={cn("gap-2", className)}
+      {...props}
+    >
+      <Plus />
+      <span className="hidden sm:inline">{label}</span>
+    </Button>
+  );
+}
 
 export function ResponsivePageAction({
   className,

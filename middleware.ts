@@ -13,7 +13,6 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/:locale/pending-role',
   '/pending-role',
-  '/recording',
 ])
 
 export default clerkMiddleware(async (auth, req: NextRequest) => {

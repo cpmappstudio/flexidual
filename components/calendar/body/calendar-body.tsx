@@ -1,4 +1,5 @@
-import { useRef, type TouchEvent } from "react";
+import { motion, type PanInfo } from "framer-motion";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useCalendarContext } from "../calendar-context";
 import {
   getHorizontalSwipeStep,
@@ -10,39 +11,30 @@ import CalendarBodyMonth from "./month/calendar-body-month";
 
 export default function CalendarBody() {
   const { mode, date, setDate } = useCalendarContext();
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const isMobile = useIsMobile();
 
-  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
-    const touch = event.touches[0];
-    touchStart.current = { x: touch.clientX, y: touch.clientY };
-  };
-
-  const handleTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
-    const start = touchStart.current;
-    touchStart.current = null;
-    if (!start) return;
-
-    const touch = event.changedTouches[0];
-    const step = getHorizontalSwipeStep(start, {
-      x: touch.clientX,
-      y: touch.clientY,
-    });
+  const handleDragEnd = (_event: PointerEvent, info: PanInfo) => {
+    const step = getHorizontalSwipeStep(
+      { x: 0, y: 0 },
+      { x: info.offset.x, y: info.offset.y },
+    );
 
     if (step) setDate(shiftCalendarDate(date, mode, step));
   };
 
   return (
-    <div
-      className="h-full min-h-0 [touch-action:pan-y_pinch-zoom]"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={() => {
-        touchStart.current = null;
-      }}
+    <motion.div
+      className="h-full min-h-0"
+      drag={isMobile ? "x" : false}
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.14}
+      dragMomentum={false}
+      onDragEnd={handleDragEnd}
+      style={{ touchAction: "pan-y pinch-zoom" }}
     >
       {mode === "day" && <CalendarBodyDay />}
       {mode === "week" && <CalendarBodyWeek />}
       {mode === "month" && <CalendarBodyMonth />}
-    </div>
+    </motion.div>
   );
 }

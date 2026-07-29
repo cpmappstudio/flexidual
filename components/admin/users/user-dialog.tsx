@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Edit, Trash2, Plus, X, Camera } from "lucide-react";
+import { Edit, Trash2, X, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations, useLocale } from "next-intl";
 import { UserRole } from "@/convex/types";
@@ -25,6 +25,7 @@ import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 import { useParams } from "next/navigation";
 import type { User } from "./users-table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PageCreateButton } from "@/components/ui/responsive-page-action";
 
 interface UserDialogProps {
   user?: User;
@@ -418,10 +419,16 @@ export function UserDialog({
       <span className="sr-only">{t("common.edit")}</span>
     </Button>
   ) : (
-    <Button className="gap-2" type="button" aria-label={t("common.add")}>
-      <Plus className="h-4 w-4" />
-      <span className="hidden sm:inline">{t("common.add")}</span>
-    </Button>
+    <PageCreateButton
+      type="button"
+      label={
+        defaultRole === "student"
+          ? t("student.new")
+          : defaultRole === "teacher"
+            ? t("teacher.new")
+            : t("common.add")
+      }
+    />
   );
 
   const submitLabel = isEditing

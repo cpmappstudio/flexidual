@@ -4,6 +4,7 @@ import {
   internalQuery,
   MutationCtx,
   mutation,
+  QueryCtx,
   query,
 } from "./_generated/server";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
@@ -76,7 +77,7 @@ const scheduleFields = {
   createdBy: v.id("users"),
 };
 const scheduleValidator = v.object(scheduleFields);
-const sessionStatusValidator = v.object({
+const sessionStatusFields = {
   scheduleId: v.id("classSchedule"),
   isActive: v.boolean(),
   isLive: v.boolean(),
@@ -91,6 +92,12 @@ const sessionStatusValidator = v.object({
   timeZone: v.string(),
   roomName: v.string(),
   canJoin: v.boolean(),
+};
+const sessionStatusValidator = v.object(sessionStatusFields);
+const viewerSessionStatusValidator = v.object({
+  ...sessionStatusFields,
+  roomAdmin: v.boolean(),
+  isPrimaryTeacher: v.boolean(),
 });
 const scheduleEventValidator = v.object({
   scheduleId: v.id("classSchedule"),
@@ -312,6 +319,24 @@ async function validateClassScheduleTime(
   }
 }
 
+async function deleteWhiteboardSession(
+  ctx: MutationCtx,
+  roomName: string,
+) {
+  const whiteboard = await ctx.db
+    .query("whiteboardSessions")
+    .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
+    .unique();
+  if (!whiteboard) return;
+
+  await Promise.allSettled(
+    Object.values(whiteboard.fileRefs ?? {}).map((file) =>
+      ctx.storage.delete(file.storageId),
+    ),
+  );
+  await ctx.db.delete(whiteboard._id);
+}
+
 function getSessionStatusData(
   schedule: Doc<"classSchedule">,
   timeZone: string,
@@ -331,6 +356,74 @@ function getSessionStatusData(
     timeZone,
     roomName: schedule.roomName,
     canJoin: schedule.status === "active" || schedule.status === "scheduled",
+  };
+}
+
+async function getLiveKitAccessData(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  schedule: Doc<"classSchedule">,
+  now: number,
+) {
+  const classData = await ctx.db.get(schedule.classId);
+  if (!classData) return null;
+
+  const [curriculum, user, campus] = await Promise.all([
+    ctx.db.get(classData.curriculumId),
+    ctx.db.get(userId),
+    classData.campusId ? ctx.db.get(classData.campusId) : null,
+  ]);
+  if (!user) return null;
+
+  const isPrimaryTeacher = classData.teacherId === userId;
+  const isDirectInstructor =
+    isPrimaryTeacher || classData.tutorId === userId;
+  const classSchoolId = classData.campusId
+    ? campus?.schoolId
+    : curriculum?.schoolId;
+  const isAuthorizedAdmin = await canManageClasses(
+    ctx,
+    userId,
+    classData.campusId,
+    classSchoolId,
+  );
+  const roomAdmin = isDirectInstructor || isAuthorizedAdmin;
+
+  let authorized = roomAdmin;
+  if (!authorized) {
+    const studentSchoolIds = await getStudentSchoolIds(ctx, userId);
+    const studentGrade = classSchoolId
+      ? await getStudentGradeCode(
+          ctx,
+          userId,
+          classSchoolId,
+          classData.campusId,
+        )
+      : undefined;
+    authorized = canStudentAccessLiveClass({
+      isEnrolled: await isStudentEnrolled(ctx, classData, userId),
+      liveAccess: schedule.liveAccess,
+      studentGrade,
+      classSchoolId,
+      studentSchoolIds,
+    });
+  }
+
+  return {
+    authorized,
+    roomAdmin,
+    isPrimaryTeacher,
+    canJoinEarly: roomAdmin,
+    computedRole: isPrimaryTeacher
+      ? ("teacher" as const)
+      : roomAdmin
+        ? ("admin" as const)
+        : ("student" as const),
+    session: getSessionStatusData(
+      schedule,
+      (await getClassTimeZone(ctx, classData)) ?? "UTC",
+      now,
+    ),
   };
 }
 
@@ -1238,7 +1331,7 @@ export const getByRoomName = query({
 
 export const getSessionStatus = query({
   args: { sessionId: v.string(), now: v.number() },
-  returns: v.union(sessionStatusValidator, v.null()),
+  returns: v.union(viewerSessionStatusValidator, v.null()),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
     let schedule = await ctx.db
@@ -1252,14 +1345,21 @@ export const getSessionStatus = query({
     }
 
     if (!schedule) return null;
-    if (!(await canAccessSchedule(ctx, user._id, schedule))) {
+    const access = await getLiveKitAccessData(
+      ctx,
+      user._id,
+      schedule,
+      args.now,
+    );
+    if (!access?.authorized) {
       throw new ConvexError("PERMISSION_DENIED");
     }
-    const classData = await ctx.db.get(schedule.classId);
-    if (!classData) return null;
-    const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
 
-    return getSessionStatusData(schedule, timeZone, args.now);
+    return {
+      ...access.session,
+      roomAdmin: access.roomAdmin,
+      isPrimaryTeacher: access.isPrimaryTeacher,
+    };
   },
 });
 
@@ -1273,8 +1373,13 @@ export const checkLiveKitAccess = internalQuery({
     v.object({
       authorized: v.boolean(),
       roomAdmin: v.boolean(),
+      isPrimaryTeacher: v.boolean(),
       canJoinEarly: v.boolean(),
-      computedRole: v.union(v.literal("teacher"), v.literal("student")),
+      computedRole: v.union(
+        v.literal("teacher"),
+        v.literal("admin"),
+        v.literal("student"),
+      ),
       session: sessionStatusValidator,
     }),
     v.null(),
@@ -1286,61 +1391,12 @@ export const checkLiveKitAccess = internalQuery({
       .first();
 
     if (!schedule) return null;
-
-    const classData = await ctx.db.get(schedule.classId);
-    if (!classData) return null;
-
-    const [curriculum, user, campus] = await Promise.all([
-      ctx.db.get(classData.curriculumId),
-      ctx.db.get(args.userId),
-      classData.campusId ? ctx.db.get(classData.campusId) : null,
-    ]);
-    if (!user) return null;
-
-    const isDirectTeacher =
-      classData.teacherId === args.userId || classData.tutorId === args.userId;
-    const classSchoolId = classData.campusId
-      ? campus?.schoolId
-      : curriculum?.schoolId;
-    const isAuthorizedAdmin = await canManageClasses(
+    return await getLiveKitAccessData(
       ctx,
       args.userId,
-      classData.campusId,
-      classSchoolId,
+      schedule,
+      args.now,
     );
-    const isRoomAdmin = isDirectTeacher || isAuthorizedAdmin;
-
-    let authorized = isRoomAdmin;
-    if (!authorized) {
-      const studentSchoolIds = await getStudentSchoolIds(ctx, args.userId);
-      const studentGrade = classSchoolId
-        ? await getStudentGradeCode(
-            ctx,
-            args.userId,
-            classSchoolId,
-            classData.campusId,
-          )
-        : undefined;
-      authorized = canStudentAccessLiveClass({
-        isEnrolled: await isStudentEnrolled(ctx, classData, args.userId),
-        liveAccess: schedule.liveAccess,
-        studentGrade,
-        classSchoolId,
-        studentSchoolIds,
-      });
-    }
-
-    return {
-      authorized,
-      roomAdmin: isRoomAdmin,
-      canJoinEarly: isRoomAdmin,
-      computedRole: isRoomAdmin ? ("teacher" as const) : ("student" as const),
-      session: getSessionStatusData(
-        schedule,
-        (await getClassTimeZone(ctx, classData)) ?? "UTC",
-        args.now,
-      ),
-    };
   },
 });
 
@@ -1818,7 +1874,7 @@ export const deleteSchedule = mutation({
 export const markLive = mutation({
   args: {
     roomName: v.string(),
-    isLive: v.boolean(),
+    isLive: v.literal(true),
     liveAccess: v.optional(liveAccessValidator),
   },
   returns: v.null(),
@@ -1854,48 +1910,85 @@ export const markLive = mutation({
       );
     }
 
-    if (args.isLive) {
-      if (schedule.status === "cancelled")
-        throw new ConvexError("Cancelled sessions cannot be started");
-      if (!args.liveAccess)
-        throw new ConvexError(
-          "Live access policy is required when starting a class",
-        );
-      const allowedGradeCodes =
-        args.liveAccess.mode === "private"
-          ? []
-          : [...new Set(args.liveAccess.allowedGradeCodes)];
-      if (
-        classSchoolId &&
-        (await validateGradeCodes(ctx, classSchoolId, allowedGradeCodes))
-          .length > 0
-      ) {
-        throw new ConvexError("INVALID_GRADE");
-      }
-      if (args.liveAccess.mode === "school" && allowedGradeCodes.length === 0) {
-        throw new ConvexError(
-          "At least one grade is required for school access",
-        );
-      }
-      await ctx.db.patch(schedule._id, {
-        isLive: true,
-        liveAccess: { mode: args.liveAccess.mode, allowedGradeCodes },
-        status: "active",
-        completedAt: undefined,
-      });
-      return null;
+    if (schedule.isLive) return null;
+    if (schedule.status === "cancelled") {
+      throw new ConvexError("Cancelled sessions cannot be started");
     }
-
     const now = Date.now();
-    if (now >= schedule.scheduledEnd) {
-      await ctx.db.patch(schedule._id, {
-        isLive: false,
-        status: "completed",
-        completedAt: schedule.completedAt ?? now,
-      });
-    } else {
-      await ctx.db.patch(schedule._id, { isLive: false, status: "scheduled" });
+    if (
+      schedule.status === "completed" ||
+      now > schedule.scheduledEnd + STALE_THRESHOLD_MS
+    ) {
+      throw new ConvexError("Completed sessions cannot be started");
     }
+    if (!args.liveAccess) {
+      throw new ConvexError(
+        "Live access policy is required when starting a class",
+      );
+    }
+    const allowedGradeCodes =
+      args.liveAccess.mode === "private"
+        ? []
+        : [...new Set(args.liveAccess.allowedGradeCodes)];
+    if (
+      classSchoolId &&
+      (await validateGradeCodes(ctx, classSchoolId, allowedGradeCodes))
+        .length > 0
+    ) {
+      throw new ConvexError("INVALID_GRADE");
+    }
+    if (args.liveAccess.mode === "school" && allowedGradeCodes.length === 0) {
+      throw new ConvexError(
+        "At least one grade is required for school access",
+      );
+    }
+    await ctx.db.patch(schedule._id, {
+      isLive: true,
+      liveAccess: { mode: args.liveAccess.mode, allowedGradeCodes },
+      status: "active",
+      completedAt: undefined,
+    });
+    return null;
+  },
+});
+
+export const endLiveSession = internalMutation({
+  args: {
+    roomName: v.string(),
+    endedAt: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (!schedule) return null;
+
+    await ctx.db.patch(schedule._id, {
+      isLive: false,
+      status: "completed",
+      completedAt: schedule.completedAt ?? args.endedAt,
+    });
+
+    const openSessions = await ctx.db
+      .query("class_sessions")
+      .withIndex("by_schedule", (q) =>
+        q.eq("scheduleId", schedule._id).eq("leftAt", undefined),
+      )
+      .collect();
+    await Promise.all(
+      openSessions.map((session) => {
+        const leftAt = Math.max(args.endedAt, session.joinedAt);
+        return ctx.db.patch(session._id, {
+          leftAt,
+          durationSeconds: (leftAt - session.joinedAt) / 1000,
+        });
+      }),
+    );
+
+    await deleteWhiteboardSession(ctx, args.roomName);
+
     return null;
   },
 });
@@ -1918,14 +2011,14 @@ export const logStudentPresence = mutation({
     const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
 
     if (args.action === "join") {
-      await ctx.db.insert("class_sessions", {
-        scheduleId: args.scheduleId,
-        studentId: user._id,
-        joinedAt: now,
-        roomName: schedule.roomName,
-        sessionDate: utcToLocalDateTime(now, timeZone).slice(0, 10),
-      });
-    } else {
+      if (
+        !schedule.isLive ||
+        schedule.status === "cancelled" ||
+        schedule.status === "completed"
+      ) {
+        throw new ConvexError("CLASS_NOT_LIVE");
+      }
+
       const activeSession = await ctx.db
         .query("class_sessions")
         .withIndex("by_student_schedule", (q) =>
@@ -1935,14 +2028,37 @@ export const logStudentPresence = mutation({
             .eq("leftAt", undefined),
         )
         .first();
+      if (activeSession) return null;
 
-      if (activeSession) {
-        const duration = (now - activeSession.joinedAt) / 1000;
-        await ctx.db.patch(activeSession._id, {
-          leftAt: now,
-          durationSeconds: duration,
-        });
-      }
+      await ctx.db.insert("class_sessions", {
+        scheduleId: args.scheduleId,
+        studentId: user._id,
+        joinedAt: now,
+        roomName: schedule.roomName,
+        sessionDate: utcToLocalDateTime(now, timeZone).slice(0, 10),
+      });
+    } else {
+      const activeSessions = await ctx.db
+        .query("class_sessions")
+        .withIndex("by_student_schedule", (q) =>
+          q
+            .eq("studentId", user._id)
+            .eq("scheduleId", args.scheduleId)
+            .eq("leftAt", undefined),
+        )
+        .collect();
+
+      await Promise.all(
+        activeSessions.map((activeSession) =>
+          ctx.db.patch(activeSession._id, {
+            leftAt: now,
+            durationSeconds: Math.max(
+              0,
+              (now - activeSession.joinedAt) / 1000,
+            ),
+          }),
+        ),
+      );
     }
   },
 });
@@ -2015,47 +2131,28 @@ export const updateAttendance = mutation({
   },
 });
 
-export const cleanupStaleSessions = internalMutation({
-  args: {},
-  returns: v.null(),
-  handler: async (ctx) => {
-    const now = Date.now();
+export const listStaleLiveSessions = internalQuery({
+  args: { now: v.number() },
+  returns: v.array(
+    v.object({
+      roomName: v.string(),
+      scheduledEnd: v.number(),
+      hardStale: v.boolean(),
+    }),
+  ),
+  handler: async (ctx, { now }) => {
     const activeSchedules = await ctx.db
       .query("classSchedule")
       .withIndex("by_status", (q) => q.eq("status", "active"))
       .collect();
 
-    for (const schedule of activeSchedules) {
-      if (now <= schedule.scheduledEnd) continue; // class time hasn't ended yet
-
-      const openSessions = await ctx.db
-        .query("class_sessions")
-        .withIndex("by_schedule", (q) =>
-          q.eq("scheduleId", schedule._id).eq("leftAt", undefined),
-        )
-        .collect();
-
-      // A session is genuinely active if it isn't older than SESSION_STALE_MS
-      const hasActiveSessions = openSessions.some(
-        (s) => now - s.joinedAt < SESSION_STALE_MS,
-      );
-
-      if (!hasActiveSessions) {
-        // No real participants — finalize the schedule
-        await ctx.db.patch(schedule._id, {
-          status: "completed",
-          isLive: false,
-          completedAt: schedule.completedAt ?? schedule.scheduledEnd,
-        });
-
-        // Close orphaned open sessions, capped at scheduledEnd
-        for (const os of openSessions) {
-          const leftAt = Math.min(now, schedule.scheduledEnd);
-          const duration = Math.max(0, (leftAt - os.joinedAt) / 1000);
-          await ctx.db.patch(os._id, { leftAt, durationSeconds: duration });
-        }
-      }
-    }
-    return null;
+    return activeSchedules
+      .filter((schedule) => now > schedule.scheduledEnd)
+      .map((schedule) => ({
+        roomName: schedule.roomName,
+        scheduledEnd: schedule.scheduledEnd,
+        hardStale:
+          now > schedule.scheduledEnd + STALE_THRESHOLD_MS,
+      }));
   },
 });

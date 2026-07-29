@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Edit, Trash2, X, BookOpen, Layers } from "lucide-react";
+import { Edit, Trash2, X, BookOpen, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale, useTranslations } from "next-intl";
 import { EntityDialog } from "@/components/ui/entity-dialog";
@@ -27,6 +27,7 @@ import { CurriculumLessonList } from "./curriculum-lesson-list";
 import { useAlert } from "@/components/providers/alert-provider";
 import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { PageCreateButton } from "@/components/ui/responsive-page-action";
 
 // Multi-tenant imports
 import { useParams } from "next/navigation";
@@ -278,10 +279,10 @@ export function CurriculumDialog({
             <Edit className="h-4 w-4 text-muted-foreground" />
           </Button>
         ) : (
-          <Button className="gap-2" type="button" aria-label={t("common.add")}>
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">{t("common.add")}</span>
-          </Button>
+          <PageCreateButton
+            type="button"
+            label={t("curriculum.createCurriculum")}
+          />
         ))
       }
       title={dialogTitle}

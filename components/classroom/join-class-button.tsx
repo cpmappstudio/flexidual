@@ -19,6 +19,7 @@ export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
   const router = useRouter()
   const params = useParams()
   const orgSlug = (params.orgSlug as string) || "system"
+  const locale = (params.locale as string) || "en"
   const now = useCurrentMinute()
   
   // 1. Get my entire schedule (Universal Query)
@@ -36,7 +37,7 @@ export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
 
   const handleJoin = () => {
     if (activeSession?.roomName) {
-      router.push(`/${orgSlug}/classroom/${activeSession.roomName}`)
+      router.push(`/${locale}/${orgSlug}/classroom/${activeSession.roomName}`)
     } else {
       toast.error(t('classroom.notActive'))
     }

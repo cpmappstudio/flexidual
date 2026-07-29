@@ -150,6 +150,19 @@ function identityColor(identity: string): { background: string; stroke: string }
   return { background, stroke };
 }
 
+function isWhiteboardBroadcaster(participant?: RemoteParticipant): boolean {
+  if (!participant?.metadata) return false;
+  try {
+    const metadata = JSON.parse(participant.metadata);
+    return (
+      (metadata.role === "teacher" || metadata.role === "admin") &&
+      metadata.isCompanion === true
+    );
+  } catch {
+    return false;
+  }
+}
+
 export interface SharedWhiteboardProps {
   /** LiveKit room name — scopes localStorage so each class starts clean. */
   roomName: string;
@@ -248,6 +261,7 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
     const handleDataReceived = (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const msg = JSON.parse(new TextDecoder().decode(payload)) as WhiteboardMessage;
+        if (!isWhiteboardBroadcaster(participant)) return;
 
         if (msg.type === "WHITEBOARD_VIEWPORT" && followViewportRef.current) {
           if (apiRef.current) {

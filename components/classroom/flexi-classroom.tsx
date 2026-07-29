@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useAction, useQuery, useMutation } from "convex/react";
 import { LiveKitRoom } from "@livekit/components-react";
 import { api } from "@/convex/_generated/api";
@@ -12,8 +12,6 @@ import { TZDate } from "@date-fns/tz";
 import { Button } from "@/components/ui/button";
 import { useRouter, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useAuth } from "@clerk/nextjs";
-import { getRoleForOrg } from "@/lib/rbac";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSidebar } from "@/components/ui/sidebar";
 import { CompanionClassroomUI } from "./companion-classroom-ui";
@@ -77,16 +75,11 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   // Timer State
   const [now, setNow] = useState(Date.now());
 
-  // 1. Resolve Context-Aware Role via Clerk Claims
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
-  const { sessionClaims } = useAuth();
-  const role = getRoleForOrg(sessionClaims, orgSlug) || "student"; // Fallback to student safely
 
-  // 2. Fetch Convex User via our custom hook
   const { user: convexUser } = useCurrentUser();
 
-  // 3. API Hooks
   const logPresence = useMutation(api.schedule.logStudentPresence);
 
   const sessionStatus = useQuery(api.schedule.getSessionStatus, { 
@@ -101,10 +94,19 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   const getToken = useAction(api.livekit.getToken);
 
-  // 4. Permission & Connection Logic
-  const canJoinEarly = ["teacher", "admin", "superadmin", "tutor", "principal"].includes(role);
+  const role = sessionStatus?.isPrimaryTeacher
+    ? "teacher"
+    : sessionStatus?.roomAdmin
+      ? "admin"
+      : "student";
+  const resolvedIsStudentView = isStudentView || role === "student";
+  const canJoinEarly = sessionStatus?.roomAdmin === true;
   const isClassLive = sessionStatus?.isLive || false;
-  const shouldConnect = (isClassLive || canJoinEarly) && !!convexUser;
+  const isSessionClosed =
+    sessionStatus?.status === "completed" ||
+    sessionStatus?.status === "cancelled";
+  const shouldConnect =
+    !isSessionClosed && (isClassLive || canJoinEarly) && !!convexUser;
 
   // Use a ref to ensure we don't log join multiple times for the same session
   const hasLoggedJoin = useRef(false);
@@ -118,23 +120,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   // Timer Effect
   useEffect(() => {
+    if (token) return;
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, []);
-
-  // Log joining when token is received
-  useEffect(() => {
-    if (!token || !sessionStatus?.scheduleId || !isStudentView) return;
-
-    if (!hasLoggedJoin.current) {
-      logPresence({
-        scheduleId: sessionStatus.scheduleId,
-        action: "join"
-      }).catch(err => console.error("Failed to log presence:", err));
-      
-      hasLoggedJoin.current = true;
-    }
-  }, [token, sessionStatus?.scheduleId, isStudentView, logPresence]);
+  }, [token]);
 
   useEffect(() => {
     if (!convexUser || !roomName || !shouldConnect) return;
@@ -159,9 +148,57 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
     fetchToken();
   }, [convexUser, roomName, getToken, shouldConnect, isCompanion, t]);
 
+  const handleConnected = useCallback(async () => {
+    if (
+      !resolvedIsStudentView ||
+      !sessionStatus?.scheduleId ||
+      hasLoggedJoin.current
+    ) {
+      return;
+    }
+
+    hasLoggedJoin.current = true;
+    try {
+      await logPresence({
+        scheduleId: sessionStatus.scheduleId,
+        action: "join",
+      });
+    } catch (err) {
+      hasLoggedJoin.current = false;
+      console.error("Failed to log presence:", err);
+    }
+  }, [
+    logPresence,
+    resolvedIsStudentView,
+    sessionStatus?.scheduleId,
+  ]);
+
+  const exitClassroom = useCallback(() => {
+    if (resolvedIsStudentView && onLeave) {
+      onLeave();
+      return;
+    }
+    router.push(`/${params.locale}/${orgSlug}`);
+  }, [
+    onLeave,
+    orgSlug,
+    params.locale,
+    resolvedIsStudentView,
+    router,
+  ]);
+
+  const handleRoomError = useCallback((roomError: Error) => {
+    console.error("LiveKit connection error:", roomError);
+    setError(t("classroom.connectionError"));
+  }, [t]);
+
   // Handle disconnect (leave)
-  const handleDisconnect = async () => {
-    if (isStudentView && sessionStatus?.scheduleId) {
+  const handleDisconnect = useCallback(async () => {
+    if (
+      resolvedIsStudentView &&
+      sessionStatus?.scheduleId &&
+      hasLoggedJoin.current
+    ) {
       try {
         await logPresence({
           scheduleId: sessionStatus.scheduleId,
@@ -174,13 +211,13 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
     setToken("");
     hasLoggedJoin.current = false;
-
-    if (isStudentView && onLeave) {
-      onLeave();
-    } else if (!isStudentView) {
-      router.push(`/${params.locale}/${orgSlug}`);
-    }
-  };
+    exitClassroom();
+  }, [
+    exitClassroom,
+    logPresence,
+    resolvedIsStudentView,
+    sessionStatus?.scheduleId,
+  ]);
   
   // Helper to format countdown
   const getCountdown = (targetTime: number) => {
@@ -215,14 +252,36 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
           <h3 className="text-xl font-bold text-foreground">{t('classroom.notFound')}</h3>
           <p className="text-muted-foreground mt-2">{t('classroom.notFoundDescription')}</p>
           
-          {isStudentView && onLeave ? (
-            <Button variant="outline" className="mt-6 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onLeave}>
+          {resolvedIsStudentView ? (
+            <Button variant="outline" className="mt-6 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={exitClassroom}>
               <LogOut className="w-4 h-4 mr-2" />
               {t('classroom.leave')}
             </Button>
           ) : (
-            !isStudentView && <Button variant="outline" className="mt-6" onClick={() => router.back()}>{t('common.back')}</Button>
+            <Button variant="outline" className="mt-6" onClick={exitClassroom}>{t('common.back')}</Button>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  if (isSessionClosed) {
+    return (
+      <div className={`flex h-full w-full items-center justify-center rounded-lg bg-muted/30 ${className}`}>
+        <div className="max-w-md p-8 text-center">
+          <CalendarClock className="mx-auto mb-4 size-16 text-muted-foreground/40" />
+          <h3 className="text-xl font-bold text-foreground">
+            {sessionStatus.status === "completed"
+              ? t("classroom.classEnded")
+              : t("classroom.notActive")}
+          </h3>
+          <Button
+            variant="outline"
+            className="mt-6"
+            onClick={exitClassroom}
+          >
+            {t("common.back")}
+          </Button>
         </div>
       </div>
     );
@@ -294,10 +353,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             </p>
           </div>
 
-          {isStudentView && onLeave && (
+          {resolvedIsStudentView && (
             <Button 
               variant="outline" 
-              onClick={onLeave} 
+              onClick={exitClassroom}
               className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               <LogOut className="w-4 h-4 mr-2" />
@@ -305,7 +364,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             </Button>
           )}
 
-          {!isStudentView && (
+          {!resolvedIsStudentView && (
             <Button variant="outline" onClick={() => router.back()} className="w-full">
               {t('classroom.backToDashboard')}
             </Button>
@@ -327,8 +386,8 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             <Button variant="outline" onClick={() => window.location.reload()}>
               {t('classroom.tryAgain')}
             </Button>
-            {isStudentView && onLeave && (
-              <Button variant="ghost" onClick={onLeave} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+            {resolvedIsStudentView && (
+              <Button variant="ghost" onClick={exitClassroom} className="text-destructive hover:text-destructive hover:bg-destructive/10">
                 {t('classroom.leave')}
               </Button>
             )}
@@ -353,7 +412,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
   // Active Classroom
   return (
     <div ref={containerRef} className={`h-full w-full overflow-hidden ${className}`}>
-      {!isStudentView && <SidebarAutoCollapser />}
+      {!resolvedIsStudentView && <SidebarAutoCollapser />}
       <LiveKitRoom
         video={false}
         audio={false}
@@ -361,18 +420,18 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
         serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
         data-lk-theme="default"
         style={{ height: '100%', width: '100%' }}
+        onConnected={handleConnected}
         onDisconnected={handleDisconnect}
+        onError={handleRoomError}
       >
         {isCompanion ? (
           <CompanionClassroomUI
             roomName={roomName}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
-            onSessionEnd={handleDisconnect}
           /> 
-        ) : isStudentView ? (
+        ) : resolvedIsStudentView ? (
           <StudentClassroomUI
-            currentUserRole={role}
             roomName={roomName}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}

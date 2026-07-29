@@ -6,6 +6,36 @@ import type { Id } from "./_generated/dataModel";
 import { toCivilDate } from "../lib/time-zone";
 import { DEFAULT_INSTITUTION_GRADES } from "../lib/grades";
 
+const ACADEMIC_CLEANUP_CONFIRMATION =
+  "DELETE_LEGACY_ACADEMIC_TEST_DATA" as const;
+const ACADEMIC_CLEANUP_BATCH_SIZE = 50;
+const academicCleanupStageValidator = v.union(
+  v.literal("whiteboardSessions"),
+  v.literal("recordings"),
+  v.literal("class_sessions"),
+  v.literal("studentClassPreferences"),
+  v.literal("classEnrollments"),
+  v.literal("classSchedule"),
+  v.literal("classes"),
+);
+type AcademicCleanupStage =
+  | "whiteboardSessions"
+  | "recordings"
+  | "class_sessions"
+  | "studentClassPreferences"
+  | "classEnrollments"
+  | "classSchedule"
+  | "classes";
+const ACADEMIC_CLEANUP_STAGES: readonly AcademicCleanupStage[] = [
+  "whiteboardSessions",
+  "recordings",
+  "class_sessions",
+  "studentClassPreferences",
+  "classEnrollments",
+  "classSchedule",
+  "classes",
+];
+
 async function getMigrationAuthor(ctx: MutationCtx) {
   const [superadmin, admin] = await Promise.all([
     ctx.db
@@ -70,7 +100,7 @@ export const importLessonsBatch = internalMutation({
       .query("lessons")
       .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
       .collect();
-    
+
     let currentOrder = existingLessons.reduce((max, l) => Math.max(max, l.order), 0);
 
     for (const item of args.lessons) {
@@ -86,7 +116,7 @@ export const importLessonsBatch = internalMutation({
         createdBy: createdBy,
       });
     }
-    
+
     return { count: args.lessons.length };
   },
 });
@@ -220,6 +250,8 @@ export const backfillInstitutionMemberships = internalMutation({
 
     for (const assignment of result.page) {
       let schoolId: Id<"schools"> | undefined;
+      let orgId = assignment.orgId;
+      let orgType = assignment.orgType;
       if (assignment.orgType === "school" && assignment.orgId) {
         schoolId = ctx.db.normalizeId("schools", assignment.orgId) ?? undefined;
       } else if (assignment.orgType === "campus" && assignment.orgId) {
@@ -227,11 +259,36 @@ export const backfillInstitutionMemberships = internalMutation({
         schoolId = campusId ? (await ctx.db.get(campusId))?.schoolId : undefined;
       }
 
+      const requiresCampusScope =
+        assignment.orgType === "school" &&
+        (assignment.role === "principal" ||
+          assignment.role === "teacher" ||
+          assignment.role === "tutor" ||
+          assignment.role === "student");
+      if (requiresCampusScope && schoolId) {
+        const campuses = await ctx.db
+          .query("campuses")
+          .withIndex("by_school", (q) =>
+            q.eq("schoolId", schoolId).eq("isActive", true),
+          )
+          .take(2);
+        if (campuses.length === 1) {
+          orgId = campuses[0]._id;
+          orgType = "campus";
+        } else {
+          console.warn(
+            `Membership ${assignment._id} needs a campus selection before it can be migrated`,
+          );
+        }
+      }
+
       const legacyUser =
         assignment.role === "student" && !assignment.gradeCode
           ? await ctx.db.get(assignment.userId)
           : null;
       await ctx.db.patch(assignment._id, {
+        orgId,
+        orgType,
         schoolId,
         gradeCode:
           assignment.role === "student"
@@ -273,6 +330,132 @@ export const clearLegacyExternalPasswords = internalMutation({
       );
     }
     return null;
+  },
+});
+
+async function deleteAcademicCleanupBatch(
+  ctx: MutationCtx,
+  stage: AcademicCleanupStage,
+) {
+  switch (stage) {
+    case "whiteboardSessions": {
+      const documents = await ctx.db
+        .query("whiteboardSessions")
+        .take(ACADEMIC_CLEANUP_BATCH_SIZE);
+      for (const document of documents) {
+        await Promise.all(
+          Object.values(document.fileRefs ?? {}).map((file) =>
+            ctx.storage.delete(file.storageId),
+          ),
+        );
+        await ctx.db.delete(document._id);
+      }
+      return documents.length;
+    }
+    case "recordings": {
+      const documents = await ctx.db
+        .query("recordings")
+        .take(ACADEMIC_CLEANUP_BATCH_SIZE);
+      await Promise.all(
+        documents.map((document) => ctx.db.delete(document._id)),
+      );
+      return documents.length;
+    }
+    case "class_sessions": {
+      const documents = await ctx.db
+        .query("class_sessions")
+        .take(ACADEMIC_CLEANUP_BATCH_SIZE);
+      await Promise.all(
+        documents.map((document) => ctx.db.delete(document._id)),
+      );
+      return documents.length;
+    }
+    case "studentClassPreferences": {
+      const documents = await ctx.db
+        .query("studentClassPreferences")
+        .take(ACADEMIC_CLEANUP_BATCH_SIZE);
+      await Promise.all(
+        documents.map((document) => ctx.db.delete(document._id)),
+      );
+      return documents.length;
+    }
+    case "classEnrollments": {
+      const documents = await ctx.db
+        .query("classEnrollments")
+        .take(ACADEMIC_CLEANUP_BATCH_SIZE);
+      await Promise.all(
+        documents.map((document) => ctx.db.delete(document._id)),
+      );
+      return documents.length;
+    }
+    case "classSchedule": {
+      const documents = await ctx.db
+        .query("classSchedule")
+        .take(ACADEMIC_CLEANUP_BATCH_SIZE);
+      await Promise.all(
+        documents.map((document) => ctx.db.delete(document._id)),
+      );
+      return documents.length;
+    }
+    case "classes": {
+      const documents = await ctx.db
+        .query("classes")
+        .take(ACADEMIC_CLEANUP_BATCH_SIZE);
+      await Promise.all(
+        documents.map((document) => ctx.db.delete(document._id)),
+      );
+      return documents.length;
+    }
+  }
+}
+
+function getNextAcademicCleanupStage(stage: AcademicCleanupStage) {
+  const nextIndex = ACADEMIC_CLEANUP_STAGES.indexOf(stage) + 1;
+  return ACADEMIC_CLEANUP_STAGES[nextIndex] ?? null;
+}
+
+/**
+ * Removes legacy test courses and their dependent session data.
+ *
+ * Run only after a verified production snapshot. This intentionally does not
+ * touch people, memberships, institutions, campuses, curriculums, or lessons.
+ * External S3/R2 objects are outside Convex's transactional storage and must be
+ * reviewed separately using the backed-up recording metadata.
+ */
+export const resetLegacyAcademicTestData = internalMutation({
+  args: {
+    confirmation: v.literal(ACADEMIC_CLEANUP_CONFIRMATION),
+    stage: v.optional(academicCleanupStageValidator),
+  },
+  returns: v.object({
+    stage: academicCleanupStageValidator,
+    deleted: v.number(),
+    done: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const stage = args.stage ?? ACADEMIC_CLEANUP_STAGES[0];
+    const deleted = await deleteAcademicCleanupBatch(ctx, stage);
+    const nextStage =
+      deleted === ACADEMIC_CLEANUP_BATCH_SIZE
+        ? stage
+        : getNextAcademicCleanupStage(stage);
+
+    if (nextStage) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.migration.resetLegacyAcademicTestData,
+        {
+          confirmation: ACADEMIC_CLEANUP_CONFIRMATION,
+          stage: nextStage,
+        },
+      );
+    }
+
+    return {
+      stage,
+      deleted,
+      done: nextStage === null,
+    };
   },
 });
 
@@ -322,7 +505,7 @@ export const syncAllUsersToClerk = internalAction({
     // Requires an internal query in users.ts: 
     // export const getAllUsersInternal = internalQuery({ handler: async (ctx) => await ctx.db.query("users").collect() });
     const users = await ctx.runQuery(internal.users.getAllUsersInternal, {});
-    
+
     for (const user of users) {
       if (!user.clerkId.startsWith("temp_")) {
         await ctx.runAction(internal.roleAssignments.syncRolesToClerk, {

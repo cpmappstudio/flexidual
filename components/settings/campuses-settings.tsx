@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useMutation, useQuery } from "convex/react";
-import { EllipsisVertical, Loader2, Plus } from "lucide-react";
+import { EllipsisVertical, Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { CampusDialog } from "@/components/admin/campuses/campus-dialog";
@@ -18,7 +18,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ResponsivePageAction } from "@/components/ui/responsive-page-action";
+import {
+  PageCreateButton,
+  ResponsivePageAction,
+} from "@/components/ui/responsive-page-action";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -109,13 +112,7 @@ export function CampusesSettings() {
                 name: context.institution.name,
               }}
               trigger={
-                <Button
-                  size="sm"
-                  aria-label={t("add")}
-                >
-                  <Plus />
-                  <span className="hidden sm:inline">{t("add")}</span>
-                </Button>
+                <PageCreateButton label={t("add")} />
               }
             />
           </ResponsivePageAction>

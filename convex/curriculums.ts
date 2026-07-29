@@ -384,7 +384,7 @@ export const update = mutation({
         : normalizeCurriculumTitle(args.title);
     const code =
       args.code === undefined ? undefined : normalizeCurriculumCode(args.code);
-    if (args.code !== undefined) {
+    if (args.code !== undefined && code !== curriculum.code) {
       await assertCurriculumCodeAvailable(
         ctx,
         curriculum.schoolId,

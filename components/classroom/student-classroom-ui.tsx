@@ -52,6 +52,9 @@ const getRole = (p: Participant | undefined): string => {
   }
 };
 
+const isAuthority = (role: string) =>
+  role === "teacher" || role === "admin";
+
 const getImageUrl = (p: Participant | undefined): string | null => {
   if (!p || !p.metadata) return null;
   try {
@@ -238,7 +241,6 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
 }
 
 interface StudentClassroomUIProps {
-  currentUserRole?: string;
   roomName: string;
   className?: string;
   lessonTitle?: string;
@@ -357,41 +359,63 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
     const handleData = (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const msg = JSON.parse(decoder.decode(payload));
+        const senderRole = getRole(participant);
+        const senderIsAuthority = isAuthority(senderRole);
+        const senderIsStudent = senderRole === "student";
 
-        if (msg.type === "ALLOW_SHARE") {
+        if (senderIsAuthority && msg.type === "ALLOW_SHARE") {
           setShareState("approved");
           toast.success(t('classroom.permissionGrantedClickToStart'));
         }
 
-        if (msg.type === "DENY_SHARE") {
+        if (senderIsAuthority && msg.type === "DENY_SHARE") {
           setShareState("idle");
           toast.error(t('classroom.permissionDenied'));
         }
 
-        if (msg.type === "STOP_SHARE" && isSharingLocally) {
+        if (
+          senderIsAuthority &&
+          msg.type === "STOP_SHARE" &&
+          isSharingLocally
+        ) {
           localParticipant?.setScreenShareEnabled(false);
           setShareState("idle");
           toast.info(t('classroom.sharingStoppedByTeacher'));
         }
 
-        if (msg.type === "FORCE_LOWER_HAND") {
-          setHandRaised(false);
-          toast.dismiss('hand-raised');
+        if (
+          senderIsAuthority &&
+          msg.type === "FORCE_LOWER_HAND" &&
+          typeof msg.participantId === "string"
+        ) {
+          setRaisedHands((prev) => {
+            const next = new Set(prev);
+            next.delete(msg.participantId);
+            return next;
+          });
+          if (msg.participantId === localParticipant?.identity) {
+            setHandRaised(false);
+            toast.dismiss('hand-raised');
+          }
         }
 
-        if (msg.type === "RAISE_HAND" && participant) {
+        if (senderIsStudent && msg.type === "RAISE_HAND" && participant) {
           setRaisedHands((prev) => new Set(prev).add(participant.identity));
         }
 
-        if (msg.type === "LOWER_HAND" && participant) {
+        if (senderIsStudent && msg.type === "LOWER_HAND" && participant) {
           setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
         }
 
-        if (msg.type === "ADMIN_PRESENTING" && participant) {
+        if (
+          senderIsAuthority &&
+          msg.type === "ADMIN_PRESENTING" &&
+          participant
+        ) {
           setAdminPresenterId(msg.presenting ? participant.identity : null);
         }
 
-        if (msg.type === "WHITEBOARD_STATE") {
+        if (senderIsAuthority && msg.type === "WHITEBOARD_STATE") {
           setIsWhiteboardActive(msg.active);
           if (msg.active) {
             toast.success(t('classroom.whiteboardStarted') || "Teacher opened the whiteboard");

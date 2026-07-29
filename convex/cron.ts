@@ -7,7 +7,7 @@ const crons = cronJobs();
 crons.interval(
   "Cleanup stale LiveKit sessions",
   { minutes: 15 },
-  internal.schedule.cleanupStaleSessions
+  internal.livekit.cleanupStaleSessions,
 );
 
 export default crons;

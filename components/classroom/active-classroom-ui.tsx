@@ -18,7 +18,6 @@ import {
   RemoteParticipant,
   RemoteTrackPublication,
   RoomEvent,
-  ConnectionState,
 } from "livekit-client";
 import { 
   Mic, MicOff, Video as VideoIcon, VideoOff, VolumeX,
@@ -26,10 +25,11 @@ import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
   CircleDot, StopCircle, TabletSmartphone, Maximize2, Minimize2
 } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { SharedWhiteboard } from "./shared-whiteboard";
 import { LeaveClassButton } from "./leave-class-button";
+import { EndClassButton } from "./end-class-button";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import {
@@ -318,7 +318,6 @@ export function ActiveClassroomUI({
   onToggleFullscreen,
 }: ActiveClassroomUIProps) {
   const t = useTranslations();
-  const router = useRouter();
   const pathname = usePathname();
   const room = useRoomContext();
 
@@ -330,6 +329,10 @@ export function ActiveClassroomUI({
   }, [pathname]);
   const markLive = useMutation(api.schedule.markLive);
   const toggleRecording = useAction(api.livekit.toggleRecording);
+  const endSession = useAction(api.livekit.endSession);
+  const setScreenSharePermission = useAction(
+    api.livekit.setParticipantScreenSharePermission,
+  );
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
 
@@ -365,6 +368,7 @@ export function ActiveClassroomUI({
   );
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [hasStartedSession, setHasStartedSession] = useState(false);
+  const [isEndingSession, setIsEndingSession] = useState(false);
   const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -462,7 +466,13 @@ export function ActiveClassroomUI({
   };
 
   // A companion is any remote participant whose metadata marks isCompanion: true
-  const hasCompanion = participants.some((p) => !p.isLocal && getIsCompanion(p));
+  const companionParticipants = participants.filter(
+    (participant) =>
+      !participant.isLocal &&
+      getIsCompanion(participant) &&
+      isAuthority(getRole(participant)),
+  );
+  const hasCompanion = companionParticipants.length > 0;
   const students = participants.filter((p) => {
     if (p.isLocal && (amITeacher || isLocalAdminPresenting)) return false;
     const role = p.isLocal ? currentUserRole : getRole(p);
@@ -521,28 +531,40 @@ export function ActiveClassroomUI({
     const handleData = (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const msg = JSON.parse(decoder.decode(payload));
+        const senderRole = getRole(participant);
+        const senderIsAuthority = isAuthority(senderRole);
+        const senderIsStudent = senderRole === "student";
         
-        if (amIAuthority && msg.type === "REQUEST_SHARE" && participant) {
+        if (
+          amIAuthority &&
+          senderIsStudent &&
+          msg.type === "REQUEST_SHARE" &&
+          participant
+        ) {
           setPendingRequest({ participantId: participant.identity, name: participant.name || t('classroom.student') });
         }
 
-        if (!amIAuthority && msg.type === "ALLOW_SHARE") {
+        if (!amIAuthority && senderIsAuthority && msg.type === "ALLOW_SHARE") {
           setWaitingForApproval(false);
           setShareApproved(true); // requires a user gesture click to actually start — see handleShareClick
           toast.success(t('classroom.permissionGranted'));
         }
         
-        if (!amIAuthority && msg.type === "DENY_SHARE") {
+        if (!amIAuthority && senderIsAuthority && msg.type === "DENY_SHARE") {
           setWaitingForApproval(false);
           toast.error(t('classroom.permissionDenied'));
         }
         
-        if (msg.type === "STOP_SHARE" && isSharingLocally) {
+        if (
+          senderIsAuthority &&
+          msg.type === "STOP_SHARE" &&
+          isSharingLocally
+        ) {
            localParticipant?.setScreenShareEnabled(false);
            toast.info(t('classroom.sharingStoppedByTeacher'));
         }
 
-        if (msg.type === "RAISE_HAND" && participant) {
+        if (senderIsStudent && msg.type === "RAISE_HAND" && participant) {
           setRaisedHands((prev) => new Set(prev).add(participant.identity));
           if (amIAuthority) {
             playHandChime();
@@ -561,8 +583,11 @@ export function ActiveClassroomUI({
                     onClick={async () => {
                       const encoder = new TextEncoder();
                       await room.localParticipant.publishData(
-                        encoder.encode(JSON.stringify({ type: "FORCE_LOWER_HAND" })),
-                        { reliable: true, destinationIdentities: [participant.identity] }
+                        encoder.encode(JSON.stringify({
+                          type: "FORCE_LOWER_HAND",
+                          participantId: participant.identity,
+                        })),
+                        { reliable: true }
                       );
                       setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
                       toast.dismiss(toastId);
@@ -578,16 +603,34 @@ export function ActiveClassroomUI({
           }
         }
 
-        if (msg.type === "LOWER_HAND" && participant) {
+        if (senderIsStudent && msg.type === "LOWER_HAND" && participant) {
           setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
           toast.dismiss(`hand-${participant.identity}`);
         }
 
-        if (msg.type === "ADMIN_PRESENTING" && participant && !amITeacher) {
+        if (
+          senderIsAuthority &&
+          msg.type === "FORCE_LOWER_HAND" &&
+          typeof msg.participantId === "string"
+        ) {
+          setRaisedHands((prev) => {
+            const next = new Set(prev);
+            next.delete(msg.participantId);
+            return next;
+          });
+          toast.dismiss(`hand-${msg.participantId}`);
+        }
+
+        if (
+          senderIsAuthority &&
+          msg.type === "ADMIN_PRESENTING" &&
+          participant &&
+          !amITeacher
+        ) {
           setAdminPresenterId(msg.presenting ? participant.identity : null);
         }
 
-        if (msg.type === "WHITEBOARD_STATE") {
+        if (senderIsAuthority && msg.type === "WHITEBOARD_STATE") {
           setIsWhiteboardActive(msg.active);
           if (msg.active) {
             toast.success(t('classroom.whiteboardStarted') || "Whiteboard started");
@@ -639,6 +682,19 @@ export function ActiveClassroomUI({
 
   const grantPermission = async (allow: boolean) => {
     if (!pendingRequest) return;
+    if (allow) {
+      try {
+        await setScreenSharePermission({
+          roomName,
+          participantIdentity: pendingRequest.participantId,
+          allow: true,
+        });
+      } catch (error) {
+        console.error("Failed to grant screen share permission:", error);
+        toast.error(t("classroom.broadcastFailed"));
+        return;
+      }
+    }
     const encoder = new TextEncoder();
     const type = allow ? "ALLOW_SHARE" : "DENY_SHARE";
     const data = JSON.stringify({ type });
@@ -649,12 +705,42 @@ export function ActiveClassroomUI({
     setPendingRequest(null);
   };
 
+  useEffect(() => {
+    if (!amIAuthority) return;
+
+    const handleTrackUnpublished = (
+      publication: RemoteTrackPublication,
+      participant: RemoteParticipant,
+    ) => {
+      if (
+        publication.source !== Track.Source.ScreenShare ||
+        getRole(participant) !== "student"
+      ) {
+        return;
+      }
+      void setScreenSharePermission({
+        roomName,
+        participantIdentity: participant.identity,
+        allow: false,
+      }).catch((error) => {
+        console.error("Failed to revoke screen share permission:", error);
+      });
+    };
+
+    room.on(RoomEvent.TrackUnpublished, handleTrackUnpublished);
+    return () => {
+      room.off(RoomEvent.TrackUnpublished, handleTrackUnpublished);
+    };
+  }, [amIAuthority, room, roomName, setScreenSharePermission]);
+
   const forceLowerHand = async (participantId: string) => {
     const encoder = new TextEncoder();
-    const data = JSON.stringify({ type: "FORCE_LOWER_HAND" });
+    const data = JSON.stringify({
+      type: "FORCE_LOWER_HAND",
+      participantId,
+    });
     await room.localParticipant.publishData(encoder.encode(data), {
       reliable: true,
-      destinationIdentities: [participantId],
     });
     setRaisedHands((prev) => { const next = new Set(prev); next.delete(participantId); return next; });
     toast.dismiss(`hand-${participantId}`);
@@ -718,29 +804,21 @@ export function ActiveClassroomUI({
     }
   };
 
-  const handleLeaveClick = () => {
-    // If an authority explicitly clicks leave while recording, ensure we stop the egress
-    if (amIAuthority && isRecording) {
-      // We fire this and intentionally DO NOT await it, 
-      // so the teacher routes back instantly without being held hostage by the network request.
-      toggleRecording({ 
-        roomName, 
-        start: false,
-      }).catch(console.error);
-    }
+  const handleLeaveClick = async () => {
+    await room.disconnect();
+  };
 
-    // Notify companion device(s) to disconnect — prevents stale LiveKit sessions
-    if (room.state === ConnectionState.Connected) {
-      try {
-        room.localParticipant.publishData(
-          new TextEncoder().encode(JSON.stringify({ type: "SESSION_END" })),
-          { reliable: true },
-        );
-      } catch { /* ignore — leaving anyway */ }
+  const handleEndSession = async () => {
+    if (isEndingSession) return;
+    setIsEndingSession(true);
+    try {
+      await endSession({ roomName });
+      toast.success(t("classroom.classEnded"));
+    } catch (error) {
+      console.error("Failed to end class:", error);
+      toast.error(t("classroom.endClassError"));
+      setIsEndingSession(false);
     }
-    
-    // Route back immediately
-    router.back();
   };
 
   const executeRecordingToggle = async (start: boolean) => {
@@ -818,6 +896,7 @@ export function ActiveClassroomUI({
 
   useEffect(() => {
     if (!localParticipant) return;
+    if (!sessionIsLive && !hasStartedSession) return;
     // Authority non-teachers join with audio=false/video=false at the LiveKitRoom level,
     // so no media is ever captured. Nothing to do here for them.
     if (amIAuthority && !amITeacher) return;
@@ -828,8 +907,13 @@ export function ActiveClassroomUI({
       }
     };
     initMedia();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localParticipant]); // intentionally run once on join
+  }, [
+    amIAuthority,
+    amITeacher,
+    hasStartedSession,
+    localParticipant,
+    sessionIsLive,
+  ]);
 
   // When an admin takes the presenter role, enable their media
   useEffect(() => {
@@ -888,11 +972,6 @@ export function ActiveClassroomUI({
   useEffect(() => {
     if (isPhoneLandscape) showStageControls();
   }, [isPhoneLandscape, showStageControls]);
-
-  useEffect(() => {
-    if (!hasStartedSession) return;
-    return () => { void markLive({ roomName, isLive: false }); };
-  }, [hasStartedSession, roomName, markLive]);
 
   return (
     <div ref={rootRef} className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] xl:grid-cols-[1fr_320px] xl:grid-rows-[min-content_1fr_min-content]">
@@ -1303,6 +1382,13 @@ export function ActiveClassroomUI({
                   <FullscreenButtonCompact isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
                 )}
                 <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
+                {amIAuthority && (sessionIsLive || hasStartedSession) && (
+                  <EndClassButton
+                    onConfirm={handleEndSession}
+                    disabled={isEndingSession}
+                    className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-inverse-foreground/20 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/30 disabled:cursor-wait disabled:opacity-60"
+                  />
+                )}
                 <LeaveClassButton
                   onConfirm={handleLeaveClick}
                   className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-destructive/80 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/90"
@@ -1375,7 +1461,7 @@ export function ActiveClassroomUI({
                     <div className="flex items-center gap-3 px-4 py-3 bg-success/10 border border-success/30 rounded-xl">
                       <span className="w-3 h-3 bg-success rounded-full animate-pulse shrink-0" />
                       <p className="text-sm font-medium text-success">
-                        {participants.filter((p) => !p.isLocal && getIsCompanion(p)).map((p) => p.name || p.identity).join(', ')}
+                        {companionParticipants.map((p) => p.name || p.identity).join(', ')}
                       </p>
                     </div>
                   )}
@@ -1426,6 +1512,13 @@ export function ActiveClassroomUI({
               >
                 {isRecording ? <StopCircle className="w-5 h-5" /> : <CircleDot className="w-5 h-5" />}
               </button>
+            )}
+            {amIAuthority && (sessionIsLive || hasStartedSession) && (
+              <EndClassButton
+                onConfirm={handleEndSession}
+                disabled={isEndingSession}
+                className="flex size-12 items-center justify-center rounded-full border border-destructive/50 bg-destructive/10 text-destructive shadow-md transition-colors hover:bg-destructive/20 disabled:cursor-wait disabled:opacity-60"
+              />
             )}
             <LeaveClassButton
               onConfirm={handleLeaveClick}
