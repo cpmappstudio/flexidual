@@ -280,7 +280,7 @@ export const getStaffContext = query({
     return {
       role,
       canManageCampus,
-      canViewPeople: role === "principal" || role === "teacher",
+      canViewPeople: role === "principal",
       canManagePeople: false,
       canViewInstitutionSettings: canManageCampus,
       canManageInstitution: false,

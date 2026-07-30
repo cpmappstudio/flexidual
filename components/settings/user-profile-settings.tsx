@@ -3,7 +3,28 @@
 import { UserProfile } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 
-export function UserProfileSettings() {
+const readOnlyAccountElements = {
+  avatarImageActions: "hidden",
+  profileSectionPrimaryButton__profile: "hidden",
+  profileSectionPrimaryButton__username: "hidden",
+  profileSectionPrimaryButton__emailAddresses: "hidden",
+  profileSectionPrimaryButton__phoneNumbers: "hidden",
+  profileSectionPrimaryButton__connectedAccounts: "hidden",
+  profileSectionPrimaryButton__enterpriseAccounts: "hidden",
+  profileSectionPrimaryButton__web3Wallets: "hidden",
+  menuButton__emailAddresses: "hidden",
+  menuButton__phoneNumbers: "hidden",
+  menuButton__connectedAccounts: "hidden",
+  menuButton__enterpriseAccounts: "hidden",
+  menuButton__web3Wallets: "hidden",
+  profileSection__danger: "hidden",
+} as const;
+
+export function UserProfileSettings({
+  canEditProfile,
+}: {
+  canEditProfile: boolean;
+}) {
   const t = useTranslations("settings.profileSettings");
 
   return (
@@ -14,6 +35,7 @@ export function UserProfileSettings() {
           elements: {
             rootBox: "w-full",
             cardBox: "w-full",
+            ...(!canEditProfile && readOnlyAccountElements),
           },
         }}
       >

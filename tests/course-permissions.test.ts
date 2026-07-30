@@ -106,7 +106,7 @@ test("teachers and tutors cannot mutate course definitions", async () => {
   }
 });
 
-test("campus people are editable only by administrators and visible to teaching staff", async () => {
+test("campus people are editable by administrators and visible to principals", async () => {
   for (const role of ["superadmin", "admin"] as const) {
     const assignment: Assignment =
       role === "superadmin"
@@ -129,7 +129,7 @@ test("campus people are editable only by administrators and visible to teaching 
     assert.equal(await canManageCampusPeople(ctx, userId, schoolId), false);
     assert.equal(
       await canViewCampusPeople(ctx, userId, campusId, schoolId),
-      role === "principal" || role === "teacher",
+      role === "principal",
     );
   }
 });

@@ -114,10 +114,7 @@ export async function canViewCampusPeople(
   schoolId: Id<"schools">,
 ) {
   if (await canManageCampusPeople(ctx, userId, schoolId)) return true;
-  return await hasOrgRole(ctx, userId, campusId, "campus", [
-    "principal",
-    "teacher",
-  ]);
+  return await hasOrgRole(ctx, userId, campusId, "campus", ["principal"]);
 }
 
 export async function canAccessSchool(
