@@ -53,9 +53,6 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 
 // --- Constants ---
 const SCREEN_SHARE_OPTIONS = { updateOnlyOn: [], onlySubscribed: false };
@@ -285,21 +282,12 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
 
 // --- Main Component ---
 
-type LiveAccess = {
-  mode: "private" | "school";
-  allowedGradeCodes: string[];
-};
-
 interface ActiveClassroomUIProps {
   currentUserRole?: string;
   roomName: string;
   className?: string;
   lessonTitle?: string;
   sessionIsLive: boolean;
-  curriculumGradeCodes: string[];
-  classGradeCode?: string;
-  availableGrades: Array<{ code: string; name: string }>;
-  liveAccess?: LiveAccess;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
 }
@@ -310,10 +298,6 @@ export function ActiveClassroomUI({
   className,
   lessonTitle,
   sessionIsLive,
-  curriculumGradeCodes,
-  classGradeCode,
-  availableGrades,
-  liveAccess,
   isFullscreen = false,
   onToggleFullscreen,
 }: ActiveClassroomUIProps) {
@@ -357,15 +341,6 @@ export function ActiveClassroomUI({
   const [followViewport, setFollowViewport] = useState(true);
   const [pendingFullscreen, setPendingFullscreen] = useState(false);
   const [showQR, setShowQR] = useState(false);
-  const suggestedGradeCodes = classGradeCode
-    ? [classGradeCode]
-    : curriculumGradeCodes;
-  const suggestedGradeKey = suggestedGradeCodes.join("\u0000");
-  const liveGradeKey = liveAccess?.allowedGradeCodes.join("\u0000") ?? "";
-  const [accessMode, setAccessMode] = useState<LiveAccess["mode"]>(liveAccess?.mode ?? "private");
-  const [selectedGradeCodes, setSelectedGradeCodes] = useState<string[]>(
-    liveAccess?.mode === "school" ? liveAccess.allowedGradeCodes : suggestedGradeCodes
-  );
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [hasStartedSession, setHasStartedSession] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
@@ -378,20 +353,6 @@ export function ActiveClassroomUI({
   const panDragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPan: { x: number; y: number } }>({
     active: false, startMouse: { x: 0, y: 0 }, startPan: { x: 0, y: 0 },
   });
-
-  useEffect(() => {
-    if (sessionIsLive || hasStartedSession) return;
-    setAccessMode(liveAccess?.mode ?? "private");
-    const gradeKey =
-      liveAccess?.mode === "school" ? liveGradeKey : suggestedGradeKey;
-    setSelectedGradeCodes(gradeKey ? gradeKey.split("\u0000") : []);
-  }, [
-    hasStartedSession,
-    liveAccess?.mode,
-    liveGradeKey,
-    sessionIsLive,
-    suggestedGradeKey,
-  ]);
 
   const updateClassmatesScroll = useCallback(() => {
     const el = classmateTilesRef.current;
@@ -448,15 +409,9 @@ export function ActiveClassroomUI({
   const amIIncognito = amIAuthority && !amITeacher && !!actualTeacher;
 
   const handleStartSession = async () => {
-    if (accessMode === "school" && selectedGradeCodes.length === 0) return;
-
     setIsStartingSession(true);
     try {
-      const selectedLiveAccess: LiveAccess = {
-        mode: accessMode,
-        allowedGradeCodes: accessMode === "school" ? selectedGradeCodes : [],
-      };
-      await markLive({ roomName, isLive: true, liveAccess: selectedLiveAccess });
+      await markLive({ roomName, isLive: true });
       setHasStartedSession(true);
     } catch {
       toast.error(t('classroom.startClassError'));
@@ -984,49 +939,9 @@ export function ActiveClassroomUI({
             <AlertDialogDescription>{t('classroom.startClassDescription')}</AlertDialogDescription>
           </AlertDialogHeader>
 
-          <RadioGroup value={accessMode} onValueChange={(value) => setAccessMode(value as LiveAccess["mode"])} className="space-y-3">
-            <div className="flex items-start gap-3 rounded-lg border p-3">
-              <RadioGroupItem value="private" id="live-access-private" className="mt-1" />
-              <Label htmlFor="live-access-private" className="cursor-pointer space-y-1">
-                <span className="block font-semibold">{t('classroom.privateAccess')}</span>
-                <span className="block text-sm font-normal text-muted-foreground">{t('classroom.privateAccessDescription')}</span>
-              </Label>
-            </div>
-            <div className="flex items-start gap-3 rounded-lg border p-3">
-              <RadioGroupItem value="school" id="live-access-school" className="mt-1" />
-              <Label htmlFor="live-access-school" className="cursor-pointer space-y-1">
-                <span className="block font-semibold">{t('classroom.schoolAccess')}</span>
-                <span className="block text-sm font-normal text-muted-foreground">{t('classroom.schoolAccessDescription')}</span>
-              </Label>
-            </div>
-          </RadioGroup>
-
-          {accessMode === "school" && (
-            <div className="space-y-3">
-              <Label>{t('classroom.selectGrades')}</Label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {availableGrades.map((grade) => (
-                  <Label key={grade.code} htmlFor={`live-grade-${grade.code}`} className="flex cursor-pointer items-center gap-2 rounded-md border p-2 font-normal">
-                    <Checkbox
-                      id={`live-grade-${grade.code}`}
-                      checked={selectedGradeCodes.includes(grade.code)}
-                      onCheckedChange={(checked) => setSelectedGradeCodes((current) =>
-                        checked ? [...current, grade.code] : current.filter((code) => code !== grade.code)
-                      )}
-                    />
-                    {grade.name}
-                  </Label>
-                ))}
-              </div>
-              {selectedGradeCodes.length === 0 && (
-                <p className="text-sm text-destructive">{t('classroom.gradeRequired')}</p>
-              )}
-            </div>
-          )}
-
           <AlertDialogFooter>
             <AlertDialogAction
-              disabled={isStartingSession || (accessMode === "school" && selectedGradeCodes.length === 0)}
+              disabled={isStartingSession}
               onClick={(event) => {
                 event.preventDefault();
                 void handleStartSession();

@@ -93,12 +93,7 @@ export const resolveSlug = query({
 
     if (campus) {
       if (
-        !(await canAccessCampus(
-          ctx,
-          user._id,
-          campus._id,
-          campus.schoolId,
-        ))
+        !(await canAccessCampus(ctx, user._id, campus._id, campus.schoolId))
       ) {
         throw new ConvexError("PERMISSION_DENIED");
       }
@@ -226,6 +221,7 @@ export const getStaffContext = query({
       role: roleValidator,
       canManageCampus: v.boolean(),
       canViewPeople: v.boolean(),
+      canManagePeople: v.boolean(),
       canViewInstitutionSettings: v.boolean(),
       canManageInstitution: v.boolean(),
     }),
@@ -237,6 +233,7 @@ export const getStaffContext = query({
         role: "superadmin" as const,
         canManageCampus: true,
         canViewPeople: true,
+        canManagePeople: true,
         canViewInstitutionSettings: true,
         canManageInstitution: true,
       };
@@ -260,6 +257,7 @@ export const getStaffContext = query({
         role: "admin" as const,
         canManageCampus: true,
         canViewPeople: true,
+        canManagePeople: true,
         canViewInstitutionSettings: true,
         canManageInstitution: true,
       };
@@ -282,7 +280,8 @@ export const getStaffContext = query({
     return {
       role,
       canManageCampus,
-      canViewPeople: canManageCampus,
+      canViewPeople: role === "principal",
+      canManagePeople: role === "principal",
       canViewInstitutionSettings: canManageCampus,
       canManageInstitution: false,
     };
@@ -320,7 +319,8 @@ export const getSettingsContext = query({
           .query("campuses")
           .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
           .first();
-    const institution = school ?? (campus ? await ctx.db.get(campus.schoolId) : null);
+    const institution =
+      school ?? (campus ? await ctx.db.get(campus.schoolId) : null);
 
     if (!institution) return null;
 
@@ -351,11 +351,7 @@ export const getSettingsContext = query({
       canManageInstitution,
       canViewInstitutionSettings:
         canManageInstitution ||
-        (await canViewInstitutionSettings(
-          ctx,
-          user._id,
-          institution._id,
-        )),
+        (await canViewInstitutionSettings(ctx, user._id, institution._id)),
     };
   },
 });

@@ -12,12 +12,14 @@ import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { createClerkClient } from "@clerk/backend";
 import {
-  canManageClasses,
+  canManageCampusPeople,
+  canViewCampusPeople,
   hasOrgRole,
   hasSystemRole,
   isPrincipalOfSchool,
 } from "./permissions";
 import { isRoleValidForOrganization, roleValidator } from "./model/roles";
+import { isPasswordLongEnough } from "../lib/password";
 
 const publicUserFields = {
   _id: v.id("users"),
@@ -52,6 +54,19 @@ const imageSyncResultValidator = v.object({
   skipped: v.number(),
   failed: v.number(),
 });
+const updateUserResultValidator = v.union(
+  v.object({ status: v.literal("success") }),
+  v.object({
+    status: v.literal("error"),
+    code: v.union(
+      v.literal("PASSWORD_TOO_SHORT"),
+      v.literal("PASSWORD_REJECTED"),
+      v.literal("PASSWORD_UPDATE_FAILED"),
+      v.literal("PASSWORD_UPDATE_UNAVAILABLE"),
+    ),
+    reason: v.optional(v.string()),
+  }),
+);
 
 type UserJSON = {
   id: string;
@@ -65,6 +80,29 @@ type UserJSON = {
 
 function getClerkClient(secretKey: string) {
   return createClerkClient({ secretKey });
+}
+
+function getClerkErrorReason(error: unknown) {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("errors" in error) ||
+    !Array.isArray(error.errors)
+  ) {
+    return null;
+  }
+
+  const firstError = error.errors[0];
+  if (typeof firstError !== "object" || firstError === null) return null;
+
+  const longMessage =
+    "longMessage" in firstError ? firstError.longMessage : undefined;
+  const message = "message" in firstError ? firstError.message : undefined;
+  return typeof longMessage === "string"
+    ? longMessage
+    : typeof message === "string"
+      ? message
+      : null;
 }
 
 function toPublicUser(user: Doc<"users">) {
@@ -211,7 +249,7 @@ export const getUsers = query({
       if (
         !campusId ||
         !campus ||
-        !(await canManageClasses(
+        !(await canViewCampusPeople(
           ctx,
           currentUser._id,
           campusId,
@@ -547,7 +585,12 @@ export const assertCanManageUsers = internalQuery({
     if (
       !campusId ||
       !campus ||
-      !(await canManageClasses(ctx, currentUser._id, campusId, campus.schoolId))
+      !(await canManageCampusPeople(
+        ctx,
+        currentUser._id,
+        campusId,
+        campus.schoolId,
+      ))
     ) {
       throw new Error("Unauthorized");
     }
@@ -762,7 +805,7 @@ export const updateUserWithClerk = action({
     ),
     orgId: v.optional(v.string()),
   },
-  returns: v.null(),
+  returns: updateUserResultValidator,
   handler: async (ctx, args) => {
     const targetAssignment = await ctx.runQuery(
       internal.roleAssignments.getAssignmentInternal,
@@ -777,7 +820,9 @@ export const updateUserWithClerk = action({
     await ctx.runQuery(internal.users.assertCanManageUsers, {
       orgType: args.orgType,
       orgId: args.orgId,
-      roles: args.updates.role ? [args.updates.role] : [],
+      roles: args.updates.role
+        ? [targetAssignment.role, args.updates.role]
+        : [targetAssignment.role],
     });
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
@@ -813,43 +858,46 @@ export const updateUserWithClerk = action({
       }
     }
 
-    // 1. Update Core Identity in Convex
-    await ctx.runMutation(internal.users.updateUserInternal, {
-      userId: args.userId,
-      updates: {
-        firstName: args.updates.firstName,
-        lastName: args.updates.lastName,
-        email: args.updates.email,
-        username: args.updates.username,
-        school: args.updates.school,
-        isActive: args.updates.isActive,
-      },
-    });
+    if (args.updates.password) {
+      if (!isPasswordLongEnough(args.updates.password)) {
+        return { status: "error", code: "PASSWORD_TOO_SHORT" } as const;
+      }
+      if (user.clerkId.startsWith("temp_")) {
+        return {
+          status: "error",
+          code: "PASSWORD_UPDATE_UNAVAILABLE",
+        } as const;
+      }
 
-    // 2. Update Role Assignment if role changed
-    if (args.updates.role || args.updates.grade !== undefined) {
-      await ctx.runMutation(internal.roleAssignments.assignRoleInternal, {
-        userId: args.userId,
-        orgType: args.orgType,
-        orgId: args.orgId,
-        role: effectiveRole,
-        gradeCode: effectiveRole === "student" ? effectiveGrade : undefined,
-      });
+      try {
+        await clerk.users.updateUser(user.clerkId, {
+          password: args.updates.password,
+          signOutOfOtherSessions: true,
+        });
+      } catch (error) {
+        const reason = getClerkErrorReason(error);
+        if (!reason) {
+          console.error("Failed to update Clerk user password", error);
+        }
+        return {
+          status: "error",
+          code: reason ? "PASSWORD_REJECTED" : "PASSWORD_UPDATE_FAILED",
+          reason: reason ?? undefined,
+        } as const;
+      }
     }
 
-    // 3. Update basic details in Clerk (if not a temp user)
+    // Update Clerk first; its webhook remains an eventual reconciliation path.
     if (!user.clerkId.startsWith("temp_")) {
       if (
         args.updates.firstName ||
         args.updates.lastName ||
-        args.updates.username ||
-        args.updates.password
+        args.updates.username
       ) {
         await clerk.users.updateUser(user.clerkId, {
           firstName: args.updates.firstName,
           lastName: args.updates.lastName,
           username: args.updates.username,
-          password: args.updates.password,
         });
       }
 
@@ -864,64 +912,53 @@ export const updateUserWithClerk = action({
         });
       }
 
-      // 4. Sync email change with Clerk (requires create → set primary → delete old)
       if (args.updates.email && args.updates.email !== user.email) {
-        // Step 1: Create the new email address (pre-verified)
-        const createRes = await fetch(
-          `https://api.clerk.com/v1/email_addresses`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${clerkSecretKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              user_id: user.clerkId,
-              email_address: args.updates.email,
-              verified: true,
-            }),
-          },
+        const clerkUser = await clerk.users.getUser(user.clerkId);
+        let newEmail = clerkUser.emailAddresses.find(
+          (email) => email.emailAddress === args.updates.email,
         );
-        if (!createRes.ok) {
-          const err = await createRes.json();
-          throw new Error(
-            `Failed to create Clerk email: ${JSON.stringify(err)}`,
-          );
+        if (!newEmail) {
+          newEmail = await clerk.emailAddresses.createEmailAddress({
+            userId: user.clerkId,
+            emailAddress: args.updates.email,
+            verified: true,
+          });
         }
-        const newEmailData = await createRes.json();
-
-        // Step 2: Set it as the primary email
-        await fetch(`https://api.clerk.com/v1/users/${user.clerkId}`, {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${clerkSecretKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ primary_email_address_id: newEmailData.id }),
+        await clerk.emailAddresses.updateEmailAddress(newEmail.id, {
+          verified: true,
+          primary: true,
         });
-
-        // Step 3: Remove old email addresses (clean up)
-        const clerkUserRes = await fetch(
-          `https://api.clerk.com/v1/users/${user.clerkId}`,
-          {
-            headers: { Authorization: `Bearer ${clerkSecretKey}` },
-          },
-        );
-        const clerkUser = (await clerkUserRes.json()) as {
-          email_addresses?: Array<{ id: string }>;
-        };
-        const oldEmails = (clerkUser.email_addresses ?? []).filter(
-          (email) => email.id !== newEmailData.id,
+        const oldEmails = clerkUser.emailAddresses.filter(
+          (email) => email.id !== newEmail.id,
         );
         for (const old of oldEmails) {
-          await fetch(`https://api.clerk.com/v1/email_addresses/${old.id}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${clerkSecretKey}` },
-          });
+          await clerk.emailAddresses.deleteEmailAddress(old.id);
         }
       }
     }
-    return null;
+
+    await ctx.runMutation(internal.users.updateUserInternal, {
+      userId: args.userId,
+      updates: {
+        firstName: args.updates.firstName,
+        lastName: args.updates.lastName,
+        email: args.updates.email,
+        username: args.updates.username,
+        school: args.updates.school,
+        isActive: args.updates.isActive,
+      },
+    });
+
+    if (args.updates.role || args.updates.grade !== undefined) {
+      await ctx.runMutation(internal.roleAssignments.assignRoleInternal, {
+        userId: args.userId,
+        orgType: args.orgType,
+        orgId: args.orgId,
+        role: effectiveRole,
+        gradeCode: effectiveRole === "student" ? effectiveGrade : undefined,
+      });
+    }
+    return { status: "success" } as const;
   },
 });
 
@@ -963,15 +1000,20 @@ export const deleteUserWithClerk = action({
       return null;
     }
 
-    const response = await fetch(
-      `https://api.clerk.com/v1/users/${user.clerkId}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${clerkSecretKey}` },
-      },
-    );
-
-    if (!response.ok) throw new Error("Clerk API error");
+    const clerk = getClerkClient(clerkSecretKey);
+    try {
+      await clerk.users.deleteUser(user.clerkId);
+    } catch (error) {
+      const isAlreadyDeleted =
+        typeof error === "object" &&
+        error !== null &&
+        "status" in error &&
+        error.status === 404;
+      if (!isAlreadyDeleted) throw error;
+    }
+    await ctx.runMutation(internal.users.deleteUserInternal, {
+      userId: args.userId,
+    });
     return null;
   },
 });

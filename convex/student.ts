@@ -4,20 +4,60 @@ import { v } from "convex/values";
 import { getInstitutionGrades } from "./model/grades";
 import { getStudentGradeCode } from "./model/membership";
 import { isStudentEnrolled } from "./model/enrollments";
+import { canManageCampusPeople, canViewCampusPeople } from "./permissions";
+import { getClassTimeZone } from "./model/timeZone";
+
+const dashboardScheduleValidator = v.object({
+  scheduleId: v.id("classSchedule"),
+  title: v.string(),
+  description: v.optional(v.string()),
+  className: v.string(),
+  start: v.number(),
+  end: v.number(),
+  timeZone: v.string(),
+  roomName: v.string(),
+  isLive: v.boolean(),
+  color: v.string(),
+  status: v.union(
+    v.literal("scheduled"),
+    v.literal("active"),
+    v.literal("completed"),
+    v.literal("cancelled"),
+  ),
+  sessionType: v.optional(
+    v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka")),
+  ),
+  attendance: v.literal("upcoming"),
+  minutesAttended: v.literal(0),
+  isStudentActive: v.literal(false),
+});
 
 export const getStudentDashboardStats = query({
-  args: { now: v.number() },
+  args: {
+    now: v.number(),
+    studentId: v.optional(v.string()),
+    orgSlug: v.optional(v.string()),
+  },
   returns: v.union(
     v.null(),
     v.object({
+      canEdit: v.boolean(),
       student: v.object({
+        _id: v.id("users"),
+        firstName: v.string(),
+        lastName: v.string(),
         fullName: v.string(),
         email: v.optional(v.string()),
         username: v.optional(v.string()),
         imageUrl: v.optional(v.string()),
+        avatarStorageId: v.optional(v.id("_storage")),
+        isActive: v.boolean(),
         grade: v.optional(v.string()),
         gradeName: v.optional(v.string()),
         school: v.optional(v.string()),
+        role: v.literal("student"),
+        orgId: v.optional(v.string()),
+        orgType: v.literal("campus"),
       }),
       overall: v.object({
         activeCourses: v.number(),
@@ -45,11 +85,68 @@ export const getStudentDashboardStats = query({
           nextSession: v.optional(v.number()),
         }),
       ),
+      upcomingLessons: v.array(dashboardScheduleValidator),
     }),
   ),
   handler: async (ctx, args) => {
-    const user = await getCurrentUserFromAuth(ctx);
+    const viewer = await getCurrentUserFromAuth(ctx);
+    if (!viewer) return null;
+
+    const requestedStudentId = args.studentId
+      ? ctx.db.normalizeId("users", args.studentId)
+      : viewer._id;
+    if (!requestedStudentId) return null;
+
+    const user = await ctx.db.get(requestedStudentId);
     if (!user) return null;
+
+    const viewingOwnProfile = user._id === viewer._id;
+    const includeUpcomingLessons = Boolean(args.studentId);
+    const campus =
+      args.studentId && args.orgSlug
+        ? await ctx.db
+            .query("campuses")
+            .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug!))
+            .first()
+        : null;
+    if (args.studentId && !campus) return null;
+
+    if (campus) {
+      const studentMembership = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user_org", (q) =>
+          q
+            .eq("userId", user._id)
+            .eq("orgId", campus._id)
+            .eq("orgType", "campus"),
+        )
+        .collect();
+      if (
+        !studentMembership.some((assignment) => assignment.role === "student")
+      ) {
+        return null;
+      }
+      if (
+        !viewingOwnProfile &&
+        !(await canViewCampusPeople(
+          ctx,
+          viewer._id,
+          campus._id,
+          campus.schoolId,
+        ))
+      ) {
+        return null;
+      }
+    }
+
+    const canEdit = campus
+      ? await canManageCampusPeople(
+          ctx,
+          viewer._id,
+          campus._id,
+          campus.schoolId,
+        )
+      : false;
 
     const enrollmentRows = await ctx.db
       .query("classEnrollments")
@@ -72,20 +169,51 @@ export const getStudentDashboardStats = query({
       ...new Map(
         [...normalizedClasses, ...legacyClasses]
           .filter((classData) => classData !== null)
+          .filter((classData) => !campus || classData!.campusId === campus._id)
           .map((classData) => [classData!._id, classData!]),
       ).values(),
     ];
+    let schoolId = campus?.schoolId;
+    let gradeCampusId = campus?._id;
+    if (!schoolId && myClasses.length > 0) {
+      const firstClass = myClasses[0];
+      const [firstCurriculum, firstCampus] = await Promise.all([
+        ctx.db.get(firstClass.curriculumId),
+        firstClass.campusId ? ctx.db.get(firstClass.campusId) : null,
+      ]);
+      schoolId = firstCampus?.schoolId ?? firstCurriculum?.schoolId;
+      gradeCampusId = firstClass.campusId;
+    }
+    const gradeCode = schoolId
+      ? await getStudentGradeCode(ctx, user._id, schoolId, gradeCampusId)
+      : user.grade;
+    const gradeName =
+      gradeCode && schoolId
+        ? (await getInstitutionGrades(ctx, schoolId)).find(
+            (grade) => grade.code === gradeCode,
+          )?.name
+        : undefined;
     const studentProfile = {
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
       fullName: user.fullName,
       email: user.email,
       username: user.username,
       imageUrl: user.imageUrl,
-      grade: user.grade,
+      avatarStorageId: user.avatarStorageId,
+      isActive: user.isActive,
+      grade: gradeCode,
+      gradeName,
       school: user.school,
+      role: "student" as const,
+      orgId: campus?._id,
+      orgType: "campus" as const,
     };
 
     if (myClasses.length === 0) {
       return {
+        canEdit,
         student: studentProfile,
         overall: {
           activeCourses: 0,
@@ -94,52 +222,36 @@ export const getStudentDashboardStats = query({
           completedSessions: 0,
         },
         classes: [],
+        upcomingLessons: [],
       };
     }
 
-    const firstClass = myClasses[0];
-    const [firstCurriculum, firstCampus] = await Promise.all([
-      ctx.db.get(firstClass.curriculumId),
-      firstClass.campusId ? ctx.db.get(firstClass.campusId) : null,
-    ]);
-    const schoolId = firstCampus?.schoolId ?? firstCurriculum?.schoolId;
-    const gradeCode = schoolId
-      ? await getStudentGradeCode(
-          ctx,
-          user._id,
-          schoolId,
-          firstClass.campusId,
-        )
-      : undefined;
-    const gradeName = gradeCode && schoolId
-      ? (await getInstitutionGrades(ctx, schoolId)).find(
-          (grade) => grade.code === gradeCode,
-        )?.name
-      : undefined;
     const mySessions = await ctx.db
       .query("class_sessions")
       .withIndex("by_student_date", (q) => q.eq("studentId", user._id))
       .collect();
 
     // --- Per-class stats ---
-    const classStats = await Promise.all(
+    const classDetails = await Promise.all(
       myClasses.map(async (classData) => {
-        const [teacher, curriculum] = await Promise.all([
-          classData.teacherId ? ctx.db.get(classData.teacherId) : null,
-          ctx.db.get(classData.curriculumId),
-        ]);
-
-        const userPreference = await ctx.db
-          .query("studentClassPreferences")
-          .withIndex("by_student_class", (q) =>
-            q.eq("studentId", user._id).eq("classId", classData._id),
-          )
-          .unique();
-
-        const schedules = await ctx.db
-          .query("classSchedule")
-          .withIndex("by_class", (q) => q.eq("classId", classData._id))
-          .collect();
+        const [teacher, curriculum, userPreference, schedules, timeZone] =
+          await Promise.all([
+            classData.teacherId ? ctx.db.get(classData.teacherId) : null,
+            ctx.db.get(classData.curriculumId),
+            ctx.db
+              .query("studentClassPreferences")
+              .withIndex("by_student_class", (q) =>
+                q.eq("studentId", user._id).eq("classId", classData._id),
+              )
+              .unique(),
+            ctx.db
+              .query("classSchedule")
+              .withIndex("by_class", (q) => q.eq("classId", classData._id))
+              .collect(),
+            includeUpcomingLessons
+              ? getClassTimeZone(ctx, classData)
+              : Promise.resolve(undefined),
+          ]);
 
         const pastSchedules = schedules.filter(
           (schedule) => schedule.scheduledEnd < args.now,
@@ -172,41 +284,77 @@ export const getStudentDashboardStats = query({
           totalPast === 0 ? 0 : Math.round((attendedCount / totalPast) * 100);
 
         return {
-          classId: classData._id,
-          className: classData.name,
-          curriculumTitle:
-            curriculum?.title ??
-            (classData.classType === "abeka"
-              ? "Abeka Curriculum"
-              : classData.classType === "ignitia"
-                ? "Ignitia Curriculum"
-                : "Curriculum"),
-          description: classData.description,
-          teacher: teacher
-            ? { fullName: teacher.fullName, imageUrl: teacher.imageUrl }
-            : {
-                fullName:
-                  classData.classType === "abeka"
-                    ? "Abeka Virtual"
-                    : classData.classType === "ignitia"
-                      ? "Ignitia Virtual"
-                      : "System",
-                imageUrl: undefined,
-              },
           stats: {
-            totalClasses: schedules.length,
-            completedClasses: pastSchedules.length,
-            attendedClasses: attendedCount,
-            progressPercentage: Math.min(progress, 100),
+            classId: classData._id,
+            className: classData.name,
+            curriculumTitle:
+              curriculum?.title ??
+              (classData.classType === "abeka"
+                ? "Abeka Curriculum"
+                : classData.classType === "ignitia"
+                  ? "Ignitia Curriculum"
+                  : "Curriculum"),
+            description: classData.description,
+            teacher: teacher
+              ? { fullName: teacher.fullName, imageUrl: teacher.imageUrl }
+              : {
+                  fullName:
+                    classData.classType === "abeka"
+                      ? "Abeka Virtual"
+                      : classData.classType === "ignitia"
+                        ? "Ignitia Virtual"
+                        : "System",
+                  imageUrl: undefined,
+                },
+            stats: {
+              totalClasses: schedules.length,
+              completedClasses: pastSchedules.length,
+              attendedClasses: attendedCount,
+              progressPercentage: Math.min(progress, 100),
+            },
+            icon: userPreference?.icon || null,
+            nextSession: schedules
+              .filter((schedule) => schedule.scheduledStart > args.now)
+              .sort((a, b) => a.scheduledStart - b.scheduledStart)[0]
+              ?.scheduledStart,
           },
-          icon: userPreference?.icon || null,
-          nextSession: schedules
-            .filter((schedule) => schedule.scheduledStart > args.now)
-            .sort((a, b) => a.scheduledStart - b.scheduledStart)[0]
-            ?.scheduledStart,
+          upcomingLessons: includeUpcomingLessons
+            ? schedules
+                .filter(
+                  (schedule) =>
+                    schedule.status !== "cancelled" &&
+                    schedule.scheduledEnd > args.now,
+                )
+                .map((schedule) => ({
+                  scheduleId: schedule._id,
+                  title: schedule.title || classData.name,
+                  ...(schedule.description !== undefined
+                    ? { description: schedule.description }
+                    : {}),
+                  className: classData.name,
+                  start: schedule.scheduledStart,
+                  end: schedule.scheduledEnd,
+                  timeZone: timeZone ?? "UTC",
+                  roomName: schedule.roomName,
+                  isLive: schedule.isLive === true,
+                  color: curriculum?.color || "#3b82f6",
+                  status: schedule.status,
+                  ...(schedule.sessionType !== undefined
+                    ? { sessionType: schedule.sessionType }
+                    : {}),
+                  attendance: "upcoming" as const,
+                  minutesAttended: 0 as const,
+                  isStudentActive: false as const,
+                }))
+            : [],
         };
       }),
     );
+    const classStats = classDetails.map((item) => item.stats);
+    const upcomingLessons = classDetails
+      .flatMap((item) => item.upcomingLessons)
+      .sort((a, b) => a.start - b.start)
+      .slice(0, 50);
 
     // --- Overall stats ---
     const totalCourses = classStats.length;
@@ -229,11 +377,8 @@ export const getStudentDashboardStats = query({
         : Math.round((totalAttended / totalPastSessions) * 100);
 
     return {
-      student: {
-        ...studentProfile,
-        grade: gradeCode,
-        gradeName,
-      },
+      canEdit,
+      student: studentProfile,
       overall: {
         activeCourses: totalCourses,
         totalSessions,
@@ -241,6 +386,7 @@ export const getStudentDashboardStats = query({
         completedSessions: totalPastSessions,
       },
       classes: classStats,
+      upcomingLessons,
     };
   },
 });

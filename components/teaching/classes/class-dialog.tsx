@@ -34,6 +34,10 @@ function getFormData(classDoc: Doc<"classes">): CourseFormData {
     curriculumId: classDoc.curriculumId,
     teacherId: classDoc.teacherId || "",
     gradeCode: classDoc.gradeCode || "",
+    liveAccess: classDoc.liveAccess ?? {
+      mode: "private",
+      allowedGradeCodes: [],
+    },
   };
 }
 
@@ -105,6 +109,7 @@ export function ClassDialog({
         description: formData.description || undefined,
         curriculumId: formData.curriculumId as Id<"curriculums">,
         gradeCode: formData.gradeCode || undefined,
+        liveAccess: formData.liveAccess,
         teacherId: formData.teacherId
           ? (formData.teacherId as Id<"users">)
           : undefined,
@@ -157,7 +162,11 @@ export function ClassDialog({
       title={t("class.edit")}
       onSubmit={handleSubmit}
       isSubmitting={isSubmitting}
-      submitDisabled={!formData.gradeCode}
+      submitDisabled={
+        !formData.gradeCode ||
+        (formData.liveAccess.mode === "school" &&
+          formData.liveAccess.allowedGradeCodes.length === 0)
+      }
       submitLabel={t("common.saveChanges")}
       maxWidth="sm:max-w-[700px]"
       leftActions={

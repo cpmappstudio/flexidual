@@ -393,19 +393,29 @@ export const update = mutation({
       );
     }
 
-    if (args.gradeCodes && curriculum.schoolId) {
+    const gradeCodes =
+      args.gradeCodes === undefined
+        ? undefined
+        : [...new Set(args.gradeCodes)];
+
+    if (gradeCodes && curriculum.schoolId) {
       const invalidCodes = await validateGradeCodes(
         ctx,
         curriculum.schoolId,
-        args.gradeCodes,
+        gradeCodes,
       );
-      if (invalidCodes.length > 0)
-        throw new ConvexError({ code: "INVALID_GRADE" });
+      if (invalidCodes.length > 0) {
+        throw new ConvexError({
+          code: "INVALID_GRADE",
+          grades: invalidCodes.join(", "),
+        });
+      }
     }
 
     const { id, ...updates } = args;
     if (title !== undefined) updates.title = title;
     if (args.code !== undefined) updates.code = code;
+    if (gradeCodes !== undefined) updates.gradeCodes = gradeCodes;
     await ctx.db.patch(id, updates);
     return null;
   },

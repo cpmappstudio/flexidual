@@ -9,6 +9,7 @@ import {
   getRouteRole,
   getHighestStaffRole,
   hasStaffAccess,
+  isStaffRole,
 } from "../lib/rbac";
 
 test("roles are assigned only at their supported organization level", () => {
@@ -39,6 +40,16 @@ test("staff access ignores student-only sessions and uses the highest staff role
   assert.equal(getHighestStaffRole(studentClaims), null);
   assert.equal(hasStaffAccess(mixedClaims), true);
   assert.equal(getHighestStaffRole(mixedClaims), "principal");
+});
+
+test("staff role checks fail closed for students and unresolved roles", () => {
+  for (const role of ["superadmin", "admin", "principal", "teacher", "tutor"]) {
+    assert.equal(isStaffRole(role), true);
+  }
+
+  assert.equal(isStaffRole("student"), false);
+  assert.equal(isStaffRole("unexpected"), false);
+  assert.equal(isStaffRole(null), false);
 });
 
 test("organization routes resolve exact roles without a shared admin slug", () => {

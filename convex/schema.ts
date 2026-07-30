@@ -12,6 +12,7 @@
 
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { liveAccessValidator } from "./model/liveAccess";
 
 export default defineSchema({
   /**
@@ -130,6 +131,7 @@ export default defineSchema({
     startDate: v.optional(v.number()),
     endDate: v.optional(v.number()),
     timeZone: v.optional(v.string()),
+    liveAccess: v.optional(liveAccessValidator),
 
     // Status
     isActive: v.boolean(),
@@ -192,12 +194,7 @@ export default defineSchema({
     // LiveKit Integration
     roomName: v.string(),
     isLive: v.optional(v.boolean()),
-    liveAccess: v.optional(
-      v.object({
-        mode: v.union(v.literal("private"), v.literal("school")),
-        allowedGradeCodes: v.array(v.string()),
-      }),
-    ),
+    liveAccess: v.optional(liveAccessValidator),
 
     // Status tracking
     status: v.union(

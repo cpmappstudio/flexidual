@@ -224,7 +224,6 @@ export function StudentManager({
           filterColumn="search"
           filterPlaceholder={t("common.searchByName")}
           emptyMessage={t("common.noResults")}
-          pageSize={10}
         />
       )}
 

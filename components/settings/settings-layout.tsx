@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import {
   BookOpen,
   Building2,
@@ -34,7 +34,7 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
   const t = useTranslations("settings");
   const pathname = usePathname();
   const router = useRouter();
-  const { context, basePath, profilePath } = useSettingsContext();
+  const { context, isLoading, basePath, profilePath } = useSettingsContext();
   const campusesPath = `${basePath}/campuses`;
   const academicPath = `${basePath}/academic`;
   const gradesPath = `${basePath}/grades`;
@@ -93,6 +93,27 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
     items.find((item) =>
       item.exact ? pathname === item.href : pathname.startsWith(item.href),
     ) ?? items[0];
+  const isProfileRoute = pathname.startsWith(profilePath);
+
+  useEffect(() => {
+    if (
+      !isLoading &&
+      context &&
+      !context.canViewInstitutionSettings &&
+      !isProfileRoute
+    ) {
+      router.replace(profilePath);
+    }
+  }, [context, isLoading, isProfileRoute, profilePath, router]);
+
+  if (
+    !isLoading &&
+    context &&
+    !context.canViewInstitutionSettings &&
+    !isProfileRoute
+  ) {
+    return null;
+  }
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col">

@@ -1,9 +1,23 @@
 import { v } from "convex/values";
-import { action, internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
+import { createClerkClient } from "@clerk/backend";
+import {
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type MutationCtx,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./users";
-import { canManageClasses, hasOrgRole, hasSystemRole } from "./permissions";
+import {
+  canManageCampusPeople,
+  canManageClasses,
+  hasOrgRole,
+  hasSystemRole,
+} from "./permissions";
 import { validateGradeCodes } from "./model/grades";
 import { resolveMembershipSchoolId } from "./model/membership";
 import { isRoleValidForOrganization, roleValidator } from "./model/roles";
@@ -62,7 +76,7 @@ async function assertCanManageAssignment(
   if (
     !campusId ||
     !campus ||
-    !(await canManageClasses(ctx, userId, campusId, campus.schoolId))
+    !(await canManageCampusPeople(ctx, userId, campusId, campus.schoolId))
   ) {
     throw new Error("Unauthorized");
   }
@@ -73,7 +87,13 @@ async function assignmentData(
   args: {
     orgType: "system" | "school" | "campus";
     orgId?: string;
-    role: "superadmin" | "admin" | "principal" | "teacher" | "tutor" | "student";
+    role:
+      | "superadmin"
+      | "admin"
+      | "principal"
+      | "teacher"
+      | "tutor"
+      | "student";
     gradeCode?: string;
   },
 ) {
@@ -110,10 +130,14 @@ async function scheduleRoleSync(
   for (const userId of new Set(userIds)) {
     const user = await ctx.db.get(userId);
     if (user && !user.clerkId.startsWith("temp_")) {
-      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncRolesToClerk, {
-        userId,
-        clerkId: user.clerkId,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.roleAssignments.syncRolesToClerk,
+        {
+          userId,
+          clerkId: user.clerkId,
+        },
+      );
     }
   }
 }
@@ -124,7 +148,13 @@ export async function upsertRoleAssignment(
     userId: Id<"users">;
     orgType: "system" | "school" | "campus";
     orgId?: string;
-    role: "superadmin" | "admin" | "principal" | "teacher" | "tutor" | "student";
+    role:
+      | "superadmin"
+      | "admin"
+      | "principal"
+      | "teacher"
+      | "tutor"
+      | "student";
     gradeCode?: string;
   },
   assignedBy?: Id<"users">,
@@ -200,9 +230,7 @@ export async function clearCampusPrincipalAssignments(
 ) {
   const assignments = await ctx.db
     .query("roleAssignments")
-    .withIndex("by_org", (q) =>
-      q.eq("orgId", campusId).eq("orgType", "campus"),
-    )
+    .withIndex("by_org", (q) => q.eq("orgId", campusId).eq("orgType", "campus"))
     .collect();
   const principals = assignments.filter(
     (assignment) => assignment.role === "principal",
@@ -265,9 +293,12 @@ export const syncRolesToClerk = internalAction({
     if (args.clerkId.startsWith("temp_")) return null;
 
     // 1. Fetch all their role assignments
-    const assignments = await ctx.runQuery(internal.roleAssignments.getUserAssignmentsInternal, { 
-      userId: args.userId 
-    });
+    const assignments = await ctx.runQuery(
+      internal.roleAssignments.getUserAssignmentsInternal,
+      {
+        userId: args.userId,
+      },
+    );
 
     // 2. Build the dictionary map
     const rolesMap: Record<string, string> = {};
@@ -285,27 +316,22 @@ export const syncRolesToClerk = internalAction({
           rolesMap["system"] = assignment.role;
         } else if (assignment.orgId) {
           // Fetch the slug for the school or campus to use as the key
-          const slug = await ctx.runQuery(internal.roleAssignments.getOrgSlugInternal, { 
-            orgId: assignment.orgId, 
-            orgType: assignment.orgType 
-          });
+          const slug = await ctx.runQuery(
+            internal.roleAssignments.getOrgSlugInternal,
+            {
+              orgId: assignment.orgId,
+              orgType: assignment.orgType,
+            },
+          );
           if (slug) rolesMap[slug] = assignment.role;
         }
       }
     }
 
-    // 3. Push to Clerk
-    const response = await fetch(`https://api.clerk.com/v1/users/${args.clerkId}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${clerkSecretKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        public_metadata: { roles: rolesMap },
-      }),
+    const clerk = createClerkClient({ secretKey: clerkSecretKey });
+    await clerk.users.updateUserMetadata(args.clerkId, {
+      publicMetadata: { roles: rolesMap },
     });
-    if (!response.ok) throw new Error("Clerk role synchronization failed");
     return null;
   },
 });
@@ -320,7 +346,9 @@ export const getOrgAssignmentsInternal = internalQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("roleAssignments")
-      .withIndex("by_org", (q) => q.eq("orgId", args.orgId).eq("orgType", args.orgType))
+      .withIndex("by_org", (q) =>
+        q.eq("orgId", args.orgId).eq("orgType", args.orgType),
+      )
       .collect();
   },
 });
@@ -334,7 +362,10 @@ export const syncOrgUsersToClerk = internalAction({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const assignments = await ctx.runQuery(internal.roleAssignments.getOrgAssignmentsInternal, args);
+    const assignments = await ctx.runQuery(
+      internal.roleAssignments.getOrgAssignmentsInternal,
+      args,
+    );
     const seen = new Set<string>();
     for (const assignment of assignments) {
       const uid = assignment.userId as string;
@@ -369,9 +400,14 @@ export const healAllUserRoles = action({
       roles: ["superadmin"],
     });
     const users = await ctx.runQuery(internal.users.getAllUsersInternal);
-    let synced = 0, skipped = 0, errors = 0;
+    let synced = 0,
+      skipped = 0,
+      errors = 0;
     for (const user of users) {
-      if (user.clerkId.startsWith("temp_")) { skipped++; continue; }
+      if (user.clerkId.startsWith("temp_")) {
+        skipped++;
+        continue;
+      }
       try {
         await ctx.runAction(internal.roleAssignments.syncRolesToClerk, {
           userId: user._id,
@@ -394,8 +430,12 @@ export const healAllUserRoles = action({
 export const assignRole = mutation({
   args: {
     userId: v.id("users"),
-    orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
-    orgId: v.optional(v.string()), 
+    orgType: v.union(
+      v.literal("system"),
+      v.literal("school"),
+      v.literal("campus"),
+    ),
+    orgId: v.optional(v.string()),
     role: roleValidator,
     gradeCode: v.optional(v.string()),
   },
@@ -417,8 +457,12 @@ export const assignRole = mutation({
 export const assignRoleInternal = internalMutation({
   args: {
     userId: v.id("users"),
-    orgType: v.union(v.literal("system"), v.literal("school"), v.literal("campus")),
-    orgId: v.optional(v.string()), 
+    orgType: v.union(
+      v.literal("system"),
+      v.literal("school"),
+      v.literal("campus"),
+    ),
+    orgId: v.optional(v.string()),
     role: roleValidator,
     gradeCode: v.optional(v.string()),
   },
@@ -538,10 +582,14 @@ export const removeRole = mutation({
     // Sync to Clerk immediately
     const user = await ctx.db.get(assignment.userId);
     if (user && !user.clerkId.startsWith("temp_")) {
-      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncRolesToClerk, {
-        userId: user._id,
-        clerkId: user.clerkId,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.roleAssignments.syncRolesToClerk,
+        {
+          userId: user._id,
+          clerkId: user.clerkId,
+        },
+      );
     }
     return null;
   },

@@ -6,8 +6,17 @@ import { api } from "@/convex/_generated/api";
 import { useRouter } from "@/i18n/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SchoolDialog } from "@/components/admin/schools/school-dialog";
+import { ConvexAuthBoundary } from "@/components/convex-auth-boundary";
 
 export default function OrganizationEntryPage() {
+  return (
+    <ConvexAuthBoundary>
+      <OrganizationEntryContent />
+    </ConvexAuthBoundary>
+  );
+}
+
+function OrganizationEntryContent() {
   const router = useRouter();
   const options = useQuery(api.organizations.getSwitcherOptions);
 

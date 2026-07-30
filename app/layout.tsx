@@ -21,7 +21,24 @@ export const metadata: Metadata = {
   title: "FlexiDual",
   description: "TODO: Add description",
   icons: {
-    icon: "/flexidual-icon.ico",
+    icon: [
+      {
+        url: "/book-favicon.ico",
+        type: "image/x-icon",
+        sizes: "any",
+      },
+      {
+        url: "/book-favicon.png",
+        type: "image/png",
+        sizes: "512x512",
+      },
+    ],
+    shortcut: "/book-favicon.ico",
+    apple: {
+      url: "/book-favicon.png",
+      type: "image/png",
+      sizes: "512x512",
+    },
   },
 };
 

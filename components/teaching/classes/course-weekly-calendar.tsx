@@ -4,7 +4,7 @@ import { useState } from "react";
 import { addDays, format, startOfWeek } from "date-fns";
 import { tz } from "@date-fns/tz";
 import { enUS, es, ptBR } from "date-fns/locale";
-import { Trash2 } from "lucide-react";
+import { Trash2, Video } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,8 @@ import {
   CalendarWeekTimeGrid,
 } from "@/components/calendar/body/week/calendar-week-time-grid";
 import CalendarBodyMarginDayMargin from "@/components/calendar/body/day/calendar-body-margin-day-margin";
+import { CalendarProviderMark } from "@/components/calendar/calendar-provider-mark";
+import { getCalendarProviderAppearanceClasses } from "@/components/calendar/calendar-tailwind-classes";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -67,11 +69,14 @@ const localeMap = {
   "pt-BR": ptBR,
 } as const;
 
-const formatClasses: Record<CourseClassFormat, string> = {
-  live: "border-primary/40 bg-primary/20 text-primary",
-  ignitia: "border-secondary/50 bg-secondary/20 text-secondary-foreground",
-  abeka: "border-info/40 bg-info/15 text-info",
-};
+const liveFormatClasses = "border-primary/40 bg-primary/20 text-primary";
+
+function getFormatClasses(sessionType: CourseClassFormat) {
+  const provider = getCalendarProviderAppearanceClasses(sessionType);
+  return provider
+    ? cn(provider.event, provider.text)
+    : liveFormatClasses;
+}
 
 function getPointerMinutes(
   event: React.PointerEvent<HTMLDivElement>,
@@ -250,7 +255,7 @@ export function CourseWeeklyCalendar({
           "absolute inset-x-1 z-10 overflow-hidden rounded-md border px-1.5 py-1 text-[10px] font-semibold shadow-sm",
           isDraft
             ? "pointer-events-none border-primary/50 bg-primary/15 text-primary"
-            : formatClasses[selection.sessionType || "live"],
+            : getFormatClasses(selection.sessionType || "live"),
         )}
         style={{ top: `${top}%`, height: `${height}%` }}
         onPointerDown={isDraft ? undefined : (event) => event.stopPropagation()}
@@ -265,12 +270,18 @@ export function CourseWeeklyCalendar({
             <span className="block truncate">
               {courseName.trim() || t("class.class")}
             </span>
-            <span className="block truncate font-normal">
-              {selection.sessionType === "live"
-                ? teacherName || t("navigation.teacher")
-                : selection.sessionType === "ignitia"
-                  ? "Ignitia"
-                  : "Abeka"}
+            <span className="flex min-w-0 items-center gap-1 font-normal">
+              <CalendarProviderMark
+                sessionType={selection.sessionType || "live"}
+                className="size-3"
+              />
+              <span className="truncate">
+                {selection.sessionType === "live"
+                  ? teacherName || t("navigation.teacher")
+                  : selection.sessionType === "ignitia"
+                    ? t("schedule.typeIgnitia")
+                    : t("schedule.typeAbeka")}
+              </span>
             </span>
             <span className="block truncate font-normal">
               {formatMinutes(selection.startMinutes)}–
@@ -439,15 +450,30 @@ export function CourseWeeklyCalendar({
             <DialogTitle>{t("schedule.sessionFormat")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-2">
-            <Button variant="outline" onClick={() => addSelection("live")}>
-              {t("class.typeStandard")}
-            </Button>
-            <Button variant="outline" onClick={() => addSelection("ignitia")}>
-              Ignitia
-            </Button>
-            <Button variant="outline" onClick={() => addSelection("abeka")}>
-              Abeka
-            </Button>
+            {(
+              [
+                ["live", t("class.typeStandard")],
+                ["ignitia", t("schedule.typeIgnitia")],
+                ["abeka", t("schedule.typeAbeka")],
+              ] satisfies [CourseClassFormat, string][]
+            ).map(([sessionType, label]) => (
+              <Button
+                key={sessionType}
+                variant="outline"
+                className="h-11 justify-start gap-3"
+                onClick={() => addSelection(sessionType)}
+              >
+                {sessionType === "live" ? (
+                  <Video className="size-5 shrink-0 text-primary" />
+                ) : (
+                  <CalendarProviderMark
+                    sessionType={sessionType}
+                    className="size-5"
+                  />
+                )}
+                {label}
+              </Button>
+            ))}
           </div>
         </DialogContent>
       </Dialog>

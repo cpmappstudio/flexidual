@@ -63,10 +63,7 @@ export function canManageInstitution(
   return hasOrgRole(ctx, userId, schoolId, "school", ["admin"]);
 }
 
-export async function hasStaffAccess(
-  ctx: QueryCtx,
-  userId: Id<"users">,
-) {
+export async function hasStaffAccess(ctx: QueryCtx, userId: Id<"users">) {
   const assignments = await ctx.db
     .query("roleAssignments")
     .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -100,6 +97,27 @@ export async function canViewCampusOperations(
     "teacher",
     "tutor",
   ]);
+}
+
+export async function canManageCampusPeople(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  campusId: Id<"campuses">,
+  schoolId: Id<"schools">,
+) {
+  if (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"])) {
+    return true;
+  }
+  return await hasOrgRole(ctx, userId, campusId, "campus", ["principal"]);
+}
+
+export async function canViewCampusPeople(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  campusId: Id<"campuses">,
+  schoolId: Id<"schools">,
+) {
+  return await canManageCampusPeople(ctx, userId, campusId, schoolId);
 }
 
 export async function canAccessSchool(
@@ -328,13 +346,19 @@ export async function isPrincipalOfSchool(
     (assignment) =>
       assignment.role === "principal" && assignment.orgType === "campus",
   );
-
   if (principalAssignments.length === 0) return false;
+  if (
+    principalAssignments.some((assignment) => assignment.schoolId === schoolId)
+  ) {
+    return true;
+  }
 
-  // Resolve the campuses to find their parent schoolId
+  // Legacy assignments may predate the denormalized schoolId field.
   const campuses = await Promise.all(
-    principalAssignments.map((a) => ctx.db.get(a.orgId as Id<"campuses">)),
+    principalAssignments
+      .filter((assignment) => assignment.schoolId === undefined)
+      .map((assignment) => ctx.db.get(assignment.orgId as Id<"campuses">)),
   );
 
-  return campuses.some((c) => c?.schoolId === schoolId);
+  return campuses.some((campus) => campus?.schoolId === schoolId);
 }

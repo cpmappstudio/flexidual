@@ -34,7 +34,7 @@ import {
 import type { DataTableProps } from "@/lib/table/types";
 import { shouldHandleRowClick } from "@/lib/table/utils";
 
-const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 25;
 
 export function DataTable<TData>({
   data,

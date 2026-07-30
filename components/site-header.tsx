@@ -1,11 +1,24 @@
-"use client"
+"use client";
 
-import { AccountMenu } from "@/components/account-menu"
-import { FlexidualLogo } from "@/components/ui/flexidual-logo"
-import { useSidebar } from "@/components/ui/sidebar"
+import { useTranslations } from "next-intl";
+import { AccountMenu } from "@/components/account-menu";
+import { FlexidualLogo } from "@/components/ui/flexidual-logo";
+import { useSidebar } from "@/components/ui/sidebar";
+import { useCurrentOrgRole } from "@/hooks/use-current-org-role";
 
 export function SiteHeader() {
-  const { isMobile, setOpenMobile } = useSidebar()
+  const t = useTranslations("brand.roleView");
+  const { isMobile, setOpenMobile } = useSidebar();
+  const { role } = useCurrentOrgRole();
+  const subtitle =
+    role === "superadmin" ||
+    role === "admin" ||
+    role === "principal" ||
+    role === "teacher" ||
+    role === "tutor" ||
+    role === "student"
+      ? t(role)
+      : undefined;
 
   return (
     <header className="sticky top-0 z-50 flex h-(--header-height) w-full shrink-0 items-center border-b border-primary bg-primary">
@@ -21,6 +34,7 @@ export function SiteHeader() {
             inverted
             priority
             className="h-10 shrink-0 sm:h-12"
+            subtitle={subtitle}
           />
         </button>
         <div className="ml-auto flex size-10 shrink-0 items-center justify-center rounded-full bg-sidebar ring-1 ring-sidebar-border">
@@ -28,5 +42,5 @@ export function SiteHeader() {
         </div>
       </div>
     </header>
-  )
+  );
 }

@@ -6,6 +6,7 @@ interface FlexidualLogoProps {
   stacked?: boolean;
   inverted?: boolean;
   priority?: boolean;
+  subtitle?: string;
 }
 
 export function FlexidualLogo({
@@ -13,6 +14,7 @@ export function FlexidualLogo({
   stacked = false,
   inverted = false,
   priority = false,
+  subtitle,
 }: FlexidualLogoProps) {
   if (stacked) {
     return (
@@ -31,7 +33,7 @@ export function FlexidualLogo({
     <div
       className={cn("flex h-10 items-center gap-1.5", className)}
       role="img"
-      aria-label="Flexidual"
+      aria-label={subtitle ? `Flexidual — ${subtitle}` : "Flexidual"}
     >
       <Image
         src="/logo-flexidual.svg"
@@ -42,11 +44,25 @@ export function FlexidualLogo({
         aria-hidden="true"
         className="h-full w-auto object-contain"
       />
-      <span className="font-logo text-xl font-extrabold leading-none tracking-[0.04em] sm:text-2xl">
-        <span className={inverted ? "text-primary-foreground" : "text-primary"}>
-          FLEXI
+      <span className="flex min-w-0 flex-col justify-center">
+        <span className="font-logo text-xl font-extrabold leading-none tracking-[0.04em] sm:text-2xl">
+          <span
+            className={inverted ? "text-primary-foreground" : "text-primary"}
+          >
+            FLEXI
+          </span>
+          <span className="text-secondary">DUAL</span>
         </span>
-        <span className="text-secondary">DUAL</span>
+        {subtitle && (
+          <span
+            className={cn(
+              "mt-1 max-w-40 truncate text-[8px] leading-none font-semibold tracking-[0.14em] uppercase sm:max-w-48 sm:text-[9px]",
+              inverted ? "text-primary-foreground/75" : "text-muted-foreground",
+            )}
+          >
+            {subtitle}
+          </span>
+        )}
       </span>
     </div>
   );

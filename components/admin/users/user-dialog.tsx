@@ -23,12 +23,28 @@ import { EntityDialog } from "@/components/ui/entity-dialog";
 import { useAlert } from "@/components/providers/alert-provider";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 import { useParams } from "next/navigation";
-import type { User } from "./users-table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PageCreateButton } from "@/components/ui/responsive-page-action";
+import { MIN_PASSWORD_LENGTH } from "@/lib/password";
+
+interface UserDialogUser {
+  _id: Id<"users">;
+  email?: string;
+  username?: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  imageUrl?: string;
+  isActive: boolean;
+  grade?: string;
+  school?: string;
+  role?: UserRole;
+  orgId?: string;
+  orgType?: "system" | "school" | "campus";
+}
 
 interface UserDialogProps {
-  user?: User;
+  user?: UserDialogUser;
   defaultRole?: UserRole;
   allowedRoles?: UserRole[];
   scope?: {
@@ -40,6 +56,7 @@ interface UserDialogProps {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onDeleted?: () => void;
 }
 
 const ALL_ROLES: UserRole[] = [
@@ -61,6 +78,7 @@ export function UserDialog({
   trigger,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  onDeleted,
 }: UserDialogProps) {
   const t = useTranslations();
   const locale = useLocale();
@@ -285,7 +303,7 @@ export function UserDialog({
     try {
       if (isEditing && user) {
         // EDIT MODE
-        await updateUser({
+        const result = await updateUser({
           userId: user._id,
           updates: {
             firstName: formData.firstName,
@@ -306,6 +324,23 @@ export function UserDialog({
           orgType: finalOrgType,
           orgId: finalOrgId,
         });
+
+        if (result.status === "error") {
+          const message =
+            result.code === "PASSWORD_TOO_SHORT"
+              ? t("errors.passwordTooShort", {
+                  count: String(MIN_PASSWORD_LENGTH),
+                })
+              : result.code === "PASSWORD_REJECTED"
+                ? t("errors.passwordRejected", {
+                    reason: result.reason ?? t("errors.passwordPolicy"),
+                  })
+                : result.code === "PASSWORD_UPDATE_UNAVAILABLE"
+                  ? t("errors.passwordUpdateUnavailable")
+                  : t("errors.passwordUpdateFailed");
+          toast.error(message);
+          return;
+        }
 
         const fullName = `${formData.firstName} ${formData.lastName}`.trim();
         toast.success(
@@ -391,6 +426,7 @@ export function UserDialog({
           });
           toast.success(t("user.deleted"));
           setIsOpen(false);
+          onDeleted?.();
         } catch {
           toast.error(t("errors.operationFailed"));
         }
@@ -622,6 +658,9 @@ export function UserDialog({
               <Input
                 id="password"
                 type="password"
+                autoComplete="new-password"
+                minLength={MIN_PASSWORD_LENGTH}
+                aria-describedby="password-hint"
                 value={formData.password}
                 onChange={(e) =>
                   setFormData({ ...formData, password: e.target.value })
@@ -633,6 +672,15 @@ export function UserDialog({
                 }
                 required={!isEditing}
               />
+              <p id="password-hint" className="text-xs text-muted-foreground">
+                {isEditing
+                  ? t("userDialog.passwordEditHint", {
+                      count: String(MIN_PASSWORD_LENGTH),
+                    })
+                  : t("userDialog.passwordMinimumHint", {
+                      count: String(MIN_PASSWORD_LENGTH),
+                    })}
+              </p>
             </div>
           </div>
         </div>

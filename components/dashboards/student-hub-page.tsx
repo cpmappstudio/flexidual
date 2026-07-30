@@ -1,24 +1,48 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
-import { ClassroomDropZone } from "@/components/student/classroom-drop-zone";
 import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BellRing, CalendarDays, Clock, GraduationCap } from "lucide-react";
+import {
+  BellRing,
+  CalendarDays,
+  Clock,
+  Pencil,
+  GraduationCap,
+} from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { format, isSameDay } from "date-fns";
 import { StudentScheduleEvent } from "@/lib/types/student";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Link } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { useOrgBasePath } from "@/hooks/use-org-base-path";
+import { useParams } from "next/navigation";
+
+const ClassroomDropZone = dynamic(() =>
+  import("@/components/student/classroom-drop-zone").then(
+    (module) => module.ClassroomDropZone,
+  ),
+);
+const UserDialog = dynamic(() =>
+  import("@/components/admin/users/user-dialog").then(
+    (module) => module.UserDialog,
+  ),
+);
 
 const COURSE_CARD_ACCENTS = [
   "border-sky-200 bg-sky-50/80 before:bg-sky-400",
@@ -111,10 +135,13 @@ function CountdownToast({
   );
 }
 
-export default function StudentHubPage() {
+export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const t = useTranslations();
   const locale = useLocale();
   const basePath = useOrgBasePath();
+  const router = useRouter();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const isViewingStudentProfile = Boolean(studentId);
   const { isLoaded: isClerkLoaded, user } = useUser();
   const currentDateLocale =
     locale === "es" ? es : locale === "pt-BR" ? ptBR : enUS;
@@ -222,17 +249,31 @@ export default function StudentHubPage() {
   }, []);
 
   // Queries
-  const events = useQuery(api.schedule.getMySchedule, {
-    now: Math.floor(now / 60_000) * 60_000,
-  });
+  const roundedNow = Math.floor(now / 60_000) * 60_000;
+  const ownEvents = useQuery(
+    api.schedule.getMySchedule,
+    isViewingStudentProfile ? "skip" : { now: roundedNow },
+  );
   const accessibleLiveClasses = useQuery(
     api.schedule.listAccessibleLiveClasses,
+    isViewingStudentProfile ? "skip" : {},
   );
   const dashboardData = useQuery(api.student.getStudentDashboardStats, {
-    now: Math.floor(now / 60_000) * 60_000,
+    now: roundedNow,
+    ...(studentId ? { studentId, orgSlug } : {}),
   });
+  const storedAvatarUrl = useQuery(
+    api.users.getAvatarUrl,
+    dashboardData?.student.avatarStorageId
+      ? { storageId: dashboardData.student.avatarStorageId }
+      : "skip",
+  );
+  const events = isViewingStudentProfile
+    ? dashboardData?.upcomingLessons
+    : ownEvents;
 
   useEffect(() => {
+    if (isViewingStudentProfile) return;
     const stored = localStorage.getItem("flexidual_sound_alerts");
     if (stored !== "true") return;
     setSoundEnabled(true);
@@ -252,7 +293,7 @@ export default function StudentHubPage() {
       window.removeEventListener("click", unlock);
       window.removeEventListener("keydown", unlock);
     };
-  }, []);
+  }, [isViewingStudentProfile]);
 
   useEffect(() => {
     if (activeLesson) return;
@@ -346,6 +387,7 @@ export default function StudentHubPage() {
   }, [ctaLaunchingLesson, handleLessonTap]);
 
   useEffect(() => {
+    if (isViewingStudentProfile) return;
     if (upcomingLessons.length === 0) return;
 
     const checkNotifications = () => {
@@ -396,6 +438,7 @@ export default function StudentHubPage() {
     return () => clearInterval(interval);
   }, [
     handleLessonTap,
+    isViewingStudentProfile,
     notifiedLessons,
     startAlarm,
     stopAlarm,
@@ -407,7 +450,11 @@ export default function StudentHubPage() {
   const studentProfile = dashboardData?.student;
   const overallStats = dashboardData?.overall;
 
-  const liveLessons = accessibleLiveClasses ?? [];
+  const liveLessons = isViewingStudentProfile
+    ? (dashboardData?.upcomingLessons.filter(
+        (lesson) => lesson.status === "active" && lesson.isLive,
+      ) ?? [])
+    : (accessibleLiveClasses ?? []);
   const nextLesson = liveLessons[0] ?? todayLessons[0] ?? null;
   const laterTodayLessons = todayLessons
     .filter((lesson) => lesson.scheduleId !== nextLesson?.scheduleId)
@@ -416,11 +463,25 @@ export default function StudentHubPage() {
     user?.fullName?.trim() ||
     [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim();
   const displayName =
-    clerkDisplayName || studentProfile?.fullName || user?.username || "Student";
-  const avatarUrl = isClerkLoaded ? user?.imageUrl : undefined;
-  const gradeLabel = studentProfile?.grade
-    ? `${t("student.grade")} ${studentProfile.grade}`
-    : t("student.grade");
+    (isViewingStudentProfile ? undefined : clerkDisplayName) ||
+    studentProfile?.fullName ||
+    (isViewingStudentProfile ? undefined : user?.username) ||
+    "Student";
+  const avatarUrl = isViewingStudentProfile
+    ? storedAvatarUrl || studentProfile?.imageUrl
+    : user?.imageUrl || storedAvatarUrl || studentProfile?.imageUrl;
+  const gradeLabel = studentProfile?.gradeName
+    ? studentProfile.gradeName
+    : studentProfile?.grade
+      ? `${t("student.grade")} ${studentProfile.grade}`
+      : t("student.grade");
+  const profileIsLoaded = isViewingStudentProfile
+    ? dashboardData !== undefined
+    : isClerkLoaded;
+  const editableStudentOrgId =
+    isViewingStudentProfile && dashboardData?.canEdit
+      ? studentProfile?.orgId
+      : undefined;
 
   const totalSessions =
     overallStats?.totalSessions ??
@@ -456,11 +517,23 @@ export default function StudentHubPage() {
 
   const classroomCtaLabel = t("dashboard.goToClassroom");
 
+  if (isViewingStudentProfile && dashboardData === undefined) {
+    return <Skeleton className="h-96 w-full" />;
+  }
+
+  if (isViewingStudentProfile && dashboardData === null) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t("errors.permissionDenied")}
+      </p>
+    );
+  }
+
   return (
     <div className="flex w-full min-w-0 flex-col xl:h-[calc(100svh-var(--header-height)-2rem)]">
       {!activeLesson && !isLaunching && (
         <div className="flex min-h-0 flex-col gap-4 xl:flex-1">
-          <div className="flex items-center justify-between gap-3">
+          {!isViewingStudentProfile && (
             <div className="min-w-0">
               <p className="truncate text-xl font-bold text-foreground">
                 {t("student.welcome", {
@@ -474,15 +547,50 @@ export default function StudentHubPage() {
                 {t("student.welcomeMessage")}
               </p>
             </div>
-          </div>
+          )}
 
           <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="contents xl:grid xl:min-h-0 xl:grid-rows-[minmax(260px,280px)_minmax(0,1fr)] xl:gap-4">
-              <section className="order-1 flex min-h-0 flex-col rounded-[2rem] bg-card p-4 shadow-md ring-1 ring-border/80 sm:p-5 xl:order-none xl:justify-center">
-                <div className="grid w-full gap-4 xl:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)] xl:items-center">
-                  <div className="flex w-full items-center gap-3 text-left xl:flex-col xl:text-center">
+              <Card className="relative order-1 flex min-h-0 flex-col justify-center gap-0 rounded-[2rem] border-0 py-0 shadow-md ring-1 ring-border/80 xl:order-none">
+                {editableStudentOrgId && (
+                  <CardHeader className="absolute inset-x-4 top-4 z-20 p-0 sm:inset-x-5 sm:top-5">
+                    <CardAction>
+                      <UserDialog
+                        user={studentProfile}
+                        defaultRole="student"
+                        allowedRoles={["student"]}
+                        scope={{
+                          orgType: "campus",
+                          orgId: editableStudentOrgId,
+                        }}
+                        hideRole
+                        onDeleted={() => router.replace(`${basePath}/students`)}
+                        trigger={
+                          <Button
+                            type="button"
+                            className="shrink-0"
+                            aria-label={t("student.edit")}
+                          >
+                            <Pencil className="size-4" aria-hidden="true" />
+                            <span className="hidden sm:inline">
+                              {t("student.edit")}
+                            </span>
+                          </Button>
+                        }
+                      />
+                    </CardAction>
+                  </CardHeader>
+                )}
+
+                <CardContent className="grid w-full gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)] xl:items-center">
+                  <div
+                    className={cn(
+                      "flex w-full items-center gap-3 text-left xl:flex-col xl:text-center",
+                      editableStudentOrgId && "pr-12 sm:pr-28 xl:pr-0",
+                    )}
+                  >
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-[4px] border-warning bg-primary/10 shadow-inner sm:h-20 sm:w-20 xl:h-28 xl:w-28">
-                      {isClerkLoaded ? (
+                      {profileIsLoaded ? (
                         <Avatar className="h-full w-full rounded-none">
                           {avatarUrl && (
                             <AvatarImage
@@ -503,7 +611,7 @@ export default function StudentHubPage() {
                     </div>
                     <div className="min-w-0 flex-1 xl:flex-none">
                       <h3 className="max-w-full text-balance text-base font-bold leading-snug text-foreground sm:text-lg">
-                        {isClerkLoaded ? (
+                        {profileIsLoaded ? (
                           displayName
                         ) : (
                           <Skeleton className="h-7 w-48" />
@@ -516,7 +624,12 @@ export default function StudentHubPage() {
                   </div>
 
                   <div className="min-w-0 xl:border-l xl:border-border/60 xl:pl-5">
-                    <div className="hidden xl:block">
+                    <div
+                      className={cn(
+                        "hidden xl:block",
+                        editableStudentOrgId && "xl:pr-28",
+                      )}
+                    >
                       <h3 className="text-xl font-bold text-foreground">
                         {t("student.profile.classAttendance")}
                       </h3>
@@ -557,8 +670,8 @@ export default function StudentHubPage() {
                       </div>
                     </div>
                   </div>
-                </div>
-              </section>
+                </CardContent>
+              </Card>
 
               <section className="relative isolate order-3 flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card p-5 shadow-md ring-1 ring-border/80 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:z-10 after:hidden after:h-24 after:bg-gradient-to-b after:from-card after:via-card/90 after:to-card/0 after:content-[''] xl:order-none xl:min-h-0 xl:after:block">
                 <div className="relative z-20">
@@ -638,7 +751,7 @@ export default function StudentHubPage() {
                         ? nextLesson.className || nextLesson.title
                         : t("student.today.noClasses")}
                     </h3>
-                    {nextLesson && (
+                    {nextLesson && !isViewingStudentProfile && (
                       <Button
                         onClick={() => handleClassroomCta(nextLesson)}
                         aria-busy={Boolean(ctaLaunchingLesson)}
@@ -682,17 +795,19 @@ export default function StudentHubPage() {
                       </p>
                     )
                   )}
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3 rounded-full bg-card/70 px-4 text-sm font-semibold text-foreground shadow-sm hover:bg-card"
-                  >
-                    <Link href={`${basePath}/calendar`}>
-                      <CalendarDays className="size-4 text-info" />
-                      {t("student.today.viewCalendar")}
-                    </Link>
-                  </Button>
+                  {!isViewingStudentProfile && (
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="mt-3 rounded-full bg-card/70 px-4 text-sm font-semibold text-foreground shadow-sm hover:bg-card"
+                    >
+                      <Link href={`${basePath}/calendar`}>
+                        <CalendarDays className="size-4 text-info" />
+                        {t("student.today.viewCalendar")}
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               </section>
             </aside>
@@ -700,7 +815,7 @@ export default function StudentHubPage() {
         </div>
       )}
 
-      {(isLaunching || activeLesson) && (
+      {!isViewingStudentProfile && (isLaunching || activeLesson) && (
         <div className="min-h-0 flex-1">
           <ClassroomDropZone
             isDragging={false}
