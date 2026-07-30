@@ -8,6 +8,12 @@ import { useUser } from "@clerk/nextjs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   MoveRight,
@@ -466,6 +472,10 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const profileIsLoaded = isViewingStudentProfile
     ? dashboardData !== undefined
     : isClerkLoaded;
+  const editableStudentOrgId =
+    isViewingStudentProfile && dashboardData?.canEdit
+      ? studentProfile?.orgId
+      : undefined;
 
   const totalSessions =
     overallStats?.totalSessions ??
@@ -515,14 +525,12 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     <div className="flex w-full min-w-0 flex-col xl:h-[calc(100svh-var(--header-height)-2rem)]">
       {!activeLesson && !isLaunching && (
         <div className="flex min-h-0 flex-col gap-4 xl:flex-1">
-          <div className="flex items-center justify-between gap-3">
+          {!isViewingStudentProfile && (
             <div className="min-w-0">
               <p className="truncate text-xl font-bold text-foreground">
                 {t("student.welcome", {
                   name:
-                    (isViewingStudentProfile
-                      ? studentProfile?.firstName
-                      : user?.firstName) ||
+                    user?.firstName ||
                     studentProfile?.fullName?.split(" ")[0] ||
                     "Student",
                 })}
@@ -531,33 +539,48 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                 {t("student.welcomeMessage")}
               </p>
             </div>
-            {isViewingStudentProfile &&
-              dashboardData?.canEdit &&
-              studentProfile?.orgId && (
-                <UserDialog
-                  user={studentProfile}
-                  defaultRole="student"
-                  allowedRoles={["student"]}
-                  scope={{ orgType: "campus", orgId: studentProfile.orgId }}
-                  hideRole
-                  onDeleted={() => router.replace(`${basePath}/students`)}
-                  trigger={
-                    <Button type="button" className="shrink-0">
-                      <Pencil className="size-4" />
-                      <span className="hidden sm:inline">
-                        {t("student.edit")}
-                      </span>
-                    </Button>
-                  }
-                />
-              )}
-          </div>
+          )}
 
           <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="contents xl:grid xl:min-h-0 xl:grid-rows-[minmax(260px,280px)_minmax(0,1fr)] xl:gap-4">
-              <section className="order-1 flex min-h-0 flex-col rounded-[2rem] bg-card p-4 shadow-md ring-1 ring-border/80 sm:p-5 xl:order-none xl:justify-center">
-                <div className="grid w-full gap-4 xl:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)] xl:items-center">
-                  <div className="flex w-full items-center gap-3 text-left xl:flex-col xl:text-center">
+              <Card className="relative order-1 flex min-h-0 flex-col justify-center gap-0 rounded-[2rem] border-0 py-0 shadow-md ring-1 ring-border/80 xl:order-none">
+                {editableStudentOrgId && (
+                  <CardHeader className="absolute inset-x-4 top-4 z-20 p-0 sm:inset-x-5 sm:top-5">
+                    <CardAction>
+                      <UserDialog
+                        user={studentProfile}
+                        defaultRole="student"
+                        allowedRoles={["student"]}
+                        scope={{
+                          orgType: "campus",
+                          orgId: editableStudentOrgId,
+                        }}
+                        hideRole
+                        onDeleted={() => router.replace(`${basePath}/students`)}
+                        trigger={
+                          <Button
+                            type="button"
+                            className="shrink-0"
+                            aria-label={t("student.edit")}
+                          >
+                            <Pencil className="size-4" aria-hidden="true" />
+                            <span className="hidden sm:inline">
+                              {t("student.edit")}
+                            </span>
+                          </Button>
+                        }
+                      />
+                    </CardAction>
+                  </CardHeader>
+                )}
+
+                <CardContent className="grid w-full gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)] xl:items-center">
+                  <div
+                    className={cn(
+                      "flex w-full items-center gap-3 text-left xl:flex-col xl:text-center",
+                      editableStudentOrgId && "pr-12 sm:pr-28 xl:pr-0",
+                    )}
+                  >
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-[4px] border-warning bg-primary/10 shadow-inner sm:h-20 sm:w-20 xl:h-28 xl:w-28">
                       {profileIsLoaded ? (
                         <Avatar className="h-full w-full rounded-none">
@@ -593,7 +616,12 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                   </div>
 
                   <div className="min-w-0 xl:border-l xl:border-border/60 xl:pl-5">
-                    <div className="hidden xl:block">
+                    <div
+                      className={cn(
+                        "hidden xl:block",
+                        editableStudentOrgId && "xl:pr-28",
+                      )}
+                    >
                       <h3 className="text-xl font-bold text-foreground">
                         {t("student.profile.classAttendance")}
                       </h3>
@@ -634,8 +662,8 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                       </div>
                     </div>
                   </div>
-                </div>
-              </section>
+                </CardContent>
+              </Card>
 
               <section className="relative isolate order-3 flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card p-5 shadow-md ring-1 ring-border/80 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:z-10 after:hidden after:h-24 after:bg-gradient-to-b after:from-card after:via-card/90 after:to-card/0 after:content-[''] xl:order-none xl:min-h-0 xl:after:block">
                 <div className="relative z-20">
