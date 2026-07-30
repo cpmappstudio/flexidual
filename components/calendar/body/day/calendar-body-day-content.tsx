@@ -17,6 +17,7 @@ export default function CalendarBodyDayContent({
   eventClassName,
   eventContentClassName,
   responsiveCompactEvents = false,
+  hideResponsiveEventTime = false,
 }: {
   date: Date;
   events?: CalendarEventType[];
@@ -28,6 +29,7 @@ export default function CalendarBodyDayContent({
   eventClassName?: string;
   eventContentClassName?: string;
   responsiveCompactEvents?: boolean;
+  hideResponsiveEventTime?: boolean;
 }) {
   const { events, scheduleStartMinutes, scheduleEndMinutes, displayTimeZone } =
     useCalendarContext();
@@ -53,6 +55,7 @@ export default function CalendarBodyDayContent({
             event={event}
             timeScale={timeScale}
             responsiveCompact
+            hideResponsiveTime={hideResponsiveEventTime}
           />
         ) : (
           <CalendarEvent
@@ -62,6 +65,7 @@ export default function CalendarBodyDayContent({
             timeScale={timeScale}
             compact={compactEvents}
             floatingTime={floatingEventTime}
+            hideResponsiveTime={hideResponsiveEventTime}
             contentClassName={eventContentClassName}
           />
         ),

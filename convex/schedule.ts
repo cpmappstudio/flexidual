@@ -136,7 +136,7 @@ const scheduleEventValidator = v.object({
   isRecurring: v.boolean(),
   recurrenceRule: v.optional(v.string()),
   recurrenceParentId: v.optional(v.id("classSchedule")),
-  teacherName: v.string(),
+  teacherName: v.optional(v.string()),
   teacherImageUrl: v.optional(v.string()),
   teacherAttendance: v.optional(
     v.object({ status: v.string(), minutes: v.number() }),
@@ -1067,7 +1067,7 @@ export const getMySchedule = query({
           isRecurring: item.isRecurring || false,
           recurrenceRule: recurrenceRule,
           recurrenceParentId: item.recurrenceParentId,
-          teacherName: teacher?.fullName || "Unknown",
+          teacherName: teacher?.fullName,
           teacherImageUrl: teacher?.imageUrl,
           teacherAttendance: isClassAdminOrTeacher
             ? {

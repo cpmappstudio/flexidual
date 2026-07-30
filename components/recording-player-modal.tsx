@@ -113,15 +113,6 @@ function VideoPlayer({
           onCanPlay={() => setIsLoading(false)}
         />
       </div>
-
-      {showDuration && durationMs && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="h-3 w-3" />
-          <span>
-            {t("recordings.duration")}: {formatDuration(durationMs)}
-          </span>
-        </div>
-      )}
     </div>
   );
 }

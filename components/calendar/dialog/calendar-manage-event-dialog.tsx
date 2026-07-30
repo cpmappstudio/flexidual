@@ -40,7 +40,8 @@ import {
   Trash2,
   MoveRight,
   Pencil,
-  CalendarClock,
+  CalendarDays,
+  Clock3,
   PlayCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -60,9 +61,13 @@ import { useParams } from "next/navigation";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { utcToLocalDateTime } from "@/lib/time-zone";
 import { getCalendarEventDisplay } from "../calendar-event-display";
+import { CalendarProviderMark } from "../calendar-provider-mark";
+import { getCalendarProviderAppearanceClasses } from "../calendar-tailwind-classes";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
+import { cn } from "@/lib/utils";
+import Image from "next/image";
 
 const formSchema = z.object({
   title: z.string().optional(),
@@ -239,9 +244,23 @@ export default function CalendarManageEventDialog({
     selectedEvent,
     { showGrade: !isStudent },
   );
-  const secondaryText = selectedEvent.teacherName
+  const hasAssignedTeacher =
+    Boolean(selectedEvent.teacherName) &&
+    selectedEvent.teacherName !== "Unknown";
+  const secondaryText = hasAssignedTeacher
     ? `${t("common.with")} ${secondaryLabel}`
-    : secondaryLabel;
+    : selectedEvent.sessionType === "live"
+      ? secondaryLabel
+      : null;
+  const providerAppearance = getCalendarProviderAppearanceClasses(
+    selectedEvent.sessionType,
+  );
+  const providerLabel =
+    selectedEvent.sessionType === "ignitia"
+      ? t("schedule.typeIgnitia")
+      : selectedEvent.sessionType === "abeka"
+        ? t("schedule.typeAbeka")
+        : null;
   const displayDate = selectedEvent.start.toLocaleDateString(locale, {
     weekday: "long",
     month: "long",
@@ -270,6 +289,46 @@ export default function CalendarManageEventDialog({
     roomName: selectedEvent.roomName,
   });
   const canWatchRecording = primaryAction === "watch-recording";
+  const providerBadge =
+    providerLabel && providerAppearance ? (
+      <Badge
+        variant="outline"
+        className={`h-6 gap-1 px-2 text-[11px] font-semibold ${providerAppearance.badge}`}
+      >
+        <CalendarProviderMark
+          sessionType={selectedEvent.sessionType}
+          className="size-3"
+        />
+        {providerLabel}
+      </Badge>
+    ) : null;
+  const classIdentity = (
+    <div className="min-w-0">
+      <h2 className="text-xl font-bold leading-tight text-foreground sm:text-2xl">
+        {primaryLabel}
+        {gradeLabel && ` (${gradeLabel})`}
+      </h2>
+      {(secondaryText || providerBadge) && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          {secondaryText && (
+            <p className="text-sm text-muted-foreground">{secondaryText}</p>
+          )}
+          {providerBadge}
+        </div>
+      )}
+      {selectedEvent.isLive && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Badge variant="destructive" className="animate-pulse">
+            <span className="relative mr-1 flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive-foreground opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive-foreground" />
+            </span>
+            {t("common.live")}
+          </Badge>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -278,98 +337,109 @@ export default function CalendarManageEventDialog({
         onOpenChange={handleClose}
       >
         <DialogContent
-          className="max-w-xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
+          className={cn(
+            "max-h-[90vh] max-w-xl overflow-x-hidden overflow-y-auto",
+            !isEditing && "gap-0 p-0",
+          )}
           showCloseButton={false}
         >
-          <DialogHeader className="flex flex-row items-start justify-between space-y-0">
-            <DialogTitle>
-              {isEditing ? t("common.edit") : t("schedule.viewDetails")}
-            </DialogTitle>
-
-            {!readOnly && selectedEvent.status !== "cancelled" && (
-              <div className="flex gap-2">
-                {isEditing ? (
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    onClick={() => setDeleteDialogOpen(true)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setIsEditing(true)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
+          <DialogHeader
+            className={cn(
+              "flex flex-row items-start justify-between gap-3 space-y-0",
+              !isEditing &&
+                "relative overflow-hidden border-b border-primary/20 bg-gradient-to-br from-primary/15 via-background to-secondary/15 px-6 py-4 text-left",
             )}
+          >
+            {!isEditing ? (
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="sr-only">{primaryLabel}</DialogTitle>
+                <div className="flex min-w-0 items-start gap-4 sm:gap-5">
+                  <Image
+                    src="/classes-icon.svg"
+                    alt=""
+                    width={40}
+                    height={48}
+                    aria-hidden="true"
+                    className="pointer-events-none h-12 w-auto shrink-0 select-none"
+                  />
+                  <div className="min-w-0 flex-1">{classIdentity}</div>
+                </div>
+              </div>
+            ) : (
+              <DialogTitle>
+                {isEditing ? t("common.edit") : t("schedule.viewDetails")}
+              </DialogTitle>
+            )}
+
+            {!isStudent &&
+              !readOnly &&
+              selectedEvent.status !== "cancelled" && (
+                <div className="flex gap-2">
+                  {isEditing ? (
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      onClick={() => setDeleteDialogOpen(true)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setIsEditing(true)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              )}
           </DialogHeader>
 
           {!isEditing ? (
             /* VIEW MODE */
-            <div className="space-y-6 w-full min-w-0">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold">
-                    {primaryLabel}
-                    {gradeLabel && ` (${gradeLabel})`}
-                  </h2>
-                  {secondaryText && (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {secondaryText}
-                    </p>
-                  )}
-                  {selectedEvent.isLive && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Badge variant="destructive" className="animate-pulse">
-                        <span className="relative flex h-2 w-2 mr-1">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive-foreground opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive-foreground"></span>
-                        </span>
-                        {t("common.live")}
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid gap-4 text-sm">
-                {/* Date & Time */}
-                <div className="flex gap-3">
-                  <CalendarClock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">{displayDate}</p>
-                    <p className="text-muted-foreground">
-                      {displayStartTime} - {displayEndTime}
-                      {!isStudent && (
-                        <span className="text-xs ml-2">
-                          ({duration} {t("schedule.minutes")})
-                        </span>
-                      )}
+            <div className="w-full min-w-0 space-y-5 px-6 pb-6 pt-5">
+              <div className="divide-y divide-border/70 border-y border-border/70 text-sm">
+                <div className="flex min-w-0 items-center gap-3 py-3">
+                  <CalendarDays className="size-5 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground">
+                      {displayDate}
                     </p>
                   </div>
+                </div>
+                <div className="flex min-w-0 items-center gap-3 py-3">
+                  <Clock3 className="size-5 shrink-0 text-primary" />
+                  <p className="font-semibold text-foreground">
+                    {displayStartTime} - {displayEndTime}
+                    {!isStudent && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        ({duration} {t("schedule.minutes")})
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
 
               {/* Action Button */}
-              <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={handleClose}>
+              <DialogFooter className="gap-2 sm:flex-col-reverse sm:justify-start">
+                <Button
+                  variant="ghost"
+                  className="h-10 w-full"
+                  onClick={handleClose}
+                >
                   {t("common.close")}
                 </Button>
                 {canWatchRecording ? (
                   <Button
-                    className="gap-2"
+                    className="h-11 w-full gap-2"
                     onClick={() => setRecordingOpen(true)}
                   >
                     <PlayCircle className="h-4 w-4" />
                     {t("recordings.watchRecording")}
                   </Button>
                 ) : primaryAction === "go-to-classroom" ? (
-                  <Button asChild>
+                  <Button className="h-11 w-full gap-2" asChild>
                     <Link
                       href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}
                     >
@@ -379,7 +449,7 @@ export default function CalendarManageEventDialog({
                   </Button>
                 ) : primaryAction === "enter-live" ? (
                   <Button
-                    className="bg-success text-success-foreground hover:bg-success/90"
+                    className="h-11 w-full gap-2 bg-success text-success-foreground hover:bg-success/90"
                     asChild
                   >
                     <Link
@@ -390,7 +460,7 @@ export default function CalendarManageEventDialog({
                     </Link>
                   </Button>
                 ) : primaryAction === "prepare-room" ? (
-                  <Button asChild>
+                  <Button className="h-11 w-full gap-2" asChild>
                     <Link
                       href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}
                     >

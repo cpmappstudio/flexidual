@@ -5,12 +5,14 @@ import { tz } from "@date-fns/tz";
 import { cn } from "@/lib/utils";
 import { motion, MotionConfig, AnimatePresence } from "framer-motion";
 import { Video, PlayCircle } from "lucide-react";
-import { getCalendarColorClasses } from "@/components/calendar/calendar-tailwind-classes";
+import { getCalendarEventAppearanceClasses } from "@/components/calendar/calendar-tailwind-classes";
 import {
   CalendarTimeScale,
   getTimeScaleUnitsAt,
 } from "@/components/calendar/calendar-time-scale";
 import { getCalendarEventDisplay } from "@/components/calendar/calendar-event-display";
+import { CalendarProviderMark } from "@/components/calendar/calendar-provider-mark";
+import { getCalendarEventColumnLayout } from "@/components/calendar/calendar-event-layout";
 import { useTranslations } from "next-intl";
 
 interface EventPosition {
@@ -28,20 +30,6 @@ function isSameCalendarDay(first: Date, second: Date) {
   );
 }
 
-function getOverlappingEvents(
-  currentEvent: CalendarEventType,
-  events: CalendarEventType[],
-): CalendarEventType[] {
-  return events.filter((event) => {
-    if (event.id === currentEvent.id) return false;
-    return (
-      currentEvent.start < event.end &&
-      currentEvent.end > event.start &&
-      isSameCalendarDay(currentEvent.start, event.start)
-    );
-  });
-}
-
 function calculateEventPosition(
   event: CalendarEventType,
   allEvents: CalendarEventType[],
@@ -49,13 +37,14 @@ function calculateEventPosition(
   scheduleEndMinutes: number,
   timeScale?: CalendarTimeScale,
 ): EventPosition {
-  const overlappingEvents = getOverlappingEvents(event, allEvents);
-  const group = [event, ...overlappingEvents].sort(
-    (a, b) => a.start.getTime() - b.start.getTime(),
+  const { columnIndex, columnCount } = getCalendarEventColumnLayout(
+    event,
+    allEvents,
   );
-  const position = group.indexOf(event);
-  const width = `${100 / (overlappingEvents.length + 1)}%`;
-  const left = `${(position * 100) / (overlappingEvents.length + 1)}%`;
+  const columnWidth = 100 / columnCount;
+  const width = columnCount === 1 ? "100%" : `calc(${columnWidth}% - 2px)`;
+  const left =
+    columnCount === 1 ? "0%" : `calc(${columnIndex * columnWidth}% + 1px)`;
 
   const startHour = event.start.getHours();
   const startMinutes = event.start.getMinutes();
@@ -96,6 +85,7 @@ export default function CalendarEvent({
   compact = false,
   floatingTime = false,
   responsiveCompact = false,
+  hideResponsiveTime = false,
   contentClassName,
 }: {
   event: CalendarEventType;
@@ -105,6 +95,7 @@ export default function CalendarEvent({
   compact?: boolean;
   floatingTime?: boolean;
   responsiveCompact?: boolean;
+  hideResponsiveTime?: boolean;
   contentClassName?: string;
 }) {
   const t = useTranslations();
@@ -138,16 +129,18 @@ export default function CalendarEvent({
 
   const isPast = event.end.getTime() < Date.now();
   const showRecordingIndicator = isPast && event.hasRecording && !event.isLive;
+  const showProviderIndicator = event.sessionType !== "live";
+  const showCornerIndicators =
+    !month && (showProviderIndicator || showRecordingIndicator);
+  const hasMultipleCornerIndicators =
+    showProviderIndicator && showRecordingIndicator;
 
-  const statusColor =
-    event.status === "active"
-      ? "green"
-      : event.status === "completed" || isPast
-        ? "gray"
-        : event.status === "cancelled"
-          ? "red"
-          : event.color;
-  const statusClasses = getCalendarColorClasses(statusColor);
+  const statusClasses = getCalendarEventAppearanceClasses({
+    color: event.color,
+    sessionType: event.sessionType,
+    status: event.status,
+    isPast,
+  });
 
   const showGrade = !isStudent;
   const { primaryLabel, secondaryLabel, gradeLabel } = getCalendarEventDisplay(
@@ -232,32 +225,47 @@ export default function CalendarEvent({
                 compact && "gap-0",
                 responsiveCompact && "gap-0 lg:gap-0.5",
                 month && "flex-row items-center gap-1 flex-1 min-w-0",
-                showRecordingIndicator && !month && "pr-5",
+                showCornerIndicators &&
+                  (hasMultipleCornerIndicators ? "pr-11" : "pr-6"),
                 contentClassName,
               )}
             >
-              <p
+              <div
                 className={cn(
-                  "truncate text-[13px] font-semibold leading-tight",
-                  compact &&
-                    "line-clamp-2 whitespace-normal text-[10px] leading-[1.05]",
-                  floatingTime && "pr-16",
-                  responsiveCompact &&
-                    "line-clamp-2 whitespace-normal pr-16 text-[10px] leading-[1.05] lg:line-clamp-1 lg:whitespace-nowrap lg:pr-0 lg:text-[13px] lg:leading-tight",
-                  month && "text-[10px]",
+                  "flex min-w-0 items-start gap-1",
+                  month && "flex-1 items-center",
+                  floatingTime && !hideResponsiveTime && "pr-16",
                 )}
               >
-                {mode === "day" && gradeLabel ? (
-                  <>
-                    <span className="lg:hidden">{primaryLabel}</span>
-                    <span className="hidden lg:inline">
-                      {desktopDailyLabel}
-                    </span>
-                  </>
-                ) : (
-                  primaryLabel
+                <p
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight",
+                    compact &&
+                      "line-clamp-2 whitespace-normal text-[10px] leading-[1.05]",
+                    responsiveCompact &&
+                      "line-clamp-2 whitespace-normal text-[10px] leading-[1.05] lg:line-clamp-1 lg:whitespace-nowrap lg:text-[13px] lg:leading-tight",
+                    month && "text-[10px]",
+                  )}
+                >
+                  {mode === "day" && gradeLabel ? (
+                    <>
+                      <span className="lg:hidden">{primaryLabel}</span>
+                      <span className="hidden lg:inline">
+                        {desktopDailyLabel}
+                      </span>
+                    </>
+                  ) : (
+                    primaryLabel
+                  )}
+                </p>
+                {month && (
+                  <CalendarProviderMark
+                    sessionType={event.sessionType}
+                    isPast={isPast}
+                    className="size-2.5"
+                  />
                 )}
-              </p>
+              </div>
 
               {!month && secondaryLabel && (
                 <>
@@ -306,7 +314,7 @@ export default function CalendarEvent({
                   className={cn(
                     "truncate text-[10px] font-normal leading-tight opacity-70",
                     compact && "text-[8px] leading-[1.05]",
-                    responsiveCompact && "hidden lg:block",
+                    hideResponsiveTime && "hidden lg:block",
                   )}
                 >
                   {timeLabel}
@@ -331,31 +339,44 @@ export default function CalendarEvent({
               </span>
             )}
 
-            {!month && (floatingTime || responsiveCompact) && (
-              <span
-                className={cn(
-                  "absolute right-0 top-0 whitespace-nowrap text-right text-[8px] font-medium leading-none opacity-70",
-                  responsiveCompact && "lg:hidden",
-                )}
-              >
-                {compactTimeLabel}
-              </span>
-            )}
+            {!month &&
+              !hideResponsiveTime &&
+              (floatingTime || responsiveCompact) && (
+                <span
+                  className={cn(
+                    "absolute right-0 top-0 whitespace-nowrap text-right text-[8px] font-medium leading-none opacity-70",
+                    responsiveCompact && "lg:hidden",
+                  )}
+                >
+                  {compactTimeLabel}
+                </span>
+              )}
 
-            {!month && showRecordingIndicator && (
-              <span
-                className={cn(
-                  "absolute right-0 inline-flex items-center justify-center rounded-full bg-primary/10 p-0.5 text-primary shadow-sm",
-                  floatingTime && "top-1/2 -translate-y-1/2",
-                  responsiveCompact &&
-                    "top-1/2 -translate-y-1/2 lg:top-0 lg:translate-y-0",
-                  !floatingTime && !responsiveCompact && "top-0",
+            {showCornerIndicators && (
+              <div className="absolute right-0 top-0 flex items-center gap-1">
+                <CalendarProviderMark
+                  sessionType={event.sessionType}
+                  isPast={isPast}
+                  className={cn(
+                    "size-3",
+                    (compact || responsiveCompact) && "size-2.5 lg:size-3",
+                  )}
+                />
+                {showRecordingIndicator && (
+                  <span
+                    className="inline-flex shrink-0 items-center justify-center rounded-full bg-primary/15 p-0.5 text-primary shadow-sm ring-1 ring-primary/20"
+                    title={t("recordings.watchRecording")}
+                    aria-label={t("recordings.watchRecording")}
+                  >
+                    <PlayCircle
+                      className={cn(
+                        "size-4",
+                        (compact || responsiveCompact) && "size-3.5 lg:size-4",
+                      )}
+                    />
+                  </span>
                 )}
-                title={t("recordings.watchRecording")}
-                aria-label={t("recordings.watchRecording")}
-              >
-                <PlayCircle className="size-4" />
-              </span>
+              </div>
             )}
           </motion.div>
         </motion.div>

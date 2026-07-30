@@ -19,8 +19,9 @@ import CalendarEvent from "../../calendar-event";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRef, useState, useEffect } from "react";
 import { CalendarEvent as CalendarEventType } from "../../calendar-types";
-import { getCalendarColorClasses } from "../../calendar-tailwind-classes";
+import { getCalendarEventAppearanceClasses } from "../../calendar-tailwind-classes";
 import { getCalendarEventDisplay } from "../../calendar-event-display";
+import { CalendarProviderMark } from "../../calendar-provider-mark";
 
 const localeMap = {
   en: enUS,
@@ -240,7 +241,12 @@ function MobileDayCell({
             key={event.id}
             className={cn(
               "h-1 w-full rounded-full",
-              getCalendarColorClasses(event.color).dot,
+              getCalendarEventAppearanceClasses({
+                color: event.color,
+                sessionType: event.sessionType,
+                status: event.status,
+                isPast: event.end.getTime() < Date.now(),
+              }).dot,
             )}
           />
         ))}
@@ -311,6 +317,13 @@ function MobileDayAgenda({
               const { primaryLabel, secondaryLabel, gradeLabel } =
                 getCalendarEventDisplay(event, { showGrade: !isStudent });
               const timeLabel = `${format(event.start, "h:mm a", dateContext)} - ${format(event.end, "h:mm a", dateContext)}`;
+              const isPast = event.end.getTime() < Date.now();
+              const appearance = getCalendarEventAppearanceClasses({
+                color: event.color,
+                sessionType: event.sessionType,
+                status: event.status,
+                isPast,
+              });
 
               return (
                 <button
@@ -318,13 +331,20 @@ function MobileDayAgenda({
                   type="button"
                   className={cn(
                     "flex w-full min-w-0 flex-col rounded-md border-l-4 px-3 py-2 text-left transition-colors",
-                    getCalendarColorClasses(event.color).event,
+                    appearance.event,
                   )}
                   onClick={() => onEventClick(event)}
                 >
                   <span className="flex min-w-0 items-start justify-between gap-2">
-                    <span className="line-clamp-2 min-w-0 text-sm font-semibold leading-tight text-foreground">
-                      {primaryLabel}
+                    <span className="flex min-w-0 items-start gap-1">
+                      <span className="line-clamp-2 min-w-0 text-sm font-semibold leading-tight text-foreground">
+                        {primaryLabel}
+                      </span>
+                      <CalendarProviderMark
+                        sessionType={event.sessionType}
+                        isPast={isPast}
+                        className="mt-0.5 size-3.5"
+                      />
                     </span>
                     <span className="shrink-0 text-[10px] leading-tight text-muted-foreground/80">
                       {timeLabel}

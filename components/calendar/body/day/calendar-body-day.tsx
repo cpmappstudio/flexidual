@@ -42,6 +42,7 @@ export default function CalendarBodyDay() {
               events={dayEvents}
               timeScale={timeScale}
               responsiveCompactEvents
+              hideResponsiveEventTime
             />
           </div>
         </div>
