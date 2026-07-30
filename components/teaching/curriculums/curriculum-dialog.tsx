@@ -28,6 +28,7 @@ import { useAlert } from "@/components/providers/alert-provider";
 import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PageCreateButton } from "@/components/ui/responsive-page-action";
+import { retainOfferedGradeCodes } from "@/lib/curriculum";
 
 // Multi-tenant imports
 import { useParams } from "next/navigation";
@@ -122,6 +123,21 @@ export function CurriculumDialog({
       }
     }
   }, [isOpen, isEditing, curriculum]);
+
+  useEffect(() => {
+    if (!isOpen || !grades) return;
+
+    const offeredGradeCodes = grades.map((grade) => grade.code);
+    setFormData((current) => {
+      const gradeCodes = retainOfferedGradeCodes(
+        current.gradeCodes,
+        offeredGradeCodes,
+      );
+      return gradeCodes.length === current.gradeCodes.length
+        ? current
+        : { ...current, gradeCodes };
+    });
+  }, [grades, isOpen]);
 
   const handleAddToQueue = (e: React.FormEvent) => {
     e.preventDefault();
