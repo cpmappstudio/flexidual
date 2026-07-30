@@ -253,7 +253,6 @@ export function UsersTable({
             />
           )
         }
-        pageSize={10}
         onRowClick={readOnly ? undefined : (user) => setEditingUser(user)}
       />
     </div>

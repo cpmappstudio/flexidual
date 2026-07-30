@@ -268,7 +268,6 @@ export function ClassesTable({
             </Button>
           ) : undefined
         }
-        pageSize={10}
         onRowClick={(cls) => router.push(`${basePath}/classes/${cls._id}`)}
       />
     </div>

@@ -3,20 +3,14 @@
 import { useState, useMemo, useEffect } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  getPaginationRowModel,
-} from "@tanstack/react-table"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ColumnDef } from "@tanstack/react-table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Doc, Id } from "@/convex/_generated/dataModel"
 import { LessonDialog } from "@/components/teaching/lessons/lesson-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Loader2 } from "lucide-react"
 import { useTranslations } from "next-intl"
+import { DataTable } from "@/components/table/data-table"
+import { createSearchColumn } from "@/components/table/column-helpers"
 
 export function LessonsTable() {
   const t = useTranslations()
@@ -29,44 +23,38 @@ export function LessonsTable() {
     selectedCurriculumId ? { curriculumId: selectedCurriculumId as Id<"curriculums"> } : "skip"
   )
 
-  const columns: ColumnDef<Doc<"lessons">>[] = useMemo(() => [
-    {
-      accessorKey: "order",
-      header: "#",
-      cell: ({ row }) => <span className="text-muted-foreground font-mono">{row.original.order}</span>,
-    },
-    {
-      accessorKey: "title",
-      header: t('lesson.title'),
-      cell: ({ row }) => (
+  const columns: ColumnDef<Doc<"lessons">, unknown>[] = useMemo(() => [
+      createSearchColumn<Doc<"lessons">>(["title", "description"]),
+      {
+        accessorKey: "order",
+        header: "#",
+        cell: ({ row }) => <span className="text-muted-foreground font-mono">{row.original.order}</span>,
+      },
+      {
+        accessorKey: "title",
+        header: t('lesson.title'),
+        cell: ({ row }) => (
           <div>
-              <div className="font-medium">{row.getValue("title")}</div>
-              <div className="text-xs text-muted-foreground truncate max-w-[300px]">{row.original.description}</div>
+            <div className="font-medium">{row.getValue("title")}</div>
+            <div className="text-xs text-muted-foreground truncate max-w-[300px]">{row.original.description}</div>
           </div>
-      )
-    },
-    {
-      id: "actions",
-      cell: ({ row }) => (
-        <div className="flex justify-end">
-          <LessonDialog 
-            lesson={row.original} 
-            curriculumId={row.original.curriculumId} 
-          />
-        </div>
-      ),
-    },
-  ], [t])
+        )
+      },
+      {
+        id: "actions",
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <LessonDialog
+              lesson={row.original}
+              curriculumId={row.original.curriculumId}
+            />
+          </div>
+        ),
+      },
+    ], [t])
 
   const data = useMemo(() => lessons || [], [lessons])
-  const isLoadingLessons = selectedCurriculumId && lessons === undefined
-
-  const table = useReactTable({
-    data,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-  })
+  const isLoadingLessons = Boolean(selectedCurriculumId && lessons === undefined)
 
   // Auto-select first curriculum
   useEffect(() => {
@@ -102,54 +90,21 @@ export function LessonsTable() {
         )}
       </div>
 
-      <div className="rounded-md border relative">
-        {isLoadingLessons && (
-            <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-        )}
-
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {!selectedCurriculumId ? (
-                <TableRow>
-                    <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
-                        {t('lesson.selectCurriculumPrompt')}
-                    </TableCell>
-                </TableRow>
-            ) : table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              !isLoadingLessons && (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
-                    {t('lesson.noLessonsForCurriculum')}
-                  </TableCell>
-                </TableRow>
-              )
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {isLoadingLessons ? (
+        <Skeleton className="h-96 w-full" />
+      ) : (
+        <DataTable
+          data={data}
+          columns={columns}
+          filterColumn="search"
+          filterPlaceholder={t("common.searchByName")}
+          emptyMessage={
+            selectedCurriculumId
+              ? t("lesson.noLessonsForCurriculum")
+              : t("lesson.selectCurriculumPrompt")
+          }
+        />
+      )}
     </div>
   )
 }

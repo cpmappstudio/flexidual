@@ -5,6 +5,7 @@ import { setupLocale } from "@/lib/locale-setup";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { ConvexAuthBoundary } from "@/components/convex-auth-boundary";
 
 export default async function OrgLayout({
   children,
@@ -27,16 +28,18 @@ export default async function OrgLayout({
   }
 
   return (
-    <SidebarProvider open className="flex-col [--header-height:4rem]">
-      <SiteHeader />
-      <div className="flex min-h-0 flex-1">
-        <AppSidebar />
-        <SidebarInset>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4">
-            {children}
-          </div>
-        </SidebarInset>
-      </div>
-    </SidebarProvider>
+    <ConvexAuthBoundary>
+      <SidebarProvider open className="flex-col [--header-height:4rem]">
+        <SiteHeader />
+        <div className="flex min-h-0 flex-1">
+          <AppSidebar />
+          <SidebarInset>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4">
+              {children}
+            </div>
+          </SidebarInset>
+        </div>
+      </SidebarProvider>
+    </ConvexAuthBoundary>
   );
 }

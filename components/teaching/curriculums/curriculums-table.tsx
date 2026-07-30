@@ -173,7 +173,6 @@ export function CurriculumsTable({
         createAction={
           readOnly ? undefined : <CurriculumDialog schoolId={querySchoolId} />
         }
-        pageSize={10}
         onRowClick={
           readOnly ? undefined : (curriculum) => setEditingCurriculum(curriculum)
         }
