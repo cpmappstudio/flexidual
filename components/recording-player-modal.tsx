@@ -17,7 +17,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PlayCircle, Video, Clock } from "lucide-react";
+import { PlayCircle, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
@@ -56,15 +56,7 @@ function formatDuration(ms: number | null | undefined): string {
 
 // ─── Inner video player ───────────────────────────────────────────────────────
 
-function VideoPlayer({
-  url,
-  durationMs,
-  showDuration,
-}: {
-  url: string;
-  durationMs: number | null;
-  showDuration: boolean;
-}) {
+function VideoPlayer({ url }: { url: string }) {
   const t = useTranslations();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -315,8 +307,6 @@ export function RecordingPlayerModal({
               <VideoPlayer
                 key={activeRec._id}
                 url={activeRec.url}
-                durationMs={activeRec.durationMs}
-                showDuration={!isStudent && recordings.length === 1}
               />
             ) : (
               <div
