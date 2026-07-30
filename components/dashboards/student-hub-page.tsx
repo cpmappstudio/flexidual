@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
-import { ClassroomDropZone } from "@/components/student/classroom-drop-zone";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   BellRing,
   CalendarDays,
   Clock,
+  Pencil,
   GraduationCap,
 } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
@@ -22,8 +23,20 @@ import { format, isSameDay } from "date-fns";
 import { StudentScheduleEvent } from "@/lib/types/student";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Link } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { useOrgBasePath } from "@/hooks/use-org-base-path";
+import { useParams } from "next/navigation";
+
+const ClassroomDropZone = dynamic(() =>
+  import("@/components/student/classroom-drop-zone").then(
+    (module) => module.ClassroomDropZone,
+  ),
+);
+const UserDialog = dynamic(() =>
+  import("@/components/admin/users/user-dialog").then(
+    (module) => module.UserDialog,
+  ),
+);
 
 const COURSE_CARD_ACCENTS = [
   "border-sky-200 bg-sky-50/80 before:bg-sky-400",
@@ -116,10 +129,13 @@ function CountdownToast({
   );
 }
 
-export default function StudentHubPage() {
+export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const t = useTranslations();
   const locale = useLocale();
   const basePath = useOrgBasePath();
+  const router = useRouter();
+  const { orgSlug } = useParams<{ orgSlug: string }>();
+  const isViewingStudentProfile = Boolean(studentId);
   const { isLoaded: isClerkLoaded, user } = useUser();
   const currentDateLocale =
     locale === "es" ? es : locale === "pt-BR" ? ptBR : enUS;
@@ -227,17 +243,31 @@ export default function StudentHubPage() {
   }, []);
 
   // Queries
-  const events = useQuery(api.schedule.getMySchedule, {
-    now: Math.floor(now / 60_000) * 60_000,
-  });
+  const roundedNow = Math.floor(now / 60_000) * 60_000;
+  const ownEvents = useQuery(
+    api.schedule.getMySchedule,
+    isViewingStudentProfile ? "skip" : { now: roundedNow },
+  );
   const accessibleLiveClasses = useQuery(
     api.schedule.listAccessibleLiveClasses,
+    isViewingStudentProfile ? "skip" : {},
   );
   const dashboardData = useQuery(api.student.getStudentDashboardStats, {
-    now: Math.floor(now / 60_000) * 60_000,
+    now: roundedNow,
+    ...(studentId ? { studentId, orgSlug } : {}),
   });
+  const storedAvatarUrl = useQuery(
+    api.users.getAvatarUrl,
+    dashboardData?.student.avatarStorageId
+      ? { storageId: dashboardData.student.avatarStorageId }
+      : "skip",
+  );
+  const events = isViewingStudentProfile
+    ? dashboardData?.upcomingLessons
+    : ownEvents;
 
   useEffect(() => {
+    if (isViewingStudentProfile) return;
     const stored = localStorage.getItem("flexidual_sound_alerts");
     if (stored !== "true") return;
     setSoundEnabled(true);
@@ -257,7 +287,7 @@ export default function StudentHubPage() {
       window.removeEventListener("click", unlock);
       window.removeEventListener("keydown", unlock);
     };
-  }, []);
+  }, [isViewingStudentProfile]);
 
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 1000);
@@ -345,6 +375,7 @@ export default function StudentHubPage() {
   );
 
   useEffect(() => {
+    if (isViewingStudentProfile) return;
     if (upcomingLessons.length === 0) return;
 
     const checkNotifications = () => {
@@ -395,6 +426,7 @@ export default function StudentHubPage() {
     return () => clearInterval(interval);
   }, [
     handleLessonTap,
+    isViewingStudentProfile,
     notifiedLessons,
     startAlarm,
     stopAlarm,
@@ -406,7 +438,11 @@ export default function StudentHubPage() {
   const studentProfile = dashboardData?.student;
   const overallStats = dashboardData?.overall;
 
-  const liveLessons = accessibleLiveClasses ?? [];
+  const liveLessons = isViewingStudentProfile
+    ? (dashboardData?.upcomingLessons.filter(
+        (lesson) => lesson.status === "active" && lesson.isLive,
+      ) ?? [])
+    : (accessibleLiveClasses ?? []);
   const nextLesson = liveLessons[0] ?? todayLessons[0] ?? null;
   const laterTodayLessons = todayLessons
     .filter((lesson) => lesson.scheduleId !== nextLesson?.scheduleId)
@@ -415,11 +451,21 @@ export default function StudentHubPage() {
     user?.fullName?.trim() ||
     [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim();
   const displayName =
-    clerkDisplayName || studentProfile?.fullName || user?.username || "Student";
-  const avatarUrl = isClerkLoaded ? user?.imageUrl : undefined;
-  const gradeLabel = studentProfile?.grade
-    ? `${t("student.grade")} ${studentProfile.grade}`
-    : t("student.grade");
+    (isViewingStudentProfile ? undefined : clerkDisplayName) ||
+    studentProfile?.fullName ||
+    (isViewingStudentProfile ? undefined : user?.username) ||
+    "Student";
+  const avatarUrl = isViewingStudentProfile
+    ? storedAvatarUrl || studentProfile?.imageUrl
+    : user?.imageUrl || storedAvatarUrl || studentProfile?.imageUrl;
+  const gradeLabel = studentProfile?.gradeName
+    ? studentProfile.gradeName
+    : studentProfile?.grade
+      ? `${t("student.grade")} ${studentProfile.grade}`
+      : t("student.grade");
+  const profileIsLoaded = isViewingStudentProfile
+    ? dashboardData !== undefined
+    : isClerkLoaded;
 
   const totalSessions =
     overallStats?.totalSessions ??
@@ -453,6 +499,18 @@ export default function StudentHubPage() {
     return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   };
 
+  if (isViewingStudentProfile && dashboardData === undefined) {
+    return <Skeleton className="h-96 w-full" />;
+  }
+
+  if (isViewingStudentProfile && dashboardData === null) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t("errors.permissionDenied")}
+      </p>
+    );
+  }
+
   return (
     <div className="flex w-full min-w-0 flex-col xl:h-[calc(100svh-var(--header-height)-2rem)]">
       {!activeLesson && !isLaunching && (
@@ -462,7 +520,9 @@ export default function StudentHubPage() {
               <p className="truncate text-xl font-bold text-foreground">
                 {t("student.welcome", {
                   name:
-                    user?.firstName ||
+                    (isViewingStudentProfile
+                      ? studentProfile?.firstName
+                      : user?.firstName) ||
                     studentProfile?.fullName?.split(" ")[0] ||
                     "Student",
                 })}
@@ -471,6 +531,26 @@ export default function StudentHubPage() {
                 {t("student.welcomeMessage")}
               </p>
             </div>
+            {isViewingStudentProfile &&
+              dashboardData?.canEdit &&
+              studentProfile?.orgId && (
+                <UserDialog
+                  user={studentProfile}
+                  defaultRole="student"
+                  allowedRoles={["student"]}
+                  scope={{ orgType: "campus", orgId: studentProfile.orgId }}
+                  hideRole
+                  onDeleted={() => router.replace(`${basePath}/students`)}
+                  trigger={
+                    <Button type="button" className="shrink-0">
+                      <Pencil className="size-4" />
+                      <span className="hidden sm:inline">
+                        {t("student.edit")}
+                      </span>
+                    </Button>
+                  }
+                />
+              )}
           </div>
 
           <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -479,7 +559,7 @@ export default function StudentHubPage() {
                 <div className="grid w-full gap-4 xl:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)] xl:items-center">
                   <div className="flex w-full items-center gap-3 text-left xl:flex-col xl:text-center">
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-[4px] border-warning bg-primary/10 shadow-inner sm:h-20 sm:w-20 xl:h-28 xl:w-28">
-                      {isClerkLoaded ? (
+                      {profileIsLoaded ? (
                         <Avatar className="h-full w-full rounded-none">
                           {avatarUrl && (
                             <AvatarImage
@@ -500,7 +580,7 @@ export default function StudentHubPage() {
                     </div>
                     <div className="min-w-0 flex-1 xl:flex-none">
                       <h3 className="max-w-full text-balance text-base font-bold leading-snug text-foreground sm:text-lg">
-                        {isClerkLoaded ? (
+                        {profileIsLoaded ? (
                           displayName
                         ) : (
                           <Skeleton className="h-7 w-48" />
@@ -635,13 +715,13 @@ export default function StudentHubPage() {
                         ? nextLesson.className || nextLesson.title
                         : t("student.today.noClasses")}
                     </h3>
-                    {nextLesson && (
+                    {nextLesson && !isViewingStudentProfile && (
                       <Button
                         onClick={() => handleLessonTap(nextLesson)}
                         className="mt-4 h-10 rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
                       >
                         {t("dashboard.goToClassroom")}
-                         <MoveRight className="h-4 w-4" />
+                        <MoveRight className="h-4 w-4" />
                       </Button>
                     )}
                   </div>
@@ -675,17 +755,19 @@ export default function StudentHubPage() {
                       </p>
                     )
                   )}
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3 rounded-full bg-card/70 px-4 text-sm font-semibold text-foreground shadow-sm hover:bg-card"
-                  >
-                    <Link href={`${basePath}/calendar`}>
-                      <CalendarDays className="size-4 text-info" />
-                      {t("student.today.viewCalendar")}
-                    </Link>
-                  </Button>
+                  {!isViewingStudentProfile && (
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="mt-3 rounded-full bg-card/70 px-4 text-sm font-semibold text-foreground shadow-sm hover:bg-card"
+                    >
+                      <Link href={`${basePath}/calendar`}>
+                        <CalendarDays className="size-4 text-info" />
+                        {t("student.today.viewCalendar")}
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               </section>
             </aside>
@@ -693,7 +775,7 @@ export default function StudentHubPage() {
         </div>
       )}
 
-      {(isLaunching || activeLesson) && (
+      {!isViewingStudentProfile && (isLaunching || activeLesson) && (
         <div className="min-h-0 flex-1">
           <ClassroomDropZone
             isDragging={false}

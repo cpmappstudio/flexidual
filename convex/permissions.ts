@@ -63,10 +63,7 @@ export function canManageInstitution(
   return hasOrgRole(ctx, userId, schoolId, "school", ["admin"]);
 }
 
-export async function hasStaffAccess(
-  ctx: QueryCtx,
-  userId: Id<"users">,
-) {
+export async function hasStaffAccess(ctx: QueryCtx, userId: Id<"users">) {
   const assignments = await ctx.db
     .query("roleAssignments")
     .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -99,6 +96,27 @@ export async function canViewCampusOperations(
     "principal",
     "teacher",
     "tutor",
+  ]);
+}
+
+export async function canManageCampusPeople(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  schoolId: Id<"schools">,
+) {
+  return await hasOrgRole(ctx, userId, schoolId, "school", ["admin"]);
+}
+
+export async function canViewCampusPeople(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  campusId: Id<"campuses">,
+  schoolId: Id<"schools">,
+) {
+  if (await canManageCampusPeople(ctx, userId, schoolId)) return true;
+  return await hasOrgRole(ctx, userId, campusId, "campus", [
+    "principal",
+    "teacher",
   ]);
 }
 

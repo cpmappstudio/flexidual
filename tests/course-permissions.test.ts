@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { QueryCtx } from "../convex/_generated/server";
 import type { Id } from "../convex/_generated/dataModel";
-import { canManageClasses } from "../convex/permissions";
+import {
+  canManageCampusPeople,
+  canManageClasses,
+  canViewCampusPeople,
+} from "../convex/permissions";
 import type { UserRole } from "../convex/model/roles";
 
 type Assignment = {
@@ -55,9 +59,7 @@ const campusId = "campus" as Id<"campuses">;
 test("course management is granted only at administrative scopes", async () => {
   assert.equal(
     await canManageClasses(
-      permissionContext([
-        { userId, orgType: "system", role: "superadmin" },
-      ]),
+      permissionContext([{ userId, orgType: "system", role: "superadmin" }]),
       userId,
       campusId,
       schoolId,
@@ -100,6 +102,34 @@ test("teachers and tutors cannot mutate course definitions", async () => {
         schoolId,
       ),
       false,
+    );
+  }
+});
+
+test("campus people are editable only by administrators and visible to teaching staff", async () => {
+  for (const role of ["superadmin", "admin"] as const) {
+    const assignment: Assignment =
+      role === "superadmin"
+        ? { userId, orgType: "system", role }
+        : { userId, orgId: schoolId, orgType: "school", role };
+    const ctx = permissionContext([assignment]);
+
+    assert.equal(await canManageCampusPeople(ctx, userId, schoolId), true);
+    assert.equal(
+      await canViewCampusPeople(ctx, userId, campusId, schoolId),
+      true,
+    );
+  }
+
+  for (const role of ["principal", "teacher", "tutor", "student"] as const) {
+    const ctx = permissionContext([
+      { userId, orgId: campusId, orgType: "campus", role },
+    ]);
+
+    assert.equal(await canManageCampusPeople(ctx, userId, schoolId), false);
+    assert.equal(
+      await canViewCampusPeople(ctx, userId, campusId, schoolId),
+      role === "principal" || role === "teacher",
     );
   }
 });

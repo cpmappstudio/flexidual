@@ -32,6 +32,7 @@ interface UsersTableProps {
   requireCampusSelection?: boolean;
   hideRole?: boolean;
   readOnly?: boolean;
+  onRowClick?: (user: User) => void;
 }
 
 function UserAvatar({ user }: { user: User }) {
@@ -65,6 +66,7 @@ export function UsersTable({
   requireCampusSelection = false,
   hideRole = false,
   readOnly = false,
+  onRowClick,
 }: UsersTableProps) {
   const t = useTranslations();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
@@ -253,7 +255,9 @@ export function UsersTable({
             />
           )
         }
-        onRowClick={readOnly ? undefined : (user) => setEditingUser(user)}
+        onRowClick={
+          onRowClick ?? (readOnly ? undefined : (user) => setEditingUser(user))
+        }
       />
     </div>
   );

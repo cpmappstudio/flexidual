@@ -51,6 +51,12 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
           allowedRoles={isStudents ? ["student"] : ["teacher"]}
           scope={{ orgType: "campus", orgId: campusId }}
           hideRole
+          readOnly={!access.canManagePeople}
+          onRowClick={
+            isStudents
+              ? (student) => router.push(`${basePath}/students/${student._id}`)
+              : undefined
+          }
         />
       ) : (
         <p className="text-sm text-muted-foreground">{t("selectCampus")}</p>

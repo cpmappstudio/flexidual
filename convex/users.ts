@@ -12,12 +12,14 @@ import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { createClerkClient } from "@clerk/backend";
 import {
-  canManageClasses,
+  canManageCampusPeople,
+  canViewCampusPeople,
   hasOrgRole,
   hasSystemRole,
   isPrincipalOfSchool,
 } from "./permissions";
 import { isRoleValidForOrganization, roleValidator } from "./model/roles";
+import { isPasswordLongEnough } from "../lib/password";
 
 const publicUserFields = {
   _id: v.id("users"),
@@ -52,6 +54,19 @@ const imageSyncResultValidator = v.object({
   skipped: v.number(),
   failed: v.number(),
 });
+const updateUserResultValidator = v.union(
+  v.object({ status: v.literal("success") }),
+  v.object({
+    status: v.literal("error"),
+    code: v.union(
+      v.literal("PASSWORD_TOO_SHORT"),
+      v.literal("PASSWORD_REJECTED"),
+      v.literal("PASSWORD_UPDATE_FAILED"),
+      v.literal("PASSWORD_UPDATE_UNAVAILABLE"),
+    ),
+    reason: v.optional(v.string()),
+  }),
+);
 
 type UserJSON = {
   id: string;
@@ -65,6 +80,29 @@ type UserJSON = {
 
 function getClerkClient(secretKey: string) {
   return createClerkClient({ secretKey });
+}
+
+function getClerkErrorReason(error: unknown) {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("errors" in error) ||
+    !Array.isArray(error.errors)
+  ) {
+    return null;
+  }
+
+  const firstError = error.errors[0];
+  if (typeof firstError !== "object" || firstError === null) return null;
+
+  const longMessage =
+    "longMessage" in firstError ? firstError.longMessage : undefined;
+  const message = "message" in firstError ? firstError.message : undefined;
+  return typeof longMessage === "string"
+    ? longMessage
+    : typeof message === "string"
+      ? message
+      : null;
 }
 
 function toPublicUser(user: Doc<"users">) {
@@ -211,7 +249,7 @@ export const getUsers = query({
       if (
         !campusId ||
         !campus ||
-        !(await canManageClasses(
+        !(await canViewCampusPeople(
           ctx,
           currentUser._id,
           campusId,
@@ -547,7 +585,7 @@ export const assertCanManageUsers = internalQuery({
     if (
       !campusId ||
       !campus ||
-      !(await canManageClasses(ctx, currentUser._id, campusId, campus.schoolId))
+      !(await canManageCampusPeople(ctx, currentUser._id, campus.schoolId))
     ) {
       throw new Error("Unauthorized");
     }
@@ -762,7 +800,7 @@ export const updateUserWithClerk = action({
     ),
     orgId: v.optional(v.string()),
   },
-  returns: v.null(),
+  returns: updateUserResultValidator,
   handler: async (ctx, args) => {
     const targetAssignment = await ctx.runQuery(
       internal.roleAssignments.getAssignmentInternal,
@@ -813,6 +851,35 @@ export const updateUserWithClerk = action({
       }
     }
 
+    if (args.updates.password) {
+      if (!isPasswordLongEnough(args.updates.password)) {
+        return { status: "error", code: "PASSWORD_TOO_SHORT" } as const;
+      }
+      if (user.clerkId.startsWith("temp_")) {
+        return {
+          status: "error",
+          code: "PASSWORD_UPDATE_UNAVAILABLE",
+        } as const;
+      }
+
+      try {
+        await clerk.users.updateUser(user.clerkId, {
+          password: args.updates.password,
+          signOutOfOtherSessions: true,
+        });
+      } catch (error) {
+        const reason = getClerkErrorReason(error);
+        if (!reason) {
+          console.error("Failed to update Clerk user password", error);
+        }
+        return {
+          status: "error",
+          code: reason ? "PASSWORD_REJECTED" : "PASSWORD_UPDATE_FAILED",
+          reason: reason ?? undefined,
+        } as const;
+      }
+    }
+
     // 1. Update Core Identity in Convex
     await ctx.runMutation(internal.users.updateUserInternal, {
       userId: args.userId,
@@ -842,14 +909,12 @@ export const updateUserWithClerk = action({
       if (
         args.updates.firstName ||
         args.updates.lastName ||
-        args.updates.username ||
-        args.updates.password
+        args.updates.username
       ) {
         await clerk.users.updateUser(user.clerkId, {
           firstName: args.updates.firstName,
           lastName: args.updates.lastName,
           username: args.updates.username,
-          password: args.updates.password,
         });
       }
 
@@ -921,7 +986,7 @@ export const updateUserWithClerk = action({
         }
       }
     }
-    return null;
+    return { status: "success" } as const;
   },
 });
 
