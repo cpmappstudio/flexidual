@@ -21,7 +21,10 @@ export const metadata: Metadata = {
   title: "FlexiDual",
   description: "TODO: Add description",
   icons: {
-    icon: "/flexidual-icon.ico",
+    icon: {
+      url: "/book-icon.webp",
+      type: "image/webp",
+    },
   },
 };
 
