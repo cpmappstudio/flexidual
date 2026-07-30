@@ -5,17 +5,12 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
 import { ClassroomDropZone } from "@/components/student/classroom-drop-zone";
+import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  MoveRight,
-  BellRing,
-  CalendarDays,
-  Clock,
-  GraduationCap,
-} from "lucide-react";
+import { BellRing, CalendarDays, Clock, GraduationCap } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { format, isSameDay } from "date-fns";
@@ -124,11 +119,11 @@ export default function StudentHubPage() {
   const currentDateLocale =
     locale === "es" ? es : locale === "pt-BR" ? ptBR : enUS;
 
-  const [draggedLesson, setDraggedLesson] =
-    useState<StudentScheduleEvent | null>(null);
   const [activeLesson, setActiveLesson] = useState<StudentScheduleEvent | null>(
     null,
   );
+  const [ctaLaunchingLesson, setCtaLaunchingLesson] =
+    useState<StudentScheduleEvent | null>(null);
   const [isLaunching, setIsLaunching] = useState(false);
   const [now, setNow] = useState(Date.now);
 
@@ -260,9 +255,11 @@ export default function StudentHubPage() {
   }, []);
 
   useEffect(() => {
+    if (activeLesson) return;
+
     const tick = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(tick);
-  }, []);
+  }, [activeLesson]);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
@@ -283,20 +280,11 @@ export default function StudentHubPage() {
 
   const handleLaunchComplete = () => {
     stopAlarm();
-    console.log(
-      "🚀 Launch Complete, setting active lesson:",
-      draggedLesson?.title,
-    );
-    if (draggedLesson) {
-      setIsLaunching(false);
-      setActiveLesson(draggedLesson);
-      setDraggedLesson(null);
-    }
+    setIsLaunching(false);
   };
 
   const handleExitClassroom = () => {
     setActiveLesson(null);
-    setDraggedLesson(null);
     setIsLaunching(false);
   };
 
@@ -337,12 +325,25 @@ export default function StudentHubPage() {
   const handleLessonTap = useCallback(
     (lesson: StudentScheduleEvent) => {
       stopAlarm();
-      setDraggedLesson(lesson);
+      setActiveLesson(lesson);
       playRocketSound();
       setIsLaunching(true);
     },
     [playRocketSound, stopAlarm],
   );
+
+  const handleClassroomCta = (lesson: StudentScheduleEvent) => {
+    if (ctaLaunchingLesson) return;
+    stopAlarm();
+    setCtaLaunchingLesson(lesson);
+  };
+
+  const handleClassroomCtaComplete = useCallback(() => {
+    if (!ctaLaunchingLesson) return;
+    const lesson = ctaLaunchingLesson;
+    setCtaLaunchingLesson(null);
+    handleLessonTap(lesson);
+  }, [ctaLaunchingLesson, handleLessonTap]);
 
   useEffect(() => {
     if (upcomingLessons.length === 0) return;
@@ -452,6 +453,8 @@ export default function StudentHubPage() {
 
     return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   };
+
+  const classroomCtaLabel = t("dashboard.goToClassroom");
 
   return (
     <div className="flex w-full min-w-0 flex-col xl:h-[calc(100svh-var(--header-height)-2rem)]">
@@ -637,11 +640,15 @@ export default function StudentHubPage() {
                     </h3>
                     {nextLesson && (
                       <Button
-                        onClick={() => handleLessonTap(nextLesson)}
-                        className="mt-4 h-10 rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
+                        onClick={() => handleClassroomCta(nextLesson)}
+                        aria-busy={Boolean(ctaLaunchingLesson)}
+                        className="group relative mt-4 h-10 overflow-hidden rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
                       >
-                        {t("dashboard.goToClassroom")}
-                         <MoveRight className="h-4 w-4" />
+                        <RocketLaunchButtonContent
+                          label={classroomCtaLabel}
+                          isLaunching={Boolean(ctaLaunchingLesson)}
+                          onComplete={handleClassroomCtaComplete}
+                        />
                       </Button>
                     )}
                   </div>
