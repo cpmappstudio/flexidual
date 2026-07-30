@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
-import { useAuth } from "@clerk/nextjs";
-import { useParams, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { NavMain } from "@/components/nav-main";
 import {
   Sidebar,
@@ -14,24 +13,17 @@ import {
 } from "@/components/ui/sidebar";
 
 import { OrgSwitcher } from "./org-switcher";
-import { getRoleForOrg } from "@/lib/rbac";
+import { useCurrentOrgRole } from "@/hooks/use-current-org-role";
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const params = useParams();
   const pathname = usePathname();
-  const { sessionClaims } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
+  const { role } = useCurrentOrgRole();
 
   React.useEffect(() => {
     if (isMobile) setOpenMobile(false);
   }, [isMobile, pathname, setOpenMobile]);
 
-  let currentSlug = params.orgSlug as string | undefined;
-  if (currentSlug === "admin" || pathname.startsWith("/admin")) {
-    currentSlug = "system";
-  }
-
-  const role = getRoleForOrg(sessionClaims, currentSlug ?? "system");
   const isStudent = role === "student";
 
   return (

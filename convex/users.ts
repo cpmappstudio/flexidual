@@ -585,7 +585,12 @@ export const assertCanManageUsers = internalQuery({
     if (
       !campusId ||
       !campus ||
-      !(await canManageCampusPeople(ctx, currentUser._id, campus.schoolId))
+      !(await canManageCampusPeople(
+        ctx,
+        currentUser._id,
+        campusId,
+        campus.schoolId,
+      ))
     ) {
       throw new Error("Unauthorized");
     }
@@ -815,7 +820,9 @@ export const updateUserWithClerk = action({
     await ctx.runQuery(internal.users.assertCanManageUsers, {
       orgType: args.orgType,
       orgId: args.orgId,
-      roles: args.updates.role ? [args.updates.role] : [],
+      roles: args.updates.role
+        ? [targetAssignment.role, args.updates.role]
+        : [targetAssignment.role],
     });
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
@@ -880,31 +887,7 @@ export const updateUserWithClerk = action({
       }
     }
 
-    // 1. Update Core Identity in Convex
-    await ctx.runMutation(internal.users.updateUserInternal, {
-      userId: args.userId,
-      updates: {
-        firstName: args.updates.firstName,
-        lastName: args.updates.lastName,
-        email: args.updates.email,
-        username: args.updates.username,
-        school: args.updates.school,
-        isActive: args.updates.isActive,
-      },
-    });
-
-    // 2. Update Role Assignment if role changed
-    if (args.updates.role || args.updates.grade !== undefined) {
-      await ctx.runMutation(internal.roleAssignments.assignRoleInternal, {
-        userId: args.userId,
-        orgType: args.orgType,
-        orgId: args.orgId,
-        role: effectiveRole,
-        gradeCode: effectiveRole === "student" ? effectiveGrade : undefined,
-      });
-    }
-
-    // 3. Update basic details in Clerk (if not a temp user)
+    // Update Clerk first; its webhook remains an eventual reconciliation path.
     if (!user.clerkId.startsWith("temp_")) {
       if (
         args.updates.firstName ||
@@ -929,62 +912,51 @@ export const updateUserWithClerk = action({
         });
       }
 
-      // 4. Sync email change with Clerk (requires create → set primary → delete old)
       if (args.updates.email && args.updates.email !== user.email) {
-        // Step 1: Create the new email address (pre-verified)
-        const createRes = await fetch(
-          `https://api.clerk.com/v1/email_addresses`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${clerkSecretKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              user_id: user.clerkId,
-              email_address: args.updates.email,
-              verified: true,
-            }),
-          },
+        const clerkUser = await clerk.users.getUser(user.clerkId);
+        let newEmail = clerkUser.emailAddresses.find(
+          (email) => email.emailAddress === args.updates.email,
         );
-        if (!createRes.ok) {
-          const err = await createRes.json();
-          throw new Error(
-            `Failed to create Clerk email: ${JSON.stringify(err)}`,
-          );
-        }
-        const newEmailData = await createRes.json();
-
-        // Step 2: Set it as the primary email
-        await fetch(`https://api.clerk.com/v1/users/${user.clerkId}`, {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${clerkSecretKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ primary_email_address_id: newEmailData.id }),
-        });
-
-        // Step 3: Remove old email addresses (clean up)
-        const clerkUserRes = await fetch(
-          `https://api.clerk.com/v1/users/${user.clerkId}`,
-          {
-            headers: { Authorization: `Bearer ${clerkSecretKey}` },
-          },
-        );
-        const clerkUser = (await clerkUserRes.json()) as {
-          email_addresses?: Array<{ id: string }>;
-        };
-        const oldEmails = (clerkUser.email_addresses ?? []).filter(
-          (email) => email.id !== newEmailData.id,
-        );
-        for (const old of oldEmails) {
-          await fetch(`https://api.clerk.com/v1/email_addresses/${old.id}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${clerkSecretKey}` },
+        if (!newEmail) {
+          newEmail = await clerk.emailAddresses.createEmailAddress({
+            userId: user.clerkId,
+            emailAddress: args.updates.email,
+            verified: true,
           });
         }
+        await clerk.emailAddresses.updateEmailAddress(newEmail.id, {
+          verified: true,
+          primary: true,
+        });
+        const oldEmails = clerkUser.emailAddresses.filter(
+          (email) => email.id !== newEmail.id,
+        );
+        for (const old of oldEmails) {
+          await clerk.emailAddresses.deleteEmailAddress(old.id);
+        }
       }
+    }
+
+    await ctx.runMutation(internal.users.updateUserInternal, {
+      userId: args.userId,
+      updates: {
+        firstName: args.updates.firstName,
+        lastName: args.updates.lastName,
+        email: args.updates.email,
+        username: args.updates.username,
+        school: args.updates.school,
+        isActive: args.updates.isActive,
+      },
+    });
+
+    if (args.updates.role || args.updates.grade !== undefined) {
+      await ctx.runMutation(internal.roleAssignments.assignRoleInternal, {
+        userId: args.userId,
+        orgType: args.orgType,
+        orgId: args.orgId,
+        role: effectiveRole,
+        gradeCode: effectiveRole === "student" ? effectiveGrade : undefined,
+      });
     }
     return { status: "success" } as const;
   },
@@ -1028,15 +1000,20 @@ export const deleteUserWithClerk = action({
       return null;
     }
 
-    const response = await fetch(
-      `https://api.clerk.com/v1/users/${user.clerkId}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${clerkSecretKey}` },
-      },
-    );
-
-    if (!response.ok) throw new Error("Clerk API error");
+    const clerk = getClerkClient(clerkSecretKey);
+    try {
+      await clerk.users.deleteUser(user.clerkId);
+    } catch (error) {
+      const isAlreadyDeleted =
+        typeof error === "object" &&
+        error !== null &&
+        "status" in error &&
+        error.status === 404;
+      if (!isAlreadyDeleted) throw error;
+    }
+    await ctx.runMutation(internal.users.deleteUserInternal, {
+      userId: args.userId,
+    });
     return null;
   },
 });

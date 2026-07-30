@@ -1,4 +1,14 @@
 {
+  "brand": {
+    "roleView": {
+      "superadmin": "Administração global",
+      "admin": "Gestão institucional",
+      "principal": "Direção do campus",
+      "teacher": "Portal docente",
+      "tutor": "Portal de tutoria",
+      "student": "Portal estudantil"
+    }
+  },
   "common": {
     "user": "Usuário",
     "add": "Adicionar",

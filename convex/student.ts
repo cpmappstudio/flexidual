@@ -140,7 +140,12 @@ export const getStudentDashboardStats = query({
     }
 
     const canEdit = campus
-      ? await canManageCampusPeople(ctx, viewer._id, campus.schoolId)
+      ? await canManageCampusPeople(
+          ctx,
+          viewer._id,
+          campus._id,
+          campus.schoolId,
+        )
       : false;
 
     const enrollmentRows = await ctx.db

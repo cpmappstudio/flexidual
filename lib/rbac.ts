@@ -34,6 +34,12 @@ const staffRolePriority: StaffRole[] = [
   "tutor",
 ];
 
+export function isStaffRole(
+  role: string | null | undefined,
+): role is StaffRole {
+  return staffRolePriority.some((staffRole) => staffRole === role);
+}
+
 export function getRolesFromClaims(
   claims: ClaimsWithMetadata,
 ): Record<string, string> | null {

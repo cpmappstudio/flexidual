@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { createClerkClient } from "@clerk/backend";
 import {
   action,
   internalAction,
@@ -75,7 +76,7 @@ async function assertCanManageAssignment(
   if (
     !campusId ||
     !campus ||
-    !(await canManageCampusPeople(ctx, userId, campus.schoolId))
+    !(await canManageCampusPeople(ctx, userId, campusId, campus.schoolId))
   ) {
     throw new Error("Unauthorized");
   }
@@ -327,21 +328,10 @@ export const syncRolesToClerk = internalAction({
       }
     }
 
-    // 3. Push to Clerk
-    const response = await fetch(
-      `https://api.clerk.com/v1/users/${args.clerkId}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${clerkSecretKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          public_metadata: { roles: rolesMap },
-        }),
-      },
-    );
-    if (!response.ok) throw new Error("Clerk role synchronization failed");
+    const clerk = createClerkClient({ secretKey: clerkSecretKey });
+    await clerk.users.updateUserMetadata(args.clerkId, {
+      publicMetadata: { roles: rolesMap },
+    });
     return null;
   },
 });
