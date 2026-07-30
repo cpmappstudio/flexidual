@@ -137,6 +137,7 @@ export default function CalendarBodyWeek() {
               surfaceClassName="pt-3"
               compactEvents
               floatingEventTime
+              hideResponsiveEventTime
               showHeader={false}
             />
           </div>

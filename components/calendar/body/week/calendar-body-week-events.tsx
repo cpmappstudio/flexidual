@@ -3,8 +3,9 @@ import { startOfWeek, endOfWeek, isWithinInterval, format } from "date-fns";
 import { tz } from "@date-fns/tz";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { useLocale, useTranslations } from "next-intl";
-import { getCalendarColorClasses } from "../../calendar-tailwind-classes";
+import { getCalendarEventAppearanceClasses } from "../../calendar-tailwind-classes";
 import { getCalendarEventDisplay } from "../../calendar-event-display";
+import { CalendarProviderMark } from "../../calendar-provider-mark";
 
 const localeMap = {
   en: enUS,
@@ -49,6 +50,13 @@ export default function CalendarBodyWeekEvents() {
           const { primaryLabel, secondaryLabel, gradeLabel } =
             getCalendarEventDisplay(event, { showGrade: !isStudent });
           const timeLabel = `${format(event.start, "h:mm a", dateContext)} - ${format(event.end, "h:mm a", dateContext)}`;
+          const isPast = event.end.getTime() < Date.now();
+          const appearance = getCalendarEventAppearanceClasses({
+            color: event.color,
+            sessionType: event.sessionType,
+            status: event.status,
+            isPast,
+          });
 
           return (
             <div
@@ -60,10 +68,19 @@ export default function CalendarBodyWeekEvents() {
               }}
             >
               <div
-                className={`size-2 shrink-0 rounded-full ${getCalendarColorClasses(event.color).dot}`}
+                className={`size-2 shrink-0 rounded-full ${appearance.dot}`}
               />
               <div className="flex flex-col min-w-0">
-                <p className="truncate text-xs font-semibold">{primaryLabel}</p>
+                <div className="flex min-w-0 items-center gap-1">
+                  <p className="truncate text-xs font-semibold">
+                    {primaryLabel}
+                  </p>
+                  <CalendarProviderMark
+                    sessionType={event.sessionType}
+                    isPast={isPast}
+                    className="size-3"
+                  />
+                </div>
                 {gradeLabel && (
                   <p className="truncate text-[10px] font-semibold uppercase text-muted-foreground">
                     {gradeLabel}

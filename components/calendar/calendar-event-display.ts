@@ -27,7 +27,10 @@ export function getCalendarEventDisplay(
       options?.showGrade && options.includeGradeInPrimary && gradeLabel
         ? `${primaryLabel} (${gradeLabel})`
         : primaryLabel,
-    secondaryLabel: event.teacherName ?? platformLabel,
+    secondaryLabel:
+      event.teacherName && event.teacherName !== "Unknown"
+        ? event.teacherName
+        : platformLabel,
     gradeLabel: options?.showGrade ? gradeLabel : null,
   };
 }

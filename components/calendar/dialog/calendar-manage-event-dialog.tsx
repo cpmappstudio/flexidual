@@ -60,6 +60,8 @@ import { useParams } from "next/navigation";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { utcToLocalDateTime } from "@/lib/time-zone";
 import { getCalendarEventDisplay } from "../calendar-event-display";
+import { CalendarProviderMark } from "../calendar-provider-mark";
+import { getCalendarProviderAppearanceClasses } from "../calendar-tailwind-classes";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
@@ -239,9 +241,23 @@ export default function CalendarManageEventDialog({
     selectedEvent,
     { showGrade: !isStudent },
   );
-  const secondaryText = selectedEvent.teacherName
+  const hasAssignedTeacher =
+    Boolean(selectedEvent.teacherName) &&
+    selectedEvent.teacherName !== "Unknown";
+  const secondaryText = hasAssignedTeacher
     ? `${t("common.with")} ${secondaryLabel}`
-    : secondaryLabel;
+    : selectedEvent.sessionType === "live"
+      ? secondaryLabel
+      : null;
+  const providerAppearance = getCalendarProviderAppearanceClasses(
+    selectedEvent.sessionType,
+  );
+  const providerLabel =
+    selectedEvent.sessionType === "ignitia"
+      ? t("schedule.typeIgnitia")
+      : selectedEvent.sessionType === "abeka"
+        ? t("schedule.typeAbeka")
+        : null;
   const displayDate = selectedEvent.start.toLocaleDateString(locale, {
     weekday: "long",
     month: "long",
@@ -313,15 +329,31 @@ export default function CalendarManageEventDialog({
             /* VIEW MODE */
             <div className="space-y-6 w-full min-w-0">
               <div className="flex items-start justify-between">
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-2xl font-bold">
                     {primaryLabel}
                     {gradeLabel && ` (${gradeLabel})`}
                   </h2>
-                  {secondaryText && (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {secondaryText}
-                    </p>
+                  {(secondaryText || providerLabel) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {secondaryText && (
+                        <p className="text-sm text-muted-foreground">
+                          {secondaryText}
+                        </p>
+                      )}
+                      {providerLabel && providerAppearance && (
+                        <Badge
+                          variant="outline"
+                          className={`h-7 gap-1.5 px-2.5 font-semibold ${providerAppearance.badge}`}
+                        >
+                          <CalendarProviderMark
+                            sessionType={selectedEvent.sessionType}
+                            className="size-4"
+                          />
+                          {providerLabel}
+                        </Badge>
+                      )}
+                    </div>
                   )}
                   {selectedEvent.isLive && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">

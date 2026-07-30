@@ -2,6 +2,11 @@ import { v } from "convex/values";
 import { internalMutation, MutationCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { DEFAULT_INSTITUTION_GRADES } from "../lib/grades";
+import {
+  addCivilDays,
+  localDateTimeToUtc,
+  todayInTimeZone,
+} from "../lib/time-zone";
 
 const UX_DEMO_CURRICULUM_CODE = "UX-DEMO-01";
 const UX_DEMO_CLASS_NAME = "UX Demo - Integrated Biology Studio";
@@ -13,6 +18,8 @@ const LAURA_TODAY_DEMO_ROOM_PREFIX = "student-lau-today-demo";
 const LAURA_RECORDING_DEMO_EGRESS_PREFIX = "laura-recording-demo";
 const LAURA_RECORDING_DEMO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+const LAURA_CALENDAR_PROVIDER_DEMO_CODE_PREFIX = "LAURA-CALENDAR-PROVIDER-DEMO";
+const LAURA_CALENDAR_PROVIDER_DEMO_ROOM_PREFIX = "laura-calendar-provider-demo";
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
@@ -131,6 +138,36 @@ const lauraCourseLoadDemoCourses = [
   ["Public Speaking", "Communication - Public Speaking"],
   ["Financial Literacy", "Mathematics - Financial Literacy"],
   ["Intro to Computer Science", "Technology - Computer Science"],
+] as const;
+
+const lauraCalendarProviderDemoCourses = [
+  {
+    key: "LIVE",
+    name: "Collaborative Science Lab - Ecosystems and Field Evidence",
+    curriculumTitle: "Middle School Science - Collaborative Investigation",
+    classType: "standard" as const,
+    sessionType: "live" as const,
+    color: "#0ea5e9",
+    startHour: 8,
+  },
+  {
+    key: "IGNITIA",
+    name: "Foundations of Mathematics - Fractions and Proportional Reasoning",
+    curriculumTitle: "Ignitia Mathematics - Foundations and Applications",
+    classType: "ignitia" as const,
+    sessionType: "ignitia" as const,
+    color: "#F15A3D",
+    startHour: 9,
+  },
+  {
+    key: "ABEKA",
+    name: "World History and Cultures - Civilizations and Primary Sources",
+    curriculumTitle: "Abeka History - World Cultures and Civilizations",
+    classType: "abeka" as const,
+    sessionType: "abeka" as const,
+    color: "#92278F",
+    startHour: 10,
+  },
 ] as const;
 
 const advancedLiteratureLessons = [
@@ -1358,6 +1395,266 @@ export const createLauraCourseLoadDemo = internalMutation({
       updated,
       enrolled,
       courses,
+    };
+  },
+});
+
+export const createLauraCalendarProviderDemo = internalMutation({
+  args: {},
+  returns: v.object({
+    message: v.string(),
+    student: v.string(),
+    campus: v.string(),
+    timeZone: v.string(),
+    createdBy: v.string(),
+    classes: v.array(
+      v.object({
+        className: v.string(),
+        provider: v.union(
+          v.literal("live"),
+          v.literal("ignitia"),
+          v.literal("abeka"),
+        ),
+        gradeCode: v.string(),
+        teacherName: v.optional(v.string()),
+        start: v.string(),
+        end: v.string(),
+        status: v.union(v.literal("scheduled"), v.literal("completed")),
+        hasRecording: v.boolean(),
+      }),
+    ),
+  }),
+  handler: async (ctx) => {
+    const student = (await ctx.db.query("users").collect()).find(
+      (user) => user.username === LAURA_TODAY_DEMO_USERNAME,
+    );
+    if (!student) {
+      throw new Error(`Student ${LAURA_TODAY_DEMO_USERNAME} was not found.`);
+    }
+
+    const campus =
+      (await getUserCampus(ctx, student._id)) || (await getDemoCampus(ctx));
+    if (!campus.timeZone) {
+      throw new Error(`Campus ${campus.name} has no time zone configured.`);
+    }
+
+    const school = await ctx.db.get(campus.schoolId);
+    if (!school) throw new Error("Demo campus has no parent school.");
+
+    const admin =
+      (await findUserByName(ctx, "laura.horta@correounivalle.edu.co")) ||
+      (await getUserByRole(ctx, "admin", campus._id)) ||
+      (await getUserByRole(ctx, "admin"));
+    if (!admin) throw new Error("No active administrator was found.");
+
+    const teacher =
+      (await findUserByName(ctx, "betancourt")) ||
+      (await getUserByRole(ctx, "teacher", campus._id));
+    if (!teacher) throw new Error("No active teacher was found.");
+
+    const now = Date.now();
+    const localToday = todayInTimeZone(campus.timeZone);
+    const scheduleSlots = [
+      {
+        key: "today",
+        dayOffset: 0,
+        hourOffset: 0,
+        status: "completed" as const,
+      },
+      {
+        key: "tomorrow",
+        dayOffset: 1,
+        hourOffset: 3,
+        status: "scheduled" as const,
+      },
+      {
+        key: "next-week",
+        dayOffset: 7,
+        hourOffset: 0,
+        status: "scheduled" as const,
+      },
+    ] as const;
+    const seededClasses = [];
+
+    for (const [
+      courseIndex,
+      course,
+    ] of lauraCalendarProviderDemoCourses.entries()) {
+      const curriculumCode = `${LAURA_CALENDAR_PROVIDER_DEMO_CODE_PREFIX}-${course.key}`;
+      let curriculum = await ctx.db
+        .query("curriculums")
+        .withIndex("by_code", (q) => q.eq("code", curriculumCode))
+        .first();
+
+      if (!curriculum) {
+        const curriculumId = await ctx.db.insert("curriculums", {
+          title: course.curriculumTitle,
+          description:
+            "Development curriculum for validating calendar provider styles.",
+          code: curriculumCode,
+          color: course.color,
+          gradeCodes: ["08"],
+          schoolId: school._id,
+          isActive: true,
+          createdAt: now + courseIndex,
+          createdBy: admin._id,
+        });
+        curriculum = await ctx.db.get(curriculumId);
+      } else {
+        await ctx.db.patch(curriculum._id, {
+          title: course.curriculumTitle,
+          color: course.color,
+          gradeCodes: ["08"],
+          schoolId: school._id,
+          isActive: true,
+          createdBy: admin._id,
+        });
+      }
+      if (!curriculum) continue;
+
+      const curriculumClasses = await ctx.db
+        .query("classes")
+        .withIndex("by_curriculum", (q) => q.eq("curriculumId", curriculum._id))
+        .collect();
+      const existingClass = curriculumClasses.find(
+        (classData) => classData.name === course.name,
+      );
+      const teacherId = course.sessionType === "live" ? teacher._id : undefined;
+      const classData = {
+        name: course.name,
+        curriculumId: curriculum._id,
+        campusId: campus._id,
+        teacherId,
+        tutorId: undefined,
+        students: undefined,
+        enrollmentsMigratedAt: existingClass?.enrollmentsMigratedAt ?? now,
+        classType: course.classType,
+        academicYear: "2026-2027",
+        gradeCode: "08",
+        timeZone: campus.timeZone,
+        isActive: true,
+      };
+      const classId = existingClass
+        ? existingClass._id
+        : await ctx.db.insert("classes", {
+            ...classData,
+            createdAt: now + courseIndex,
+            createdBy: admin._id,
+          });
+
+      if (existingClass) {
+        await ctx.db.patch(existingClass._id, {
+          ...classData,
+          createdBy: admin._id,
+        });
+      }
+
+      const enrollment = await ctx.db
+        .query("classEnrollments")
+        .withIndex("by_class", (q) =>
+          q.eq("classId", classId).eq("studentId", student._id),
+        )
+        .unique();
+      if (!enrollment) {
+        await ctx.db.insert("classEnrollments", {
+          classId,
+          studentId: student._id,
+          enrolledAt: now + courseIndex,
+          enrolledBy: admin._id,
+        });
+      } else {
+        await ctx.db.patch(enrollment._id, { enrolledBy: admin._id });
+      }
+
+      for (const [slotIndex, slot] of scheduleSlots.entries()) {
+        const localDate = addCivilDays(localToday, slot.dayOffset);
+        const startHour = course.startHour + slot.hourOffset;
+        const start = localDateTimeToUtc(
+          `${localDate}T${String(startHour).padStart(2, "0")}:00`,
+          campus.timeZone,
+        );
+        const end = localDateTimeToUtc(
+          `${localDate}T${String(startHour).padStart(2, "0")}:45`,
+          campus.timeZone,
+        );
+        const roomName = `${LAURA_CALENDAR_PROVIDER_DEMO_ROOM_PREFIX}-${course.key.toLowerCase()}-${slot.key}`;
+        const existingSchedule = await ctx.db
+          .query("classSchedule")
+          .withIndex("by_room", (q) => q.eq("roomName", roomName))
+          .first();
+        const scheduleData = {
+          classId,
+          lessonIds: [],
+          title: course.name,
+          scheduledStart: start,
+          scheduledEnd: end,
+          sessionType: course.sessionType,
+          roomName,
+          isLive: false,
+          isRecurring: true,
+          recurrenceRule: "FREQ=WEEKLY;INTERVAL=1",
+          status: slot.status,
+          completedAt: slot.status === "completed" ? end : undefined,
+          createdAt:
+            existingSchedule?.createdAt ??
+            now + courseIndex * scheduleSlots.length + slotIndex,
+          createdBy: admin._id,
+        };
+        const scheduleId = existingSchedule
+          ? existingSchedule._id
+          : await ctx.db.insert("classSchedule", scheduleData);
+
+        if (existingSchedule) {
+          await ctx.db.patch(existingSchedule._id, scheduleData);
+        }
+
+        const hasRecording =
+          course.sessionType === "live" && slot.key === "today";
+        if (hasRecording) {
+          const egressId = `${LAURA_RECORDING_DEMO_EGRESS_PREFIX}-provider-calendar`;
+          const existingRecording = await ctx.db
+            .query("recordings")
+            .withIndex("by_egress_id", (q) => q.eq("egressId", egressId))
+            .first();
+          const recordingData = {
+            scheduleId,
+            roomName,
+            egressId,
+            status: "complete" as const,
+            url: LAURA_RECORDING_DEMO_URL,
+            durationMs: end - start,
+            startedAt: start,
+            completedAt: end,
+          };
+
+          if (existingRecording) {
+            await ctx.db.patch(existingRecording._id, recordingData);
+          } else {
+            await ctx.db.insert("recordings", recordingData);
+          }
+        }
+
+        seededClasses.push({
+          className: course.name,
+          provider: course.sessionType,
+          gradeCode: "08",
+          teacherName:
+            course.sessionType === "live" ? teacher.fullName : undefined,
+          start: new Date(start).toISOString(),
+          end: new Date(end).toISOString(),
+          status: slot.status,
+          hasRecording,
+        });
+      }
+    }
+
+    return {
+      message: "Laura calendar provider demo data is ready.",
+      student: student.fullName,
+      campus: campus.name,
+      timeZone: campus.timeZone,
+      createdBy: admin.fullName,
+      classes: seededClasses,
     };
   },
 });

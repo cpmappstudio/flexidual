@@ -1,8 +1,9 @@
 import { useCalendarContext } from "../../calendar-context";
 import { format, isSameDay } from "date-fns";
 import { useTranslations } from "next-intl";
-import { getCalendarColorClasses } from "../../calendar-tailwind-classes";
+import { getCalendarEventAppearanceClasses } from "../../calendar-tailwind-classes";
 import { getCalendarEventDisplay } from "../../calendar-event-display";
+import { CalendarProviderMark } from "../../calendar-provider-mark";
 import { tz } from "@date-fns/tz";
 
 export default function CalendarBodyDayEvents() {
@@ -32,6 +33,13 @@ export default function CalendarBodyDayEvents() {
             },
           );
           const timeLabel = `${format(event.start, "h:mm a", { in: tz(displayTimeZone) })} - ${format(event.end, "h:mm a", { in: tz(displayTimeZone) })}`;
+          const isPast = event.end.getTime() < Date.now();
+          const appearance = getCalendarEventAppearanceClasses({
+            color: event.color,
+            sessionType: event.sessionType,
+            status: event.status,
+            isPast,
+          });
 
           return (
             <div
@@ -43,10 +51,19 @@ export default function CalendarBodyDayEvents() {
               }}
             >
               <div
-                className={`size-2 shrink-0 rounded-full ${getCalendarColorClasses(event.color).dot}`}
+                className={`size-2 shrink-0 rounded-full ${appearance.dot}`}
               />
               <div className="flex flex-col min-w-0">
-                <p className="truncate text-xs font-semibold">{primaryLabel}</p>
+                <div className="flex min-w-0 items-center gap-1">
+                  <p className="truncate text-xs font-semibold">
+                    {primaryLabel}
+                  </p>
+                  <CalendarProviderMark
+                    sessionType={event.sessionType}
+                    isPast={isPast}
+                    className="size-3"
+                  />
+                </div>
                 {secondaryLabel && (
                   <p className="truncate text-[11px] font-medium text-muted-foreground">
                     {secondaryLabel}
