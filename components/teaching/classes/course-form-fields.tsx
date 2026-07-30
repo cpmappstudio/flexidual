@@ -2,6 +2,7 @@
 
 import { Dispatch, ReactNode, SetStateAction, useState } from "react";
 import { Doc, Id } from "@/convex/_generated/dataModel";
+import type { LiveAccess } from "@/convex/model/liveAccess";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -31,6 +32,7 @@ import { isCurriculumAvailableForGrade } from "@/lib/curriculum";
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { CourseLiveAccessFields } from "./course-live-access-fields";
 
 export interface CourseFormData {
   name: string;
@@ -38,6 +40,7 @@ export interface CourseFormData {
   curriculumId: string;
   teacherId: string;
   gradeCode: string;
+  liveAccess: LiveAccess;
 }
 
 interface TeacherOption {
@@ -113,10 +116,23 @@ export function CourseFormFields({
                         gradeCode,
                       ),
                   );
+                const selectedAccessGrades =
+                  current.liveAccess.allowedGradeCodes;
+                const allowedGradeCodes =
+                  current.liveAccess.mode === "school" &&
+                  (selectedAccessGrades.length === 0 ||
+                    (selectedAccessGrades.length === 1 &&
+                      selectedAccessGrades[0] === current.gradeCode))
+                    ? [gradeCode]
+                    : selectedAccessGrades;
 
                 return {
                   ...current,
                   gradeCode,
+                  liveAccess: {
+                    ...current.liveAccess,
+                    allowedGradeCodes,
+                  },
                   curriculumId: curriculumMatchesGrade
                     ? current.curriculumId
                     : "",
@@ -316,6 +332,15 @@ export function CourseFormFields({
           </div>
         )}
       </div>
+
+      <CourseLiveAccessFields
+        value={formData.liveAccess}
+        courseGradeCode={formData.gradeCode}
+        grades={grades}
+        onChangeAction={(liveAccess) =>
+          setFormData((current) => ({ ...current, liveAccess }))
+        }
+      />
 
       <div className="grid grid-cols-1 items-start gap-4">
         <div className="flex flex-col gap-2">

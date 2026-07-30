@@ -11,10 +11,13 @@ import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Doc, Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
 import { canAccessClass, canManageClasses, hasSystemRole } from "./permissions";
-import { canStudentAccessLiveClass } from "./model/liveAccess";
+import {
+  canStudentAccessLiveClass,
+  liveAccessValidator,
+  normalizeLiveAccess,
+} from "./model/liveAccess";
 import { hasOnlyInstructorStaffRoles } from "./model/roles";
 import { getClassTimeZone } from "./model/timeZone";
-import { getInstitutionGrades, validateGradeCodes } from "./model/grades";
 import { getStudentGradeCode, getStudentSchoolIds } from "./model/membership";
 import { isStudentEnrolled, listClassStudentIds } from "./model/enrollments";
 import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
@@ -44,10 +47,6 @@ const SESSION_STALE_MS = 4 * 60 * 60 * 1000;
 const DEFAULT_SCHEDULE_HISTORY_MS = 14 * 24 * 60 * 60 * 1000;
 const DEFAULT_SCHEDULE_FUTURE_MS = 60 * 24 * 60 * 60 * 1000;
 
-const liveAccessValidator = v.object({
-  mode: v.union(v.literal("private"), v.literal("school")),
-  allowedGradeCodes: v.array(v.string()),
-});
 const scheduleFields = {
   _id: v.id("classSchedule"),
   _creationTime: v.number(),
@@ -1218,30 +1217,7 @@ export const getWithDetails = query({
       class: v.object({
         _id: v.id("classes"),
         name: v.string(),
-        studentCount: v.number(),
-        gradeCode: v.optional(v.string()),
-        timeZone: v.string(),
       }),
-      curriculum: v.union(
-        v.null(),
-        v.object({
-          _id: v.id("curriculums"),
-          title: v.string(),
-          code: v.optional(v.string()),
-          color: v.optional(v.string()),
-          gradeCodes: v.optional(v.array(v.string())),
-        }),
-      ),
-      grades: v.array(v.object({ code: v.string(), name: v.string() })),
-      teacher: v.union(
-        v.null(),
-        v.object({
-          _id: v.id("users"),
-          fullName: v.string(),
-          email: v.optional(v.string()),
-          avatarStorageId: v.optional(v.id("_storage")),
-        }),
-      ),
     }),
   ),
   handler: async (ctx, args) => {
@@ -1261,16 +1237,6 @@ export const getWithDetails = query({
         : [];
     const validLessons = lessons.filter(Boolean);
 
-    const [curriculum, teacher] = await Promise.all([
-      ctx.db.get(classData.curriculumId),
-      classData.teacherId ? ctx.db.get(classData.teacherId) : null,
-    ]);
-    const campus = classData.campusId
-      ? await ctx.db.get(classData.campusId)
-      : null;
-    const schoolId = campus?.schoolId ?? curriculum?.schoolId;
-    const grades = schoolId ? await getInstitutionGrades(ctx, schoolId) : [];
-
     return {
       ...schedule,
       lessons: validLessons.map((l) => ({
@@ -1283,31 +1249,7 @@ export const getWithDetails = query({
       class: {
         _id: classData._id,
         name: classData.name,
-        studentCount: (await listClassStudentIds(ctx, classData)).length,
-        gradeCode: classData.gradeCode,
-        timeZone: (await getClassTimeZone(ctx, classData)) ?? "UTC",
       },
-      curriculum: curriculum
-        ? {
-            _id: curriculum._id,
-            title: curriculum.title,
-            code: curriculum.code,
-            color: curriculum.color,
-            gradeCodes: curriculum.gradeCodes,
-          }
-        : null,
-      grades: grades.map((grade) => ({
-        code: grade.code,
-        name: grade.name,
-      })),
-      teacher: teacher
-        ? {
-            _id: teacher._id,
-            fullName: teacher.fullName,
-            email: teacher.email,
-            avatarStorageId: teacher.avatarStorageId,
-          }
-        : null,
     };
   },
 });
@@ -1875,7 +1817,6 @@ export const markLive = mutation({
   args: {
     roomName: v.string(),
     isLive: v.literal(true),
-    liveAccess: v.optional(liveAccessValidator),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1921,30 +1862,10 @@ export const markLive = mutation({
     ) {
       throw new ConvexError("Completed sessions cannot be started");
     }
-    if (!args.liveAccess) {
-      throw new ConvexError(
-        "Live access policy is required when starting a class",
-      );
-    }
-    const allowedGradeCodes =
-      args.liveAccess.mode === "private"
-        ? []
-        : [...new Set(args.liveAccess.allowedGradeCodes)];
-    if (
-      classSchoolId &&
-      (await validateGradeCodes(ctx, classSchoolId, allowedGradeCodes))
-        .length > 0
-    ) {
-      throw new ConvexError("INVALID_GRADE");
-    }
-    if (args.liveAccess.mode === "school" && allowedGradeCodes.length === 0) {
-      throw new ConvexError(
-        "At least one grade is required for school access",
-      );
-    }
+    const liveAccess = normalizeLiveAccess(classData.liveAccess);
     await ctx.db.patch(schedule._id, {
       isLive: true,
-      liveAccess: { mode: args.liveAccess.mode, allowedGradeCodes },
+      liveAccess,
       status: "active",
       completedAt: undefined,
     });

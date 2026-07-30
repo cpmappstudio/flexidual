@@ -445,10 +445,6 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
             sessionIsLive={isClassLive}
-            curriculumGradeCodes={scheduleDetails?.curriculum?.gradeCodes ?? []}
-            classGradeCode={scheduleDetails?.class?.gradeCode}
-            availableGrades={scheduleDetails?.grades ?? []}
-            liveAccess={scheduleDetails?.liveAccess}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
           />

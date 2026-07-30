@@ -82,6 +82,7 @@ export default function CreateCoursePage() {
     curriculumId: "",
     teacherId: "",
     gradeCode: "",
+    liveAccess: { mode: "private", allowedGradeCodes: [] },
   });
   const scheduleGuides = useQuery(
     api.classes.listWeeklyScheduleGuides,
@@ -171,6 +172,8 @@ export default function CreateCoursePage() {
     !campusId ||
     !academicPeriodId ||
     !academicSettings?.timeZone ||
+    (formData.liveAccess.mode === "school" &&
+      formData.liveAccess.allowedGradeCodes.length === 0) ||
     weeklySlots.length === 0;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -185,6 +188,7 @@ export default function CreateCoursePage() {
         curriculumId: formData.curriculumId as Id<"curriculums">,
         teacherId: formData.teacherId as Id<"users">,
         gradeCode: formData.gradeCode,
+        liveAccess: formData.liveAccess,
         campusId,
         academicPeriodId: academicPeriodId as Id<"academicPeriods">,
         weeklySlots: weeklySlots.map((slot) => ({

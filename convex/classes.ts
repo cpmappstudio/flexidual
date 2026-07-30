@@ -39,6 +39,11 @@ import {
 import { hasOnlyInstructorStaffRoles } from "./model/roles";
 import { deleteSchedulesWithDependencies } from "./model/scheduleDeletion";
 import { isCurriculumAvailableForGrade } from "../lib/curriculum";
+import {
+  liveAccessValidator,
+  normalizeLiveAccess,
+  type LiveAccess,
+} from "./model/liveAccess";
 
 const classFields = {
   _id: v.id("classes"),
@@ -59,6 +64,7 @@ const classFields = {
   startDate: v.optional(v.number()),
   endDate: v.optional(v.number()),
   timeZone: v.optional(v.string()),
+  liveAccess: v.optional(liveAccessValidator),
   isActive: v.boolean(),
   createdAt: v.number(),
   createdBy: v.id("users"),
@@ -112,6 +118,23 @@ async function getClassAcademicYear(
     (await ctx.db.get(classData.academicPeriodId))?.name ??
     classData.academicYear
   );
+}
+
+async function validateCourseLiveAccess(
+  ctx: QueryCtx | MutationCtx,
+  schoolId: Id<"schools">,
+  liveAccess: LiveAccess,
+) {
+  const normalized = normalizeLiveAccess(liveAccess);
+  if (
+    normalized.mode === "school" &&
+    (normalized.allowedGradeCodes.length === 0 ||
+      (await validateGradeCodes(ctx, schoolId, normalized.allowedGradeCodes))
+        .length > 0)
+  ) {
+    throw new ConvexError("INVALID_LIVE_ACCESS");
+  }
+  return normalized;
 }
 
 type ClassListFilters = {
@@ -785,6 +808,7 @@ export const createWithSchedule = mutation({
     teacherId: v.id("users"),
     academicPeriodId: v.id("academicPeriods"),
     gradeCode: v.string(),
+    liveAccess: liveAccessValidator,
     weeklySlots: v.array(
       v.object({
         dayOfWeek: v.number(),
@@ -833,6 +857,11 @@ export const createWithSchedule = mutation({
     }
     const school = await ctx.db.get(curriculum.schoolId);
     if (!school) throw new ConvexError("INSTITUTION_NOT_FOUND");
+    const liveAccess = await validateCourseLiveAccess(
+      ctx,
+      curriculum.schoolId,
+      args.liveAccess,
+    );
     const scheduleStartMinutes =
       school.scheduleStartMinutes ?? DEFAULT_SCHEDULE_START_MINUTES;
     const scheduleEndMinutes =
@@ -978,6 +1007,7 @@ export const createWithSchedule = mutation({
       startDate,
       endDate,
       timeZone,
+      liveAccess,
       isActive: true,
       createdAt: now,
       createdBy: user._id,
@@ -1042,6 +1072,7 @@ export const update = mutation({
     teacherId: v.optional(v.id("users")),
     curriculumId: v.optional(v.id("curriculums")),
     gradeCode: v.optional(v.string()),
+    liveAccess: v.optional(liveAccessValidator),
     tutorId: v.optional(v.union(v.id("users"), v.null())),
     startDate: v.optional(v.number()),
     endDate: v.optional(v.number()),
@@ -1099,6 +1130,14 @@ export const update = mutation({
     ) {
       throw new ConvexError("INVALID_GRADE");
     }
+    const liveAccess =
+      args.liveAccess === undefined
+        ? undefined
+        : await validateCourseLiveAccess(
+            ctx,
+            targetCurriculum.schoolId,
+            args.liveAccess,
+          );
 
     // Validate new teacher if changing
     if (args.teacherId) {
@@ -1116,7 +1155,10 @@ export const update = mutation({
     const { classId, tutorId, ...updates } = args;
 
     // Convert null to undefined for optional fields
-    const cleanUpdates: Partial<Doc<"classes">> = { ...updates };
+    const cleanUpdates: Partial<Doc<"classes">> = {
+      ...updates,
+      ...(liveAccess !== undefined && { liveAccess }),
+    };
     if (tutorId !== undefined) {
       cleanUpdates.tutorId = tutorId ?? undefined;
     }
