@@ -57,7 +57,7 @@ import {
 } from "@/components/ui/select";
 import { CalendarEvent } from "../calendar-types";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { utcToLocalDateTime } from "@/lib/time-zone";
 import { getCalendarEventDisplay } from "../calendar-event-display";
@@ -68,6 +68,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
 
 const formSchema = z.object({
   title: z.string().optional(),
@@ -101,10 +102,12 @@ export default function CalendarManageEventDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [recordingOpen, setRecordingOpen] = useState(false);
+  const [isClassroomLaunching, setIsClassroomLaunching] = useState(false);
 
   const lastEventIdRef = useRef<string | null>(null);
 
   const params = useParams();
+  const router = useRouter();
   const orgSlug = (params.orgSlug as string) || "system";
 
   const updateSchedule = useMutation(api.schedule.updateSchedule);
@@ -225,6 +228,7 @@ export default function CalendarManageEventDialog({
   }
 
   function handleClose() {
+    setIsClassroomLaunching(false);
     setManageEventDialogOpen(false);
     setTimeout(() => {
       setSelectedEvent(null);
@@ -289,6 +293,13 @@ export default function CalendarManageEventDialog({
     roomName: selectedEvent.roomName,
   });
   const canWatchRecording = primaryAction === "watch-recording";
+  const classroomHref = `/${orgSlug}/classroom/${selectedEvent.roomName}`;
+
+  function handleClassroomLaunchComplete() {
+    handleClose();
+    router.push(classroomHref);
+  }
+
   const providerBadge =
     providerLabel && providerAppearance ? (
       <Badge
@@ -439,12 +450,24 @@ export default function CalendarManageEventDialog({
                     {t("recordings.watchRecording")}
                   </Button>
                 ) : primaryAction === "go-to-classroom" ? (
-                  <Button className="h-11 w-full gap-2" asChild>
+                  <Button
+                    className="group relative h-11 w-full overflow-hidden"
+                    asChild
+                  >
                     <Link
-                      href={`/${orgSlug}/classroom/${selectedEvent.roomName}`}
+                      href={classroomHref}
+                      aria-busy={isClassroomLaunching}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (isClassroomLaunching) return;
+                        setIsClassroomLaunching(true);
+                      }}
                     >
-                      {t("dashboard.goToClassroom")}
-                      <MoveRight className="h-4 w-4" />
+                      <RocketLaunchButtonContent
+                        label={t("dashboard.goToClassroom")}
+                        isLaunching={isClassroomLaunching}
+                        onComplete={handleClassroomLaunchComplete}
+                      />
                     </Link>
                   </Button>
                 ) : primaryAction === "enter-live" ? (

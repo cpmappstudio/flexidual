@@ -2,11 +2,13 @@
 
 import { motion, AnimatePresence } from "framer-motion"
 import { useState, useMemo } from "react"
-import { Rocket, Sparkles, ExternalLink } from "lucide-react"
+import Image from "next/image"
+import { Sparkles, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import FlexiClassroom from "@/components/classroom/flexi-classroom"
 import { useTranslations } from "next-intl"
 import { StudentScheduleEvent } from "@/lib/types/student"
+import { RocketTransition } from "@/components/student/rocket-transition"
 
 interface ClassroomDropZoneProps {
   isDragging: boolean
@@ -40,16 +42,6 @@ export function ClassroomDropZone({
     }))
   }, [])
 
-  // Stars for launch animation
-  const launchStars = useMemo(() => {
-    return Array.from({ length: 50 }, (_, i) => ({
-      id: i,
-      left: `${(i * 13.7) % 100}%`,
-      top: `${(i * 19.3) % 100}%`,
-      duration: 1 + (i % 2),
-    }))
-  }, [])
-
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     setIsHovering(true)
@@ -77,87 +69,16 @@ export function ClassroomDropZone({
 
   return (
     <div className="relative h-full w-full rounded-3xl overflow-hidden border-4 border-primary shadow-2xl">
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         {/* Rocket Launch Animation */}
         {isLaunching && (
-          <motion.div
-            key="launching"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-gradient-to-b from-inverse via-primary to-secondary flex items-center justify-center"
-          >
-            {/* Stars background */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {launchStars.map((star) => (
-                <motion.div
-                  key={star.id}
-                  className="absolute w-1 h-1 bg-inverse-foreground rounded-full"
-                  style={{
-                    left: star.left,
-                    top: star.top,
-                  }}
-                  animate={{
-                    opacity: [0.2, 1, 0.2],
-                    scale: [1, 1.5, 1],
-                  }}
-                  transition={{
-                    duration: star.duration,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Rocket */}
-            <motion.div
-              initial={{ y: 100, rotate: 0, scale: 0.5 }}
-              animate={{ y: -1000, rotate: -15, scale: 1.5 }}
-              transition={{ duration: 2, ease: "easeIn" }}
-              onAnimationComplete={onLaunchComplete}
-              className="relative"
-            >
-              <Rocket className="w-32 h-32 text-secondary" strokeWidth={1.5} />
-              
-              {/* Fire trail */}
-              <motion.div
-                className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-12"
-                animate={{
-                  scaleY: [1, 1.5, 1],
-                  opacity: [0.8, 1, 0.8],
-                }}
-                transition={{
-                  duration: 0.3,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              >
-                <div className="bg-gradient-to-b from-warning via-secondary to-destructive h-24 w-full rounded-b-full blur-sm" />
-              </motion.div>
-            </motion.div>
-
-            {/* Text */}
-            <motion.div
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="absolute bottom-32 text-center px-4"
-            >
-              <h2 className="text-3xl sm:text-4xl font-bold text-inverse-foreground mb-2">
-                🚀 {t('launchingClass')}
-              </h2>
-              <p className="text-lg sm:text-xl text-inverse-foreground/70">{t('getReady')}</p>
-            </motion.div>
-          </motion.div>
+          <RocketTransition onComplete={onLaunchComplete} />
         )}
 
         {/* Active Classroom */}
-        {activeLesson && !isLaunching ? (
+        {activeLesson ? (
           <motion.div
             key="classroom"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
             className="h-full w-full relative"
           >
             {isVirtual ? (
@@ -288,7 +209,14 @@ export function ClassroomDropZone({
               }}
               className="relative z-10"
             >
-              <Rocket className="w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 text-primary-foreground drop-shadow-2xl" strokeWidth={1.5} />
+              <Image
+                src="/rocket.svg"
+                alt=""
+                width={192}
+                height={164}
+                aria-hidden="true"
+                className="h-auto w-32 drop-shadow-2xl sm:w-40 lg:w-48"
+              />
               
               {/* Pulsing glow */}
               <motion.div

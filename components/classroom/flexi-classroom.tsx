@@ -16,6 +16,7 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSidebar } from "@/components/ui/sidebar";
 import { CompanionClassroomUI } from "./companion-classroom-ui";
 import { useFullscreen } from "@/hooks/use-fullscreen";
+import { ClassroomRocketLoader } from "@/components/student/rocket-transition";
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -233,6 +234,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   // Loading State
   if (!convexUser || sessionStatus === undefined) {
+    if (resolvedIsStudentView) {
+      return <ClassroomRocketLoader label={t("classroom.checkingStatus")} />;
+    }
+
     return (
       <div className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}>
         <div className="flex flex-col items-center gap-4">
@@ -399,6 +404,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   // Connecting
   if (!token) {
+    if (resolvedIsStudentView) {
+      return <ClassroomRocketLoader label={t("classroom.entering")} />;
+    }
+
     return (
       <div className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-sm rounded-lg ${className}`}>
         <div className="flex flex-col items-center gap-4">
