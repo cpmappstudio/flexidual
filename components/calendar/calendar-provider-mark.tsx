@@ -12,8 +12,6 @@ export function CalendarProviderMark({
   isPast = false,
   className,
 }: CalendarProviderMarkProps) {
-  if (sessionType === "live") return null;
-
   return (
     <span
       aria-hidden="true"
@@ -25,9 +23,11 @@ export function CalendarProviderMark({
     >
       <Image
         src={
-          sessionType === "ignitia"
-            ? "/providers/ignitia-logo.png"
-            : "/providers/abeka-logo.svg"
+          sessionType === "live"
+            ? "/professors-icon.svg"
+            : sessionType === "ignitia"
+              ? "/providers/ignitia-logo.png"
+              : "/providers/abeka-logo.svg"
         }
         alt=""
         fill

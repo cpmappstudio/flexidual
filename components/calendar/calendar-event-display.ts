@@ -1,5 +1,17 @@
 import { CalendarEvent } from "./calendar-types";
 
+export function getCalendarEventIndicators(
+  event: Pick<CalendarEvent, "hasRecording" | "isLive">,
+  isPast: boolean,
+) {
+  const showRecording = isPast && Boolean(event.hasRecording) && !event.isLive;
+
+  return {
+    showRecording,
+    showProviderIdentity: !showRecording,
+  };
+}
+
 export function getCalendarEventDisplay(
   event: Pick<
     CalendarEvent,

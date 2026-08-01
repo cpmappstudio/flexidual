@@ -618,6 +618,7 @@
     "autoNamePattern": "Auto-format: Curriculum - Teacher - Year (Sec #)",
     "deleteConfirm": "Delete this course? Its schedules, class history, and student enrollments will be permanently removed.",
     "typeStandard": "Standard (Teacher)",
+    "typeStandardShort": "Standard",
     "notFound": "Course not found"
   },
   "student": {

@@ -4,7 +4,10 @@ import {
   getCalendarEventAppearanceClasses,
   getCalendarProviderAppearanceClasses,
 } from "../components/calendar/calendar-tailwind-classes";
-import { getCalendarEventDisplay } from "../components/calendar/calendar-event-display";
+import {
+  getCalendarEventDisplay,
+  getCalendarEventIndicators,
+} from "../components/calendar/calendar-event-display";
 
 const scheduledEvent = {
   color: "blue",
@@ -113,4 +116,18 @@ test("an assigned teacher takes priority over the provider label", () => {
   });
 
   assert.equal(event.secondaryLabel, "Professor Betancourt");
+});
+
+test("recordings replace the provider identity on past classes", () => {
+  assert.deepEqual(
+    getCalendarEventIndicators({ hasRecording: true, isLive: false }, true),
+    { showRecording: true, showProviderIdentity: false },
+  );
+});
+
+test("provider identity remains visible when no recording is shown", () => {
+  assert.deepEqual(
+    getCalendarEventIndicators({ hasRecording: true, isLive: false }, false),
+    { showRecording: false, showProviderIdentity: true },
+  );
 });

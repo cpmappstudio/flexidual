@@ -618,6 +618,7 @@
     "autoNamePattern": "Formato automático: Currículo - Professor - Ano (Sec #)",
     "deleteConfirm": "Excluir este curso? Seus horários, histórico de aulas e matrículas serão removidos permanentemente.",
     "typeStandard": "Padrão (Professor)",
+    "typeStandardShort": "Padrão",
     "notFound": "Curso não encontrado"
   },
   "student": {
