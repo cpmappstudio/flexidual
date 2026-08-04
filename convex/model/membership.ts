@@ -110,6 +110,34 @@ export async function getStudentSchoolIds(
   return schoolIds;
 }
 
+export async function getSoleStudentCampusId(
+  ctx: DbCtx,
+  userId: Id<"users">,
+) {
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  const campusIds = [
+    ...new Set(
+      assignments.flatMap((assignment) =>
+        assignment.role === "student" &&
+        assignment.orgType === "campus" &&
+        assignment.orgId
+          ? [assignment.orgId]
+          : [],
+      ),
+    ),
+  ]
+    .map((orgId) => ctx.db.normalizeId("campuses", orgId))
+    .filter((campusId): campusId is Id<"campuses"> => campusId !== null);
+
+  if (campusIds.length > 1) {
+    throw new Error("Student has multiple campus assignments");
+  }
+  return campusIds.length === 1 ? campusIds[0] : undefined;
+}
+
 export async function listInstitutionStudentMemberships(
   ctx: DbCtx,
   schoolId: Id<"schools">,

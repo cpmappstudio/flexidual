@@ -4,7 +4,10 @@ import { tz } from "@date-fns/tz";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { useLocale, useTranslations } from "next-intl";
 import { getCalendarEventAppearanceClasses } from "../../calendar-tailwind-classes";
-import { getCalendarEventDisplay } from "../../calendar-event-display";
+import {
+  getCalendarEventDisplay,
+  isCalendarEventPast,
+} from "../../calendar-event-display";
 import { CalendarProviderMark } from "../../calendar-provider-mark";
 
 const localeMap = {
@@ -50,7 +53,7 @@ export default function CalendarBodyWeekEvents() {
           const { primaryLabel, secondaryLabel, gradeLabel } =
             getCalendarEventDisplay(event, { showGrade: !isStudent });
           const timeLabel = `${format(event.start, "h:mm a", dateContext)} - ${format(event.end, "h:mm a", dateContext)}`;
-          const isPast = event.end.getTime() < Date.now();
+          const isPast = isCalendarEventPast(event);
           const appearance = getCalendarEventAppearanceClasses({
             color: event.color,
             sessionType: event.sessionType,

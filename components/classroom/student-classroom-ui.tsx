@@ -1,6 +1,6 @@
 "use client";
 
-import { 
+import {
   VideoTrack,
   useLocalParticipant,
   useRoomContext,
@@ -9,25 +9,43 @@ import {
   RoomAudioRenderer,
   useIsSpeaking,
 } from "@livekit/components-react";
-import { 
-  Track, 
-  Participant, 
+import {
+  Track,
+  Participant,
   TrackPublication,
   RemoteParticipant,
   RemoteTrackPublication,
   RoomEvent,
 } from "livekit-client";
-import { 
-  Mic, MicOff, Video as VideoIcon, VideoOff, Loader2, VolumeX,
-  ZoomIn, ZoomOut, Move,
-  MonitorUp, Hand, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  Eye, EyeOff, Maximize2, Minimize2
+import {
+  Mic,
+  MicOff,
+  Video as VideoIcon,
+  VideoOff,
+  Loader2,
+  VolumeX,
+  ZoomIn,
+  ZoomOut,
+  Move,
+  MonitorUp,
+  Hand,
+  ChevronUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Maximize2,
+  Minimize2,
+  Clock3,
 } from "lucide-react";
 import { SharedWhiteboard } from "./shared-whiteboard";
 import { LeaveClassButton } from "./leave-class-button";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
 import {
@@ -52,8 +70,7 @@ const getRole = (p: Participant | undefined): string => {
   }
 };
 
-const isAuthority = (role: string) =>
-  role === "teacher" || role === "admin";
+const isAuthority = (role: string) => role === "teacher" || role === "admin";
 
 const getImageUrl = (p: Participant | undefined): string | null => {
   if (!p || !p.metadata) return null;
@@ -66,53 +83,71 @@ const getImageUrl = (p: Participant | undefined): string | null => {
 };
 
 // Helper Components
-function ParticipantTile({ 
-  participant, 
-  className, 
+function ParticipantTile({
+  participant,
+  className,
   showLabel = true,
   variant = "grid",
   raisedHand = false,
   roleBadge,
   youLabel,
   audioMuted = false,
-}: { 
-  participant: Participant, 
-  className?: string, 
-  showLabel?: boolean,
-  variant?: "grid" | "stage" | "mini",
-  raisedHand?: boolean,
-  roleBadge?: string,
-  youLabel?: string,
-  audioMuted?: boolean,
+}: {
+  participant: Participant;
+  className?: string;
+  showLabel?: boolean;
+  variant?: "grid" | "stage" | "mini";
+  raisedHand?: boolean;
+  roleBadge?: string;
+  youLabel?: string;
+  audioMuted?: boolean;
 }) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
   const isSpeaking = useIsSpeaking(participant);
-  const isVideoEnabled = cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
+  const isVideoEnabled =
+    cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
   const imageUrl = getImageUrl(participant);
 
-  const avatarSize = variant === "stage" ? "w-32 h-32 text-6xl" : variant === "mini" ? "w-8 h-8 text-xs" : "w-16 h-16 text-2xl";
+  const avatarSize =
+    variant === "stage"
+      ? "w-32 h-32 text-6xl"
+      : variant === "mini"
+        ? "w-8 h-8 text-xs"
+        : "w-16 h-16 text-2xl";
   const borderSize = variant === "mini" ? "border-2" : "border-4";
 
   return (
-    <div className={`relative bg-inverse overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px] shadow-success/40 z-20" : ""} ${className}`}>
+    <div
+      className={`relative bg-inverse overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px] shadow-success/40 z-20" : ""} ${className}`}
+    >
       {isVideoEnabled ? (
-        <VideoTrack 
-          trackRef={{ participant, source: Track.Source.Camera, publication: cameraTrack as TrackPublication }} 
+        <VideoTrack
+          trackRef={{
+            participant,
+            source: Track.Source.Camera,
+            publication: cameraTrack as TrackPublication,
+          }}
           className="w-full h-full object-cover"
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary to-secondary">
-          <div className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-primary-foreground ${borderSize} border-primary-foreground/10 shadow-xl overflow-hidden bg-primary`}>
+          <div
+            className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-primary-foreground ${borderSize} border-primary-foreground/10 shadow-xl overflow-hidden bg-primary`}
+          >
             {imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageUrl} alt={participant.name || participant.identity} className="w-full h-full object-cover" />
+              <img
+                src={imageUrl}
+                alt={participant.name || participant.identity}
+                className="w-full h-full object-cover"
+              />
             ) : (
               participant.name?.charAt(0).toUpperCase() || "?"
             )}
           </div>
         </div>
       )}
-      
+
       {showLabel && variant === "stage" ? (
         <div className="absolute bottom-3 left-3 flex items-center gap-2 z-10">
           <div className="bg-inverse/70 backdrop-blur-sm px-3 py-1.5 rounded-lg flex items-center gap-2 border border-inverse-foreground/10 shadow-md">
@@ -122,13 +157,15 @@ function ParticipantTile({
               </span>
             )}
             <span className="text-sm font-bold text-inverse-foreground truncate max-w-[200px]">
-              {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
+              {participant.name || participant.identity}
+              {participant.isLocal && youLabel && ` (${youLabel})`}
             </span>
           </div>
         </div>
       ) : showLabel ? (
         <div className="absolute bottom-1 left-1 bg-inverse/60 px-2 py-1 rounded text-[10px] text-inverse-foreground font-medium truncate max-w-[90%] backdrop-blur-sm">
-          {participant.name || participant.identity}{participant.isLocal && youLabel && ` (${youLabel})`}
+          {participant.name || participant.identity}
+          {participant.isLocal && youLabel && ` (${youLabel})`}
         </div>
       ) : null}
       {raisedHand && (
@@ -137,32 +174,61 @@ function ParticipantTile({
         </div>
       )}
       {audioMuted && (
-        <div className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${
-          variant === "stage" ? "bottom-3 right-3 p-1.5" : "bottom-1 right-1 p-1"
-        }`}>
-          <MicOff className={`text-destructive-foreground ${variant === "stage" ? "w-4 h-4" : "w-3 h-3"}`} />
+        <div
+          className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${
+            variant === "stage"
+              ? "bottom-3 right-3 p-1.5"
+              : "bottom-1 right-1 p-1"
+          }`}
+        >
+          <MicOff
+            className={`text-destructive-foreground ${variant === "stage" ? "w-4 h-4" : "w-3 h-3"}`}
+          />
         </div>
       )}
     </div>
   );
 }
 
-const PIP_W = 192, PIP_H = 144, PIP_MARGIN = 12;
+const PIP_W = 192,
+  PIP_H = 144,
+  PIP_MARGIN = 12;
 
-function DraggablePip({ children, containerRef }: { children: React.ReactNode; containerRef: React.RefObject<HTMLDivElement | null> }) {
+function DraggablePip({
+  children,
+  containerRef,
+}: {
+  children: React.ReactNode;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const dragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPos: { x: number; y: number } }>({
-    active: false, startMouse: { x: 0, y: 0 }, startPos: { x: 0, y: 0 },
+  const dragRef = useRef<{
+    active: boolean;
+    startMouse: { x: number; y: number };
+    startPos: { x: number; y: number };
+  }>({
+    active: false,
+    startMouse: { x: 0, y: 0 },
+    startPos: { x: 0, y: 0 },
   });
 
-  const clampPos = useCallback((x: number, y: number) => {
-    const el = containerRef.current;
-    if (!el) return { x, y };
-    return {
-      x: Math.max(PIP_MARGIN, Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, x)),
-      y: Math.max(PIP_MARGIN, Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, y)),
-    };
-  }, [containerRef]);
+  const clampPos = useCallback(
+    (x: number, y: number) => {
+      const el = containerRef.current;
+      if (!el) return { x, y };
+      return {
+        x: Math.max(
+          PIP_MARGIN,
+          Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, x),
+        ),
+        y: Math.max(
+          PIP_MARGIN,
+          Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, y),
+        ),
+      };
+    },
+    [containerRef],
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -175,11 +241,17 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
     const el = containerRef.current;
     if (!el) return;
     const observer = new ResizeObserver(() => {
-      setPos(prev => {
+      setPos((prev) => {
         if (!prev) return prev;
         return {
-          x: Math.max(PIP_MARGIN, Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, prev.x)),
-          y: Math.max(PIP_MARGIN, Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, prev.y)),
+          x: Math.max(
+            PIP_MARGIN,
+            Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, prev.x),
+          ),
+          y: Math.max(
+            PIP_MARGIN,
+            Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, prev.y),
+          ),
         };
       });
     });
@@ -192,27 +264,41 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
       if (!dragRef.current.active) return;
       const dx = e.clientX - dragRef.current.startMouse.x;
       const dy = e.clientY - dragRef.current.startMouse.y;
-      setPos(clampPos(dragRef.current.startPos.x + dx, dragRef.current.startPos.y + dy));
+      setPos(
+        clampPos(
+          dragRef.current.startPos.x + dx,
+          dragRef.current.startPos.y + dy,
+        ),
+      );
     };
-    const handleMouseUp = () => { dragRef.current.active = false; };
+    const handleMouseUp = () => {
+      dragRef.current.active = false;
+    };
     const handleTouchMove = (e: TouchEvent) => {
       if (!dragRef.current.active) return;
       e.preventDefault();
       const touch = e.touches[0];
       const dx = touch.clientX - dragRef.current.startMouse.x;
       const dy = touch.clientY - dragRef.current.startMouse.y;
-      setPos(clampPos(dragRef.current.startPos.x + dx, dragRef.current.startPos.y + dy));
+      setPos(
+        clampPos(
+          dragRef.current.startPos.x + dx,
+          dragRef.current.startPos.y + dy,
+        ),
+      );
     };
-    const handleTouchEnd = () => { dragRef.current.active = false; };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd);
+    const handleTouchEnd = () => {
+      dragRef.current.active = false;
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("touchmove", handleTouchMove, { passive: false });
+    document.addEventListener("touchend", handleTouchEnd);
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
     };
   }, [clampPos]);
 
@@ -225,11 +311,19 @@ function DraggablePip({ children, containerRef }: { children: React.ReactNode; c
       onMouseDown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();
-        dragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPos: { ...pos } };
+        dragRef.current = {
+          active: true,
+          startMouse: { x: e.clientX, y: e.clientY },
+          startPos: { ...pos },
+        };
       }}
       onTouchStart={(e) => {
         const touch = e.touches[0];
-        dragRef.current = { active: true, startMouse: { x: touch.clientX, y: touch.clientY }, startPos: { ...pos } };
+        dragRef.current = {
+          active: true,
+          startMouse: { x: touch.clientX, y: touch.clientY },
+          startPos: { ...pos },
+        };
       }}
     >
       {children}
@@ -244,15 +338,25 @@ interface StudentClassroomUIProps {
   roomName: string;
   className?: string;
   lessonTitle?: string;
+  onSwitchClassroom?: (roomName: string) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
 }
 
-export function StudentClassroomUI({ className, lessonTitle, isFullscreen = false, onToggleFullscreen }: StudentClassroomUIProps) {
+export function StudentClassroomUI({
+  roomName,
+  className,
+  lessonTitle,
+  onSwitchClassroom,
+  isFullscreen = false,
+  onToggleFullscreen,
+}: StudentClassroomUIProps) {
   const t = useTranslations();
   const room = useRoomContext();
   const [needsClick, setNeedsClick] = useState(false);
-  const [shareState, setShareState] = useState<"idle" | "requesting" | "approved">("idle");
+  const [shareState, setShareState] = useState<
+    "idle" | "requesting" | "approved"
+  >("idle");
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
@@ -266,29 +370,80 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
   const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
   const [followViewport, setFollowViewport] = useState(true);
   const [pendingFullscreen, setPendingFullscreen] = useState(false);
-  const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lifecycleNow, setLifecycleNow] = useState(Date.now());
+  const [dismissedExtensionEnd, setDismissedExtensionEnd] = useState<number>();
+  const warnedEffectiveEndRef = useRef<number | null>(null);
+  const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const classmateTilesRef = useRef<HTMLDivElement>(null);
-  const panDragRef = useRef<{ active: boolean; startMouse: { x: number; y: number }; startPan: { x: number; y: number } }>({
-    active: false, startMouse: { x: 0, y: 0 }, startPan: { x: 0, y: 0 },
+  const panDragRef = useRef<{
+    active: boolean;
+    startMouse: { x: number; y: number };
+    startPan: { x: number; y: number };
+  }>({
+    active: false,
+    startMouse: { x: 0, y: 0 },
+    startPan: { x: 0, y: 0 },
   });
+
+  const extensionContext = useQuery(api.schedule.getStudentExtensionContext, {
+    roomName,
+    now: Math.floor(lifecycleNow / 15_000) * 15_000,
+  });
+  const showNextClassChoice = Boolean(
+    extensionContext?.extensionEndsAt &&
+      extensionContext.nextClass &&
+      dismissedExtensionEnd !== extensionContext.extensionEndsAt,
+  );
+  const isEndingSoon = Boolean(
+    extensionContext &&
+      lifecycleNow >= extensionContext.warningStartsAt &&
+      lifecycleNow < extensionContext.effectiveEnd,
+  );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setLifecycleNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (
+      !extensionContext ||
+      lifecycleNow < extensionContext.warningStartsAt ||
+      lifecycleNow >= extensionContext.effectiveEnd ||
+      warnedEffectiveEndRef.current === extensionContext.effectiveEnd
+    ) {
+      return;
+    }
+    warnedEffectiveEndRef.current = extensionContext.effectiveEnd;
+    toast.warning(t("classroom.studentClassEndingSoon"), {
+      id: `student-class-ending-${extensionContext.effectiveEnd}`,
+      duration: 10_000,
+    });
+  }, [extensionContext, lifecycleNow, t]);
 
   const updateClassmatesScroll = useCallback(() => {
     const el = classmateTilesRef.current;
     if (!el) return;
     setClassmatesCanScrollPrev(el.scrollTop > 4 || el.scrollLeft > 4);
     setClassmatesCanScrollNext(
-      (el.scrollHeight - el.scrollTop - el.clientHeight > 4) ||
-      (el.scrollWidth - el.scrollLeft - el.clientWidth > 4)
+      el.scrollHeight - el.scrollTop - el.clientHeight > 4 ||
+        el.scrollWidth - el.scrollLeft - el.clientWidth > 4,
     );
   }, []);
 
   const showStageControls = useCallback(() => {
     setStageControlsVisible(true);
-    if (stageControlsTimerRef.current) clearTimeout(stageControlsTimerRef.current);
-    stageControlsTimerRef.current = setTimeout(() => setStageControlsVisible(false), 3000);
+    if (stageControlsTimerRef.current)
+      clearTimeout(stageControlsTimerRef.current);
+    stageControlsTimerRef.current = setTimeout(
+      () => setStageControlsVisible(false),
+      3000,
+    );
   }, []);
 
   const participants = useParticipants();
@@ -297,7 +452,10 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
   const adminPresenterParticipant = adminPresenterId
     ? participants.find((p) => p.identity === adminPresenterId)
     : null;
-  const teacher = participants.find((p) => getRole(p) === "teacher") || adminPresenterParticipant || undefined;
+  const teacher =
+    participants.find((p) => getRole(p) === "teacher") ||
+    adminPresenterParticipant ||
+    undefined;
   const students = participants.filter((p) => {
     const role = getRole(p);
     return role === "student";
@@ -320,8 +478,11 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
     });
   }, [students, raisedHands, handRaised]);
 
-  const screenTracks = useTracks([Track.Source.ScreenShare], { updateOnlyOn: [], onlySubscribed: false });
-  
+  const screenTracks = useTracks([Track.Source.ScreenShare], {
+    updateOnlyOn: [],
+    onlySubscribed: false,
+  });
+
   const activeScreenTrack = useMemo(() => {
     const sorted = [...screenTracks].sort((a, b) => {
       const roleA = getRole(a.participant);
@@ -339,24 +500,35 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
   // Explicit subscription for remote screen shares
   useEffect(() => {
     if (!activeScreenTrack || activeScreenTrack.participant.isLocal) return;
-    
+
     const publication = activeScreenTrack.publication;
-    
+
     if (!publication.isSubscribed && publication.track) {
       (publication as RemoteTrackPublication).setSubscribed(true);
     }
   }, [activeScreenTrack]);
 
   const teacherCameraTrack = teacher?.getTrackPublication(Track.Source.Camera);
-  const teacherAudioTrack = teacher?.getTrackPublication(Track.Source.Microphone);
-  const isTeacherVideoOn = teacherCameraTrack && teacherCameraTrack.isSubscribed && !teacherCameraTrack.isMuted;
-  const isTeacherAudioOn = teacherAudioTrack && teacherAudioTrack.isSubscribed && !teacherAudioTrack.isMuted;
+  const teacherAudioTrack = teacher?.getTrackPublication(
+    Track.Source.Microphone,
+  );
+  const isTeacherVideoOn =
+    teacherCameraTrack &&
+    teacherCameraTrack.isSubscribed &&
+    !teacherCameraTrack.isMuted;
+  const isTeacherAudioOn =
+    teacherAudioTrack &&
+    teacherAudioTrack.isSubscribed &&
+    !teacherAudioTrack.isMuted;
 
   // Data channel for screen share requests
   useEffect(() => {
     const decoder = new TextDecoder();
 
-    const handleData = (payload: Uint8Array, participant?: RemoteParticipant) => {
+    const handleData = (
+      payload: Uint8Array,
+      participant?: RemoteParticipant,
+    ) => {
       try {
         const msg = JSON.parse(decoder.decode(payload));
         const senderRole = getRole(participant);
@@ -365,12 +537,12 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
 
         if (senderIsAuthority && msg.type === "ALLOW_SHARE") {
           setShareState("approved");
-          toast.success(t('classroom.permissionGrantedClickToStart'));
+          toast.success(t("classroom.permissionGrantedClickToStart"));
         }
 
         if (senderIsAuthority && msg.type === "DENY_SHARE") {
           setShareState("idle");
-          toast.error(t('classroom.permissionDenied'));
+          toast.error(t("classroom.permissionDenied"));
         }
 
         if (
@@ -380,7 +552,7 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
         ) {
           localParticipant?.setScreenShareEnabled(false);
           setShareState("idle");
-          toast.info(t('classroom.sharingStoppedByTeacher'));
+          toast.info(t("classroom.sharingStoppedByTeacher"));
         }
 
         if (
@@ -395,7 +567,7 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
           });
           if (msg.participantId === localParticipant?.identity) {
             setHandRaised(false);
-            toast.dismiss('hand-raised');
+            toast.dismiss("hand-raised");
           }
         }
 
@@ -404,7 +576,11 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
         }
 
         if (senderIsStudent && msg.type === "LOWER_HAND" && participant) {
-          setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
+          setRaisedHands((prev) => {
+            const next = new Set(prev);
+            next.delete(participant.identity);
+            return next;
+          });
         }
 
         if (
@@ -418,9 +594,12 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
         if (senderIsAuthority && msg.type === "WHITEBOARD_STATE") {
           setIsWhiteboardActive(msg.active);
           if (msg.active) {
-            toast.success(t('classroom.whiteboardStarted') || "Teacher opened the whiteboard");
+            toast.success(
+              t("classroom.whiteboardStarted") ||
+                "Teacher opened the whiteboard",
+            );
           } else {
-            toast.info(t('classroom.whiteboardStopped') || "Whiteboard closed");
+            toast.info(t("classroom.whiteboardStopped") || "Whiteboard closed");
           }
         }
       } catch (e) {
@@ -429,38 +608,48 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
     };
 
     room.on("dataReceived", handleData);
-    return () => { room.off("dataReceived", handleData); };
+    return () => {
+      room.off("dataReceived", handleData);
+    };
   }, [room, isSharingLocally, localParticipant, t]);
 
   useEffect(() => {
     const handleMediaError = (error: Error) => {
-      if (error.message?.includes('Device in use') || error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        toast.error(t('classroom.cameraInUse'));
+      if (
+        error.message?.includes("Device in use") ||
+        error.name === "NotReadableError" ||
+        error.name === "TrackStartError"
+      ) {
+        toast.error(t("classroom.cameraInUse"));
       } else {
-        console.error('Room media devices error:', error);
+        console.error("Room media devices error:", error);
       }
     };
     room.on(RoomEvent.MediaDevicesError, handleMediaError);
-    return () => { room.off(RoomEvent.MediaDevicesError, handleMediaError); };
+    return () => {
+      room.off(RoomEvent.MediaDevicesError, handleMediaError);
+    };
   }, [room, t]);
 
   useEffect(() => {
     const handleRecordingChange = (recording: boolean) => {
       setIsRecording(recording);
       if (recording) {
-        toast.info(t('classroom.recordingStarted'));
+        toast.info(t("classroom.recordingStarted"));
       } else {
-        toast.info(t('classroom.recordingStopped'));
+        toast.info(t("classroom.recordingStopped"));
       }
     };
     room.on(RoomEvent.RecordingStatusChanged, handleRecordingChange);
-    return () => { room.off(RoomEvent.RecordingStatusChanged, handleRecordingChange); };
+    return () => {
+      room.off(RoomEvent.RecordingStatusChanged, handleRecordingChange);
+    };
   }, [room, t]);
 
   const handleShareAction = async () => {
     // Pre-flight: Fail fast before allowing any state changes or requests
-    if (typeof navigator.mediaDevices?.getDisplayMedia !== 'function') {
-      toast.error(t('classroom.screenShareNotSupported'));
+    if (typeof navigator.mediaDevices?.getDisplayMedia !== "function") {
+      toast.error(t("classroom.screenShareNotSupported"));
       return;
     }
 
@@ -477,12 +666,16 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
         await localParticipant?.setScreenShareEnabled(true, { audio: true });
       } catch (error) {
         const err = error as Error;
-        if (err.name === "NotAllowedError" || err.message?.includes("Permission denied")) return;
+        if (
+          err.name === "NotAllowedError" ||
+          err.message?.includes("Permission denied")
+        )
+          return;
         try {
           await localParticipant?.setScreenShareEnabled(true, { audio: false });
-          toast.warning(t('classroom.screenShareAudioNotSupported'));
+          toast.warning(t("classroom.screenShareAudioNotSupported"));
         } catch {
-          toast.error(t('classroom.screenShareNotSupported'));
+          toast.error(t("classroom.screenShareNotSupported"));
         }
       }
       return;
@@ -493,31 +686,38 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
 
   const requestPermission = async () => {
     if (isScreenSharingActive && !isSharingLocally) {
-      toast.error(t('classroom.someoneSharing'));
+      toast.error(t("classroom.someoneSharing"));
       return;
     }
     setShareState("requesting");
     const encoder = new TextEncoder();
     const data = JSON.stringify({ type: "REQUEST_SHARE" });
-    await room.localParticipant.publishData(encoder.encode(data), { reliable: true });
-    toast.info(t('classroom.requestSent'));
+    await room.localParticipant.publishData(encoder.encode(data), {
+      reliable: true,
+    });
+    toast.info(t("classroom.requestSent"));
   };
 
   const toggleHandRaised = async () => {
     const newState = !handRaised;
     setHandRaised(newState);
     const encoder = new TextEncoder();
-    const data = JSON.stringify({ type: newState ? "RAISE_HAND" : "LOWER_HAND" });
-    await room.localParticipant.publishData(encoder.encode(data), { reliable: true });
-    if (newState) toast.info(t('classroom.handRaised'), { id: 'hand-raised' });
-    else toast.dismiss('hand-raised');
+    const data = JSON.stringify({
+      type: newState ? "RAISE_HAND" : "LOWER_HAND",
+    });
+    await room.localParticipant.publishData(encoder.encode(data), {
+      reliable: true,
+    });
+    if (newState) toast.info(t("classroom.handRaised"), { id: "hand-raised" });
+    else toast.dismiss("hand-raised");
   };
 
-  const handleZoom = (delta: number) => setZoom(prev => {
-    const next = Math.min(Math.max(prev + delta, 1), 3);
-    if (next === 1) setPan({ x: 0, y: 0 });
-    return next;
-  });
+  const handleZoom = (delta: number) =>
+    setZoom((prev) => {
+      const next = Math.min(Math.max(prev + delta, 1), 3);
+      if (next === 1) setPan({ x: 0, y: 0 });
+      return next;
+    });
 
   useEffect(() => {
     const applyDrag = (clientX: number, clientY: number) => {
@@ -533,18 +733,25 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
       });
     };
     const handleMouseMove = (e: MouseEvent) => applyDrag(e.clientX, e.clientY);
-    const handleMouseUp = () => { panDragRef.current.active = false; };
-    const handleTouchMove = (e: TouchEvent) => { e.preventDefault(); applyDrag(e.touches[0].clientX, e.touches[0].clientY); };
-    const handleTouchEnd = () => { panDragRef.current.active = false; };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd);
+    const handleMouseUp = () => {
+      panDragRef.current.active = false;
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      applyDrag(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    const handleTouchEnd = () => {
+      panDragRef.current.active = false;
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("touchmove", handleTouchMove, { passive: false });
+    document.addEventListener("touchend", handleTouchEnd);
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
     };
   }, [zoom]);
 
@@ -556,10 +763,19 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
     }
   };
 
+  const handleGoToNextClass = async () => {
+    if (!extensionContext?.nextClass) return;
+    onSwitchClassroom?.(extensionContext.nextClass.roomName);
+    await room.disconnect();
+  };
+
   useEffect(() => {
     const unlockAudio = async () => {
-        try { await room.startAudio(); } 
-        catch { setNeedsClick(true);}
+      try {
+        await room.startAudio();
+      } catch {
+        setNeedsClick(true);
+      }
     };
     unlockAudio();
   }, [room]);
@@ -567,8 +783,14 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
   useEffect(() => {
     if (!localParticipant) return;
     const initMedia = async () => {
-      try { await localParticipant.setMicrophoneEnabled(true); } catch (error) { console.error("Failed to enable microphone:", error); }
-      try { await localParticipant.setCameraEnabled(true); } catch (error) {
+      try {
+        await localParticipant.setMicrophoneEnabled(true);
+      } catch (error) {
+        console.error("Failed to enable microphone:", error);
+      }
+      try {
+        await localParticipant.setCameraEnabled(true);
+      } catch (error) {
         console.error("Failed to enable camera:", error);
       }
     };
@@ -578,21 +800,26 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
   useEffect(() => {
     const el = classmateTilesRef.current;
     if (!el) return;
-    el.addEventListener('scroll', updateClassmatesScroll, { passive: true });
+    el.addEventListener("scroll", updateClassmatesScroll, { passive: true });
     updateClassmatesScroll();
-    return () => el.removeEventListener('scroll', updateClassmatesScroll);
+    return () => el.removeEventListener("scroll", updateClassmatesScroll);
   }, [updateClassmatesScroll]);
 
-  useEffect(() => { updateClassmatesScroll(); }, [sortedStudents.length, updateClassmatesScroll]);
+  useEffect(() => {
+    updateClassmatesScroll();
+  }, [sortedStudents.length, updateClassmatesScroll]);
 
   useEffect(() => {
-    const mq = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
+    const mq = window.matchMedia(
+      "(orientation: landscape) and (max-height: 500px)",
+    );
     const handle = () => setIsPhoneLandscape(mq.matches);
     handle();
-    mq.addEventListener('change', handle);
+    mq.addEventListener("change", handle);
     return () => {
-      mq.removeEventListener('change', handle);
-      if (stageControlsTimerRef.current) clearTimeout(stageControlsTimerRef.current);
+      mq.removeEventListener("change", handle);
+      if (stageControlsTimerRef.current)
+        clearTimeout(stageControlsTimerRef.current);
     };
   }, []);
 
@@ -605,7 +832,12 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
   const autoFullscreenFiredRef = useRef(false);
   useEffect(() => {
     const hasContent = isScreenSharingActive || isWhiteboardActive;
-    if (hasContent && !isFullscreen && !autoFullscreenFiredRef.current && onToggleFullscreen) {
+    if (
+      hasContent &&
+      !isFullscreen &&
+      !autoFullscreenFiredRef.current &&
+      onToggleFullscreen
+    ) {
       autoFullscreenFiredRef.current = true;
       setPendingFullscreen(true);
     }
@@ -614,44 +846,118 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
       setPendingFullscreen(false);
     }
     if (isFullscreen) setPendingFullscreen(false);
-  }, [isScreenSharingActive, isWhiteboardActive, isFullscreen, onToggleFullscreen]);
+  }, [
+    isScreenSharingActive,
+    isWhiteboardActive,
+    isFullscreen,
+    onToggleFullscreen,
+  ]);
 
   return (
-    <div ref={rootRef} className="grid h-full w-full bg-gradient-to-br from-background to-muted overflow-hidden font-sans relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] md:grid-cols-[1fr_280px] md:grid-rows-[min-content_1fr_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] lg:grid-cols-[1fr_320px]">
+    <div
+      ref={rootRef}
+      className="grid h-full w-full bg-gradient-to-br from-background to-muted overflow-hidden font-sans relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] md:grid-cols-[1fr_280px] md:grid-rows-[min-content_1fr_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] lg:grid-cols-[1fr_320px]"
+    >
       <RoomAudioRenderer />
+
+      {isEndingSoon && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute left-1/2 top-2 z-[70] flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-warning/40 bg-warning px-3 py-1.5 text-xs font-semibold text-warning-foreground shadow-lg"
+        >
+          <Clock3 className="size-4 shrink-0" />
+          <span className="truncate">
+            {t("classroom.studentClassEndingSoon")}
+          </span>
+        </div>
+      )}
+
+      <AlertDialog open={showNextClassChoice}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("classroom.classWasExtended")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {extensionContext?.nextClass
+                ? t("classroom.nextClassStartsDuringExtension", {
+                    className: extensionContext.nextClass.className,
+                    time: new Intl.DateTimeFormat(undefined, {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    }).format(extensionContext.nextClass.startsAt),
+                  })
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() =>
+                setDismissedExtensionEnd(extensionContext?.extensionEndsAt)
+              }
+            >
+              {t("classroom.stayInThisClass")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleGoToNextClass();
+              }}
+            >
+              {t("classroom.goToNextClass")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {needsClick && (
         <div className="absolute inset-0 z-[999] bg-inverse/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-card rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl border-4 border-primary">
-                <VolumeX className="w-12 h-12 text-secondary mx-auto mb-4" />
-                <h3 className="text-xl font-bold mb-2 text-foreground">{t('classroom.enableAudio')}</h3>
-                <button
-                  onClick={async () => { await room.startAudio(); setNeedsClick(false); }}
-                  className="w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-bold text-lg shadow-lg"
-                >
-                  {t('classroom.startClass')}
-                </button>
-            </div>
+          <div className="bg-card rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl border-4 border-primary">
+            <VolumeX className="w-12 h-12 text-secondary mx-auto mb-4" />
+            <h3 className="text-xl font-bold mb-2 text-foreground">
+              {t("classroom.enableAudio")}
+            </h3>
+            <button
+              onClick={async () => {
+                await room.startAudio();
+                setNeedsClick(false);
+              }}
+              className="w-full py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-bold text-lg shadow-lg"
+            >
+              {t("classroom.startClass")}
+            </button>
+          </div>
         </div>
       )}
 
       {/* 1. Header */}
-      <div className={`col-start-1 row-start-1 z-10 flex flex-col ${isPhoneLandscape ? '' : 'p-3 md:p-4 pb-2 md:pb-0 justify-end'}`}>
+      <div
+        className={`col-start-1 row-start-1 z-10 flex flex-col ${isPhoneLandscape ? "" : "p-3 md:p-4 pb-2 md:pb-0 justify-end"}`}
+      >
         {isPhoneLandscape ? (
           <div className="flex items-center gap-2 px-2 py-1">
             <span
               role="status"
-              aria-label={teacher ? t('common.live') : t('classroom.waiting')}
-              className={`size-2 shrink-0 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-secondary'}`}
+              aria-label={teacher ? t("common.live") : t("classroom.waiting")}
+              className={`size-2 shrink-0 rounded-full ${teacher ? "bg-success animate-pulse" : "bg-secondary"}`}
             />
             <div className="flex-1 min-w-0 flex items-center gap-1.5">
-              <span className="text-xs font-bold text-card-foreground truncate">{className || t('classroom.classroom')}</span>
-              {lessonTitle && <span className="text-[10px] text-muted-foreground truncate">· {lessonTitle}</span>}
+              <span className="text-xs font-bold text-card-foreground truncate">
+                {className || t("classroom.classroom")}
+              </span>
+              {lessonTitle && (
+                <span className="text-[10px] text-muted-foreground truncate">
+                  · {lessonTitle}
+                </span>
+              )}
             </div>
             {isRecording && (
               <div className="flex items-center gap-1 bg-destructive/10 px-1.5 py-0.5 rounded-full border border-destructive/20 flex-shrink-0">
                 <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
-                <span className="text-[9px] font-bold text-destructive uppercase tracking-wide">REC</span>
+                <span className="text-[9px] font-bold text-destructive uppercase tracking-wide">
+                  REC
+                </span>
               </div>
             )}
           </div>
@@ -660,19 +966,27 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
             <div className="flex items-center gap-3">
               <span
                 role="status"
-                aria-label={teacher ? t('common.live') : t('classroom.waiting')}
-                className={`size-2.5 shrink-0 rounded-full ${teacher ? 'bg-success animate-pulse' : 'bg-secondary'}`}
+                aria-label={teacher ? t("common.live") : t("classroom.waiting")}
+                className={`size-2.5 shrink-0 rounded-full ${teacher ? "bg-success animate-pulse" : "bg-secondary"}`}
               />
               <div className="flex flex-col">
-                <h2 className="text-lg font-black text-primary">{className || t('classroom.classroom')}</h2>
-                {lessonTitle && <p className="text-sm text-muted-foreground font-medium">{lessonTitle}</p>}
+                <h2 className="text-lg font-black text-primary">
+                  {className || t("classroom.classroom")}
+                </h2>
+                {lessonTitle && (
+                  <p className="text-sm text-muted-foreground font-medium">
+                    {lessonTitle}
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">
               {isRecording && (
                 <div className="flex items-center gap-1.5 bg-destructive/10 px-3 py-1.5 rounded-full border-2 border-destructive/40">
                   <div className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
-                  <span className="text-xs font-bold text-destructive uppercase tracking-wide">REC</span>
+                  <span className="text-xs font-bold text-destructive uppercase tracking-wide">
+                    REC
+                  </span>
                 </div>
               )}
             </div>
@@ -681,31 +995,50 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
       </div>
 
       {/* 2. Stage */}
-      <div className={`col-start-1 row-start-2 min-h-0 z-10 flex flex-col relative ${isPhoneLandscape ? 'p-1' : 'p-3 md:p-4 py-2 md:py-4'}`}>
-        <div ref={stageRef} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary via-primary to-secondary group">
+      <div
+        className={`col-start-1 row-start-2 min-h-0 z-10 flex flex-col relative ${isPhoneLandscape ? "p-1" : "p-3 md:p-4 py-2 md:py-4"}`}
+      >
+        <div
+          ref={stageRef}
+          className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary via-primary to-secondary group"
+        >
           {/* Top-right stage overlay: following pill + fullscreen toggle */}
           {(isWhiteboardActive || isScreenSharingActive) && (
             <div className="absolute top-2 right-2 z-30 flex flex-col items-end gap-1.5 pointer-events-none">
               {isWhiteboardActive && (
                 <button
-                  onClick={() => setFollowViewport(v => !v)}
+                  onClick={() => setFollowViewport((v) => !v)}
                   className={`pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg border transition-all ${
                     followViewport
-                      ? 'bg-success/90 text-success-foreground border-success/50 hover:bg-success/80'
-                      : 'bg-inverse/60 text-inverse-foreground/80 border-inverse-foreground/20 hover:bg-inverse/80'
+                      ? "bg-success/90 text-success-foreground border-success/50 hover:bg-success/80"
+                      : "bg-inverse/60 text-inverse-foreground/80 border-inverse-foreground/20 hover:bg-inverse/80"
                   }`}
                 >
-                  {followViewport ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                  {followViewport ? t('classroom.followingTeacher') || 'Following' : t('classroom.viewUnlocked') || 'Unlocked'}
+                  {followViewport ? (
+                    <Eye className="w-3 h-3" />
+                  ) : (
+                    <EyeOff className="w-3 h-3" />
+                  )}
+                  {followViewport
+                    ? t("classroom.followingTeacher") || "Following"
+                    : t("classroom.viewUnlocked") || "Unlocked"}
                 </button>
               )}
               {onToggleFullscreen && (
                 <button
                   onClick={onToggleFullscreen}
-                  title={isFullscreen ? (t('classroom.exitFullscreen') || 'Exit fullscreen') : (t('classroom.enterFullscreen') || 'Fullscreen')}
+                  title={
+                    isFullscreen
+                      ? t("classroom.exitFullscreen") || "Exit fullscreen"
+                      : t("classroom.enterFullscreen") || "Fullscreen"
+                  }
                   className="pointer-events-auto w-8 h-8 rounded-full bg-inverse/60 hover:bg-inverse/80 text-inverse-foreground flex items-center justify-center shadow-lg border border-inverse-foreground/20 transition-all"
                 >
-                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  {isFullscreen ? (
+                    <Minimize2 className="w-4 h-4" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4" />
+                  )}
                 </button>
               )}
             </div>
@@ -713,84 +1046,148 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
           {isWhiteboardActive ? (
             <>
               <div className="w-full h-full relative rounded-2xl overflow-hidden">
-                <SharedWhiteboard roomName={room.name} isReadonly={true} followViewport={followViewport} />
+                <SharedWhiteboard
+                  roomName={room.name}
+                  isReadonly={true}
+                  followViewport={followViewport}
+                />
               </div>
             </>
           ) : isScreenSharingActive ? (
             <>
               <div
-                className={`w-full h-full flex items-center justify-center origin-center bg-inverse relative select-none ${zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
-                style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
-                onMouseDown={zoom > 1 ? (e) => {
-                  e.preventDefault();
-                  showStageControls();
-                  panDragRef.current = { active: true, startMouse: { x: e.clientX, y: e.clientY }, startPan: { ...pan } };
-                } : undefined}
-                onTouchStart={zoom > 1 ? (e) => {
-                  showStageControls();
-                  const touch = e.touches[0];
-                  panDragRef.current = { active: true, startMouse: { x: touch.clientX, y: touch.clientY }, startPan: { ...pan } };
-                } : undefined}
+                className={`w-full h-full flex items-center justify-center origin-center bg-inverse relative select-none ${zoom > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
+                style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                }}
+                onMouseDown={
+                  zoom > 1
+                    ? (e) => {
+                        e.preventDefault();
+                        showStageControls();
+                        panDragRef.current = {
+                          active: true,
+                          startMouse: { x: e.clientX, y: e.clientY },
+                          startPan: { ...pan },
+                        };
+                      }
+                    : undefined
+                }
+                onTouchStart={
+                  zoom > 1
+                    ? (e) => {
+                        showStageControls();
+                        const touch = e.touches[0];
+                        panDragRef.current = {
+                          active: true,
+                          startMouse: { x: touch.clientX, y: touch.clientY },
+                          startPan: { ...pan },
+                        };
+                      }
+                    : undefined
+                }
               >
                 <VideoTrack
-                   trackRef={activeScreenTrack}
-                   className="w-full h-full object-contain"
+                  trackRef={activeScreenTrack}
+                  className="w-full h-full object-contain"
                 />
 
-                {(!activeScreenTrack.publication.isSubscribed || !activeScreenTrack.publication.track) && (
-                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-inverse/90 backdrop-blur-sm z-50">
-                      <Loader2 className="w-12 h-12 text-info animate-spin mb-4" />
-                      <p className="text-inverse-foreground font-bold text-lg">{t('classroom.loadingShare')}</p>
-                   </div>
+                {(!activeScreenTrack.publication.isSubscribed ||
+                  !activeScreenTrack.publication.track) && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-inverse/90 backdrop-blur-sm z-50">
+                    <Loader2 className="w-12 h-12 text-info animate-spin mb-4" />
+                    <p className="text-inverse-foreground font-bold text-lg">
+                      {t("classroom.loadingShare")}
+                    </p>
+                  </div>
                 )}
               </div>
 
-              <div className={`absolute top-4 right-4 flex gap-2 z-40 bg-inverse/60 p-2 rounded-xl backdrop-blur-sm border border-inverse-foreground/20 transition-all duration-300 ${isPhoneLandscape && !stageControlsVisible ? 'opacity-0 -translate-y-2 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-                <button onClick={() => handleZoom(-0.25)} className="p-2 hover:bg-inverse-foreground/20 rounded-lg text-inverse-foreground">
+              <div
+                className={`absolute top-4 right-4 flex gap-2 z-40 bg-inverse/60 p-2 rounded-xl backdrop-blur-sm border border-inverse-foreground/20 transition-all duration-300 ${isPhoneLandscape && !stageControlsVisible ? "opacity-0 -translate-y-2 pointer-events-none" : "opacity-100 translate-y-0"}`}
+              >
+                <button
+                  onClick={() => handleZoom(-0.25)}
+                  className="p-2 hover:bg-inverse-foreground/20 rounded-lg text-inverse-foreground"
+                >
                   <ZoomOut className="w-4 h-4" />
                 </button>
-                <span className="text-inverse-foreground text-sm font-mono py-2 min-w-[3ch] text-center">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => handleZoom(0.25)} className="p-2 hover:bg-inverse-foreground/20 rounded-lg text-inverse-foreground">
+                <span className="text-inverse-foreground text-sm font-mono py-2 min-w-[3ch] text-center">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button
+                  onClick={() => handleZoom(0.25)}
+                  className="p-2 hover:bg-inverse-foreground/20 rounded-lg text-inverse-foreground"
+                >
                   <ZoomIn className="w-4 h-4" />
                 </button>
               </div>
-
             </>
           ) : (
             <>
               <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
               {teacher ? (
                 isTeacherVideoOn ? (
-                  <ParticipantTile participant={teacher} variant="stage" className="w-full h-full object-contain bg-transparent" showLabel={true} roleBadge={t('classroom.teacher')} youLabel={t('classroom.youShort')} audioMuted={!isTeacherAudioOn} />
+                  <ParticipantTile
+                    participant={teacher}
+                    variant="stage"
+                    className="w-full h-full object-contain bg-transparent"
+                    showLabel={true}
+                    roleBadge={t("classroom.teacher")}
+                    youLabel={t("classroom.youShort")}
+                    audioMuted={!isTeacherAudioOn}
+                  />
                 ) : (
                   <div className="z-10 flex flex-col items-center justify-center p-8 text-center">
-                      <div className="w-40 h-40 bg-primary rounded-full flex items-center justify-center border-4 border-inverse-foreground/20 mb-6 shadow-2xl overflow-hidden">
-                        {getImageUrl(teacher) ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={getImageUrl(teacher)!} alt={teacher.name || ""} className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-7xl font-bold text-primary-foreground">{teacher.name?.charAt(0) || "T"}</span>
-                        )}
+                    <div className="w-40 h-40 bg-primary rounded-full flex items-center justify-center border-4 border-inverse-foreground/20 mb-6 shadow-2xl overflow-hidden">
+                      {getImageUrl(teacher) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={getImageUrl(teacher)!}
+                          alt={teacher.name || ""}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-7xl font-bold text-primary-foreground">
+                          {teacher.name?.charAt(0) || "T"}
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="text-3xl font-black text-primary-foreground mb-2">
+                      {teacher.name || t("classroom.teacher")}
+                    </h2>
+                    <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                      <div className="bg-inverse/40 px-3 py-1.5 rounded-full backdrop-blur-sm border-2 border-inverse-foreground/20 flex items-center gap-1.5">
+                        <VideoOff className="w-4 h-4 text-inverse-foreground/70" />
+                        <span className="text-sm text-inverse-foreground font-bold">
+                          {t("classroom.cameraOffLabel")}
+                        </span>
                       </div>
-                      <h2 className="text-3xl font-black text-primary-foreground mb-2">{teacher.name || t('classroom.teacher')}</h2>
-                      <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-                        <div className="bg-inverse/40 px-3 py-1.5 rounded-full backdrop-blur-sm border-2 border-inverse-foreground/20 flex items-center gap-1.5">
-                          <VideoOff className="w-4 h-4 text-inverse-foreground/70" />
-                          <span className="text-sm text-inverse-foreground font-bold">{t('classroom.cameraOffLabel')}</span>
-                        </div>
-                        <div className={`px-3 py-1.5 rounded-full backdrop-blur-sm border-2 flex items-center gap-1.5 ${
-                          isTeacherAudioOn ? 'bg-inverse/40 border-inverse-foreground/20' : 'bg-destructive/40 border-destructive/60'
-                        }`}>
-                          <Mic className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-success" : "text-destructive"}`} />
-                          <span className="text-sm text-inverse-foreground font-bold">{isTeacherAudioOn ? t('classroom.audioOnly') : t('classroom.micOff')}</span>
-                        </div>
+                      <div
+                        className={`px-3 py-1.5 rounded-full backdrop-blur-sm border-2 flex items-center gap-1.5 ${
+                          isTeacherAudioOn
+                            ? "bg-inverse/40 border-inverse-foreground/20"
+                            : "bg-destructive/40 border-destructive/60"
+                        }`}
+                      >
+                        <Mic
+                          className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-success" : "text-destructive"}`}
+                        />
+                        <span className="text-sm text-inverse-foreground font-bold">
+                          {isTeacherAudioOn
+                            ? t("classroom.audioOnly")
+                            : t("classroom.micOff")}
+                        </span>
                       </div>
+                    </div>
                   </div>
                 )
               ) : (
                 <div className="text-center z-10 p-8">
                   <div className="text-9xl mb-4">👩‍🏫</div>
-                  <h2 className="text-3xl font-black text-primary-foreground">{t('classroom.waitingForTeacher')}</h2>
+                  <h2 className="text-3xl font-black text-primary-foreground">
+                    {t("classroom.waitingForTeacher")}
+                  </h2>
                 </div>
               )}
             </>
@@ -800,12 +1197,21 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
           {isPhoneLandscape && (
             <div
               className="absolute inset-0 z-[25]"
-              style={{ pointerEvents: zoom > 1 ? 'none' : 'auto' }}
-              onTouchStart={(e) => { stageTouchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+              style={{ pointerEvents: zoom > 1 ? "none" : "auto" }}
+              onTouchStart={(e) => {
+                stageTouchStartRef.current = {
+                  x: e.touches[0].clientX,
+                  y: e.touches[0].clientY,
+                };
+              }}
               onTouchEnd={(e) => {
                 if (!stageTouchStartRef.current) return;
-                const dx = Math.abs(e.changedTouches[0].clientX - stageTouchStartRef.current.x);
-                const dy = Math.abs(e.changedTouches[0].clientY - stageTouchStartRef.current.y);
+                const dx = Math.abs(
+                  e.changedTouches[0].clientX - stageTouchStartRef.current.x,
+                );
+                const dy = Math.abs(
+                  e.changedTouches[0].clientY - stageTouchStartRef.current.y,
+                );
                 stageTouchStartRef.current = null;
                 if (dx < 8 && dy < 8) showStageControls();
               }}
@@ -816,21 +1222,35 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
           {isPhoneLandscape && (
             <div
               className={`absolute inset-x-0 bottom-3 z-[35] flex items-center justify-center pointer-events-none transition-all duration-300 ${
-                stageControlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+                stageControlsVisible
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-2"
               }`}
             >
               <div
                 className="flex items-center gap-2 bg-inverse/60 backdrop-blur-md rounded-full px-4 py-2.5 border border-inverse-foreground/20 shadow-2xl pointer-events-auto"
                 onClick={showStageControls}
               >
-                <DeviceToggleButton variant="compact" source={Track.Source.Microphone} kind="audioinput" iconOn={<Mic className="w-5 h-5" />} iconOff={<MicOff className="w-5 h-5" />} />
-                <DeviceToggleButton variant="compact" source={Track.Source.Camera} kind="videoinput" iconOn={<VideoIcon className="w-5 h-5" />} iconOff={<VideoOff className="w-5 h-5" />} />
+                <DeviceToggleButton
+                  variant="compact"
+                  source={Track.Source.Microphone}
+                  kind="audioinput"
+                  iconOn={<Mic className="w-5 h-5" />}
+                  iconOff={<MicOff className="w-5 h-5" />}
+                />
+                <DeviceToggleButton
+                  variant="compact"
+                  source={Track.Source.Camera}
+                  kind="videoinput"
+                  iconOn={<VideoIcon className="w-5 h-5" />}
+                  iconOff={<VideoOff className="w-5 h-5" />}
+                />
                 <button
                   onClick={toggleHandRaised}
                   className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
                     handRaised
-                      ? 'bg-warning/80 text-warning-foreground border-warning animate-bounce'
-                      : 'bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30'
+                      ? "bg-warning/80 text-warning-foreground border-warning animate-bounce"
+                      : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
                   }`}
                 >
                   <Hand className="w-5 h-5" />
@@ -840,19 +1260,22 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
                   disabled={shareState === "requesting"}
                   className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
                     isSharingLocally
-                      ? 'bg-success/80 text-success-foreground border-success'
+                      ? "bg-success/80 text-success-foreground border-success"
                       : shareState === "approved"
-                        ? 'bg-info/80 text-info-foreground border-info animate-pulse'
+                        ? "bg-info/80 text-info-foreground border-info animate-pulse"
                         : shareState === "requesting"
-                          ? 'bg-warning/80 text-warning-foreground border-warning cursor-wait'
-                          : 'bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30'
+                          ? "bg-warning/80 text-warning-foreground border-warning cursor-wait"
+                          : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
                   }`}
                 >
                   <MonitorUp className="w-5 h-5" />
                 </button>
                 <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
                 {onToggleFullscreen && (
-                  <FullscreenButtonCompact isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
+                  <FullscreenButtonCompact
+                    isFullscreen={isFullscreen}
+                    onToggle={onToggleFullscreen}
+                  />
                 )}
                 <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
                 <LeaveClassButton
@@ -866,67 +1289,109 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
       </div>
 
       {/* 3. Controls — hidden in phone landscape (replaced by floating stage overlay) */}
-      <div className={`col-start-1 row-start-4 md:col-start-1 md:row-start-3 landscape:col-start-1 landscape:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10 ${isPhoneLandscape ? 'hidden' : ''}`}>
+      <div
+        className={`col-start-1 row-start-4 md:col-start-1 md:row-start-3 landscape:col-start-1 landscape:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10 ${isPhoneLandscape ? "hidden" : ""}`}
+      >
         <div className="flex h-24 items-center px-4">
           {/* Left spacer */}
           <div className="flex-1" />
           {/* Centered controls */}
           <div className="flex items-center gap-2">
-              <DeviceToggleButton variant="purple" source={Track.Source.Microphone} kind="audioinput" includeAudioOutput iconOn={<Mic className="w-6 h-6" />} iconOff={<MicOff className="w-6 h-6" />} />
-              <DeviceToggleButton variant="purple" source={Track.Source.Camera} kind="videoinput" iconOn={<VideoIcon className="w-6 h-6" />} iconOff={<VideoOff className="w-6 h-6" />} />
-              <button
-                onClick={toggleHandRaised}
-                title={handRaised ? t('classroom.lowerHand') : t('classroom.raiseHand')}
-                className={`
+            <DeviceToggleButton
+              variant="purple"
+              source={Track.Source.Microphone}
+              kind="audioinput"
+              includeAudioOutput
+              iconOn={<Mic className="w-6 h-6" />}
+              iconOff={<MicOff className="w-6 h-6" />}
+            />
+            <DeviceToggleButton
+              variant="purple"
+              source={Track.Source.Camera}
+              kind="videoinput"
+              iconOn={<VideoIcon className="w-6 h-6" />}
+              iconOff={<VideoOff className="w-6 h-6" />}
+            />
+            <button
+              onClick={toggleHandRaised}
+              title={
+                handRaised ? t("classroom.lowerHand") : t("classroom.raiseHand")
+              }
+              className={`
                   w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg border-2
-                  ${handRaised
-                    ? 'bg-warning/10 text-warning border-warning/40 animate-bounce'
-                    : 'bg-card hover:bg-muted text-primary border-primary/30'}
+                  ${
+                    handRaised
+                      ? "bg-warning/10 text-warning border-warning/40 animate-bounce"
+                      : "bg-card hover:bg-muted text-primary border-primary/30"
+                  }
                 `}
-              >
-                <Hand className="w-6 h-6" />
-              </button>
-              <button
-                onClick={handleShareAction}
-                disabled={shareState === "requesting"}
-                className={`
+            >
+              <Hand className="w-6 h-6" />
+            </button>
+            <button
+              onClick={handleShareAction}
+              disabled={shareState === "requesting"}
+              className={`
                   w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg border-2
-                  ${isSharingLocally
-                    ? 'bg-success/10 text-success border-success/30'
-                    : shareState === "approved"
-                        ? 'bg-info text-info-foreground border-info animate-pulse'
-                    : shareState === "requesting"
-                        ? 'bg-warning/10 text-warning border-warning/30 cursor-wait'
-                        : 'bg-card hover:bg-muted text-primary border-primary/30'}
+                  ${
+                    isSharingLocally
+                      ? "bg-success/10 text-success border-success/30"
+                      : shareState === "approved"
+                        ? "bg-info text-info-foreground border-info animate-pulse"
+                        : shareState === "requesting"
+                          ? "bg-warning/10 text-warning border-warning/30 cursor-wait"
+                          : "bg-card hover:bg-muted text-primary border-primary/30"
+                  }
                 `}
-                title={shareState === "requesting" ? t('classroom.waitingForApproval') : t('classroom.shareScreen')}
-              >
-                {shareState === "requesting" ? <MonitorUp className="w-6 h-6 animate-bounce" /> : <MonitorUp className="w-6 h-6" />}
-              </button>
-              <LeaveClassButton
-                onConfirm={handleLeave}
-                className="flex size-12 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/90"
-              />
+              title={
+                shareState === "requesting"
+                  ? t("classroom.waitingForApproval")
+                  : t("classroom.shareScreen")
+              }
+            >
+              {shareState === "requesting" ? (
+                <MonitorUp className="w-6 h-6 animate-bounce" />
+              ) : (
+                <MonitorUp className="w-6 h-6" />
+              )}
+            </button>
+            <LeaveClassButton
+              onConfirm={handleLeave}
+              className="flex size-12 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/90"
+            />
           </div>
           <div className="flex-1" />
         </div>
       </div>
 
       {/* Fullscreen invitation dialog */}
-      <AlertDialog open={pendingFullscreen} onOpenChange={(open) => { if (!open) setPendingFullscreen(false); }}>
+      <AlertDialog
+        open={pendingFullscreen}
+        onOpenChange={(open) => {
+          if (!open) setPendingFullscreen(false);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('classroom.fullscreenInviteTitle') || 'Go fullscreen?'}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("classroom.fullscreenInviteTitle") || "Go fullscreen?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {t('classroom.fullscreenInviteDesc') || 'Content is being presented. Going fullscreen provides the best viewing experience.'}
+              {t("classroom.fullscreenInviteDesc") ||
+                "Content is being presented. Going fullscreen provides the best viewing experience."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingFullscreen(false)}>
-              {t('common.notNow') || 'Not now'}
+              {t("common.notNow") || "Not now"}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setPendingFullscreen(false); onToggleFullscreen?.(); }}>
-              {t('classroom.goFullscreen') || 'Go Fullscreen'}
+            <AlertDialogAction
+              onClick={() => {
+                setPendingFullscreen(false);
+                onToggleFullscreen?.();
+              }}
+            >
+              {t("classroom.goFullscreen") || "Go Fullscreen"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -934,21 +1399,64 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
 
       {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
       <div className="col-start-1 row-start-3 md:col-start-2 md:row-start-1 md:row-span-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 z-0 flex h-36 flex-col overflow-hidden md:h-full landscape:h-full">
-
         {/* Header + nav arrows */}
         <div className="flex flex-shrink-0 items-center gap-2 px-3 py-1.5 text-foreground md:py-2.5">
           <h3 className="flex-1 text-xs font-black uppercase tracking-widest truncate">
-            {t('classroom.classmates', { count: students.length })}
+            {t("classroom.classmates", { count: students.length })}
           </h3>
           {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
             <>
               <div className="hidden md:flex landscape:flex items-center gap-0.5">
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ top: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
+                <button
+                  onClick={() =>
+                    classmateTilesRef.current?.scrollBy({
+                      top: -160,
+                      behavior: "smooth",
+                    })
+                  }
+                  disabled={!classmatesCanScrollPrev}
+                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() =>
+                    classmateTilesRef.current?.scrollBy({
+                      top: 160,
+                      behavior: "smooth",
+                    })
+                  }
+                  disabled={!classmatesCanScrollNext}
+                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
               </div>
               <div className="flex md:hidden landscape:hidden items-center gap-0.5">
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: -160, behavior: 'smooth' })} disabled={!classmatesCanScrollPrev} className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"><ChevronLeft className="w-3.5 h-3.5" /></button>
-                <button onClick={() => classmateTilesRef.current?.scrollBy({ left: 160, behavior: 'smooth' })} disabled={!classmatesCanScrollNext} className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"><ChevronRight className="w-3.5 h-3.5" /></button>
+                <button
+                  onClick={() =>
+                    classmateTilesRef.current?.scrollBy({
+                      left: -160,
+                      behavior: "smooth",
+                    })
+                  }
+                  disabled={!classmatesCanScrollPrev}
+                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() =>
+                    classmateTilesRef.current?.scrollBy({
+                      left: 160,
+                      behavior: "smooth",
+                    })
+                  }
+                  disabled={!classmatesCanScrollNext}
+                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </>
           )}
@@ -961,7 +1469,7 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
         >
           {sortedStudents.length === 0 && (
             <div className="md:col-span-full landscape:col-span-full flex items-center justify-center w-full text-muted-foreground text-xs italic text-center px-2 whitespace-nowrap md:whitespace-normal h-full">
-              {t('classroom.youAreFirst')}
+              {t("classroom.youAreFirst")}
             </div>
           )}
           {sortedStudents.map((p) => (
@@ -970,20 +1478,30 @@ export function StudentClassroomUI({ className, lessonTitle, isFullscreen = fals
               variant="grid"
               participant={p}
               className={`flex-shrink-0 rounded-2xl border-4 shadow-md overflow-hidden aspect-square w-24 h-24 sm:w-28 sm:h-28 md:w-full md:h-auto landscape:w-full landscape:h-auto snap-start snap-always
-                ${raisedHands.has(p.identity) || (p.isLocal && handRaised) ? 'border-warning shadow-[0_0_8px_2px] shadow-warning/40' : 'border-primary/30'}`}
-              raisedHand={raisedHands.has(p.identity) || (p.isLocal && handRaised)}
-              youLabel={t('classroom.youShort')}
+                ${raisedHands.has(p.identity) || (p.isLocal && handRaised) ? "border-warning shadow-[0_0_8px_2px] shadow-warning/40" : "border-primary/30"}`}
+              raisedHand={
+                raisedHands.has(p.identity) || (p.isLocal && handRaised)
+              }
+              youLabel={t("classroom.youShort")}
             />
           ))}
         </div>
       </div>
 
       {/* Teacher PiP — floats over the entire classroom during whiteboard & screen share */}
-      {(isWhiteboardActive || isScreenSharingActive) && teacher && isTeacherVideoOn && (
-        <DraggablePip containerRef={rootRef}>
-          <ParticipantTile participant={teacher} variant="grid" className="w-full h-full" showLabel={true} youLabel={t('classroom.youShort')} />
-        </DraggablePip>
-      )}
+      {(isWhiteboardActive || isScreenSharingActive) &&
+        teacher &&
+        isTeacherVideoOn && (
+          <DraggablePip containerRef={rootRef}>
+            <ParticipantTile
+              participant={teacher}
+              variant="grid"
+              className="w-full h-full"
+              showLabel={true}
+              youLabel={t("classroom.youShort")}
+            />
+          </DraggablePip>
+        )}
     </div>
   );
 }

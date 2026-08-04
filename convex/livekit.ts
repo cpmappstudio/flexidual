@@ -4,12 +4,17 @@ import { ConvexError, v } from "convex/values";
 import { action, internalAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { randomUUID } from "node:crypto";
-import { 
-  AccessToken, 
-  EgressClient, 
-  EncodedFileOutput, 
-  EncodedFileType, 
-  S3Upload, 
+import {
+  evaluateLiveSession,
+  getLiveParticipantSnapshot,
+  getLiveSessionHardEnd,
+} from "../lib/live-session-policy";
+import {
+  AccessToken,
+  EgressClient,
+  EncodedFileOutput,
+  EncodedFileType,
+  S3Upload,
   EgressStatus,
   RoomServiceClient,
   TrackSource,
@@ -40,9 +45,7 @@ function getLiveKitConfig() {
   const url = process.env.LIVEKIT_URL;
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
-  return url && apiKey && apiSecret
-    ? { url, apiKey, apiSecret }
-    : null;
+  return url && apiKey && apiSecret ? { url, apiKey, apiSecret } : null;
 }
 
 async function stopActiveRoomEgresses(
@@ -75,6 +78,126 @@ async function deleteRoomIfPresent(
   }
 }
 
+type LiveKitClients = {
+  roomClient: RoomServiceClient;
+  egressClient: EgressClient;
+};
+
+function createLiveKitClients(
+  config: NonNullable<ReturnType<typeof getLiveKitConfig>>,
+): LiveKitClients {
+  return {
+    roomClient: new RoomServiceClient(
+      config.url,
+      config.apiKey,
+      config.apiSecret,
+    ),
+    egressClient: new EgressClient(config.url, config.apiKey, config.apiSecret),
+  };
+}
+
+async function finalizeLiveSession(
+  ctx: ActionCtx,
+  roomName: string,
+  endedAt: number,
+  clients?: LiveKitClients,
+) {
+  if (clients) {
+    try {
+      await stopActiveRoomEgresses(clients.egressClient, roomName);
+    } catch (error) {
+      console.error(
+        `[LiveKit Lifecycle] Failed to stop egress for ${roomName}:`,
+        error,
+      );
+    }
+    await deleteRoomIfPresent(clients.roomClient, roomName);
+  }
+
+  await ctx.runMutation(internal.schedule.endLiveSession, {
+    roomName,
+    endedAt,
+  });
+}
+
+async function reconcileRoom(
+  ctx: ActionCtx,
+  roomName: string,
+  now: number,
+  clients: LiveKitClients | null,
+) {
+  const session = await ctx.runQuery(internal.schedule.getLiveLifecycleState, {
+    roomName,
+  });
+  if (!session || session.status !== "active" || !session.isLive) return;
+
+  if (now < session.scheduledEnd) {
+    await ctx.scheduler.runAt(
+      session.scheduledEnd,
+      internal.livekit.reconcileLiveSession,
+      { roomName },
+    );
+    return;
+  }
+
+  const hardEndsAt = getLiveSessionHardEnd(session.scheduledEnd);
+  if (!clients) {
+    if (now >= hardEndsAt) {
+      await finalizeLiveSession(ctx, roomName, now);
+    } else {
+      console.warn(
+        `[LiveKit Lifecycle] Credentials unavailable; deferred reconciliation for ${roomName}.`,
+      );
+    }
+    return;
+  }
+
+  const rooms = await clients.roomClient.listRooms([roomName]);
+  const participants =
+    rooms.length > 0 ? await clients.roomClient.listParticipants(roomName) : [];
+  const decision = evaluateLiveSession({
+    now,
+    scheduledEnd: session.scheduledEnd,
+    leaderAbsentSince: session.liveLeaderAbsentSince,
+    extensionEndsAt: session.liveExtensionEndsAt,
+    decisionEndsAt: session.liveDecisionEndsAt,
+    participants: getLiveParticipantSnapshot(
+      participants.map((participant) => participant.metadata),
+    ),
+  });
+
+  if (decision.action === "end") {
+    await finalizeLiveSession(ctx, roomName, now, clients);
+    return;
+  }
+
+  const updated = await ctx.runMutation(
+    internal.schedule.updateLiveLifecycleState,
+    {
+      roomName,
+      reconciledAt: now,
+      expectedLeaderAbsentSince: session.liveLeaderAbsentSince ?? null,
+      expectedExtensionEndsAt: session.liveExtensionEndsAt ?? null,
+      expectedDecisionEndsAt: session.liveDecisionEndsAt ?? null,
+      leaderAbsentSince: decision.leaderAbsentSince ?? null,
+      extensionEndsAt: decision.extensionEndsAt ?? null,
+      decisionEndsAt: decision.decisionEndsAt ?? null,
+    },
+  );
+  if (!updated) {
+    await ctx.scheduler.runAfter(0, internal.livekit.reconcileLiveSession, {
+      roomName,
+    });
+    return;
+  }
+
+  await ctx.scheduler.runAt(
+    decision.nextCheckAt,
+    internal.livekit.reconcileLiveSession,
+    { roomName },
+  );
+}
+
 export const getToken = action({
   args: {
     roomName: v.string(),
@@ -91,8 +214,8 @@ export const getToken = action({
     if (!user) throw new ConvexError("User not found");
 
     // Check backend authorization to join this specific room
-    const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, { 
-      userId: user._id, 
+    const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, {
+      userId: user._id,
       roomName: args.roomName,
       now: Date.now(),
     });
@@ -105,7 +228,7 @@ export const getToken = action({
         "Only a room administrator can connect a companion device.",
       );
     }
-    
+
     const sessionStatus = access.session;
 
     if (sessionStatus.status === "cancelled") {
@@ -125,7 +248,9 @@ export const getToken = action({
     }
 
     if (!sessionStatus.isActive && !access.canJoinEarly) {
-      throw new ConvexError("Class has not started yet. Please wait for your teacher.");
+      throw new ConvexError(
+        "Class has not started yet. Please wait for your teacher.",
+      );
     }
 
     const apiKey = process.env.LIVEKIT_API_KEY;
@@ -136,11 +261,11 @@ export const getToken = action({
 
     const finalRole = access.computedRole;
 
-    const finalIdentity = args.isCompanion 
-      ? `${identity.subject}-companion` 
+    const finalIdentity = args.isCompanion
+      ? `${identity.subject}-companion`
       : identity.subject;
 
-    const finalName = args.isCompanion 
+    const finalName = args.isCompanion
       ? `${user.fullName} (Companion)`
       : user.fullName;
 
@@ -153,8 +278,9 @@ export const getToken = action({
         userId: identity.subject,
         fullName: user.fullName,
         imageUrl: user.imageUrl ?? null,
-        isCompanion: args.isCompanion || false
-      })
+        isCompanion: args.isCompanion || false,
+        roomAdmin: access.roomAdmin,
+      }),
     });
 
     at.addGrant({
@@ -173,7 +299,7 @@ export const getToken = action({
       canPublishData: true,
       canUpdateOwnMetadata: false,
     });
-    
+
     return at.toJwt();
   },
 });
@@ -207,13 +333,20 @@ export const toggleRecording = action({
       }
 
       // 1. THE GUARD: Check if there is already an active/starting session for this room
-      const existingEgresses = await egressClient.listEgress({ roomName: args.roomName });
+      const existingEgresses = await egressClient.listEgress({
+        roomName: args.roomName,
+      });
       const isAlreadyRunning = existingEgresses.some(
-        (e) => e.status === EgressStatus.EGRESS_STARTING || e.status === EgressStatus.EGRESS_ACTIVE
+        (e) =>
+          e.status === EgressStatus.EGRESS_STARTING ||
+          e.status === EgressStatus.EGRESS_ACTIVE,
       );
 
       if (isAlreadyRunning) {
-        return { success: false, message: "A recording is already starting or active." };
+        return {
+          success: false,
+          message: "A recording is already starting or active.",
+        };
       }
 
       // Proceed with starting the recording
@@ -241,7 +374,10 @@ export const toggleRecording = action({
       });
 
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
-      if (!baseUrl) throw new Error("NEXT_PUBLIC_APP_URL is not defined in environment variables.");
+      if (!baseUrl)
+        throw new Error(
+          "NEXT_PUBLIC_APP_URL is not defined in environment variables.",
+        );
 
       const recordingToken = randomUUID();
       await ctx.runMutation(internal.whiteboardSessions.setRecordingToken, {
@@ -286,15 +422,15 @@ export const toggleRecording = action({
       });
 
       const activeEgresses = egresses.filter(
-        (e) => 
-          e.status === EgressStatus.EGRESS_STARTING || 
-          e.status === EgressStatus.EGRESS_ACTIVE
+        (e) =>
+          e.status === EgressStatus.EGRESS_STARTING ||
+          e.status === EgressStatus.EGRESS_ACTIVE,
       );
 
       if (activeEgresses.length > 0) {
         // Stop all active egresses found for this room
         await Promise.all(
-          activeEgresses.map((e) => egressClient.stopEgress(e.egressId))
+          activeEgresses.map((e) => egressClient.stopEgress(e.egressId)),
         );
       }
 
@@ -364,30 +500,56 @@ export const endSession = action({
       throw new Error("LiveKit credentials are not configured.");
     }
 
-    const egressClient = new EgressClient(
-      config.url,
-      config.apiKey,
-      config.apiSecret,
+    await finalizeLiveSession(
+      ctx,
+      args.roomName,
+      Date.now(),
+      createLiveKitClients(config),
     );
-    try {
-      await stopActiveRoomEgresses(egressClient, args.roomName);
-    } catch (error) {
-      console.error("Failed to stop LiveKit egress while ending class:", error);
-    }
 
-    const roomClient = new RoomServiceClient(
-      config.url,
-      config.apiKey,
-      config.apiSecret,
-    );
-    await deleteRoomIfPresent(roomClient, args.roomName);
+    return null;
+  },
+});
 
-    const endedAt = Date.now();
-    await ctx.runMutation(internal.schedule.endLiveSession, {
+export const notifyRoomAdministratorLeft = action({
+  args: { roomName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireRoomAdministrator(ctx, args.roomName);
+    await ctx.scheduler.runAfter(1_000, internal.livekit.reconcileLiveSession, {
       roomName: args.roomName,
-      endedAt,
     });
+    return null;
+  },
+});
 
+export const requestLiveReconciliation = action({
+  args: { roomName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { roomName }) => {
+    await requireRoomAdministrator(ctx, roomName);
+    const config = getLiveKitConfig();
+    await reconcileRoom(
+      ctx,
+      roomName,
+      Date.now(),
+      config ? createLiveKitClients(config) : null,
+    );
+    return null;
+  },
+});
+
+export const reconcileLiveSession = internalAction({
+  args: { roomName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { roomName }) => {
+    const config = getLiveKitConfig();
+    await reconcileRoom(
+      ctx,
+      roomName,
+      Date.now(),
+      config ? createLiveKitClients(config) : null,
+    );
     return null;
   },
 });
@@ -397,51 +559,29 @@ export const cleanupStaleSessions = internalAction({
   returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
-    const staleSessions = await ctx.runQuery(
-      internal.schedule.listStaleLiveSessions,
-      { now },
+    const expiredSessions = await ctx.runQuery(
+      internal.schedule.listExpiredLiveSessions,
+      { now, limit: 100 },
     );
-    if (staleSessions.length === 0) return null;
+    if (expiredSessions.length === 0) return null;
 
     const config = getLiveKitConfig();
     if (!config) {
       console.warn(
-        "[LiveKit Cleanup] Credentials are not configured; finalizing stale Convex sessions only.",
+        "[LiveKit Lifecycle] Credentials are not configured; only the hard time limit can be reconciled.",
       );
     }
-    const roomClient = config
-      ? new RoomServiceClient(config.url, config.apiKey, config.apiSecret)
-      : null;
-    const egressClient = config
-      ? new EgressClient(config.url, config.apiKey, config.apiSecret)
-      : null;
+    const clients = config ? createLiveKitClients(config) : null;
 
-    for (const session of staleSessions) {
-      if (roomClient && egressClient) {
-        try {
-          const rooms = await roomClient.listRooms([session.roomName]);
-          if (rooms.length > 0 && !session.hardStale) {
-            const participants = await roomClient.listParticipants(
-              session.roomName,
-            );
-            if (participants.length > 0) continue;
-          }
-
-          await stopActiveRoomEgresses(egressClient, session.roomName);
-          await deleteRoomIfPresent(roomClient, session.roomName);
-        } catch (error) {
-          console.error(
-            `[LiveKit Cleanup] Failed to clean room ${session.roomName}:`,
-            error,
-          );
-          continue;
-        }
+    for (const session of expiredSessions) {
+      try {
+        await reconcileRoom(ctx, session.roomName, now, clients);
+      } catch (error) {
+        console.error(
+          `[LiveKit Lifecycle] Failed to reconcile ${session.roomName}:`,
+          error,
+        );
       }
-
-      await ctx.runMutation(internal.schedule.endLiveSession, {
-        roomName: session.roomName,
-        endedAt: session.scheduledEnd,
-      });
     }
 
     return null;
@@ -468,7 +608,9 @@ export const processEgressWebhook = internalAction({
     const apiSecret = process.env.LIVEKIT_API_SECRET;
 
     if (!apiKey || !apiSecret) {
-      console.error("[LiveKit Webhook] Missing LIVEKIT_API_KEY or LIVEKIT_API_SECRET");
+      console.error(
+        "[LiveKit Webhook] Missing LIVEKIT_API_KEY or LIVEKIT_API_SECRET",
+      );
       return { ok: false as const, error: "Server misconfigured", status: 500 };
     }
 
@@ -489,7 +631,10 @@ export const processEgressWebhook = internalAction({
     const egressId = info.egressId;
 
     // EgressStatus: 0=STARTING, 1=ACTIVE, 2=ENDING, 3=COMPLETE, 4=FAILED, 5=ABORTED, 6=LIMIT_REACHED
-    const statusMap: Record<number, "starting" | "active" | "complete" | "failed" | "aborted"> = {
+    const statusMap: Record<
+      number,
+      "starting" | "active" | "complete" | "failed" | "aborted"
+    > = {
       0: "starting",
       1: "active",
       2: "active",
@@ -507,16 +652,22 @@ export const processEgressWebhook = internalAction({
     let fileSize: number | undefined;
     let completedAt: number | undefined;
 
-    if (status === "complete" && info.fileResults && info.fileResults.length > 0) {
+    if (
+      status === "complete" &&
+      info.fileResults &&
+      info.fileResults.length > 0
+    ) {
       const fileResult = info.fileResults[0];
       fileKey = fileResult.filename ?? undefined;
       fileSize = fileResult.size ? Number(fileResult.size) : undefined;
-      durationMs = fileResult.duration ? Number(fileResult.duration) / 1_000_000 : undefined;
+      durationMs = fileResult.duration
+        ? Number(fileResult.duration) / 1_000_000
+        : undefined;
       completedAt = Date.now();
 
       const r2BaseUrl = process.env.R2_PUBLIC_URL;
       if (r2BaseUrl && fileKey) {
-        url = `${r2BaseUrl.replace(/\/$/,  "")}/${fileKey}`;
+        url = `${r2BaseUrl.replace(/\/$/, "")}/${fileKey}`;
       }
     }
 
@@ -558,15 +709,15 @@ export const forceCleanupEgress = internalAction({
     }
 
     const egressClient = new EgressClient(url, apiKey, apiSecret);
-    
+
     // List ALL egresses across the entire project
     const egresses = await egressClient.listEgress();
 
     // Filter for stuck/active sessions
     const stuckSessions = egresses.filter(
-      (e) => 
-        e.status === EgressStatus.EGRESS_STARTING || 
-        e.status === EgressStatus.EGRESS_ACTIVE
+      (e) =>
+        e.status === EgressStatus.EGRESS_STARTING ||
+        e.status === EgressStatus.EGRESS_ACTIVE,
     );
 
     if (stuckSessions.length === 0) {
@@ -575,10 +726,10 @@ export const forceCleanupEgress = internalAction({
 
     // Forcefully stop all of them
     await Promise.allSettled(
-      stuckSessions.map((e) => egressClient.stopEgress(e.egressId))
+      stuckSessions.map((e) => egressClient.stopEgress(e.egressId)),
     );
 
-    return { 
+    return {
       message: `Attempted to stop ${stuckSessions.length} stuck sessions.`,
       stopped: stuckSessions.length,
     };

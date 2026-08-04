@@ -207,6 +207,12 @@ export default defineSchema({
     // Completion tracking
     completedAt: v.optional(v.number()),
 
+    // Live lifecycle state. These fields are managed by the room reconciler.
+    liveLeaderAbsentSince: v.optional(v.number()),
+    liveExtensionEndsAt: v.optional(v.number()),
+    liveDecisionEndsAt: v.optional(v.number()),
+    liveLastReconciledAt: v.optional(v.number()),
+
     // Timestamps
     createdAt: v.number(),
     createdBy: v.id("users"),
@@ -215,6 +221,7 @@ export default defineSchema({
     .index("by_class_recurrence_parent", ["classId", "recurrenceParentId"])
     .index("by_room", ["roomName"])
     .index("by_status", ["status", "scheduledStart"])
+    .index("by_live_expiration", ["status", "isLive", "scheduledEnd"])
     .index("by_recurrence_parent", ["recurrenceParentId"]),
 
   /**

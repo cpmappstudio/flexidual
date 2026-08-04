@@ -67,6 +67,25 @@ test("staff prepare future classes and enter live classes", () => {
   );
 });
 
+test("students and staff can reenter a live class after its scheduled end", () => {
+  const overrunEvent = {
+    ...baseEvent,
+    start: now - 2 * 60 * 60 * 1000,
+    end: now - 30 * 60 * 1000,
+    status: "active" as const,
+    isLive: true,
+  };
+
+  assert.equal(
+    getCalendarEventPrimaryAction({ ...overrunEvent, isStudent: true }),
+    "go-to-classroom",
+  );
+  assert.equal(
+    getCalendarEventPrimaryAction({ ...overrunEvent, isStudent: false }),
+    "enter-live",
+  );
+});
+
 test("cancelled classes and classes without rooms have no room action", () => {
   assert.equal(
     getCalendarEventPrimaryAction({

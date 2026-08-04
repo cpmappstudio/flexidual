@@ -13,6 +13,7 @@ import {
 import {
   getCalendarEventDisplay,
   getCalendarEventIndicators,
+  isCalendarEventPast,
 } from "@/components/calendar/calendar-event-display";
 import { CalendarProviderMark } from "@/components/calendar/calendar-provider-mark";
 import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
@@ -131,7 +132,7 @@ export default function CalendarEvent({
     isEventInCurrentMonth ? "current" : "adjacent"
   }`;
 
-  const isPast = event.end.getTime() < Date.now();
+  const isPast = isCalendarEventPast(event);
   const { showRecording: showRecordingIndicator, showProviderIdentity } =
     getCalendarEventIndicators(event, isPast);
   const canExpandProviderIdentity =

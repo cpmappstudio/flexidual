@@ -111,6 +111,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   // Use a ref to ensure we don't log join multiple times for the same session
   const hasLoggedJoin = useRef(false);
+  const nextRoomRef = useRef<string | null>(null);
 
   // Format lesson titles for display
   const lessonTitles = scheduleDetails?.lessons && scheduleDetails.lessons.length > 0
@@ -212,13 +213,26 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
     setToken("");
     hasLoggedJoin.current = false;
+    const nextRoom = nextRoomRef.current;
+    if (nextRoom) {
+      nextRoomRef.current = null;
+      router.push(`/${params.locale}/${orgSlug}/classroom/${nextRoom}`);
+      return;
+    }
     exitClassroom();
   }, [
     exitClassroom,
     logPresence,
+    orgSlug,
+    params.locale,
     resolvedIsStudentView,
+    router,
     sessionStatus?.scheduleId,
   ]);
+
+  const handleSwitchClassroom = useCallback((nextRoomName: string) => {
+    nextRoomRef.current = nextRoomName;
+  }, []);
   
   // Helper to format countdown
   const getCountdown = (targetTime: number) => {
@@ -444,6 +458,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             roomName={roomName}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
+            onSwitchClassroom={handleSwitchClassroom}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
           />
@@ -454,6 +469,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
             sessionIsLive={isClassLive}
+            sessionTimeZone={sessionStatus.timeZone}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
           />

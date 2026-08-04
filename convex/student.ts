@@ -2,7 +2,10 @@ import { query, mutation } from "./_generated/server";
 import { getCurrentUserFromAuth } from "./users";
 import { v } from "convex/values";
 import { getInstitutionGrades } from "./model/grades";
-import { getStudentGradeCode } from "./model/membership";
+import {
+  getSoleStudentCampusId,
+  getStudentGradeCode,
+} from "./model/membership";
 import { isStudentEnrolled } from "./model/enrollments";
 import { canManageCampusPeople, canViewCampusPeople } from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
@@ -102,13 +105,17 @@ export const getStudentDashboardStats = query({
 
     const viewingOwnProfile = user._id === viewer._id;
     const includeUpcomingLessons = Boolean(args.studentId);
-    const campus =
+    let campus =
       args.studentId && args.orgSlug
         ? await ctx.db
             .query("campuses")
             .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug!))
             .first()
         : null;
+    if (!args.studentId) {
+      const studentCampusId = await getSoleStudentCampusId(ctx, user._id);
+      campus = studentCampusId ? await ctx.db.get(studentCampusId) : null;
+    }
     if (args.studentId && !campus) return null;
 
     if (campus) {
