@@ -68,7 +68,13 @@ export function ClassroomDropZone({
   const platformName = isAbeka ? "Abeka" : "Ignitia";
 
   return (
-    <div className="relative h-full w-full rounded-3xl overflow-hidden border-4 border-primary shadow-2xl">
+    <div
+      className={`relative h-full w-full overflow-hidden ${
+        activeLesson
+          ? ""
+          : "rounded-3xl border-4 border-primary shadow-2xl"
+      }`}
+    >
       <AnimatePresence>
         {/* Rocket Launch Animation */}
         {isLaunching && (

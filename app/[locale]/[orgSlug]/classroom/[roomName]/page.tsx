@@ -86,7 +86,10 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
     const iconColor = isAbeka ? "text-info bg-info/10" : "text-secondary bg-secondary/10";
     
     return (
-      <main className="flex h-[calc(100svh-var(--header-height)-2rem)] min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:h-[calc(100svh-var(--header-height)-3rem)]">
+      <main
+        data-classroom-layout
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+      >
         {/* Header Bar */}
         <div className="h-14 bg-muted border-b flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-3">
@@ -141,7 +144,10 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
 
   // 3. LIVEKIT RENDER STRATEGY (Standard)
   return (
-    <main className="h-[calc(100svh-var(--header-height)-2rem)] min-h-0 w-full overflow-hidden md:h-[calc(100svh-var(--header-height)-3rem)]">
+    <main
+      data-classroom-layout
+      className="h-full min-h-0 w-full overflow-hidden"
+    >
       <FlexiClassroom roomName={roomName} isCompanion={isCompanion} />
     </main>
   );

@@ -10,7 +10,7 @@ import { Loader2, CalendarClock, School, LogOut, AlertCircle } from "lucide-reac
 import { format } from "date-fns";
 import { TZDate } from "@date-fns/tz";
 import { Button } from "@/components/ui/button";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -67,6 +67,7 @@ function SidebarAutoCollapser() {
 export default function FlexiClassroom({ roomName, className, isStudentView = false, isCompanion = false, onLeave }: FlexiClassroomProps) {
   const t = useTranslations();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [token, setToken] = useState<string>("");
   const [error, setError] = useState<string>("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -101,6 +102,9 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
       ? "admin"
       : "student";
   const resolvedIsStudentView = isStudentView || role === "student";
+  const uiPreviewEnabled =
+    process.env.NODE_ENV !== "production" &&
+    searchParams.get("uiPreview") === "1";
   const canJoinEarly = sessionStatus?.roomAdmin === true;
   const isClassLive = sessionStatus?.isLive || false;
   const isSessionClosed =
@@ -461,6 +465,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             onSwitchClassroom={handleSwitchClassroom}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
+            uiPreviewEnabled={uiPreviewEnabled}
           />
         ) : (
           <ActiveClassroomUI 
@@ -472,6 +477,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             sessionTimeZone={sessionStatus.timeZone}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
+            uiPreviewEnabled={uiPreviewEnabled}
           />
         )}
       </LiveKitRoom>

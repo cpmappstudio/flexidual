@@ -3,18 +3,12 @@
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
-  VideoTrack,
   useLocalParticipant,
   useRoomContext,
   useParticipants,
-  useTracks,
-  RoomAudioRenderer,
-  useIsSpeaking,
 } from "@livekit/components-react";
 import {
   Track,
-  Participant,
-  TrackPublication,
   RemoteParticipant,
   RemoteTrackPublication,
   RoomEvent,
@@ -24,30 +18,17 @@ import {
   MicOff,
   Video as VideoIcon,
   VideoOff,
-  VolumeX,
   MonitorUp,
-  ZoomIn,
-  ZoomOut,
-  Move,
   Hand,
   Loader2,
   Eye,
-  EyeOff,
   Crown,
-  ChevronUp,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   CircleDot,
   StopCircle,
   TabletSmartphone,
-  Maximize2,
-  Minimize2,
-  Clock3,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { SharedWhiteboard } from "./shared-whiteboard";
 import { LeaveClassButton } from "./leave-class-button";
 import { EndClassButton } from "./end-class-button";
 import { toast } from "sonner";
@@ -73,19 +54,46 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
-
-// --- Constants ---
-const SCREEN_SHARE_OPTIONS = { updateOnlyOn: [], onlySubscribed: false };
-const SCREEN_SHARE_SOURCE = [Track.Source.ScreenShare];
-const AUTHORITY_ROLES = [
-  "teacher",
-  "admin",
-  "superadmin",
-  "tutor",
-  "principal",
-] as const;
-const isAuthority = (role: string) =>
-  (AUTHORITY_ROLES as readonly string[]).includes(role);
+import {
+  ClassroomUiPreview,
+  type ClassroomPreviewOption,
+} from "./classroom-ui-preview";
+import {
+  createClassroomPreviewParticipants,
+  getIsCompanionParticipant as getIsCompanion,
+  getParticipantImageUrl as getImageUrl,
+  getParticipantRole as getRole,
+} from "./classroom-participant";
+import { ClassroomParticipantTile as ParticipantTile } from "./classroom-participant-tile";
+import { DraggableClassroomPip as DraggablePip } from "./draggable-classroom-pip";
+import {
+  getClassroomCapabilities,
+  isClassroomSessionAuthority as isAuthority,
+} from "./classroom-capabilities";
+import {
+  useClassmatesOverflow,
+  useClassroomStageViewport,
+  usePhoneLandscapeStageControls,
+} from "./use-classroom-layout-state";
+import { useClassroomMediaTracks } from "./use-classroom-media-tracks";
+import { ClassroomView, ClassroomViewControls } from "./classroom-view";
+import { ClassroomHeader } from "./classroom-header";
+import { ClassroomParticipantsPanel } from "./classroom-participants-panel";
+import {
+  ClassroomActionBar,
+  ClassroomActionButton,
+} from "./classroom-action-bar";
+import { Toggle } from "@/components/ui/toggle";
+import {
+  ClassroomScreenShareContent,
+  ClassroomStage,
+  ClassroomWhiteboardContent,
+} from "./classroom-stage";
+import {
+  ClassroomEnableAudioOverlay,
+  ClassroomEndingSoonNotice,
+  ClassroomFullscreenPrompt,
+} from "./classroom-overlays";
 
 // --- Types ---
 type ShareRequest = {
@@ -93,300 +101,21 @@ type ShareRequest = {
   name: string;
 };
 
-// --- Helper Functions ---
-const getRole = (p: Participant | undefined): string => {
-  if (!p || !p.metadata) return "student";
-  try {
-    const data = JSON.parse(p.metadata);
-    return data.role || "student";
-  } catch {
-    return "student";
-  }
-};
-
-const getImageUrl = (p: Participant | undefined): string | null => {
-  if (!p || !p.metadata) return null;
-  try {
-    const data = JSON.parse(p.metadata);
-    return data.imageUrl || null;
-  } catch {
-    return null;
-  }
-};
-
-const getIsCompanion = (p: Participant | undefined): boolean => {
-  if (!p || !p.metadata) return false;
-  try {
-    const data = JSON.parse(p.metadata);
-    return data.isCompanion === true;
-  } catch {
-    return false;
-  }
-};
-
-// --- Helper Components ---
-function ParticipantTile({
-  participant,
-  className,
-  showLabel = true,
-  variant = "grid",
-  raisedHand = false,
-  onLowerHand,
-  roleBadge,
-  youLabel,
-  audioMuted = false,
-}: {
-  participant: Participant;
-  className?: string;
-  showLabel?: boolean;
-  variant?: "grid" | "stage" | "mini";
-  raisedHand?: boolean;
-  onLowerHand?: () => void;
-  roleBadge?: string;
-  youLabel?: string;
-  audioMuted?: boolean;
-}) {
-  const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
-  const isSpeaking = useIsSpeaking(participant);
-  const isVideoEnabled =
-    cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
-  const imageUrl = getImageUrl(participant);
-
-  const avatarSize =
-    variant === "stage"
-      ? "w-32 h-32 text-6xl"
-      : variant === "mini"
-        ? "w-8 h-8 text-xs"
-        : "w-16 h-16 text-2xl";
-  const borderSize = variant === "mini" ? "border-1" : "border-2";
-
-  return (
-    <div
-      className={`relative bg-muted overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px] shadow-success/40 z-20" : ""} ${className}`}
-    >
-      {isVideoEnabled ? (
-        <VideoTrack
-          trackRef={{
-            participant,
-            source: Track.Source.Camera,
-            publication: cameraTrack as TrackPublication,
-          }}
-          className="w-full h-full object-cover"
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center bg-secondary">
-          <div
-            className={`${avatarSize} rounded-full flex items-center justify-center font-bold text-secondary-foreground ${borderSize} border-secondary-foreground/10 shadow-xl overflow-hidden bg-secondary transition-all`}
-          >
-            {imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={imageUrl}
-                alt={participant.name || participant.identity}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              participant.name?.charAt(0).toUpperCase() ||
-              participant.identity?.charAt(0).toUpperCase() ||
-              "?"
-            )}
-          </div>
-        </div>
-      )}
-
-      {showLabel && variant === "stage" ? (
-        <div className="absolute bottom-3 left-3 flex items-center gap-2 z-10">
-          <div className="bg-inverse/70 backdrop-blur-sm px-3 py-1.5 rounded-lg flex items-center gap-2 border border-inverse-foreground/10 shadow-md">
-            {roleBadge && (
-              <span className="text-[10px] font-bold text-primary-foreground bg-primary px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0">
-                {roleBadge}
-              </span>
-            )}
-            <span className="text-sm font-bold text-inverse-foreground truncate max-w-[200px]">
-              {participant.name || participant.identity}
-              {participant.isLocal && youLabel && ` (${youLabel})`}
-            </span>
-          </div>
-        </div>
-      ) : showLabel ? (
-        <div className="absolute bottom-1 left-1 bg-inverse/60 px-2 py-1 rounded text-[10px] text-inverse-foreground font-medium truncate max-w-[90%] backdrop-blur-sm">
-          {participant.name || participant.identity}
-          {participant.isLocal && youLabel && ` (${youLabel})`}
-        </div>
-      ) : null}
-      {raisedHand && (
-        <button
-          onClick={onLowerHand}
-          title={onLowerHand ? "Lower hand" : undefined}
-          className={`absolute top-1 right-1 bg-warning rounded-full p-0.5 shadow-sm transition-colors ${
-            onLowerHand
-              ? "cursor-pointer hover:bg-warning/90"
-              : "cursor-default pointer-events-none"
-          }`}
-        >
-          <Hand className="w-3 h-3 text-warning-foreground" />
-        </button>
-      )}
-      {audioMuted && (
-        <div
-          className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${
-            variant === "stage"
-              ? "bottom-3 right-3 p-1.5"
-              : "bottom-1 right-1 p-1"
-          }`}
-        >
-          <MicOff
-            className={`text-destructive-foreground ${variant === "stage" ? "w-4 h-4" : "w-3 h-3"}`}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-const PIP_W = 192,
-  PIP_H = 144,
-  PIP_MARGIN = 12;
-
-function DraggablePip({
-  children,
-  containerRef,
-}: {
-  children: React.ReactNode;
-  containerRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const dragRef = useRef<{
-    active: boolean;
-    startMouse: { x: number; y: number };
-    startPos: { x: number; y: number };
-  }>({
-    active: false,
-    startMouse: { x: 0, y: 0 },
-    startPos: { x: 0, y: 0 },
-  });
-
-  const clampPos = useCallback(
-    (x: number, y: number) => {
-      const el = containerRef.current;
-      if (!el) return { x, y };
-      return {
-        x: Math.max(
-          PIP_MARGIN,
-          Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, x),
-        ),
-        y: Math.max(
-          PIP_MARGIN,
-          Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, y),
-        ),
-      };
-    },
-    [containerRef],
-  );
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    setPos({ x: PIP_MARGIN, y: el.offsetHeight - PIP_H - PIP_MARGIN });
-  }, [containerRef]);
-
-  // Re-clamp position whenever the container is resized (e.g. orientation change)
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(() => {
-      setPos((prev) => {
-        if (!prev) return prev;
-        return {
-          x: Math.max(
-            PIP_MARGIN,
-            Math.min(el.offsetWidth - PIP_W - PIP_MARGIN, prev.x),
-          ),
-          y: Math.max(
-            PIP_MARGIN,
-            Math.min(el.offsetHeight - PIP_H - PIP_MARGIN, prev.y),
-          ),
-        };
-      });
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [containerRef]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!dragRef.current.active) return;
-      const dx = e.clientX - dragRef.current.startMouse.x;
-      const dy = e.clientY - dragRef.current.startMouse.y;
-      setPos(
-        clampPos(
-          dragRef.current.startPos.x + dx,
-          dragRef.current.startPos.y + dy,
-        ),
-      );
-    };
-    const handleMouseUp = () => {
-      dragRef.current.active = false;
-    };
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!dragRef.current.active) return;
-      e.preventDefault();
-      const touch = e.touches[0];
-      const dx = touch.clientX - dragRef.current.startMouse.x;
-      const dy = touch.clientY - dragRef.current.startMouse.y;
-      setPos(
-        clampPos(
-          dragRef.current.startPos.x + dx,
-          dragRef.current.startPos.y + dy,
-        ),
-      );
-    };
-    const handleTouchEnd = () => {
-      dragRef.current.active = false;
-    };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    document.addEventListener("touchmove", handleTouchMove, { passive: false });
-    document.addEventListener("touchend", handleTouchEnd);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.removeEventListener("touchmove", handleTouchMove);
-      document.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, [clampPos]);
-
-  if (!pos) return null;
-
-  return (
-    <div
-      style={{ left: pos.x, top: pos.y, width: PIP_W, height: PIP_H }}
-      className="absolute z-50 rounded-lg shadow-2xl overflow-hidden border-2 border-border cursor-move select-none"
-      onMouseDown={(e) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        dragRef.current = {
-          active: true,
-          startMouse: { x: e.clientX, y: e.clientY },
-          startPos: { ...pos },
-        };
-      }}
-      onTouchStart={(e) => {
-        const touch = e.touches[0];
-        dragRef.current = {
-          active: true,
-          startMouse: { x: touch.clientX, y: touch.clientY },
-          startPos: { ...pos },
-        };
-      }}
-    >
-      {children}
-      <div className="absolute top-1 right-1 p-1 bg-background/50 rounded-full pointer-events-none">
-        <Move className="w-3 h-3 text-foreground/70" />
-      </div>
-    </div>
-  );
-}
+type ActiveClassroomPreviewState =
+  | "none"
+  | "start-class"
+  | "end-class"
+  | "leave-class"
+  | "extend-class"
+  | "fullscreen"
+  | "recording-confirm"
+  | "companion"
+  | "ending-soon"
+  | "enable-audio"
+  | "share-request"
+  | "recording-active"
+  | "share-waiting"
+  | "presenter-active";
 
 // --- Main Component ---
 
@@ -399,6 +128,7 @@ interface ActiveClassroomUIProps {
   sessionTimeZone: string;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  uiPreviewEnabled?: boolean;
 }
 
 export function ActiveClassroomUI({
@@ -410,6 +140,7 @@ export function ActiveClassroomUI({
   sessionTimeZone,
   isFullscreen = false,
   onToggleFullscreen,
+  uiPreviewEnabled = false,
 }: ActiveClassroomUIProps) {
   const t = useTranslations();
   const pathname = usePathname();
@@ -441,8 +172,6 @@ export function ActiveClassroomUI({
   const [needsClick, setNeedsClick] = useState(false);
   const [extensionNow, setExtensionNow] = useState(Date.now());
   const [isConfirmingExtension, setIsConfirmingExtension] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [pendingRequest, setPendingRequest] = useState<ShareRequest | null>(
     null,
   );
@@ -451,10 +180,6 @@ export function ActiveClassroomUI({
   const [presenterMode, setPresenterMode] = useState(false);
   const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
-  const [classmatesCanScrollPrev, setClassmatesCanScrollPrev] = useState(false);
-  const [classmatesCanScrollNext, setClassmatesCanScrollNext] = useState(false);
-  const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
-  const [stageControlsVisible, setStageControlsVisible] = useState(true);
   const [isRecording, setIsRecording] = useState(room.isRecording);
   const [showRecordConfirm, setShowRecordConfirm] = useState(false);
   const [isTogglingRecord, setIsTogglingRecord] = useState(false);
@@ -465,48 +190,23 @@ export function ActiveClassroomUI({
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [hasStartedSession, setHasStartedSession] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
-  const stageControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const [uiPreviewState, setUiPreviewState] =
+    useState<ActiveClassroomPreviewState>("none");
+  const [showPreviewParticipants, setShowPreviewParticipants] = useState(false);
   const warnedEffectiveEndRef = useRef<number | null>(null);
   const reconciliationAttemptRef = useRef({ effectiveEnd: 0, attemptedAt: 0 });
-  const stageTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const classmateTilesRef = useRef<HTMLDivElement>(null);
-  const panDragRef = useRef<{
-    active: boolean;
-    startMouse: { x: number; y: number };
-    startPan: { x: number; y: number };
-  }>({
-    active: false,
-    startMouse: { x: 0, y: 0 },
-    startPan: { x: 0, y: 0 },
-  });
+  const { zoom, pan, stageRef, handleZoom, startPanDrag } =
+    useClassroomStageViewport();
+  const { isPhoneLandscape, stageControlsVisible, showStageControls } =
+    usePhoneLandscapeStageControls();
 
-  const updateClassmatesScroll = useCallback(() => {
-    const el = classmateTilesRef.current;
-    if (!el) return;
-    setClassmatesCanScrollPrev(el.scrollTop > 4 || el.scrollLeft > 4);
-    setClassmatesCanScrollNext(
-      el.scrollHeight - el.scrollTop - el.clientHeight > 4 ||
-        el.scrollWidth - el.scrollLeft - el.clientWidth > 4,
-    );
-  }, []);
-
-  const showStageControls = useCallback(() => {
-    setStageControlsVisible(true);
-    if (stageControlsTimerRef.current)
-      clearTimeout(stageControlsTimerRef.current);
-    stageControlsTimerRef.current = setTimeout(
-      () => setStageControlsVisible(false),
-      3000,
-    );
-  }, []);
-
-  const amITeacher = currentUserRole === "teacher";
-  const amIAuthority = currentUserRole ? isAuthority(currentUserRole) : false;
+  const capabilities = getClassroomCapabilities("staff", currentUserRole);
+  const amITeacher = capabilities.isTeacher;
+  const amIAuthority = capabilities.canManageSession;
+  const isPreviewing = (state: ActiveClassroomPreviewState) =>
+    uiPreviewEnabled && uiPreviewState === state;
 
   useEffect(() => {
     if (!sessionIsLive) return;
@@ -525,22 +225,43 @@ export function ActiveClassroomUI({
   );
 
   const shouldConfirmExtension =
-    amIAuthority &&
-    sessionIsLive &&
-    !!extensionContext?.decisionEndsAt &&
-    extensionNow < extensionContext.decisionEndsAt;
-  const decisionSecondsRemaining = extensionContext?.decisionEndsAt
-    ? Math.max(
-        0,
-        Math.ceil((extensionContext.decisionEndsAt - extensionNow) / 1000),
-      )
-    : 0;
-  const isEndingSoon = Boolean(
-    extensionContext &&
-      extensionContext.effectiveEnd < extensionContext.hardEndsAt &&
-      extensionNow >= extensionContext.warningStartsAt &&
-      extensionNow < extensionContext.effectiveEnd,
-  );
+    isPreviewing("extend-class") ||
+    (amIAuthority &&
+      sessionIsLive &&
+      !!extensionContext?.decisionEndsAt &&
+      extensionNow < extensionContext.decisionEndsAt);
+  const decisionSecondsRemaining = isPreviewing("extend-class")
+    ? 60
+    : extensionContext?.decisionEndsAt
+      ? Math.max(
+          0,
+          Math.ceil((extensionContext.decisionEndsAt - extensionNow) / 1000),
+        )
+      : 0;
+  const isEndingSoon =
+    isPreviewing("ending-soon") ||
+    Boolean(
+      extensionContext &&
+        extensionContext.effectiveEnd < extensionContext.hardEndsAt &&
+        extensionNow >= extensionContext.warningStartsAt &&
+        extensionNow < extensionContext.effectiveEnd,
+    );
+  const extensionStaffConflict =
+    extensionContext?.staffConflict ??
+    (isPreviewing("extend-class")
+      ? {
+          className: "Algebra I",
+          startsAt: extensionNow + 5 * 60 * 1000,
+        }
+      : undefined);
+  const affectedStudentCount =
+    extensionContext?.affectedStudentCount ??
+    (isPreviewing("extend-class") ? 3 : 0);
+  const isRecordingForDisplay = isRecording || isPreviewing("recording-active");
+  const isWaitingForApprovalForDisplay =
+    waitingForApproval || isPreviewing("share-waiting");
+  const isShareApprovedForDisplay =
+    shareApproved && !isPreviewing("share-waiting");
 
   useEffect(() => {
     if (
@@ -633,7 +354,10 @@ export function ActiveClassroomUI({
     ? participants.find((p) => p.identity === adminPresenterId)
     : null;
   const isLocalAdminPresenting =
-    amIAuthority && !amITeacher && !actualTeacher && presenterMode;
+    amIAuthority &&
+    !amITeacher &&
+    !actualTeacher &&
+    (presenterMode || isPreviewing("presenter-active"));
   const teacher =
     actualTeacher ||
     adminPresenterParticipant ||
@@ -681,48 +405,36 @@ export function ActiveClassroomUI({
       return (a.name || a.identity).localeCompare(b.name || b.identity);
     });
   }, [students, raisedHands]);
-
-  // --- TRACKS ---
-  const screenTracks = useTracks(SCREEN_SHARE_SOURCE, SCREEN_SHARE_OPTIONS);
-
-  const activeScreenTrack = useMemo(() => {
-    const sorted = [...screenTracks].sort((a, b) => {
-      const roleA = getRole(a.participant);
-      const roleB = getRole(b.participant);
-      if (roleA === "teacher") return -1;
-      if (roleB === "teacher") return 1;
-      return 0;
-    });
-    return sorted[0];
-  }, [screenTracks]);
-
-  const isScreenSharingActive = !!activeScreenTrack;
-  const isSharingLocally = localParticipant?.isScreenShareEnabled;
-
-  // Explicit subscription for remote screen shares
-  useEffect(() => {
-    if (!activeScreenTrack || activeScreenTrack.participant.isLocal) return;
-
-    const publication = activeScreenTrack.publication;
-
-    // Subscribe if not already subscribed
-    if (!publication.isSubscribed && publication.track) {
-      (publication as RemoteTrackPublication).setSubscribed(true);
-    }
-  }, [activeScreenTrack]);
-
-  const teacherCameraTrack = teacher?.getTrackPublication(Track.Source.Camera);
-  const teacherAudioTrack = teacher?.getTrackPublication(
-    Track.Source.Microphone,
+  const previewParticipants = useMemo(
+    () => createClassroomPreviewParticipants(),
+    [],
   );
-  const isTeacherVideoOn =
-    teacherCameraTrack &&
-    teacherCameraTrack.isSubscribed &&
-    !teacherCameraTrack.isMuted;
-  const isTeacherAudioOn =
-    teacherAudioTrack &&
-    teacherAudioTrack.isSubscribed &&
-    !teacherAudioTrack.isMuted;
+  const displayedStudents = useMemo(
+    () =>
+      uiPreviewEnabled && showPreviewParticipants
+        ? [...sortedStudents, ...previewParticipants]
+        : sortedStudents,
+    [
+      previewParticipants,
+      showPreviewParticipants,
+      sortedStudents,
+      uiPreviewEnabled,
+    ],
+  );
+  const {
+    classmateTilesRef,
+    classmatesCanScrollPrev,
+    classmatesCanScrollNext,
+  } = useClassmatesOverflow(displayedStudents.length);
+
+  const {
+    screenTracks,
+    activeScreenTrack,
+    isScreenSharingActive,
+    isTeacherVideoOn,
+    isTeacherAudioOn,
+  } = useClassroomMediaTracks(teacher);
+  const isSharingLocally = localParticipant?.isScreenShareEnabled;
 
   useEffect(() => {
     const decoder = new TextDecoder();
@@ -995,6 +707,10 @@ export function ActiveClassroomUI({
   };
 
   const togglePresenterMode = async () => {
+    if (isPreviewing("presenter-active")) {
+      setUiPreviewState("none");
+      return;
+    }
     const newMode = !presenterMode;
     setPresenterMode(newMode);
     const encoder = new TextEncoder();
@@ -1008,6 +724,10 @@ export function ActiveClassroomUI({
   };
 
   const handleShareClick = async () => {
+    if (isPreviewing("share-waiting")) {
+      setUiPreviewState("none");
+      return;
+    }
     // Pre-flight: Fail fast before allowing any state changes or requests
     if (typeof navigator.mediaDevices?.getDisplayMedia !== "function") {
       toast.error(t("classroom.screenShareNotSupported"));
@@ -1054,6 +774,10 @@ export function ActiveClassroomUI({
 
   const handleRecordClick = () => {
     if (!amIAuthority) return;
+    if (isPreviewing("recording-active")) {
+      setUiPreviewState("none");
+      return;
+    }
     if (isRecording) {
       executeRecordingToggle(false);
     } else {
@@ -1126,49 +850,6 @@ export function ActiveClassroomUI({
       setShowRecordConfirm(false);
     }
   };
-
-  const handleZoom = (delta: number) =>
-    setZoom((prev) => {
-      const next = Math.min(Math.max(prev + delta, 1), 3);
-      if (next === 1) setPan({ x: 0, y: 0 });
-      return next;
-    });
-
-  useEffect(() => {
-    const applyDrag = (clientX: number, clientY: number) => {
-      if (!panDragRef.current.active || !stageRef.current) return;
-      const dx = clientX - panDragRef.current.startMouse.x;
-      const dy = clientY - panDragRef.current.startMouse.y;
-      const { offsetWidth: W, offsetHeight: H } = stageRef.current;
-      const maxX = (W * (zoom - 1)) / 2;
-      const maxY = (H * (zoom - 1)) / 2;
-      setPan({
-        x: Math.max(-maxX, Math.min(maxX, panDragRef.current.startPan.x + dx)),
-        y: Math.max(-maxY, Math.min(maxY, panDragRef.current.startPan.y + dy)),
-      });
-    };
-    const handleMouseMove = (e: MouseEvent) => applyDrag(e.clientX, e.clientY);
-    const handleMouseUp = () => {
-      panDragRef.current.active = false;
-    };
-    const handleTouchMove = (e: TouchEvent) => {
-      e.preventDefault();
-      applyDrag(e.touches[0].clientX, e.touches[0].clientY);
-    };
-    const handleTouchEnd = () => {
-      panDragRef.current.active = false;
-    };
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    document.addEventListener("touchmove", handleTouchMove, { passive: false });
-    document.addEventListener("touchend", handleTouchEnd);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.removeEventListener("touchmove", handleTouchMove);
-      document.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, [zoom]);
 
   // --- MEDIA INIT ---
   useEffect(() => {
@@ -1251,56 +932,169 @@ export function ActiveClassroomUI({
     if (isFullscreen) setPendingFullscreen(false);
   }, [screenTracks, isWhiteboardActive, isFullscreen, onToggleFullscreen]);
 
-  // Classmates scroll overflow detection
-  useEffect(() => {
-    const el = classmateTilesRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", updateClassmatesScroll, { passive: true });
-    updateClassmatesScroll();
-    return () => el.removeEventListener("scroll", updateClassmatesScroll);
-  }, [updateClassmatesScroll]);
+  const selectPreviewState = (state: ActiveClassroomPreviewState) => {
+    setUiPreviewState((current) => (current === state ? "none" : state));
+  };
 
-  useEffect(() => {
-    updateClassmatesScroll();
-  }, [sortedStudents.length, updateClassmatesScroll]);
-
-  useEffect(() => {
-    const mq = window.matchMedia(
-      "(orientation: landscape) and (max-height: 500px)",
-    );
-    const handle = () => setIsPhoneLandscape(mq.matches);
-    handle();
-    mq.addEventListener("change", handle);
-    return () => {
-      mq.removeEventListener("change", handle);
-      if (stageControlsTimerRef.current)
-        clearTimeout(stageControlsTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isPhoneLandscape) showStageControls();
-  }, [isPhoneLandscape, showStageControls]);
+  const previewOptions: ClassroomPreviewOption[] = [
+    {
+      id: "start-class",
+      label: "Start class",
+      group: "Dialogs",
+      isActive: isPreviewing("start-class"),
+      onSelect: () => selectPreviewState("start-class"),
+    },
+    {
+      id: "end-class",
+      label: "End class",
+      group: "Dialogs",
+      isActive: isPreviewing("end-class"),
+      onSelect: () => selectPreviewState("end-class"),
+    },
+    {
+      id: "leave-class",
+      label: "Leave class",
+      group: "Dialogs",
+      isActive: isPreviewing("leave-class"),
+      onSelect: () => selectPreviewState("leave-class"),
+    },
+    {
+      id: "extend-class",
+      label: "Extension + conflicts",
+      group: "Dialogs",
+      isActive: isPreviewing("extend-class"),
+      onSelect: () => selectPreviewState("extend-class"),
+    },
+    {
+      id: "fullscreen",
+      label: "Fullscreen invitation",
+      group: "Dialogs",
+      isActive: isPreviewing("fullscreen"),
+      onSelect: () => selectPreviewState("fullscreen"),
+    },
+    {
+      id: "recording-confirm",
+      label: "Recording confirmation",
+      group: "Dialogs",
+      isActive: isPreviewing("recording-confirm"),
+      onSelect: () => selectPreviewState("recording-confirm"),
+    },
+    {
+      id: "companion",
+      label: "Companion QR",
+      group: "Dialogs",
+      isActive: isPreviewing("companion"),
+      onSelect: () => selectPreviewState("companion"),
+    },
+    {
+      id: "ending-soon",
+      label: "Ending soon",
+      group: "Overlays",
+      isActive: isPreviewing("ending-soon"),
+      onSelect: () => selectPreviewState("ending-soon"),
+    },
+    {
+      id: "enable-audio",
+      label: "Enable audio",
+      group: "Overlays",
+      isActive: isPreviewing("enable-audio"),
+      onSelect: () => selectPreviewState("enable-audio"),
+    },
+    {
+      id: "share-request",
+      label: "Student share request",
+      group: "Overlays",
+      isActive: isPreviewing("share-request"),
+      onSelect: () => selectPreviewState("share-request"),
+    },
+    {
+      id: "recording-active",
+      label: "Recording active",
+      group: "Controls",
+      isActive: isPreviewing("recording-active"),
+      onSelect: () => selectPreviewState("recording-active"),
+    },
+    {
+      id: "share-waiting",
+      label: "Share waiting",
+      group: "Controls",
+      isActive: isPreviewing("share-waiting"),
+      onSelect: () => selectPreviewState("share-waiting"),
+    },
+    {
+      id: "presenter-active",
+      label: "Admin presenting",
+      group: "Controls",
+      isActive: isPreviewing("presenter-active"),
+      onSelect: () => selectPreviewState("presenter-active"),
+    },
+    {
+      id: "demo-participants",
+      label: "Demo participants",
+      group: "Controls",
+      isActive: showPreviewParticipants,
+      onSelect: () => setShowPreviewParticipants((current) => !current),
+    },
+    {
+      id: "toast-class-ending",
+      label: "Class ending",
+      group: "Notifications",
+      onSelect: () => toast.warning(t("classroom.classEndingSoon")),
+    },
+    {
+      id: "toast-recording",
+      label: "Recording started",
+      group: "Notifications",
+      onSelect: () => toast.success(t("classroom.recordingStarted")),
+    },
+    {
+      id: "toast-extension",
+      label: "Extension confirmed",
+      group: "Notifications",
+      onSelect: () => toast.success(t("classroom.extensionConfirmed")),
+    },
+    {
+      id: "toast-permission",
+      label: "Permission granted",
+      group: "Notifications",
+      onSelect: () => toast.success(t("classroom.permissionGranted")),
+    },
+    {
+      id: "toast-error",
+      label: "Classroom error",
+      group: "Notifications",
+      onSelect: () => toast.error(t("classroom.endClassError")),
+    },
+  ];
 
   return (
-    <div
-      ref={rootRef}
-      className="grid h-full w-full bg-background overflow-hidden font-sans text-foreground relative grid-cols-1 grid-rows-[min-content_1fr_min-content_min-content] landscape:grid-cols-[1fr_280px] landscape:grid-rows-[min-content_1fr_min-content] xl:grid-cols-[1fr_320px] xl:grid-rows-[min-content_1fr_min-content]"
-    >
-      <RoomAudioRenderer />
-
-      {isEndingSoon && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="pointer-events-none absolute left-1/2 top-2 z-[70] flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-warning/40 bg-warning px-3 py-1.5 text-xs font-semibold text-warning-foreground shadow-lg"
-        >
-          <Clock3 className="size-4 shrink-0" />
-          <span className="truncate">{t("classroom.classEndingSoon")}</span>
-        </div>
+    <ClassroomView ref={rootRef}>
+      {uiPreviewEnabled && (
+        <ClassroomUiPreview
+          roleLabel={currentUserRole ?? "staff"}
+          options={previewOptions}
+          onReset={() => {
+            setUiPreviewState("none");
+            setShowPreviewParticipants(false);
+          }}
+        />
       )}
 
-      <AlertDialog open={amIAuthority && !sessionIsLive && !hasStartedSession}>
+      {isEndingSoon && (
+        <ClassroomEndingSoonNotice label={t("classroom.classEndingSoon")} />
+      )}
+
+      <AlertDialog
+        open={
+          isPreviewing("start-class") ||
+          (amIAuthority && !sessionIsLive && !hasStartedSession)
+        }
+        onOpenChange={(open) => {
+          if (!open && isPreviewing("start-class")) {
+            setUiPreviewState("none");
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -1316,6 +1110,10 @@ export function ActiveClassroomUI({
               disabled={isStartingSession}
               onClick={(event) => {
                 event.preventDefault();
+                if (isPreviewing("start-class")) {
+                  setUiPreviewState("none");
+                  return;
+                }
                 void handleStartSession();
               }}
             >
@@ -1328,7 +1126,14 @@ export function ActiveClassroomUI({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={shouldConfirmExtension}>
+      <AlertDialog
+        open={shouldConfirmExtension}
+        onOpenChange={(open) => {
+          if (!open && isPreviewing("extend-class")) {
+            setUiPreviewState("none");
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -1339,22 +1144,22 @@ export function ActiveClassroomUI({
                 seconds: decisionSecondsRemaining,
               })}
             </AlertDialogDescription>
-            {extensionContext?.staffConflict && (
+            {extensionStaffConflict && (
               <p className="text-sm text-warning-foreground">
                 {t("classroom.staffExtensionConflict", {
-                  className: extensionContext.staffConflict.className,
+                  className: extensionStaffConflict.className,
                   time: new Intl.DateTimeFormat(undefined, {
                     hour: "numeric",
                     minute: "2-digit",
                     timeZone: sessionTimeZone,
-                  }).format(extensionContext.staffConflict.startsAt),
+                  }).format(extensionStaffConflict.startsAt),
                 })}
               </p>
             )}
-            {!!extensionContext?.affectedStudentCount && (
+            {!!affectedStudentCount && (
               <p className="text-sm text-muted-foreground">
                 {t("classroom.studentExtensionConflicts", {
-                  count: extensionContext.affectedStudentCount,
+                  count: affectedStudentCount,
                 })}
               </p>
             )}
@@ -1362,7 +1167,13 @@ export function ActiveClassroomUI({
           <AlertDialogFooter>
             <AlertDialogCancel
               disabled={isEndingSession}
-              onClick={() => void handleEndSession()}
+              onClick={() => {
+                if (isPreviewing("extend-class")) {
+                  setUiPreviewState("none");
+                  return;
+                }
+                void handleEndSession();
+              }}
             >
               {t("classroom.endClassNow")}
             </AlertDialogCancel>
@@ -1370,6 +1181,10 @@ export function ActiveClassroomUI({
               disabled={isConfirmingExtension}
               onClick={(event) => {
                 event.preventDefault();
+                if (isPreviewing("extend-class")) {
+                  setUiPreviewState("none");
+                  return;
+                }
                 void handleConfirmExtension();
               }}
             >
@@ -1382,40 +1197,41 @@ export function ActiveClassroomUI({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Fullscreen invitation dialog — shown when remote content appears; needs user click to satisfy browser gesture requirement */}
-      <AlertDialog
-        open={pendingFullscreen}
+      <ClassroomFullscreenPrompt
+        open={pendingFullscreen || isPreviewing("fullscreen")}
+        title={t("classroom.fullscreenInviteTitle") || "Go fullscreen?"}
+        description={
+          t("classroom.fullscreenInviteDesc") ||
+          "Content is being presented. Going fullscreen provides the best viewing experience."
+        }
+        cancelLabel={t("common.notNow") || "Not now"}
+        confirmLabel={t("classroom.goFullscreen") || "Go Fullscreen"}
         onOpenChange={(open) => {
-          if (!open) setPendingFullscreen(false);
+          if (!open) {
+            setPendingFullscreen(false);
+            if (isPreviewing("fullscreen")) setUiPreviewState("none");
+          }
+        }}
+        onCancel={() => setPendingFullscreen(false)}
+        onConfirm={() => {
+          setPendingFullscreen(false);
+          if (isPreviewing("fullscreen")) {
+            setUiPreviewState("none");
+            return;
+          }
+          onToggleFullscreen?.();
+        }}
+      />
+
+      <AlertDialog
+        open={showRecordConfirm || isPreviewing("recording-confirm")}
+        onOpenChange={(open) => {
+          setShowRecordConfirm(open);
+          if (!open && isPreviewing("recording-confirm")) {
+            setUiPreviewState("none");
+          }
         }}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("classroom.fullscreenInviteTitle") || "Go fullscreen?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("classroom.fullscreenInviteDesc") ||
-                "Content is being presented. Going fullscreen provides the best viewing experience."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingFullscreen(false)}>
-              {t("common.notNow") || "Not now"}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setPendingFullscreen(false);
-                onToggleFullscreen?.();
-              }}
-            >
-              {t("classroom.goFullscreen") || "Go Fullscreen"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showRecordConfirm} onOpenChange={setShowRecordConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -1428,7 +1244,13 @@ export function ActiveClassroomUI({
           <AlertDialogFooter>
             <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => executeRecordingToggle(true)}
+              onClick={() => {
+                if (isPreviewing("recording-confirm")) {
+                  setUiPreviewState("none");
+                  return;
+                }
+                void executeRecordingToggle(true);
+              }}
               disabled={isTogglingRecord}
             >
               {isTogglingRecord ? (
@@ -1441,27 +1263,22 @@ export function ActiveClassroomUI({
         </AlertDialogContent>
       </AlertDialog>
 
-      {needsClick && (
-        <div className="absolute inset-0 z-[999] bg-inverse/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card text-card-foreground rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl border border-border">
-            <VolumeX className="w-12 h-12 text-secondary mx-auto mb-4" />
-            <h3 className="text-xl font-bold mb-2">
-              {t("classroom.enableAudio")}
-            </h3>
-            <button
-              onClick={async () => {
-                await room.startAudio();
-                setNeedsClick(false);
-              }}
-              className="w-full py-3 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors rounded-lg font-bold"
-            >
-              {t("classroom.startClass")}
-            </button>
-          </div>
-        </div>
+      {(needsClick || isPreviewing("enable-audio")) && (
+        <ClassroomEnableAudioOverlay
+          title={t("classroom.enableAudio")}
+          actionLabel={t("classroom.startClass")}
+          onEnable={async () => {
+            if (isPreviewing("enable-audio")) {
+              setUiPreviewState("none");
+              return;
+            }
+            await room.startAudio();
+            setNeedsClick(false);
+          }}
+        />
       )}
 
-      {pendingRequest && amIAuthority && (
+      {(pendingRequest || isPreviewing("share-request")) && amIAuthority && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-card text-card-foreground rounded-xl shadow-2xl border border-border p-4 w-80 animate-in slide-in-from-top-4">
           <div className="flex items-start gap-3">
             <div className="bg-primary/10 p-2 rounded-full">
@@ -1469,7 +1286,9 @@ export function ActiveClassroomUI({
             </div>
             <div>
               <h4 className="font-bold text-sm text-card-foreground">
-                {t("classroom.shareRequest", { name: pendingRequest.name })}
+                {t("classroom.shareRequest", {
+                  name: pendingRequest?.name ?? "Laura Camila",
+                })}
               </h4>
               <p className="text-xs text-muted-foreground mt-1">
                 {t("classroom.shareRequestDescription")}
@@ -1478,13 +1297,25 @@ export function ActiveClassroomUI({
           </div>
           <div className="flex gap-2 mt-4">
             <button
-              onClick={() => grantPermission(false)}
+              onClick={() => {
+                if (isPreviewing("share-request")) {
+                  setUiPreviewState("none");
+                  return;
+                }
+                void grantPermission(false);
+              }}
               className="flex-1 py-2 text-xs font-bold text-secondary-foreground bg-secondary hover:bg-secondary/80 rounded-lg"
             >
               {t("classroom.deny")}
             </button>
             <button
-              onClick={() => grantPermission(true)}
+              onClick={() => {
+                if (isPreviewing("share-request")) {
+                  setUiPreviewState("none");
+                  return;
+                }
+                void grantPermission(true);
+              }}
               className="flex-1 py-2 text-xs font-bold text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg"
             >
               {t("classroom.allow")}
@@ -1494,598 +1325,98 @@ export function ActiveClassroomUI({
       )}
 
       {/* 1. Header Row */}
-      <div
-        className={`col-start-1 row-start-1 z-10 flex flex-col ${isPhoneLandscape ? "" : "p-3 md:p-4 pb-2 md:pb-0 justify-end"}`}
-      >
-        {isPhoneLandscape ? (
-          <div className="flex items-center gap-2 px-2 py-1">
-            <span
-              role="status"
+      <ClassroomHeader
+        title={className || t("classroom.classroom")}
+        subtitle={lessonTitle}
+        isActive={Boolean(teacher)}
+        activeLabel={t("classroom.live")}
+        waitingLabel={t("classroom.waiting")}
+        isRecording={isRecordingForDisplay}
+        isPhoneLandscape={isPhoneLandscape}
+        action={
+          amIAuthority && !amITeacher && !actualTeacher ? (
+            <Toggle
+              type="button"
+              pressed={isLocalAdminPresenting}
               aria-label={
-                teacher ? t("classroom.live") : t("classroom.waiting")
+                isLocalAdminPresenting
+                  ? t("classroom.stopLeadingClass")
+                  : t("classroom.startLeadingClass")
               }
-              className={`size-2 shrink-0 rounded-full ${teacher ? "bg-success animate-pulse" : "bg-chart-4"}`}
-            />
-            <div className="flex-1 min-w-0 flex items-center gap-1.5">
-              <span className="text-xs font-bold text-card-foreground truncate">
-                {className || t("classroom.classroom")}
-              </span>
-              {lessonTitle && (
-                <span className="text-[10px] text-muted-foreground truncate">
-                  &middot; {lessonTitle}
+              title={
+                isLocalAdminPresenting
+                  ? t("classroom.stopLeadingClass")
+                  : t("classroom.startLeadingClass")
+              }
+              className={`h-8 gap-1.5 rounded-md border border-primary/30 bg-background px-2.5 text-xs font-semibold text-primary shadow-none hover:bg-primary/5 data-[state=on]:border-success/50 data-[state=on]:bg-success/10 data-[state=on]:text-success ${
+                isPhoneLandscape ? "size-7 p-0" : ""
+              }`}
+              onPressedChange={() => void togglePresenterMode()}
+            >
+              <Crown className="size-4" />
+              {!isPhoneLandscape && (
+                <span>
+                  {isLocalAdminPresenting
+                    ? t("classroom.leadingClass")
+                    : t("classroom.leadClass")}
                 </span>
               )}
-            </div>
-            {isRecording && (
-              <div className="flex items-center gap-1 bg-destructive/10 px-1.5 py-0.5 rounded-full border border-destructive/20 flex-shrink-0">
-                <div className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
-                <span className="text-[9px] font-bold text-destructive uppercase tracking-wide">
-                  REC
-                </span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-3">
-              <span
-                role="status"
-                aria-label={
-                  teacher ? t("classroom.live") : t("classroom.waiting")
-                }
-                className={`size-2.5 shrink-0 rounded-full ${teacher ? "bg-success animate-pulse" : "bg-chart-4"}`}
-              />
-              <div className="flex flex-col">
-                <h2 className="text-sm font-bold text-card-foreground">
-                  {className || t("classroom.classroom")}
-                </h2>
-                {lessonTitle && (
-                  <p className="text-xs text-muted-foreground">{lessonTitle}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {isRecording && (
-                <div className="flex items-center gap-1.5 bg-destructive/10 px-3 py-1 rounded-full border border-destructive/20">
-                  <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
-                  <span className="text-xs font-bold text-destructive uppercase tracking-wide">
-                    REC
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+            </Toggle>
+          ) : undefined
+        }
+      />
 
       {/* 2. Stage Row */}
-      <div
-        className={`col-start-1 row-start-2 min-h-0 z-10 flex flex-col relative ${isPhoneLandscape ? "p-1" : "p-3 md:p-4 py-2 md:py-4"}`}
-      >
-        <div
-          ref={stageRef}
-          className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-muted group"
-        >
-          {amIIncognito && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-inverse/60 text-inverse-foreground backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1.5 shadow-sm pointer-events-none">
-              <Eye className="w-3 h-3 shrink-0" />{" "}
-              {t("classroom.observingIncognito")}
-            </div>
-          )}
-          {/* Top-right stage overlay: following pill + fullscreen toggle */}
-          {(isWhiteboardActive || isScreenSharingActive) && (
-            <div className="absolute top-2 right-2 z-30 flex flex-col items-end gap-1.5 pointer-events-none">
-              {isWhiteboardActive && (
-                <button
-                  onClick={() => setFollowViewport((v) => !v)}
-                  className={`pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg border transition-all ${
-                    followViewport
-                      ? "bg-success/90 text-success-foreground border-success/50 hover:bg-success/80"
-                      : "bg-inverse/60 text-inverse-foreground/80 border-inverse-foreground/20 hover:bg-inverse/80"
-                  }`}
-                >
-                  {followViewport ? (
-                    <Eye className="w-3 h-3" />
-                  ) : (
-                    <EyeOff className="w-3 h-3" />
-                  )}
-                  {followViewport
-                    ? t("classroom.followingTeacher") || "Following"
-                    : t("classroom.viewUnlocked") || "Unlocked"}
-                </button>
-              )}
-              {onToggleFullscreen && (
-                <button
-                  onClick={onToggleFullscreen}
-                  title={
-                    isFullscreen
-                      ? t("classroom.exitFullscreen") || "Exit fullscreen"
-                      : t("classroom.enterFullscreen") || "Fullscreen"
-                  }
-                  className="pointer-events-auto w-8 h-8 rounded-full bg-inverse/60 hover:bg-inverse/80 text-inverse-foreground flex items-center justify-center shadow-lg border border-inverse-foreground/20 transition-all"
-                >
-                  {isFullscreen ? (
-                    <Minimize2 className="w-4 h-4" />
-                  ) : (
-                    <Maximize2 className="w-4 h-4" />
-                  )}
-                </button>
-              )}
-            </div>
-          )}
-          {isWhiteboardActive ? (
-            <>
-              <div className="w-full h-full relative rounded-xl overflow-hidden">
-                <SharedWhiteboard
-                  roomName={roomName}
-                  isReadonly={true}
-                  followViewport={followViewport}
-                />
-              </div>
-            </>
-          ) : isScreenSharingActive ? (
-            <>
-              <div
-                key={activeScreenTrack.publication.trackSid}
-                className={`w-full h-full flex items-center justify-center origin-center bg-inverse relative select-none ${zoom > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
-                style={{
-                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                }}
-                onMouseDown={
-                  zoom > 1
-                    ? (e) => {
-                        e.preventDefault();
-                        showStageControls();
-                        panDragRef.current = {
-                          active: true,
-                          startMouse: { x: e.clientX, y: e.clientY },
-                          startPan: { ...pan },
-                        };
-                      }
-                    : undefined
-                }
-                onTouchStart={
-                  zoom > 1
-                    ? (e) => {
-                        showStageControls();
-                        const touch = e.touches[0];
-                        panDragRef.current = {
-                          active: true,
-                          startMouse: { x: touch.clientX, y: touch.clientY },
-                          startPan: { ...pan },
-                        };
-                      }
-                    : undefined
-                }
-              >
-                <VideoTrack
-                  trackRef={activeScreenTrack}
-                  className="w-full h-full object-contain"
-                  onError={(e) => console.error("Video Track Error", e)}
-                />
-
-                {(!activeScreenTrack.publication.isSubscribed ||
-                  !activeScreenTrack.publication.track) && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-inverse/90 backdrop-blur-sm z-50">
-                    <Loader2 className="w-12 h-12 text-info animate-spin mb-4" />
-                    <p className="text-inverse-foreground font-bold text-lg">
-                      {t("classroom.loadingShare")}
-                    </p>
-                    <p className="text-inverse-foreground/50 text-xs mt-2 font-mono">
-                      {t("classroom.presenterSharing", {
-                        name:
-                          activeScreenTrack.participant.name ||
-                          t("classroom.presenter"),
-                      })}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div
-                className={`absolute top-4 right-4 flex gap-2 z-40 bg-background/60 p-1.5 rounded-lg backdrop-blur-sm border border-border/50 transition-all duration-300 ${isPhoneLandscape && !stageControlsVisible ? "opacity-0 -translate-y-2 pointer-events-none" : "opacity-100 translate-y-0"}`}
-              >
-                <button
-                  onClick={() => handleZoom(-0.25)}
-                  className="p-2 hover:bg-foreground/20 rounded text-foreground"
-                >
-                  <ZoomOut className="w-4 h-4" />
-                </button>
-                <span className="text-foreground text-xs font-mono py-2 min-w-[3ch] text-center">
-                  {Math.round(zoom * 100)}%
-                </span>
-                <button
-                  onClick={() => handleZoom(0.25)}
-                  className="p-2 hover:bg-foreground/20 rounded text-foreground"
-                >
-                  <ZoomIn className="w-4 h-4" />
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
-              {teacher ? (
-                isTeacherVideoOn ? (
-                  <ParticipantTile
-                    participant={teacher}
-                    variant="stage"
-                    className="w-full h-full object-contain bg-transparent"
-                    showLabel={true}
-                    roleBadge={t("classroom.teacher")}
-                    youLabel={t("classroom.youShort")}
-                    audioMuted={!isTeacherAudioOn}
-                  />
-                ) : amITeacher || isLocalAdminPresenting ? (
-                  <div className="z-10 flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-300">
-                    <div className="w-28 h-28 bg-success/10 rounded-full flex items-center justify-center border-4 border-success mb-6 shadow-xl animate-pulse">
-                      <VideoOff className="w-12 h-12 text-success" />
-                    </div>
-                    <h2 className="text-3xl font-bold text-foreground">
-                      {t("classroom.youAreLive")}
-                    </h2>
-                    <p className="text-muted-foreground mt-2 text-lg">
-                      {t("classroom.cameraOff")}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="z-10 flex flex-col items-center justify-center p-8">
-                    <div className="w-32 h-32 bg-secondary rounded-full flex items-center justify-center border-2 border-inverse-foreground/20 mb-6 shadow-lg overflow-hidden">
-                      {getImageUrl(teacher) ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={getImageUrl(teacher)!}
-                          alt={teacher.name || ""}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-5xl font-bold text-secondary-foreground">
-                          {teacher.name?.charAt(0) || "T"}
-                        </span>
-                      )}
-                    </div>
-                    <h2 className="text-2xl font-bold text-foreground">
-                      {teacher.name || t("classroom.teacher")}
-                    </h2>
-                    <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-                      <div className="bg-secondary/80 px-3 py-1.5 rounded-full border border-border flex items-center gap-1.5">
-                        <VideoOff className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-sm text-secondary-foreground font-medium">
-                          {t("classroom.cameraOffLabel")}
-                        </span>
-                      </div>
-                      <div
-                        className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${
-                          isTeacherAudioOn
-                            ? "bg-secondary/80 border-border"
-                            : "bg-destructive/10 border-destructive/20"
-                        }`}
-                      >
-                        <Mic
-                          className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-success" : "text-destructive"}`}
-                        />
-                        <span className="text-sm font-medium text-secondary-foreground">
-                          {isTeacherAudioOn
-                            ? t("classroom.audioOnly")
-                            : t("classroom.micOff")}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              ) : (
-                <div className="text-center z-10 p-8">
-                  <div className="w-32 h-32 mx-auto bg-background/50 backdrop-blur-sm rounded-full flex items-center justify-center border-2 border-border mb-4 shadow-sm">
-                    <span className="text-6xl">👩‍🏫</span>
-                  </div>
-                  <h2 className="text-2xl font-bold text-foreground">
-                    {className || t("classroom.class")}
-                  </h2>
-                  <p className="text-muted-foreground mt-2 font-medium">
-                    {t("classroom.waitingForTeacher")}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Phone landscape: tap zone to reveal floating controls */}
-          {isPhoneLandscape && (
-            <div
-              className="absolute inset-0 z-[25]"
-              style={{ pointerEvents: zoom > 1 ? "none" : "auto" }}
-              onTouchStart={(e) => {
-                stageTouchStartRef.current = {
-                  x: e.touches[0].clientX,
-                  y: e.touches[0].clientY,
-                };
-              }}
-              onTouchEnd={(e) => {
-                if (!stageTouchStartRef.current) return;
-                const dx = Math.abs(
-                  e.changedTouches[0].clientX - stageTouchStartRef.current.x,
-                );
-                const dy = Math.abs(
-                  e.changedTouches[0].clientY - stageTouchStartRef.current.y,
-                );
-                stageTouchStartRef.current = null;
-                if (dx < 8 && dy < 8) showStageControls();
-              }}
-              onClick={showStageControls}
-            />
-          )}
-          {/* Phone landscape: floating controls overlay — auto-hides after 3s, reveals on tap */}
-          {isPhoneLandscape && (
-            <div
-              className={`absolute inset-x-0 bottom-3 z-[35] flex items-center justify-center pointer-events-none transition-all duration-300 ${
-                stageControlsVisible
-                  ? "opacity-100 translate-y-0"
-                  : "opacity-0 translate-y-2"
-              }`}
-            >
-              <div
-                className="flex items-center gap-2 bg-inverse/60 backdrop-blur-md rounded-full px-4 py-2.5 border border-inverse-foreground/20 shadow-2xl pointer-events-auto"
-                onClick={showStageControls}
-              >
-                {amIAuthority && !amITeacher && !actualTeacher && (
-                  <button
-                    onClick={togglePresenterMode}
-                    className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
-                      isLocalAdminPresenting
-                        ? "bg-success/80 text-success-foreground border-success"
-                        : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
-                    }`}
-                  >
-                    <Crown className="w-5 h-5" />
-                  </button>
-                )}
-                <DeviceToggleButton
-                  variant="compact"
-                  source={Track.Source.Microphone}
-                  kind="audioinput"
-                  iconOn={<Mic className="w-5 h-5" />}
-                  iconOff={<MicOff className="w-5 h-5" />}
-                />
-                {!amIIncognito && (
-                  <DeviceToggleButton
-                    variant="compact"
-                    source={Track.Source.Camera}
-                    kind="videoinput"
-                    iconOn={<VideoIcon className="w-5 h-5" />}
-                    iconOff={<VideoOff className="w-5 h-5" />}
-                  />
-                )}
-                <button
-                  onClick={handleShareClick}
-                  disabled={waitingForApproval}
-                  className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
-                    isSharingLocally
-                      ? "bg-success/80 text-success-foreground border-success"
-                      : shareApproved
-                        ? "bg-info/80 text-info-foreground border-info animate-pulse"
-                        : waitingForApproval
-                          ? "bg-warning/80 text-warning-foreground border-warning cursor-wait"
-                          : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
-                  }`}
-                >
-                  {waitingForApproval ? (
-                    <Hand className="w-5 h-5 animate-pulse" />
-                  ) : (
-                    <MonitorUp className="w-5 h-5" />
-                  )}
-                </button>
-                {amIAuthority && (
-                  <button
-                    onClick={handleRecordClick}
-                    disabled={isTogglingRecord}
-                    title={
-                      isRecording
-                        ? t("classroom.stopRecording")
-                        : t("classroom.startRecording")
-                    }
-                    className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
-                      isRecording
-                        ? "bg-destructive/80 text-destructive-foreground border-destructive animate-pulse"
-                        : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
-                    } ${isTogglingRecord ? "opacity-50 cursor-wait" : ""}`}
-                  >
-                    {isTogglingRecord ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : isRecording ? (
-                      <StopCircle className="w-5 h-5" />
-                    ) : (
-                      <CircleDot className="w-5 h-5" />
-                    )}
-                  </button>
-                )}
-                {amIAuthority && (
-                  <button
-                    onClick={() => setShowQR(true)}
-                    title={
-                      hasCompanion
-                        ? t("classroom.companionActive") || "Companion active"
-                        : t("classroom.connectTablet") || "Connect Tablet"
-                    }
-                    className={`w-11 h-11 rounded-full flex items-center justify-center relative transition-all shadow-lg border-2 ${
-                      hasCompanion
-                        ? "bg-success/80 text-success-foreground border-success"
-                        : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
-                    }`}
-                  >
-                    <TabletSmartphone className="w-5 h-5" />
-                    {hasCompanion && (
-                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-success rounded-full border-2 border-inverse/60 animate-pulse" />
-                    )}
-                  </button>
-                )}
-                <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
-                {onToggleFullscreen && (
-                  <FullscreenButtonCompact
-                    isFullscreen={isFullscreen}
-                    onToggle={onToggleFullscreen}
-                  />
-                )}
-                <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
-                {amIAuthority && (sessionIsLive || hasStartedSession) && (
-                  <EndClassButton
-                    onConfirm={handleEndSession}
-                    disabled={isEndingSession}
-                    className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-inverse-foreground/20 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/30 disabled:cursor-wait disabled:opacity-60"
-                  />
-                )}
-                <LeaveClassButton
-                  onConfirm={handleLeaveClick}
-                  className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-destructive/80 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/90"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 3. Meeting Controls (row 4 on mobile, row 3 on md+) — hidden in phone landscape */}
-      <div
-        className={`col-start-1 row-start-4 landscape:col-start-1 landscape:row-start-3 xl:col-start-1 xl:row-start-3 p-3 md:p-4 pt-2 md:pt-0 z-10 ${isPhoneLandscape ? "hidden" : ""}`}
-      >
-        <div className="flex h-20 items-center px-4">
-          {/* Left spacer — presenter toggle when applicable */}
-          <div className="flex-1 flex items-center">
-            {amIAuthority && !amITeacher && !actualTeacher && (
-              <button
-                onClick={togglePresenterMode}
-                title={
-                  isLocalAdminPresenting
-                    ? t("classroom.exitPresenterRole")
-                    : t("classroom.takePresenterRole")
-                }
-                className={`flex items-center gap-2 rounded-full px-2.5 lg:px-4 h-10 shadow-sm border transition-colors text-xs font-bold ${
-                  isLocalAdminPresenting
-                    ? "bg-success/10 text-success border-success/40 hover:bg-success/20"
-                    : "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-                }`}
-              >
-                <Crown className="w-4 h-4 shrink-0" />
-                <span className="hidden lg:inline whitespace-nowrap">
-                  {isLocalAdminPresenting
-                    ? t("classroom.exitPresenterRole")
-                    : t("classroom.takePresenterRole")}
-                </span>
-              </button>
-            )}
-          </div>
-          {/* Centered media controls */}
-          <div className="flex items-center gap-2">
+      <ClassroomStage
+        stageRef={stageRef}
+        className="bg-muted"
+        isPhoneLandscape={isPhoneLandscape}
+        stageControlsVisible={stageControlsVisible}
+        onRevealControls={showStageControls}
+        zoom={zoom}
+        contentActive={isWhiteboardActive || isScreenSharingActive}
+        isWhiteboardActive={isWhiteboardActive}
+        followViewport={followViewport}
+        onToggleFollowViewport={() => setFollowViewport((value) => !value)}
+        followingLabel={t("classroom.followingTeacher") || "Following"}
+        unlockedLabel={t("classroom.viewUnlocked") || "Unlocked"}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={onToggleFullscreen}
+        enterFullscreenLabel={t("classroom.enterFullscreen") || "Fullscreen"}
+        exitFullscreenLabel={t("classroom.exitFullscreen") || "Exit fullscreen"}
+        phoneControls={
+          <>
             <DeviceToggleButton
-              variant="default"
+              variant="compact"
               source={Track.Source.Microphone}
               kind="audioinput"
-              includeAudioOutput
               iconOn={<Mic className="w-5 h-5" />}
               iconOff={<MicOff className="w-5 h-5" />}
             />
             {!amIIncognito && (
               <DeviceToggleButton
-                variant="default"
+                variant="compact"
                 source={Track.Source.Camera}
                 kind="videoinput"
                 iconOn={<VideoIcon className="w-5 h-5" />}
                 iconOff={<VideoOff className="w-5 h-5" />}
               />
             )}
-            {amIAuthority && (
-              <Dialog open={showQR} onOpenChange={setShowQR}>
-                <DialogTrigger asChild>
-                  <button
-                    title={
-                      hasCompanion
-                        ? t("classroom.companionActive") ||
-                          "Companion device active"
-                        : t("classroom.connectTablet") || "Connect Tablet"
-                    }
-                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border relative ${
-                      hasCompanion
-                        ? "bg-success/20 hover:bg-success/30 text-success border-success/50"
-                        : "bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border"
-                    }`}
-                  >
-                    <TabletSmartphone className="w-5 h-5" />
-                    {hasCompanion && (
-                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-success rounded-full border-2 border-background animate-pulse" />
-                    )}
-                  </button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl">
-                      {hasCompanion
-                        ? t("classroom.companionConnected") ||
-                          "Companion device connected!"
-                        : t("classroom.connectTablet") ||
-                          "Connect Companion Tablet"}
-                    </DialogTitle>
-                    <DialogDescription>
-                      {hasCompanion
-                        ? t("classroom.companionActiveDesc") ||
-                          "A companion device is currently active in this session. Scan again to add another."
-                        : t("classroom.connectTabletDesc") ||
-                          "Scan this QR code with your iPad or Android tablet to open the interactive whiteboard."}
-                    </DialogDescription>
-                  </DialogHeader>
-                  {hasCompanion && (
-                    <div className="flex items-center gap-3 px-4 py-3 bg-success/10 border border-success/30 rounded-xl">
-                      <span className="w-3 h-3 bg-success rounded-full animate-pulse shrink-0" />
-                      <p className="text-sm font-medium text-success">
-                        {companionParticipants
-                          .map((p) => p.name || p.identity)
-                          .join(", ")}
-                      </p>
-                    </div>
-                  )}
-                  <div className="my-4 flex flex-col items-center justify-center rounded-xl bg-whiteboard p-6 shadow-inner">
-                    {companionUrl ? (
-                      <QRCodeSVG
-                        value={companionUrl}
-                        size={220}
-                        level="M"
-                        includeMargin={true}
-                      />
-                    ) : (
-                      <div className="w-[220px] h-[220px] flex items-center justify-center bg-muted animate-pulse rounded-lg" />
-                    )}
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground break-all bg-muted p-3 rounded-lg border border-border/50 font-mono select-all">
-                      {companionUrl}
-                    </p>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
             <button
               onClick={handleShareClick}
-              disabled={waitingForApproval}
-              className={`
-                w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border relative
-                ${
-                  isSharingLocally
-                    ? "bg-success/20 hover:bg-success/30 text-success border-success/50"
-                    : shareApproved
-                      ? "bg-primary/20 hover:bg-primary/30 text-primary border-primary/50 animate-pulse"
-                      : waitingForApproval
-                        ? "bg-accent text-accent-foreground border-border cursor-wait"
-                        : "bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border"
-                }
-              `}
-              title={
-                waitingForApproval
-                  ? t("classroom.waitingForApproval")
-                  : t("classroom.shareScreen")
-              }
+              disabled={isWaitingForApprovalForDisplay}
+              className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
+                isSharingLocally
+                  ? "bg-success/80 text-success-foreground border-success"
+                  : isShareApprovedForDisplay
+                    ? "bg-info/80 text-info-foreground border-info animate-pulse"
+                    : isWaitingForApprovalForDisplay
+                      ? "bg-warning/80 text-warning-foreground border-warning cursor-wait"
+                      : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
+              }`}
             >
-              {waitingForApproval ? (
-                <div className="animate-pulse">
-                  <Hand className="w-5 h-5" />
-                </div>
+              {isWaitingForApprovalForDisplay ? (
+                <Hand className="w-5 h-5 animate-pulse" />
               ) : (
                 <MonitorUp className="w-5 h-5" />
               )}
@@ -2093,138 +1424,413 @@ export function ActiveClassroomUI({
             {amIAuthority && (
               <button
                 onClick={handleRecordClick}
+                disabled={isTogglingRecord}
                 title={
-                  isRecording
+                  isRecordingForDisplay
                     ? t("classroom.stopRecording")
                     : t("classroom.startRecording")
                 }
-                className={`
-                  w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-md border
-                  ${
-                    isRecording
-                      ? "bg-destructive/20 hover:bg-destructive/30 text-destructive border-destructive/50 animate-pulse"
-                      : "bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border"
-                  }
-                `}
+                className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
+                  isRecordingForDisplay
+                    ? "bg-destructive/80 text-destructive-foreground border-destructive animate-pulse"
+                    : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
+                } ${isTogglingRecord ? "opacity-50 cursor-wait" : ""}`}
               >
-                {isRecording ? (
+                {isTogglingRecord ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : isRecordingForDisplay ? (
                   <StopCircle className="w-5 h-5" />
                 ) : (
                   <CircleDot className="w-5 h-5" />
                 )}
               </button>
             )}
+            {amIAuthority && (
+              <button
+                onClick={() => setShowQR(true)}
+                title={
+                  hasCompanion
+                    ? t("classroom.companionActive") || "Companion active"
+                    : t("classroom.connectTablet") || "Connect Tablet"
+                }
+                className={`w-11 h-11 rounded-full flex items-center justify-center relative transition-all shadow-lg border-2 ${
+                  hasCompanion
+                    ? "bg-success/80 text-success-foreground border-success"
+                    : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
+                }`}
+              >
+                <TabletSmartphone className="w-5 h-5" />
+                {hasCompanion && (
+                  <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-success rounded-full border-2 border-inverse/60 animate-pulse" />
+                )}
+              </button>
+            )}
+            <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
+            {onToggleFullscreen && (
+              <FullscreenButtonCompact
+                isFullscreen={isFullscreen}
+                onToggle={onToggleFullscreen}
+              />
+            )}
+            <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
             {amIAuthority && (sessionIsLive || hasStartedSession) && (
               <EndClassButton
                 onConfirm={handleEndSession}
                 disabled={isEndingSession}
-                className="flex size-12 items-center justify-center rounded-full border border-destructive/50 bg-destructive/10 text-destructive shadow-md transition-colors hover:bg-destructive/20 disabled:cursor-wait disabled:opacity-60"
+                className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-inverse-foreground/20 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/30 disabled:cursor-wait disabled:opacity-60"
               />
             )}
             <LeaveClassButton
               onConfirm={handleLeaveClick}
-              className="flex size-12 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-md transition-colors hover:bg-destructive/90"
+              className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-destructive/80 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/90"
             />
+          </>
+        }
+      >
+        {amIIncognito && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-inverse/60 text-inverse-foreground backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1.5 shadow-sm pointer-events-none">
+            <Eye className="w-3 h-3 shrink-0" />{" "}
+            {t("classroom.observingIncognito")}
           </div>
-          <div className="flex-1" />
-        </div>
-      </div>
+        )}
+        {isWhiteboardActive ? (
+          <ClassroomWhiteboardContent
+            roomName={roomName}
+            followViewport={followViewport}
+          />
+        ) : isScreenSharingActive ? (
+          <ClassroomScreenShareContent
+            trackRef={activeScreenTrack}
+            zoom={zoom}
+            pan={pan}
+            isPhoneLandscape={isPhoneLandscape}
+            stageControlsVisible={stageControlsVisible}
+            onRevealControls={showStageControls}
+            onStartPan={startPanDrag}
+            onZoom={handleZoom}
+            loadingLabel={t("classroom.loadingShare")}
+            presenterDescription={t("classroom.presenterSharing", {
+              name:
+                activeScreenTrack.participant.name || t("classroom.presenter"),
+            })}
+          />
+        ) : (
+          <>
+            <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
+            {teacher ? (
+              isTeacherVideoOn ? (
+                <ParticipantTile
+                  participant={teacher}
+                  variant="stage"
+                  className="w-full h-full object-contain bg-transparent"
+                  showLabel={true}
+                  roleBadge={t("classroom.teacher")}
+                  youLabel={t("classroom.youShort")}
+                  audioMuted={!isTeacherAudioOn}
+                />
+              ) : amITeacher || isLocalAdminPresenting ? (
+                <div className="z-10 flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-300">
+                  <div className="w-28 h-28 bg-success/10 rounded-full flex items-center justify-center border-4 border-success mb-6 shadow-xl animate-pulse">
+                    <VideoOff className="w-12 h-12 text-success" />
+                  </div>
+                  <h2 className="text-3xl font-bold text-foreground">
+                    {t("classroom.youAreLive")}
+                  </h2>
+                  <p className="text-muted-foreground mt-2 text-lg">
+                    {t("classroom.cameraOff")}
+                  </p>
+                </div>
+              ) : (
+                <div className="z-10 flex flex-col items-center justify-center p-8">
+                  <div className="w-32 h-32 bg-secondary rounded-full flex items-center justify-center border-2 border-inverse-foreground/20 mb-6 shadow-lg overflow-hidden">
+                    {getImageUrl(teacher) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={getImageUrl(teacher)!}
+                        alt={teacher.name || ""}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-5xl font-bold text-secondary-foreground">
+                        {teacher.name?.charAt(0) || "T"}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-2xl font-bold text-foreground">
+                    {teacher.name || t("classroom.teacher")}
+                  </h2>
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                    <div className="bg-secondary/80 px-3 py-1.5 rounded-full border border-border flex items-center gap-1.5">
+                      <VideoOff className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm text-secondary-foreground font-medium">
+                        {t("classroom.cameraOffLabel")}
+                      </span>
+                    </div>
+                    <div
+                      className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${
+                        isTeacherAudioOn
+                          ? "bg-secondary/80 border-border"
+                          : "bg-destructive/10 border-destructive/20"
+                      }`}
+                    >
+                      <Mic
+                        className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-success" : "text-destructive"}`}
+                      />
+                      <span className="text-sm font-medium text-secondary-foreground">
+                        {isTeacherAudioOn
+                          ? t("classroom.audioOnly")
+                          : t("classroom.micOff")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            ) : (
+              <div className="text-center z-10 p-8">
+                <div className="w-32 h-32 mx-auto bg-background/50 backdrop-blur-sm rounded-full flex items-center justify-center border-2 border-border mb-4 shadow-sm">
+                  <span className="text-6xl">👩‍🏫</span>
+                </div>
+                <h2 className="text-2xl font-bold text-foreground">
+                  {className || t("classroom.class")}
+                </h2>
+                <p className="text-muted-foreground mt-2 font-medium">
+                  {t("classroom.waitingForTeacher")}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </ClassroomStage>
 
-      {/* 4. Classmates Sidebar (row 3 on mobile, right column on md+) */}
-      <div className="col-start-1 row-start-3 landscape:col-start-2 landscape:row-start-1 landscape:row-span-3 xl:col-start-2 xl:row-start-1 xl:row-span-3 z-0 flex h-36 flex-col overflow-hidden landscape:h-full xl:h-full">
-        {/* Header + nav arrows */}
-        <div className="flex flex-shrink-0 items-center gap-2 px-3 py-1.5 text-foreground md:py-2.5">
-          <h3 className="flex-1 text-xs font-bold uppercase tracking-widest truncate">
-            {t("classroom.classmates", { count: students.length })}
-          </h3>
-          {(classmatesCanScrollPrev || classmatesCanScrollNext) && (
+      {/* 3. Meeting Controls (row 4 on mobile, row 3 on md+) — hidden in phone landscape */}
+      <ClassroomViewControls isPhoneLandscape={isPhoneLandscape}>
+        <ClassroomActionBar
+          left={
             <>
-              <div className="hidden md:flex landscape:flex items-center gap-0.5">
-                <button
-                  onClick={() =>
-                    classmateTilesRef.current?.scrollBy({
-                      top: -160,
-                      behavior: "smooth",
-                    })
-                  }
-                  disabled={!classmatesCanScrollPrev}
-                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
-                >
-                  <ChevronUp className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() =>
-                    classmateTilesRef.current?.scrollBy({
-                      top: 160,
-                      behavior: "smooth",
-                    })
-                  }
-                  disabled={!classmatesCanScrollNext}
-                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
-                >
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <div className="flex md:hidden landscape:hidden items-center gap-0.5">
-                <button
-                  onClick={() =>
-                    classmateTilesRef.current?.scrollBy({
-                      left: -160,
-                      behavior: "smooth",
-                    })
-                  }
-                  disabled={!classmatesCanScrollPrev}
-                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() =>
-                    classmateTilesRef.current?.scrollBy({
-                      left: 160,
-                      behavior: "smooth",
-                    })
-                  }
-                  disabled={!classmatesCanScrollNext}
-                  className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <DeviceToggleButton
+                variant="toolbar"
+                source={Track.Source.Microphone}
+                kind="audioinput"
+                includeAudioOutput
+                label={t("classroom.microphone")}
+                activeLabel={t("common.active")}
+                inactiveLabel={t("common.inactive")}
+                pickerLabel={t("classroom.selectAudioDevice")}
+                iconOn={<Mic />}
+                iconOff={<MicOff />}
+              />
+              {!amIIncognito && (
+                <DeviceToggleButton
+                  variant="toolbar"
+                  source={Track.Source.Camera}
+                  kind="videoinput"
+                  label={t("classroom.camera")}
+                  activeLabel={t("common.active")}
+                  inactiveLabel={t("common.inactive")}
+                  pickerLabel={t("classroom.selectCamera")}
+                  iconOn={<VideoIcon />}
+                  iconOff={<VideoOff />}
+                />
+              )}
             </>
-          )}
-        </div>
+          }
+          center={
+            <>
+              <ClassroomActionButton
+                icon={
+                  <MonitorUp
+                    className={
+                      isWaitingForApprovalForDisplay
+                        ? "animate-pulse"
+                        : undefined
+                    }
+                  />
+                }
+                label={t("classroom.shareScreen")}
+                pressed={Boolean(isSharingLocally)}
+                statusLabel={
+                  isWaitingForApprovalForDisplay
+                    ? t("classroom.waitingForApproval")
+                    : isSharingLocally || isShareApprovedForDisplay
+                      ? t("common.active")
+                      : t("common.inactive")
+                }
+                tone="success"
+                disabled={isWaitingForApprovalForDisplay}
+                onPressedChange={() => void handleShareClick()}
+              />
+              {amIAuthority && (
+                <ClassroomActionButton
+                  icon={
+                    isTogglingRecord ? (
+                      <Loader2 className="animate-spin" />
+                    ) : isRecordingForDisplay ? (
+                      <StopCircle />
+                    ) : (
+                      <CircleDot />
+                    )
+                  }
+                  label={t("classroom.record")}
+                  pressed={isRecordingForDisplay}
+                  statusLabel={
+                    isRecordingForDisplay
+                      ? t("common.active")
+                      : t("common.inactive")
+                  }
+                  tone="destructive"
+                  disabled={isTogglingRecord}
+                  title={
+                    isRecordingForDisplay
+                      ? t("classroom.stopRecording")
+                      : t("classroom.startRecording")
+                  }
+                  onPressedChange={handleRecordClick}
+                />
+              )}
+              {amIAuthority && (
+                <Dialog
+                  open={showQR || isPreviewing("companion")}
+                  onOpenChange={(open) => {
+                    setShowQR(open);
+                    if (!open && isPreviewing("companion")) {
+                      setUiPreviewState("none");
+                    }
+                  }}
+                >
+                  <DialogTrigger asChild>
+                    <ClassroomActionButton
+                      icon={<TabletSmartphone />}
+                      label={t("classroom.connectDevice")}
+                      statusLabel={
+                        hasCompanion ? t("common.active") : t("common.inactive")
+                      }
+                      tone="success"
+                      className={
+                        hasCompanion
+                          ? "border-success/50 bg-success/10 text-success hover:border-success/60 hover:bg-success/15 hover:text-success"
+                          : undefined
+                      }
+                      aria-label={
+                        hasCompanion
+                          ? t("classroom.companionActive")
+                          : t("classroom.connectCompanionDevice")
+                      }
+                      title={
+                        hasCompanion
+                          ? t("classroom.companionActive")
+                          : t("classroom.connectCompanionDevice")
+                      }
+                    />
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl">
+                        {hasCompanion
+                          ? t("classroom.companionConnected") ||
+                            "Companion device connected!"
+                          : t("classroom.connectTablet") ||
+                            "Connect Companion Tablet"}
+                      </DialogTitle>
+                      <DialogDescription>
+                        {hasCompanion
+                          ? t("classroom.companionActiveDesc") ||
+                            "A companion device is currently active in this session. Scan again to add another."
+                          : t("classroom.connectTabletDesc") ||
+                            "Scan this QR code with your iPad or Android tablet to open the interactive whiteboard."}
+                      </DialogDescription>
+                    </DialogHeader>
+                    {hasCompanion && (
+                      <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
+                        <span className="size-3 shrink-0 animate-pulse rounded-full bg-success" />
+                        <p className="text-sm font-medium text-success">
+                          {companionParticipants
+                            .map(
+                              (participant) =>
+                                participant.name || participant.identity,
+                            )
+                            .join(", ")}
+                        </p>
+                      </div>
+                    )}
+                    <div className="my-4 flex flex-col items-center justify-center rounded-xl bg-whiteboard p-6 shadow-inner">
+                      {companionUrl ? (
+                        <QRCodeSVG
+                          value={companionUrl}
+                          size={220}
+                          level="M"
+                          includeMargin
+                        />
+                      ) : (
+                        <div className="flex size-[220px] animate-pulse items-center justify-center rounded-lg bg-muted" />
+                      )}
+                    </div>
+                    <div className="text-center">
+                      <p className="select-all break-all rounded-lg border border-border/50 bg-muted p-3 font-mono text-xs text-muted-foreground">
+                        {companionUrl}
+                      </p>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </>
+          }
+          right={
+            <>
+              {amIAuthority && (sessionIsLive || hasStartedSession) && (
+                <EndClassButton
+                  appearance="toolbar"
+                  onConfirm={handleEndSession}
+                  disabled={isEndingSession}
+                  previewOpen={isPreviewing("end-class")}
+                  onPreviewOpenChange={(open) => {
+                    if (!open) setUiPreviewState("none");
+                  }}
+                />
+              )}
+              <LeaveClassButton
+                appearance="toolbar"
+                onConfirm={handleLeaveClick}
+                previewOpen={isPreviewing("leave-class")}
+                onPreviewOpenChange={(open) => {
+                  if (!open) setUiPreviewState("none");
+                }}
+              />
+            </>
+          }
+        />
+      </ClassroomViewControls>
 
-        {/* Responsive Tiles Auto-Grid */}
-        <div
-          ref={classmateTilesRef}
-          className="flex-1 min-h-0 min-w-0 p-2 md:p-3 gap-2 md:gap-3 flex flex-row items-start overflow-x-auto overflow-y-hidden snap-x snap-mandatory landscape:grid landscape:grid-cols-[repeat(auto-fill,minmax(110px,1fr))] landscape:auto-rows-max landscape:overflow-y-auto landscape:overflow-x-hidden landscape:snap-y landscape:content-start landscape:items-start scrollbar-thin"
-        >
-          {sortedStudents.length === 0 && (
-            <div className="md:col-span-full landscape:col-span-full flex items-center justify-center w-full text-muted-foreground text-xs italic text-center px-2 whitespace-nowrap md:whitespace-normal h-full">
-              {amITeacher || isLocalAdminPresenting
-                ? t("classroom.waitingForStudents")
-                : t("classroom.youAreFirst")}
-            </div>
-          )}
-          {sortedStudents.map((p) => (
-            <ParticipantTile
-              key={p.identity}
-              variant="grid"
-              participant={p}
-              className={`flex-shrink-0 rounded-xl landscape:rounded-2xl border-2 overflow-hidden aspect-square w-24 h-24 sm:w-28 sm:h-28 landscape:w-full landscape:h-auto snap-start snap-always
-                ${raisedHands.has(p.identity) ? "border-warning shadow-[0_0_8px_2px] shadow-warning/40" : "border-border"}`}
-              raisedHand={raisedHands.has(p.identity)}
-              onLowerHand={
-                amITeacher || isLocalAdminPresenting
-                  ? () => forceLowerHand(p.identity)
-                  : undefined
-              }
-              youLabel={t("classroom.youShort")}
-            />
-          ))}
-        </div>
-      </div>
+      {/* 4. Classmates: horizontal below the stage, vertical beside it */}
+      <ClassroomParticipantsPanel
+        heading={t("classroom.classmates", { count: displayedStudents.length })}
+        scrollRef={classmateTilesRef}
+        canScrollPrevious={classmatesCanScrollPrev}
+        canScrollNext={classmatesCanScrollNext}
+        previousLabel={t("common.previous")}
+        nextLabel={t("common.next")}
+        isEmpty={displayedStudents.length === 0}
+        emptyContent={
+          amITeacher || isLocalAdminPresenting
+            ? t("classroom.waitingForStudents")
+            : t("classroom.youAreFirst")
+        }
+      >
+        {displayedStudents.map((p) => (
+          <ParticipantTile
+            key={p.identity}
+            variant="grid"
+            participant={p}
+            className="aspect-square h-24 w-24 flex-shrink-0 snap-start snap-always sm:h-28 sm:w-28 landscape:h-auto landscape:w-full xl:h-auto xl:w-full"
+            raisedHand={raisedHands.has(p.identity)}
+            onLowerHand={
+              amITeacher || isLocalAdminPresenting
+                ? () => forceLowerHand(p.identity)
+                : undefined
+            }
+            youLabel={t("classroom.youShort")}
+          />
+        ))}
+      </ClassroomParticipantsPanel>
 
       {/* Teacher PiP — floats over the entire classroom during whiteboard & screen share */}
       {(isWhiteboardActive || isScreenSharingActive) &&
@@ -2240,6 +1846,6 @@ export function ActiveClassroomUI({
             />
           </DraggablePip>
         )}
-    </div>
+    </ClassroomView>
   );
 }
