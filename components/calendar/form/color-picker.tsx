@@ -1,13 +1,13 @@
-import * as React from 'react'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { cn } from '@/lib/utils'
-import { colorOptions } from '../calendar-tailwind-classes'
+import * as React from "react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { cn } from "@/lib/utils";
+import { colorOptions } from "../calendar-tailwind-classes";
 
 interface ColorPickerProps {
   field: {
-    value: string
-    onChange: (value: string) => void
-  }
+    value: string;
+    onChange: (value: string) => void;
+  };
 }
 
 export function ColorPicker({ field }: ColorPickerProps) {
@@ -23,12 +23,12 @@ export function ColorPicker({ field }: ColorPickerProps) {
           value={color.value}
           id={color.value}
           className={cn(
-            'size-6 border-0 shadow-none transition-all duration-200',
-            color.className
+            "size-6 border-0 shadow-none transition-all duration-200 [&_[data-slot=radio-group-indicator]_svg]:fill-primary-foreground",
+            color.className,
           )}
           aria-label={color.label}
         />
       ))}
     </RadioGroup>
-  )
+  );
 }

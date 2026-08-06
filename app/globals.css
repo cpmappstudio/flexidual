@@ -56,7 +56,6 @@
   --color-inverse-foreground: var(--inverse-foreground);
   --color-neutral-status: var(--neutral-status);
   --color-neutral-status-foreground: var(--neutral-status-foreground);
-  --color-radio-button-fill: var(--radio-button-fill);
   --color-whiteboard: var(--whiteboard);
 }
 
@@ -90,7 +89,6 @@
   --inverse-foreground: #ffffff;
   --neutral-status: #65727c;
   --neutral-status-foreground: #ffffff;
-  --radio-button-fill: var(--primary-foreground);
   --whiteboard: #ffffff;
   --chart-1: #197db8;
   --chart-2: #f59a0b;
