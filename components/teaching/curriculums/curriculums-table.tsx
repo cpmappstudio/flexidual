@@ -26,9 +26,11 @@ import type { FilterConfig } from "@/lib/table/types";
 export function CurriculumsTable({
   schoolId,
   readOnly = false,
+  onFilteredRowCountChange,
 }: {
   schoolId?: Id<"schools">;
   readOnly?: boolean;
+  onFilteredRowCountChange?: (count: number) => void;
 }) {
   const t = useTranslations();
   const params = useParams();
@@ -173,8 +175,11 @@ export function CurriculumsTable({
         createAction={
           readOnly ? undefined : <CurriculumDialog schoolId={querySchoolId} />
         }
+        onFilteredRowCountChange={onFilteredRowCountChange}
         onRowClick={
-          readOnly ? undefined : (curriculum) => setEditingCurriculum(curriculum)
+          readOnly
+            ? undefined
+            : (curriculum) => setEditingCurriculum(curriculum)
         }
       />
     </div>

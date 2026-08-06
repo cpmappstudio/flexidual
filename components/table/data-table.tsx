@@ -53,6 +53,7 @@ export function DataTable<TData>({
   customFilter,
   createAction,
   onExport,
+  onFilteredRowCountChange,
   onRowClick,
 }: DataTableProps<TData>) {
   const resolvedPageSize = pageSize ?? DEFAULT_PAGE_SIZE;
@@ -106,6 +107,11 @@ export function DataTable<TData>({
     totalRowsCount,
     hasFilteredRows,
   );
+
+  React.useEffect(() => {
+    onFilteredRowCountChange?.(filteredRowsCount);
+  }, [filteredRowsCount, onFilteredRowCountChange]);
+
   const renderResultsCount = (withSeparator: boolean) => {
     if (!resolvedResultsCountLabel) {
       return null;

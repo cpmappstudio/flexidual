@@ -9,6 +9,7 @@ import { api } from "@/convex/_generated/api";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useRouter } from "@/i18n/navigation";
 import * as React from "react";
+import { TableResultCount } from "@/components/table/table-result-count";
 
 export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
   const t = useTranslations("navigation");
@@ -23,6 +24,7 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
     isAuthenticated ? { slug: params.orgSlug ?? "system" } : "skip",
   );
   const campusId = orgContext?.type === "campus" ? orgContext._id : undefined;
+  const [visibleCount, setVisibleCount] = React.useState<number | null>(null);
 
   const title = isStudents ? t("students") : t("teachers");
 
@@ -44,7 +46,10 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
 
   return (
     <section className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
-      <h1 className="border-b pb-3 text-2xl font-semibold">{title}</h1>
+      <h1 className="border-b pb-3 text-2xl font-semibold">
+        {title}
+        <TableResultCount count={visibleCount} />
+      </h1>
       {campusId ? (
         <UsersTable
           roleFilter={isStudents ? "student" : "teacher"}
@@ -52,6 +57,7 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
           scope={{ orgType: "campus", orgId: campusId }}
           hideRole
           readOnly={!access.canManagePeople}
+          onFilteredRowCountChange={setVisibleCount}
           onRowClick={
             isStudents
               ? (student) => router.push(`${basePath}/students/${student._id}`)

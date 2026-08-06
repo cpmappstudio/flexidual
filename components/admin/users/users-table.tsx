@@ -32,6 +32,7 @@ interface UsersTableProps {
   requireCampusSelection?: boolean;
   hideRole?: boolean;
   readOnly?: boolean;
+  onFilteredRowCountChange?: (count: number) => void;
   onRowClick?: (user: User) => void;
 }
 
@@ -66,6 +67,7 @@ export function UsersTable({
   requireCampusSelection = false,
   hideRole = false,
   readOnly = false,
+  onFilteredRowCountChange,
   onRowClick,
 }: UsersTableProps) {
   const t = useTranslations();
@@ -255,6 +257,7 @@ export function UsersTable({
             />
           )
         }
+        onFilteredRowCountChange={onFilteredRowCountChange}
         onRowClick={
           onRowClick ?? (readOnly ? undefined : (user) => setEditingUser(user))
         }

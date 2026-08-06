@@ -40,6 +40,7 @@ export interface DataTableProps<TData> {
   customFilter?: React.ReactNode;
   createAction?: React.ReactNode;
   onExport?: (rows: TData[]) => void;
+  onFilteredRowCountChange?: (count: number) => void;
   onRowClick?: (row: TData) => void;
 }
 
