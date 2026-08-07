@@ -1,5 +1,24 @@
 import { CalendarEvent } from "./calendar-types";
 
+export function isCalendarEventPast(
+  event: Pick<CalendarEvent, "end" | "isLive">,
+  now = Date.now(),
+) {
+  return !event.isLive && event.end.getTime() < now;
+}
+
+export function getCalendarEventIndicators(
+  event: Pick<CalendarEvent, "hasRecording" | "isLive">,
+  isPast: boolean,
+) {
+  const showRecording = isPast && Boolean(event.hasRecording) && !event.isLive;
+
+  return {
+    showRecording,
+    showProviderIdentity: !showRecording,
+  };
+}
+
 export function getCalendarEventDisplay(
   event: Pick<
     CalendarEvent,

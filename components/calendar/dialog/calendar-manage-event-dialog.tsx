@@ -61,8 +61,7 @@ import { useParams, useRouter } from "next/navigation";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { utcToLocalDateTime } from "@/lib/time-zone";
 import { getCalendarEventDisplay } from "../calendar-event-display";
-import { CalendarProviderMark } from "../calendar-provider-mark";
-import { getCalendarProviderAppearanceClasses } from "../calendar-tailwind-classes";
+import { CalendarProviderBadge } from "../calendar-provider-badge";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
@@ -256,15 +255,6 @@ export default function CalendarManageEventDialog({
     : selectedEvent.sessionType === "live"
       ? secondaryLabel
       : null;
-  const providerAppearance = getCalendarProviderAppearanceClasses(
-    selectedEvent.sessionType,
-  );
-  const providerLabel =
-    selectedEvent.sessionType === "ignitia"
-      ? t("schedule.typeIgnitia")
-      : selectedEvent.sessionType === "abeka"
-        ? t("schedule.typeAbeka")
-        : null;
   const displayDate = selectedEvent.start.toLocaleDateString(locale, {
     weekday: "long",
     month: "long",
@@ -300,19 +290,9 @@ export default function CalendarManageEventDialog({
     router.push(classroomHref);
   }
 
-  const providerBadge =
-    providerLabel && providerAppearance ? (
-      <Badge
-        variant="outline"
-        className={`h-6 gap-1 px-2 text-[11px] font-semibold ${providerAppearance.badge}`}
-      >
-        <CalendarProviderMark
-          sessionType={selectedEvent.sessionType}
-          className="size-3"
-        />
-        {providerLabel}
-      </Badge>
-    ) : null;
+  const providerBadge = (
+    <CalendarProviderBadge sessionType={selectedEvent.sessionType} />
+  );
   const classIdentity = (
     <div className="min-w-0">
       <h2 className="text-xl font-bold leading-tight text-foreground sm:text-2xl">

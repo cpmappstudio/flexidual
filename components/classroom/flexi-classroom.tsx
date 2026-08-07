@@ -10,7 +10,7 @@ import { Loader2, CalendarClock, School, LogOut, AlertCircle } from "lucide-reac
 import { format } from "date-fns";
 import { TZDate } from "@date-fns/tz";
 import { Button } from "@/components/ui/button";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -67,6 +67,7 @@ function SidebarAutoCollapser() {
 export default function FlexiClassroom({ roomName, className, isStudentView = false, isCompanion = false, onLeave }: FlexiClassroomProps) {
   const t = useTranslations();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [token, setToken] = useState<string>("");
   const [error, setError] = useState<string>("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -95,12 +96,17 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   const getToken = useAction(api.livekit.getToken);
 
-  const role = sessionStatus?.isPrimaryTeacher
-    ? "teacher"
-    : sessionStatus?.roomAdmin
-      ? "admin"
-      : "student";
+  const role = sessionStatus
+    ? sessionStatus.isPrimaryTeacher
+      ? "teacher"
+      : sessionStatus.roomAdmin
+        ? "admin"
+        : "student"
+    : undefined;
   const resolvedIsStudentView = isStudentView || role === "student";
+  const uiPreviewEnabled =
+    process.env.NODE_ENV !== "production" &&
+    searchParams.get("uiPreview") === "1";
   const canJoinEarly = sessionStatus?.roomAdmin === true;
   const isClassLive = sessionStatus?.isLive || false;
   const isSessionClosed =
@@ -111,6 +117,7 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   // Use a ref to ensure we don't log join multiple times for the same session
   const hasLoggedJoin = useRef(false);
+  const nextRoomRef = useRef<string | null>(null);
 
   // Format lesson titles for display
   const lessonTitles = scheduleDetails?.lessons && scheduleDetails.lessons.length > 0
@@ -212,13 +219,26 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
     setToken("");
     hasLoggedJoin.current = false;
+    const nextRoom = nextRoomRef.current;
+    if (nextRoom) {
+      nextRoomRef.current = null;
+      router.push(`/${params.locale}/${orgSlug}/classroom/${nextRoom}`);
+      return;
+    }
     exitClassroom();
   }, [
     exitClassroom,
     logPresence,
+    orgSlug,
+    params.locale,
     resolvedIsStudentView,
+    router,
     sessionStatus?.scheduleId,
   ]);
+
+  const handleSwitchClassroom = useCallback((nextRoomName: string) => {
+    nextRoomRef.current = nextRoomName;
+  }, []);
   
   // Helper to format countdown
   const getCountdown = (targetTime: number) => {
@@ -444,8 +464,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             roomName={roomName}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
+            onSwitchClassroom={handleSwitchClassroom}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
+            uiPreviewEnabled={uiPreviewEnabled}
           />
         ) : (
           <ActiveClassroomUI 
@@ -454,8 +476,10 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
             sessionIsLive={isClassLive}
+            sessionTimeZone={sessionStatus.timeZone}
             isFullscreen={isFullscreen}
             onToggleFullscreen={isSupported ? handleToggleFullscreen : undefined}
+            uiPreviewEnabled={uiPreviewEnabled}
           />
         )}
       </LiveKitRoom>

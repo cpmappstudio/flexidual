@@ -11,7 +11,7 @@
 import type * as academicSettings from "../academicSettings.js";
 import type * as campuses from "../campuses.js";
 import type * as classes from "../classes.js";
-import type * as cron from "../cron.js";
+import type * as crons from "../crons.js";
 import type * as curriculums from "../curriculums.js";
 import type * as grades from "../grades.js";
 import type * as http from "../http.js";
@@ -50,7 +50,7 @@ declare const fullApi: ApiFromModules<{
   academicSettings: typeof academicSettings;
   campuses: typeof campuses;
   classes: typeof classes;
-  cron: typeof cron;
+  crons: typeof crons;
   curriculums: typeof curriculums;
   grades: typeof grades;
   http: typeof http;

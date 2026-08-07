@@ -59,6 +59,51 @@
   --color-whiteboard: var(--whiteboard);
 }
 
+.calendar-event-card {
+  container-type: inline-size;
+}
+
+.calendar-event-provider-badge {
+  display: none;
+}
+
+.calendar-event-provider-mark {
+  display: inline-flex;
+}
+
+@container (min-width: 300px) {
+  .calendar-event-card[data-calendar-mode="day"]
+    .calendar-event-provider-badge {
+    display: inline-flex;
+  }
+
+  .calendar-event-card[data-calendar-mode="day"] .calendar-event-provider-mark {
+    display: none;
+  }
+
+  .calendar-event-card[data-calendar-mode="day"] .calendar-event-title {
+    padding-right: 7rem;
+  }
+}
+
+@media (max-width: 1023px) {
+  @container (min-width: 300px) {
+    .calendar-event-card[data-calendar-mode="week"]
+      .calendar-event-provider-badge {
+      display: inline-flex;
+    }
+
+    .calendar-event-card[data-calendar-mode="week"]
+      .calendar-event-provider-mark {
+      display: none;
+    }
+
+    .calendar-event-card[data-calendar-mode="week"] .calendar-event-title {
+      padding-right: 7rem;
+    }
+  }
+}
+
 :root {
   --background: #f4f6f8;
   --foreground: #3f4850;

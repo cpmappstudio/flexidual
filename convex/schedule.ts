@@ -7,6 +7,7 @@ import {
   QueryCtx,
   query,
 } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Doc, Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
@@ -18,7 +19,11 @@ import {
 } from "./model/liveAccess";
 import { hasOnlyInstructorStaffRoles } from "./model/roles";
 import { getClassTimeZone } from "./model/timeZone";
-import { getStudentGradeCode, getStudentSchoolIds } from "./model/membership";
+import {
+  getSoleStudentCampusId,
+  getStudentGradeCode,
+  getStudentSchoolIds,
+} from "./model/membership";
 import { isStudentEnrolled, listClassStudentIds } from "./model/enrollments";
 import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
 import { syncClassTypeFromSchedules } from "./model/classType";
@@ -34,6 +39,13 @@ import {
   DEFAULT_SCHEDULE_END_MINUTES,
   DEFAULT_SCHEDULE_START_MINUTES,
 } from "../lib/academic-settings";
+import {
+  getConfirmedExtensionEnd,
+  getEffectiveLiveEnd,
+  getLiveSessionHardEnd,
+  LIVE_EXTENSION_PROMPT_LEAD_MS,
+  MAX_LIVE_OVERRUN_MS,
+} from "../lib/live-session-policy";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -42,7 +54,6 @@ import {
 const FULL_ATTENDANCE_THRESHOLD_PERCENT = 0.5;
 const PARTIAL_ATTENDANCE_THRESHOLD_PERCENT = 0.1;
 const MIN_PARTIAL_SECONDS = 120;
-const STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 /** A session with no leftAt is considered a dropped connection if older than this */
 const SESSION_STALE_MS = 4 * 60 * 60 * 1000;
 const DEFAULT_SCHEDULE_HISTORY_MS = 14 * 24 * 60 * 60 * 1000;
@@ -74,6 +85,10 @@ const scheduleFields = {
     v.literal("cancelled"),
   ),
   completedAt: v.optional(v.number()),
+  liveLeaderAbsentSince: v.optional(v.number()),
+  liveExtensionEndsAt: v.optional(v.number()),
+  liveDecisionEndsAt: v.optional(v.number()),
+  liveLastReconciledAt: v.optional(v.number()),
   createdAt: v.number(),
   createdBy: v.id("users"),
 };
@@ -93,6 +108,9 @@ const sessionStatusFields = {
   timeZone: v.string(),
   roomName: v.string(),
   canJoin: v.boolean(),
+  liveExtensionEndsAt: v.optional(v.number()),
+  liveDecisionEndsAt: v.optional(v.number()),
+  liveHardEndsAt: v.number(),
 };
 const sessionStatusValidator = v.object(sessionStatusFields);
 const viewerSessionStatusValidator = v.object({
@@ -160,6 +178,18 @@ const scheduleEventValidator = v.object({
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+async function scheduleLiveReconciliation(
+  ctx: MutationCtx,
+  roomName: string,
+  scheduledEnd: number,
+) {
+  await ctx.scheduler.runAt(
+    Math.max(Date.now(), scheduledEnd),
+    internal.livekit.reconcileLiveSession,
+    { roomName },
+  );
+}
 
 async function validateScheduleOverlap(
   ctx: MutationCtx,
@@ -338,18 +368,98 @@ async function deleteWhiteboardSession(
   await ctx.db.delete(whiteboard._id);
 }
 
+async function listSchedulesStartingBetween(
+  ctx: QueryCtx,
+  start: number,
+  end: number,
+) {
+  const [scheduled, active] = await Promise.all(
+    (["scheduled", "active"] as const).map((status) =>
+      ctx.db
+        .query("classSchedule")
+        .withIndex("by_status", (q) =>
+          q
+            .eq("status", status)
+            .gte("scheduledStart", start)
+            .lt("scheduledStart", end),
+        )
+        .collect(),
+    ),
+  );
+  return [...scheduled, ...active];
+}
+
+async function getExtensionConflicts(
+  ctx: QueryCtx,
+  schedule: Doc<"classSchedule">,
+  userId: Id<"users">,
+  effectiveEnd: number,
+  proposedEnd: number,
+) {
+  const currentClass = await ctx.db.get(schedule.classId);
+  if (!currentClass) {
+    return { staffConflict: undefined, affectedStudentCount: 0 };
+  }
+
+  const currentStudentIds = new Set(
+    await listClassStudentIds(ctx, currentClass),
+  );
+  const candidates = (
+    await listSchedulesStartingBetween(ctx, effectiveEnd, proposedEnd)
+  ).filter((candidate) => candidate._id !== schedule._id);
+  const candidateClasses = (
+    await Promise.all(candidates.map((candidate) => ctx.db.get(candidate.classId)))
+  ).filter((classData): classData is Doc<"classes"> => Boolean(classData));
+  const classById = new Map(
+    candidateClasses.map((classData) => [classData._id, classData]),
+  );
+
+  const staffSchedule = candidates
+    .filter((candidate) => {
+      const classData = classById.get(candidate.classId);
+      return classData?.teacherId === userId || classData?.tutorId === userId;
+    })
+    .sort((a, b) => a.scheduledStart - b.scheduledStart)[0];
+  const staffClass = staffSchedule
+    ? classById.get(staffSchedule.classId)
+    : undefined;
+
+  const affectedStudents = new Set<Id<"users">>();
+  await Promise.all(
+    candidateClasses.map(async (classData) => {
+      const studentIds = await listClassStudentIds(ctx, classData);
+      for (const studentId of studentIds) {
+        if (currentStudentIds.has(studentId)) affectedStudents.add(studentId);
+      }
+    }),
+  );
+
+  return {
+    staffConflict:
+      staffSchedule && staffClass
+        ? {
+            className: staffClass.name,
+            startsAt: staffSchedule.scheduledStart,
+          }
+        : undefined,
+    affectedStudentCount: affectedStudents.size,
+  };
+}
+
 function getSessionStatusData(
   schedule: Doc<"classSchedule">,
   timeZone: string,
   now: number,
 ) {
+  const liveHardEndsAt = getLiveSessionHardEnd(schedule.scheduledEnd);
   const isTimeWindowActive =
     now >= schedule.scheduledStart - 10 * 60 * 1000 &&
     now <= schedule.scheduledEnd + 5 * 60 * 1000;
-  const isStale = now > schedule.scheduledEnd + STALE_THRESHOLD_MS;
   return {
     scheduleId: schedule._id,
-    isActive: isTimeWindowActive || (schedule.status === "active" && !isStale),
+    isActive:
+      isTimeWindowActive ||
+      (schedule.status === "active" && now < liveHardEndsAt),
     isLive: schedule.isLive === true,
     status: schedule.status,
     start: schedule.scheduledStart,
@@ -357,7 +467,43 @@ function getSessionStatusData(
     timeZone,
     roomName: schedule.roomName,
     canJoin: schedule.status === "active" || schedule.status === "scheduled",
+    liveExtensionEndsAt: schedule.liveExtensionEndsAt,
+    liveDecisionEndsAt: schedule.liveDecisionEndsAt,
+    liveHardEndsAt,
   };
+}
+
+async function assertCanAdministerLiveSchedule(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  schedule: Doc<"classSchedule">,
+) {
+  const classData = await ctx.db.get(schedule.classId);
+  if (!classData) throw new ConvexError("Class not found");
+
+  const [curriculum, campus] = await Promise.all([
+    ctx.db.get(classData.curriculumId),
+    classData.campusId ? ctx.db.get(classData.campusId) : null,
+  ]);
+  const isDirectInstructor =
+    classData.teacherId === userId || classData.tutorId === userId;
+  const classSchoolId =
+    classData.schoolId ??
+    (classData.campusId ? campus?.schoolId : curriculum?.schoolId);
+  const isAuthorizedAdmin = await canManageClasses(
+    ctx,
+    userId,
+    classData.campusId,
+    classSchoolId,
+  );
+
+  if (!isDirectInstructor && !isAuthorizedAdmin) {
+    throw new ConvexError(
+      "Only the class teacher, tutor, or an administrator can manage the live session",
+    );
+  }
+
+  return { classData, classSchoolId };
 }
 
 async function getLiveKitAccessData(
@@ -630,6 +776,14 @@ export const getMySchedule = query({
         );
       }
     } else {
+      const studentCampusId = await getSoleStudentCampusId(ctx, user._id);
+      if (
+        studentCampusId &&
+        args.campusId &&
+        studentCampusId !== args.campusId
+      ) {
+        return [];
+      }
       const teachingClasses = await ctx.db
         .query("classes")
         .withIndex("by_teacher", (q) =>
@@ -662,7 +816,10 @@ export const getMySchedule = query({
         ...teachingClasses,
         ...enrolledClasses,
         ...legacyClasses,
-      ];
+      ].filter((classData) => {
+        const campusId = studentCampusId ?? args.campusId;
+        return !campusId || classData.campusId === campusId;
+      });
       const uniqueIds = new Set();
       myClasses = combined.filter((c) => {
         if (uniqueIds.has(c._id)) return false;
@@ -975,25 +1132,9 @@ export const getMySchedule = query({
           }
         }
 
-        const isPastEnd = now > item.scheduledEnd;
-        // A session is "genuinely active" if it has no leftAt and isn't an old dropped connection
-        const hasActiveSessions = sessions.some(
-          (s) => !s.leftAt && now - s.joinedAt < SESSION_STALE_MS,
-        );
-        // Hard cutoff: 2 h past end we always clean up regardless of open sessions
-        const isHardStale = now > item.scheduledEnd + STALE_THRESHOLD_MS;
-        // Live only if: flag is set AND (within scheduled time OR people still genuinely in room) AND not hard-stale
-        const effectiveIsLive = !!(
-          item.isLive &&
-          !isHardStale &&
-          (!isPastEnd || hasActiveSessions)
-        );
-        // Status: treat active schedule as completed once past end with no real participants
-        const effectiveStatus =
-          item.status === "active" &&
-          (isHardStale || (isPastEnd && !hasActiveSessions))
-            ? "completed"
-            : item.status;
+        const effectiveIsLive =
+          item.isLive === true && item.status === "active";
+        const effectiveStatus = item.status;
 
         let teacherAttendanceStatus = "upcoming";
         let teacherTimeInClass = 0;
@@ -1118,7 +1259,10 @@ export const listAccessibleLiveClasses = query({
   handler: async (ctx) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return [];
-    const studentSchoolIds = await getStudentSchoolIds(ctx, user._id);
+    const [studentSchoolIds, studentCampusId] = await Promise.all([
+      getStudentSchoolIds(ctx, user._id),
+      getSoleStudentCampusId(ctx, user._id),
+    ]);
     if (studentSchoolIds.size === 0) return [];
 
     const scheduleGroups = await Promise.all([
@@ -1146,12 +1290,16 @@ export const listAccessibleLiveClasses = query({
     ];
 
     const liveSchedules = schedules.filter(
-      (schedule) => schedule.isLive && schedule.sessionType === "live",
+      (schedule) =>
+        schedule.isLive === true && schedule.sessionType === "live",
     );
     const results = await Promise.all(
       liveSchedules.map(async (schedule) => {
         const classData = await ctx.db.get(schedule.classId);
         if (!classData) return null;
+        if (studentCampusId && classData.campusId !== studentCampusId) {
+          return null;
+        }
 
         const [curriculum, campus] = await Promise.all([
           ctx.db.get(classData.curriculumId),
@@ -1322,6 +1470,169 @@ export const getSessionStatus = query({
       ...access.session,
       roomAdmin: access.roomAdmin,
       isPrimaryTeacher: access.isPrimaryTeacher,
+    };
+  },
+});
+
+export const getLiveExtensionContext = query({
+  args: { roomName: v.string(), now: v.number() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      effectiveEnd: v.number(),
+      proposedEnd: v.number(),
+      warningStartsAt: v.number(),
+      decisionEndsAt: v.optional(v.number()),
+      hardEndsAt: v.number(),
+      staffConflict: v.optional(
+        v.object({ className: v.string(), startsAt: v.number() }),
+      ),
+      affectedStudentCount: v.number(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (!schedule || schedule.status !== "active" || !schedule.isLive) {
+      return null;
+    }
+
+    const access = await getLiveKitAccessData(
+      ctx,
+      user._id,
+      schedule,
+      args.now,
+    );
+    if (!access?.authorized || !access.roomAdmin) return null;
+
+    const effectiveEnd = getEffectiveLiveEnd(
+      schedule.scheduledEnd,
+      schedule.liveExtensionEndsAt,
+    );
+    const hardEndsAt = getLiveSessionHardEnd(schedule.scheduledEnd);
+    const proposedEnd = getConfirmedExtensionEnd(
+      effectiveEnd,
+      schedule.scheduledEnd,
+    );
+    const shouldCalculateConflicts =
+      args.now >= effectiveEnd - LIVE_EXTENSION_PROMPT_LEAD_MS &&
+      effectiveEnd < hardEndsAt;
+    const conflicts = shouldCalculateConflicts
+      ? await getExtensionConflicts(
+          ctx,
+          schedule,
+          user._id,
+          effectiveEnd,
+          proposedEnd,
+        )
+      : { staffConflict: undefined, affectedStudentCount: 0 };
+
+    return {
+      effectiveEnd,
+      proposedEnd,
+      warningStartsAt: effectiveEnd - LIVE_EXTENSION_PROMPT_LEAD_MS,
+      decisionEndsAt: schedule.liveDecisionEndsAt,
+      hardEndsAt,
+      ...conflicts,
+    };
+  },
+});
+
+export const getStudentExtensionContext = query({
+  args: { roomName: v.string(), now: v.number() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      effectiveEnd: v.number(),
+      warningStartsAt: v.number(),
+      extensionEndsAt: v.optional(v.number()),
+      nextClass: v.optional(
+        v.object({
+          scheduleId: v.id("classSchedule"),
+          className: v.string(),
+          roomName: v.string(),
+          startsAt: v.number(),
+        }),
+      ),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (
+      !schedule ||
+      schedule.status !== "active" ||
+      !schedule.isLive
+    ) {
+      return null;
+    }
+
+    const access = await getLiveKitAccessData(
+      ctx,
+      user._id,
+      schedule,
+      args.now,
+    );
+    if (!access?.authorized || access.roomAdmin) return null;
+
+    const effectiveEnd = getEffectiveLiveEnd(
+      schedule.scheduledEnd,
+      schedule.liveExtensionEndsAt,
+    );
+    if (!schedule.liveExtensionEndsAt || schedule.liveExtensionEndsAt <= args.now) {
+      return {
+        effectiveEnd,
+        warningStartsAt: effectiveEnd - LIVE_EXTENSION_PROMPT_LEAD_MS,
+        extensionEndsAt: schedule.liveExtensionEndsAt,
+      };
+    }
+
+    const candidates = (
+      await listSchedulesStartingBetween(
+        ctx,
+        schedule.scheduledEnd,
+        schedule.liveExtensionEndsAt,
+      )
+    )
+      .filter(
+        (candidate) =>
+          candidate._id !== schedule._id && candidate.scheduledEnd > args.now,
+      )
+      .sort((a, b) => a.scheduledStart - b.scheduledStart);
+
+    let nextClass:
+      | {
+          scheduleId: Id<"classSchedule">;
+          className: string;
+          roomName: string;
+          startsAt: number;
+        }
+      | undefined;
+    for (const candidate of candidates) {
+      const classData = await ctx.db.get(candidate.classId);
+      if (!classData || !(await isStudentEnrolled(ctx, classData, user._id))) {
+        continue;
+      }
+      nextClass = {
+        scheduleId: candidate._id,
+        className: classData.name,
+        roomName: candidate.roomName,
+        startsAt: candidate.scheduledStart,
+      };
+      break;
+    }
+
+    return {
+      effectiveEnd,
+      warningStartsAt: effectiveEnd - LIVE_EXTENSION_PROMPT_LEAD_MS,
+      extensionEndsAt: schedule.liveExtensionEndsAt,
+      nextClass,
     };
   },
 });
@@ -1704,6 +2015,13 @@ export const updateSchedule = mutation({
         if (needsTimeUpdate || Object.keys(metadataUpdates).length > 0) {
           await ctx.db.patch(item._id, updatePatch);
         }
+        if (
+          needsTimeUpdate &&
+          item.isLive === true &&
+          (metadataUpdates.status ?? item.status) === "active"
+        ) {
+          await scheduleLiveReconciliation(ctx, item.roomName, itemNewEnd);
+        }
       }
       if (args.sessionType !== undefined) {
         await syncClassTypeFromSchedules(ctx, classData._id);
@@ -1718,6 +2036,13 @@ export const updateSchedule = mutation({
       await ctx.db.patch(args.id, singleUpdates);
       if (args.sessionType !== undefined) {
         await syncClassTypeFromSchedules(ctx, classData._id);
+      }
+      if (
+        args.localStart !== undefined &&
+        schedule.isLive === true &&
+        (metadataUpdates.status ?? schedule.status) === "active"
+      ) {
+        await scheduleLiveReconciliation(ctx, schedule.roomName, newEnd);
       }
       return { updated: 1, type: "single" as const };
     }
@@ -1858,28 +2183,11 @@ export const markLive = mutation({
       .first();
     if (!schedule) throw new ConvexError("Schedule not found");
 
-    const classData = await ctx.db.get(schedule.classId);
-    if (!classData) throw new ConvexError("Class not found");
-    const curriculum = await ctx.db.get(classData.curriculumId);
-    const campus = classData.campusId
-      ? await ctx.db.get(classData.campusId)
-      : null;
-    const isDirectTeacher =
-      classData.teacherId === user._id || classData.tutorId === user._id;
-    const classSchoolId = classData.campusId
-      ? campus?.schoolId
-      : curriculum?.schoolId;
-    const isAuthorizedAdmin = await canManageClasses(
+    const { classData, classSchoolId } = await assertCanAdministerLiveSchedule(
       ctx,
       user._id,
-      classData.campusId,
-      classSchoolId,
+      schedule,
     );
-    if (!isDirectTeacher && !isAuthorizedAdmin) {
-      throw new ConvexError(
-        "Only the class teacher, tutor, or an administrator can change live status",
-      );
-    }
 
     if (schedule.isLive) return null;
     if (schedule.status === "cancelled") {
@@ -1888,7 +2196,7 @@ export const markLive = mutation({
     const now = Date.now();
     if (
       schedule.status === "completed" ||
-      now > schedule.scheduledEnd + STALE_THRESHOLD_MS
+      now > schedule.scheduledEnd + MAX_LIVE_OVERRUN_MS
     ) {
       throw new ConvexError("Completed sessions cannot be started");
     }
@@ -1899,8 +2207,72 @@ export const markLive = mutation({
       liveAccess,
       status: "active",
       completedAt: undefined,
+      liveLeaderAbsentSince: undefined,
+      liveExtensionEndsAt: undefined,
+      liveDecisionEndsAt: undefined,
+      liveLastReconciledAt: undefined,
     });
+    await scheduleLiveReconciliation(
+      ctx,
+      schedule.roomName,
+      schedule.scheduledEnd,
+    );
     return null;
+  },
+});
+
+export const confirmLiveExtension = mutation({
+  args: { roomName: v.string() },
+  returns: v.object({
+    extensionEndsAt: v.number(),
+    hardEndsAt: v.number(),
+  }),
+  handler: async (ctx, { roomName }) => {
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) throw new ConvexError("User not authenticated");
+
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", roomName))
+      .first();
+    if (!schedule) throw new ConvexError("Schedule not found");
+
+    await assertCanAdministerLiveSchedule(ctx, user._id, schedule);
+
+    const now = Date.now();
+    const currentEnd = schedule.liveExtensionEndsAt ?? schedule.scheduledEnd;
+    if (
+      schedule.status !== "active" ||
+      !schedule.isLive ||
+      schedule.liveDecisionEndsAt === undefined
+    ) {
+      throw new ConvexError("The live session cannot be extended");
+    }
+    if (now >= schedule.liveDecisionEndsAt) {
+      throw new ConvexError("The decision window has already ended");
+    }
+
+    const hardEndsAt = getLiveSessionHardEnd(schedule.scheduledEnd);
+    const extensionEndsAt = getConfirmedExtensionEnd(
+      currentEnd,
+      schedule.scheduledEnd,
+    );
+    if (extensionEndsAt <= currentEnd) {
+      throw new ConvexError("The live session reached its maximum duration");
+    }
+
+    await ctx.db.patch(schedule._id, {
+      liveExtensionEndsAt: extensionEndsAt,
+      liveLeaderAbsentSince: undefined,
+      liveDecisionEndsAt: undefined,
+    });
+    await ctx.scheduler.runAt(
+      extensionEndsAt,
+      internal.livekit.reconcileLiveSession,
+      { roomName },
+    );
+
+    return { extensionEndsAt, hardEndsAt };
   },
 });
 
@@ -1921,6 +2293,10 @@ export const endLiveSession = internalMutation({
       isLive: false,
       status: "completed",
       completedAt: schedule.completedAt ?? args.endedAt,
+      liveLeaderAbsentSince: undefined,
+      liveExtensionEndsAt: undefined,
+      liveDecisionEndsAt: undefined,
+      liveLastReconciledAt: args.endedAt,
     });
 
     const openSessions = await ctx.db
@@ -2083,28 +2459,105 @@ export const updateAttendance = mutation({
   },
 });
 
-export const listStaleLiveSessions = internalQuery({
-  args: { now: v.number() },
+export const getLiveLifecycleState = internalQuery({
+  args: { roomName: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      roomName: v.string(),
+      scheduledEnd: v.number(),
+      isLive: v.boolean(),
+      status: v.union(
+        v.literal("scheduled"),
+        v.literal("active"),
+        v.literal("completed"),
+        v.literal("cancelled"),
+      ),
+      liveLeaderAbsentSince: v.optional(v.number()),
+      liveExtensionEndsAt: v.optional(v.number()),
+      liveDecisionEndsAt: v.optional(v.number()),
+    }),
+  ),
+  handler: async (ctx, { roomName }) => {
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", roomName))
+      .first();
+    if (!schedule) return null;
+
+    return {
+      roomName: schedule.roomName,
+      scheduledEnd: schedule.scheduledEnd,
+      isLive: schedule.isLive === true,
+      status: schedule.status,
+      liveLeaderAbsentSince: schedule.liveLeaderAbsentSince,
+      liveExtensionEndsAt: schedule.liveExtensionEndsAt,
+      liveDecisionEndsAt: schedule.liveDecisionEndsAt,
+    };
+  },
+});
+
+export const updateLiveLifecycleState = internalMutation({
+  args: {
+    roomName: v.string(),
+    reconciledAt: v.number(),
+    expectedLeaderAbsentSince: v.union(v.number(), v.null()),
+    expectedExtensionEndsAt: v.union(v.number(), v.null()),
+    expectedDecisionEndsAt: v.union(v.number(), v.null()),
+    leaderAbsentSince: v.union(v.number(), v.null()),
+    extensionEndsAt: v.union(v.number(), v.null()),
+    decisionEndsAt: v.union(v.number(), v.null()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (!schedule || schedule.status !== "active" || !schedule.isLive) {
+      return false;
+    }
+    if (
+      (schedule.liveLeaderAbsentSince ?? null) !==
+        args.expectedLeaderAbsentSince ||
+      (schedule.liveExtensionEndsAt ?? null) !== args.expectedExtensionEndsAt ||
+      (schedule.liveDecisionEndsAt ?? null) !== args.expectedDecisionEndsAt
+    ) {
+      return false;
+    }
+
+    await ctx.db.patch(schedule._id, {
+      liveLeaderAbsentSince: args.leaderAbsentSince ?? undefined,
+      liveExtensionEndsAt: args.extensionEndsAt ?? undefined,
+      liveDecisionEndsAt: args.decisionEndsAt ?? undefined,
+      liveLastReconciledAt: args.reconciledAt,
+    });
+    return true;
+  },
+});
+
+export const listExpiredLiveSessions = internalQuery({
+  args: { now: v.number(), limit: v.number() },
   returns: v.array(
     v.object({
       roomName: v.string(),
       scheduledEnd: v.number(),
-      hardStale: v.boolean(),
     }),
   ),
-  handler: async (ctx, { now }) => {
+  handler: async (ctx, { now, limit }) => {
     const activeSchedules = await ctx.db
       .query("classSchedule")
-      .withIndex("by_status", (q) => q.eq("status", "active"))
-      .collect();
+      .withIndex("by_live_expiration", (q) =>
+        q
+          .eq("status", "active")
+          .eq("isLive", true)
+          .lte("scheduledEnd", now),
+      )
+      .take(Math.min(Math.max(limit, 1), 200));
 
-    return activeSchedules
-      .filter((schedule) => now > schedule.scheduledEnd)
-      .map((schedule) => ({
-        roomName: schedule.roomName,
-        scheduledEnd: schedule.scheduledEnd,
-        hardStale:
-          now > schedule.scheduledEnd + STALE_THRESHOLD_MS,
-      }));
+    return activeSchedules.map((schedule) => ({
+      roomName: schedule.roomName,
+      scheduledEnd: schedule.scheduledEnd,
+    }));
   },
 });

@@ -28,8 +28,9 @@ export function getCalendarEventPrimaryAction({
   hasRecording,
   roomName,
 }: CalendarEventActionInput): CalendarEventPrimaryAction {
-  if (end <= now) return hasRecording ? "watch-recording" : null;
   if (status === "cancelled" || !roomName) return null;
+  if (isLive) return isStudent ? "go-to-classroom" : "enter-live";
+  if (end <= now) return hasRecording ? "watch-recording" : null;
 
   if (isStudent) {
     const canEnter =
@@ -37,5 +38,5 @@ export function getCalendarEventPrimaryAction({
     return canEnter ? "go-to-classroom" : null;
   }
 
-  return isLive ? "enter-live" : "prepare-room";
+  return "prepare-room";
 }

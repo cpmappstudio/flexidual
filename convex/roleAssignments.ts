@@ -162,6 +162,22 @@ export async function upsertRoleAssignment(
   const contextual = await assignmentData(ctx, args);
   const affectedUsers = new Set<Id<"users">>([args.userId]);
 
+  if (args.role === "student" && args.orgType === "campus" && args.orgId) {
+    const assignments = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    const hasAnotherCampus = assignments.some(
+      (assignment) =>
+        assignment.role === "student" &&
+        assignment.orgType === "campus" &&
+        assignment.orgId !== args.orgId,
+    );
+    if (hasAnotherCampus) {
+      throw new Error("A student can only belong to one campus");
+    }
+  }
+
   if (args.role === "superadmin") {
     const existingAssignments = await ctx.db
       .query("roleAssignments")

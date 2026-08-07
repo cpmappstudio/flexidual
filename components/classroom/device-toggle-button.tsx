@@ -8,11 +8,12 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { ChevronUp, Check, Volume2 } from "lucide-react";
+import { ClassroomActionButton } from "./classroom-action-bar";
 
 // ---------------------------------------------------------------------------
 // Variant — three visual contexts this component appears in
 // ---------------------------------------------------------------------------
-type Variant = "compact" | "default" | "purple";
+type Variant = "compact" | "default" | "purple" | "toolbar";
 
 // ---------------------------------------------------------------------------
 // Detect touch/mobile — used to simplify the audio device picker on mobile
@@ -33,8 +34,13 @@ function formatDeviceLabel(
   if (!label) return deviceId ? `Device (${deviceId.slice(0, 8)})` : "Unknown";
   if (kind === "videoinput") {
     // Android: "camera2 0, facing back", iOS: "Back Camera"
-    if (/facing front|,\s*facing front|front camera/i.test(label)) return "Front Camera";
-    if (/facing back|facing rear|,\s*facing (back|rear)|back camera|rear camera/i.test(label))
+    if (/facing front|,\s*facing front|front camera/i.test(label))
+      return "Front Camera";
+    if (
+      /facing back|facing rear|,\s*facing (back|rear)|back camera|rear camera/i.test(
+        label,
+      )
+    )
       return "Back Camera";
   }
   return label;
@@ -51,9 +57,12 @@ function useDropdownClose(
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent | TouchEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
     document.addEventListener("mousedown", close);
     document.addEventListener("touchstart", close, { passive: true });
     document.addEventListener("keydown", onKey);
@@ -68,14 +77,21 @@ function useDropdownClose(
 // ---------------------------------------------------------------------------
 // Circle button class — centralised styling for all three variants
 // ---------------------------------------------------------------------------
-function circleClass(variant: Variant, enabled: boolean, pending: boolean): string {
-  const base = "rounded-full flex items-center justify-center transition-all border select-none";
+function circleClass(
+  variant: Variant,
+  enabled: boolean,
+  pending: boolean,
+): string {
+  const base =
+    "rounded-full flex items-center justify-center transition-all border select-none";
   const pendingCls = pending ? "opacity-50 cursor-wait" : "";
 
   switch (variant) {
     case "compact":
       return [
-        "w-11 h-11", base, "shadow-md border-2",
+        "w-11 h-11",
+        base,
+        "shadow-md border-2",
         enabled
           ? "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
           : "bg-destructive/50 text-destructive-foreground border-destructive/60",
@@ -84,7 +100,9 @@ function circleClass(variant: Variant, enabled: boolean, pending: boolean): stri
 
     case "purple":
       return [
-        "w-14 h-14", base, "shadow-lg border-2",
+        "w-14 h-14",
+        base,
+        "shadow-lg border-2",
         enabled
           ? "bg-card hover:bg-muted text-primary border-primary/30"
           : "bg-destructive/10 text-destructive border-destructive/20",
@@ -93,7 +111,9 @@ function circleClass(variant: Variant, enabled: boolean, pending: boolean): stri
 
     default: // "default" — teacher desktop / system theme
       return [
-        "w-12 h-12", base, "shadow-md",
+        "w-12 h-12",
+        base,
+        "shadow-md",
         enabled
           ? "bg-secondary hover:bg-secondary/80 text-secondary-foreground border-border"
           : "bg-destructive/10 text-destructive border-destructive/20",
@@ -107,20 +127,28 @@ function circleClass(variant: Variant, enabled: boolean, pending: boolean): stri
 // ---------------------------------------------------------------------------
 function DeviceNotch({
   compact,
+  toolbar,
+  label,
   onClick,
 }: {
   compact: boolean;
+  toolbar?: boolean;
+  label: string;
   onClick: (e: React.MouseEvent) => void;
 }) {
   const size = compact ? "w-4 h-4" : "w-5 h-5";
-  const pos = compact ? "-bottom-1 -right-1" : "-bottom-1.5 -right-1.5";
+  const pos = toolbar
+    ? "right-0.5 top-0.5"
+    : compact
+      ? "-bottom-1 -right-1"
+      : "-bottom-1.5 -right-1.5";
   return (
     <button
       type="button"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={onClick}
       tabIndex={-1}
-      aria-label="Select device"
+      aria-label={label}
       className={`absolute ${pos} ${size} rounded-full bg-background/80 border border-border shadow-sm flex items-center justify-center hover:bg-muted transition-colors z-10`}
     >
       <ChevronUp className="w-2.5 h-2.5 text-foreground/70" />
@@ -161,11 +189,13 @@ function DeviceRow({
 }
 
 // Dropdown panel base class — positioned upward, side and variant-aware
-function dropdownCls(side: "left" | "right", variant: Variant = "default", extra = "") {
+function dropdownCls(
+  side: "left" | "right",
+  variant: Variant = "default",
+  extra = "",
+) {
   const borderCls =
-    variant === "purple"
-      ? "border-primary/30"
-      : "border-border";
+    variant === "purple" ? "border-primary/30" : "border-border";
   const scrollCls = variant === "purple" ? "scrollbar-student" : "";
   return `absolute bottom-full ${
     side === "right" ? "right-0" : "left-0"
@@ -284,6 +314,10 @@ export interface DeviceToggleButtonProps {
   iconOn: React.ReactNode;
   iconOff: React.ReactNode;
   variant?: Variant;
+  label?: string;
+  activeLabel?: string;
+  inactiveLabel?: string;
+  pickerLabel?: string;
   /**
    * When true (and kind="audioinput"), the notch opens a sectioned dropdown
    * that combines microphone inputs and speaker outputs in one panel.
@@ -297,11 +331,16 @@ export function DeviceToggleButton({
   iconOn,
   iconOff,
   variant = "compact",
+  label,
+  activeLabel,
+  inactiveLabel,
+  pickerLabel,
   includeAudioOutput = false,
 }: DeviceToggleButtonProps) {
   const { toggle, enabled, pending } = useTrackToggle({ source });
   const { localParticipant } = useLocalParticipant();
-  const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind });
+  const { devices, activeDeviceId, setActiveMediaDevice } =
+    useMediaDeviceSelect({ kind });
   // Always call — only rendered when includeAudioOutput is true
   const {
     devices: outputDevices,
@@ -329,19 +368,16 @@ export function DeviceToggleButton({
     }
   };
 
-  const openDropdown = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (wrapperRef.current) {
-        const rect = wrapperRef.current.getBoundingClientRect();
-        setDropSide(
-          rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right",
-        );
-      }
-      setOpen((v) => !v);
-    },
-    [],
-  );
+  const openDropdown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (wrapperRef.current) {
+      const rect = wrapperRef.current.getBoundingClientRect();
+      setDropSide(
+        rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right",
+      );
+    }
+    setOpen((v) => !v);
+  }, []);
 
   const handleSelect = useCallback(
     async (id: string) => {
@@ -369,22 +405,43 @@ export function DeviceToggleButton({
       : devices.length > 1;
 
   const compact = variant === "compact";
+  const toolbar = variant === "toolbar";
 
   return (
     <div ref={wrapperRef} className="relative inline-flex">
-      <button
-        type="button"
-        onClick={handleToggle}
-        disabled={!!pending}
-        className={circleClass(variant, !!enabled, !!pending)}
-      >
-        {enabled ? iconOn : iconOff}
-      </button>
+      {toolbar ? (
+        <ClassroomActionButton
+          icon={enabled ? iconOn : iconOff}
+          label={label ?? (kind === "audioinput" ? "Microphone" : "Camera")}
+          pressed={Boolean(enabled)}
+          statusLabel={enabled ? activeLabel : inactiveLabel}
+          tone="success"
+          disabled={Boolean(pending)}
+          onPressedChange={() => void handleToggle()}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={handleToggle}
+          disabled={!!pending}
+          className={circleClass(variant, !!enabled, !!pending)}
+        >
+          {enabled ? iconOn : iconOff}
+        </button>
+      )}
 
-      {showPicker && <DeviceNotch compact={compact} onClick={openDropdown} />}
+      {showPicker && (
+        <DeviceNotch
+          compact={compact}
+          toolbar={toolbar}
+          label={pickerLabel ?? "Select device"}
+          onClick={openDropdown}
+        />
+      )}
 
-      {open && showPicker && (
-        kind === "audioinput" && includeAudioOutput ? (
+      {open &&
+        showPicker &&
+        (kind === "audioinput" && includeAudioOutput ? (
           <SectionedDeviceDropdown
             micDevices={devices}
             activeMicId={activeDeviceId}
@@ -404,8 +461,7 @@ export function DeviceToggleButton({
             kind={kind}
             variant={variant}
           />
-        )
-      )}
+        ))}
     </div>
   );
 }
@@ -417,10 +473,13 @@ export interface SpeakerSelectButtonProps {
   variant?: Exclude<Variant, "compact">;
 }
 
-export function SpeakerSelectButton({ variant = "default" }: SpeakerSelectButtonProps) {
-  const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({
-    kind: "audiooutput",
-  });
+export function SpeakerSelectButton({
+  variant = "default",
+}: SpeakerSelectButtonProps) {
+  const { devices, activeDeviceId, setActiveMediaDevice } =
+    useMediaDeviceSelect({
+      kind: "audiooutput",
+    });
   const [open, setOpen] = useState(false);
   const [dropSide, setDropSide] = useState<"left" | "right">("right");
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -439,7 +498,9 @@ export function SpeakerSelectButton({ variant = "default" }: SpeakerSelectButton
     e.stopPropagation();
     if (wrapperRef.current) {
       const rect = wrapperRef.current.getBoundingClientRect();
-      setDropSide(rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right");
+      setDropSide(
+        rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right",
+      );
     }
     setOpen((v) => !v);
   }, []);
@@ -460,7 +521,11 @@ export function SpeakerSelectButton({ variant = "default" }: SpeakerSelectButton
         <Volume2 className={iconSize} />
       </button>
 
-      <DeviceNotch compact={false} onClick={openDropdown} />
+      <DeviceNotch
+        compact={false}
+        label="Select speaker"
+        onClick={openDropdown}
+      />
 
       {open && (
         <DeviceList

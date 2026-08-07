@@ -10,8 +10,13 @@ import {
   CalendarTimeScale,
   getTimeScaleUnitsAt,
 } from "@/components/calendar/calendar-time-scale";
-import { getCalendarEventDisplay } from "@/components/calendar/calendar-event-display";
+import {
+  getCalendarEventDisplay,
+  getCalendarEventIndicators,
+  isCalendarEventPast,
+} from "@/components/calendar/calendar-event-display";
 import { CalendarProviderMark } from "@/components/calendar/calendar-provider-mark";
+import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
 import { getCalendarEventColumnLayout } from "@/components/calendar/calendar-event-layout";
 import { useTranslations } from "next-intl";
 
@@ -127,13 +132,13 @@ export default function CalendarEvent({
     isEventInCurrentMonth ? "current" : "adjacent"
   }`;
 
-  const isPast = event.end.getTime() < Date.now();
-  const showRecordingIndicator = isPast && event.hasRecording && !event.isLive;
-  const showProviderIndicator = event.sessionType !== "live";
+  const isPast = isCalendarEventPast(event);
+  const { showRecording: showRecordingIndicator, showProviderIdentity } =
+    getCalendarEventIndicators(event, isPast);
+  const canExpandProviderIdentity =
+    showProviderIdentity && !month && (mode === "day" || mode === "week");
   const showCornerIndicators =
-    !month && (showProviderIndicator || showRecordingIndicator);
-  const hasMultipleCornerIndicators =
-    showProviderIndicator && showRecordingIndicator;
+    !month && (showProviderIdentity || showRecordingIndicator);
 
   const statusClasses = getCalendarEventAppearanceClasses({
     color: event.color,
@@ -165,8 +170,10 @@ export default function CalendarEvent({
       <AnimatePresence mode="wait">
         <motion.div
           title={tooltipText}
+          data-calendar-mode={month ? undefined : mode}
           className={cn(
             "cursor-pointer truncate rounded-md border px-2 py-1 transition-all duration-300",
+            !month && "calendar-event-card",
             compact && "px-1.5 py-1",
             responsiveCompact && "px-1.5 py-1 lg:px-2",
             statusClasses.event,
@@ -225,14 +232,13 @@ export default function CalendarEvent({
                 compact && "gap-0",
                 responsiveCompact && "gap-0 lg:gap-0.5",
                 month && "flex-row items-center gap-1 flex-1 min-w-0",
-                showCornerIndicators &&
-                  (hasMultipleCornerIndicators ? "pr-11" : "pr-6"),
+                showCornerIndicators && "pr-6",
                 contentClassName,
               )}
             >
               <div
                 className={cn(
-                  "flex min-w-0 items-start gap-1",
+                  "calendar-event-title flex min-w-0 items-start gap-1",
                   month && "flex-1 items-center",
                   floatingTime && !hideResponsiveTime && "pr-16",
                 )}
@@ -258,7 +264,7 @@ export default function CalendarEvent({
                     primaryLabel
                   )}
                 </p>
-                {month && (
+                {month && showProviderIdentity && (
                   <CalendarProviderMark
                     sessionType={event.sessionType}
                     isPast={isPast}
@@ -354,14 +360,27 @@ export default function CalendarEvent({
 
             {showCornerIndicators && (
               <div className="absolute right-0 top-0 flex items-center gap-1">
-                <CalendarProviderMark
-                  sessionType={event.sessionType}
-                  isPast={isPast}
-                  className={cn(
-                    "size-3",
-                    (compact || responsiveCompact) && "size-2.5 lg:size-3",
-                  )}
-                />
+                {canExpandProviderIdentity && (
+                  <CalendarProviderBadge
+                    sessionType={event.sessionType}
+                    isPast={isPast}
+                    className="calendar-event-provider-badge h-5 max-w-24 gap-0.5 px-1 text-[8px] sm:h-6 sm:max-w-32 sm:gap-1 sm:px-2 sm:text-[11px]"
+                    markClassName="size-2.5 sm:size-4"
+                    labelClassName="truncate"
+                  />
+                )}
+                {showProviderIdentity && (
+                  <CalendarProviderMark
+                    sessionType={event.sessionType}
+                    isPast={isPast}
+                    className={cn(
+                      "size-3",
+                      canExpandProviderIdentity &&
+                        "calendar-event-provider-mark",
+                      (compact || responsiveCompact) && "size-2.5 lg:size-3",
+                    )}
+                  />
+                )}
                 {showRecordingIndicator && (
                   <span
                     className="inline-flex shrink-0 items-center justify-center rounded-full bg-primary/15 p-0.5 text-primary shadow-sm ring-1 ring-primary/20"

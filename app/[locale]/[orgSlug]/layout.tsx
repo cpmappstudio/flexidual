@@ -34,7 +34,7 @@ export default async function OrgLayout({
         <div className="flex min-h-0 flex-1">
           <AppSidebar />
           <SidebarInset>
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4 has-[[data-classroom-layout]]:gap-0 has-[[data-classroom-layout]]:p-0">
               {children}
             </div>
           </SidebarInset>

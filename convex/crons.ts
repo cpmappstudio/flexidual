@@ -3,10 +3,10 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Run every 15 minutes to quickly catch ungraceful disconnects and stuck "active" schedules
+// Backstop scheduled reconciliation when a client disconnects ungracefully.
 crons.interval(
   "Cleanup stale LiveKit sessions",
-  { minutes: 15 },
+  { minutes: 5 },
   internal.livekit.cleanupStaleSessions,
 );
 

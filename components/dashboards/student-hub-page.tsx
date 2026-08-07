@@ -366,11 +366,21 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const handleLessonTap = useCallback(
     (lesson: StudentScheduleEvent) => {
       stopAlarm();
-      setActiveLesson(lesson);
       playRocketSound();
+
+      const isExternalProvider =
+        lesson.sessionType === "ignitia" || lesson.sessionType === "abeka";
+      if (!isExternalProvider) {
+        router.push(
+          `${basePath}/classroom/${encodeURIComponent(lesson.roomName)}`,
+        );
+        return;
+      }
+
+      setActiveLesson(lesson);
       setIsLaunching(true);
     },
-    [playRocketSound, stopAlarm],
+    [basePath, playRocketSound, router, stopAlarm],
   );
 
   const handleClassroomCta = (lesson: StudentScheduleEvent) => {
