@@ -18,6 +18,8 @@ import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
 import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
+import type * as model_catalog from "../model/catalog.js";
+import type * as model_classType from "../model/classType.js";
 import type * as model_enrollments from "../model/enrollments.js";
 import type * as model_grades from "../model/grades.js";
 import type * as model_liveAccess from "../model/liveAccess.js";
@@ -55,6 +57,8 @@ declare const fullApi: ApiFromModules<{
   lessons: typeof lessons;
   livekit: typeof livekit;
   migration: typeof migration;
+  "model/catalog": typeof model_catalog;
+  "model/classType": typeof model_classType;
   "model/enrollments": typeof model_enrollments;
   "model/grades": typeof model_grades;
   "model/liveAccess": typeof model_liveAccess;

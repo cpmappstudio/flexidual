@@ -571,8 +571,10 @@ export const run = internalMutation({
     const classId = await ctx.db.insert("classes", {
       name: "Science 101 - Fall 2024",
       curriculumId,
+      schoolId,
       campusId: campusId,
       teacherId,
+      classType: "standard",
       students: studentIds,
       academicYear: "2024-2025",
       isActive: true,
@@ -759,6 +761,7 @@ export const createClassesUxDemo = internalMutation({
       description:
         "A complete demo class to review Overview, Sessions, Curriculum, Students, linked lessons, and custom sessions.",
       curriculumId,
+      schoolId: campus.schoolId,
       campusId: campus._id,
       teacherId: teacher._id,
       students: students.map((student) => student._id),
@@ -957,6 +960,7 @@ export const createClassesTableDemo = internalMutation({
 
       const classData = {
         curriculumId: curriculum._id,
+        schoolId: campus.schoolId,
         campusId: campus._id,
         teacherId: teacher._id,
         tutorId: undefined,
@@ -1337,6 +1341,7 @@ export const createLauraCourseLoadDemo = internalMutation({
       );
       const classData = {
         curriculumId: curriculum._id,
+        schoolId: campus.schoolId,
         campusId: campus._id,
         teacherId: teacher._id,
         tutorId: undefined,
@@ -1523,6 +1528,7 @@ export const createLauraCalendarProviderDemo = internalMutation({
       const classData = {
         name: course.name,
         curriculumId: curriculum._id,
+        schoolId: campus.schoolId,
         campusId: campus._id,
         teacherId,
         tutorId: undefined,

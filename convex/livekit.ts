@@ -16,7 +16,7 @@ import {
   WebhookReceiver,
 } from "livekit-server-sdk";
 
-async function requireRoomAdministrator(ctx: ActionCtx, roomName: string) {
+async function requireActiveUser(ctx: ActionCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new ConvexError("Not authenticated");
 
@@ -24,6 +24,13 @@ async function requireRoomAdministrator(ctx: ActionCtx, roomName: string) {
     clerkId: identity.subject,
   });
   if (!user) throw new ConvexError("User not found");
+  if (!user.isActive) throw new ConvexError("Account inactive");
+
+  return { identity, user };
+}
+
+async function requireRoomAdministrator(ctx: ActionCtx, roomName: string) {
+  const { user } = await requireActiveUser(ctx);
 
   const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, {
     userId: user._id,
@@ -82,13 +89,7 @@ export const getToken = action({
   },
   returns: v.string(),
   handler: async (ctx, args): Promise<string> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError("Not authenticated");
-
-    const user = await ctx.runQuery(internal.users.getUserByClerkIdInternal, {
-      clerkId: identity.subject,
-    });
-    if (!user) throw new ConvexError("User not found");
+    const { identity, user } = await requireActiveUser(ctx);
 
     // Check backend authorization to join this specific room
     const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, { 

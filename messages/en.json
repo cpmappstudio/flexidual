@@ -273,6 +273,7 @@
     "superadmin": "Super Admin",
     "superadmins": "Super Admins",
     "curriculums": "Curriculums",
+    "catalog": "Course catalog",
     "curriculumsDescription": "Manage curriculums and their content",
     "curriculumsDescription2": "Curriculums that are currently active or available",
     "curriculumEditDescription": "Manage the details of this curriculum and its associated lessons",
@@ -318,6 +319,25 @@
     "viewAllCurriculums": "View All Curriculums",
     "usersSummary": "Manage system access, roles, and permissions",
     "curriculumSummary": "Manage academic programs, course templates, and lesson plans."
+  },
+  "catalog": {
+    "liveNow": "Live now",
+    "upcoming": "Coming up",
+    "private": "Private",
+    "institution": "Institution",
+    "join": "Join",
+    "viewCourse": "View course",
+    "searchPlaceholder": "Search courses...",
+    "unassignedTeacher": "Teacher to be assigned",
+    "emptyTitle": "No courses available",
+    "emptyDescription": "There are no courses available for this catalog yet.",
+    "noResults": "No matching courses",
+    "noResultsDescription": "Try another course name or adjust the filters.",
+    "courseNotFound": "This course is not available in your catalog.",
+    "backToCatalog": "Back to catalog",
+    "sessions": "Class sessions",
+    "noUpcomingSessions": "No upcoming sessions have been scheduled.",
+    "about": "About this course"
   },
   "classroom": {
     "prepareRoom": "Prepare Room",

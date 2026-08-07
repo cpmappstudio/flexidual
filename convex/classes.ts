@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import {
   mutation,
   query,
@@ -44,6 +45,15 @@ import {
   normalizeLiveAccess,
   type LiveAccess,
 } from "./model/liveAccess";
+import {
+  catalogDetailValidator,
+  catalogFilterOptionsValidator,
+  catalogResultValidator,
+  getCatalogCourse,
+  getCatalogFilterOptions,
+  listCatalogCourses,
+} from "./model/catalog";
+import { deriveClassType } from "./model/classType";
 
 const classFields = {
   _id: v.id("classes"),
@@ -68,6 +78,7 @@ const classFields = {
   isActive: v.boolean(),
   createdAt: v.number(),
   createdBy: v.id("users"),
+  schoolId: v.optional(v.id("schools")),
   campusId: v.optional(v.id("campuses")),
 };
 const classTableRowValidator = v.object({
@@ -80,7 +91,6 @@ const teacherOptionValidator = v.object({
   email: v.optional(v.string()),
   imageUrl: v.optional(v.string()),
 });
-
 async function getInstitutionStudents(
   ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
@@ -287,6 +297,62 @@ export const listOverview = query({
     const uniqueStudentCount = new Set(studentIdsByClass.flat()).size;
 
     return { classes: rows, teachers, uniqueStudentCount };
+  },
+});
+
+export const listCatalog = query({
+  args: {
+    orgSlug: v.string(),
+    now: v.number(),
+    search: v.optional(v.string()),
+    curriculumId: v.optional(v.id("curriculums")),
+    teacherId: v.optional(v.id("users")),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: catalogResultValidator,
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    return await listCatalogCourses(
+      ctx,
+      user,
+      args.orgSlug,
+      args.now,
+      {
+        search: args.search,
+        curriculumId: args.curriculumId,
+        teacherId: args.teacherId,
+      },
+      args.paginationOpts,
+    );
+  },
+});
+
+export const getCatalogFilters = query({
+  args: { orgSlug: v.string() },
+  returns: catalogFilterOptionsValidator,
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    return await getCatalogFilterOptions(ctx, user, args.orgSlug);
+  },
+});
+
+export const getCatalog = query({
+  args: {
+    orgSlug: v.string(),
+    classId: v.string(),
+    now: v.number(),
+  },
+  returns: v.union(v.null(), catalogDetailValidator),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) return null;
+    return await getCatalogCourse(
+      ctx,
+      user,
+      args.orgSlug,
+      args.classId,
+      args.now,
+    );
   },
 });
 
@@ -1000,6 +1066,9 @@ export const createWithSchedule = mutation({
       curriculumId: args.curriculumId,
       campusId: args.campusId,
       teacherId: args.teacherId,
+      classType: deriveClassType(
+        args.weeklySlots.map((slot) => slot.sessionType),
+      ),
       enrollmentsMigratedAt: now,
       academicPeriodId: academicPeriod._id,
       academicYear: academicPeriod.name,
@@ -1011,6 +1080,7 @@ export const createWithSchedule = mutation({
       isActive: true,
       createdAt: now,
       createdBy: user._id,
+      schoolId: curriculum.schoolId,
     });
 
     let classesCreated = 0;
@@ -1020,6 +1090,7 @@ export const createWithSchedule = mutation({
       const parentRoomName = `class-${classId}-series-${now}-${slotIndex}`;
       const parentId = await ctx.db.insert("classSchedule", {
         classId,
+        schoolId: curriculum.schoolId,
         lessonIds: [],
         sessionType: slot.sessionType,
         scheduledStart: occurrences[0].start,
@@ -1041,6 +1112,7 @@ export const createWithSchedule = mutation({
       for (let index = 1; index < occurrences.length; index++) {
         await ctx.db.insert("classSchedule", {
           classId,
+          schoolId: curriculum.schoolId,
           lessonIds: [],
           sessionType: slot.sessionType,
           scheduledStart: occurrences[index].start,
@@ -1077,9 +1149,6 @@ export const update = mutation({
     startDate: v.optional(v.number()),
     endDate: v.optional(v.number()),
     isActive: v.optional(v.boolean()),
-    classType: v.optional(
-      v.union(v.literal("standard"), v.literal("ignitia"), v.literal("abeka")),
-    ),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1161,19 +1230,6 @@ export const update = mutation({
     };
     if (tutorId !== undefined) {
       cleanUpdates.tutorId = tutorId ?? undefined;
-    }
-
-    if (
-      cleanUpdates.classType === "ignitia" ||
-      cleanUpdates.classType === "abeka"
-    ) {
-      cleanUpdates.teacherId = undefined;
-    } else if (
-      cleanUpdates.classType === "standard" &&
-      !cleanUpdates.teacherId &&
-      !classData.teacherId
-    ) {
-      throw new ConvexError("Standard classes require an assigned teacher.");
     }
 
     // Protect against accidentally clearing the class name during edits

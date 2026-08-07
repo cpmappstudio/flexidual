@@ -2,15 +2,7 @@ import { MutationCtx, QueryCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { resolveMembershipSchoolId } from "./model/membership";
 import { isStudentEnrolled } from "./model/enrollments";
-import type { UserRole } from "./model/roles";
-
-const STAFF_ROLES: UserRole[] = [
-  "superadmin",
-  "admin",
-  "principal",
-  "teacher",
-  "tutor",
-];
+import { canAssignmentsManageClass, isStaffRole } from "./model/roles";
 
 /**
  * Checks if a user has a specific system-wide role (like superadmin or global admin)
@@ -69,9 +61,7 @@ export async function hasStaffAccess(ctx: QueryCtx, userId: Id<"users">) {
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .collect();
 
-  return assignments.some((assignment) =>
-    STAFF_ROLES.includes(assignment.role),
-  );
+  return assignments.some((assignment) => isStaffRole(assignment.role));
 }
 
 export async function canViewInstitutionSettings(
@@ -237,24 +227,11 @@ export async function canManageClasses(
   campusId?: Id<"campuses">,
   schoolId?: Id<"schools">,
 ): Promise<boolean> {
-  // 1. Superadmin override
-  if (await hasSystemRole(ctx, userId, ["superadmin"])) return true;
-
-  // 2. Campus Admin/Principal check
-  if (
-    campusId &&
-    (await hasOrgRole(ctx, userId, campusId, "campus", ["admin", "principal"]))
-  )
-    return true;
-
-  // 3. School Admin check (School Admins can manage classes in any of their campuses)
-  if (
-    schoolId &&
-    (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"]))
-  )
-    return true;
-
-  return false;
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  return canAssignmentsManageClass(assignments, campusId, schoolId);
 }
 
 export async function canAccessClass(

@@ -21,6 +21,7 @@ import { getClassTimeZone } from "./model/timeZone";
 import { getStudentGradeCode, getStudentSchoolIds } from "./model/membership";
 import { isStudentEnrolled, listClassStudentIds } from "./model/enrollments";
 import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
+import { syncClassTypeFromSchedules } from "./model/classType";
 import {
   civilDayNumber,
   isValidTimeZone,
@@ -51,6 +52,7 @@ const scheduleFields = {
   _id: v.id("classSchedule"),
   _creationTime: v.number(),
   classId: v.id("classes"),
+  schoolId: v.optional(v.id("schools")),
   lessonIds: v.optional(v.array(v.id("lessons"))),
   sessionType: v.optional(
     v.union(v.literal("live"), v.literal("ignitia"), v.literal("abeka")),
@@ -1116,13 +1118,32 @@ export const listAccessibleLiveClasses = query({
   handler: async (ctx) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) return [];
-    const [schedules, studentSchoolIds] = await Promise.all([
+    const studentSchoolIds = await getStudentSchoolIds(ctx, user._id);
+    if (studentSchoolIds.size === 0) return [];
+
+    const scheduleGroups = await Promise.all([
+      ...[...studentSchoolIds].map((schoolId) =>
+        ctx.db
+          .query("classSchedule")
+          .withIndex("by_school_and_status_and_scheduled_start", (q) =>
+            q.eq("schoolId", schoolId).eq("status", "active"),
+          )
+          .collect(),
+      ),
+      // Legacy active sessions are a bounded transition path. Starting any
+      // legacy session below writes its schoolId, so this set naturally drains.
       ctx.db
         .query("classSchedule")
-        .withIndex("by_status", (q) => q.eq("status", "active"))
+        .withIndex("by_school_and_status_and_scheduled_start", (q) =>
+          q.eq("schoolId", undefined).eq("status", "active"),
+        )
         .collect(),
-      getStudentSchoolIds(ctx, user._id),
     ]);
+    const schedules = [
+      ...new Map(
+        scheduleGroups.flat().map((schedule) => [schedule._id, schedule]),
+      ).values(),
+    ];
 
     const liveSchedules = schedules.filter(
       (schedule) => schedule.isLive && schedule.sessionType === "live",
@@ -1684,6 +1705,9 @@ export const updateSchedule = mutation({
           await ctx.db.patch(item._id, updatePatch);
         }
       }
+      if (args.sessionType !== undefined) {
+        await syncClassTypeFromSchedules(ctx, classData._id);
+      }
       return { updated: futureItems.length, type: "series" as const };
     } else {
       const singleUpdates = { ...metadataUpdates };
@@ -1692,6 +1716,9 @@ export const updateSchedule = mutation({
         singleUpdates.scheduledEnd = newEnd;
       }
       await ctx.db.patch(args.id, singleUpdates);
+      if (args.sessionType !== undefined) {
+        await syncClassTypeFromSchedules(ctx, classData._id);
+      }
       return { updated: 1, type: "single" as const };
     }
   },
@@ -1805,9 +1832,12 @@ export const deleteSchedule = mutation({
         await deleteScheduleWithDependencies(ctx, child);
       }
 
+      await syncClassTypeFromSchedules(ctx, classData._id);
+
       return { deleted: series.length + 1, type: "series" as const };
     } else {
       await deleteScheduleWithDependencies(ctx, schedule);
+      await syncClassTypeFromSchedules(ctx, classData._id);
       return { deleted: 1, type: "single" as const };
     }
   },
@@ -1865,6 +1895,7 @@ export const markLive = mutation({
     const liveAccess = normalizeLiveAccess(classData.liveAccess);
     await ctx.db.patch(schedule._id, {
       isLive: true,
+      schoolId: classSchoolId,
       liveAccess,
       status: "active",
       completedAt: undefined,

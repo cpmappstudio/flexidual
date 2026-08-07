@@ -116,6 +116,7 @@ export default defineSchema({
 
     // People
     teacherId: v.optional(v.id("users")), // Optional teacher as we are supporting ignitia and abeka virtual asynchronous classes
+    // Cached from the course schedule; legacy rows are derived on read.
     classType: v.optional(
       v.union(v.literal("standard"), v.literal("ignitia"), v.literal("abeka")),
     ),
@@ -140,6 +141,8 @@ export default defineSchema({
     createdAt: v.number(),
     createdBy: v.id("users"),
 
+    // Denormalized tenant scope for indexed institution catalog queries.
+    schoolId: v.optional(v.id("schools")),
     campusId: v.optional(v.id("campuses")),
   })
     .index("by_teacher", ["teacherId", "isActive"])
@@ -148,13 +151,23 @@ export default defineSchema({
     .index("by_academic_period", ["academicPeriodId"])
     .index("by_grade", ["gradeCode"])
     .index("by_active", ["isActive"])
+    .index("by_active_and_class_type", ["isActive", "classType"])
+    .index("by_school_and_active_and_class_type", [
+      "schoolId",
+      "isActive",
+      "classType",
+    ])
     .index("by_campus", ["campusId", "isActive"])
     .index("by_campus_period_grade", [
       "campusId",
       "academicPeriodId",
       "gradeCode",
       "isActive",
-    ]),
+    ])
+    .searchIndex("search_catalog_name", {
+      searchField: "name",
+      filterFields: ["schoolId", "isActive", "classType"],
+    }),
 
   classEnrollments: defineTable({
     classId: v.id("classes"),
@@ -172,6 +185,9 @@ export default defineSchema({
    */
   classSchedule: defineTable({
     classId: v.id("classes"),
+    // Denormalized tenant scope for institution-bounded live discovery.
+    // Optional while legacy schedules age out or are started and backfilled.
+    schoolId: v.optional(v.id("schools")),
     // lessonId: v.optional(v.id("lessons")),
     lessonIds: v.optional(v.array(v.id("lessons"))),
     sessionType: v.optional(
@@ -212,9 +228,21 @@ export default defineSchema({
     createdBy: v.id("users"),
   })
     .index("by_class", ["classId", "scheduledStart"])
+    .index("by_class_and_session_type", ["classId", "sessionType"])
+    .index("by_class_and_status_and_session_type_and_scheduled_start", [
+      "classId",
+      "status",
+      "sessionType",
+      "scheduledStart",
+    ])
     .index("by_class_recurrence_parent", ["classId", "recurrenceParentId"])
     .index("by_room", ["roomName"])
     .index("by_status", ["status", "scheduledStart"])
+    .index("by_school_and_status_and_scheduled_start", [
+      "schoolId",
+      "status",
+      "scheduledStart",
+    ])
     .index("by_recurrence_parent", ["recurrenceParentId"]),
 
   /**

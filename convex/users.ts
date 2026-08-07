@@ -1032,10 +1032,11 @@ export async function getCurrentUserFromAuth(ctx: QueryCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
 
-  return await ctx.db
+  const user = await ctx.db
     .query("users")
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
     .first();
+  return user?.isActive ? user : null;
 }
 
 export const getAllUsersInternal = internalQuery({

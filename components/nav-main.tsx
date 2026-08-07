@@ -50,6 +50,25 @@ export function NavMain() {
           </SidebarMenuButton>
         </SidebarMenuItem>
 
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            asChild
+            isActive={pathname.includes(`${basePath}/catalog`)}
+            className="h-12 gap-3 px-2 text-base"
+          >
+            <Link href={`${basePath}/catalog`}>
+              <Image
+                src="/resources-icon.svg"
+                alt=""
+                width={32}
+                height={32}
+                aria-hidden="true"
+              />
+              <span>{t("navigation.catalog")}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+
         {isStaffRole(role) && (
           <SidebarMenuItem>
             <SidebarMenuButton

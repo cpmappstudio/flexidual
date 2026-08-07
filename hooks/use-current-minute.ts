@@ -4,15 +4,18 @@ import { useEffect, useState } from "react";
 
 const MINUTE_MS = 60_000;
 
-function currentMinute() {
+export function getCurrentMinute() {
   return Math.floor(Date.now() / MINUTE_MS) * MINUTE_MS;
 }
 
 export function useCurrentMinute() {
-  const [now, setNow] = useState(currentMinute);
+  const [now, setNow] = useState(getCurrentMinute);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(currentMinute()), MINUTE_MS);
+    const interval = window.setInterval(
+      () => setNow(getCurrentMinute()),
+      MINUTE_MS,
+    );
     return () => window.clearInterval(interval);
   }, []);
 

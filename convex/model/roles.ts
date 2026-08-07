@@ -10,6 +10,20 @@ export type UserRole =
 
 export type OrganizationType = "system" | "school" | "campus";
 
+type RoleAssignmentScope = {
+  role: UserRole;
+  orgType: OrganizationType;
+  orgId?: string;
+};
+
+const STAFF_ROLES = new Set<UserRole>([
+  "superadmin",
+  "admin",
+  "principal",
+  "teacher",
+  "tutor",
+]);
+
 const COURSE_MANAGER_ROLES = new Set<UserRole>([
   "superadmin",
   "admin",
@@ -40,9 +54,32 @@ export function canRoleManageCourses(role: UserRole) {
   return COURSE_MANAGER_ROLES.has(role);
 }
 
+export function isStaffRole(role: UserRole) {
+  return STAFF_ROLES.has(role);
+}
+
 export function hasOnlyInstructorStaffRoles(roles: UserRole[]) {
   return (
     roles.some((role) => COURSE_INSTRUCTOR_ROLES.has(role)) &&
     !roles.some((role) => COURSE_MANAGER_ROLES.has(role))
+  );
+}
+
+export function canAssignmentsManageClass(
+  assignments: RoleAssignmentScope[],
+  campusId?: string,
+  schoolId?: string,
+) {
+  return assignments.some(
+    (assignment) =>
+      (assignment.role === "superadmin" && assignment.orgType === "system") ||
+      (schoolId !== undefined &&
+        assignment.role === "admin" &&
+        assignment.orgType === "school" &&
+        assignment.orgId === schoolId) ||
+      (campusId !== undefined &&
+        (assignment.role === "admin" || assignment.role === "principal") &&
+        assignment.orgType === "campus" &&
+        assignment.orgId === campusId),
   );
 }

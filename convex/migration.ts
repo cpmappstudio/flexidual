@@ -5,6 +5,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { toCivilDate } from "../lib/time-zone";
 import { DEFAULT_INSTITUTION_GRADES } from "../lib/grades";
+import { deriveClassTypeFromSchedules } from "./model/classType";
 
 const ACADEMIC_CLEANUP_CONFIRMATION =
   "DELETE_LEGACY_ACADEMIC_TEST_DATA" as const;
@@ -491,6 +492,43 @@ export const backfillClassEnrollments = internalMutation({
       await ctx.scheduler.runAfter(
         0,
         internal.migration.backfillClassEnrollments,
+        { cursor: result.continueCursor },
+      );
+    }
+    return null;
+  },
+});
+
+export const backfillClassCatalogFields = internalMutation({
+  args: { cursor: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("classes")
+      .paginate({ numItems: 50, cursor: args.cursor ?? null });
+
+    for (const classData of result.page) {
+      const [campus, curriculum, classType] = await Promise.all([
+        classData.campusId ? ctx.db.get(classData.campusId) : null,
+        ctx.db.get(classData.curriculumId),
+        classData.classType === undefined
+          ? deriveClassTypeFromSchedules(ctx, classData._id)
+          : classData.classType,
+      ]);
+      const schoolId =
+        classData.schoolId ?? campus?.schoolId ?? curriculum?.schoolId;
+      if (
+        classData.schoolId !== schoolId ||
+        classData.classType !== classType
+      ) {
+        await ctx.db.patch(classData._id, { schoolId, classType });
+      }
+    }
+
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.migration.backfillClassCatalogFields,
         { cursor: result.continueCursor },
       );
     }

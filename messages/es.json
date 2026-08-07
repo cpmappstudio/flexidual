@@ -274,6 +274,7 @@
     "superadmin": "Super Admin",
     "superadmins": "Super Administradores",
     "curriculums": "Currículos",
+    "catalog": "Catálogo de cursos",
     "curriculumsDescription": "Gestiona currículos y su contenido",
     "curriculumsDescription2": "Currículos que están actualmente activos o disponibles",
     "curriculumEditDescription": "Gestiona los detalles de este currículo y sus lecciones asociadas.",
@@ -318,6 +319,25 @@
     "viewAllCurriculums": "Ver Todos los Currículos",
     "usersSummary": "Gestiona el acceso al sistema, roles y permisos",
     "curriculumSummary": "Gestiona programas académicos, plantillas de cursos y planes de lecciones."
+  },
+  "catalog": {
+    "liveNow": "En vivo",
+    "upcoming": "Próximamente",
+    "private": "Privado",
+    "institution": "Institución",
+    "join": "Entrar",
+    "viewCourse": "Ver curso",
+    "searchPlaceholder": "Buscar cursos...",
+    "unassignedTeacher": "Profesor por asignar",
+    "emptyTitle": "No hay cursos disponibles",
+    "emptyDescription": "Todavía no hay cursos disponibles en este catálogo.",
+    "noResults": "No hay cursos coincidentes",
+    "noResultsDescription": "Prueba con otro nombre de curso o ajusta los filtros.",
+    "courseNotFound": "Este curso no está disponible en tu catálogo.",
+    "backToCatalog": "Volver al catálogo",
+    "sessions": "Sesiones de clase",
+    "noUpcomingSessions": "No hay próximas sesiones programadas.",
+    "about": "Acerca de este curso"
   },
   "classroom": {
     "prepareRoom": "Preparar Sala",
