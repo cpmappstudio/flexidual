@@ -6,10 +6,12 @@ import { ExternalLink, MonitorPlay } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getTranslations } from "next-intl/server";
 import { auth } from "@clerk/nextjs/server";
+import { getRouteRole } from "@/lib/rbac";
 
 interface ClassroomPageProps {
   params: Promise<{
     locale: string;
+    orgSlug: string;
     roomName: string;
   }>;
   searchParams: Promise<{ companion?: string }>;
@@ -64,7 +66,9 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
   const searchParams = await props.searchParams;
   const roomName = decodeURIComponent(params.roomName);
   const isCompanion = searchParams.companion === "true";
-  const token = await getConvexToken();
+  const { getToken, sessionClaims } = await auth();
+  const token = (await getToken({ template: "convex" })) ?? undefined;
+  const isStudent = getRouteRole(sessionClaims, params.orgSlug) === "student";
 
   // 1. Fetch the schedule to determine the type
   const schedule = await fetchQuery(
@@ -148,7 +152,11 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
       data-classroom-layout
       className="h-full min-h-0 w-full overflow-hidden"
     >
-      <FlexiClassroom roomName={roomName} isCompanion={isCompanion} />
+      <FlexiClassroom
+        roomName={roomName}
+        isStudentView={isStudent}
+        isCompanion={isCompanion}
+      />
     </main>
   );
 }

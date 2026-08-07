@@ -96,11 +96,13 @@ export default function FlexiClassroom({ roomName, className, isStudentView = fa
 
   const getToken = useAction(api.livekit.getToken);
 
-  const role = sessionStatus?.isPrimaryTeacher
-    ? "teacher"
-    : sessionStatus?.roomAdmin
-      ? "admin"
-      : "student";
+  const role = sessionStatus
+    ? sessionStatus.isPrimaryTeacher
+      ? "teacher"
+      : sessionStatus.roomAdmin
+        ? "admin"
+        : "student"
+    : undefined;
   const resolvedIsStudentView = isStudentView || role === "student";
   const uiPreviewEnabled =
     process.env.NODE_ENV !== "production" &&
