@@ -718,6 +718,9 @@ export function StudentClassroomUI({
         waitingLabel={t("classroom.waiting")}
         isRecording={isRecordingForDisplay}
         isPhoneLandscape={isPhoneLandscape}
+        sessionAction={
+          <LeaveClassButton appearance="header" onConfirm={handleLeave} />
+        }
       />
 
       {/* 2. Stage */}
@@ -890,6 +893,64 @@ export function StudentClassroomUI({
       {/* 3. Controls — hidden in phone landscape (replaced by floating stage overlay) */}
       <ClassroomViewControls isPhoneLandscape={isPhoneLandscape}>
         <ClassroomActionBar
+          mobile={
+            <>
+              <DeviceToggleButton
+                variant="toolbar"
+                source={Track.Source.Microphone}
+                kind="audioinput"
+                includeAudioOutput
+                label={t("classroom.microphone")}
+                activeLabel={t("common.active")}
+                inactiveLabel={t("common.inactive")}
+                pickerLabel={t("classroom.selectAudioDevice")}
+                iconOn={<Mic />}
+                iconOff={<MicOff />}
+              />
+              <DeviceToggleButton
+                variant="toolbar"
+                source={Track.Source.Camera}
+                kind="videoinput"
+                label={t("classroom.camera")}
+                activeLabel={t("common.active")}
+                inactiveLabel={t("common.inactive")}
+                pickerLabel={t("classroom.selectCamera")}
+                iconOn={<VideoIcon />}
+                iconOff={<VideoOff />}
+              />
+              <ClassroomActionButton
+                icon={<Hand />}
+                label={
+                  handRaisedForDisplay
+                    ? t("classroom.lowerHand")
+                    : t("classroom.raiseHand")
+                }
+                pressed={handRaisedForDisplay}
+                statusLabel={
+                  handRaisedForDisplay
+                    ? t("common.active")
+                    : t("common.inactive")
+                }
+                tone="warning"
+                onPressedChange={() => void toggleHandRaised()}
+              />
+              <ClassroomActionButton
+                icon={<MonitorUp />}
+                label={t("classroom.shareScreen")}
+                pressed={Boolean(isSharingLocally)}
+                statusLabel={
+                  shareStateForDisplay === "requesting"
+                    ? t("classroom.waitingForApproval")
+                    : isSharingLocally || shareStateForDisplay === "approved"
+                      ? t("common.active")
+                      : t("common.inactive")
+                }
+                tone="success"
+                disabled={shareStateForDisplay === "requesting"}
+                onPressedChange={() => void handleShareAction()}
+              />
+            </>
+          }
           left={
             <>
               <DeviceToggleButton

@@ -61,7 +61,7 @@ export const ClassroomActionButton = forwardRef<
     </>
   );
   const controlClasses = cn(
-    "relative h-16 w-20 flex-col gap-0.5 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-foreground shadow-none hover:border-border hover:bg-muted/70 hover:text-foreground sm:w-24 sm:px-2 [&_svg]:size-5",
+    "relative h-16 w-full max-w-20 flex-col gap-0.5 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-foreground shadow-none hover:border-border hover:bg-muted/70 hover:text-foreground sm:max-w-24 sm:px-2 [&_svg]:size-5",
     pressedToneClasses[tone],
     className,
   );
@@ -113,24 +113,38 @@ interface ClassroomActionBarProps {
   left: ReactNode;
   center: ReactNode;
   right: ReactNode;
+  mobile?: ReactNode;
 }
 
 export function ClassroomActionBar({
   left,
   center,
   right,
+  mobile,
 }: ClassroomActionBarProps) {
   return (
-    <div className="grid min-h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center bg-card px-1.5 py-1 sm:px-2">
-      <div className="flex min-w-0 items-center justify-start gap-0.5 border-r border-border/70 pr-1 sm:gap-1 sm:pr-2">
-        {left}
+    <>
+      {mobile && (
+        <div className="grid min-h-20 w-full grid-cols-4 items-center justify-items-center bg-card px-1 py-1 lg:hidden">
+          {mobile}
+        </div>
+      )}
+      <div
+        className={cn(
+          "min-h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center bg-card px-1.5 py-1 sm:px-2",
+          mobile ? "hidden lg:grid" : "grid",
+        )}
+      >
+        <div className="flex min-w-0 items-center justify-start gap-0.5 border-r border-border/70 pr-1 sm:gap-1 sm:pr-2">
+          {left}
+        </div>
+        <div className="scrollbar-thin flex min-w-0 items-center justify-start gap-0.5 overflow-x-auto px-1 sm:justify-center sm:gap-1 sm:px-2">
+          {center}
+        </div>
+        <div className="flex min-w-0 items-center justify-end gap-0.5 border-l border-border/70 pl-1 sm:gap-1 sm:pl-2">
+          {right}
+        </div>
       </div>
-      <div className="scrollbar-thin flex min-w-0 items-center justify-start gap-0.5 overflow-x-auto px-1 sm:justify-center sm:gap-1 sm:px-2">
-        {center}
-      </div>
-      <div className="flex min-w-0 items-center justify-end gap-0.5 border-l border-border/70 pl-1 sm:gap-1 sm:pl-2">
-        {right}
-      </div>
-    </div>
+    </>
   );
 }
