@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/responsive-filters";
 import { useCurrentOrgRole } from "@/hooks/use-current-org-role";
 import { getCurrentMinute } from "@/hooks/use-current-minute";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { Link } from "@/i18n/navigation";
 import { isStaffRole } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
@@ -203,10 +204,9 @@ function CourseTile({
   );
 }
 
-function CatalogSkeleton() {
+function CatalogRailsSkeleton() {
   return (
-    <div className="space-y-8">
-      <Skeleton className="h-9 w-full" />
+    <div className="space-y-8" aria-hidden="true">
       {[0, 1, 2].map((section) => (
         <div key={section} className="space-y-3">
           <Skeleton className="h-6 w-36" />
@@ -221,6 +221,15 @@ function CatalogSkeleton() {
   );
 }
 
+function CatalogSkeleton() {
+  return (
+    <div className="space-y-8">
+      <Skeleton className="h-9 w-full" />
+      <CatalogRailsSkeleton />
+    </div>
+  );
+}
+
 export function CourseCatalog() {
   const t = useTranslations();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -228,7 +237,7 @@ export function CourseCatalog() {
   const { role, isLoaded: isRoleLoaded } = useCurrentOrgRole();
   const [now] = useState(getCurrentMinute);
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search.trim());
+  const debouncedSearch = useDebouncedValue(search.trim());
   const [selectedCurriculumId, setSelectedCurriculumId] =
     useState<Id<"curriculums"> | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] =
@@ -244,7 +253,7 @@ export function CourseCatalog() {
       ? {
           orgSlug,
           now,
-          ...(deferredSearch && { search: deferredSearch }),
+          ...(debouncedSearch && { search: debouncedSearch }),
           ...(selectedCurriculumId && {
             curriculumId: selectedCurriculumId,
           }),
@@ -270,7 +279,7 @@ export function CourseCatalog() {
     return [...groups.values()];
   }, [results]);
 
-  if (isAuthLoading || status === "LoadingFirstPage") {
+  if (isAuthLoading || !isRoleLoaded) {
     return <CatalogSkeleton />;
   }
 
@@ -320,15 +329,19 @@ export function CourseCatalog() {
         />
       </div>
 
-      {results.length === 0 && status === "Exhausted" ? (
+      {status === "LoadingFirstPage" ? (
+        <CatalogRailsSkeleton />
+      ) : results.length === 0 && status === "Exhausted" ? (
         <div className="grid min-h-64 place-items-center rounded-xl border border-dashed border-border px-6 text-center">
           <div className="space-y-2">
             <BookOpen className="mx-auto size-9 text-muted-foreground" />
             <h2 className="font-semibold text-foreground">
-              {search ? t("catalog.noResults") : t("catalog.emptyTitle")}
+              {debouncedSearch
+                ? t("catalog.noResults")
+                : t("catalog.emptyTitle")}
             </h2>
             <p className="max-w-md text-sm text-muted-foreground">
-              {search
+              {debouncedSearch
                 ? t("catalog.noResultsDescription")
                 : t("catalog.emptyDescription")}
             </p>
