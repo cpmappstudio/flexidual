@@ -108,7 +108,8 @@
       "unavailableDescription": "Sólo los administradores de la institución pueden ver y actualizar esta sección."
     },
     "profileSettings": {
-      "title": "Perfil y seguridad"
+      "profileTitle": "Detalles del perfil",
+      "securityTitle": "Seguridad"
     },
     "campuses": {
       "title": "Campus",

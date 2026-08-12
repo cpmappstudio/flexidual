@@ -108,7 +108,8 @@
       "unavailableDescription": "Somente administradores da instituição podem ver e atualizar esta seção."
     },
     "profileSettings": {
-      "title": "Perfil e segurança"
+      "profileTitle": "Detalhes do perfil",
+      "securityTitle": "Segurança"
     },
     "campuses": {
       "title": "Campi",
