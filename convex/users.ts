@@ -460,7 +460,7 @@ export const upsertFromClerk = internalMutation({
     const existingUser = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", data.id))
-      .first();
+      .unique();
 
     const userData = {
       clerkId: data.id,
@@ -504,7 +504,7 @@ export const deleteFromClerk = internalMutation({
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkUserId))
-      .first();
+      .unique();
 
     if (user) {
       await deactivateUser(ctx, user);
@@ -526,7 +526,7 @@ export const getUserByClerkIdInternal = internalQuery({
     await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .first(),
+      .unique(),
 });
 
 export const assertCanManageUsers = internalQuery({
@@ -1035,7 +1035,7 @@ export async function getCurrentUserFromAuth(ctx: QueryCtx) {
   const user = await ctx.db
     .query("users")
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-    .first();
+    .unique();
   return user?.isActive ? user : null;
 }
 

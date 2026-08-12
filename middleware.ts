@@ -1,4 +1,4 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+import { clerkMiddleware } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import createIntlMiddleware from 'next-intl/middleware'
 import { routing } from './i18n/routing'
@@ -7,13 +7,15 @@ import { getHighestStaffRole, getRolesFromClaims, isSuperAdmin, getRoleForOrg } 
 
 const intlMiddleware = createIntlMiddleware(routing)
 
-const isPublicRoute = createRouteMatcher([
-  '/:locale/sign-in(.*)',
-  '/:locale/sign-up(.*)',
-  '/sign-in(.*)',
-  '/:locale/pending-role',
-  '/pending-role',
-])
+function isPublicPath(pathname: string) {
+  return (
+    pathname === '/pending-role' ||
+    pathname === '/sign-in' ||
+    pathname.startsWith('/sign-in/') ||
+    pathname === '/sign-up' ||
+    pathname.startsWith('/sign-up/')
+  )
+}
 
 export default clerkMiddleware(async (auth, req: NextRequest) => {
   const { pathname, search } = req.nextUrl
@@ -34,9 +36,10 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   }
 
   const locale = getLocaleFromPathname(pathname)
+  const pathWithoutLocale = pathname.replace(new RegExp(`^/${locale}(?=/|$)`), '') || '/'
 
   // 2. Handle public routes
-  if (isPublicRoute(req)) {
+  if (isPublicPath(pathWithoutLocale)) {
     return intlMiddleware(req)
   }
 
@@ -65,16 +68,16 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
       return intlMiddleware(req)
     }
 
-    // Strip locale from path to analyze the route structure cleanly
-    const pathWithoutLocale = pathname.replace(new RegExp(`^/${locale}`), '') || '/'
-
     // 4. Root Routing (Log in -> Where do I go?)
     if (pathWithoutLocale === '/') {
-      const firstOrgSlug = Object.keys(roles).find(k => k !== "system")
-      if (firstOrgSlug) {
-        return NextResponse.redirect(new URL(`/${locale}/${firstOrgSlug}`, req.url))
-      }
       return intlMiddleware(req)
+    }
+
+    // Some Clerk configurations still use /dashboard as the post-sign-in URL.
+    // Send it through the validated campus entry flow instead of treating
+    // "dashboard" as an organization slug.
+    if (pathWithoutLocale === '/dashboard') {
+      return NextResponse.redirect(new URL(`/${locale}`, req.url))
     }
 
     // 5. Retire the former shared /admin namespace. Old bookmarks keep their
@@ -90,7 +93,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
 
     // 6. Dynamic Context Routing (/[locale]/[orgSlug]/...)
     const orgMatch = pathWithoutLocale.match(/^\/([^\/]+)(\/.*)?$/)
-    
+
     if (orgMatch) {
       const orgSlug = orgMatch[1]
       const subPath = orgMatch[2] || ""

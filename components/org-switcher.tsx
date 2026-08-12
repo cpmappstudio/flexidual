@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useAuth } from "@clerk/nextjs";
 import { Building2, MapPin, Plus, Settings2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useConvexAuth, useQuery } from "convex/react";
@@ -8,6 +9,7 @@ import { useTranslations } from "next-intl";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useRouter } from "@/i18n/navigation";
+import { setLastCampusSlug } from "@/lib/last-campus";
 import { SchoolDialog } from "@/components/admin/schools/school-dialog";
 import { CampusDialog } from "@/components/admin/campuses/campus-dialog";
 import {
@@ -34,6 +36,7 @@ export function OrgSwitcher() {
   const { isMobile, setOpenMobile } = useSidebar();
   const { orgSlug } = useParams<{ orgSlug?: string }>();
   const router = useRouter();
+  const { userId } = useAuth();
   const { isAuthenticated } = useConvexAuth();
   const options = useQuery(
     api.organizations.getSwitcherOptions,
@@ -69,6 +72,12 @@ export function OrgSwitcher() {
     (!routeSchool
       ? campuses.find((campus) => campus.schoolId === activeSchool?._id)
       : undefined);
+
+  React.useEffect(() => {
+    if (userId && routeCampus) {
+      setLastCampusSlug(userId, routeCampus.slug);
+    }
+  }, [routeCampus, userId]);
 
   if (!options || schools.length === 0) return null;
 

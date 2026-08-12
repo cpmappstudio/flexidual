@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "@/i18n/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SchoolDialog } from "@/components/admin/schools/school-dialog";
 import { ConvexAuthBoundary } from "@/components/convex-auth-boundary";
+import { getCampusDestination, getLastCampusSlug } from "@/lib/last-campus";
 
 export default function OrganizationEntryPage() {
   return (
@@ -18,13 +20,16 @@ export default function OrganizationEntryPage() {
 
 function OrganizationEntryContent() {
   const router = useRouter();
+  const { userId } = useAuth();
   const options = useQuery(api.organizations.getSwitcherOptions);
 
   useEffect(() => {
-    if (!options) return;
-    const destination = options.campuses[0]?.slug ?? options.schools[0]?.slug;
+    if (!options || !userId) return;
+    const destination =
+      getCampusDestination(options.campuses, getLastCampusSlug(userId)) ??
+      options.schools[0]?.slug;
     if (destination) router.replace(`/${destination}`);
-  }, [options, router]);
+  }, [options, router, userId]);
 
   if (options && options.schools.length === 0) {
     return (

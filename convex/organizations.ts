@@ -163,7 +163,9 @@ export const getSwitcherOptions = query({
       } else if (
         assignment.orgType === "campus" &&
         assignment.orgId &&
-        ["principal", "teacher", "tutor"].includes(assignment.role)
+        ["principal", "teacher", "tutor", "student"].includes(
+          assignment.role,
+        )
       ) {
         const campusId = ctx.db.normalizeId("campuses", assignment.orgId);
         if (campusId) directCampusIds.add(campusId);
