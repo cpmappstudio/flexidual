@@ -431,6 +431,7 @@
     "lowerHand": "Lower Hand",
     "handRaised": "✋ Hand raised!",
     "raisedHand": "raised their hand",
+    "raisedHandsCount": "{count, plural, one {# hand raised} other {# hands raised}}",
     "observingIncognito": "Observing Incognito",
     "takePresenterRole": "Take Presenter Role",
     "exitPresenterRole": "Exit Presenter Role",

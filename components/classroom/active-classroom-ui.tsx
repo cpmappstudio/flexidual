@@ -1961,6 +1961,17 @@ export function ActiveClassroomUI({
             ? t("classroom.waitingForStudents")
             : t("classroom.youAreFirst")
         }
+        participants={displayedStudents}
+        raisedParticipantIds={raisedHands}
+        youLabel={t("classroom.youShort")}
+        raisedHandLabel={t("classroom.raisedHand")}
+        raisedHandsCountLabel={(count) =>
+          t("classroom.raisedHandsCount", { count })
+        }
+        lowerHandLabel={t("classroom.lowerHand")}
+        onLowerHand={
+          amITeacher || isLocalAdminPresenting ? forceLowerHand : undefined
+        }
       >
         {displayedStudents.map((p) => (
           <ParticipantTile
@@ -1974,6 +1985,7 @@ export function ActiveClassroomUI({
                 ? () => forceLowerHand(p.identity)
                 : undefined
             }
+            lowerHandLabel={t("classroom.lowerHand")}
             youLabel={t("classroom.youShort")}
           />
         ))}

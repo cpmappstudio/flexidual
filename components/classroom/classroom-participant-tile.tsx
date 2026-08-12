@@ -15,6 +15,7 @@ interface ClassroomParticipantTileProps {
   variant?: ParticipantTileVariant;
   raisedHand?: boolean;
   onLowerHand?: () => void;
+  lowerHandLabel?: string;
   roleBadge?: string;
   youLabel?: string;
   audioMuted?: boolean;
@@ -27,6 +28,7 @@ export function ClassroomParticipantTile({
   variant = "grid",
   raisedHand = false,
   onLowerHand,
+  lowerHandLabel = "Lower hand",
   roleBadge,
   youLabel,
   audioMuted = false,
@@ -114,14 +116,15 @@ export function ClassroomParticipantTile({
           <button
             type="button"
             onClick={onLowerHand}
-            title="Lower hand"
-            className="absolute right-1 top-1 rounded-full bg-warning p-0.5 shadow-sm transition-colors hover:bg-warning/90"
+            aria-label={lowerHandLabel}
+            title={lowerHandLabel}
+            className="absolute right-1.5 top-1.5 rounded-full border border-inverse-foreground/10 bg-inverse/85 p-1 text-inverse-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-inverse"
           >
-            <Hand className="w-3 h-3 text-warning-foreground" />
+            <Hand className="size-3.5" />
           </button>
         ) : (
-          <div className="pointer-events-none absolute right-1 top-1 rounded-full bg-warning p-0.5 shadow-sm">
-            <Hand className="w-3 h-3 text-warning-foreground" />
+          <div className="pointer-events-none absolute right-1.5 top-1.5 rounded-full border border-inverse-foreground/10 bg-inverse/85 p-1 text-inverse-foreground shadow-sm backdrop-blur-sm">
+            <Hand className="size-3.5" />
           </div>
         ))}
 

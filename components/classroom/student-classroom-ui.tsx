@@ -1070,6 +1070,15 @@ export function StudentClassroomUI({
         nextLabel={t("common.next")}
         isEmpty={displayedStudents.length === 0}
         emptyContent={t("classroom.youAreFirst")}
+        participants={displayedStudents}
+        raisedParticipantIds={raisedHands}
+        localParticipantRaised={handRaisedForDisplay}
+        youLabel={t("classroom.youShort")}
+        raisedHandLabel={t("classroom.raisedHand")}
+        raisedHandsCountLabel={(count) =>
+          t("classroom.raisedHandsCount", { count })
+        }
+        lowerHandLabel={t("classroom.lowerHand")}
       >
         {displayedStudents.map((p) => (
           <ParticipantTile

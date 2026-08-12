@@ -431,6 +431,7 @@
     "lowerHand": "Baixar a Mão",
     "handRaised": "✋ Mão levantada!",
     "raisedHand": "levantou a mão",
+    "raisedHandsCount": "{count, plural, one {# mão levantada} other {# mãos levantadas}}",
     "observingIncognito": "Observando de Incógnito",
     "takePresenterRole": "Assumir Papel de Apresentador",
     "exitPresenterRole": "Sair do Papel de Apresentador",
