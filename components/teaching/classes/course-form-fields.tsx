@@ -63,6 +63,11 @@ interface CourseFormFieldsProps {
   gradeEmptyState?: ReactNode;
   onNameChangeAction?: (name: string) => void;
   primaryFieldsClassName?: string;
+  selectedLabels?: {
+    curriculum?: string;
+    teacher?: string;
+    grade?: string;
+  };
 }
 
 export function CourseFormFields({
@@ -79,6 +84,7 @@ export function CourseFormFields({
   gradeEmptyState,
   onNameChangeAction,
   primaryFieldsClassName,
+  selectedLabels,
 }: CourseFormFieldsProps) {
   const t = useTranslations();
   const [openCurriculum, setOpenCurriculum] = useState(false);
@@ -92,6 +98,14 @@ export function CourseFormFields({
       )
     : [];
   const gradeNames = new Map(grades?.map((grade) => [grade.code, grade.name]));
+  const selectedGradeName =
+    gradeNames.get(formData.gradeCode) ?? selectedLabels?.grade;
+  const selectedCurriculumTitle =
+    curriculums?.find((curriculum) => curriculum._id === formData.curriculumId)
+      ?.title ?? selectedLabels?.curriculum;
+  const selectedTeacherName =
+    teachers?.find((teacher) => teacher._id === formData.teacherId)?.fullName ??
+    selectedLabels?.teacher;
 
   return (
     <div className="grid gap-4 py-2">
@@ -141,7 +155,9 @@ export function CourseFormFields({
             }
           >
             <SelectTrigger className="w-full bg-sidebar">
-              <SelectValue placeholder={t("class.selectGrade")} />
+              <SelectValue placeholder={t("class.selectGrade")}>
+                {selectedGradeName}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {grades?.map((grade) => (
@@ -172,10 +188,7 @@ export function CourseFormFields({
                 >
                   <span className="truncate">
                     {formData.curriculumId
-                      ? curriculums?.find(
-                          (curriculum) =>
-                            curriculum._id === formData.curriculumId,
-                        )?.title
+                      ? selectedCurriculumTitle
                       : formData.gradeCode
                         ? t("class.selectCurriculum")
                         : t("class.selectGradeFirst")}
@@ -272,9 +285,7 @@ export function CourseFormFields({
                     className="flex-1 justify-between overflow-hidden bg-sidebar text-left font-normal"
                   >
                     <span className="truncate">
-                      {teachers?.find(
-                        (teacher) => teacher._id === formData.teacherId,
-                      )?.fullName || t("class.selectTeacher")}
+                      {selectedTeacherName || t("class.selectTeacher")}
                     </span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>

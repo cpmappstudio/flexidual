@@ -9,6 +9,8 @@ import {
 import { isStudentEnrolled } from "./model/enrollments";
 import { canManageCampusPeople, canViewCampusPeople } from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
+import { curriculumIconValidator } from "./model/curriculumIcons";
+import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 
 const dashboardScheduleValidator = v.object({
   scheduleId: v.id("classSchedule"),
@@ -73,6 +75,7 @@ export const getStudentDashboardStats = query({
           classId: v.id("classes"),
           className: v.string(),
           curriculumTitle: v.string(),
+          curriculumIconKey: curriculumIconValidator,
           description: v.optional(v.string()),
           teacher: v.object({
             fullName: v.string(),
@@ -301,6 +304,7 @@ export const getStudentDashboardStats = query({
                 : classData.classType === "ignitia"
                   ? "Ignitia Curriculum"
                   : "Curriculum"),
+            curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
             description: classData.description,
             teacher: teacher
               ? { fullName: teacher.fullName, imageUrl: teacher.imageUrl }

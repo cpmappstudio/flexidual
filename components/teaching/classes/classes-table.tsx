@@ -4,7 +4,6 @@ import * as React from "react";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { ClassDialog } from "./class-dialog";
 import { useTranslations } from "next-intl";
 import { DataTable } from "@/components/table/data-table";
 import {
@@ -43,10 +42,6 @@ export function ClassesTable({
   const t = useTranslations();
   const router = useRouter();
   const basePath = useOrgBasePath();
-
-  const [editingClass, setEditingClass] = React.useState<Doc<"classes"> | null>(
-    null,
-  );
 
   const getCurriculumName = (id: string) => {
     return (
@@ -222,8 +217,10 @@ export function ClassesTable({
                   size="icon"
                   title={t("class.edit")}
                   onClick={(e) => {
-                    e.stopPropagation(); // prevent row click from also firing
-                    setEditingClass(row.original);
+                    e.stopPropagation();
+                    router.push(
+                      `${basePath}/classes/new?edit=${row.original._id}`,
+                    );
                   }}
                 >
                   <Edit className="h-4 w-4" />
@@ -237,15 +234,6 @@ export function ClassesTable({
 
   return (
     <div className="space-y-4">
-      {canManage && editingClass && (
-        <ClassDialog
-          classDoc={editingClass}
-          open={true}
-          onOpenChange={(open) => !open && setEditingClass(null)}
-          trigger={<span className="hidden" />}
-        />
-      )}
-
       <DataTable
         data={data}
         columns={columns}

@@ -1,85 +1,103 @@
-"use client"
+"use client";
 
-import * as React from "react"
 import {
-    RadialBarChart,
-    RadialBar,
-    PolarRadiusAxis,
-    Label,
-    PolarGrid,
-} from "recharts"
-import { ChartContainer } from "@/components/ui/chart"
+  Label,
+  PolarGrid,
+  PolarRadiusAxis,
+  RadialBar,
+  RadialBarChart,
+} from "recharts";
+import {
+  ChartContainer,
+  type ChartConfig,
+} from "@/components/ui/chart";
 
 export interface RadialChartProps {
-    value: number;
-    label: string;
-    fill?: string;
-    className?: string;
-    config: Record<string, { label: string; color?: string }>;
-    showPercentage?: boolean;
+  value: number;
+  label: string;
+  fill?: string;
+  className?: string;
+  config: ChartConfig;
+  showPercentage?: boolean;
+  ariaLabel?: string;
 }
 
 export function RadialChart({
-    value,
-    label,
-    fill = "var(--chart-1)",
-    className = "w-full h-full",
-    config,
-    showPercentage = false
+  value,
+  label,
+  fill = "var(--chart-1)",
+  className = "size-full",
+  config,
+  showPercentage = false,
+  ariaLabel,
 }: RadialChartProps) {
-    const chartData = [{ value: value, fill: fill }];
+  const normalizedValue = Math.min(100, Math.max(0, value));
+  const chartData = [{ progress: 100, fill }];
 
-    return (
-        <div className="w-full h-full flex items-center justify-center">
-            <ChartContainer config={config} className={className}>
-                <RadialBarChart
-                    data={chartData}
-                    startAngle={0}
-                    endAngle={250}
-                    innerRadius="35%"
-                    outerRadius="80%"
+  return (
+    <ChartContainer
+      config={config}
+      className={className}
+      role="img"
+      aria-label={
+        ariaLabel ?? `${label}: ${normalizedValue}${showPercentage ? "%" : ""}`
+      }
+    >
+      <RadialBarChart
+        data={chartData}
+        startAngle={90}
+        endAngle={90 - normalizedValue * 3.6}
+        innerRadius="70%"
+        outerRadius="86%"
+        barSize={14}
+      >
+        <PolarGrid
+          gridType="circle"
+          radialLines={false}
+          stroke="none"
+          className="first:fill-muted last:fill-card"
+          polarRadius={["86%", "70%"]}
+        />
+        <RadialBar dataKey="progress" cornerRadius={10} fill={fill} />
+        <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
+          <Label
+            content={({
+              viewBox,
+            }: {
+              viewBox?: { cx?: number; cy?: number };
+            }) => {
+              if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) {
+                return null;
+              }
+
+              return (
+                <text
+                  x={viewBox.cx}
+                  y={viewBox.cy}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
                 >
-                    <PolarGrid
-                        gridType="circle"
-                        radialLines={false}
-                        stroke="none"
-                        className="first:fill-muted last:fill-background"
-                        polarRadius={["60%", "40%"]}
-                    />
-                    <RadialBar dataKey="value" background cornerRadius={10} fill={fill} />
-                    <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
-                        <Label
-                            content={({ viewBox }: { viewBox?: { cx?: number; cy?: number } }) => {
-                                if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-                                    return (
-                                        <text
-                                            x={viewBox.cx}
-                                            y={viewBox.cy}
-                                            textAnchor="middle"
-                                            dominantBaseline="middle"
-                                        >
-                                            <tspan
-                                                x={viewBox.cx}
-                                                y={viewBox.cy}
-                                                className="fill-foreground text-2xl font-bold"
-                                            >
-                                                {value}{showPercentage ? '%' : ''}
-                                            </tspan>
-                                            <tspan
-                                                x={viewBox.cx}
-                                                y={(viewBox.cy || 0) + 20}
-                                                className="fill-muted-foreground text-sm"
-                                            >
-                                                {label}
-                                            </tspan>
-                                        </text>
-                                    )
-                                }
-                            }}
-                        />
-                    </PolarRadiusAxis>
-                </RadialBarChart>
-            </ChartContainer>
-        </div>
-    );
+                  <tspan
+                    x={viewBox.cx}
+                    y={viewBox.cy}
+                    className="fill-foreground text-2xl font-bold"
+                  >
+                    {normalizedValue}
+                    {showPercentage ? "%" : ""}
+                  </tspan>
+                  <tspan
+                    x={viewBox.cx}
+                    y={(viewBox.cy ?? 0) + 20}
+                    className="fill-muted-foreground text-xs font-semibold"
+                  >
+                    {label}
+                  </tspan>
+                </text>
+              );
+            }}
+          />
+        </PolarRadiusAxis>
+      </RadialBarChart>
+    </ChartContainer>
+  );
 }

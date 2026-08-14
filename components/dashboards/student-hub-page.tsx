@@ -7,7 +7,6 @@ import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
 import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,13 +15,7 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  BellRing,
-  CalendarDays,
-  Clock,
-  Pencil,
-  GraduationCap,
-} from "lucide-react";
+import { BellRing, CalendarDays, Pencil, GraduationCap } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { format, isSameDay } from "date-fns";
@@ -31,7 +24,15 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Link, useRouter } from "@/i18n/navigation";
 import { useOrgBasePath } from "@/hooks/use-org-base-path";
+import { useCurrentMinute } from "@/hooks/use-current-minute";
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { useParams } from "next/navigation";
+import {
+  NextClassPanel,
+  NextClassPreview,
+} from "@/components/schedule/next-class-panel";
+import { isExternalClassSession } from "@/lib/class-session";
+import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 
 const ClassroomDropZone = dynamic(() =>
   import("@/components/student/classroom-drop-zone").then(
@@ -152,7 +153,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const [ctaLaunchingLesson, setCtaLaunchingLesson] =
     useState<StudentScheduleEvent | null>(null);
   const [isLaunching, setIsLaunching] = useState(false);
-  const [now, setNow] = useState(Date.now);
+  const now = useCurrentMinute();
 
   const [notifiedLessons, setNotifiedLessons] = useState<Set<string>>(
     new Set(),
@@ -250,7 +251,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
 
   // Queries
   const roundedNow = Math.floor(now / 60_000) * 60_000;
-  const ownEvents = useQuery(
+  const ownEventsResult = useQuery(
     api.schedule.getMySchedule,
     isViewingStudentProfile ? "skip" : { now: roundedNow },
   );
@@ -258,10 +259,16 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     api.schedule.listAccessibleLiveClasses,
     isViewingStudentProfile ? "skip" : {},
   );
-  const dashboardData = useQuery(api.student.getStudentDashboardStats, {
+  const dashboardResult = useQuery(api.student.getStudentDashboardStats, {
     now: roundedNow,
     ...(studentId ? { studentId, orgSlug } : {}),
   });
+  const dashboardScopeKey = studentId ? `${orgSlug}:${studentId}` : "self";
+  const ownEvents = useRetainedQueryResult(ownEventsResult, "self");
+  const dashboardData = useRetainedQueryResult(
+    dashboardResult,
+    dashboardScopeKey,
+  );
   const storedAvatarUrl = useQuery(
     api.users.getAvatarUrl,
     dashboardData?.student.avatarStorageId
@@ -294,13 +301,6 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
       window.removeEventListener("keydown", unlock);
     };
   }, [isViewingStudentProfile]);
-
-  useEffect(() => {
-    if (activeLesson) return;
-
-    const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(tick);
-  }, [activeLesson]);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
@@ -368,8 +368,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
       stopAlarm();
       playRocketSound();
 
-      const isExternalProvider =
-        lesson.sessionType === "ignitia" || lesson.sessionType === "abeka";
+      const isExternalProvider = isExternalClassSession(lesson.sessionType);
       if (!isExternalProvider) {
         router.push(
           `${basePath}/classroom/${encodeURIComponent(lesson.roomName)}`,
@@ -505,26 +504,6 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   );
   const missedSessions = Math.max(0, completedSessions - attendedSessions);
   const upcomingCount = Math.max(0, totalSessions - completedSessions);
-  const isNextLessonLive = Boolean(
-    nextLesson &&
-      (nextLesson.status === "active" ||
-        nextLesson.isLive ||
-        nextLesson.isStudentActive ||
-        (now >= nextLesson.start && now <= nextLesson.end)),
-  );
-  const formatClassCountdown = (lesson: StudentScheduleEvent | null) => {
-    if (!lesson) return "--:--";
-    const diff = lesson.start - now;
-    if (diff <= 0) return "00:00";
-
-    const totalSeconds = Math.floor(diff / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  };
-
   const classroomCtaLabel = t("dashboard.goToClassroom");
 
   if (isViewingStudentProfile && dashboardData === undefined) {
@@ -683,7 +662,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                 </CardContent>
               </Card>
 
-              <section className="relative isolate order-3 flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card p-5 shadow-md ring-1 ring-border/80 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:z-10 after:hidden after:h-24 after:bg-gradient-to-b after:from-card after:via-card/90 after:to-card/0 after:content-[''] xl:order-none xl:min-h-0 xl:after:block">
+              <section className="relative isolate order-3 flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card p-5 shadow-md ring-1 ring-border/80 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:z-10 after:hidden after:h-20 after:bg-gradient-to-b after:from-card after:via-card/90 after:to-card/0 after:content-[''] xl:order-none xl:min-h-0 xl:after:block">
                 <div className="relative z-20">
                   <h2 className="text-xl font-bold text-foreground">
                     {t("student.myClasses")}
@@ -703,16 +682,23 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                     </div>
                   ) : (
                     classStats.map((classItem, index) => (
-                      <div
+                      <Link
                         key={classItem.classId}
+                        href={`/${orgSlug}/classes/${classItem.classId}`}
+                        aria-label={classItem.className}
                         className={cn(
-                          "relative min-h-[76px] scroll-ml-1 snap-start overflow-hidden rounded-2xl border px-4 py-3 pl-5 shadow-sm transition-shadow before:absolute before:inset-y-3 before:left-0 before:w-1 before:rounded-r-full hover:shadow-md",
+                          "relative min-h-[76px] scroll-ml-1 snap-start overflow-hidden rounded-2xl border px-4 py-3 pl-5 shadow-sm transition-colors before:absolute before:inset-y-3 before:left-0 before:w-1 before:rounded-r-full hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           COURSE_CARD_ACCENTS[
                             index % COURSE_CARD_ACCENTS.length
                           ],
                         )}
                       >
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <CurriculumIcon
+                            iconKey={classItem.curriculumIconKey}
+                            className="size-11"
+                            size={44}
+                          />
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-foreground">
                               {classItem.className}
@@ -722,7 +708,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                             </p>
                           </div>
                         </div>
-                      </div>
+                      </Link>
                     ))
                   )}
                 </div>
@@ -730,82 +716,38 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
             </div>
 
             <aside className="order-2 grid xl:order-none xl:min-h-0">
-              <section className="relative min-h-0 overflow-hidden rounded-[2rem] bg-warning p-3 shadow-lg before:absolute before:inset-0 before:bg-[url('/flexidual-bg-pattern.webp')] before:bg-cover before:bg-center before:bg-no-repeat before:opacity-30 sm:p-4 xl:min-h-0 xl:p-5">
-                <div className="relative z-10 flex h-full min-h-0 flex-col items-center justify-start text-center xl:justify-center">
-                  <div className="w-full max-w-md rounded-[1.5rem] bg-card/95 px-4 py-4 shadow-md ring-1 ring-border/30 sm:px-5 xl:rounded-[1.8rem] xl:px-6 xl:py-6">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                      {t("student.nextClass")}:
-                    </p>
-                    {nextLesson && (
-                      <div className="mt-2 flex justify-center xl:mt-3">
-                        {isNextLessonLive ? (
-                          <Badge className="gap-1.5 rounded-full bg-destructive px-2.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-white shadow-sm shadow-destructive/20 ring-1 ring-destructive/20 hover:bg-destructive motion-safe:animate-pulse xl:px-3 xl:py-1 xl:text-xs">
-                            <span className="relative flex h-1.5 w-1.5 xl:h-2 xl:w-2">
-                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
-                              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white xl:h-2 xl:w-2" />
-                            </span>
-                            {t("student.liveNow")}
-                          </Badge>
-                        ) : (
-                          <Badge className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 px-2.5 py-0.5 text-xs text-muted-foreground ring-1 ring-border/40 xl:gap-2 xl:px-3 xl:py-1 xl:text-sm">
-                            <Clock className="h-3.5 w-3.5 xl:h-4 xl:w-4" />
-                            <span className="tabular-nums">
-                              {formatClassCountdown(nextLesson)}
-                            </span>
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-                    <h3 className="mt-3 text-balance text-lg font-bold leading-tight text-foreground sm:text-xl xl:mt-4 xl:font-normal">
-                      {nextLesson
-                        ? nextLesson.className || nextLesson.title
-                        : t("student.today.noClasses")}
-                    </h3>
-                    {nextLesson && !isViewingStudentProfile && (
-                      <Button
-                        onClick={() => handleClassroomCta(nextLesson)}
-                        aria-busy={Boolean(ctaLaunchingLesson)}
-                        className="group relative mt-4 h-10 overflow-hidden rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
-                      >
-                        <RocketLaunchButtonContent
-                          label={classroomCtaLabel}
-                          isLaunching={Boolean(ctaLaunchingLesson)}
-                          onComplete={handleClassroomCtaComplete}
-                        />
-                      </Button>
-                    )}
-                  </div>
-                  {laterTodayLessons.length > 0 ? (
-                    <div className="mt-3 w-full max-w-md rounded-[1.25rem] bg-card/90 p-3 text-left shadow-sm ring-1 ring-border/20 xl:mt-4 xl:rounded-[1.5rem] xl:p-4">
-                      <p className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground xl:mb-3">
-                        {t("student.today.laterToday")}
-                      </p>
-                      <div className="space-y-2 xl:space-y-3">
-                        {laterTodayLessons.map((lesson) => (
-                          <span
-                            key={lesson.scheduleId}
-                            className="block min-w-0"
-                          >
-                            <span className="line-clamp-1 text-sm font-bold text-foreground">
-                              {lesson.className || lesson.title}
-                            </span>
-                            <span className="mt-0.5 block text-xs font-semibold text-muted-foreground">
-                              {format(lesson.start, "h:mm a", {
-                                locale: currentDateLocale,
-                              })}
-                            </span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    nextLesson && (
-                      <p className="mt-4 rounded-full bg-card/75 px-4 py-2 text-sm font-semibold text-foreground/75">
-                        {t("student.today.doneForToday")}
-                      </p>
-                    )
-                  )}
-                  {!isViewingStudentProfile && (
+              <NextClassPanel
+                nextClass={
+                  nextLesson
+                    ? {
+                        id: nextLesson.scheduleId,
+                        title: nextLesson.className || nextLesson.title,
+                        start: nextLesson.start,
+                        end: nextLesson.end,
+                        status: nextLesson.status,
+                        isLive: nextLesson.isLive,
+                        isParticipantActive: nextLesson.isStudentActive,
+                        sessionType: nextLesson.sessionType ?? "live",
+                      }
+                    : null
+                }
+                action={
+                  nextLesson && !isViewingStudentProfile ? (
+                    <Button
+                      onClick={() => handleClassroomCta(nextLesson)}
+                      aria-busy={Boolean(ctaLaunchingLesson)}
+                      className="group relative mt-4 h-10 overflow-hidden rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
+                    >
+                      <RocketLaunchButtonContent
+                        label={classroomCtaLabel}
+                        isLaunching={Boolean(ctaLaunchingLesson)}
+                        onComplete={handleClassroomCtaComplete}
+                      />
+                    </Button>
+                  ) : undefined
+                }
+                footer={
+                  !isViewingStudentProfile ? (
                     <Button
                       asChild
                       variant="ghost"
@@ -817,9 +759,29 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                         {t("student.today.viewCalendar")}
                       </Link>
                     </Button>
-                  )}
-                </div>
-              </section>
+                  ) : undefined
+                }
+              >
+                {laterTodayLessons.length > 0 ? (
+                  <NextClassPreview
+                    label={t("student.today.laterToday")}
+                    items={laterTodayLessons.map((lesson) => ({
+                      id: lesson.scheduleId,
+                      title: lesson.className || lesson.title,
+                      meta: format(lesson.start, "h:mm a", {
+                        locale: currentDateLocale,
+                      }),
+                      sessionType: lesson.sessionType ?? "live",
+                    }))}
+                  />
+                ) : (
+                  nextLesson && (
+                    <p className="mt-4 rounded-full bg-card/75 px-4 py-2 text-sm font-semibold text-foreground/75">
+                      {t("student.today.doneForToday")}
+                    </p>
+                  )
+                )}
+              </NextClassPanel>
             </aside>
           </div>
         </div>

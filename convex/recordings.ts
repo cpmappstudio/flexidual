@@ -2,6 +2,12 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { getCurrentUserFromAuth } from "./users";
 import { canAccessClass } from "./permissions";
+import { getClassTimeZone } from "./model/timeZone";
+import { isExternalClassSession } from "../lib/class-session";
+
+const RECENT_PAST_CLASS_LIMIT = 8;
+const RECENT_PAST_CLASS_SCAN_LIMIT = 24;
+const RECORDING_PART_LIMIT = 10;
 
 const recordingValidator = v.object({
   _id: v.id("recordings"),
@@ -22,6 +28,21 @@ const recordingValidator = v.object({
   fileSize: v.optional(v.number()),
   startedAt: v.number(),
   completedAt: v.optional(v.number()),
+});
+
+const pastClassValidator = v.object({
+  scheduleId: v.id("classSchedule"),
+  lessonIds: v.array(v.id("lessons")),
+  title: v.union(v.string(), v.null()),
+  start: v.number(),
+  end: v.number(),
+  timeZone: v.string(),
+  sessionType: v.union(
+    v.literal("live"),
+    v.literal("ignitia"),
+    v.literal("abeka"),
+  ),
+  hasRecording: v.boolean(),
 });
 
 // ============================================================================
@@ -120,6 +141,66 @@ export const getByRoom = internalQuery({
 // PUBLIC QUERIES
 // ============================================================================
 
+export const listRecentPastClasses = query({
+  args: {
+    classId: v.id("classes"),
+    now: v.number(),
+  },
+  returns: v.array(pastClassValidator),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) return [];
+
+    const classData = await ctx.db.get("classes", args.classId);
+    if (!classData || !(await canAccessClass(ctx, user._id, classData))) {
+      return [];
+    }
+
+    const candidates = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_class", (q) =>
+        q.eq("classId", args.classId).lt("scheduledStart", args.now),
+      )
+      .order("desc")
+      .take(RECENT_PAST_CLASS_SCAN_LIMIT);
+    const schedules = candidates
+      .filter(
+        (schedule) =>
+          schedule.scheduledEnd <= args.now &&
+          schedule.status !== "cancelled" &&
+          schedule.status !== "active" &&
+          !schedule.isLive,
+      )
+      .slice(0, RECENT_PAST_CLASS_LIMIT);
+    const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
+
+    return await Promise.all(
+      schedules.map(async (schedule) => {
+        const sessionType = schedule.sessionType ?? ("live" as const);
+        const recordings = isExternalClassSession(sessionType)
+          ? []
+          : await ctx.db
+              .query("recordings")
+              .withIndex("by_schedule", (q) =>
+                q.eq("scheduleId", schedule._id).eq("status", "complete"),
+              )
+              .take(RECORDING_PART_LIMIT);
+
+        return {
+          scheduleId: schedule._id,
+          lessonIds: schedule.lessonIds ?? [],
+          title: schedule.title ?? null,
+          start: schedule.scheduledStart,
+          end: schedule.scheduledEnd,
+          timeZone,
+          sessionType,
+          hasRecording: recordings.some((recording) => Boolean(recording.url)),
+        };
+      }),
+    );
+  },
+});
+
 /**
  * Get all complete recordings for a given schedule.
  * Access rules:
@@ -158,6 +239,8 @@ export const getBySchedule = query({
         .first();
       if (!attendedSession) return [];
     }
+
+    if (isExternalClassSession(schedule.sessionType)) return [];
 
     const recordings = await ctx.db
       .query("recordings")

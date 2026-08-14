@@ -27,7 +27,9 @@ import {
   DEFAULT_SCHEDULE_START_MINUTES,
 } from "@/lib/academic-settings";
 
-export type CourseClassFormat = "live" | "ignitia" | "abeka";
+import type { ClassSessionType } from "@/lib/class-session";
+
+export type CourseClassFormat = ClassSessionType;
 
 export type CourseWeeklySlot = {
   id: string;
@@ -73,9 +75,7 @@ const liveFormatClasses = "border-primary/40 bg-primary/20 text-primary";
 
 function getFormatClasses(sessionType: CourseClassFormat) {
   const provider = getCalendarProviderAppearanceClasses(sessionType);
-  return provider
-    ? cn(provider.event, provider.text)
-    : liveFormatClasses;
+  return provider ? cn(provider.event, provider.text) : liveFormatClasses;
 }
 
 function getPointerMinutes(

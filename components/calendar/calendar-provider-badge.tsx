@@ -1,11 +1,12 @@
 import { Badge } from "@/components/ui/badge";
+import type { ClassSessionType } from "@/lib/class-session";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { CalendarProviderMark } from "./calendar-provider-mark";
 import { getCalendarProviderAppearanceClasses } from "./calendar-tailwind-classes";
 
 type CalendarProviderBadgeProps = {
-  sessionType: "live" | "ignitia" | "abeka";
+  sessionType: ClassSessionType;
   isPast?: boolean;
   className?: string;
   markClassName?: string;

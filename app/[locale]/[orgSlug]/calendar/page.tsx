@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -27,6 +27,7 @@ import { ScheduleItem } from "@/components/schedule/schedule-item";
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { getRoleForOrg } from "@/lib/rbac";
 import {
   getCalendarUtcRange,
@@ -292,29 +293,16 @@ function CalendarContent() {
         }
       : "skip",
   );
-  const retainedScheduleRef = useRef<{
-    scopeKey: string;
-    data: Exclude<typeof scheduleResult, undefined>;
-  } | null>(null);
-
-  useEffect(() => {
-    if (scheduleResult !== undefined && scopeKey) {
-      retainedScheduleRef.current = { scopeKey, data: scheduleResult };
-    }
-  }, [scheduleResult, scopeKey]);
-
   useEffect(() => {
     setSelectedCourseId(classIdParam);
     setSelectedTeacherId(null);
     setSelectedGradeCode(null);
   }, [classIdParam, scopeKey]);
 
-  const retainedSchedule = retainedScheduleRef.current;
-  const scheduleData =
-    scheduleResult ??
-    (retainedSchedule && retainedSchedule.scopeKey === scopeKey
-      ? retainedSchedule.data
-      : undefined);
+  const scheduleData = useRetainedQueryResult(
+    scheduleResult,
+    scopeKey ?? "unresolved",
+  );
   const tCalendar = useTranslations("calendar");
 
   const allEvents = useMemo(() => {

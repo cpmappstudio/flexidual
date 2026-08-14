@@ -18,7 +18,6 @@ import {
 import {
   addCivilDays,
   civilDayNumber,
-  getWeeklyOccurrenceStarts,
   isValidTimeZone,
   localDateTimeToUtc,
   toCivilDate,
@@ -54,6 +53,17 @@ import {
   listCatalogCourses,
 } from "./model/catalog";
 import { deriveClassType } from "./model/classType";
+import { curriculumIconValidator } from "./model/curriculumIcons";
+import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
+import {
+  areWeeklySchedulesEqual,
+  courseWeeklySlotValidator,
+  inferWeeklySchedule,
+  isValidWeeklySchedule,
+  planWeeklyCourseOccurrences,
+  type CourseWeeklySlotConfig,
+  type PlannedCourseOccurrence,
+} from "./model/courseSchedule";
 
 const classFields = {
   _id: v.id("classes"),
@@ -75,6 +85,7 @@ const classFields = {
   endDate: v.optional(v.number()),
   timeZone: v.optional(v.string()),
   liveAccess: v.optional(liveAccessValidator),
+  weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
   isActive: v.boolean(),
   createdAt: v.number(),
   createdBy: v.id("users"),
@@ -407,6 +418,7 @@ export const listWeeklyScheduleGuides = query({
     campusId: v.id("campuses"),
     academicPeriodId: v.id("academicPeriods"),
     gradeCode: v.string(),
+    excludeClassId: v.optional(v.id("classes")),
   },
   returns: v.array(
     v.object({
@@ -449,54 +461,61 @@ export const listWeeklyScheduleGuides = query({
         .collect(),
     ]);
     const rows = await Promise.all(
-      classes.map(async (classData) => {
-        const timeZone =
-          classData.timeZone ?? campus.timeZone ?? school?.timeZone;
-        if (!timeZone) return [];
+      classes
+        .filter((classData) => classData._id !== args.excludeClassId)
+        .map(async (classData) => {
+          const timeZone =
+            classData.timeZone ?? campus.timeZone ?? school?.timeZone;
+          if (!timeZone) return [];
 
-        const schedules = await ctx.db
-          .query("classSchedule")
-          .withIndex("by_class_recurrence_parent", (q) =>
-            q.eq("classId", classData._id).eq("recurrenceParentId", undefined),
-          )
-          .collect();
+          const schedules = await ctx.db
+            .query("classSchedule")
+            .withIndex("by_class_recurrence_parent", (q) =>
+              q
+                .eq("classId", classData._id)
+                .eq("recurrenceParentId", undefined),
+            )
+            .collect();
 
-        return schedules.flatMap((schedule) => {
-          if (
-            schedule.status === "cancelled" ||
-            !schedule.isRecurring ||
-            schedule.recurrenceParentId
-          ) {
-            return [];
-          }
-          const localStart = utcToLocalDateTime(
-            schedule.scheduledStart,
-            timeZone,
-          );
-          const localEnd = utcToLocalDateTime(schedule.scheduledEnd, timeZone);
-          if (localStart.slice(0, 10) !== localEnd.slice(0, 10)) return [];
+          return schedules.flatMap((schedule) => {
+            if (
+              schedule.status === "cancelled" ||
+              !schedule.isRecurring ||
+              schedule.recurrenceParentId
+            ) {
+              return [];
+            }
+            const localStart = utcToLocalDateTime(
+              schedule.scheduledStart,
+              timeZone,
+            );
+            const localEnd = utcToLocalDateTime(
+              schedule.scheduledEnd,
+              timeZone,
+            );
+            if (localStart.slice(0, 10) !== localEnd.slice(0, 10)) return [];
 
-          const startMinutes =
-            Number(localStart.slice(11, 13)) * 60 +
-            Number(localStart.slice(14, 16));
-          const endMinutes =
-            Number(localEnd.slice(11, 13)) * 60 +
-            Number(localEnd.slice(14, 16));
+            const startMinutes =
+              Number(localStart.slice(11, 13)) * 60 +
+              Number(localStart.slice(14, 16));
+            const endMinutes =
+              Number(localEnd.slice(11, 13)) * 60 +
+              Number(localEnd.slice(14, 16));
 
-          return [
-            {
-              scheduleId: schedule._id,
-              classId: classData._id,
-              className: classData.name,
-              dayOfWeek: new Date(
-                civilDayNumber(localStart.slice(0, 10)) * 86_400_000,
-              ).getUTCDay(),
-              startMinutes,
-              endMinutes,
-            },
-          ];
-        });
-      }),
+            return [
+              {
+                scheduleId: schedule._id,
+                classId: classData._id,
+                className: classData.name,
+                dayOfWeek: new Date(
+                  civilDayNumber(localStart.slice(0, 10)) * 86_400_000,
+                ).getUTCDay(),
+                startMinutes,
+                endMinutes,
+              },
+            ];
+          });
+        }),
     );
 
     return rows
@@ -520,6 +539,9 @@ export const get = query({
       ...classFields,
       timeZone: v.optional(v.string()),
       curriculumTitle: v.string(),
+      curriculumIconKey: curriculumIconValidator,
+      teacherName: v.optional(v.string()),
+      gradeName: v.optional(v.string()),
     }),
     v.null(),
   ),
@@ -532,126 +554,31 @@ export const get = query({
     }
 
     const curriculum = await ctx.db.get(classData.curriculumId);
-    const timeZone = await getClassTimeZone(ctx, classData);
+    const schoolId = classData.schoolId ?? curriculum?.schoolId;
+    const gradeCode = classData.gradeCode;
+    const [timeZone, teacher, grade] = await Promise.all([
+      getClassTimeZone(ctx, classData),
+      classData.teacherId ? ctx.db.get(classData.teacherId) : null,
+      gradeCode && schoolId
+        ? ctx.db
+            .query("institutionGrades")
+            .withIndex("by_school_and_code", (q) =>
+              q.eq("schoolId", schoolId).eq("code", gradeCode),
+            )
+            .unique()
+        : null,
+    ]);
 
     return {
       ...classData,
       students: await listClassStudentIds(ctx, classData),
       academicYear: await getClassAcademicYear(ctx, classData),
       timeZone,
+      weeklySlots: await getCourseWeeklySlots(ctx, classData, timeZone),
       curriculumTitle: curriculum?.title || "Unknown Curriculum",
-    };
-  },
-});
-
-/**
- * Get class with enriched data (teacher, curriculum, student details)
- */
-export const getWithDetails = query({
-  args: { id: v.id("classes") },
-  returns: v.union(
-    v.object({
-      ...classFields,
-      timeZone: v.optional(v.string()),
-      teacher: v.union(
-        v.null(),
-        v.object({
-          _id: v.id("users"),
-          fullName: v.string(),
-          email: v.optional(v.string()),
-          avatarStorageId: v.optional(v.id("_storage")),
-        }),
-      ),
-      tutor: v.union(
-        v.null(),
-        v.object({
-          _id: v.id("users"),
-          fullName: v.string(),
-          email: v.optional(v.string()),
-          avatarStorageId: v.optional(v.id("_storage")),
-        }),
-      ),
-      curriculum: v.union(
-        v.null(),
-        v.object({
-          _id: v.id("curriculums"),
-          title: v.string(),
-          code: v.optional(v.string()),
-          color: v.optional(v.string()),
-        }),
-      ),
-      studentDetails: v.array(
-        v.object({
-          _id: v.id("users"),
-          fullName: v.string(),
-          email: v.optional(v.string()),
-          avatarStorageId: v.optional(v.id("_storage")),
-        }),
-      ),
-    }),
-    v.null(),
-  ),
-  handler: async (ctx, args) => {
-    const user = await getCurrentUserOrThrow(ctx);
-    const classData = await ctx.db.get(args.id);
-    if (!classData) return null;
-    if (!(await canAccessClass(ctx, user._id, classData))) {
-      throw new ConvexError("PERMISSION_DENIED");
-    }
-
-    const teacher = classData.teacherId
-      ? await ctx.db.get(classData.teacherId)
-      : null;
-    const curriculum = await ctx.db.get(classData.curriculumId);
-    const timeZone = await getClassTimeZone(ctx, classData);
-
-    // Handle optional tutor
-    let tutor = null;
-    if (classData.tutorId) {
-      tutor = await ctx.db.get(classData.tutorId);
-    }
-
-    // Get student details
-    const studentIds = await listClassStudentIds(ctx, classData);
-    const students = await Promise.all(studentIds.map((id) => ctx.db.get(id)));
-
-    return {
-      ...classData,
-      students: studentIds,
-      academicYear: await getClassAcademicYear(ctx, classData),
-      timeZone,
-      teacher: teacher
-        ? {
-            _id: teacher._id,
-            fullName: teacher.fullName,
-            email: teacher.email,
-            avatarStorageId: teacher.avatarStorageId,
-          }
-        : null,
-      tutor: tutor
-        ? {
-            _id: tutor._id,
-            fullName: tutor.fullName,
-            email: tutor.email,
-            avatarStorageId: tutor.avatarStorageId,
-          }
-        : null,
-      curriculum: curriculum
-        ? {
-            _id: curriculum._id,
-            title: curriculum.title,
-            code: curriculum.code,
-            color: curriculum.color,
-          }
-        : null,
-      studentDetails: students
-        .filter((s) => s !== null)
-        .map((s) => ({
-          _id: s!._id,
-          fullName: s!.fullName,
-          email: s!.email,
-          avatarStorageId: s!.avatarStorageId,
-        })),
+      curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
+      teacherName: teacher?.fullName,
+      gradeName: grade?.name,
     };
   },
 });
@@ -828,8 +755,6 @@ export const checkStudentCurriculumEnrollment = internalQuery({
 // ============================================================================
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_WEEKLY_SLOTS = 14;
-const MAX_OCCURRENCES_PER_SLOT = 60;
 
 async function isTeacherInInstitution(
   ctx: MutationCtx,
@@ -872,6 +797,375 @@ async function isTeacherInInstitution(
   return campuses.some((campus) => campus?.schoolId === schoolId);
 }
 
+async function getCourseWeeklySlots(
+  ctx: QueryCtx | MutationCtx,
+  classData: Doc<"classes">,
+  timeZone?: string,
+) {
+  if (classData.weeklySlots) return classData.weeklySlots;
+  if (!timeZone) return [];
+
+  const scheduleParents = await ctx.db
+    .query("classSchedule")
+    .withIndex("by_class_recurrence_parent", (q) =>
+      q.eq("classId", classData._id).eq("recurrenceParentId", undefined),
+    )
+    .take(100);
+  return inferWeeklySchedule(scheduleParents, timeZone);
+}
+
+async function validateExistingScheduleForTeacher(
+  ctx: MutationCtx,
+  classData: Doc<"classes">,
+  teacherId: Id<"users">,
+  className: string,
+) {
+  const now = Date.now();
+  const schedules = await ctx.db
+    .query("classSchedule")
+    .withIndex("by_class", (q) =>
+      q.eq("classId", classData._id).gte("scheduledStart", now),
+    )
+    .collect();
+  const plannedClasses: PlannedCourseOccurrence[] = schedules
+    .filter(
+      (schedule) =>
+        schedule.status !== "cancelled" &&
+        schedule.sessionType !== "ignitia" &&
+        schedule.sessionType !== "abeka",
+    )
+    .map((schedule, index) => ({
+      slotIndex: index,
+      occurrenceIndex: 0,
+      dayOfWeek: 0,
+      start: schedule.scheduledStart,
+      end: schedule.scheduledEnd,
+      sessionType: "live" as const,
+    }));
+
+  await validateTeacherScheduleConflicts(ctx, {
+    teacherId,
+    plannedClasses,
+    className,
+    excludeClassId: classData._id,
+  });
+}
+
+function assertNoCourseScheduleOverlap(
+  plannedClasses: PlannedCourseOccurrence[],
+  preservedSchedules: Doc<"classSchedule">[] = [],
+) {
+  const sorted = [...plannedClasses].sort((a, b) => a.start - b.start);
+  for (let index = 1; index < sorted.length; index++) {
+    if (sorted[index].start < sorted[index - 1].end) {
+      throw new ConvexError("COURSE_CLASS_OVERLAP");
+    }
+  }
+
+  if (
+    sorted.some((planned) =>
+      preservedSchedules.some(
+        (schedule) =>
+          schedule.status !== "cancelled" &&
+          schedule.scheduledStart < planned.end &&
+          schedule.scheduledEnd > planned.start,
+      ),
+    )
+  ) {
+    throw new ConvexError("COURSE_CLASS_OVERLAP");
+  }
+}
+
+async function validateTeacherScheduleConflicts(
+  ctx: MutationCtx,
+  {
+    teacherId,
+    plannedClasses,
+    className,
+    excludeClassId,
+  }: {
+    teacherId: Id<"users">;
+    plannedClasses: PlannedCourseOccurrence[];
+    className: string;
+    excludeClassId?: Id<"classes">;
+  },
+) {
+  const liveClasses = plannedClasses.filter(
+    (plannedClass) => plannedClass.sessionType === "live",
+  );
+  if (liveClasses.length === 0) return;
+
+  const teacherClasses = (
+    await ctx.db
+      .query("classes")
+      .withIndex("by_teacher", (q) =>
+        q.eq("teacherId", teacherId).eq("isActive", true),
+      )
+      .collect()
+  ).filter((classData) => classData._id !== excludeClassId);
+  if (teacherClasses.length === 0) return;
+
+  const rangeStart = liveClasses[0].start;
+  const rangeEnd = liveClasses[liveClasses.length - 1].end;
+  const teacherSchedules = (
+    await Promise.all(
+      teacherClasses.map((classData) =>
+        ctx.db
+          .query("classSchedule")
+          .withIndex("by_class", (q) =>
+            q
+              .eq("classId", classData._id)
+              .gte("scheduledStart", rangeStart - DAY_MS)
+              .lte("scheduledStart", rangeEnd),
+          )
+          .collect(),
+      ),
+    )
+  )
+    .flat()
+    .filter((schedule) => schedule.status !== "cancelled");
+
+  for (const plannedClass of liveClasses) {
+    const conflict = teacherSchedules.find(
+      (schedule) =>
+        schedule.scheduledStart < plannedClass.end &&
+        schedule.scheduledEnd > plannedClass.start,
+    );
+    if (conflict) {
+      throw new ConvexError({
+        code: "TEACHER_SCHEDULE_CONFLICT",
+        className,
+        conflictTime: conflict.scheduledStart.toString(),
+      });
+    }
+  }
+}
+
+type FutureScheduleMetadata = Pick<
+  Doc<"classSchedule">,
+  "lessonIds" | "title" | "description"
+>;
+
+async function insertCourseSchedule(
+  ctx: MutationCtx,
+  {
+    classId,
+    schoolId,
+    createdBy,
+    createdAt,
+    periodEnd,
+    occurrencesBySlot,
+    metadataByOccurrence = new Map(),
+  }: {
+    classId: Id<"classes">;
+    schoolId: Id<"schools">;
+    createdBy: Id<"users">;
+    createdAt: number;
+    periodEnd: number;
+    occurrencesBySlot: PlannedCourseOccurrence[][];
+    metadataByOccurrence?: Map<string, FutureScheduleMetadata>;
+  },
+) {
+  let created = 0;
+  for (let slotIndex = 0; slotIndex < occurrencesBySlot.length; slotIndex++) {
+    const occurrences = occurrencesBySlot[slotIndex];
+    if (occurrences.length === 0) continue;
+
+    const parentRoomName = `class-${classId}-series-${createdAt}-${slotIndex}`;
+    const first = occurrences[0];
+    const firstMetadata = metadataByOccurrence.get(
+      `${first.slotIndex}:${first.occurrenceIndex}`,
+    );
+    const parentId = await ctx.db.insert("classSchedule", {
+      classId,
+      schoolId,
+      lessonIds: firstMetadata?.lessonIds ?? [],
+      title: firstMetadata?.title,
+      description: firstMetadata?.description,
+      sessionType: first.sessionType,
+      scheduledStart: first.start,
+      scheduledEnd: first.end,
+      roomName: parentRoomName,
+      isLive: false,
+      isRecurring: true,
+      recurrenceRule: JSON.stringify({
+        type: "weekly",
+        daysOfWeek: [first.dayOfWeek],
+        endDate: periodEnd,
+      }),
+      status: "scheduled",
+      createdAt,
+      createdBy,
+    });
+    created++;
+
+    for (let index = 1; index < occurrences.length; index++) {
+      const occurrence = occurrences[index];
+      const metadata = metadataByOccurrence.get(
+        `${occurrence.slotIndex}:${occurrence.occurrenceIndex}`,
+      );
+      await ctx.db.insert("classSchedule", {
+        classId,
+        schoolId,
+        lessonIds: metadata?.lessonIds ?? [],
+        title: metadata?.title,
+        description: metadata?.description,
+        sessionType: occurrence.sessionType,
+        scheduledStart: occurrence.start,
+        scheduledEnd: occurrence.end,
+        roomName: `${parentRoomName}-${index}`,
+        isLive: false,
+        isRecurring: true,
+        recurrenceParentId: parentId,
+        status: "scheduled",
+        createdAt,
+        createdBy,
+      });
+      created++;
+    }
+  }
+  return created;
+}
+
+async function replaceFutureCourseSchedule(
+  ctx: MutationCtx,
+  {
+    classData,
+    curriculum,
+    teacherId,
+    className,
+    weeklySlots,
+    updatedBy,
+  }: {
+    classData: Doc<"classes">;
+    curriculum: Doc<"curriculums">;
+    teacherId?: Id<"users">;
+    className: string;
+    weeklySlots: CourseWeeklySlotConfig[];
+    updatedBy: Id<"users">;
+  },
+) {
+  if (
+    !curriculum.schoolId ||
+    !classData.academicPeriodId ||
+    !classData.campusId
+  ) {
+    throw new ConvexError("INVALID_ACADEMIC_PERIOD");
+  }
+
+  const [academicPeriod, school, campus, schedules] = await Promise.all([
+    ctx.db.get(classData.academicPeriodId),
+    ctx.db.get(curriculum.schoolId),
+    ctx.db.get(classData.campusId),
+    ctx.db
+      .query("classSchedule")
+      .withIndex("by_class", (q) => q.eq("classId", classData._id))
+      .collect(),
+  ]);
+  if (!academicPeriod || academicPeriod.schoolId !== curriculum.schoolId) {
+    throw new ConvexError("INVALID_ACADEMIC_PERIOD");
+  }
+  if (!school) throw new ConvexError("INSTITUTION_NOT_FOUND");
+  if (!campus || campus.schoolId !== curriculum.schoolId) {
+    throw new ConvexError("INVALID_CAMPUS");
+  }
+
+  const timeZone = classData.timeZone ?? campus.timeZone ?? school.timeZone;
+  if (!timeZone || !isValidTimeZone(timeZone)) {
+    throw new ConvexError("TIME_ZONE_REQUIRED");
+  }
+  if (
+    !isValidWeeklySchedule(
+      weeklySlots,
+      school.scheduleStartMinutes ?? DEFAULT_SCHEDULE_START_MINUTES,
+      school.scheduleEndMinutes ?? DEFAULT_SCHEDULE_END_MINUTES,
+    )
+  ) {
+    throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
+  }
+
+  const now = Date.now();
+  const periodEndDate = toCivilDate(academicPeriod.endDate);
+  const periodEnd =
+    localDateTimeToUtc(`${addCivilDays(periodEndDate, 1)}T00:00`, timeZone) - 1;
+  const occurrencesBySlot = planWeeklyCourseOccurrences({
+    slots: weeklySlots,
+    periodStartDate: toCivilDate(academicPeriod.startDate),
+    periodEndDate,
+    timeZone,
+    from: now,
+  });
+  const plannedClasses = occurrencesBySlot
+    .flat()
+    .sort((a, b) => a.start - b.start);
+  const schedulesToReplace = schedules.filter(
+    (schedule) =>
+      schedule.scheduledStart >= now &&
+      (schedule.isRecurring === true ||
+        schedule.recurrenceParentId !== undefined) &&
+      schedule.status !== "active" &&
+      schedule.status !== "completed" &&
+      schedule.isLive !== true,
+  );
+  const replacedIds = new Set(
+    schedulesToReplace.map((schedule) => schedule._id),
+  );
+  assertNoCourseScheduleOverlap(
+    plannedClasses,
+    schedules.filter((schedule) => !replacedIds.has(schedule._id)),
+  );
+  if (teacherId) {
+    await validateTeacherScheduleConflicts(ctx, {
+      teacherId,
+      plannedClasses,
+      className,
+      excludeClassId: classData._id,
+    });
+  }
+
+  const metadataByOccurrence = mapFutureScheduleMetadata(
+    plannedClasses,
+    schedulesToReplace,
+    curriculum._id === classData.curriculumId,
+  );
+  await deleteSchedulesWithDependencies(ctx, schedulesToReplace);
+  await insertCourseSchedule(ctx, {
+    classId: classData._id,
+    schoolId: curriculum.schoolId,
+    createdBy: updatedBy,
+    createdAt: now,
+    periodEnd,
+    occurrencesBySlot,
+    metadataByOccurrence,
+  });
+}
+
+function mapFutureScheduleMetadata(
+  plannedClasses: PlannedCourseOccurrence[],
+  schedulesToReplace: Doc<"classSchedule">[],
+  shouldPreserve: boolean,
+) {
+  const metadataByOccurrence = new Map<string, FutureScheduleMetadata>();
+  if (!shouldPreserve) return metadataByOccurrence;
+
+  const existingMetadata = schedulesToReplace
+    .filter((schedule) => schedule.status !== "cancelled")
+    .sort((a, b) => a.scheduledStart - b.scheduledStart);
+  plannedClasses.forEach((occurrence, index) => {
+    const metadata = existingMetadata[index];
+    if (!metadata) return;
+    metadataByOccurrence.set(
+      `${occurrence.slotIndex}:${occurrence.occurrenceIndex}`,
+      {
+        lessonIds: metadata.lessonIds,
+        title: metadata.title,
+        description: metadata.description,
+      },
+    );
+  });
+  return metadataByOccurrence;
+}
+
 /**
  * Create a course and its recurring classes in one transaction.
  */
@@ -885,18 +1179,7 @@ export const createWithSchedule = mutation({
     academicPeriodId: v.id("academicPeriods"),
     gradeCode: v.string(),
     liveAccess: liveAccessValidator,
-    weeklySlots: v.array(
-      v.object({
-        dayOfWeek: v.number(),
-        startMinutes: v.number(),
-        durationMinutes: v.number(),
-        sessionType: v.union(
-          v.literal("live"),
-          v.literal("ignitia"),
-          v.literal("abeka"),
-        ),
-      }),
-    ),
+    weeklySlots: v.array(courseWeeklySlotValidator),
   },
   returns: v.object({
     classId: v.id("classes"),
@@ -907,13 +1190,6 @@ export const createWithSchedule = mutation({
     const name = args.name.trim();
 
     if (!name) throw new ConvexError("COURSE_NAME_REQUIRED");
-    if (
-      args.weeklySlots.length === 0 ||
-      args.weeklySlots.length > MAX_WEEKLY_SLOTS
-    ) {
-      throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
-    }
-
     const curriculum = await ctx.db.get(args.curriculumId);
     if (!curriculum) throw new ConvexError("CURRICULUM_NOT_FOUND");
     if (!curriculum.schoolId) throw new ConvexError("INVALID_CURRICULUM");
@@ -980,99 +1256,40 @@ export const createWithSchedule = mutation({
       throw new ConvexError("INVALID_TEACHER");
     }
 
-    for (const slot of args.weeklySlots) {
-      if (
-        !Number.isInteger(slot.dayOfWeek) ||
-        slot.dayOfWeek < 0 ||
-        slot.dayOfWeek > 6 ||
-        !Number.isInteger(slot.startMinutes) ||
-        slot.startMinutes < 0 ||
-        slot.startMinutes < scheduleStartMinutes ||
-        !Number.isInteger(slot.durationMinutes) ||
-        slot.durationMinutes < 15 ||
-        slot.durationMinutes > 8 * 60 ||
-        slot.startMinutes + slot.durationMinutes > scheduleEndMinutes
-      ) {
-        throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
-      }
+    if (
+      !isValidWeeklySchedule(
+        args.weeklySlots,
+        scheduleStartMinutes,
+        scheduleEndMinutes,
+      )
+    ) {
+      throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
     }
 
-    const occurrencesBySlot = args.weeklySlots.map((slot) => {
-      const starts = getWeeklyOccurrenceStarts({
-        startDate: periodStartDate,
-        endDate: periodEndDate,
-        timeZone,
-        dayOfWeek: slot.dayOfWeek,
-        startMinutes: slot.startMinutes,
-        limit: MAX_OCCURRENCES_PER_SLOT,
-      });
-      if (starts.length === 0) {
-        throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
-      }
-      return starts.map((start) => ({
-        start,
-        end: start + slot.durationMinutes * 60 * 1000,
-        sessionType: slot.sessionType,
-      }));
+    const occurrencesBySlot = planWeeklyCourseOccurrences({
+      slots: args.weeklySlots,
+      periodStartDate,
+      periodEndDate,
+      timeZone,
     });
+    if (occurrencesBySlot.some((occurrences) => occurrences.length === 0)) {
+      throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
+    }
 
     const plannedClasses = occurrencesBySlot
       .flat()
       .sort((a, b) => a.start - b.start);
-    for (let index = 1; index < plannedClasses.length; index++) {
-      if (plannedClasses[index].start < plannedClasses[index - 1].end) {
-        throw new ConvexError("COURSE_CLASS_OVERLAP");
-      }
-    }
-
-    const liveClasses = plannedClasses.filter(
-      (plannedClass) => plannedClass.sessionType === "live",
-    );
-    if (liveClasses.length > 0) {
-      const teacherClasses = await ctx.db
-        .query("classes")
-        .withIndex("by_teacher", (q) =>
-          q.eq("teacherId", args.teacherId).eq("isActive", true),
-        )
-        .collect();
-      const teacherSchedules = (
-        await Promise.all(
-          teacherClasses.map((classData) =>
-            ctx.db
-              .query("classSchedule")
-              .withIndex("by_class", (q) =>
-                q
-                  .eq("classId", classData._id)
-                  .gte("scheduledStart", startDate - DAY_MS)
-                  .lte("scheduledStart", endDate),
-              )
-              .collect(),
-          ),
-        )
-      )
-        .flat()
-        .filter((schedule) => schedule.status !== "cancelled");
-
-      for (const plannedClass of liveClasses) {
-        const conflict = teacherSchedules.find(
-          (schedule) =>
-            schedule.scheduledStart < plannedClass.end &&
-            schedule.scheduledEnd > plannedClass.start,
-        );
-        if (conflict) {
-          throw new ConvexError({
-            code: "TEACHER_SCHEDULE_CONFLICT",
-            className: name,
-            conflictTime: conflict.scheduledStart.toString(),
-          });
-        }
-      }
-    }
+    assertNoCourseScheduleOverlap(plannedClasses);
+    await validateTeacherScheduleConflicts(ctx, {
+      teacherId: args.teacherId,
+      plannedClasses,
+      className: name,
+    });
 
     const now = Date.now();
     const classId = await ctx.db.insert("classes", {
       name,
-      description: args.description,
+      description: args.description?.trim() || undefined,
       curriculumId: args.curriculumId,
       campusId: args.campusId,
       teacherId: args.teacherId,
@@ -1087,57 +1304,21 @@ export const createWithSchedule = mutation({
       endDate,
       timeZone,
       liveAccess,
+      weeklySlots: args.weeklySlots,
       isActive: true,
       createdAt: now,
       createdBy: user._id,
       schoolId: curriculum.schoolId,
     });
 
-    let classesCreated = 0;
-    for (let slotIndex = 0; slotIndex < args.weeklySlots.length; slotIndex++) {
-      const slot = args.weeklySlots[slotIndex];
-      const occurrences = occurrencesBySlot[slotIndex];
-      const parentRoomName = `class-${classId}-series-${now}-${slotIndex}`;
-      const parentId = await ctx.db.insert("classSchedule", {
-        classId,
-        schoolId: curriculum.schoolId,
-        lessonIds: [],
-        sessionType: slot.sessionType,
-        scheduledStart: occurrences[0].start,
-        scheduledEnd: occurrences[0].end,
-        roomName: parentRoomName,
-        isLive: false,
-        isRecurring: true,
-        recurrenceRule: JSON.stringify({
-          type: "weekly",
-          daysOfWeek: [slot.dayOfWeek],
-          endDate,
-        }),
-        status: "scheduled",
-        createdAt: now,
-        createdBy: user._id,
-      });
-      classesCreated++;
-
-      for (let index = 1; index < occurrences.length; index++) {
-        await ctx.db.insert("classSchedule", {
-          classId,
-          schoolId: curriculum.schoolId,
-          lessonIds: [],
-          sessionType: slot.sessionType,
-          scheduledStart: occurrences[index].start,
-          scheduledEnd: occurrences[index].end,
-          roomName: `${parentRoomName}-${index}`,
-          isLive: false,
-          isRecurring: true,
-          recurrenceParentId: parentId,
-          status: "scheduled",
-          createdAt: now,
-          createdBy: user._id,
-        });
-        classesCreated++;
-      }
-    }
+    const classesCreated = await insertCourseSchedule(ctx, {
+      classId,
+      schoolId: curriculum.schoolId,
+      createdBy: user._id,
+      createdAt: now,
+      periodEnd: endDate,
+      occurrencesBySlot,
+    });
 
     return { classId, classesCreated };
   },
@@ -1150,15 +1331,12 @@ export const update = mutation({
   args: {
     classId: v.id("classes"),
     name: v.optional(v.string()),
-    description: v.optional(v.string()),
+    description: v.optional(v.union(v.string(), v.null())),
     teacherId: v.optional(v.id("users")),
     curriculumId: v.optional(v.id("curriculums")),
     gradeCode: v.optional(v.string()),
     liveAccess: v.optional(liveAccessValidator),
-    tutorId: v.optional(v.union(v.id("users"), v.null())),
-    startDate: v.optional(v.number()),
-    endDate: v.optional(v.number()),
-    isActive: v.optional(v.boolean()),
+    weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1218,36 +1396,84 @@ export const update = mutation({
             args.liveAccess,
           );
 
-    // Validate new teacher if changing
     if (args.teacherId) {
       const teacher = await ctx.db.get(args.teacherId);
-      if (!teacher) throw new Error("Invalid teacher");
+      if (!teacher) throw new ConvexError("INVALID_TEACHER");
       const isTeacher = await isTeacherInInstitution(
         ctx,
         args.teacherId,
         targetCurriculum.schoolId,
         classData.campusId,
       );
-      if (!isTeacher) throw new Error("Invalid teacher");
+      if (!isTeacher) throw new ConvexError("INVALID_TEACHER");
     }
 
-    const { classId, tutorId, ...updates } = args;
-
-    // Convert null to undefined for optional fields
-    const cleanUpdates: Partial<Doc<"classes">> = {
-      ...updates,
-      ...(liveAccess !== undefined && { liveAccess }),
-    };
-    if (tutorId !== undefined) {
-      cleanUpdates.tutorId = tutorId ?? undefined;
+    const name = args.name?.trim();
+    if (args.name !== undefined && !name) {
+      throw new ConvexError("COURSE_NAME_REQUIRED");
     }
 
-    // Protect against accidentally clearing the class name during edits
-    if (cleanUpdates.name !== undefined && cleanUpdates.name.trim() === "") {
-      delete cleanUpdates.name;
+    const curriculumChanged = targetCurriculum._id !== classData.curriculumId;
+    const currentWeeklySlots =
+      args.weeklySlots === undefined && !curriculumChanged
+        ? undefined
+        : await getCourseWeeklySlots(
+            ctx,
+            classData,
+            await getClassTimeZone(ctx, classData),
+          );
+    const effectiveWeeklySlots = args.weeklySlots ?? currentWeeklySlots ?? [];
+    const scheduleChanged =
+      args.weeklySlots !== undefined &&
+      !areWeeklySchedulesEqual(currentWeeklySlots ?? [], args.weeklySlots);
+    const shouldPersistWeeklySlots =
+      args.weeklySlots !== undefined &&
+      (scheduleChanged || classData.weeklySlots === undefined);
+
+    if (
+      (scheduleChanged || curriculumChanged) &&
+      effectiveWeeklySlots.length > 0
+    ) {
+      await replaceFutureCourseSchedule(ctx, {
+        classData,
+        curriculum: targetCurriculum,
+        teacherId: args.teacherId ?? classData.teacherId,
+        className: name ?? classData.name,
+        weeklySlots: effectiveWeeklySlots,
+        updatedBy: user._id,
+      });
+    } else if (
+      args.teacherId !== undefined &&
+      args.teacherId !== classData.teacherId
+    ) {
+      await validateExistingScheduleForTeacher(
+        ctx,
+        classData,
+        args.teacherId,
+        name ?? classData.name,
+      );
     }
 
-    await ctx.db.patch(classId, cleanUpdates);
+    const cleanUpdates: Partial<Doc<"classes">> = {};
+    if (args.name !== undefined) cleanUpdates.name = name!;
+    if (args.description !== undefined) {
+      cleanUpdates.description = args.description?.trim() || undefined;
+    }
+    if (args.teacherId !== undefined) cleanUpdates.teacherId = args.teacherId;
+    if (args.curriculumId !== undefined) {
+      cleanUpdates.curriculumId = args.curriculumId;
+    }
+    if (args.gradeCode !== undefined) cleanUpdates.gradeCode = args.gradeCode;
+    if (liveAccess !== undefined) cleanUpdates.liveAccess = liveAccess;
+    if (shouldPersistWeeklySlots && args.weeklySlots) {
+      cleanUpdates.weeklySlots = args.weeklySlots;
+      cleanUpdates.classType = deriveClassType(
+        args.weeklySlots.map((slot) => slot.sessionType),
+      );
+    }
+
+    await ctx.db.patch(args.classId, cleanUpdates);
+    return null;
   },
 });
 
@@ -1386,123 +1612,6 @@ export const removeStudent = mutation({
       )
       .unique();
     if (enrollment) await ctx.db.delete(enrollment._id);
-  },
-});
-
-/**
- * Bulk add students to class
- */
-export const addStudents = mutation({
-  args: {
-    classId: v.id("classes"),
-    studentIds: v.array(v.id("users")),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const user = await getCurrentUserOrThrow(ctx);
-
-    const classData = await ctx.db.get(args.classId);
-    if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
-
-    const curriculum = await ctx.db.get(classData.curriculumId);
-
-    const isAuthorizedAdmin = await canManageClasses(
-      ctx,
-      user._id,
-      classData.campusId,
-      curriculum?.schoolId,
-    );
-    if (!isAuthorizedAdmin) {
-      throw new ConvexError(
-        "PERMISSION_DENIED: Only administrators can add students to this class.",
-      );
-    }
-
-    const students = await Promise.all(
-      args.studentIds.map((id) => ctx.db.get(id)),
-    );
-    if (students.some((s) => !s)) throw new ConvexError("INVALID_STUDENTS");
-    if (!curriculum?.schoolId) throw new ConvexError("INVALID_CURRICULUM");
-    const memberships = await Promise.all(
-      args.studentIds.map((studentId) =>
-        getStudentMembership(
-          ctx,
-          studentId,
-          curriculum.schoolId!,
-          classData.campusId,
-        ),
-      ),
-    );
-    const studentGrades = await Promise.all(
-      args.studentIds.map((studentId) =>
-        getStudentGradeCode(
-          ctx,
-          studentId,
-          curriculum.schoolId!,
-          classData.campusId,
-        ),
-      ),
-    );
-    const allowedGrades = classData.gradeCode
-      ? [classData.gradeCode]
-      : curriculum.gradeCodes;
-    if (
-      students.some(
-        (student, index) =>
-          !student ||
-          !memberships[index] ||
-          (allowedGrades?.length &&
-            (!studentGrades[index] ||
-              !allowedGrades.includes(studentGrades[index]!))),
-      )
-    ) {
-      throw new ConvexError("INVALID_STUDENTS");
-    }
-
-    await ensureClassEnrollmentsMigrated(ctx, classData, user._id);
-    const existingEnrollments = await ctx.db
-      .query("classEnrollments")
-      .withIndex("by_class", (q) => q.eq("classId", args.classId))
-      .collect();
-    const enrolledIds = new Set(
-      existingEnrollments.map((enrollment) => enrollment.studentId),
-    );
-    const newStudents = [...new Set(args.studentIds)].filter(
-      (id) => !enrolledIds.has(id),
-    );
-
-    // Check for curriculum conflicts for each new student
-    for (const studentId of newStudents) {
-      const conflictCheck = await ctx.runQuery(
-        internal.classes.checkStudentCurriculumEnrollment,
-        {
-          studentId,
-          curriculumId: classData.curriculumId,
-          excludeClassId: args.classId,
-        },
-      );
-
-      if (conflictCheck.hasConflict) {
-        throw new ConvexError({
-          code: "CURRICULUM_CONFLICT",
-          className: conflictCheck.className,
-          curriculumTitle: conflictCheck.curriculumTitle,
-        });
-      }
-    }
-
-    const now = Date.now();
-    await Promise.all(
-      newStudents.map((studentId) =>
-        ctx.db.insert("classEnrollments", {
-          classId: args.classId,
-          studentId,
-          enrolledAt: now,
-          enrolledBy: user._id,
-        }),
-      ),
-    );
-    return null;
   },
 });
 

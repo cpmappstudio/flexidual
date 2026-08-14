@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Loader2 } from "lucide-react";
-import { useParams } from "next/navigation";
+import type { FunctionReturnType } from "convex/server";
+import { Loader2, Trash2 } from "lucide-react";
+import { useParams, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -31,26 +32,73 @@ import { useSettingsContext } from "@/hooks/use-settings-context";
 import { Link, useRouter } from "@/i18n/navigation";
 import { todayInTimeZone } from "@/lib/time-zone";
 import { useStaffAccess } from "@/hooks/use-staff-access";
+import { useAlert } from "@/components/providers/alert-provider";
+import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
+
+type CourseDetails = NonNullable<FunctionReturnType<typeof api.classes.get>>;
+
+function CourseEditorSkeleton() {
+  return (
+    <div className="w-full space-y-8">
+      <Skeleton className="h-12 w-64" />
+      <Skeleton className="h-[420px] w-full" />
+    </div>
+  );
+}
 
 export default function CreateCoursePage() {
   const t = useTranslations();
-  const locale = useLocale();
   const params = useParams();
-  const router = useRouter();
+  const searchParams = useSearchParams();
   const orgSlug = (params.orgSlug as string) || "system";
+  const editClassId = searchParams.get("edit");
+  const classToEdit = useQuery(
+    api.classes.get,
+    editClassId ? { id: editClassId as Id<"classes"> } : "skip",
+  );
+
+  if (editClassId && classToEdit === undefined) {
+    return <CourseEditorSkeleton />;
+  }
+  if (editClassId && classToEdit === null) {
+    return <div className="p-6">{t("class.notFound")}</div>;
+  }
+
+  return (
+    <CourseEditor
+      key={classToEdit?._id ?? "new-course"}
+      orgSlug={orgSlug}
+      classToEdit={classToEdit ?? undefined}
+    />
+  );
+}
+
+function CourseEditor({
+  orgSlug,
+  classToEdit,
+}: {
+  orgSlug: string;
+  classToEdit?: CourseDetails;
+}) {
+  const t = useTranslations();
+  const locale = useLocale();
+  const router = useRouter();
+  const { showAlert } = useAlert();
+  const isEditing = Boolean(classToEdit);
   const { access, isLoading: isAccessLoading } = useStaffAccess();
   const isAdmin = access?.canManageCampus ?? false;
   const orgContext = useQuery(api.organizations.resolveSlug, { slug: orgSlug });
   const { context: settingsContext, basePath: settingsBasePath } =
     useSettingsContext();
-  const schoolId = settingsContext?.institution._id;
+  const schoolId = classToEdit?.schoolId ?? settingsContext?.institution._id;
   const campusId =
-    orgContext?.type === "campus"
+    classToEdit?.campusId ??
+    (orgContext?.type === "campus"
       ? (orgContext._id as Id<"campuses">)
-      : undefined;
+      : undefined);
   const curriculums = useQuery(
     api.curriculums.list,
-    isAdmin && schoolId ? { includeInactive: false, schoolId } : "skip",
+    isAdmin && schoolId ? { includeInactive: isEditing, schoolId } : "skip",
   );
   const teachers = useQuery(
     api.users.getUsers,
@@ -71,18 +119,33 @@ export default function CreateCoursePage() {
     isAdmin && schoolId ? { schoolId } : "skip",
   );
   const createCourse = useMutation(api.classes.createWithSchedule);
+  const updateCourse = useMutation(api.classes.update);
+  const deleteCourse = useMutation(api.classes.remove);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [academicPeriodId, setAcademicPeriodId] = useState("");
-  const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false);
+  const [academicPeriodId, setAcademicPeriodId] = useState(
+    classToEdit?.academicPeriodId ?? "",
+  );
+  const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(isEditing);
   const [showExistingSchedules, setShowExistingSchedules] = useState(true);
-  const [weeklySlots, setWeeklySlots] = useState<CourseWeeklySlot[]>([]);
+  const [weeklySlots, setWeeklySlots] = useState<CourseWeeklySlot[]>(() =>
+    (classToEdit?.weeklySlots ?? []).map((slot, index) => ({
+      id: `existing-${index}-${slot.dayOfWeek}-${slot.startMinutes}`,
+      dayOfWeek: slot.dayOfWeek,
+      startMinutes: slot.startMinutes,
+      endMinutes: slot.startMinutes + slot.durationMinutes,
+      sessionType: slot.sessionType,
+    })),
+  );
   const [formData, setFormData] = useState<CourseFormData>({
-    name: "",
-    description: "",
-    curriculumId: "",
-    teacherId: "",
-    gradeCode: "",
-    liveAccess: { mode: "private", allowedGradeCodes: [] },
+    name: classToEdit?.name ?? "",
+    description: classToEdit?.description ?? "",
+    curriculumId: classToEdit?.curriculumId ?? "",
+    teacherId: classToEdit?.teacherId ?? "",
+    gradeCode: classToEdit?.gradeCode ?? "",
+    liveAccess: classToEdit?.liveAccess ?? {
+      mode: "private",
+      allowedGradeCodes: [],
+    },
   });
   const scheduleGuides = useQuery(
     api.classes.listWeeklyScheduleGuides,
@@ -90,11 +153,13 @@ export default function CreateCoursePage() {
       showExistingSchedules &&
       campusId &&
       academicPeriodId &&
-      formData.gradeCode
+      formData.gradeCode &&
+      (!isEditing || classToEdit)
       ? {
           campusId,
           academicPeriodId: academicPeriodId as Id<"academicPeriods">,
           gradeCode: formData.gradeCode,
+          excludeClassId: classToEdit?._id,
         }
       : "skip",
   );
@@ -108,8 +173,12 @@ export default function CreateCoursePage() {
   const availablePeriods = useMemo(() => {
     if (!academicSettings?.timeZone) return [];
     const today = todayInTimeZone(academicSettings.timeZone);
-    return academicSettings.periods.filter((period) => period.endDate >= today);
-  }, [academicSettings]);
+    return academicSettings.periods.filter(
+      (period) =>
+        period.endDate >= today ||
+        (isEditing && period._id === classToEdit?.academicPeriodId),
+    );
+  }, [academicSettings, classToEdit?.academicPeriodId, isEditing]);
   const dateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {
@@ -118,6 +187,16 @@ export default function CreateCoursePage() {
       }),
     [locale],
   );
+  const selectedAcademicPeriod = availablePeriods.find(
+    (period) => period._id === academicPeriodId,
+  );
+  const selectedAcademicPeriodLabel = selectedAcademicPeriod
+    ? `${selectedAcademicPeriod.name} · ${dateFormatter.format(
+        new Date(`${selectedAcademicPeriod.startDate}T00:00:00Z`),
+      )} – ${dateFormatter.format(
+        new Date(`${selectedAcademicPeriod.endDate}T00:00:00Z`),
+      )}`
+    : classToEdit?.academicYear;
   const suggestedName = useMemo(() => {
     const curriculum = curriculums?.find(
       (item) => item._id === formData.curriculumId,
@@ -140,6 +219,7 @@ export default function CreateCoursePage() {
   ]);
 
   useEffect(() => {
+    if (isEditing) return;
     if (availablePeriods.some((period) => period._id === academicPeriodId)) {
       return;
     }
@@ -153,16 +233,21 @@ export default function CreateCoursePage() {
       currentPeriod?._id ??
         (availablePeriods.length === 1 ? availablePeriods[0]._id : ""),
     );
-  }, [academicPeriodId, academicSettings?.timeZone, availablePeriods]);
+  }, [
+    academicPeriodId,
+    academicSettings?.timeZone,
+    availablePeriods,
+    isEditing,
+  ]);
 
   useEffect(() => {
-    if (isNameManuallyEdited) return;
+    if (isEditing || isNameManuallyEdited) return;
     setFormData((current) =>
       current.name === suggestedName
         ? current
         : { ...current, name: suggestedName },
     );
-  }, [isNameManuallyEdited, suggestedName]);
+  }, [isEditing, isNameManuallyEdited, suggestedName]);
 
   const isSubmitDisabled =
     !formData.name.trim() ||
@@ -170,11 +255,12 @@ export default function CreateCoursePage() {
     !formData.teacherId ||
     !formData.gradeCode ||
     !campusId ||
-    !academicPeriodId ||
-    !academicSettings?.timeZone ||
     (formData.liveAccess.mode === "school" &&
       formData.liveAccess.allowedGradeCodes.length === 0) ||
-    weeklySlots.length === 0;
+    !academicPeriodId ||
+    !academicSettings?.timeZone ||
+    weeklySlots.length === 0 ||
+    (isEditing && !classToEdit);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -182,6 +268,27 @@ export default function CreateCoursePage() {
     setIsSubmitting(true);
 
     try {
+      if (isEditing && classToEdit) {
+        await updateCourse({
+          classId: classToEdit._id,
+          name: formData.name.trim(),
+          description: formData.description.trim() || null,
+          curriculumId: formData.curriculumId as Id<"curriculums">,
+          teacherId: formData.teacherId as Id<"users">,
+          gradeCode: formData.gradeCode,
+          liveAccess: formData.liveAccess,
+          weeklySlots: weeklySlots.map((slot) => ({
+            dayOfWeek: slot.dayOfWeek,
+            startMinutes: slot.startMinutes,
+            durationMinutes: slot.endMinutes - slot.startMinutes,
+            sessionType: slot.sessionType,
+          })),
+        });
+        toast.success(t("class.updated"));
+        router.push(`/${orgSlug}/classes/${classToEdit._id}`);
+        return;
+      }
+
       const result = await createCourse({
         name: formData.name.trim(),
         description: formData.description.trim() || undefined,
@@ -200,36 +307,95 @@ export default function CreateCoursePage() {
       });
       toast.success(t("class.created"));
       router.push(`/${orgSlug}/classes/${result.classId}`);
-    } catch {
-      toast.error(t("errors.operationFailed"));
+    } catch (error: unknown) {
+      const parsedError = parseConvexError(error);
+      toast.error(
+        parsedError
+          ? getErrorMessage(parsedError, t, locale)
+          : t("errors.operationFailed"),
+      );
       setIsSubmitting(false);
     }
   };
 
+  const handleDelete = () => {
+    if (!classToEdit) return;
+    showAlert({
+      title: t("common.delete"),
+      description: t("class.deleteConfirm"),
+      confirmLabel: t("common.delete"),
+      cancelLabel: t("common.cancel"),
+      variant: "destructive",
+      onConfirm: async () => {
+        try {
+          await deleteCourse({ id: classToEdit._id });
+          toast.success(t("class.deleted"));
+          router.push(`/${orgSlug}/classes`);
+        } catch (error: unknown) {
+          const parsedError = parseConvexError(error);
+          toast.error(
+            parsedError
+              ? getErrorMessage(parsedError, t, locale)
+              : t("errors.operationFailed"),
+          );
+        }
+      },
+    });
+  };
+
+  const isEditFormLoading =
+    isEditing &&
+    (curriculums === undefined ||
+      teachers === undefined ||
+      academicSettings === undefined ||
+      grades === undefined);
+
+  if (isEditFormLoading) {
+    return <CourseEditorSkeleton />;
+  }
+
   return (
     <div className="w-full space-y-8">
       <header className="sticky top-[var(--header-height)] z-30 isolate flex items-center justify-between gap-4 py-2 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:-z-10 after:h-[calc(100%+2rem)] after:bg-gradient-to-b after:from-background after:via-background/80 after:to-background/0 after:content-['']">
-        <h1 className="text-2xl font-bold sm:text-3xl">{t("class.new")}</h1>
+        <h1 className="text-2xl font-bold sm:text-3xl">
+          {t(isEditing ? "class.edit" : "class.new")}
+        </h1>
         <div className="flex shrink-0 items-center gap-2">
+          {isEditing && (
+            <Button
+              variant="outline"
+              type="button"
+              size="icon"
+              onClick={handleDelete}
+              className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+              aria-label={t("common.delete")}
+            >
+              <Trash2 className="size-4" aria-hidden="true" />
+            </Button>
+          )}
           <Button variant="outline" type="button" asChild>
-            <Link href={`/${orgSlug}/classes`}>{t("common.cancel")}</Link>
+            <Link
+              href={
+                classToEdit
+                  ? `/${orgSlug}/classes/${classToEdit._id}`
+                  : `/${orgSlug}/classes`
+              }
+            >
+              {t("common.cancel")}
+            </Link>
           </Button>
           <Button
             type="submit"
-            form="create-course-form"
+            form="course-form"
             disabled={isSubmitting || isSubmitDisabled}
           >
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {t("class.createClass")}
+            {t(isEditing ? "common.saveChanges" : "class.createClass")}
           </Button>
         </div>
       </header>
 
-      <form
-        id="create-course-form"
-        onSubmit={handleSubmit}
-        className="space-y-10"
-      >
+      <form id="course-form" onSubmit={handleSubmit} className="space-y-10">
         <section>
           {!campusId && (
             <p className="mb-4 text-sm text-destructive">
@@ -245,6 +411,15 @@ export default function CreateCoursePage() {
             isAdmin={isAdmin}
             nameRequired
             primaryFieldsClassName="lg:grid-cols-2"
+            selectedLabels={
+              classToEdit
+                ? {
+                    curriculum: classToEdit.curriculumTitle,
+                    teacher: classToEdit.teacherName,
+                    grade: classToEdit.gradeName,
+                  }
+                : undefined
+            }
             curriculumEmptyState={
               <p className="text-sm text-muted-foreground">
                 {t("class.noCurriculums")}{" "}
@@ -291,11 +466,12 @@ export default function CreateCoursePage() {
                 <Select
                   value={academicPeriodId}
                   onValueChange={setAcademicPeriodId}
+                  disabled={isEditing}
                 >
                   <SelectTrigger className="w-full bg-sidebar">
-                    <SelectValue
-                      placeholder={t("class.selectAcademicPeriod")}
-                    />
+                    <SelectValue placeholder={t("class.selectAcademicPeriod")}>
+                      {selectedAcademicPeriodLabel}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {availablePeriods.map((period) => (
@@ -352,10 +528,18 @@ export default function CreateCoursePage() {
 
         <section className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold">
-              {t("class.weeklySchedule")}
-              {academicSettings?.timeZone && ` · ${academicSettings.timeZone}`}
-            </h2>
+            <div>
+              <h2 className="text-xl font-semibold">
+                {t("class.weeklySchedule")}
+                {academicSettings?.timeZone &&
+                  ` · ${academicSettings.timeZone}`}
+              </h2>
+              {isEditing && (
+                <p className="text-sm text-muted-foreground">
+                  {t("class.scheduleChangesFutureOnly")}
+                </p>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <Switch
                 id="show-existing-course-schedules"

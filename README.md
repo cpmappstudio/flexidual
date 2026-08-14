@@ -191,11 +191,13 @@ flexidual
 │  │  │  ├─ add-student-dialog.tsx
 │  │  │  ├─ attendance-dialog.tsx
 │  │  │  ├─ class-combined-filter.tsx
-│  │  │  ├─ class-dialog.tsx
-│  │  │  ├─ class-teacher-filter.tsx
-│  │  │  ├─ class-week-overview.tsx
+│  │  │  ├─ class-overview-sidebar.tsx
 │  │  │  ├─ classes-table.tsx
+│  │  │  ├─ course-form-fields.tsx
+│  │  │  ├─ course-live-access-fields.tsx
+│  │  │  ├─ course-weekly-calendar.tsx
 │  │  │  ├─ manage-schedule-dialog.tsx
+│  │  │  ├─ past-classes-panel.tsx
 │  │  │  └─ student-manager.tsx
 │  │  ├─ curriculums
 │  │  │  ├─ curriculum-dialog.tsx

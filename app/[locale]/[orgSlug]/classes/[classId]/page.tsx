@@ -10,29 +10,38 @@ import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { TZDate } from "@date-fns/tz";
 import {
-  ArrowRight,
+  BookOpen,
   Calendar as CalendarIcon,
-  Edit,
   ChevronLeft,
   ChevronRight,
+  Pencil,
+  Users,
 } from "lucide-react";
 
 import { StudentManager } from "@/components/teaching/classes/student-manager";
 import { Button } from "@/components/ui/button";
 import { useParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
-import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
-import { ScheduleItem } from "@/components/schedule/schedule-item";
-import { ClassDialog } from "@/components/teaching/classes/class-dialog";
+import { useLocale, useTranslations } from "next-intl";
+import { useMemo, useRef, useState } from "react";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
+import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
+import { ClassOverviewSidebar } from "@/components/teaching/classes/class-overview-sidebar";
+import {
+  NextClassPanel,
+  NextClassPreview,
+} from "@/components/schedule/next-class-panel";
+import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
+import { PastClassesPanel } from "@/components/teaching/classes/past-classes-panel";
+import type { ClassSessionType } from "@/lib/class-session";
+import { calculateCourseProgress } from "@/lib/course-progress";
 
 const ITEMS_PER_PAGE = 10;
-const SCHEDULES_PER_PAGE = 10;
 
 const classTabTriggerClassName =
-  "relative mr-3 flex-none shrink-0 rounded-lg text-xs font-medium text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none after:pointer-events-none after:absolute after:inset-x-2 after:-bottom-[11px] after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary md:text-sm";
+  "relative mr-3 flex-none shrink-0 gap-1.5 rounded-lg text-sm font-medium text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none after:pointer-events-none after:absolute after:inset-x-2 after:-bottom-[11px] after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-secondary md:text-base";
 
 const curriculumStatusBadgeClassName = {
   scheduled: "border-success/30 bg-success/10 text-success",
@@ -41,37 +50,29 @@ const curriculumStatusBadgeClassName = {
 };
 
 type ClassScheduleItem = {
-  scheduleId: Id<"classSchedule">;
   lessonIds?: Id<"lessons">[];
-  title: string;
-  description?: string;
   start: number;
   end: number;
   timeZone: string;
-  roomName: string;
-  sessionType?: "live" | "ignitia" | "abeka";
-  isLive?: boolean;
-  isRecurring?: boolean;
-  recurrenceParentId?: Id<"classSchedule">;
+  sessionType?: ClassSessionType;
 };
 
 export default function ClassDetailPage() {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const params = useParams();
   const classId = params.classId as Id<"classes">;
-  const [visibleUpcoming, setVisibleUpcoming] = useState(SCHEDULES_PER_PAGE);
-  const [visiblePast, setVisiblePast] = useState(SCHEDULES_PER_PAGE);
   const [activeTab, setActiveTab] = useState("schedule");
+  const [isLaunchingClassroom, setIsLaunchingClassroom] = useState(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
   const orgSlug = (params.orgSlug as string) || "system";
   const { access } = useStaffAccess();
   const queryNow = useCurrentMinute();
   const canManageClass = access?.canManageCampus ?? false;
-  const canManageCurriculum = access?.canManageInstitution ?? false;
+  const canViewCurriculumSettings = access?.canViewInstitutionSettings ?? false;
 
   const [roadmapPage, setRoadmapPage] = useState(1);
-  const [focusedScheduleId, setFocusedScheduleId] =
-    useState<Id<"classSchedule"> | null>(null);
 
   const classData = useQuery(api.classes.get, { id: classId });
 
@@ -80,38 +81,29 @@ export default function ClassDetailPage() {
     classData ? { curriculumId: classData.curriculumId } : "skip",
   );
 
-  const allScheduleItems = useQuery(api.schedule.getMySchedule, {
+  const scheduleResult = useQuery(api.schedule.getMySchedule, {
+    classId,
+    now: queryNow,
+    includeAttendance: false,
+    includeRecordings: false,
+  });
+  const pastClassesResult = useQuery(api.recordings.listRecentPastClasses, {
     classId,
     now: queryNow,
   });
-  const classSchedule = allScheduleItems
-    ?.filter((s) => s.classId === classId)
-    .sort((a, b) => a.start - b.start);
-
-  useEffect(() => {
-    if (activeTab !== "schedule" || !focusedScheduleId) {
-      return;
-    }
-
-    const scrollToFocusedSchedule = () => {
-      document
-        .getElementById(`schedule-${focusedScheduleId}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    };
-
-    const scrollTimers = [120, 450, 900].map((delay) =>
-      window.setTimeout(scrollToFocusedSchedule, delay),
-    );
-
-    const clearTimer = window.setTimeout(() => {
-      setFocusedScheduleId(null);
-    }, 5000);
-
-    return () => {
-      scrollTimers.forEach(window.clearTimeout);
-      window.clearTimeout(clearTimer);
-    };
-  }, [activeTab, focusedScheduleId, visiblePast, visibleUpcoming]);
+  const allScheduleItems = useRetainedQueryResult(scheduleResult, classId);
+  const pastClasses = useRetainedQueryResult(pastClassesResult, classId);
+  const classSchedule = useMemo(
+    () =>
+      (allScheduleItems ?? [])
+        .filter((schedule) => schedule.classId === classId)
+        .sort((a, b) => a.start - b.start),
+    [allScheduleItems, classId],
+  );
+  const courseProgress = useMemo(
+    () => calculateCourseProgress(classSchedule),
+    [classSchedule],
+  );
 
   if (
     classData === undefined ||
@@ -120,7 +112,13 @@ export default function ClassDetailPage() {
   ) {
     return (
       <div className="p-6 space-y-6">
-        <Skeleton className="h-12 w-1/3" />
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-16 shrink-0 rounded-lg" />
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="h-5 w-40" />
+          </div>
+        </div>
         <Skeleton className="h-[400px] w-full" />
       </div>
     );
@@ -132,69 +130,74 @@ export default function ClassDetailPage() {
   const lessonSchedules =
     classSchedule?.filter((s) => s.lessonIds && s.lessonIds.length > 0) || [];
 
-  // Get upcoming and past schedules
-  const now = Date.now();
-  const upcomingSchedules = classSchedule?.filter((s) => s.start >= now) || [];
-  const pastSchedules =
-    classSchedule?.filter((s) => s.start < now).reverse() || [];
-  const visibleUpcomingSchedules = upcomingSchedules.slice(0, visibleUpcoming);
-  const visiblePastSchedules = pastSchedules.slice(0, visiblePast);
+  const availableSchedules =
+    classSchedule?.filter(
+      (schedule) => schedule.end > queryNow && schedule.status !== "cancelled",
+    ) ?? [];
+  const nextSchedule =
+    availableSchedules.find(
+      (schedule) =>
+        schedule.status === "active" ||
+        schedule.isLive ||
+        (queryNow >= schedule.start && queryNow <= schedule.end),
+    ) ??
+    availableSchedules[0] ??
+    null;
+  const laterSchedules = nextSchedule
+    ? availableSchedules
+        .filter((schedule) => schedule.scheduleId !== nextSchedule.scheduleId)
+        .slice(0, 3)
+    : [];
   const totalRoadmapPages = Math.ceil((lessons?.length || 0) / ITEMS_PER_PAGE);
   const paginatedLessons =
     lessons?.slice(
       (roadmapPage - 1) * ITEMS_PER_PAGE,
       roadmapPage * ITEMS_PER_PAGE,
     ) || [];
-  const handleOpenSessions = (schedule: ClassScheduleItem) => {
-    setActiveTab("schedule");
-    setFocusedScheduleId(schedule.scheduleId);
-
-    if (schedule.end < Date.now()) {
-      const pastIndex = pastSchedules.findIndex(
-        (item) => item.scheduleId === schedule.scheduleId,
-      );
-      if (pastIndex >= visiblePast) {
-        setVisiblePast(pastIndex + 1);
-      }
-      return;
-    }
-
-    const upcomingIndex = upcomingSchedules.findIndex(
-      (item) => item.scheduleId === schedule.scheduleId,
-    );
-    if (upcomingIndex >= visibleUpcoming) {
-      setVisibleUpcoming(upcomingIndex + 1);
-    }
+  const handleViewAllLessons = () => {
+    setActiveTab("curriculum");
+    tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const handleClassroomLaunchComplete = () => {
+    if (!nextSchedule) return;
+    router.push(`/${orgSlug}/classroom/${nextSchedule.roomName}`);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header Area */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <h1 className="text-3xl font-bold">{classData.name}</h1>
-          {canManageClass && (
-            <ClassDialog
-              classDoc={classData}
-              onDeletedAction={() => router.push(`/${orgSlug}/classes`)}
-              trigger={
-                <Button variant="ghost" size="icon">
-                  <Edit className="h-4 w-4 text-muted-foreground" />
-                </Button>
-              }
+    <div className="grid gap-5 xl:min-h-[calc(100svh-var(--header-height)-2rem)] xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-w-0 space-y-6">
+        {/* Header Area */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <CurriculumIcon
+              iconKey={classData.curriculumIconKey}
+              size={64}
+              className="size-16"
             />
+            <div className="min-w-0 space-y-1">
+              <h1 className="text-3xl font-bold">{classData.name}</h1>
+              <p className="text-muted-foreground">
+                {t("navigation.curriculum")}:{" "}
+                <span className="font-medium text-foreground">
+                  {classData.curriculumTitle}
+                </span>
+              </p>
+            </div>
+          </div>
+          {canManageClass && (
+            <Button asChild className="shrink-0">
+              <Link
+                href={`/${orgSlug}/classes/new?edit=${classData._id}`}
+                aria-label={t("class.edit")}
+              >
+                <Pencil className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">{t("class.edit")}</span>
+              </Link>
+            </Button>
           )}
         </div>
-        <p className="text-muted-foreground">
-          {t("curriculum.title")}:{" "}
-          <span className="font-medium text-foreground">
-            {classData.curriculumTitle}
-          </span>
-        </p>
-      </div>
 
-      <div>
-        <div className="w-full min-w-0">
+        <div ref={tabsRef} className="w-full min-w-0">
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
@@ -206,160 +209,86 @@ export default function ClassDetailPage() {
                   value="schedule"
                   className={classTabTriggerClassName}
                 >
+                  <CalendarIcon className="size-4" aria-hidden="true" />
                   {t("schedule.sessions")} ({classSchedule?.length || 0})
                 </TabsTrigger>
                 <TabsTrigger
                   value="curriculum"
                   className={classTabTriggerClassName}
                 >
+                  <BookOpen className="size-4" aria-hidden="true" />
                   {t("navigation.curriculum")}
                 </TabsTrigger>
                 <TabsTrigger
                   value="students"
                   className={classTabTriggerClassName}
                 >
+                  <Users className="size-4" aria-hidden="true" />
                   {t("navigation.students")} ({classData.students.length})
                 </TabsTrigger>
               </TabsList>
             </div>
 
             {/* --- SCHEDULE TAB --- */}
-            <TabsContent value="schedule" className="space-y-4 mt-0">
-              {/* CALENDAR VIEW */}
-              <div className="space-y-6">
-                <div className="space-y-1">
-                  <h2 className="text-lg font-semibold">
-                    {t("schedule.sessions")}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {t("schedule.sessionsDescription")}
-                  </p>
-                </div>
-
-                {(upcomingSchedules.length > 0 || pastSchedules.length > 0) && (
-                  <section className="space-y-3">
-                    <h3 className="flex items-center gap-2 text-base font-semibold">
-                      {t("schedule.upcoming")}
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                        {upcomingSchedules.length}
-                      </span>
-                    </h3>
-
-                    {upcomingSchedules.length === 0 ? (
-                      <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
-                        {t("class.noUpcomingSession")}
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {visibleUpcomingSchedules.map((schedule) => (
-                          <div
-                            key={schedule.scheduleId}
-                            id={`schedule-${schedule.scheduleId}`}
-                            className={
-                              schedule.scheduleId === focusedScheduleId
-                                ? "scroll-mt-24 rounded-lg ring-2 ring-primary/60 ring-offset-2 ring-offset-background transition-all duration-300"
-                                : "scroll-mt-24 rounded-lg transition-all duration-300"
-                            }
-                          >
-                            <ScheduleItem
-                              schedule={schedule}
-                              classId={classId}
-                              showEdit={canManageClass}
-                              variant="classSession"
-                            />
-                          </div>
-                        ))}
-
-                        {upcomingSchedules.length > visibleUpcoming && (
-                          <div className="flex flex-col items-center gap-2 pt-4">
-                            <p className="text-sm text-muted-foreground">
-                              {t("schedule.showing", {
-                                count: visibleUpcoming,
-                                total: upcomingSchedules.length,
-                              })}
-                            </p>
-                            <Button
-                              variant="outline"
-                              onClick={() =>
-                                setVisibleUpcoming(
-                                  (prev) => prev + SCHEDULES_PER_PAGE,
-                                )
-                              }
-                            >
-                              {t("common.loadMore")}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </section>
-                )}
-
-                {pastSchedules.length > 0 && (
-                  <section className="space-y-3">
-                    <div>
-                      <h3 className="flex items-center gap-2 text-base font-semibold">
-                        {t("schedule.past")}
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                          {pastSchedules.length}
-                        </span>
-                      </h3>
-                    </div>
-                    <div className="space-y-3">
-                      {visiblePastSchedules.map((schedule) => (
-                        <div
-                          key={schedule.scheduleId}
-                          id={`schedule-${schedule.scheduleId}`}
-                          className={
-                            schedule.scheduleId === focusedScheduleId
-                              ? "scroll-mt-24 rounded-lg ring-2 ring-primary/60 ring-offset-2 ring-offset-background transition-all duration-300"
-                              : "scroll-mt-24 rounded-lg transition-all duration-300"
-                          }
-                        >
-                          <ScheduleItem
-                            schedule={schedule}
-                            classId={classId}
-                            isPast
-                            showEdit={canManageClass}
-                            variant="classSession"
-                          />
-                        </div>
-                      ))}
-
-                      {pastSchedules.length > visiblePast && (
-                        <div className="flex flex-col items-center gap-2 pt-4">
-                          <p className="text-sm text-muted-foreground">
-                            {t("schedule.showing", {
-                              count: visiblePast,
-                              total: pastSchedules.length,
-                            })}
-                          </p>
-                          <Button
-                            variant="outline"
-                            onClick={() =>
-                              setVisiblePast(
-                                (prev) => prev + SCHEDULES_PER_PAGE,
-                              )
-                            }
-                          >
-                            {t("common.loadMore")}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </section>
-                )}
-
-                {upcomingSchedules.length === 0 &&
-                  pastSchedules.length === 0 && (
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
-                      <CalendarIcon className="mb-4 h-12 w-12 text-muted-foreground/50" />
-                      <h3 className="text-lg font-semibold">
-                        {t("schedule.noSchedules")}
-                      </h3>
-                    </div>
-                  )}
-              </div>
+            <TabsContent value="schedule" className="mt-0 space-y-5">
+              <NextClassPanel
+                nextClass={
+                  nextSchedule
+                    ? {
+                        id: nextSchedule.scheduleId,
+                        title:
+                          nextSchedule.className ||
+                          nextSchedule.title ||
+                          classData.name,
+                        start: nextSchedule.start,
+                        end: nextSchedule.end,
+                        status: nextSchedule.status,
+                        isLive: nextSchedule.isLive,
+                        sessionType: nextSchedule.sessionType ?? "live",
+                      }
+                    : null
+                }
+                action={
+                  nextSchedule ? (
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (!isLaunchingClassroom) {
+                          setIsLaunchingClassroom(true);
+                        }
+                      }}
+                      aria-busy={isLaunchingClassroom}
+                      className="group relative mt-4 h-10 overflow-hidden rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
+                    >
+                      <RocketLaunchButtonContent
+                        label={t("dashboard.goToClassroom")}
+                        isLaunching={isLaunchingClassroom}
+                        onComplete={handleClassroomLaunchComplete}
+                      />
+                    </Button>
+                  ) : undefined
+                }
+                layout={laterSchedules.length > 0 ? "split" : "stacked"}
+              >
+                <NextClassPreview
+                  label={t("schedule.upcoming")}
+                  className="md:mt-0 md:h-full md:max-w-none xl:mt-0"
+                  items={laterSchedules.map((schedule) => ({
+                    id: schedule.scheduleId,
+                    title: schedule.title || classData.name,
+                    meta: new Intl.DateTimeFormat(locale, {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                      timeZone: schedule.timeZone,
+                    }).format(schedule.start),
+                    sessionType: schedule.sessionType ?? "live",
+                  }))}
+                />
+              </NextClassPanel>
+              <PastClassesPanel sessions={pastClasses} lessons={lessons} />
             </TabsContent>
 
             {/* --- CURRICULUM TAB --- */}
@@ -370,11 +299,10 @@ export default function ClassDetailPage() {
                 lessonSchedules={lessonSchedules as ClassScheduleItem[]}
                 curriculumId={classData.curriculumId}
                 orgSlug={orgSlug}
-                canManageCurriculum={canManageCurriculum}
+                canViewCurriculumSettings={canViewCurriculumSettings}
                 currentPage={roadmapPage}
                 totalPages={totalRoadmapPages}
                 onPageChange={setRoadmapPage}
-                onOpenSessions={handleOpenSessions}
               />
             </TabsContent>
 
@@ -389,6 +317,12 @@ export default function ClassDetailPage() {
           </Tabs>
         </div>
       </div>
+
+      <ClassOverviewSidebar
+        lessons={lessons}
+        progress={courseProgress}
+        onViewAllLessons={handleViewAllLessons}
+      />
     </div>
   );
 }
@@ -399,22 +333,20 @@ function CurriculumOverview({
   lessonSchedules,
   curriculumId,
   orgSlug,
-  canManageCurriculum,
+  canViewCurriculumSettings,
   currentPage,
   totalPages,
   onPageChange,
-  onOpenSessions,
 }: {
   lessons: Doc<"lessons">[];
   totalLessons: number;
   lessonSchedules: ClassScheduleItem[];
   curriculumId: Id<"curriculums">;
   orgSlug: string;
-  canManageCurriculum: boolean;
+  canViewCurriculumSettings: boolean;
   currentPage: number;
   totalPages: number;
   onPageChange: React.Dispatch<React.SetStateAction<number>>;
-  onOpenSessions: (schedule: ClassScheduleItem) => void;
 }) {
   const t = useTranslations();
 
@@ -430,7 +362,7 @@ function CurriculumOverview({
               {t("class.curriculumReadOnlyDescription")}
             </p>
           </div>
-          {canManageCurriculum && (
+          {canViewCurriculumSettings && (
             <Button
               variant="outline"
               size="sm"
@@ -524,20 +456,6 @@ function CurriculumOverview({
                       )}
                     </div>
                   </div>
-
-                  {scheduledItem && (
-                    <div className="flex shrink-0 items-center gap-2 sm:ml-4">
-                      <Button
-                        size="sm"
-                        variant="link"
-                        className="h-auto px-0 text-muted-foreground hover:text-primary"
-                        onClick={() => onOpenSessions(scheduledItem)}
-                      >
-                        {t("class.viewInSessions")}
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
                 </div>
               );
             })}

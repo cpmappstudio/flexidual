@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { Link } from "@/i18n/navigation";
 
 type CatalogResult = Exclude<
@@ -88,9 +89,13 @@ export function CourseCatalogDetail() {
   }>();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const now = useCurrentMinute();
-  const catalog = useQuery(
+  const catalogResult = useQuery(
     api.classes.getCatalog,
     isAuthenticated ? { orgSlug, classId, now } : "skip",
+  );
+  const catalog = useRetainedQueryResult(
+    catalogResult,
+    `${orgSlug}:${classId}`,
   );
 
   if (isAuthLoading || catalog === undefined) {

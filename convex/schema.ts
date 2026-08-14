@@ -14,6 +14,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { liveAccessValidator } from "./model/liveAccess";
+import { courseWeeklySlotValidator } from "./model/courseSchedule";
 
 export default defineSchema({
   /**
@@ -135,6 +136,7 @@ export default defineSchema({
     endDate: v.optional(v.number()),
     timeZone: v.optional(v.string()),
     liveAccess: v.optional(liveAccessValidator),
+    weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
 
     // Status
     isActive: v.boolean(),

@@ -12,11 +12,18 @@ export function useCurrentMinute() {
   const [now, setNow] = useState(getCurrentMinute);
 
   useEffect(() => {
-    const interval = window.setInterval(
-      () => setNow(getCurrentMinute()),
-      MINUTE_MS,
-    );
-    return () => window.clearInterval(interval);
+    let timeout: number;
+
+    const scheduleNextMinute = () => {
+      const delay = MINUTE_MS - (Date.now() % MINUTE_MS);
+      timeout = window.setTimeout(() => {
+        setNow(getCurrentMinute());
+        scheduleNextMinute();
+      }, delay);
+    };
+
+    scheduleNextMinute();
+    return () => window.clearTimeout(timeout);
   }, []);
 
   return now;

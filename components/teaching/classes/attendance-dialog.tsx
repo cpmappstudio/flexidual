@@ -13,6 +13,7 @@ import { format } from "date-fns"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 import { useCurrentMinute } from "@/hooks/use-current-minute"
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result"
 
 interface AttendanceDialogProps {
   scheduleId: Id<"classSchedule">
@@ -34,10 +35,11 @@ export function AttendanceDialog({ scheduleId, trigger, open, onOpenChange, titl
     onOpenChange?.(val)
   }
 
-  const stats = useQuery(
+  const statsResult = useQuery(
     api.schedule.getAttendanceDetails,
     isOpen ? { scheduleId, now } : "skip",
   )
+  const stats = useRetainedQueryResult(statsResult, scheduleId)
   const updateStatus = useMutation(api.schedule.updateAttendance)
 
   const handleStatusChange = async (studentId: Id<"users">, newStatus: string) => {

@@ -41,6 +41,13 @@ export interface RecordingPlayerProps {
   variant?: "student" | "default";
 }
 
+export interface ScheduleRecordingPlayerProps {
+  scheduleId: Id<"classSchedule">;
+  enabled?: boolean;
+  variant?: "student" | "default";
+  className?: string;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDuration(ms: number | null | undefined): string {
@@ -168,6 +175,115 @@ function RecordingHeader({
   );
 }
 
+export function ScheduleRecordingPlayer({
+  scheduleId,
+  enabled = true,
+  variant = "default",
+  className,
+}: ScheduleRecordingPlayerProps) {
+  const t = useTranslations();
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const recordings = useQuery(
+    api.recordings.getBySchedule,
+    enabled ? { scheduleId } : "skip",
+  );
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [scheduleId, recordings?.length]);
+
+  const isStudent = variant === "student";
+  const isLoading = recordings === undefined;
+  const isEmpty = recordings !== undefined && recordings.length === 0;
+  const activeRecording = recordings
+    ? (recordings[selectedIndex] ?? recordings[0])
+    : null;
+
+  return (
+    <div className={cn("min-h-0 space-y-2 overflow-hidden", className)}>
+      {isLoading && (
+        <div className="space-y-3">
+          <Skeleton
+            className={cn("w-full", isStudent ? "bg-primary/10" : "bg-muted")}
+            style={{ aspectRatio: "16/9" }}
+          />
+          {!isStudent && <Skeleton className="h-4 w-32 bg-muted" />}
+        </div>
+      )}
+
+      {isEmpty && (
+        <div className="flex aspect-video flex-col items-center justify-center rounded-xl bg-muted/40 px-6 text-center">
+          <Video
+            className={cn(
+              "mb-3 size-12",
+              isStudent ? "text-primary" : "text-muted-foreground",
+            )}
+          />
+          <p className="font-bold text-foreground">
+            {t("recordings.noRecordings")}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("recordings.noRecordingsHint")}
+          </p>
+        </div>
+      )}
+
+      {recordings && recordings.length > 0 && (
+        <div className="space-y-2">
+          {recordings.length > 1 && (
+            <div className="flex snap-x gap-2 overflow-x-auto overscroll-x-contain pb-1">
+              {recordings.map((recording, index) => (
+                <Button
+                  key={recording._id}
+                  type="button"
+                  size="sm"
+                  variant={selectedIndex === index ? "default" : "outline"}
+                  onClick={() => setSelectedIndex(index)}
+                  className={cn(
+                    "shrink-0 snap-start gap-2 font-semibold",
+                    isStudent ? "rounded-full" : "rounded-lg",
+                    isStudent &&
+                      selectedIndex !== index &&
+                      "border-primary/30 bg-primary/10 text-primary",
+                  )}
+                >
+                  <PlayCircle className="size-3.5" />
+                  {t("recordings.part", { number: index + 1 })}
+                  {recording.durationMs && (
+                    <span className="opacity-70">
+                      · {formatDuration(recording.durationMs)}
+                    </span>
+                  )}
+                </Button>
+              ))}
+            </div>
+          )}
+
+          {activeRecording &&
+            (activeRecording.url ? (
+              <VideoPlayer
+                key={activeRecording._id}
+                url={activeRecording.url}
+              />
+            ) : (
+              <div
+                className={cn(
+                  "flex items-center gap-3 rounded-xl border p-4",
+                  isStudent
+                    ? "border-primary/20 bg-primary/5 text-muted-foreground"
+                    : "border-border bg-muted text-muted-foreground",
+                )}
+              >
+                <Video className="size-5 shrink-0" />
+                <span className="text-sm">{t("recordings.processing")}</span>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export function RecordingPlayerModal({
@@ -182,26 +298,8 @@ export function RecordingPlayerModal({
   onOpenChange,
   variant = "default",
 }: RecordingPlayerProps) {
-  const t = useTranslations();
   const locale = useLocale();
   const isMobile = useIsMobile();
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const recordings = useQuery(
-    api.recordings.getBySchedule,
-    open ? { scheduleId } : "skip",
-  );
-
-  // Reset selection when modal opens or recording count changes
-  useEffect(() => {
-    setSelectedIdx(0);
-  }, [open, recordings?.length]);
-
-  const isLoading = recordings === undefined;
-  const isEmpty = recordings !== undefined && recordings.length === 0;
-  const activeRec = recordings
-    ? (recordings[selectedIdx] ?? recordings[0])
-    : null;
-
   const isStudent = variant === "student";
   const dateLocale = locale === "es" ? es : locale === "pt-BR" ? ptBR : enUS;
   const scheduledStartDate =
@@ -225,105 +323,12 @@ export function RecordingPlayerModal({
     !isStudent && gradeLabel ? `${title} (${gradeLabel})` : title;
 
   const content = (
-    <div
-      className={cn(
-        "min-h-0 space-y-2 overflow-hidden",
-        isMobile ? "px-4 pb-4" : "px-6",
-      )}
-    >
-      {isLoading && (
-        <div className="space-y-3">
-          <Skeleton
-            className={cn("w-full", isStudent ? "bg-primary/10" : "bg-muted")}
-            style={{ aspectRatio: "16/9" }}
-          />
-          {!isStudent && (
-            <Skeleton
-              className={cn(
-                "h-4 w-32",
-                isStudent ? "bg-primary/10" : "bg-muted",
-              )}
-            />
-          )}
-        </div>
-      )}
-
-      {isEmpty && (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          {isStudent ? (
-            <Video className="mb-3 h-12 w-12 text-primary" />
-          ) : (
-            <Video className="mb-3 h-12 w-12 text-muted-foreground" />
-          )}
-          <p className="font-bold text-foreground">
-            {t("recordings.noRecordings")}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("recordings.noRecordingsHint")}
-          </p>
-        </div>
-      )}
-
-      {recordings && recordings.length > 0 && (
-        <div className="space-y-2">
-          {/* Selector — only shown when there are multiple recordings */}
-          {recordings.length > 1 && (
-            <div
-              className={cn(
-                "flex snap-x gap-2 overflow-x-auto overscroll-x-contain pb-1",
-                isMobile && "scrollbar-hide pr-8",
-              )}
-            >
-              {recordings.map((rec, idx) => (
-                <Button
-                  key={rec._id}
-                  type="button"
-                  size="sm"
-                  variant={selectedIdx === idx ? "default" : "outline"}
-                  onClick={() => setSelectedIdx(idx)}
-                  className={cn(
-                    "shrink-0 snap-start gap-2 font-semibold",
-                    isStudent ? "rounded-full" : "rounded-lg",
-                    isStudent &&
-                      selectedIdx !== idx &&
-                      "border-primary/30 bg-primary/10 text-primary",
-                  )}
-                >
-                  <PlayCircle className="h-3.5 w-3.5" />
-                  {t("recordings.part", { number: idx + 1 })}
-                  {rec.durationMs && (
-                    <span className="opacity-70">
-                      · {formatDuration(rec.durationMs)}
-                    </span>
-                  )}
-                </Button>
-              ))}
-            </div>
-          )}
-
-          {/* Active recording player */}
-          {activeRec &&
-            (activeRec.url ? (
-              <VideoPlayer
-                key={activeRec._id}
-                url={activeRec.url}
-              />
-            ) : (
-              <div
-                className={cn(
-                  "flex items-center gap-3 p-4 rounded-xl border",
-                  isStudent
-                    ? "bg-primary/5 border-primary/20 text-muted-foreground"
-                    : "border-border bg-muted text-muted-foreground",
-                )}
-              >
-                <Video className="h-5 w-5 flex-shrink-0" />
-                <span className="text-sm">{t("recordings.processing")}</span>
-              </div>
-            ))}
-        </div>
-      )}
-    </div>
+    <ScheduleRecordingPlayer
+      scheduleId={scheduleId}
+      enabled={open}
+      variant={variant}
+      className={isMobile ? "px-4 pb-4" : "px-6"}
+    />
   );
 
   const header = (

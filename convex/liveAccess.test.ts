@@ -196,6 +196,63 @@ test("course access is copied to the session and scoped to active students", asy
       createdAt: now,
       createdBy: teacherId,
     });
+    const pastRecordedScheduleId = await ctx.db.insert("classSchedule", {
+      classId: classAId,
+      schoolId: schoolAId,
+      sessionType: "live",
+      title: "Recorded review",
+      scheduledStart: now - 2 * 60 * 60_000,
+      scheduledEnd: now - 60 * 60_000,
+      roomName: "room-a-recorded",
+      status: "completed",
+      completedAt: now - 60 * 60_000,
+      createdAt: now,
+      createdBy: teacherId,
+    });
+    const pastUnrecordedScheduleId = await ctx.db.insert("classSchedule", {
+      classId: classAId,
+      schoolId: schoolAId,
+      sessionType: "live",
+      title: "Unrecorded review",
+      scheduledStart: now - 4 * 60 * 60_000,
+      scheduledEnd: now - 3 * 60 * 60_000,
+      roomName: "room-a-unrecorded",
+      status: "completed",
+      completedAt: now - 3 * 60 * 60_000,
+      createdAt: now,
+      createdBy: teacherId,
+    });
+    const pastIgnitiaScheduleId = await ctx.db.insert("classSchedule", {
+      classId: classAId,
+      schoolId: schoolAId,
+      sessionType: "ignitia",
+      title: "Ignitia practice",
+      scheduledStart: now - 6 * 60 * 60_000,
+      scheduledEnd: now - 5 * 60 * 60_000,
+      roomName: "room-a-ignitia-past",
+      status: "completed",
+      completedAt: now - 5 * 60 * 60_000,
+      createdAt: now,
+      createdBy: teacherId,
+    });
+    await ctx.db.insert("recordings", {
+      scheduleId: pastRecordedScheduleId,
+      roomName: "room-a-recorded",
+      egressId: "egress-room-a-recorded",
+      status: "complete",
+      url: "https://example.com/recording.mp4",
+      startedAt: now - 2 * 60 * 60_000,
+      completedAt: now - 60 * 60_000,
+    });
+    await ctx.db.insert("recordings", {
+      scheduleId: pastIgnitiaScheduleId,
+      roomName: "room-a-ignitia-past",
+      egressId: "legacy-invalid-ignitia-egress",
+      status: "complete",
+      url: "https://example.com/invalid-provider-recording.mp4",
+      startedAt: now - 6 * 60 * 60_000,
+      completedAt: now - 5 * 60 * 60_000,
+    });
     await ctx.db.insert("classSchedule", {
       classId: classAId,
       schoolId: schoolAId,
@@ -257,16 +314,62 @@ test("course access is copied to the session and scoped to active students", asy
     return {
       scheduleAId,
       schoolAId,
+      teacherId,
       studentId,
       classAId,
       classBId,
       campusAId,
       campusBId,
       secondCampusAId,
+      pastRecordedScheduleId,
+      pastUnrecordedScheduleId,
+      pastIgnitiaScheduleId,
     };
   });
 
   const asTeacher = t.withIdentity({ subject: "teacher-clerk-id" });
+  const classDetails = await asTeacher.query(api.classes.get, {
+    id: data.classAId,
+  });
+  expect(classDetails?.curriculumIconKey).toBe("microscope");
+
+  const pastClasses = await asTeacher.query(
+    api.recordings.listRecentPastClasses,
+    { classId: data.classAId, now },
+  );
+  expect(pastClasses).toEqual([
+    expect.objectContaining({
+      scheduleId: data.pastRecordedScheduleId,
+      title: "Recorded review",
+      hasRecording: true,
+    }),
+    expect.objectContaining({
+      scheduleId: data.pastUnrecordedScheduleId,
+      title: "Unrecorded review",
+      hasRecording: false,
+    }),
+    expect.objectContaining({
+      scheduleId: data.pastIgnitiaScheduleId,
+      title: "Ignitia practice",
+      sessionType: "ignitia",
+      hasRecording: false,
+    }),
+  ]);
+  expect(
+    await asTeacher.query(api.recordings.getBySchedule, {
+      scheduleId: data.pastIgnitiaScheduleId,
+    }),
+  ).toEqual([]);
+  const asUnassignedTeacher = t.withIdentity({
+    subject: "second-teacher-clerk-id",
+  });
+  expect(
+    await asUnassignedTeacher.query(api.recordings.listRecentPastClasses, {
+      classId: data.classAId,
+      now,
+    }),
+  ).toEqual([]);
+
   await asTeacher.mutation(api.schedule.markLive, {
     roomName: "room-a",
     isLive: true,
@@ -399,6 +502,25 @@ test("course access is copied to the session and scoped to active students", asy
       now,
     }),
   ).toBeNull();
+
+  await t.run((ctx) =>
+    ctx.db.insert("classEnrollments", {
+      classId: data.classAId,
+      studentId: data.studentId,
+      enrolledAt: now,
+      enrolledBy: data.teacherId,
+    }),
+  );
+  const studentDashboard = await asStudent.query(
+    api.student.getStudentDashboardStats,
+    { now },
+  );
+  expect(studentDashboard?.classes).toEqual([
+    expect.objectContaining({
+      classId: data.classAId,
+      curriculumIconKey: "microscope",
+    }),
+  ]);
 
   await t.run((ctx) =>
     ctx.db.patch("users", data.studentId, { isActive: false }),

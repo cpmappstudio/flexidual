@@ -1,16 +1,19 @@
 import Image from "next/image";
+import type { ClassSessionType } from "@/lib/class-session";
 import { cn } from "@/lib/utils";
 
 type CalendarProviderMarkProps = {
-  sessionType: "live" | "ignitia" | "abeka";
+  sessionType: ClassSessionType;
   isPast?: boolean;
   className?: string;
+  sizes?: string;
 };
 
 export function CalendarProviderMark({
   sessionType,
   isPast = false,
   className,
+  sizes = "16px",
 }: CalendarProviderMarkProps) {
   return (
     <span
@@ -31,7 +34,7 @@ export function CalendarProviderMark({
         }
         alt=""
         fill
-        sizes="16px"
+        sizes={sizes}
         className="pointer-events-none select-none object-contain"
       />
     </span>

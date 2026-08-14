@@ -46,6 +46,7 @@ import {
   LIVE_EXTENSION_PROMPT_LEAD_MS,
   MAX_LIVE_OVERRUN_MS,
 } from "../lib/live-session-policy";
+import { isExternalClassSession } from "../lib/class-session";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -350,10 +351,7 @@ async function validateClassScheduleTime(
   }
 }
 
-async function deleteWhiteboardSession(
-  ctx: MutationCtx,
-  roomName: string,
-) {
+async function deleteWhiteboardSession(ctx: MutationCtx, roomName: string) {
   const whiteboard = await ctx.db
     .query("whiteboardSessions")
     .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
@@ -408,7 +406,9 @@ async function getExtensionConflicts(
     await listSchedulesStartingBetween(ctx, effectiveEnd, proposedEnd)
   ).filter((candidate) => candidate._id !== schedule._id);
   const candidateClasses = (
-    await Promise.all(candidates.map((candidate) => ctx.db.get(candidate.classId)))
+    await Promise.all(
+      candidates.map((candidate) => ctx.db.get(candidate.classId)),
+    )
   ).filter((classData): classData is Doc<"classes"> => Boolean(classData));
   const classById = new Map(
     candidateClasses.map((classData) => [classData._id, classData]),
@@ -523,8 +523,7 @@ async function getLiveKitAccessData(
   if (!user) return null;
 
   const isPrimaryTeacher = classData.teacherId === userId;
-  const isDirectInstructor =
-    isPrimaryTeacher || classData.tutorId === userId;
+  const isDirectInstructor = isPrimaryTeacher || classData.tutorId === userId;
   const classSchoolId = classData.campusId
     ? campus?.schoolId
     : curriculum?.schoolId;
@@ -949,14 +948,15 @@ export const getMySchedule = query({
 
     const completedRecordings = includeRecordings
       ? await Promise.all(
-          flatSchedule.map((schedule) =>
-            ctx.db
+          flatSchedule.map(async (schedule) => {
+            if (isExternalClassSession(schedule.sessionType)) return [];
+            return await ctx.db
               .query("recordings")
               .withIndex("by_schedule", (q) =>
                 q.eq("scheduleId", schedule._id).eq("status", "complete"),
               )
-              .collect(),
-          ),
+              .collect();
+          }),
         )
       : [];
     const scheduleIdsWithRecordings = new Set(
@@ -1290,8 +1290,7 @@ export const listAccessibleLiveClasses = query({
     ];
 
     const liveSchedules = schedules.filter(
-      (schedule) =>
-        schedule.isLive === true && schedule.sessionType === "live",
+      (schedule) => schedule.isLive === true && schedule.sessionType === "live",
     );
     const results = await Promise.all(
       liveSchedules.map(async (schedule) => {
@@ -1565,11 +1564,7 @@ export const getStudentExtensionContext = query({
       .query("classSchedule")
       .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
       .first();
-    if (
-      !schedule ||
-      schedule.status !== "active" ||
-      !schedule.isLive
-    ) {
+    if (!schedule || schedule.status !== "active" || !schedule.isLive) {
       return null;
     }
 
@@ -1585,7 +1580,10 @@ export const getStudentExtensionContext = query({
       schedule.scheduledEnd,
       schedule.liveExtensionEndsAt,
     );
-    if (!schedule.liveExtensionEndsAt || schedule.liveExtensionEndsAt <= args.now) {
+    if (
+      !schedule.liveExtensionEndsAt ||
+      schedule.liveExtensionEndsAt <= args.now
+    ) {
       return {
         effectiveEnd,
         warningStartsAt: effectiveEnd - LIVE_EXTENSION_PROMPT_LEAD_MS,
@@ -1665,12 +1663,7 @@ export const checkLiveKitAccess = internalQuery({
       .first();
 
     if (!schedule) return null;
-    return await getLiveKitAccessData(
-      ctx,
-      args.userId,
-      schedule,
-      args.now,
-    );
+    return await getLiveKitAccessData(ctx, args.userId, schedule, args.now);
   },
 });
 
@@ -2380,10 +2373,7 @@ export const logStudentPresence = mutation({
         activeSessions.map((activeSession) =>
           ctx.db.patch(activeSession._id, {
             leftAt: now,
-            durationSeconds: Math.max(
-              0,
-              (now - activeSession.joinedAt) / 1000,
-            ),
+            durationSeconds: Math.max(0, (now - activeSession.joinedAt) / 1000),
           }),
         ),
       );
@@ -2548,10 +2538,7 @@ export const listExpiredLiveSessions = internalQuery({
     const activeSchedules = await ctx.db
       .query("classSchedule")
       .withIndex("by_live_expiration", (q) =>
-        q
-          .eq("status", "active")
-          .eq("isLive", true)
-          .lte("scheduledEnd", now),
+        q.eq("status", "active").eq("isLive", true).lte("scheduledEnd", now),
       )
       .take(Math.min(Math.max(limit, 1), 200));
 

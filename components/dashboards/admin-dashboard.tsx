@@ -17,6 +17,7 @@ import { AdminClassTrackingCard } from "@/components/admin/admin-class-tracking-
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 
 export default function AdminDashboard() {
   const t = useTranslations();
@@ -78,7 +79,7 @@ export default function AdminDashboard() {
       ? { includeInactive: false, schoolId: querySchoolId }
       : "skip",
   );
-  const allSchedules = useQuery(
+  const scheduleResult = useQuery(
     api.schedule.getMySchedule,
     orgContext
       ? {
@@ -88,6 +89,13 @@ export default function AdminDashboard() {
           campusId: queryCampusId,
         }
       : "skip",
+  );
+  const scheduleScopeKey = orgContext
+    ? `${orgContext.type}:${orgContext._id}`
+    : "unresolved";
+  const allSchedules = useRetainedQueryResult(
+    scheduleResult,
+    scheduleScopeKey,
   );
 
   const visibleTeacherCount = canViewPeople

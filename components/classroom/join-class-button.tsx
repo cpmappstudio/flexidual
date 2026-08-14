@@ -9,6 +9,7 @@ import { useParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 import { useCurrentMinute } from "@/hooks/use-current-minute"
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result"
 
 interface JoinClassButtonProps {
   lessonId: Id<"lessons">
@@ -23,11 +24,12 @@ export function JoinClassButton({ lessonId }: JoinClassButtonProps) {
   const now = useCurrentMinute()
   
   // 1. Get my entire schedule (Universal Query)
-  const mySchedule = useQuery(api.schedule.getMySchedule, {
+  const scheduleResult = useQuery(api.schedule.getMySchedule, {
     now,
     includeAttendance: false,
     includeRecordings: false,
   })
+  const mySchedule = useRetainedQueryResult(scheduleResult, "current-user")
 
   // 2. Find if this specific lesson is currently LIVE for me
   //    Check if we have a schedule item with this lessonId in the lessonIds array that is marked 'isLive'
