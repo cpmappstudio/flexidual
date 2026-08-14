@@ -8,6 +8,7 @@ import {
   getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
+  PaginationState,
   SortingState,
   useReactTable,
   VisibilityState,
@@ -68,29 +69,35 @@ export function DataTable<TData>({
       search: false,
     });
   const [rowSelection, setRowSelection] = React.useState({});
+  const [pagination, setPagination] = React.useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: resolvedPageSize,
+  });
 
   const table = useReactTable({
     data: data ?? [],
     columns,
     onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    onColumnFiltersChange: (updater) => {
+      setColumnFilters(updater);
+      setPagination((current) =>
+        current.pageIndex === 0 ? current : { ...current, pageIndex: 0 },
+      );
+    },
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
-    initialState: {
-      pagination: {
-        pageSize: resolvedPageSize,
-      },
-      sorting: initialSorting,
-    },
+    autoResetPageIndex: false,
     state: {
       sorting,
       columnFilters,
       columnVisibility,
       rowSelection,
+      pagination,
     },
   });
 
@@ -107,6 +114,15 @@ export function DataTable<TData>({
     totalRowsCount,
     hasFilteredRows,
   );
+
+  React.useEffect(() => {
+    const lastPageIndex = Math.max(0, table.getPageCount() - 1);
+    setPagination((current) =>
+      current.pageIndex > lastPageIndex
+        ? { ...current, pageIndex: lastPageIndex }
+        : current,
+    );
+  }, [filteredRowsCount, table]);
 
   React.useEffect(() => {
     onFilteredRowCountChange?.(filteredRowsCount);
@@ -303,6 +319,7 @@ export function DataTable<TData>({
           <Button
             variant="outline"
             size="icon"
+            className="bg-sidebar"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
@@ -313,6 +330,7 @@ export function DataTable<TData>({
           <Button
             variant="outline"
             size="icon"
+            className="bg-sidebar"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >
