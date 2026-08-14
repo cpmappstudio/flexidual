@@ -7,6 +7,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from "@/components/ui/item";
 import { format } from "date-fns";
 import { TZDate } from "@date-fns/tz";
 import {
@@ -45,7 +53,6 @@ const classTabTriggerClassName =
 
 const curriculumStatusBadgeClassName = {
   scheduled: "border-success/30 bg-success/10 text-success",
-  unscheduled: "border-warning/40 bg-warning/10 text-warning",
   past: "border-border bg-muted text-muted-foreground",
 };
 
@@ -70,6 +77,7 @@ export default function ClassDetailPage() {
   const { access } = useStaffAccess();
   const queryNow = useCurrentMinute();
   const canManageClass = access?.canManageCampus ?? false;
+  const canViewStudentProfiles = canManageClass || access?.role === "teacher";
   const canViewCurriculumSettings = access?.canViewInstitutionSettings ?? false;
 
   const [roadmapPage, setRoadmapPage] = useState(1);
@@ -312,6 +320,7 @@ export default function ClassDetailPage() {
                 classId={classId}
                 curriculumId={classData.curriculumId}
                 canManage={canManageClass}
+                canViewProfiles={canViewStudentProfiles}
               />
             </TabsContent>
           </Tabs>
@@ -384,7 +393,7 @@ function CurriculumOverview({
             {t("lesson.noLessonsForCurriculum")}
           </div>
         ) : (
-          <div className="space-y-3">
+          <ItemGroup className="gap-3">
             {lessons.map((lesson) => {
               const scheduledItem = lessonSchedules.find((s) =>
                 s.lessonIds?.includes(lesson._id),
@@ -410,56 +419,44 @@ function CurriculumOverview({
                 : null;
 
               return (
-                <div
-                  key={lesson._id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg gap-4"
-                >
-                  <div className="flex items-start gap-4 min-w-0">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
-                      {lesson.order}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium">{lesson.title}</p>
-                        {scheduledItem && (
-                          <Badge
-                            variant="outline"
-                            className={
-                              isPast
-                                ? curriculumStatusBadgeClassName.past
-                                : curriculumStatusBadgeClassName.scheduled
-                            }
-                          >
-                            {isPast
-                              ? t("schedule.pastSession")
-                              : t("lesson.scheduled")}
-                          </Badge>
-                        )}
-                        {!scheduledItem && (
-                          <Badge
-                            variant="outline"
-                            className={
-                              curriculumStatusBadgeClassName.unscheduled
-                            }
-                          >
-                            {t("class.notScheduled")}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {lesson.description || t("common.noDescription")}
-                      </p>
-                      {scheduledMetaLabel && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {scheduledMetaLabel}
-                        </p>
+                <Item key={lesson._id} variant="outline" className="bg-sidebar">
+                  <ItemMedia
+                    variant="icon"
+                    className="rounded-full border-0 bg-primary/10 font-bold text-primary"
+                  >
+                    {lesson.order}
+                  </ItemMedia>
+                  <ItemContent>
+                    <ItemTitle className="flex-wrap text-base">
+                      <span>{lesson.title}</span>
+                      {scheduledItem && (
+                        <Badge
+                          variant="outline"
+                          className={
+                            isPast
+                              ? curriculumStatusBadgeClassName.past
+                              : curriculumStatusBadgeClassName.scheduled
+                          }
+                        >
+                          {isPast
+                            ? t("schedule.pastSession")
+                            : t("lesson.scheduled")}
+                        </Badge>
                       )}
-                    </div>
-                  </div>
-                </div>
+                    </ItemTitle>
+                    <ItemDescription>
+                      {lesson.description || t("common.noDescription")}
+                    </ItemDescription>
+                    {scheduledMetaLabel && (
+                      <p className="text-xs text-muted-foreground">
+                        {scheduledMetaLabel}
+                      </p>
+                    )}
+                  </ItemContent>
+                </Item>
               );
             })}
-          </div>
+          </ItemGroup>
         )}
 
         {totalPages > 1 && (

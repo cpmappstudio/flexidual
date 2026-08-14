@@ -13,12 +13,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Search, UserPlus, Filter } from "lucide-react";
+import { Filter, Loader2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 import { Badge } from "@/components/ui/badge";
+import { PageCreateButton } from "@/components/ui/responsive-page-action";
 
 interface AddStudentDialogProps {
   classId: Id<"classes">;
@@ -34,7 +35,6 @@ export function AddStudentDialog({
   const t = useTranslations();
   const locale = useLocale();
 
-  // 1. Fetch Curriculum to get target grades
   const curriculum = useQuery(
     api.curriculums.get,
     curriculumId ? { id: curriculumId } : "skip",
@@ -50,7 +50,6 @@ export function AddStudentDialog({
   );
   const gradeNames = new Map(grades?.map((grade) => [grade.code, grade.name]));
 
-  // 2. Search Query - Removed the "length >= 2" check
   const searchResults = useQuery(api.classes.searchStudents, {
     searchQuery: search,
     classId,
@@ -75,10 +74,7 @@ export function AddStudentDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">
-          <UserPlus className="h-4 w-4" />
-          {t("class.enrollStudent")}
-        </Button>
+        <PageCreateButton label={t("class.enrollStudent")} />
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>

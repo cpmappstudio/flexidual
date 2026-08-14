@@ -8,6 +8,7 @@ import {
   canManageInstitution,
   canViewCampusPeople,
   canViewInstitutionSettings,
+  canViewStudentProfile,
 } from "../convex/permissions";
 import type { UserRole } from "../convex/model/roles";
 
@@ -160,6 +161,62 @@ test("campus people are managed by administrators and assigned principals", asyn
   assert.equal(
     await canManageCampusPeople(
       principalAtAnotherCampus,
+      userId,
+      campusId,
+      schoolId,
+    ),
+    false,
+  );
+});
+
+test("student profiles are visible only to administrators, principals, and campus teachers", async () => {
+  for (const role of ["superadmin", "admin"] as const) {
+    const assignment: Assignment =
+      role === "superadmin"
+        ? { userId, orgType: "system", role }
+        : { userId, orgId: schoolId, orgType: "school", role };
+    assert.equal(
+      await canViewStudentProfile(
+        permissionContext([assignment]),
+        userId,
+        campusId,
+        schoolId,
+      ),
+      true,
+    );
+  }
+
+  for (const role of ["principal", "teacher"] as const) {
+    const ctx = permissionContext([
+      { userId, orgId: campusId, orgType: "campus", role },
+    ]);
+    assert.equal(
+      await canViewStudentProfile(ctx, userId, campusId, schoolId),
+      true,
+    );
+  }
+
+  for (const role of ["tutor", "student"] as const) {
+    const ctx = permissionContext([
+      { userId, orgId: campusId, orgType: "campus", role },
+    ]);
+    assert.equal(
+      await canViewStudentProfile(ctx, userId, campusId, schoolId),
+      false,
+    );
+  }
+
+  const teacherAtAnotherCampus = permissionContext([
+    {
+      userId,
+      orgId: otherCampusId,
+      orgType: "campus",
+      role: "teacher",
+    },
+  ]);
+  assert.equal(
+    await canViewStudentProfile(
+      teacherAtAnotherCampus,
       userId,
       campusId,
       schoolId,

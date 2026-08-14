@@ -7,7 +7,7 @@ import {
   getStudentGradeCode,
 } from "./model/membership";
 import { isStudentEnrolled } from "./model/enrollments";
-import { canManageCampusPeople, canViewCampusPeople } from "./permissions";
+import { canManageCampusPeople, canViewStudentProfile } from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
@@ -138,7 +138,7 @@ export const getStudentDashboardStats = query({
       }
       if (
         !viewingOwnProfile &&
-        !(await canViewCampusPeople(
+        !(await canViewStudentProfile(
           ctx,
           viewer._id,
           campus._id,

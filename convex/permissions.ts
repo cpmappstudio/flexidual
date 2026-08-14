@@ -110,6 +110,21 @@ export async function canViewCampusPeople(
   return await canManageCampusPeople(ctx, userId, campusId, schoolId);
 }
 
+export async function canViewStudentProfile(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  campusId: Id<"campuses">,
+  schoolId: Id<"schools">,
+) {
+  if (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"])) {
+    return true;
+  }
+  return await hasOrgRole(ctx, userId, campusId, "campus", [
+    "principal",
+    "teacher",
+  ]);
+}
+
 export async function canAccessSchool(
   ctx: QueryCtx,
   userId: Id<"users">,

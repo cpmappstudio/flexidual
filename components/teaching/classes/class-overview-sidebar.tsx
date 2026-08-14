@@ -28,7 +28,6 @@ export function ClassOverviewSidebar({
   onViewAllLessons: () => void;
 }) {
   const t = useTranslations();
-  const previewLessons = lessons.slice(0, 3);
   const chartConfig = {
     progress: {
       label: t("class.completed"),
@@ -110,12 +109,12 @@ export function ClassOverviewSidebar({
           </CardAction>
         </CardHeader>
         <CardContent className="space-y-3 px-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-          {previewLessons.length === 0 ? (
+          {lessons.length === 0 ? (
             <div className="rounded-2xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
               {t("lesson.noLessonsForCurriculum")}
             </div>
           ) : (
-            previewLessons.map((lesson) => (
+            lessons.map((lesson) => (
               <div
                 key={lesson._id}
                 className="flex min-h-[68px] items-center gap-3 rounded-2xl border bg-sidebar px-4 py-3"

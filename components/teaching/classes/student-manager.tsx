@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import { useCallback, useMemo, useState } from "react"
-import type { ColumnDef } from "@tanstack/react-table"
-import { useMutation, useQuery } from "convex/react"
-import Image from "next/image"
-import { Trash2 } from "lucide-react"
-import { useTranslations } from "next-intl"
-import { toast } from "sonner"
+import { useCallback, useMemo, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { useMutation, useQuery } from "convex/react";
+import Image from "next/image";
+import { Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 
-import { api } from "@/convex/_generated/api"
-import { Id } from "@/convex/_generated/dataModel"
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,33 +19,36 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
-import { Button, buttonVariants } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { DataTable } from "@/components/table/data-table"
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { DataTable } from "@/components/table/data-table";
+import { useOrgBasePath } from "@/hooks/use-org-base-path";
+import { useRouter } from "@/i18n/navigation";
 import {
   createSearchColumn,
   createSortableHeader,
-} from "@/components/table/column-helpers"
-import { AddStudentDialog } from "./add-student-dialog"
+} from "@/components/table/column-helpers";
+import { AddStudentDialog } from "./add-student-dialog";
 
 interface StudentManagerProps {
-  classId: Id<"classes">
-  curriculumId?: Id<"curriculums">
-  canManage?: boolean
+  classId: Id<"classes">;
+  curriculumId?: Id<"curriculums">;
+  canManage?: boolean;
+  canViewProfiles?: boolean;
 }
 
 type ClassStudent = {
-  _id: Id<"users">
-  fullName: string
-  email?: string
-  avatarStorageId?: Id<"_storage">
-  imageUrl?: string
-  isActive: boolean
-}
+  _id: Id<"users">;
+  fullName: string;
+  email?: string;
+  avatarStorageId?: Id<"_storage">;
+  imageUrl?: string;
+  isActive: boolean;
+};
 
-type StudentToRemove = Pick<ClassStudent, "_id" | "fullName">
+type StudentToRemove = Pick<ClassStudent, "_id" | "fullName">;
 
 function getInitials(name: string) {
   const initials = name
@@ -54,18 +57,14 @@ function getInitials(name: string) {
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0])
-    .join("")
+    .join("");
 
-  return initials.toUpperCase() || "?"
+  return initials.toUpperCase() || "?";
 }
 
-function StudentPhoto({
-  student,
-}: {
-  student: ClassStudent
-}) {
-  const [imageError, setImageError] = useState(false)
-  const showImage = student.imageUrl && !imageError
+function StudentPhoto({ student }: { student: ClassStudent }) {
+  const [imageError, setImageError] = useState(false);
+  const showImage = student.imageUrl && !imageError;
 
   return (
     <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
@@ -86,14 +85,10 @@ function StudentPhoto({
         </div>
       )}
     </div>
-  )
+  );
 }
 
-function StudentCell({
-  student,
-}: {
-  student: ClassStudent
-}) {
+function StudentCell({ student }: { student: ClassStudent }) {
   return (
     <div className="flex items-center gap-3">
       <StudentPhoto student={student} />
@@ -108,44 +103,47 @@ function StudentCell({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 export function StudentManager({
   classId,
   curriculumId,
   canManage = false,
+  canViewProfiles = false,
 }: StudentManagerProps) {
-  const t = useTranslations()
-  const students = useQuery(api.classes.getStudents, { classId })
-  const removeStudent = useMutation(api.classes.removeStudent)
+  const t = useTranslations();
+  const router = useRouter();
+  const basePath = useOrgBasePath();
+  const students = useQuery(api.classes.getStudents, { classId });
+  const removeStudent = useMutation(api.classes.removeStudent);
   const [studentToRemove, setStudentToRemove] =
-    useState<StudentToRemove | null>(null)
-  const [isRemoving, setIsRemoving] = useState(false)
+    useState<StudentToRemove | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   const handleConfirmRemove = useCallback(async () => {
     if (!studentToRemove) {
-      return
+      return;
     }
 
-    setIsRemoving(true)
+    setIsRemoving(true);
 
     try {
-      await removeStudent({ classId, studentId: studentToRemove._id })
-      toast.success(t("class.studentRemoved"))
-      setStudentToRemove(null)
+      await removeStudent({ classId, studentId: studentToRemove._id });
+      toast.success(t("class.studentRemoved"));
+      setStudentToRemove(null);
     } catch {
-      toast.error(t("errors.operationFailed"))
+      toast.error(t("errors.operationFailed"));
     } finally {
-      setIsRemoving(false)
+      setIsRemoving(false);
     }
-  }, [classId, removeStudent, studentToRemove, t])
+  }, [classId, removeStudent, studentToRemove, t]);
 
   const handleRemoveDialogChange = useCallback((open: boolean) => {
     if (!open) {
-      setStudentToRemove(null)
+      setStudentToRemove(null);
     }
-  }, [])
+  }, []);
 
   const columns = useMemo<ColumnDef<ClassStudent, unknown>[]>(
     () => [
@@ -174,7 +172,7 @@ export function StudentManager({
                 <div className="text-right">{t("common.actions")}</div>
               ),
               cell: ({ row }) => {
-                const student = row.original
+                const student = row.original;
 
                 return (
                   <div className="flex justify-end">
@@ -189,79 +187,76 @@ export function StudentManager({
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                )
+                );
               },
             } satisfies ColumnDef<ClassStudent, unknown>,
           ]
         : []),
     ],
     [canManage, t],
-  )
+  );
 
   if (students === undefined) {
-    return <Skeleton className="h-[300px] w-full" />
+    return <Skeleton className="h-[300px] w-full" />;
   }
 
   return (
     <div className="flex h-full flex-col space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{t("class.studentCount", { count: students.length })}</span>
-        </div>
-        {canManage && (
-          <AddStudentDialog classId={classId} curriculumId={curriculumId} />
-        )}
-      </div>
+      <DataTable
+        data={students}
+        columns={columns}
+        filterColumn="search"
+        filterPlaceholder={t("common.searchByName")}
+        emptyMessage={t("class.noStudents")}
+        createAction={
+          canManage ? (
+            <AddStudentDialog classId={classId} curriculumId={curriculumId} />
+          ) : undefined
+        }
+        onRowClick={
+          canViewProfiles
+            ? (student) => router.push(`${basePath}/students/${student._id}`)
+            : undefined
+        }
+      />
 
-      {students.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed py-12 text-center text-muted-foreground">
-          {t("class.noStudents")}
-        </div>
-      ) : (
-        <DataTable
-          data={students}
-          columns={columns}
-          filterColumn="search"
-          filterPlaceholder={t("common.searchByName")}
-          emptyMessage={t("common.noResults")}
-        />
+      {canManage && (
+        <AlertDialog
+          open={studentToRemove !== null}
+          onOpenChange={handleRemoveDialogChange}
+        >
+          <AlertDialogContent className="sm:max-w-sm">
+            <AlertDialogHeader className="items-center text-center sm:items-center sm:text-center">
+              <div className="flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive dark:bg-destructive/20">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <AlertDialogTitle>
+                {t("student.removeFromClassTitle")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {studentToRemove
+                  ? t("class.removeConfirm", { name: studentToRemove.fullName })
+                  : ""}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="items-center justify-center gap-2 sm:justify-center">
+              <AlertDialogCancel disabled={isRemoving}>
+                {t("common.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isRemoving}
+                className={buttonVariants({ variant: "destructive" })}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void handleConfirmRemove();
+                }}
+              >
+                {t("student.removeFromClassAction")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
-
-      {canManage && <AlertDialog
-        open={studentToRemove !== null}
-        onOpenChange={handleRemoveDialogChange}
-      >
-        <AlertDialogContent className="sm:max-w-sm">
-          <AlertDialogHeader className="items-center text-center sm:items-center sm:text-center">
-            <div className="flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive dark:bg-destructive/20">
-              <Trash2 className="h-5 w-5" />
-            </div>
-            <AlertDialogTitle>
-              {t("student.removeFromClassTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {studentToRemove
-                ? t("class.removeConfirm", { name: studentToRemove.fullName })
-                : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="items-center justify-center gap-2 sm:justify-center">
-            <AlertDialogCancel disabled={isRemoving}>
-              {t("common.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isRemoving}
-              className={buttonVariants({ variant: "destructive" })}
-              onClick={(event) => {
-                event.preventDefault()
-                void handleConfirmRemove()
-              }}
-            >
-              {t("student.removeFromClassAction")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>}
     </div>
-  )
+  );
 }

@@ -521,6 +521,11 @@ test("course access is copied to the session and scoped to active students", asy
       curriculumIconKey: "microscope",
     }),
   ]);
+  const studentProfile = await asTeacher.query(
+    api.student.getStudentDashboardStats,
+    { now, studentId: data.studentId, orgSlug: "campus-a" },
+  );
+  expect(studentProfile?.student._id).toBe(data.studentId);
 
   await t.run((ctx) =>
     ctx.db.patch("users", data.studentId, { isActive: false }),
