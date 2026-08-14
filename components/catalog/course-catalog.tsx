@@ -29,11 +29,9 @@ import {
   ResponsiveFilters,
   type ResponsiveFilter,
 } from "@/components/ui/responsive-filters";
-import { useCurrentOrgRole } from "@/hooks/use-current-org-role";
 import { getCurrentMinute } from "@/hooks/use-current-minute";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { Link } from "@/i18n/navigation";
-import { isStaffRole } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 type CatalogCourse = FunctionReturnType<
@@ -45,12 +43,10 @@ function CourseRail({
   title,
   courses,
   context,
-  isStaffViewer,
 }: {
   title: string;
   courses: CatalogCourse[];
   context: TileContext;
-  isStaffViewer: boolean;
 }) {
   if (courses.length === 0) return null;
 
@@ -64,7 +60,6 @@ function CourseRail({
               key={`${context}-${course._id}`}
               course={course}
               context={context}
-              isStaffViewer={isStaffViewer}
             />
           ))}
         </div>
@@ -77,11 +72,9 @@ function CourseRail({
 function CourseTile({
   course,
   context,
-  isStaffViewer,
 }: {
   course: CatalogCourse;
   context: TileContext;
-  isStaffViewer: boolean;
 }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -136,19 +129,28 @@ function CourseTile({
               {t("common.live")}
             </Badge>
           )}
-          {isStaffViewer && (
+          {course.campusName && (
             <Badge
               variant="outline"
-              className="absolute top-3 left-3 bg-background/90"
+              className={cn(
+                "absolute top-3 left-3 min-w-0 bg-background/90",
+                context === "live"
+                  ? "max-w-[calc(100%-6rem)]"
+                  : "max-w-[calc(100%-1.5rem)]",
+              )}
+              aria-label={`${course.campusName} · ${
+                course.accessMode === "private"
+                  ? t("catalog.private")
+                  : t("catalog.institution")
+              }`}
+              title={course.campusName}
             >
               {course.accessMode === "private" ? (
                 <LockKeyhole aria-hidden="true" />
               ) : (
                 <School aria-hidden="true" />
               )}
-              {course.accessMode === "private"
-                ? t("catalog.private")
-                : t("catalog.institution")}
+              <span className="truncate">{course.campusName}</span>
             </Badge>
           )}
         </div>
@@ -240,7 +242,6 @@ export function CourseCatalog() {
   const t = useTranslations();
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
-  const { role, isLoaded: isRoleLoaded } = useCurrentOrgRole();
   const [now] = useState(getCurrentMinute);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search.trim());
@@ -248,7 +249,7 @@ export function CourseCatalog() {
     useState<Id<"curriculums"> | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
-  const canQuery = isAuthenticated && isRoleLoaded;
+  const canQuery = isAuthenticated;
   const filterOptions = useQuery(
     api.classes.getCatalogFilters,
     canQuery ? { orgSlug } : "skip",
@@ -285,7 +286,7 @@ export function CourseCatalog() {
     return [...groups.values()];
   }, [results]);
 
-  if (isAuthLoading || !isRoleLoaded) {
+  if (isAuthLoading) {
     return <CatalogSkeleton />;
   }
 
@@ -359,13 +360,11 @@ export function CourseCatalog() {
             title={t("catalog.liveNow")}
             courses={liveCourses}
             context="live"
-            isStaffViewer={isStaffRole(role)}
           />
           <CourseRail
             title={t("catalog.upcoming")}
             courses={upcomingCourses}
             context="upcoming"
-            isStaffViewer={isStaffRole(role)}
           />
           {curriculumGroups.map((group) => (
             <CourseRail
@@ -373,7 +372,6 @@ export function CourseCatalog() {
               title={group.title}
               courses={group.courses}
               context="course"
-              isStaffViewer={isStaffRole(role)}
             />
           ))}
         </>
