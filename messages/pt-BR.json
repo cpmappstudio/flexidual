@@ -254,6 +254,11 @@
     "institutionOverview": "Visão geral da instituição"
   },
   "navigation": {
+    "openNavigation": "Abrir menu",
+    "closeNavigation": "Fechar menu",
+    "collapseNavigation": "Recolher menu",
+    "expandNavigation": "Expandir menu",
+    "keepNavigationOpen": "Manter menu aberto",
     "dashboard": "Painel geral",
     "calendar": "Calendário",
     "schedule": "Agenda",

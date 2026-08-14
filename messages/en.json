@@ -254,6 +254,11 @@
     "institutionOverview": "Institution overview"
   },
   "navigation": {
+    "openNavigation": "Open menu",
+    "closeNavigation": "Close menu",
+    "collapseNavigation": "Collapse menu",
+    "expandNavigation": "Expand menu",
+    "keepNavigationOpen": "Keep menu open",
     "dashboard": "Dashboard",
     "calendar": "Calendar",
     "schedule": "Schedule",
