@@ -492,6 +492,7 @@
     "search": "Buscar currículos...",
     "title": "Título del currículo",
     "code": "Código",
+    "icon": "Ícono",
     "new": "Nuevo Currículo",
     "edit": "Editar Currículo",
     "deleteConfirm": "¿Eliminar este currículo? Todas las lecciones asociadas serán eliminadas.",

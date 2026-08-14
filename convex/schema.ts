@@ -12,6 +12,7 @@
 
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { curriculumIconValidator } from "./model/curriculumIcons";
 import { liveAccessValidator } from "./model/liveAccess";
 
 export default defineSchema({
@@ -59,6 +60,7 @@ export default defineSchema({
 
     // Visual identity
     color: v.optional(v.string()), // For UI color coding
+    iconKey: v.optional(curriculumIconValidator),
 
     // Status
     isActive: v.boolean(),

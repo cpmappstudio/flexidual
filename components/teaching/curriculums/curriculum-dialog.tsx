@@ -29,6 +29,12 @@ import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PageCreateButton } from "@/components/ui/responsive-page-action";
 import { retainOfferedGradeCodes } from "@/lib/curriculum";
+import {
+  DEFAULT_CURRICULUM_ICON,
+  getCurriculumIconKey,
+  type CurriculumIconKey,
+} from "@/lib/curriculum-icons";
+import { CurriculumIcon, CurriculumIconPicker } from "./curriculum-icon";
 
 // Multi-tenant imports
 import { useParams } from "next/navigation";
@@ -46,6 +52,7 @@ type PendingCurriculum = {
   title: string;
   code: string;
   description: string;
+  iconKey: CurriculumIconKey;
   gradeCodes?: string[];
 };
 
@@ -97,6 +104,7 @@ export function CurriculumDialog({
     title: "",
     code: "",
     description: "",
+    iconKey: DEFAULT_CURRICULUM_ICON,
     isActive: true,
     gradeCodes: [] as string[],
   });
@@ -108,6 +116,7 @@ export function CurriculumDialog({
           title: curriculum.title,
           code: curriculum.code || "",
           description: curriculum.description || "",
+          iconKey: getCurriculumIconKey(curriculum.iconKey),
           isActive: curriculum.isActive,
           gradeCodes: curriculum.gradeCodes || [],
         });
@@ -117,6 +126,7 @@ export function CurriculumDialog({
           title: "",
           code: "",
           description: "",
+          iconKey: DEFAULT_CURRICULUM_ICON,
           isActive: true,
           gradeCodes: [],
         });
@@ -148,6 +158,7 @@ export function CurriculumDialog({
       title: formData.title,
       code: formData.code,
       description: formData.description,
+      iconKey: formData.iconKey,
       gradeCodes: formData.gradeCodes,
     };
 
@@ -156,6 +167,7 @@ export function CurriculumDialog({
       title: "",
       code: "",
       description: "",
+      iconKey: DEFAULT_CURRICULUM_ICON,
       isActive: true,
       gradeCodes: [],
     });
@@ -182,6 +194,7 @@ export function CurriculumDialog({
           title: formData.title,
           code: formData.code || undefined,
           description: formData.description || undefined,
+          iconKey: formData.iconKey,
           isActive: formData.isActive,
           gradeCodes: formData.gradeCodes,
         });
@@ -195,6 +208,7 @@ export function CurriculumDialog({
             title: formData.title,
             code: formData.code,
             description: formData.description,
+            iconKey: formData.iconKey,
             gradeCodes: formData.gradeCodes,
           });
         }
@@ -217,6 +231,7 @@ export function CurriculumDialog({
             title: q.title,
             code: q.code || undefined,
             description: q.description || undefined,
+            iconKey: q.iconKey,
             gradeCodes: q.gradeCodes ?? [],
           })),
         });
@@ -358,6 +373,14 @@ export function CurriculumDialog({
               </div>
             </div>
 
+            <CurriculumIconPicker
+              value={formData.iconKey}
+              onValueChange={(iconKey) =>
+                setFormData((current) => ({ ...current, iconKey }))
+              }
+              label={t("curriculum.icon")}
+            />
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>{t("common.status")}</Label>
@@ -461,6 +484,15 @@ export function CurriculumDialog({
                 />
               </div>
             </div>
+
+            <CurriculumIconPicker
+              value={formData.iconKey}
+              onValueChange={(iconKey) =>
+                setFormData((current) => ({ ...current, iconKey }))
+              }
+              label={t("curriculum.icon")}
+            />
+
             <div className="grid gap-2">
               <Label>{t("common.description")}</Label>
               <Textarea
@@ -526,20 +558,26 @@ export function CurriculumDialog({
                       key={q.id}
                       className="flex items-center justify-between p-3 text-sm hover:bg-muted/50"
                     >
-                      <div className="grid gap-0.5">
-                        <div className="font-medium flex items-center gap-2">
-                          {q.title}
-                          {q.code && (
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] h-5"
-                            >
-                              {q.code}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-muted-foreground text-xs line-clamp-1">
-                          {q.description}
+                      <div className="flex min-w-0 items-center gap-3">
+                        <CurriculumIcon
+                          iconKey={q.iconKey}
+                          className="size-9"
+                        />
+                        <div className="grid min-w-0 gap-0.5">
+                          <div className="font-medium flex items-center gap-2">
+                            {q.title}
+                            {q.code && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] h-5"
+                              >
+                                {q.code}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-muted-foreground text-xs line-clamp-1">
+                            {q.description}
+                          </div>
                         </div>
                       </div>
                       <Button

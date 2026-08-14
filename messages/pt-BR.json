@@ -492,6 +492,7 @@
     "search": "Pesquisar currículos...",
     "title": "Título do Currículo",
     "code": "Código",
+    "icon": "Ícone",
     "new": "Novo Currículo",
     "edit": "Editar Currículo",
     "deleteConfirm": "Excluir este currículo? Todas as aulas associadas serão excluídas.",

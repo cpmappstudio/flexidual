@@ -492,6 +492,7 @@
     "search": "Search curriculums...",
     "title": "Curriculum Title",
     "code": "Code",
+    "icon": "Icon",
     "new": "New Curriculum",
     "edit": "Edit Curriculum",
     "deleteConfirm": "Delete this curriculum? All associated lessons will be deleted.",

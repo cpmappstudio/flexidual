@@ -22,6 +22,7 @@ import {
   createSortableHeader,
 } from "@/components/table/column-helpers";
 import type { FilterConfig } from "@/lib/table/types";
+import { CurriculumIcon } from "./curriculum-icon";
 
 export function CurriculumsTable({
   schoolId,
@@ -115,14 +116,17 @@ export function CurriculumsTable({
       cell: ({ row }) => {
         const code = row.original.code as string;
         return (
-          <div>
-            <div className="font-medium">{row.getValue("title")}</div>
-            {code && (
-              <div className="lg:hidden">
-                <span className="font-mono">{t("common.code")}:</span>
-                <span className="text-muted-foreground">{code || "-"}</span>
-              </div>
-            )}
+          <div className="flex items-center gap-3">
+            <CurriculumIcon iconKey={row.original.iconKey} className="size-9" />
+            <div>
+              <div className="font-medium">{row.getValue("title")}</div>
+              {code && (
+                <div className="lg:hidden">
+                  <span className="font-mono">{t("common.code")}:</span>
+                  <span className="text-muted-foreground">{code || "-"}</span>
+                </div>
+              )}
+            </div>
           </div>
         );
       },

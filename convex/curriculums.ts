@@ -9,6 +9,8 @@ import {
 } from "./permissions";
 import type { Id } from "./_generated/dataModel";
 import { validateGradeCodes } from "./model/grades";
+import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
+import { curriculumIconValidator } from "./model/curriculumIcons";
 
 const curriculumValidator = v.object({
   _id: v.id("curriculums"),
@@ -17,6 +19,7 @@ const curriculumValidator = v.object({
   description: v.optional(v.string()),
   code: v.optional(v.string()),
   color: v.optional(v.string()),
+  iconKey: v.optional(curriculumIconValidator),
   isActive: v.boolean(),
   createdAt: v.number(),
   createdBy: v.id("users"),
@@ -206,6 +209,7 @@ export const create = mutation({
     description: v.optional(v.string()),
     code: v.optional(v.string()),
     color: v.optional(v.string()),
+    iconKey: v.optional(curriculumIconValidator),
     gradeCodes: v.optional(v.array(v.string())),
   },
   returns: v.id("curriculums"),
@@ -247,6 +251,7 @@ export const create = mutation({
       description: args.description,
       code,
       color: args.color || "#3b82f6",
+      iconKey: args.iconKey ?? DEFAULT_CURRICULUM_ICON,
       gradeCodes: args.gradeCodes ?? [],
       isActive: true,
       createdAt: Date.now(),
@@ -270,6 +275,7 @@ export const createBatch = mutation({
         title: v.string(),
         description: v.optional(v.string()),
         code: v.optional(v.string()),
+        iconKey: v.optional(curriculumIconValidator),
         gradeCodes: v.optional(v.array(v.string())),
       }),
     ),
@@ -303,11 +309,10 @@ export const createBatch = mutation({
       ...item,
       title: normalizeCurriculumTitle(item.title),
       code: normalizeCurriculumCode(item.code),
+      iconKey: item.iconKey ?? DEFAULT_CURRICULUM_ICON,
       gradeCodes: [...new Set(item.gradeCodes ?? [])],
     }));
-    const codes = curriculums.flatMap((item) =>
-      item.code ? [item.code] : [],
-    );
+    const codes = curriculums.flatMap((item) => (item.code ? [item.code] : []));
     if (new Set(codes).size !== codes.length) {
       throw new ConvexError("CURRICULUM_CODE_IN_USE");
     }
@@ -317,11 +322,9 @@ export const createBatch = mutation({
       ),
     );
 
-    const invalidCodes = await validateGradeCodes(
-      ctx,
-      targetSchoolId,
-      [...new Set(curriculums.flatMap((item) => item.gradeCodes))],
-    );
+    const invalidCodes = await validateGradeCodes(ctx, targetSchoolId, [
+      ...new Set(curriculums.flatMap((item) => item.gradeCodes)),
+    ]);
     if (invalidCodes.length > 0) {
       throw new ConvexError({
         code: "INVALID_GRADE",
@@ -335,6 +338,7 @@ export const createBatch = mutation({
         title: item.title,
         description: item.description,
         code: item.code,
+        iconKey: item.iconKey,
         gradeCodes: item.gradeCodes,
         color: "#3b82f6",
         schoolId: targetSchoolId,
@@ -359,6 +363,7 @@ export const update = mutation({
     description: v.optional(v.string()),
     code: v.optional(v.string()),
     color: v.optional(v.string()),
+    iconKey: v.optional(curriculumIconValidator),
     isActive: v.optional(v.boolean()),
     gradeCodes: v.optional(v.array(v.string())),
   },
@@ -394,9 +399,7 @@ export const update = mutation({
     }
 
     const gradeCodes =
-      args.gradeCodes === undefined
-        ? undefined
-        : [...new Set(args.gradeCodes)];
+      args.gradeCodes === undefined ? undefined : [...new Set(args.gradeCodes)];
 
     if (gradeCodes && curriculum.schoolId) {
       const invalidCodes = await validateGradeCodes(
