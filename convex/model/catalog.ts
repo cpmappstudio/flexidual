@@ -54,6 +54,12 @@ export const catalogDetailValidator = v.object({
 });
 
 export const catalogFilterOptionsValidator = v.object({
+  campuses: v.array(
+    v.object({
+      value: v.id("campuses"),
+      label: v.string(),
+    }),
+  ),
   curriculums: v.array(
     v.object({
       value: v.id("curriculums"),
@@ -92,6 +98,7 @@ type CatalogResources = {
 
 export type CatalogFilters = {
   search?: string;
+  campusId?: Id<"campuses">;
   curriculumId?: Id<"curriculums">;
   teacherId?: Id<"users">;
 };
@@ -244,6 +251,7 @@ function isVisibleCourse(access: CatalogAccess, classData: Doc<"classes">) {
 
 function matchesFilters(classData: Doc<"classes">, filters: CatalogFilters) {
   return (
+    (!filters.campusId || classData.campusId === filters.campusId) &&
     (!filters.curriculumId ||
       classData.curriculumId === filters.curriculumId) &&
     (!filters.teacherId || classData.teacherId === filters.teacherId) &&
@@ -258,6 +266,7 @@ async function paginateCurrentClasses(
   filters: CatalogFilters,
   paginationOpts: PaginationOptions,
 ) {
+  const campusId = filters.campusId;
   if (filters.search) {
     const searchQuery = schoolId
       ? ctx.db
@@ -283,6 +292,7 @@ async function paginateCurrentClasses(
           filters.curriculumId
             ? q.eq(q.field("curriculumId"), filters.curriculumId)
             : q.eq(true, true),
+          campusId ? q.eq(q.field("campusId"), campusId) : q.eq(true, true),
           filters.teacherId
             ? q.eq(q.field("teacherId"), filters.teacherId)
             : q.eq(true, true),
@@ -291,22 +301,30 @@ async function paginateCurrentClasses(
       .paginate(paginationOpts);
   }
 
-  const classesQuery = schoolId
+  const classesQuery = campusId
     ? ctx.db
         .query("classes")
-        .withIndex("by_school_and_active_and_class_type", (q) =>
-          q
-            .eq("schoolId", schoolId)
-            .eq("isActive", true)
-            .eq("classType", "standard"),
+        .withIndex("by_campus", (q) =>
+          q.eq("campusId", campusId).eq("isActive", true),
         )
+        .filter((q) => q.eq(q.field("classType"), "standard"))
         .order("desc")
-    : ctx.db
-        .query("classes")
-        .withIndex("by_active_and_class_type", (q) =>
-          q.eq("isActive", true).eq("classType", "standard"),
-        )
-        .order("desc");
+    : schoolId
+      ? ctx.db
+          .query("classes")
+          .withIndex("by_school_and_active_and_class_type", (q) =>
+            q
+              .eq("schoolId", schoolId)
+              .eq("isActive", true)
+              .eq("classType", "standard"),
+          )
+          .order("desc")
+      : ctx.db
+          .query("classes")
+          .withIndex("by_active_and_class_type", (q) =>
+            q.eq("isActive", true).eq("classType", "standard"),
+          )
+          .order("desc");
   return await classesQuery
     .filter((q) =>
       q.and(
@@ -319,6 +337,20 @@ async function paginateCurrentClasses(
       ),
     )
     .paginate(paginationOpts);
+}
+
+async function validateCatalogCampus(
+  ctx: QueryCtx,
+  schoolId: Id<"schools"> | undefined,
+  campusId: Id<"campuses"> | undefined,
+) {
+  if (!campusId) return undefined;
+
+  const campus = await ctx.db.get(campusId);
+  if (!campus?.isActive || (schoolId && campus.schoolId !== schoolId)) {
+    throw new ConvexError("INVALID_CAMPUS");
+  }
+  return campus;
 }
 
 async function listLegacyClasses(
@@ -614,6 +646,7 @@ export async function listCatalogCourses(
   paginationOpts: PaginationOptions,
 ) {
   const access = await getCatalogAccess(ctx, user, orgSlug);
+  await validateCatalogCampus(ctx, access.schoolId, filters.campusId);
   const normalizedFilters = {
     ...filters,
     search: filters.search?.trim().toLocaleLowerCase() || undefined,
@@ -644,25 +677,44 @@ export async function getCatalogFilterOptions(
   ctx: QueryCtx,
   user: Doc<"users">,
   orgSlug: string,
+  campusId?: Id<"campuses">,
 ) {
   const access = await getCatalogAccess(ctx, user, orgSlug);
-  const [curriculums, assignments] = await Promise.all([
-    access.schoolId
+  const selectedCampus = await validateCatalogCampus(
+    ctx,
+    access.schoolId,
+    campusId,
+  );
+  const schoolId = access.schoolId;
+  const teacherSchoolId = selectedCampus?.schoolId ?? schoolId;
+  const [campuses, curriculums, assignments] = await Promise.all([
+    schoolId
+      ? ctx.db
+          .query("campuses")
+          .withIndex("by_school", (q) =>
+            q.eq("schoolId", schoolId).eq("isActive", true),
+          )
+          .take(FILTER_OPTION_LIMIT)
+      : ctx.db
+          .query("campuses")
+          .withIndex("by_active", (q) => q.eq("isActive", true))
+          .take(FILTER_OPTION_LIMIT),
+    schoolId
       ? ctx.db
           .query("curriculums")
           .withIndex("by_school", (q) =>
-            q.eq("schoolId", access.schoolId).eq("isActive", true),
+            q.eq("schoolId", schoolId).eq("isActive", true),
           )
           .take(FILTER_OPTION_LIMIT)
       : ctx.db
           .query("curriculums")
           .withIndex("by_active", (q) => q.eq("isActive", true))
           .take(FILTER_OPTION_LIMIT),
-    access.schoolId
+    teacherSchoolId
       ? ctx.db
           .query("roleAssignments")
           .withIndex("by_role", (q) =>
-            q.eq("role", "teacher").eq("schoolId", access.schoolId),
+            q.eq("role", "teacher").eq("schoolId", teacherSchoolId),
           )
           .take(FILTER_OPTION_LIMIT)
       : ctx.db
@@ -670,12 +722,25 @@ export async function getCatalogFilterOptions(
           .withIndex("by_role", (q) => q.eq("role", "teacher"))
           .take(FILTER_OPTION_LIMIT),
   ]);
-  const teacherIds = [...new Set(assignments.map((item) => item.userId))];
+  const teacherIds = [
+    ...new Set(
+      assignments
+        .filter(
+          (assignment) =>
+            !campusId ||
+            (assignment.orgType === "campus" && assignment.orgId === campusId),
+        )
+        .map((assignment) => assignment.userId),
+    ),
+  ];
   const teachers = (
     await Promise.all(teacherIds.map((teacherId) => ctx.db.get(teacherId)))
   ).filter((teacher): teacher is Doc<"users"> => Boolean(teacher?.isActive));
 
   return {
+    campuses: campuses
+      .map((campus) => ({ value: campus._id, label: campus.name }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
     curriculums: curriculums
       .map((curriculum) => ({
         value: curriculum._id,

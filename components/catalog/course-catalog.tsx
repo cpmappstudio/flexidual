@@ -247,12 +247,19 @@ export function CourseCatalog() {
   const debouncedSearch = useDebouncedValue(search.trim());
   const [selectedCurriculumId, setSelectedCurriculumId] =
     useState<Id<"curriculums"> | null>(null);
+  const [selectedCampusId, setSelectedCampusId] =
+    useState<Id<"campuses"> | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
   const canQuery = isAuthenticated;
   const filterOptions = useQuery(
     api.classes.getCatalogFilters,
-    canQuery ? { orgSlug } : "skip",
+    canQuery
+      ? {
+          orgSlug,
+          ...(selectedCampusId && { campusId: selectedCampusId }),
+        }
+      : "skip",
   );
   const { results, status, loadMore } = usePaginatedQuery(
     api.classes.listCatalog,
@@ -261,6 +268,7 @@ export function CourseCatalog() {
           orgSlug,
           now,
           ...(debouncedSearch && { search: debouncedSearch }),
+          ...(selectedCampusId && { campusId: selectedCampusId }),
           ...(selectedCurriculumId && {
             curriculumId: selectedCurriculumId,
           }),
@@ -291,6 +299,17 @@ export function CourseCatalog() {
   }
 
   const filters: ResponsiveFilter[] = [
+    {
+      key: "campus",
+      label: t("navigation.campus"),
+      allLabel: t("admin.allCampuses"),
+      value: selectedCampusId,
+      options: filterOptions?.campuses ?? [],
+      onChange: (value) => {
+        setSelectedCampusId(value as Id<"campuses"> | null);
+        setSelectedTeacherId(null);
+      },
+    },
     {
       key: "curriculum",
       label: t("navigation.curriculum"),

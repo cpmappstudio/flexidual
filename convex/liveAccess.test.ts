@@ -17,6 +17,15 @@ test("course access is copied to the session and scoped to active students", asy
       isActive: true,
       createdAt: now,
     });
+    const secondTeacherId = await ctx.db.insert("users", {
+      clerkId: "second-teacher-clerk-id",
+      email: "second-teacher@example.com",
+      firstName: "Uma",
+      lastName: "Teacher",
+      fullName: "Uma Teacher",
+      isActive: true,
+      createdAt: now,
+    });
     const studentId = await ctx.db.insert("users", {
       clerkId: "student-clerk-id",
       username: "student",
@@ -58,6 +67,14 @@ test("course access is copied to the session and scoped to active students", asy
       createdAt: now,
       createdBy: teacherId,
     });
+    const secondCampusAId = await ctx.db.insert("campuses", {
+      schoolId: schoolAId,
+      name: "Campus A2",
+      slug: "campus-a2",
+      isActive: true,
+      createdAt: now,
+      createdBy: teacherId,
+    });
     await ctx.db.insert("roleAssignments", {
       userId: studentId,
       orgId: campusAId,
@@ -71,6 +88,15 @@ test("course access is copied to the session and scoped to active students", asy
     await ctx.db.insert("roleAssignments", {
       userId: teacherId,
       orgId: campusAId,
+      orgType: "campus",
+      role: "teacher",
+      schoolId: schoolAId,
+      assignedAt: now,
+      assignedBy: teacherId,
+    });
+    await ctx.db.insert("roleAssignments", {
+      userId: secondTeacherId,
+      orgId: secondCampusAId,
       orgType: "campus",
       role: "teacher",
       schoolId: schoolAId,
@@ -228,7 +254,16 @@ test("course access is copied to the session and scoped to active students", asy
       createdBy: teacherId,
     });
 
-    return { scheduleAId, schoolAId, studentId, classAId, classBId };
+    return {
+      scheduleAId,
+      schoolAId,
+      studentId,
+      classAId,
+      classBId,
+      campusAId,
+      campusBId,
+      secondCampusAId,
+    };
   });
 
   const asTeacher = t.withIdentity({ subject: "teacher-clerk-id" });
@@ -303,12 +338,42 @@ test("course access is copied to the session and scoped to active students", asy
   const catalogFilters = await asTeacher.query(api.classes.getCatalogFilters, {
     orgSlug: "campus-a",
   });
+  expect(catalogFilters.campuses).toEqual([
+    { value: data.campusAId, label: "Campus A" },
+    { value: data.secondCampusAId, label: "Campus A2" },
+  ]);
   expect(catalogFilters.curriculums).toEqual([
     { value: expect.any(String), label: "Curriculum A" },
   ]);
   expect(catalogFilters.teachers).toEqual([
     { value: expect.any(String), label: "Taylor Teacher" },
+    { value: expect.any(String), label: "Uma Teacher" },
   ]);
+
+  const campusFilters = await asTeacher.query(api.classes.getCatalogFilters, {
+    orgSlug: "campus-a",
+    campusId: data.campusAId,
+  });
+  expect(campusFilters.teachers).toEqual([
+    { value: expect.any(String), label: "Taylor Teacher" },
+  ]);
+
+  const campusCatalog = await asTeacher.query(api.classes.listCatalog, {
+    orgSlug: "campus-a",
+    now,
+    campusId: data.campusAId,
+    paginationOpts: { numItems: 10, cursor: null },
+  });
+  expect(campusCatalog.page.map((course) => course.name).sort()).toEqual([
+    "Class A",
+    "Private Class A",
+  ]);
+  await expect(
+    asTeacher.query(api.classes.getCatalogFilters, {
+      orgSlug: "campus-a",
+      campusId: data.campusBId,
+    }),
+  ).rejects.toThrow("INVALID_CAMPUS");
 
   const courseDetail = await asTeacher.query(api.classes.getCatalog, {
     orgSlug: "campus-a",

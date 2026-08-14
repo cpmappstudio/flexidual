@@ -305,6 +305,7 @@ export const listCatalog = query({
     orgSlug: v.string(),
     now: v.number(),
     search: v.optional(v.string()),
+    campusId: v.optional(v.id("campuses")),
     curriculumId: v.optional(v.id("curriculums")),
     teacherId: v.optional(v.id("users")),
     paginationOpts: paginationOptsValidator,
@@ -319,6 +320,7 @@ export const listCatalog = query({
       args.now,
       {
         search: args.search,
+        campusId: args.campusId,
         curriculumId: args.curriculumId,
         teacherId: args.teacherId,
       },
@@ -328,11 +330,19 @@ export const listCatalog = query({
 });
 
 export const getCatalogFilters = query({
-  args: { orgSlug: v.string() },
+  args: {
+    orgSlug: v.string(),
+    campusId: v.optional(v.id("campuses")),
+  },
   returns: catalogFilterOptionsValidator,
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
-    return await getCatalogFilterOptions(ctx, user, args.orgSlug);
+    return await getCatalogFilterOptions(
+      ctx,
+      user,
+      args.orgSlug,
+      args.campusId,
+    );
   },
 });
 
