@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useAuth } from "@clerk/nextjs";
 import { Building2, MapPin, Plus, Settings2 } from "lucide-react";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
@@ -33,7 +34,7 @@ import {
 
 export function OrgSwitcher() {
   const t = useTranslations("admin");
-  const { isMobile, setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile, state } = useSidebar();
   const { orgSlug } = useParams<{ orgSlug?: string }>();
   const router = useRouter();
   const { userId } = useAuth();
@@ -46,7 +47,10 @@ export function OrgSwitcher() {
   const [campusSchoolId, setCampusSchoolId] =
     React.useState<Id<"schools"> | null>(null);
 
-  const schools = React.useMemo(() => options?.schools ?? [], [options?.schools]);
+  const schools = React.useMemo(
+    () => options?.schools ?? [],
+    [options?.schools],
+  );
   const campuses = React.useMemo(
     () => options?.campuses ?? [],
     [options?.campuses],
@@ -90,16 +94,27 @@ export function OrgSwitcher() {
   };
 
   const label = (
-    <div className="grid min-w-0 flex-1 gap-1 text-left leading-tight">
-      <span className="whitespace-normal break-words text-base font-bold leading-snug text-primary">
+    <div className="grid min-w-0 flex-1 gap-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
+      <span className="truncate text-base font-bold leading-snug text-primary">
         {activeCampus?.name ?? activeSchool.name}
       </span>
       {activeCampus && (
-        <span className="whitespace-normal break-words text-sm text-muted-foreground">
+        <span className="truncate text-sm text-muted-foreground">
           {activeSchool.name}
         </span>
       )}
     </div>
+  );
+  const activeOrganizationName = activeCampus?.name ?? activeSchool.name;
+  const compactSwitcherIcon = (
+    <Image
+      src="/school-campus-switcher.svg"
+      alt=""
+      width={28}
+      height={28}
+      aria-hidden="true"
+      className="mt-0.5 size-7 shrink-0 group-data-[collapsible=icon]:mt-0"
+    />
   );
 
   return (
@@ -109,8 +124,11 @@ export function OrgSwitcher() {
           {!isInteractive ? (
             <SidebarMenuButton
               size="lg"
-              className="h-auto min-h-14 cursor-default items-start px-2 py-2"
+              title={state === "collapsed" ? activeOrganizationName : undefined}
+              aria-label={activeOrganizationName}
+              className="h-auto min-h-14 cursor-default items-start px-2 py-2 group-data-[collapsible=icon]:min-h-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
             >
+              {compactSwitcherIcon}
               {label}
             </SidebarMenuButton>
           ) : (
@@ -118,8 +136,13 @@ export function OrgSwitcher() {
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton
                   size="lg"
-                  className="h-auto min-h-14 items-start px-2 py-2 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  title={
+                    state === "collapsed" ? activeOrganizationName : undefined
+                  }
+                  aria-label={activeOrganizationName}
+                  className="h-auto min-h-14 items-start px-2 py-2 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:min-h-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
                 >
+                  {compactSwitcherIcon}
                   {label}
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
@@ -140,9 +163,7 @@ export function OrgSwitcher() {
                       <DropdownMenuItem
                         key={campus._id}
                         className="cursor-pointer gap-2"
-                        onSelect={() =>
-                          selectCampus(campus._id)
-                        }
+                        onSelect={() => selectCampus(campus._id)}
                       >
                         <MapPin className="size-4" />
                         <span className="min-w-0 flex-1 whitespace-normal break-words">
@@ -166,9 +187,7 @@ export function OrgSwitcher() {
                           <DropdownMenuItem
                             key={campus._id}
                             className="cursor-pointer gap-2 pl-6"
-                            onSelect={() =>
-                              selectCampus(campus._id)
-                            }
+                            onSelect={() => selectCampus(campus._id)}
                           >
                             <MapPin className="size-4" />
                             {campus.name}
@@ -213,7 +232,9 @@ export function OrgSwitcher() {
                                     institution: school.name,
                                   })}
                                   onSelect={() => {
-                                    router.push(`/${school.slug}/settings/campuses`);
+                                    router.push(
+                                      `/${school.slug}/settings/campuses`,
+                                    );
                                   }}
                                 >
                                   <Settings2 className="size-4" />
@@ -224,9 +245,7 @@ export function OrgSwitcher() {
                               <DropdownMenuItem
                                 key={campus._id}
                                 className="cursor-pointer gap-2"
-                                onSelect={() =>
-                                  selectCampus(campus._id)
-                                }
+                                onSelect={() => selectCampus(campus._id)}
                               >
                                 <MapPin className="size-4" />
                                 <span className="min-w-0 flex-1 whitespace-normal break-words">
@@ -239,9 +258,7 @@ export function OrgSwitcher() {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   className="cursor-pointer"
-                                  onSelect={() =>
-                                    setCampusSchoolId(school._id)
-                                  }
+                                  onSelect={() => setCampusSchoolId(school._id)}
                                 >
                                   <Plus className="size-4" />
                                   {t("createCampus")}

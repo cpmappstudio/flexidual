@@ -19,7 +19,7 @@ import { ClassroomActionButton } from "./classroom-action-bar";
 interface LeaveClassButtonProps {
   className?: string;
   iconClassName?: string;
-  appearance?: "icon" | "toolbar";
+  appearance?: "header" | "icon" | "toolbar";
   onConfirm: () => void | Promise<void>;
   previewOpen?: boolean;
   onPreviewOpenChange?: (open: boolean) => void;
@@ -48,6 +48,16 @@ export function LeaveClassButton({
             icon={<LogOut />}
             tone="destructive"
           />
+        ) : appearance === "header" ? (
+          <button
+            type="button"
+            title={t("leave")}
+            aria-label={t("leave")}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/5 px-3 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/10"
+          >
+            <LogOut className="size-4" />
+            <span>{t("leave")}</span>
+          </button>
         ) : (
           <button
             type="button"

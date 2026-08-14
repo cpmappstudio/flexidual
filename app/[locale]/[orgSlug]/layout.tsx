@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getRouteRole, isSuperAdmin } from "@/lib/rbac";
 import { setupLocale } from "@/lib/locale-setup";
@@ -16,6 +17,9 @@ export default async function OrgLayout({
 }) {
   const { locale, orgSlug } = await params;
   await setupLocale(params);
+  const cookieStore = await cookies();
+  const sidebarDefaultOpen =
+    cookieStore.get("sidebar_state")?.value !== "false";
 
   const { sessionClaims, userId } = await auth();
   if (!userId) redirect(`/${locale}/sign-in`);
@@ -29,10 +33,18 @@ export default async function OrgLayout({
 
   return (
     <ConvexAuthBoundary>
-      <SidebarProvider open className="flex-col [--header-height:4rem]">
+      <SidebarProvider
+        defaultOpen={sidebarDefaultOpen}
+        className="flex-col [--header-height:4rem]"
+      >
         <SiteHeader />
         <div className="flex min-h-0 flex-1">
           <AppSidebar />
+          <div
+            aria-hidden="true"
+            data-sidebar-trigger-channel
+            className="w-[14px] shrink-0 bg-background"
+          />
           <SidebarInset>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4 has-[[data-classroom-layout]]:gap-0 has-[[data-classroom-layout]]:p-0">
               {children}

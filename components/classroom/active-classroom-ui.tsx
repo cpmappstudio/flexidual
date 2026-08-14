@@ -22,10 +22,11 @@ import {
   Hand,
   Loader2,
   Eye,
-  Crown,
+  UserStar,
   CircleDot,
   StopCircle,
   TabletSmartphone,
+  MoreHorizontal,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
@@ -84,6 +85,15 @@ import {
   ClassroomActionButton,
 } from "./classroom-action-bar";
 import { Toggle } from "@/components/ui/toggle";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   ClassroomScreenShareContent,
   ClassroomStage,
@@ -1333,6 +1343,21 @@ export function ActiveClassroomUI({
         waitingLabel={t("classroom.waiting")}
         isRecording={isRecordingForDisplay}
         isPhoneLandscape={isPhoneLandscape}
+        sessionAction={
+          amIAuthority && (sessionIsLive || hasStartedSession) ? (
+            <EndClassButton
+              appearance="header"
+              onConfirm={handleEndSession}
+              onLeave={handleLeaveClick}
+              disabled={isEndingSession}
+            />
+          ) : (
+            <LeaveClassButton
+              appearance="header"
+              onConfirm={handleLeaveClick}
+            />
+          )
+        }
         action={
           amIAuthority && !amITeacher && !actualTeacher ? (
             <Toggle
@@ -1353,7 +1378,7 @@ export function ActiveClassroomUI({
               }`}
               onPressedChange={() => void togglePresenterMode()}
             >
-              <Crown className="size-4" />
+              <UserStar className="size-4" />
               {!isPhoneLandscape && (
                 <span>
                   {isLocalAdminPresenting
@@ -1605,6 +1630,128 @@ export function ActiveClassroomUI({
       {/* 3. Meeting Controls (row 4 on mobile, row 3 on md+) — hidden in phone landscape */}
       <ClassroomViewControls isPhoneLandscape={isPhoneLandscape}>
         <ClassroomActionBar
+          mobile={
+            <>
+              <DeviceToggleButton
+                variant="toolbar"
+                source={Track.Source.Microphone}
+                kind="audioinput"
+                includeAudioOutput
+                label={t("classroom.microphone")}
+                activeLabel={t("common.active")}
+                inactiveLabel={t("common.inactive")}
+                pickerLabel={t("classroom.selectAudioDevice")}
+                iconOn={<Mic />}
+                iconOff={<MicOff />}
+              />
+              {!amIIncognito && (
+                <DeviceToggleButton
+                  variant="toolbar"
+                  source={Track.Source.Camera}
+                  kind="videoinput"
+                  label={t("classroom.camera")}
+                  activeLabel={t("common.active")}
+                  inactiveLabel={t("common.inactive")}
+                  pickerLabel={t("classroom.selectCamera")}
+                  iconOn={<VideoIcon />}
+                  iconOff={<VideoOff />}
+                />
+              )}
+              <ClassroomActionButton
+                icon={
+                  <MonitorUp
+                    className={
+                      isWaitingForApprovalForDisplay
+                        ? "animate-pulse"
+                        : undefined
+                    }
+                  />
+                }
+                label={t("classroom.shareScreen")}
+                pressed={Boolean(isSharingLocally)}
+                statusLabel={
+                  isWaitingForApprovalForDisplay
+                    ? t("classroom.waitingForApproval")
+                    : isSharingLocally || isShareApprovedForDisplay
+                      ? t("common.active")
+                      : t("common.inactive")
+                }
+                tone="success"
+                disabled={isWaitingForApprovalForDisplay}
+                onPressedChange={() => void handleShareClick()}
+              />
+              {amIAuthority && (
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <ClassroomActionButton
+                      icon={<MoreHorizontal />}
+                      label={t("classroom.moreActions")}
+                    />
+                  </SheetTrigger>
+                  <SheetContent
+                    side="bottom"
+                    className="gap-0 pb-[max(1rem,env(safe-area-inset-bottom))]"
+                  >
+                    <SheetHeader className="border-b border-border/70">
+                      <SheetTitle>{t("classroom.moreActionsTitle")}</SheetTitle>
+                    </SheetHeader>
+                    <div className="grid gap-1 p-3">
+                      <SheetClose asChild>
+                        <Toggle
+                          type="button"
+                          pressed={isRecordingForDisplay}
+                          aria-label={
+                            isRecordingForDisplay
+                              ? t("classroom.stopRecording")
+                              : t("classroom.startRecording")
+                          }
+                          title={
+                            isRecordingForDisplay
+                              ? t("classroom.stopRecording")
+                              : t("classroom.startRecording")
+                          }
+                          className="h-12 w-full justify-start gap-3 px-3 font-normal data-[state=on]:bg-destructive/10 data-[state=on]:text-destructive"
+                          disabled={isTogglingRecord}
+                          onPressedChange={handleRecordClick}
+                        >
+                          {isTogglingRecord ? (
+                            <Loader2 className="size-5 animate-spin" />
+                          ) : isRecordingForDisplay ? (
+                            <StopCircle className="size-5 text-destructive" />
+                          ) : (
+                            <CircleDot className="size-5" />
+                          )}
+                          <span>{t("classroom.record")}</span>
+                        </Toggle>
+                      </SheetClose>
+                      <SheetClose asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-12 justify-start gap-3 px-3"
+                          onClick={() => setShowQR(true)}
+                        >
+                          <TabletSmartphone
+                            className={
+                              hasCompanion ? "size-5 text-success" : "size-5"
+                            }
+                          />
+                          <span className="flex flex-1 items-center justify-between gap-3">
+                            <span>{t("classroom.connectDevice")}</span>
+                            {hasCompanion && (
+                              <span className="text-xs font-medium text-success">
+                                {t("classroom.connected")}
+                              </span>
+                            )}
+                          </span>
+                        </Button>
+                      </SheetClose>
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              )}
+            </>
+          }
           left={
             <>
               <DeviceToggleButton
@@ -1814,6 +1961,17 @@ export function ActiveClassroomUI({
             ? t("classroom.waitingForStudents")
             : t("classroom.youAreFirst")
         }
+        participants={displayedStudents}
+        raisedParticipantIds={raisedHands}
+        youLabel={t("classroom.youShort")}
+        raisedHandLabel={t("classroom.raisedHand")}
+        raisedHandsCountLabel={(count) =>
+          t("classroom.raisedHandsCount", { count })
+        }
+        lowerHandLabel={t("classroom.lowerHand")}
+        onLowerHand={
+          amITeacher || isLocalAdminPresenting ? forceLowerHand : undefined
+        }
       >
         {displayedStudents.map((p) => (
           <ParticipantTile
@@ -1827,6 +1985,7 @@ export function ActiveClassroomUI({
                 ? () => forceLowerHand(p.identity)
                 : undefined
             }
+            lowerHandLabel={t("classroom.lowerHand")}
             youLabel={t("classroom.youShort")}
           />
         ))}

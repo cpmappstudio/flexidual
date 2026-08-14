@@ -12,6 +12,7 @@ interface ClassroomHeaderProps {
   isRecording: boolean;
   isPhoneLandscape: boolean;
   action?: ReactNode;
+  sessionAction?: ReactNode;
 }
 
 export function ClassroomHeader({
@@ -23,6 +24,7 @@ export function ClassroomHeader({
   isRecording,
   isPhoneLandscape,
   action,
+  sessionAction,
 }: ClassroomHeaderProps) {
   const statusLabel = isActive ? activeLabel : waitingLabel;
   const statusColor = isActive ? "bg-success animate-pulse" : "bg-chart-4";
@@ -51,8 +53,8 @@ export function ClassroomHeader({
         </div>
       ) : (
         <div className="px-0.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <div className="flex min-w-0 items-center gap-2.5">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 md:flex md:items-center">
+            <div className="flex min-w-0 items-center gap-2 md:flex-1">
               <div className="flex min-w-0 flex-col">
                 <h2 className="truncate text-sm font-bold text-card-foreground">
                   {title}
@@ -63,15 +65,24 @@ export function ClassroomHeader({
                   </p>
                 )}
               </div>
+              {isRecording && (
+                <div className="shrink-0">
+                  <RecordingIndicator />
+                </div>
+              )}
             </div>
             {action && (
-              <div className="flex basis-full shrink-0 items-center sm:basis-auto">
+              <div className="col-start-1 row-start-2 flex shrink-0 items-center md:col-auto md:row-auto">
                 {action}
               </div>
             )}
-            {isRecording && (
-              <div className="ml-auto shrink-0">
-                <RecordingIndicator />
+            {sessionAction && (
+              <div
+                className={`col-start-2 shrink-0 lg:hidden ${
+                  action ? "row-start-2" : "row-start-1"
+                } md:col-auto md:row-auto`}
+              >
+                {sessionAction}
               </div>
             )}
           </div>
