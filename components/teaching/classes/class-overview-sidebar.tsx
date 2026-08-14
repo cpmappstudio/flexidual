@@ -17,6 +17,8 @@ import type { CourseProgress } from "@/lib/course-progress";
 
 const overviewCardClassName =
   "min-h-0 gap-4 overflow-hidden rounded-[2rem] border-0 py-5 shadow-md ring-1 ring-border/80";
+const MOBILE_LESSON_PREVIEW_COUNT = 5;
+const DESKTOP_LESSON_PREVIEW_COUNT = 20;
 
 export function ClassOverviewSidebar({
   lessons,
@@ -34,6 +36,9 @@ export function ClassOverviewSidebar({
       color: "var(--secondary)",
     },
   } satisfies ChartConfig;
+  const previewLessons = lessons.slice(0, DESKTOP_LESSON_PREVIEW_COUNT);
+  const hasMoreMobileLessons = lessons.length > MOBILE_LESSON_PREVIEW_COUNT;
+  const hasMoreDesktopLessons = lessons.length > DESKTOP_LESSON_PREVIEW_COUNT;
 
   return (
     <aside className="grid gap-4 xl:sticky xl:top-[calc(var(--header-height)+1rem)] xl:h-[calc(100svh-var(--header-height)-2rem)] xl:self-start xl:grid-rows-[auto_minmax(0,1fr)]">
@@ -114,10 +119,10 @@ export function ClassOverviewSidebar({
               {t("lesson.noLessonsForCurriculum")}
             </div>
           ) : (
-            lessons.map((lesson) => (
+            previewLessons.map((lesson, index) => (
               <div
                 key={lesson._id}
-                className="flex min-h-[68px] items-center gap-3 rounded-2xl border bg-sidebar px-4 py-3"
+                className={`${index >= MOBILE_LESSON_PREVIEW_COUNT ? "hidden md:flex" : "flex"} min-h-[68px] items-center gap-3 rounded-2xl border bg-sidebar px-4 py-3`}
               >
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary/15 text-sm font-bold text-secondary">
                   {lesson.order}
@@ -134,6 +139,22 @@ export function ClassOverviewSidebar({
                 </div>
               </div>
             ))
+          )}
+          {hasMoreMobileLessons && (
+            <div
+              className="flex h-6 items-center justify-center text-xl tracking-[0.3em] text-muted-foreground md:hidden"
+              aria-hidden="true"
+            >
+              …
+            </div>
+          )}
+          {hasMoreDesktopLessons && (
+            <div
+              className="hidden h-6 items-center justify-center text-xl tracking-[0.3em] text-muted-foreground md:flex"
+              aria-hidden="true"
+            >
+              …
+            </div>
           )}
         </CardContent>
       </Card>
