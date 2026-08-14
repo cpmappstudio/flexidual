@@ -42,6 +42,7 @@ export const CURRICULUM_ICON_KEYS = [
   "scissors",
   "sharpener",
   "spell-book",
+  "star-of-david",
   "statue-of-liberty",
   "sun",
   "telescope",

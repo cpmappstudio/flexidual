@@ -23,16 +23,18 @@ import { cn } from "@/lib/utils";
 export function CurriculumIcon({
   iconKey,
   className,
+  size = 48,
 }: {
   iconKey?: string;
   className?: string;
+  size?: number;
 }) {
   return (
     <Image
       src={getCurriculumIconSrc(iconKey)}
       alt=""
-      width={48}
-      height={48}
+      width={size}
+      height={size}
       className={cn("size-10 shrink-0 object-contain", className)}
     />
   );

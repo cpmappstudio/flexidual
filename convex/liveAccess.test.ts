@@ -79,6 +79,7 @@ test("course access is copied to the session and scoped to active students", asy
     });
     const curriculumAId = await ctx.db.insert("curriculums", {
       title: "Curriculum A",
+      iconKey: "microscope",
       isActive: true,
       createdAt: now,
       createdBy: teacherId,
@@ -267,6 +268,7 @@ test("course access is copied to the session and scoped to active students", asy
     roomName: "room-a-next",
     canOpen: false,
   });
+  expect(studentCatalog.page[0].curriculumIconKey).toBe("microscope");
 
   const staffCatalog = await asTeacher.query(api.classes.listCatalog, {
     orgSlug: "campus-a",
@@ -278,8 +280,7 @@ test("course access is copied to the session and scoped to active students", asy
     "Private Class A",
   ]);
   expect(
-    staffCatalog.page.find((course) => course.name === "Class A")
-      ?.nextSession,
+    staffCatalog.page.find((course) => course.name === "Class A")?.nextSession,
   ).toMatchObject({ roomName: "room-a-next", canOpen: true });
 
   const firstPage = await asTeacher.query(api.classes.listCatalog, {
@@ -296,15 +297,12 @@ test("course access is copied to the session and scoped to active students", asy
     },
   });
   expect(
-    [...firstPage.page, ...secondPage.page]
-      .map((course) => course.name)
-      .sort(),
+    [...firstPage.page, ...secondPage.page].map((course) => course.name).sort(),
   ).toEqual(["Class A", "Private Class A"]);
 
-  const catalogFilters = await asTeacher.query(
-    api.classes.getCatalogFilters,
-    { orgSlug: "campus-a" },
-  );
+  const catalogFilters = await asTeacher.query(api.classes.getCatalogFilters, {
+    orgSlug: "campus-a",
+  });
   expect(catalogFilters.curriculums).toEqual([
     { value: expect.any(String), label: "Curriculum A" },
   ]);
@@ -320,6 +318,7 @@ test("course access is copied to the session and scoped to active students", asy
   expect(courseDetail?.course).toMatchObject({
     _id: data.classAId,
     name: "Class A",
+    curriculumIconKey: "microscope",
   });
   expect(
     await asTeacher.query(api.classes.getCatalog, {

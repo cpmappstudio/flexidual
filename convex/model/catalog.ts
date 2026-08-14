@@ -1,8 +1,13 @@
-import { paginationResultValidator, type PaginationOptions } from "convex/server";
+import {
+  paginationResultValidator,
+  type PaginationOptions,
+} from "convex/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import { DEFAULT_CURRICULUM_ICON } from "../../lib/curriculum-icons";
 import { classHasLiveSessions } from "./classType";
+import { curriculumIconValidator } from "./curriculumIcons";
 import { canStudentAccessLiveClass, normalizeLiveAccess } from "./liveAccess";
 import { resolveMembershipSchoolId } from "./membership";
 import { canAssignmentsManageClass, isStaffRole } from "./roles";
@@ -26,6 +31,7 @@ export const catalogCourseValidator = v.object({
   curriculumId: v.id("curriculums"),
   curriculumTitle: v.string(),
   curriculumColor: v.string(),
+  curriculumIconKey: curriculumIconValidator,
   campusName: v.optional(v.string()),
   institutionName: v.optional(v.string()),
   teacherId: v.optional(v.id("users")),
@@ -236,10 +242,7 @@ function isVisibleCourse(access: CatalogAccess, classData: Doc<"classes">) {
   });
 }
 
-function matchesFilters(
-  classData: Doc<"classes">,
-  filters: CatalogFilters,
-) {
+function matchesFilters(classData: Doc<"classes">, filters: CatalogFilters) {
   return (
     (!filters.curriculumId ||
       classData.curriculumId === filters.curriculumId) &&
@@ -396,9 +399,7 @@ async function loadResources(
       classes.flatMap((item) => {
         const schoolId =
           item.schoolId ??
-          (item.campusId
-            ? campuses.get(item.campusId)?.schoolId
-            : undefined) ??
+          (item.campusId ? campuses.get(item.campusId)?.schoolId : undefined) ??
           curriculums.get(item.curriculumId)?.schoolId;
         return schoolId ? [schoolId] : [];
       }),
@@ -413,9 +414,7 @@ async function loadResources(
       classes.flatMap((item) => {
         const schoolId =
           item.schoolId ??
-          (item.campusId
-            ? campuses.get(item.campusId)?.schoolId
-            : undefined) ??
+          (item.campusId ? campuses.get(item.campusId)?.schoolId : undefined) ??
           curriculums.get(item.curriculumId)?.schoolId;
         return schoolId && item.gradeCode
           ? [
@@ -523,6 +522,7 @@ function toCatalogCourse(
     curriculumId: classData.curriculumId,
     curriculumTitle: curriculum?.title ?? "Unknown Curriculum",
     curriculumColor: curriculum?.color ?? "#197db8",
+    curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
     ...(campus?.name !== undefined && { campusName: campus.name }),
     ...(school?.name !== undefined && { institutionName: school.name }),
     ...(classData.teacherId !== undefined && {

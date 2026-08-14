@@ -14,6 +14,7 @@ import {
   School,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -116,14 +117,19 @@ function CourseTile({
       <article className="min-w-0">
         <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-sidebar-border bg-sidebar">
           <span
-            className="absolute -top-12 -right-8 size-40 rounded-full opacity-10"
+            className="absolute inset-0 opacity-10"
             style={{ backgroundColor: course.curriculumColor }}
             aria-hidden="true"
           />
-          <BookOpen
-            className="relative size-14 text-primary/75"
-            strokeWidth={1.6}
+          <span
+            className="absolute -top-12 -right-8 size-40 rounded-full opacity-15"
+            style={{ backgroundColor: course.curriculumColor }}
             aria-hidden="true"
+          />
+          <CurriculumIcon
+            iconKey={course.curriculumIconKey}
+            size={96}
+            className="relative size-20 drop-shadow-sm"
           />
           {context === "live" && (
             <Badge className="absolute top-3 right-3 bg-destructive uppercase text-white">
