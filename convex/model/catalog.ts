@@ -48,11 +48,6 @@ export const catalogResultValidator = paginationResultValidator(
   catalogCourseValidator,
 );
 
-export const catalogDetailValidator = v.object({
-  isStaffViewer: v.boolean(),
-  course: catalogCourseValidator,
-});
-
 export const catalogFilterOptionsValidator = v.object({
   campuses: v.array(
     v.object({
@@ -750,51 +745,5 @@ export async function getCatalogFilterOptions(
     teachers: teachers
       .map((teacher) => ({ value: teacher._id, label: teacher.fullName }))
       .sort((a, b) => a.label.localeCompare(b.label)),
-  };
-}
-
-export async function getCatalogCourse(
-  ctx: QueryCtx,
-  user: Doc<"users">,
-  orgSlug: string,
-  classId: string,
-  now: number,
-) {
-  const normalizedClassId = ctx.db.normalizeId("classes", classId);
-  if (!normalizedClassId) return null;
-  const [access, classData] = await Promise.all([
-    getCatalogAccess(ctx, user, orgSlug),
-    ctx.db.get(normalizedClassId),
-  ]);
-  if (
-    !classData ||
-    !classData.isActive ||
-    !(await isCatalogCourse(ctx, classData))
-  ) {
-    return null;
-  }
-  const resources = await loadResources(ctx, [classData]);
-  if (
-    (access.schoolId !== undefined &&
-      getCourseSchoolId(classData, resources) !== access.schoolId) ||
-    !isVisibleCourse(access, classData)
-  ) {
-    return null;
-  }
-  const { liveSchedule, nextSchedule } = await getCatalogSchedulesForClass(
-    ctx,
-    classData._id,
-    now,
-  );
-
-  return {
-    isStaffViewer: access.isStaffViewer,
-    course: toCatalogCourse(
-      access,
-      resources,
-      classData,
-      liveSchedule,
-      nextSchedule,
-    ),
   };
 }

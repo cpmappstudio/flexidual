@@ -478,31 +478,6 @@ test("course access is copied to the session and scoped to active students", asy
     }),
   ).rejects.toThrow("INVALID_CAMPUS");
 
-  const courseDetail = await asTeacher.query(api.classes.getCatalog, {
-    orgSlug: "campus-a",
-    classId: data.classAId,
-    now,
-  });
-  expect(courseDetail?.course).toMatchObject({
-    _id: data.classAId,
-    name: "Class A",
-    curriculumIconKey: "microscope",
-  });
-  expect(
-    await asTeacher.query(api.classes.getCatalog, {
-      orgSlug: "campus-a",
-      classId: data.classBId,
-      now,
-    }),
-  ).toBeNull();
-  expect(
-    await asTeacher.query(api.classes.getCatalog, {
-      orgSlug: "campus-a",
-      classId: "not-a-convex-id",
-      now,
-    }),
-  ).toBeNull();
-
   await t.run((ctx) =>
     ctx.db.insert("classEnrollments", {
       classId: data.classAId,

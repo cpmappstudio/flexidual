@@ -332,19 +332,12 @@
     "upcoming": "Coming up",
     "private": "Private",
     "institution": "Institution",
-    "join": "Join",
     "viewCourse": "View live class",
     "searchPlaceholder": "Search live classes...",
-    "unassignedTeacher": "Teacher to be assigned",
     "emptyTitle": "No live classes available",
     "emptyDescription": "There are no live classes available yet.",
     "noResults": "No matching live classes",
-    "noResultsDescription": "Try another class name or adjust the filters.",
-    "courseNotFound": "This live class is not available.",
-    "backToCatalog": "Back to live classes",
-    "sessions": "Class sessions",
-    "noUpcomingSessions": "No upcoming sessions have been scheduled.",
-    "about": "About this course"
+    "noResultsDescription": "Try another class name or adjust the filters."
   },
   "classroom": {
     "prepareRoom": "Prepare Room",

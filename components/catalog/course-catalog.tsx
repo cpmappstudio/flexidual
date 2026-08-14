@@ -99,7 +99,7 @@ function CourseTile({
   const href =
     session?.canOpen === true
       ? `/${orgSlug}/classroom/${session.roomName}`
-      : `/${orgSlug}/catalog/${course._id}`;
+      : `/${orgSlug}/classes/${course._id}`;
 
   return (
     <Link

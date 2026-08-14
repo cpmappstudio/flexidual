@@ -332,19 +332,12 @@
     "upcoming": "Próximamente",
     "private": "Privado",
     "institution": "Institución",
-    "join": "Entrar",
     "viewCourse": "Ver clase en vivo",
     "searchPlaceholder": "Buscar clases en vivo...",
-    "unassignedTeacher": "Profesor por asignar",
     "emptyTitle": "No hay clases en vivo disponibles",
     "emptyDescription": "Todavía no hay clases en vivo disponibles.",
     "noResults": "No hay clases en vivo coincidentes",
-    "noResultsDescription": "Prueba con otro nombre de clase o ajusta los filtros.",
-    "courseNotFound": "Esta clase en vivo no está disponible.",
-    "backToCatalog": "Volver a clases en vivo",
-    "sessions": "Sesiones de clase",
-    "noUpcomingSessions": "No hay próximas sesiones programadas.",
-    "about": "Acerca de este curso"
+    "noResultsDescription": "Prueba con otro nombre de clase o ajusta los filtros."
   },
   "classroom": {
     "prepareRoom": "Preparar Sala",

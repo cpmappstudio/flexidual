@@ -45,10 +45,8 @@ import {
   type LiveAccess,
 } from "./model/liveAccess";
 import {
-  catalogDetailValidator,
   catalogFilterOptionsValidator,
   catalogResultValidator,
-  getCatalogCourse,
   getCatalogFilterOptions,
   listCatalogCourses,
 } from "./model/catalog";
@@ -353,26 +351,6 @@ export const getCatalogFilters = query({
       user,
       args.orgSlug,
       args.campusId,
-    );
-  },
-});
-
-export const getCatalog = query({
-  args: {
-    orgSlug: v.string(),
-    classId: v.string(),
-    now: v.number(),
-  },
-  returns: v.union(v.null(), catalogDetailValidator),
-  handler: async (ctx, args) => {
-    const user = await getCurrentUserFromAuth(ctx);
-    if (!user) return null;
-    return await getCatalogCourse(
-      ctx,
-      user,
-      args.orgSlug,
-      args.classId,
-      args.now,
     );
   },
 });
