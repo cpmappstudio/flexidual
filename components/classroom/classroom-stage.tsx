@@ -72,7 +72,7 @@ export function ClassroomStage({
           className,
         )}
       >
-        {contentActive && (
+        {(contentActive || (onToggleFullscreen && !isPhoneLandscape)) && (
           <div className="pointer-events-none absolute right-2 top-2 z-30 flex flex-col items-end gap-1.5">
             {isWhiteboardActive && (
               <button
@@ -94,7 +94,7 @@ export function ClassroomStage({
               </button>
             )}
 
-            {onToggleFullscreen && (
+            {onToggleFullscreen && !isPhoneLandscape && (
               <button
                 type="button"
                 onClick={onToggleFullscreen}
