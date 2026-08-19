@@ -23,6 +23,7 @@ interface EndClassButtonProps {
   appearance?: "header" | "icon" | "toolbar";
   onConfirm: () => void | Promise<void>;
   onLeave?: () => void | Promise<void>;
+  onOpenChange?: (open: boolean) => void;
   previewOpen?: boolean;
   onPreviewOpenChange?: (open: boolean) => void;
 }
@@ -34,6 +35,7 @@ export function EndClassButton({
   appearance = "icon",
   onConfirm,
   onLeave,
+  onOpenChange,
   previewOpen = false,
   onPreviewOpenChange,
 }: EndClassButtonProps) {
@@ -43,7 +45,7 @@ export function EndClassButton({
   return (
     <AlertDialog
       open={previewOpen || undefined}
-      onOpenChange={previewOpen ? onPreviewOpenChange : undefined}
+      onOpenChange={previewOpen ? onPreviewOpenChange : onOpenChange}
     >
       <AlertDialogTrigger asChild>
         {appearance === "toolbar" ? (

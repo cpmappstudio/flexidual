@@ -21,6 +21,7 @@ interface LeaveClassButtonProps {
   iconClassName?: string;
   appearance?: "header" | "icon" | "toolbar";
   onConfirm: () => void | Promise<void>;
+  onOpenChange?: (open: boolean) => void;
   previewOpen?: boolean;
   onPreviewOpenChange?: (open: boolean) => void;
 }
@@ -30,6 +31,7 @@ export function LeaveClassButton({
   iconClassName = "size-5",
   appearance = "icon",
   onConfirm,
+  onOpenChange,
   previewOpen = false,
   onPreviewOpenChange,
 }: LeaveClassButtonProps) {
@@ -39,7 +41,7 @@ export function LeaveClassButton({
   return (
     <AlertDialog
       open={previewOpen || undefined}
-      onOpenChange={previewOpen ? onPreviewOpenChange : undefined}
+      onOpenChange={previewOpen ? onPreviewOpenChange : onOpenChange}
     >
       <AlertDialogTrigger asChild>
         {appearance === "toolbar" ? (

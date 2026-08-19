@@ -67,6 +67,13 @@ import {
   ClassroomEndingSoonNotice,
   ClassroomFullscreenPrompt,
 } from "./classroom-overlays";
+import { getClassroomEndingSoonState } from "./classroom-session-timing";
+import { useClassroomEndingSoonNotice } from "./use-classroom-ending-soon-notice";
+import { getClassroomQueryNow } from "./use-classroom-clock";
+import {
+  selectClassroomLayer,
+  type ClassroomLayer,
+} from "./classroom-layer-coordinator";
 
 type StudentClassroomPreviewState =
   | "none"
@@ -80,8 +87,17 @@ type StudentClassroomPreviewState =
   | "share-approved"
   | "recording-active";
 
+const STUDENT_PREVIEW_LAYERS: Partial<
+  Record<StudentClassroomPreviewState, ClassroomLayer>
+> = {
+  "next-class": "class-conflict",
+  fullscreen: "fullscreen",
+  "enable-audio": "enable-audio",
+};
+
 interface StudentClassroomUIProps {
   roomName: string;
+  sessionNow: number;
   className?: string;
   lessonTitle?: string;
   onSwitchClassroom?: (roomName: string) => void;
@@ -92,6 +108,7 @@ interface StudentClassroomUIProps {
 
 export function StudentClassroomUI({
   roomName,
+  sessionNow,
   className,
   lessonTitle,
   onSwitchClassroom,
@@ -112,12 +129,12 @@ export function StudentClassroomUI({
   const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
   const [followViewport, setFollowViewport] = useState(true);
   const [pendingFullscreen, setPendingFullscreen] = useState(false);
-  const [lifecycleNow, setLifecycleNow] = useState(Date.now());
   const [dismissedExtensionEnd, setDismissedExtensionEnd] = useState<number>();
+  const [isSessionActionDialogOpen, setIsSessionActionDialogOpen] =
+    useState(false);
   const [uiPreviewState, setUiPreviewState] =
     useState<StudentClassroomPreviewState>("none");
   const [showPreviewParticipants, setShowPreviewParticipants] = useState(false);
-  const warnedEffectiveEndRef = useRef<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const { zoom, pan, stageRef, handleZoom, startPanDrag } =
     useClassroomStageViewport();
@@ -126,63 +143,63 @@ export function StudentClassroomUI({
 
   const extensionContext = useQuery(api.schedule.getStudentExtensionContext, {
     roomName,
-    now: Math.floor(lifecycleNow / 15_000) * 15_000,
+    now: getClassroomQueryNow(sessionNow),
   });
+  const hasActivePreview =
+    uiPreviewEnabled && (uiPreviewState !== "none" || showPreviewParticipants);
   const isPreviewing = (state: StudentClassroomPreviewState) =>
     uiPreviewEnabled && uiPreviewState === state;
   const previewNextClass = isPreviewing("next-class")
     ? {
         className: "Algebra I",
         roomName: "preview-next-class",
-        startsAt: lifecycleNow + 5 * 60 * 1000,
+        startsAt: sessionNow + 5 * 60 * 1000,
       }
     : undefined;
-  const nextClassForDisplay = extensionContext?.nextClass ?? previewNextClass;
-  const extensionEndForDisplay =
-    extensionContext?.extensionEndsAt ??
-    (isPreviewing("next-class") ? lifecycleNow + 10 * 60 * 1000 : undefined);
-  const showNextClassChoice =
-    isPreviewing("next-class") ||
-    Boolean(
-      extensionEndForDisplay &&
-        nextClassForDisplay &&
-        dismissedExtensionEnd !== extensionEndForDisplay,
-    );
-  const isEndingSoon =
-    isPreviewing("ending-soon") ||
-    Boolean(
-      extensionContext &&
-        lifecycleNow >= extensionContext.warningStartsAt &&
-        lifecycleNow < extensionContext.effectiveEnd,
-    );
-  const handRaisedForDisplay = handRaised || isPreviewing("hand-raised");
-  const shareStateForDisplay = isPreviewing("share-requesting")
-    ? "requesting"
-    : isPreviewing("share-approved")
-      ? "approved"
-      : shareState;
-  const isRecordingForDisplay = isRecording || isPreviewing("recording-active");
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setLifecycleNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    if (
-      !extensionContext ||
-      lifecycleNow < extensionContext.warningStartsAt ||
-      lifecycleNow >= extensionContext.effectiveEnd ||
-      warnedEffectiveEndRef.current === extensionContext.effectiveEnd
-    ) {
-      return;
-    }
-    warnedEffectiveEndRef.current = extensionContext.effectiveEnd;
-    toast.warning(t("classroom.studentClassEndingSoon"), {
-      id: `student-class-ending-${extensionContext.effectiveEnd}`,
-      duration: 10_000,
-    });
-  }, [extensionContext, lifecycleNow, t]);
+  const nextClassForDisplay = isPreviewing("next-class")
+    ? previewNextClass
+    : extensionContext?.nextClass;
+  const extensionEndForDisplay = isPreviewing("next-class")
+    ? sessionNow + 10 * 60 * 1000
+    : extensionContext?.extensionEndsAt;
+  const hasClassConflict = Boolean(
+    extensionEndForDisplay &&
+      nextClassForDisplay &&
+      dismissedExtensionEnd !== extensionEndForDisplay,
+  );
+  const endingSoonState = getClassroomEndingSoonState({
+    roomName,
+    now: sessionNow,
+    timing: extensionContext,
+    isPreview: isPreviewing("ending-soon"),
+  });
+  const endingSoonNotice = useClassroomEndingSoonNotice({
+    ...endingSoonState,
+    persistDismissal: !isPreviewing("ending-soon"),
+  });
+  const handRaisedForDisplay = hasActivePreview
+    ? isPreviewing("hand-raised")
+    : handRaised;
+  const shareStateForDisplay = hasActivePreview
+    ? isPreviewing("share-requesting")
+      ? "requesting"
+      : isPreviewing("share-approved")
+        ? "approved"
+        : "idle"
+    : shareState;
+  const isRecordingForDisplay = hasActivePreview
+    ? isPreviewing("recording-active")
+    : isRecording;
+  const visibleLayer = selectClassroomLayer({
+    activeLayers: {
+      "class-conflict": hasClassConflict,
+      "enable-audio": needsClick,
+      fullscreen: pendingFullscreen,
+    },
+    isExternalDialogOpen: isSessionActionDialogOpen,
+    isPreviewActive: hasActivePreview,
+    previewLayer: STUDENT_PREVIEW_LAYERS[uiPreviewState] ?? null,
+  });
 
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
@@ -519,6 +536,7 @@ export function StudentClassroomUI({
   ]);
 
   const selectPreviewState = (state: StudentClassroomPreviewState) => {
+    setShowPreviewParticipants(false);
     setUiPreviewState((current) => (current === state ? "none" : state));
   };
 
@@ -546,7 +564,7 @@ export function StudentClassroomUI({
     },
     {
       id: "ending-soon",
-      label: "Ending soon",
+      label: "Ending soon banner",
       group: "Overlays",
       isActive: isPreviewing("ending-soon"),
       onSelect: () => selectPreviewState("ending-soon"),
@@ -591,13 +609,10 @@ export function StudentClassroomUI({
       label: "Demo participants",
       group: "Controls",
       isActive: showPreviewParticipants,
-      onSelect: () => setShowPreviewParticipants((current) => !current),
-    },
-    {
-      id: "toast-ending",
-      label: "Class ending",
-      group: "Notifications",
-      onSelect: () => toast.warning(t("classroom.studentClassEndingSoon")),
+      onSelect: () => {
+        setUiPreviewState("none");
+        setShowPreviewParticipants((current) => !current);
+      },
     },
     {
       id: "toast-hand",
@@ -639,14 +654,19 @@ export function StudentClassroomUI({
         />
       )}
 
-      {isEndingSoon && (
+      {endingSoonNotice.shouldShowNotice && (
         <ClassroomEndingSoonNotice
           label={t("classroom.studentClassEndingSoon")}
+          dismissLabel={t("common.close")}
+          onDismiss={() => {
+            endingSoonNotice.dismissNotice();
+            if (isPreviewing("ending-soon")) setUiPreviewState("none");
+          }}
         />
       )}
 
       <AlertDialog
-        open={showNextClassChoice}
+        open={visibleLayer === "class-conflict"}
         onOpenChange={(open) => {
           if (!open && isPreviewing("next-class")) {
             setUiPreviewState("none");
@@ -694,7 +714,7 @@ export function StudentClassroomUI({
         </AlertDialogContent>
       </AlertDialog>
 
-      {(needsClick || isPreviewing("enable-audio")) && (
+      {visibleLayer === "enable-audio" && (
         <ClassroomEnableAudioOverlay
           title={t("classroom.enableAudio")}
           actionLabel={t("classroom.startClass")}
@@ -719,7 +739,11 @@ export function StudentClassroomUI({
         isRecording={isRecordingForDisplay}
         isPhoneLandscape={isPhoneLandscape}
         sessionAction={
-          <LeaveClassButton appearance="header" onConfirm={handleLeave} />
+          <LeaveClassButton
+            appearance="header"
+            onConfirm={handleLeave}
+            onOpenChange={setIsSessionActionDialogOpen}
+          />
         }
       />
 
@@ -792,6 +816,7 @@ export function StudentClassroomUI({
             <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
             <LeaveClassButton
               onConfirm={handleLeave}
+              onOpenChange={setIsSessionActionDialogOpen}
               className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-destructive/80 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/90"
             />
           </>
@@ -1022,6 +1047,7 @@ export function StudentClassroomUI({
             <LeaveClassButton
               appearance="toolbar"
               onConfirm={handleLeave}
+              onOpenChange={setIsSessionActionDialogOpen}
               previewOpen={isPreviewing("leave-class")}
               onPreviewOpenChange={(open) => {
                 if (!open) setUiPreviewState("none");
@@ -1032,7 +1058,7 @@ export function StudentClassroomUI({
       </ClassroomViewControls>
 
       <ClassroomFullscreenPrompt
-        open={pendingFullscreen || isPreviewing("fullscreen")}
+        open={visibleLayer === "fullscreen"}
         title={t("classroom.fullscreenInviteTitle") || "Go fullscreen?"}
         description={
           t("classroom.fullscreenInviteDesc") ||
