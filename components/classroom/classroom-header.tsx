@@ -39,7 +39,7 @@ export function ClassroomHeader({
             className={`size-2 shrink-0 rounded-full ${statusColor}`}
           />
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="truncate text-xs font-bold text-card-foreground">
+            <span className="truncate text-xs font-bold text-primary">
               {title}
             </span>
             {subtitle && (
@@ -56,7 +56,7 @@ export function ClassroomHeader({
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 md:flex md:items-center">
             <div className="flex min-w-0 items-center gap-2 md:flex-1">
               <div className="flex min-w-0 flex-col">
-                <h2 className="truncate text-sm font-bold text-card-foreground">
+                <h2 className="truncate text-base font-bold text-primary">
                   {title}
                 </h2>
                 {subtitle && (

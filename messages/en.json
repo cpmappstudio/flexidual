@@ -427,7 +427,7 @@
     "endClassNow": "End class now",
     "extensionConfirmed": "Class extended for 10 minutes",
     "extensionError": "The class could not be extended.",
-    "classmates": "Classmates ({count})",
+    "classmates": "Classmates",
     "waitingForStudents": "Waiting...",
     "youAreFirst": "You are first!",
     "liveTutor": "Live Tutor",

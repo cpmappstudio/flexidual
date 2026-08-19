@@ -44,7 +44,7 @@ export function ClassroomViewHeader({
   return (
     <div
       className={cn(
-        "col-start-1 row-start-1 z-10 flex min-w-0 flex-col justify-center border-b border-primary/20 bg-gradient-to-br from-primary/15 via-background to-secondary/15 xl:col-span-2",
+        "col-start-1 row-start-1 z-10 flex min-w-0 flex-col justify-center border-b-2 border-primary bg-card xl:col-span-2",
         !isPhoneLandscape && "px-2 py-1.5 md:px-2.5",
         className,
       )}

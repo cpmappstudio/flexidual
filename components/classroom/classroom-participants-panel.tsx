@@ -9,25 +9,25 @@ import {
   AvatarImage,
 } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp, Hand } from "lucide-react";
 import type { Participant } from "livekit-client";
-import type { ReactNode, RefObject } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { getParticipantImageUrl } from "./classroom-participant";
+import { ClassroomParticipantRosterSheet } from "./classroom-participant-roster-sheet";
 import { ClassroomViewSidebar } from "./classroom-view";
+import { useClassroomParticipantPagination } from "./use-classroom-participant-pagination";
 
 interface ClassroomParticipantsPanelProps {
   heading: string;
-  scrollRef: RefObject<HTMLDivElement | null>;
-  canScrollPrevious: boolean;
-  canScrollNext: boolean;
   previousLabel: string;
   nextLabel: string;
   isEmpty: boolean;
@@ -45,9 +45,6 @@ interface ClassroomParticipantsPanelProps {
 
 export function ClassroomParticipantsPanel({
   heading,
-  scrollRef,
-  canScrollPrevious,
-  canScrollNext,
   previousLabel,
   nextLabel,
   isEmpty,
@@ -62,15 +59,56 @@ export function ClassroomParticipantsPanel({
   onLowerHand,
   children,
 }: ClassroomParticipantsPanelProps) {
-  const showNavigation = canScrollPrevious || canScrollNext;
+  const participantTiles = Children.toArray(children);
+  const {
+    gridRef,
+    startIndex,
+    endIndex,
+    canShowPrevious,
+    canShowNext,
+    showPrevious,
+    showNext,
+    showParticipant,
+    rowCount,
+  } = useClassroomParticipantPagination(participantTiles.length);
+  const [highlightedParticipantId, setHighlightedParticipantId] =
+    useState<string>();
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const showNavigation = canShowPrevious || canShowNext;
   const hasRaisedHand = (participant: Participant) =>
     raisedParticipantIds.has(participant.identity) ||
     (participant.isLocal && localParticipantRaised);
   const raisedHandsCount = participants.filter(hasRaisedHand).length;
+  const rosterLabel = `${heading}: ${participants.length}`;
   const compactPanelLabel =
     raisedHandsCount > 0
-      ? `${heading}. ${raisedHandsCountLabel(raisedHandsCount)}`
-      : heading;
+      ? `${rosterLabel}. ${raisedHandsCountLabel(raisedHandsCount)}`
+      : rosterLabel;
+  const visibleEndIndex = Math.min(endIndex, participantTiles.length);
+
+  useEffect(
+    () => () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  const selectParticipant = (index: number) => {
+    const participant = participants[index];
+    if (!participant) return;
+
+    showParticipant(index);
+    setHighlightedParticipantId(participant.identity);
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+    highlightTimeoutRef.current = setTimeout(
+      () => setHighlightedParticipantId(undefined),
+      1800,
+    );
+  };
 
   const raisedHandsIndicator = raisedHandsCount > 0 && (
     <Badge
@@ -83,7 +121,10 @@ export function ClassroomParticipantsPanel({
     </Badge>
   );
 
-  const renderAvatarGroup = (limit: number) => {
+  const renderAvatarGroup = (
+    limit: number,
+    size: "default" | "sm" = "default",
+  ) => {
     const visibleParticipants = participants.slice(0, limit);
     const remainingCount = Math.max(participants.length - limit, 0);
 
@@ -95,7 +136,11 @@ export function ClassroomParticipantsPanel({
           const fallbackInitial = participantName.charAt(0).toUpperCase();
 
           return (
-            <Avatar key={participant.identity} title={participantName}>
+            <Avatar
+              key={participant.identity}
+              size={size}
+              title={participantName}
+            >
               <AvatarImage
                 src={getParticipantImageUrl(participant) ?? undefined}
                 alt=""
@@ -113,9 +158,29 @@ export function ClassroomParticipantsPanel({
     );
   };
 
+  const visibleParticipantTiles = participantTiles
+    .slice(startIndex, endIndex)
+    .map((tile, index) => {
+      const participant = participants[startIndex + index];
+      if (
+        !participant ||
+        participant.identity !== highlightedParticipantId ||
+        !isValidElement<{ className?: string }>(tile)
+      ) {
+        return tile;
+      }
+
+      return cloneElement(tile, {
+        className: cn(
+          tile.props.className,
+          "z-30 ring-4 ring-inset ring-primary",
+        ),
+      });
+    });
+
   return (
-    <ClassroomViewSidebar>
-      <div className="flex h-full min-w-0 items-center gap-3 bg-muted/30 px-3 text-foreground xl:hidden">
+    <ClassroomViewSidebar className="bg-card">
+      <div className="flex h-full min-w-0 items-center gap-3 border-b border-primary/20 bg-card px-3 text-primary xl:hidden">
         <h3 className="min-w-0 flex-1 truncate text-xs font-bold uppercase tracking-widest">
           {heading}
         </h3>
@@ -124,8 +189,16 @@ export function ClassroomParticipantsPanel({
             {emptyContent}
           </div>
         ) : (
-          <Sheet>
-            <SheetTrigger asChild>
+          <ClassroomParticipantRosterSheet
+            heading={heading}
+            triggerLabel={compactPanelLabel}
+            participants={participants}
+            youLabel={youLabel}
+            raisedHandLabel={raisedHandLabel}
+            lowerHandLabel={lowerHandLabel}
+            hasRaisedHand={hasRaisedHand}
+            onLowerHand={onLowerHand}
+            trigger={
               <button
                 type="button"
                 aria-label={compactPanelLabel}
@@ -135,128 +208,92 @@ export function ClassroomParticipantsPanel({
                 <div className="hidden sm:block">{renderAvatarGroup(6)}</div>
                 {raisedHandsIndicator}
               </button>
-            </SheetTrigger>
-            <SheetContent
-              side="right"
-              className="w-[min(88vw,24rem)] gap-0 p-0 sm:max-w-sm xl:hidden"
-            >
-              <SheetHeader className="border-b border-border bg-muted/30 pr-12">
-                <SheetTitle>{heading}</SheetTitle>
-                <SheetDescription className="sr-only">
-                  {heading}
-                </SheetDescription>
-              </SheetHeader>
-              <div className="min-h-0 flex-1 overflow-y-auto px-4">
-                {participants.map((participant) => {
-                  const participantName =
-                    participant.name || participant.identity || "?";
-                  const fallbackInitial = participantName
-                    .charAt(0)
-                    .toUpperCase();
-                  const raisedHand = hasRaisedHand(participant);
-
-                  return (
-                    <div
-                      key={participant.identity}
-                      className="flex min-w-0 items-center gap-3 border-b border-border py-3 last:border-b-0"
-                    >
-                      <Avatar size="lg">
-                        <AvatarImage
-                          src={getParticipantImageUrl(participant) ?? undefined}
-                          alt={participantName}
-                        />
-                        <AvatarFallback>{fallbackInitial}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {participantName}
-                          {participant.isLocal && (
-                            <span className="font-normal text-muted-foreground">
-                              {` (${youLabel})`}
-                            </span>
-                          )}
-                        </p>
-                        {raisedHand && (
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {raisedHandLabel}
-                          </p>
-                        )}
-                      </div>
-                      {raisedHand && onLowerHand && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`${lowerHandLabel}: ${participantName}`}
-                          title={lowerHandLabel}
-                          onClick={() => onLowerHand(participant.identity)}
-                        >
-                          <Hand />
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </SheetContent>
-          </Sheet>
+            }
+          />
         )}
       </div>
 
-      <div className="hidden min-h-9 shrink-0 items-center gap-1 border-b border-border bg-muted/30 px-2 py-1 text-foreground xl:flex">
-        <h3 className="min-w-0 flex-1 truncate text-xs font-bold uppercase tracking-widest">
+      <div className="hidden min-h-10 shrink-0 items-center gap-2 border-b border-primary/20 bg-card px-2.5 py-1.5 text-primary xl:flex">
+        <h3 className="min-w-0 truncate text-xs font-bold uppercase tracking-widest">
           {heading}
         </h3>
-        {raisedHandsIndicator}
-        {showNavigation && (
-          <>
-            <div className="flex items-center gap-0.5">
-              <Button
+        {!isEmpty && (
+          <ClassroomParticipantRosterSheet
+            heading={heading}
+            triggerLabel={compactPanelLabel}
+            participants={participants}
+            youLabel={youLabel}
+            raisedHandLabel={raisedHandLabel}
+            lowerHandLabel={lowerHandLabel}
+            hasRaisedHand={hasRaisedHand}
+            onLowerHand={onLowerHand}
+            onSelectParticipant={selectParticipant}
+            trigger={
+              <button
                 type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={previousLabel}
-                onClick={() =>
-                  scrollRef.current?.scrollBy({
-                    top: -160,
-                    behavior: "smooth",
-                  })
-                }
-                disabled={!canScrollPrevious}
+                aria-label={compactPanelLabel}
+                title={compactPanelLabel}
+                className="shrink-0 rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
-                <ChevronUp />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={nextLabel}
-                onClick={() =>
-                  scrollRef.current?.scrollBy({
-                    top: 160,
-                    behavior: "smooth",
-                  })
-                }
-                disabled={!canScrollNext}
-              >
-                <ChevronDown />
-              </Button>
-            </div>
-          </>
+                {renderAvatarGroup(2, "sm")}
+              </button>
+            }
+          />
+        )}
+        {raisedHandsIndicator && (
+          <div className="ml-auto">{raisedHandsIndicator}</div>
         )}
       </div>
 
       <div
-        ref={scrollRef}
-        className="scrollbar-thin hidden min-h-0 min-w-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(96px,1fr))] content-start items-start gap-1.5 overflow-x-hidden overflow-y-auto p-1 xl:grid xl:snap-y"
+        ref={gridRef}
+        className="hidden min-h-0 min-w-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-0 overflow-hidden xl:grid"
+        style={
+          rowCount > 0
+            ? {
+                gridTemplateRows: `repeat(${rowCount}, minmax(0, 1fr))`,
+              }
+            : undefined
+        }
       >
         {isEmpty && (
-          <div className="col-span-full flex h-full w-full items-center justify-center px-2 text-center text-xs italic text-muted-foreground">
+          <div className="col-span-full row-[1/-1] flex h-full w-full items-center justify-center px-2 text-center text-xs italic text-muted-foreground">
             {emptyContent}
           </div>
         )}
-        {children}
+        {visibleParticipantTiles}
       </div>
+
+      {showNavigation && (
+        <div className="hidden min-h-8 shrink-0 items-center justify-end gap-0.5 border-t border-primary/20 bg-card px-2.5 py-1 xl:flex">
+          <span
+            aria-live="polite"
+            className="mr-1 text-[10px] font-semibold tabular-nums text-muted-foreground"
+          >
+            {startIndex + 1}&ndash;{visibleEndIndex} / {participantTiles.length}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={previousLabel}
+            onClick={showPrevious}
+            disabled={!canShowPrevious}
+          >
+            <ChevronUp />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={nextLabel}
+            onClick={showNext}
+            disabled={!canShowNext}
+          >
+            <ChevronDown />
+          </Button>
+        </div>
+      )}
     </ClassroomViewSidebar>
   );
 }

@@ -45,7 +45,6 @@ import { ClassroomParticipantTile as ParticipantTile } from "./classroom-partici
 import { DraggableClassroomPip as DraggablePip } from "./draggable-classroom-pip";
 import { canRoleSendStudentScreenShareDecision as isAuthority } from "./classroom-capabilities";
 import {
-  useClassmatesOverflow,
   useClassroomStageViewport,
   usePhoneLandscapeStageControls,
 } from "./use-classroom-layout-state";
@@ -250,12 +249,6 @@ export function StudentClassroomUI({
       uiPreviewEnabled,
     ],
   );
-  const {
-    classmateTilesRef,
-    classmatesCanScrollPrev,
-    classmatesCanScrollNext,
-  } = useClassmatesOverflow(displayedStudents.length);
-
   const {
     activeScreenTrack,
     isScreenSharingActive,
@@ -1088,10 +1081,7 @@ export function StudentClassroomUI({
 
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
-        heading={t("classroom.classmates", { count: displayedStudents.length })}
-        scrollRef={classmateTilesRef}
-        canScrollPrevious={classmatesCanScrollPrev}
-        canScrollNext={classmatesCanScrollNext}
+        heading={t("classroom.classmates")}
         previousLabel={t("common.previous")}
         nextLabel={t("common.next")}
         isEmpty={displayedStudents.length === 0}
@@ -1111,7 +1101,7 @@ export function StudentClassroomUI({
             key={p.identity}
             variant="grid"
             participant={p}
-            className="aspect-square h-24 w-24 flex-shrink-0 snap-start snap-always sm:h-28 sm:w-28 landscape:h-auto landscape:w-full xl:h-auto xl:w-full"
+            className="aspect-square h-24 w-24 flex-shrink-0 snap-start snap-always sm:h-28 sm:w-28 landscape:h-auto landscape:w-full xl:aspect-auto xl:h-full xl:w-full"
             raisedHand={
               raisedHands.has(p.identity) || (p.isLocal && handRaisedForDisplay)
             }
