@@ -78,7 +78,10 @@ import {
 import { useClassroomMediaTracks } from "./use-classroom-media-tracks";
 import { ClassroomView, ClassroomViewControls } from "./classroom-view";
 import { ClassroomHeader } from "./classroom-header";
-import { ClassroomParticipantsPanel } from "./classroom-participants-panel";
+import {
+  ClassroomParticipantsPanel,
+  type ClassroomPanelTab,
+} from "./classroom-participants-panel";
 import {
   ClassroomActionBar,
   ClassroomActionButton,
@@ -224,6 +227,9 @@ export function ActiveClassroomUI({
   const [uiPreviewState, setUiPreviewState] =
     useState<ActiveClassroomPreviewState>("none");
   const [showPreviewParticipants, setShowPreviewParticipants] = useState(false);
+  const [isClassroomPanelOpen, setIsClassroomPanelOpen] = useState(true);
+  const [classroomPanelTab, setClassroomPanelTab] =
+    useState<ClassroomPanelTab>("participants");
   const reconciliationAttemptRef = useRef({ effectiveEnd: 0, attemptedAt: 0 });
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1083,7 +1089,7 @@ export function ActiveClassroomUI({
   ];
 
   return (
-    <ClassroomView ref={rootRef}>
+    <ClassroomView ref={rootRef} isSidebarOpen={isClassroomPanelOpen}>
       {uiPreviewEnabled && (
         <ClassroomUiPreview
           roleLabel={currentUserRole ?? "staff"}
@@ -1358,6 +1364,10 @@ export function ActiveClassroomUI({
         waitingLabel={t("classroom.waiting")}
         isRecording={isRecordingForDisplay}
         isPhoneLandscape={isPhoneLandscape}
+        isPanelOpen={isClassroomPanelOpen}
+        openPanelLabel={t("classroom.openInteractionPanel")}
+        closePanelLabel={t("classroom.closeInteractionPanel")}
+        onPanelOpenChange={setIsClassroomPanelOpen}
         sessionAction={
           amIAuthority && (sessionIsLive || hasStartedSession) ? (
             <EndClassButton
@@ -1971,6 +1981,24 @@ export function ActiveClassroomUI({
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
         heading={t("classroom.classmates")}
+        compactHeading={t("classroom.classmatesAndChat")}
+        compactOpenLabel={t("classroom.openPanelAction")}
+        chatLabel={t("classroom.chat")}
+        chatCopy={{
+          description: t("classroom.classChatDescription"),
+          teacherLabel: t("classroom.teacher"),
+          studentLabel: "Sofía",
+          youLabel: t("classroom.youShort"),
+          teacherMessage: t("classroom.chatTeacherMessage"),
+          studentMessage: t("classroom.chatStudentMessage"),
+          ownMessage: t("classroom.chatOwnMessage"),
+          placeholder: t("classroom.chatPlaceholder"),
+          sendLabel: t("classroom.sendMessage"),
+          scrollToLatestLabel: t("classroom.scrollToLatestMessages"),
+        }}
+        isOpen={isClassroomPanelOpen}
+        activeTab={classroomPanelTab}
+        onTabChange={setClassroomPanelTab}
         previousLabel={t("common.previous")}
         nextLabel={t("common.next")}
         isEmpty={displayedStudents.length === 0}
