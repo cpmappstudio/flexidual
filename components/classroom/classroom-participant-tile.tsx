@@ -45,7 +45,12 @@ export function ClassroomParticipantTile({
       : variant === "mini"
         ? "w-8 h-8 text-xs"
         : "w-16 h-16 text-2xl";
-  const avatarBorder = variant === "mini" ? "border" : "border-2";
+  const avatarBorder =
+    variant === "grid"
+      ? "border-0"
+      : variant === "mini"
+        ? "border"
+        : "border-2";
   const fallbackInitial =
     participant.name?.charAt(0).toUpperCase() ||
     participant.identity?.charAt(0).toUpperCase() ||
@@ -54,9 +59,12 @@ export function ClassroomParticipantTile({
   return (
     <div
       className={cn(
-        "relative overflow-hidden bg-muted transition-all duration-300",
-        variant === "grid" && "rounded-md border border-border",
-        raisedHand && variant === "grid" && "border-warning",
+        "relative isolate overflow-hidden bg-muted transition-all duration-300",
+        variant === "grid" &&
+          "rounded-none border border-primary/20 bg-card shadow-sm hover:border-primary/35 hover:shadow-md",
+        raisedHand &&
+          variant === "grid" &&
+          "border-warning/70 bg-warning/5 shadow-[0_0_0_1px] shadow-warning/20",
         isSpeaking &&
           "z-20 ring-2 ring-success shadow-[0_0_12px] shadow-success/30",
         className,
@@ -72,9 +80,21 @@ export function ClassroomParticipantTile({
           className="w-full h-full object-cover"
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-secondary">
+        <div
+          className={cn(
+            "flex h-full w-full items-center justify-center bg-secondary",
+            variant === "grid" && "relative bg-card",
+          )}
+        >
           <div
-            className={`${avatarSize} ${avatarBorder} flex items-center justify-center overflow-hidden rounded-full border-secondary-foreground/10 bg-secondary font-bold text-secondary-foreground shadow-lg`}
+            className={cn(
+              avatarSize,
+              avatarBorder,
+              "relative flex items-center justify-center overflow-hidden rounded-full font-bold",
+              variant === "grid"
+                ? "bg-card text-primary shadow-md"
+                : "border-secondary-foreground/10 bg-secondary text-secondary-foreground shadow-lg",
+            )}
           >
             {imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -105,9 +125,18 @@ export function ClassroomParticipantTile({
           </div>
         </div>
       ) : showLabel ? (
-        <div className="absolute bottom-1 left-1 bg-inverse/60 px-2 py-1 rounded text-[10px] text-inverse-foreground font-medium truncate max-w-[90%] backdrop-blur-sm">
-          {participant.name || participant.identity}
-          {participant.isLocal && youLabel && ` (${youLabel})`}
+        <div
+          className={cn(
+            "absolute truncate backdrop-blur-sm",
+            variant === "grid"
+              ? "bottom-1.5 left-1.5 right-1.5 flex max-w-none items-center rounded-lg border border-primary/10 bg-card/90 px-2 py-1 text-[10px] font-bold text-card-foreground shadow-sm"
+              : "bottom-1 left-1 max-w-[90%] rounded bg-inverse/60 px-2 py-1 text-[10px] font-medium text-inverse-foreground",
+          )}
+        >
+          <span className="truncate">
+            {participant.name || participant.identity}
+            {participant.isLocal && youLabel && ` (${youLabel})`}
+          </span>
         </div>
       ) : null}
 
@@ -130,10 +159,12 @@ export function ClassroomParticipantTile({
 
       {audioMuted && (
         <div
-          className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${
+          className={`absolute pointer-events-none bg-destructive/85 rounded-full shadow-sm ${
             variant === "stage"
               ? "bottom-3 right-3 p-1.5"
-              : "bottom-1 right-1 p-1"
+              : variant === "grid"
+                ? "left-1.5 top-1.5 z-40 p-1"
+                : "bottom-1 right-1 p-1"
           }`}
         >
           <MicOff

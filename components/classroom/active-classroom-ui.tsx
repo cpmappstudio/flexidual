@@ -72,14 +72,16 @@ import {
   isClassroomSessionAuthority as isAuthority,
 } from "./classroom-capabilities";
 import {
-  useClassmatesOverflow,
   useClassroomStageViewport,
   usePhoneLandscapeStageControls,
 } from "./use-classroom-layout-state";
 import { useClassroomMediaTracks } from "./use-classroom-media-tracks";
 import { ClassroomView, ClassroomViewControls } from "./classroom-view";
 import { ClassroomHeader } from "./classroom-header";
-import { ClassroomParticipantsPanel } from "./classroom-participants-panel";
+import {
+  ClassroomParticipantsPanel,
+  type ClassroomPanelTab,
+} from "./classroom-participants-panel";
 import {
   ClassroomActionBar,
   ClassroomActionButton,
@@ -104,6 +106,13 @@ import {
   ClassroomEndingSoonNotice,
   ClassroomFullscreenPrompt,
 } from "./classroom-overlays";
+import { getClassroomEndingSoonState } from "./classroom-session-timing";
+import { useClassroomEndingSoonNotice } from "./use-classroom-ending-soon-notice";
+import { getClassroomQueryNow } from "./use-classroom-clock";
+import {
+  selectClassroomLayer,
+  type ClassroomLayer,
+} from "./classroom-layer-coordinator";
 
 // --- Types ---
 type ShareRequest = {
@@ -127,11 +136,24 @@ type ActiveClassroomPreviewState =
   | "share-waiting"
   | "presenter-active";
 
+const ACTIVE_PREVIEW_LAYERS: Partial<
+  Record<ActiveClassroomPreviewState, ClassroomLayer>
+> = {
+  "start-class": "session-start",
+  "extend-class": "extension-decision",
+  fullscreen: "fullscreen",
+  "recording-confirm": "recording-confirmation",
+  companion: "companion",
+  "enable-audio": "enable-audio",
+  "share-request": "share-permission",
+};
+
 // --- Main Component ---
 
 interface ActiveClassroomUIProps {
   currentUserRole?: string;
   roomName: string;
+  sessionNow: number;
   className?: string;
   lessonTitle?: string;
   sessionIsLive: boolean;
@@ -144,6 +166,7 @@ interface ActiveClassroomUIProps {
 export function ActiveClassroomUI({
   currentUserRole,
   roomName,
+  sessionNow,
   className,
   lessonTitle,
   sessionIsLive,
@@ -180,7 +203,6 @@ export function ActiveClassroomUI({
 
   // --- STATE ---
   const [needsClick, setNeedsClick] = useState(false);
-  const [extensionNow, setExtensionNow] = useState(Date.now());
   const [isConfirmingExtension, setIsConfirmingExtension] = useState(false);
   const [pendingRequest, setPendingRequest] = useState<ShareRequest | null>(
     null,
@@ -200,10 +222,14 @@ export function ActiveClassroomUI({
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [hasStartedSession, setHasStartedSession] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
+  const [isSessionActionDialogOpen, setIsSessionActionDialogOpen] =
+    useState(false);
   const [uiPreviewState, setUiPreviewState] =
     useState<ActiveClassroomPreviewState>("none");
   const [showPreviewParticipants, setShowPreviewParticipants] = useState(false);
-  const warnedEffectiveEndRef = useRef<number | null>(null);
+  const [isClassroomPanelOpen, setIsClassroomPanelOpen] = useState(true);
+  const [classroomPanelTab, setClassroomPanelTab] =
+    useState<ClassroomPanelTab>("participants");
   const reconciliationAttemptRef = useRef({ effectiveEnd: 0, attemptedAt: 0 });
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -215,81 +241,74 @@ export function ActiveClassroomUI({
   const capabilities = getClassroomCapabilities("staff", currentUserRole);
   const amITeacher = capabilities.isTeacher;
   const amIAuthority = capabilities.canManageSession;
+  const hasActivePreview =
+    uiPreviewEnabled && (uiPreviewState !== "none" || showPreviewParticipants);
   const isPreviewing = (state: ActiveClassroomPreviewState) =>
     uiPreviewEnabled && uiPreviewState === state;
-
-  useEffect(() => {
-    if (!sessionIsLive) return;
-    const timer = window.setInterval(() => setExtensionNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [sessionIsLive]);
 
   const extensionContext = useQuery(
     api.schedule.getLiveExtensionContext,
     amIAuthority && sessionIsLive
       ? {
           roomName,
-          now: Math.floor(extensionNow / 15_000) * 15_000,
+          now: getClassroomQueryNow(sessionNow),
         }
       : "skip",
   );
 
-  const shouldConfirmExtension =
-    isPreviewing("extend-class") ||
-    (amIAuthority &&
-      sessionIsLive &&
-      !!extensionContext?.decisionEndsAt &&
-      extensionNow < extensionContext.decisionEndsAt);
+  const hasExtensionDecision =
+    amIAuthority &&
+    sessionIsLive &&
+    !!extensionContext?.decisionEndsAt &&
+    sessionNow < extensionContext.decisionEndsAt;
   const decisionSecondsRemaining = isPreviewing("extend-class")
     ? 60
     : extensionContext?.decisionEndsAt
       ? Math.max(
           0,
-          Math.ceil((extensionContext.decisionEndsAt - extensionNow) / 1000),
+          Math.ceil((extensionContext.decisionEndsAt - sessionNow) / 1000),
         )
       : 0;
-  const isEndingSoon =
-    isPreviewing("ending-soon") ||
-    Boolean(
-      extensionContext &&
-        extensionContext.effectiveEnd < extensionContext.hardEndsAt &&
-        extensionNow >= extensionContext.warningStartsAt &&
-        extensionNow < extensionContext.effectiveEnd,
-    );
-  const extensionStaffConflict =
-    extensionContext?.staffConflict ??
-    (isPreviewing("extend-class")
-      ? {
-          className: "Algebra I",
-          startsAt: extensionNow + 5 * 60 * 1000,
-        }
-      : undefined);
-  const affectedStudentCount =
-    extensionContext?.affectedStudentCount ??
-    (isPreviewing("extend-class") ? 3 : 0);
-  const isRecordingForDisplay = isRecording || isPreviewing("recording-active");
-  const isWaitingForApprovalForDisplay =
-    waitingForApproval || isPreviewing("share-waiting");
-  const isShareApprovedForDisplay =
-    shareApproved && !isPreviewing("share-waiting");
-
-  useEffect(() => {
-    if (
-      !extensionContext ||
-      extensionContext.effectiveEnd >= extensionContext.hardEndsAt ||
-      extensionNow < extensionContext.warningStartsAt ||
-      extensionNow >= extensionContext.effectiveEnd ||
-      warnedEffectiveEndRef.current === extensionContext.effectiveEnd
-    ) {
-      return;
-    }
-
-    warnedEffectiveEndRef.current = extensionContext.effectiveEnd;
-    toast.warning(t("classroom.classEndingSoon"), {
-      id: `class-ending-${extensionContext.effectiveEnd}`,
-      duration: 10_000,
-    });
-  }, [extensionContext, extensionNow, t]);
+  const endingSoonState = getClassroomEndingSoonState({
+    roomName,
+    now: sessionNow,
+    timing: extensionContext,
+    isPreview: isPreviewing("ending-soon"),
+  });
+  const endingSoonNotice = useClassroomEndingSoonNotice({
+    ...endingSoonState,
+    persistDismissal: !isPreviewing("ending-soon"),
+  });
+  const extensionStaffConflict = isPreviewing("extend-class")
+    ? {
+        className: "Algebra I",
+        startsAt: sessionNow + 5 * 60 * 1000,
+      }
+    : extensionContext?.staffConflict;
+  const affectedStudentCount = isPreviewing("extend-class")
+    ? 3
+    : (extensionContext?.affectedStudentCount ?? 0);
+  const isRecordingForDisplay = hasActivePreview
+    ? isPreviewing("recording-active")
+    : isRecording;
+  const isWaitingForApprovalForDisplay = hasActivePreview
+    ? isPreviewing("share-waiting")
+    : waitingForApproval;
+  const isShareApprovedForDisplay = hasActivePreview ? false : shareApproved;
+  const visibleLayer = selectClassroomLayer({
+    activeLayers: {
+      "session-start": amIAuthority && !sessionIsLive && !hasStartedSession,
+      "extension-decision": hasExtensionDecision,
+      "share-permission": Boolean(pendingRequest && amIAuthority),
+      "recording-confirmation": showRecordConfirm,
+      companion: showQR,
+      "enable-audio": needsClick,
+      fullscreen: pendingFullscreen,
+    },
+    isExternalDialogOpen: isSessionActionDialogOpen,
+    isPreviewActive: hasActivePreview,
+    previewLayer: ACTIVE_PREVIEW_LAYERS[uiPreviewState] ?? null,
+  });
 
   useEffect(() => {
     if (
@@ -297,7 +316,7 @@ export function ActiveClassroomUI({
       !sessionIsLive ||
       !extensionContext ||
       extensionContext.decisionEndsAt ||
-      extensionNow < extensionContext.effectiveEnd
+      sessionNow < extensionContext.effectiveEnd
     ) {
       return;
     }
@@ -305,14 +324,14 @@ export function ActiveClassroomUI({
     const previousAttempt = reconciliationAttemptRef.current;
     if (
       previousAttempt.effectiveEnd === extensionContext.effectiveEnd &&
-      extensionNow - previousAttempt.attemptedAt < 10_000
+      sessionNow - previousAttempt.attemptedAt < 10_000
     ) {
       return;
     }
 
     reconciliationAttemptRef.current = {
       effectiveEnd: extensionContext.effectiveEnd,
-      attemptedAt: extensionNow,
+      attemptedAt: sessionNow,
     };
     void requestLiveReconciliation({ roomName }).catch((error) => {
       console.error("Failed to reconcile live session:", error);
@@ -320,7 +339,7 @@ export function ActiveClassroomUI({
   }, [
     amIAuthority,
     extensionContext,
-    extensionNow,
+    sessionNow,
     requestLiveReconciliation,
     roomName,
     sessionIsLive,
@@ -367,7 +386,7 @@ export function ActiveClassroomUI({
     amIAuthority &&
     !amITeacher &&
     !actualTeacher &&
-    (presenterMode || isPreviewing("presenter-active"));
+    (hasActivePreview ? isPreviewing("presenter-active") : presenterMode);
   const teacher =
     actualTeacher ||
     adminPresenterParticipant ||
@@ -431,12 +450,6 @@ export function ActiveClassroomUI({
       uiPreviewEnabled,
     ],
   );
-  const {
-    classmateTilesRef,
-    classmatesCanScrollPrev,
-    classmatesCanScrollNext,
-  } = useClassmatesOverflow(displayedStudents.length);
-
   const {
     screenTracks,
     activeScreenTrack,
@@ -943,6 +956,7 @@ export function ActiveClassroomUI({
   }, [screenTracks, isWhiteboardActive, isFullscreen, onToggleFullscreen]);
 
   const selectPreviewState = (state: ActiveClassroomPreviewState) => {
+    setShowPreviewParticipants(false);
     setUiPreviewState((current) => (current === state ? "none" : state));
   };
 
@@ -998,7 +1012,7 @@ export function ActiveClassroomUI({
     },
     {
       id: "ending-soon",
-      label: "Ending soon",
+      label: "Ending soon banner",
       group: "Overlays",
       isActive: isPreviewing("ending-soon"),
       onSelect: () => selectPreviewState("ending-soon"),
@@ -1043,13 +1057,10 @@ export function ActiveClassroomUI({
       label: "Demo participants",
       group: "Controls",
       isActive: showPreviewParticipants,
-      onSelect: () => setShowPreviewParticipants((current) => !current),
-    },
-    {
-      id: "toast-class-ending",
-      label: "Class ending",
-      group: "Notifications",
-      onSelect: () => toast.warning(t("classroom.classEndingSoon")),
+      onSelect: () => {
+        setUiPreviewState("none");
+        setShowPreviewParticipants((current) => !current);
+      },
     },
     {
       id: "toast-recording",
@@ -1078,7 +1089,7 @@ export function ActiveClassroomUI({
   ];
 
   return (
-    <ClassroomView ref={rootRef}>
+    <ClassroomView ref={rootRef} isSidebarOpen={isClassroomPanelOpen}>
       {uiPreviewEnabled && (
         <ClassroomUiPreview
           roleLabel={currentUserRole ?? "staff"}
@@ -1090,15 +1101,19 @@ export function ActiveClassroomUI({
         />
       )}
 
-      {isEndingSoon && (
-        <ClassroomEndingSoonNotice label={t("classroom.classEndingSoon")} />
+      {endingSoonNotice.shouldShowNotice && (
+        <ClassroomEndingSoonNotice
+          label={t("classroom.classEndingSoon")}
+          dismissLabel={t("common.close")}
+          onDismiss={() => {
+            endingSoonNotice.dismissNotice();
+            if (isPreviewing("ending-soon")) setUiPreviewState("none");
+          }}
+        />
       )}
 
       <AlertDialog
-        open={
-          isPreviewing("start-class") ||
-          (amIAuthority && !sessionIsLive && !hasStartedSession)
-        }
+        open={visibleLayer === "session-start"}
         onOpenChange={(open) => {
           if (!open && isPreviewing("start-class")) {
             setUiPreviewState("none");
@@ -1137,7 +1152,7 @@ export function ActiveClassroomUI({
       </AlertDialog>
 
       <AlertDialog
-        open={shouldConfirmExtension}
+        open={visibleLayer === "extension-decision"}
         onOpenChange={(open) => {
           if (!open && isPreviewing("extend-class")) {
             setUiPreviewState("none");
@@ -1208,7 +1223,7 @@ export function ActiveClassroomUI({
       </AlertDialog>
 
       <ClassroomFullscreenPrompt
-        open={pendingFullscreen || isPreviewing("fullscreen")}
+        open={visibleLayer === "fullscreen"}
         title={t("classroom.fullscreenInviteTitle") || "Go fullscreen?"}
         description={
           t("classroom.fullscreenInviteDesc") ||
@@ -1234,7 +1249,7 @@ export function ActiveClassroomUI({
       />
 
       <AlertDialog
-        open={showRecordConfirm || isPreviewing("recording-confirm")}
+        open={visibleLayer === "recording-confirmation"}
         onOpenChange={(open) => {
           setShowRecordConfirm(open);
           if (!open && isPreviewing("recording-confirm")) {
@@ -1273,7 +1288,7 @@ export function ActiveClassroomUI({
         </AlertDialogContent>
       </AlertDialog>
 
-      {(needsClick || isPreviewing("enable-audio")) && (
+      {visibleLayer === "enable-audio" && (
         <ClassroomEnableAudioOverlay
           title={t("classroom.enableAudio")}
           actionLabel={t("classroom.startClass")}
@@ -1288,8 +1303,14 @@ export function ActiveClassroomUI({
         />
       )}
 
-      {(pendingRequest || isPreviewing("share-request")) && amIAuthority && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-card text-card-foreground rounded-xl shadow-2xl border border-border p-4 w-80 animate-in slide-in-from-top-4">
+      {visibleLayer === "share-permission" && amIAuthority && (
+        <div
+          role="alertdialog"
+          aria-label={t("classroom.shareRequest", {
+            name: pendingRequest?.name ?? "Laura Camila",
+          })}
+          className="absolute top-20 left-1/2 -translate-x-1/2 z-[100] bg-card text-card-foreground rounded-xl shadow-2xl border border-border p-4 w-80 animate-in slide-in-from-top-4"
+        >
           <div className="flex items-start gap-3">
             <div className="bg-primary/10 p-2 rounded-full">
               <Hand className="w-5 h-5 text-primary" />
@@ -1343,18 +1364,24 @@ export function ActiveClassroomUI({
         waitingLabel={t("classroom.waiting")}
         isRecording={isRecordingForDisplay}
         isPhoneLandscape={isPhoneLandscape}
+        isPanelOpen={isClassroomPanelOpen}
+        openPanelLabel={t("classroom.openInteractionPanel")}
+        closePanelLabel={t("classroom.closeInteractionPanel")}
+        onPanelOpenChange={setIsClassroomPanelOpen}
         sessionAction={
           amIAuthority && (sessionIsLive || hasStartedSession) ? (
             <EndClassButton
               appearance="header"
               onConfirm={handleEndSession}
               onLeave={handleLeaveClick}
+              onOpenChange={setIsSessionActionDialogOpen}
               disabled={isEndingSession}
             />
           ) : (
             <LeaveClassButton
               appearance="header"
               onConfirm={handleLeaveClick}
+              onOpenChange={setIsSessionActionDialogOpen}
             />
           )
         }
@@ -1501,12 +1528,14 @@ export function ActiveClassroomUI({
             {amIAuthority && (sessionIsLive || hasStartedSession) && (
               <EndClassButton
                 onConfirm={handleEndSession}
+                onOpenChange={setIsSessionActionDialogOpen}
                 disabled={isEndingSession}
                 className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-inverse-foreground/20 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/30 disabled:cursor-wait disabled:opacity-60"
               />
             )}
             <LeaveClassButton
               onConfirm={handleLeaveClick}
+              onOpenChange={setIsSessionActionDialogOpen}
               className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-destructive/80 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/90"
             />
           </>
@@ -1836,7 +1865,7 @@ export function ActiveClassroomUI({
               )}
               {amIAuthority && (
                 <Dialog
-                  open={showQR || isPreviewing("companion")}
+                  open={visibleLayer === "companion"}
                   onOpenChange={(open) => {
                     setShowQR(open);
                     if (!open && isPreviewing("companion")) {
@@ -1927,6 +1956,7 @@ export function ActiveClassroomUI({
                 <EndClassButton
                   appearance="toolbar"
                   onConfirm={handleEndSession}
+                  onOpenChange={setIsSessionActionDialogOpen}
                   disabled={isEndingSession}
                   previewOpen={isPreviewing("end-class")}
                   onPreviewOpenChange={(open) => {
@@ -1937,6 +1967,7 @@ export function ActiveClassroomUI({
               <LeaveClassButton
                 appearance="toolbar"
                 onConfirm={handleLeaveClick}
+                onOpenChange={setIsSessionActionDialogOpen}
                 previewOpen={isPreviewing("leave-class")}
                 onPreviewOpenChange={(open) => {
                   if (!open) setUiPreviewState("none");
@@ -1949,10 +1980,25 @@ export function ActiveClassroomUI({
 
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
-        heading={t("classroom.classmates", { count: displayedStudents.length })}
-        scrollRef={classmateTilesRef}
-        canScrollPrevious={classmatesCanScrollPrev}
-        canScrollNext={classmatesCanScrollNext}
+        heading={t("classroom.classmates")}
+        compactHeading={t("classroom.classmatesAndChat")}
+        compactOpenLabel={t("classroom.openPanelAction")}
+        chatLabel={t("classroom.chat")}
+        chatCopy={{
+          description: t("classroom.classChatDescription"),
+          teacherLabel: t("classroom.teacher"),
+          studentLabel: "Sofía",
+          youLabel: t("classroom.youShort"),
+          teacherMessage: t("classroom.chatTeacherMessage"),
+          studentMessage: t("classroom.chatStudentMessage"),
+          ownMessage: t("classroom.chatOwnMessage"),
+          placeholder: t("classroom.chatPlaceholder"),
+          sendLabel: t("classroom.sendMessage"),
+          scrollToLatestLabel: t("classroom.scrollToLatestMessages"),
+        }}
+        isOpen={isClassroomPanelOpen}
+        activeTab={classroomPanelTab}
+        onTabChange={setClassroomPanelTab}
         previousLabel={t("common.previous")}
         nextLabel={t("common.next")}
         isEmpty={displayedStudents.length === 0}
@@ -1978,7 +2024,7 @@ export function ActiveClassroomUI({
             key={p.identity}
             variant="grid"
             participant={p}
-            className="aspect-square h-24 w-24 flex-shrink-0 snap-start snap-always sm:h-28 sm:w-28 landscape:h-auto landscape:w-full xl:h-auto xl:w-full"
+            className="aspect-square h-24 w-24 flex-shrink-0 snap-start snap-always sm:h-28 sm:w-28 landscape:h-auto landscape:w-full xl:aspect-auto xl:h-full xl:w-full"
             raisedHand={raisedHands.has(p.identity)}
             onLowerHand={
               amITeacher || isLocalAdminPresenting

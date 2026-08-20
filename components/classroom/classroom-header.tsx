@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ClassroomViewHeader } from "./classroom-view";
 import type { ReactNode } from "react";
 
@@ -11,6 +13,10 @@ interface ClassroomHeaderProps {
   waitingLabel: string;
   isRecording: boolean;
   isPhoneLandscape: boolean;
+  isPanelOpen: boolean;
+  openPanelLabel: string;
+  closePanelLabel: string;
+  onPanelOpenChange: (open: boolean) => void;
   action?: ReactNode;
   sessionAction?: ReactNode;
 }
@@ -23,6 +29,10 @@ export function ClassroomHeader({
   waitingLabel,
   isRecording,
   isPhoneLandscape,
+  isPanelOpen,
+  openPanelLabel,
+  closePanelLabel,
+  onPanelOpenChange,
   action,
   sessionAction,
 }: ClassroomHeaderProps) {
@@ -39,7 +49,7 @@ export function ClassroomHeader({
             className={`size-2 shrink-0 rounded-full ${statusColor}`}
           />
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span className="truncate text-xs font-bold text-card-foreground">
+            <span className="truncate text-xs font-bold text-primary">
               {title}
             </span>
             {subtitle && (
@@ -56,7 +66,7 @@ export function ClassroomHeader({
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 md:flex md:items-center">
             <div className="flex min-w-0 items-center gap-2 md:flex-1">
               <div className="flex min-w-0 flex-col">
-                <h2 className="truncate text-sm font-bold text-card-foreground">
+                <h2 className="truncate text-base font-bold text-primary">
                   {title}
                 </h2>
                 {subtitle && (
@@ -76,6 +86,25 @@ export function ClassroomHeader({
                 {action}
               </div>
             )}
+            <div className="hidden shrink-0 items-center gap-2 border-l border-border pl-2 xl:flex">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
+                aria-controls="classroom-interaction-panel"
+                aria-expanded={isPanelOpen}
+                aria-label={isPanelOpen ? closePanelLabel : openPanelLabel}
+                title={isPanelOpen ? closePanelLabel : openPanelLabel}
+                onClick={() => onPanelOpenChange(!isPanelOpen)}
+                className="size-11 text-primary hover:bg-primary/10 hover:text-primary"
+              >
+                {isPanelOpen ? (
+                  <PanelRightClose className="size-5" />
+                ) : (
+                  <PanelRightOpen className="size-5" />
+                )}
+              </Button>
+            </div>
             {sessionAction && (
               <div
                 className={`col-start-2 shrink-0 lg:hidden ${

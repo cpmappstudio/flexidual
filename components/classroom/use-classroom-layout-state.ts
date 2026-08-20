@@ -2,42 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function useClassmatesOverflow(itemCount: number) {
-  const classmateTilesRef = useRef<HTMLDivElement>(null);
-  const [canScrollPrev, setCanScrollPrev] = useState(false);
-  const [canScrollNext, setCanScrollNext] = useState(false);
-
-  const updateOverflow = useCallback(() => {
-    const element = classmateTilesRef.current;
-    if (!element) return;
-
-    setCanScrollPrev(element.scrollTop > 4 || element.scrollLeft > 4);
-    setCanScrollNext(
-      element.scrollHeight - element.scrollTop - element.clientHeight > 4 ||
-        element.scrollWidth - element.scrollLeft - element.clientWidth > 4,
-    );
-  }, []);
-
-  useEffect(() => {
-    const element = classmateTilesRef.current;
-    if (!element) return;
-
-    element.addEventListener("scroll", updateOverflow, { passive: true });
-    updateOverflow();
-    return () => element.removeEventListener("scroll", updateOverflow);
-  }, [updateOverflow]);
-
-  useEffect(() => {
-    updateOverflow();
-  }, [itemCount, updateOverflow]);
-
-  return {
-    classmateTilesRef,
-    classmatesCanScrollPrev: canScrollPrev,
-    classmatesCanScrollNext: canScrollNext,
-  };
-}
-
 export function usePhoneLandscapeStageControls() {
   const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
   const [stageControlsVisible, setStageControlsVisible] = useState(true);

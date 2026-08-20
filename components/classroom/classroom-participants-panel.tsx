@@ -15,19 +15,53 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
-import { ChevronDown, ChevronUp, Hand } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Hand,
+  MessageCircle,
+  Users,
+} from "lucide-react";
 import type { Participant } from "livekit-client";
-import type { ReactNode, RefObject } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { getParticipantImageUrl } from "./classroom-participant";
+import {
+  ClassroomParticipantRoster,
+  ClassroomParticipantRosterSheet,
+} from "./classroom-participant-roster-sheet";
+import {
+  ClassroomChatMock,
+  type ClassroomChatMockCopy,
+} from "./classroom-chat-mock";
 import { ClassroomViewSidebar } from "./classroom-view";
+import { useClassroomParticipantPagination } from "./use-classroom-participant-pagination";
+
+export type ClassroomPanelTab = "participants" | "chat";
+
+const classroomPanelTabTriggerClassName =
+  "relative h-full min-w-0 rounded-none text-xs font-medium text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-primary";
 
 interface ClassroomParticipantsPanelProps {
   heading: string;
-  scrollRef: RefObject<HTMLDivElement | null>;
-  canScrollPrevious: boolean;
-  canScrollNext: boolean;
+  compactHeading: string;
+  compactOpenLabel: string;
+  chatLabel: string;
+  chatCopy: ClassroomChatMockCopy;
+  isOpen: boolean;
+  activeTab: ClassroomPanelTab;
+  onTabChange: (tab: ClassroomPanelTab) => void;
   previousLabel: string;
   nextLabel: string;
   isEmpty: boolean;
@@ -45,9 +79,13 @@ interface ClassroomParticipantsPanelProps {
 
 export function ClassroomParticipantsPanel({
   heading,
-  scrollRef,
-  canScrollPrevious,
-  canScrollNext,
+  compactHeading,
+  compactOpenLabel,
+  chatLabel,
+  chatCopy,
+  isOpen,
+  activeTab,
+  onTabChange,
   previousLabel,
   nextLabel,
   isEmpty,
@@ -62,15 +100,58 @@ export function ClassroomParticipantsPanel({
   onLowerHand,
   children,
 }: ClassroomParticipantsPanelProps) {
-  const showNavigation = canScrollPrevious || canScrollNext;
+  const participantTiles = Children.toArray(children);
+  const {
+    gridRef,
+    startIndex,
+    endIndex,
+    canShowPrevious,
+    canShowNext,
+    showPrevious,
+    showNext,
+    showParticipant,
+    rowCount,
+  } = useClassroomParticipantPagination(participantTiles.length);
+  const [highlightedParticipantId, setHighlightedParticipantId] =
+    useState<string>();
+  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<ClassroomPanelTab>("participants");
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const showNavigation = canShowPrevious || canShowNext;
   const hasRaisedHand = (participant: Participant) =>
     raisedParticipantIds.has(participant.identity) ||
     (participant.isLocal && localParticipantRaised);
   const raisedHandsCount = participants.filter(hasRaisedHand).length;
+  const rosterLabel = `${heading}: ${participants.length}`;
   const compactPanelLabel =
     raisedHandsCount > 0
-      ? `${heading}. ${raisedHandsCountLabel(raisedHandsCount)}`
-      : heading;
+      ? `${rosterLabel}. ${raisedHandsCountLabel(raisedHandsCount)}`
+      : rosterLabel;
+  const visibleEndIndex = Math.min(endIndex, participantTiles.length);
+
+  useEffect(
+    () => () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  const selectParticipant = (index: number) => {
+    const participant = participants[index];
+    if (!participant) return;
+
+    showParticipant(index);
+    setHighlightedParticipantId(participant.identity);
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+    highlightTimeoutRef.current = setTimeout(
+      () => setHighlightedParticipantId(undefined),
+      1800,
+    );
+  };
 
   const raisedHandsIndicator = raisedHandsCount > 0 && (
     <Badge
@@ -83,7 +164,10 @@ export function ClassroomParticipantsPanel({
     </Badge>
   );
 
-  const renderAvatarGroup = (limit: number) => {
+  const renderAvatarGroup = (
+    limit: number,
+    size: "default" | "sm" = "default",
+  ) => {
     const visibleParticipants = participants.slice(0, limit);
     const remainingCount = Math.max(participants.length - limit, 0);
 
@@ -95,7 +179,11 @@ export function ClassroomParticipantsPanel({
           const fallbackInitial = participantName.charAt(0).toUpperCase();
 
           return (
-            <Avatar key={participant.identity} title={participantName}>
+            <Avatar
+              key={participant.identity}
+              size={size}
+              title={participantName}
+            >
               <AvatarImage
                 src={getParticipantImageUrl(participant) ?? undefined}
                 alt=""
@@ -113,150 +201,237 @@ export function ClassroomParticipantsPanel({
     );
   };
 
+  const visibleParticipantTiles = participantTiles
+    .slice(startIndex, endIndex)
+    .map((tile, index) => {
+      const participant = participants[startIndex + index];
+      if (
+        !participant ||
+        participant.identity !== highlightedParticipantId ||
+        !isValidElement<{ className?: string }>(tile)
+      ) {
+        return tile;
+      }
+
+      return cloneElement(tile, {
+        className: cn(
+          tile.props.className,
+          "z-30 ring-4 ring-inset ring-primary",
+        ),
+      });
+    });
+
+  const roster = (
+    <ClassroomParticipantRoster
+      participants={participants}
+      youLabel={youLabel}
+      raisedHandLabel={raisedHandLabel}
+      lowerHandLabel={lowerHandLabel}
+      hasRaisedHand={hasRaisedHand}
+      onLowerHand={onLowerHand}
+      onSelectParticipant={selectParticipant}
+    />
+  );
+
   return (
-    <ClassroomViewSidebar>
-      <div className="flex h-full min-w-0 items-center gap-3 bg-muted/30 px-3 text-foreground xl:hidden">
-        <h3 className="min-w-0 flex-1 truncate text-xs font-bold uppercase tracking-widest">
-          {heading}
-        </h3>
-        {isEmpty ? (
-          <div className="truncate text-xs italic text-muted-foreground">
-            {emptyContent}
-          </div>
-        ) : (
-          <Sheet>
-            <SheetTrigger asChild>
-              <button
-                type="button"
-                aria-label={compactPanelLabel}
-                className="flex items-center gap-2 rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <div className="sm:hidden">{renderAvatarGroup(4)}</div>
-                <div className="hidden sm:block">{renderAvatarGroup(6)}</div>
-                {raisedHandsIndicator}
-              </button>
-            </SheetTrigger>
-            <SheetContent
-              side="right"
-              className="w-[min(88vw,24rem)] gap-0 p-0 sm:max-w-sm xl:hidden"
-            >
-              <SheetHeader className="border-b border-border bg-muted/30 pr-12">
-                <SheetTitle>{heading}</SheetTitle>
-                <SheetDescription className="sr-only">
-                  {heading}
-                </SheetDescription>
-              </SheetHeader>
-              <div className="min-h-0 flex-1 overflow-y-auto px-4">
-                {participants.map((participant) => {
-                  const participantName =
-                    participant.name || participant.identity || "?";
-                  const fallbackInitial = participantName
-                    .charAt(0)
-                    .toUpperCase();
-                  const raisedHand = hasRaisedHand(participant);
-
-                  return (
-                    <div
-                      key={participant.identity}
-                      className="flex min-w-0 items-center gap-3 border-b border-border py-3 last:border-b-0"
-                    >
-                      <Avatar size="lg">
-                        <AvatarImage
-                          src={getParticipantImageUrl(participant) ?? undefined}
-                          alt={participantName}
-                        />
-                        <AvatarFallback>{fallbackInitial}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {participantName}
-                          {participant.isLocal && (
-                            <span className="font-normal text-muted-foreground">
-                              {` (${youLabel})`}
-                            </span>
-                          )}
-                        </p>
-                        {raisedHand && (
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {raisedHandLabel}
-                          </p>
-                        )}
-                      </div>
-                      {raisedHand && onLowerHand && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`${lowerHandLabel}: ${participantName}`}
-                          title={lowerHandLabel}
-                          onClick={() => onLowerHand(participant.identity)}
-                        >
-                          <Hand />
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </SheetContent>
-          </Sheet>
-        )}
-      </div>
-
-      <div className="hidden min-h-9 shrink-0 items-center gap-1 border-b border-border bg-muted/30 px-2 py-1 text-foreground xl:flex">
-        <h3 className="min-w-0 flex-1 truncate text-xs font-bold uppercase tracking-widest">
-          {heading}
-        </h3>
-        {raisedHandsIndicator}
-        {showNavigation && (
-          <>
-            <div className="flex items-center gap-0.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={previousLabel}
-                onClick={() =>
-                  scrollRef.current?.scrollBy({
-                    top: -160,
-                    behavior: "smooth",
-                  })
-                }
-                disabled={!canScrollPrevious}
-              >
-                <ChevronUp />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={nextLabel}
-                onClick={() =>
-                  scrollRef.current?.scrollBy({
-                    top: 160,
-                    behavior: "smooth",
-                  })
-                }
-                disabled={!canScrollNext}
-              >
-                <ChevronDown />
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div
-        ref={scrollRef}
-        className="scrollbar-thin hidden min-h-0 min-w-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(96px,1fr))] content-start items-start gap-1.5 overflow-x-hidden overflow-y-auto p-1 xl:grid xl:snap-y"
+    <>
+      <ClassroomViewSidebar
+        id="classroom-interaction-panel"
+        className={cn("bg-card", !isOpen && "xl:hidden")}
       >
-        {isEmpty && (
-          <div className="col-span-full flex h-full w-full items-center justify-center px-2 text-center text-xs italic text-muted-foreground">
-            {emptyContent}
-          </div>
-        )}
-        {children}
-      </div>
-    </ClassroomViewSidebar>
+        <button
+          type="button"
+          className="flex h-full min-w-0 items-center gap-2 border-b border-primary/20 bg-card px-3 text-left text-primary outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:hidden"
+          aria-label={`${compactHeading}. ${compactPanelLabel}`}
+          onClick={() => setIsMobileSheetOpen(true)}
+        >
+          <h3 className="min-w-0 truncate text-xs font-bold uppercase tracking-widest">
+            {compactHeading}
+          </h3>
+          {isEmpty ? (
+            <span className="ml-auto flex shrink-0 items-center gap-1 text-xs font-semibold">
+              {compactOpenLabel}
+              <ChevronRight className="size-4" />
+            </span>
+          ) : (
+            <>
+              <span className="sm:hidden">{renderAvatarGroup(4)}</span>
+              <span className="hidden sm:block">{renderAvatarGroup(6)}</span>
+            </>
+          )}
+          {raisedHandsIndicator && (
+            <span className="ml-auto">{raisedHandsIndicator}</span>
+          )}
+        </button>
+
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => onTabChange(value as ClassroomPanelTab)}
+          className="hidden h-full min-h-0 gap-0 xl:flex"
+        >
+          <TabsList className="h-12 w-full shrink-0 rounded-none border-b border-border/70 bg-transparent p-0 text-foreground xl:h-[var(--classroom-header-height)]">
+            <TabsTrigger
+              value="participants"
+              className={classroomPanelTabTriggerClassName}
+            >
+              <Users className="size-4" />
+              <span className="truncate">{heading}</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="chat"
+              className={classroomPanelTabTriggerClassName}
+            >
+              <MessageCircle className="size-4" />
+              <span className="truncate">{chatLabel}</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent
+            value="participants"
+            forceMount
+            className="m-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+          >
+            <div
+              ref={gridRef}
+              className="grid min-h-0 min-w-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-0 overflow-hidden"
+              style={
+                rowCount > 0
+                  ? {
+                      gridTemplateRows: `repeat(${rowCount}, minmax(0, 1fr))`,
+                    }
+                  : undefined
+              }
+            >
+              {isEmpty && (
+                <div className="col-span-full row-[1/-1] flex h-full w-full items-center justify-center px-2 text-center text-xs italic text-muted-foreground">
+                  {emptyContent}
+                </div>
+              )}
+              {visibleParticipantTiles}
+            </div>
+
+            {!isEmpty && (
+              <div className="flex min-h-9 shrink-0 items-center gap-1 border-t border-primary/20 bg-card px-2 py-1">
+                <ClassroomParticipantRosterSheet
+                  heading={heading}
+                  triggerLabel={compactPanelLabel}
+                  participants={participants}
+                  youLabel={youLabel}
+                  raisedHandLabel={raisedHandLabel}
+                  lowerHandLabel={lowerHandLabel}
+                  hasRaisedHand={hasRaisedHand}
+                  onLowerHand={onLowerHand}
+                  onSelectParticipant={selectParticipant}
+                  trigger={
+                    <button
+                      type="button"
+                      aria-label={compactPanelLabel}
+                      title={compactPanelLabel}
+                      className="shrink-0 rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {renderAvatarGroup(2, "sm")}
+                    </button>
+                  }
+                />
+                {raisedHandsIndicator}
+                {showNavigation && (
+                  <div className="ml-auto flex items-center gap-0.5">
+                    <span
+                      aria-live="polite"
+                      className="mr-1 text-[10px] font-semibold tabular-nums text-muted-foreground"
+                    >
+                      {startIndex + 1}&ndash;{visibleEndIndex} /{" "}
+                      {participantTiles.length}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={previousLabel}
+                      onClick={showPrevious}
+                      disabled={!canShowPrevious}
+                    >
+                      <ChevronUp />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={nextLabel}
+                      onClick={showNext}
+                      disabled={!canShowNext}
+                    >
+                      <ChevronDown />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent
+            value="chat"
+            forceMount
+            className="m-0 min-h-0 flex-1 data-[state=inactive]:hidden"
+          >
+            <ClassroomChatMock copy={chatCopy} />
+          </TabsContent>
+        </Tabs>
+      </ClassroomViewSidebar>
+
+      <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
+        <SheetContent
+          side="right"
+          className="w-[min(92vw,24rem)] gap-0 p-0 sm:max-w-sm xl:hidden [&>button]:right-0 [&>button]:top-0 [&>button]:z-10 [&>button]:flex [&>button]:size-12 [&>button]:items-center [&>button]:justify-center"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>
+              {mobileTab === "chat" ? chatLabel : heading}
+            </SheetTitle>
+            <SheetDescription>{compactPanelLabel}</SheetDescription>
+          </SheetHeader>
+          <Tabs
+            value={mobileTab}
+            onValueChange={(value) => setMobileTab(value as ClassroomPanelTab)}
+            className="h-full min-h-0 gap-0"
+          >
+            <TabsList className="h-12 w-full shrink-0 rounded-none border-b border-border/70 bg-transparent p-0 pr-12 text-foreground">
+              <TabsTrigger
+                value="participants"
+                className={classroomPanelTabTriggerClassName}
+              >
+                <Users />
+                {heading}
+              </TabsTrigger>
+              <TabsTrigger
+                value="chat"
+                className={classroomPanelTabTriggerClassName}
+              >
+                <MessageCircle />
+                {chatLabel}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent
+              value="participants"
+              className="m-0 min-h-0 flex-1 overflow-hidden"
+            >
+              {isEmpty ? (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm italic text-muted-foreground">
+                  {emptyContent}
+                </div>
+              ) : (
+                roster
+              )}
+            </TabsContent>
+            <TabsContent
+              value="chat"
+              className="m-0 min-h-0 flex-1 overflow-hidden"
+            >
+              <ClassroomChatMock copy={chatCopy} />
+            </TabsContent>
+          </Tabs>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
