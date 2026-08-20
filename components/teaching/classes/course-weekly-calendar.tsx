@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
+  COURSE_SCHEDULE_STEP_MINUTES,
   DEFAULT_SCHEDULE_END_MINUTES,
   DEFAULT_SCHEDULE_START_MINUTES,
 } from "@/lib/academic-settings";
@@ -64,7 +65,6 @@ interface CourseWeeklyCalendarProps {
   timeZone: string;
 }
 
-const SNAP_MINUTES = 15;
 const localeMap = {
   en: enUS,
   es,
@@ -92,13 +92,13 @@ function getPointerMinutes(
       (windowStartMinutes +
         Math.max(0, Math.min(1, ratio)) *
           (windowEndMinutes - windowStartMinutes)) /
-        SNAP_MINUTES,
-    ) * SNAP_MINUTES;
+        COURSE_SCHEDULE_STEP_MINUTES,
+    ) * COURSE_SCHEDULE_STEP_MINUTES;
 
   return isStart
     ? Math.max(
         windowStartMinutes,
-        Math.min(minutes, windowEndMinutes - SNAP_MINUTES),
+        Math.min(minutes, windowEndMinutes - COURSE_SCHEDULE_STEP_MINUTES),
       )
     : Math.max(windowStartMinutes, Math.min(minutes, windowEndMinutes));
 }
@@ -121,7 +121,10 @@ function normalizeSelection(
     startMinutes,
     endMinutes:
       endMinutes === startMinutes
-        ? Math.min(startMinutes + SNAP_MINUTES, windowEndMinutes)
+        ? Math.min(
+            startMinutes + COURSE_SCHEDULE_STEP_MINUTES,
+            windowEndMinutes,
+          )
         : endMinutes,
   };
 }
