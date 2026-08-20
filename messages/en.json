@@ -255,6 +255,7 @@
     "institutionOverview": "Institution overview"
   },
   "navigation": {
+    "notifications": "Notifications",
     "openNavigation": "Open menu",
     "closeNavigation": "Close menu",
     "collapseNavigation": "Collapse menu",

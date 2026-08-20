@@ -69,16 +69,16 @@ export function AccountMenu({ className }: { className?: string }) {
         <Button
           variant="ghost"
           size="icon"
-          className={cn("size-10 rounded-full p-0", className)}
+          className={cn("size-8 rounded-full p-0", className)}
           aria-label={name}
         >
           <Image
             src="/settings-icon.svg"
             alt=""
-            width={32}
-            height={32}
+            width={28}
+            height={28}
             unoptimized
-            className="size-8"
+            className="size-7"
           />
         </Button>
       </DropdownMenuTrigger>

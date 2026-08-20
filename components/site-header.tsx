@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { AccountMenu } from "@/components/account-menu";
 import { SidebarEdgeTrigger } from "@/components/sidebar-edge-trigger";
+import { Button } from "@/components/ui/button";
 import { FlexidualLogo } from "@/components/ui/flexidual-logo";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useCurrentOrgRole } from "@/hooks/use-current-org-role";
@@ -31,8 +33,26 @@ export function SiteHeader() {
           className="h-10 shrink-0 sm:h-12"
           subtitle={subtitle}
         />
-        <div className="ml-auto flex size-10 shrink-0 items-center justify-center rounded-full bg-sidebar ring-1 ring-sidebar-border">
-          <AccountMenu className="hover:bg-sidebar-accent" />
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full bg-sidebar ring-1 ring-sidebar-border hover:bg-sidebar-accent"
+            aria-label={navigationT("notifications")}
+            title={navigationT("notifications")}
+          >
+            <Image
+              src="/notification-bell.svg"
+              alt=""
+              width={20}
+              height={20}
+              unoptimized
+              className="h-7 w-auto"
+            />
+          </Button>
+          <div className="flex size-8 items-center justify-center rounded-full bg-sidebar ring-1 ring-sidebar-border">
+            <AccountMenu className="hover:bg-sidebar-accent" />
+          </div>
         </div>
       </div>
       {!openMobile && (
