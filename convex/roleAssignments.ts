@@ -479,12 +479,27 @@ export const assignRoleInternal = internalMutation({
       v.literal("campus"),
     ),
     orgId: v.optional(v.string()),
+    previousOrgId: v.optional(v.string()),
     role: roleValidator,
     gradeCode: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await upsertRoleAssignment(ctx, args);
+    const { previousOrgId, ...assignment } = args;
+    if (previousOrgId && previousOrgId !== args.orgId) {
+      const previous = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user_org", (q) =>
+          q
+            .eq("userId", args.userId)
+            .eq("orgId", previousOrgId)
+            .eq("orgType", args.orgType),
+        )
+        .first();
+      if (!previous) throw new Error("Previous role assignment not found");
+      await ctx.db.delete(previous._id);
+    }
+    await upsertRoleAssignment(ctx, assignment);
     return null;
   },
 });
