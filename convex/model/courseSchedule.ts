@@ -5,7 +5,6 @@ import {
   getWeeklyOccurrenceStarts,
   utcToLocalDateTime,
 } from "../../lib/time-zone";
-import { COURSE_SCHEDULE_STEP_MINUTES } from "../../lib/academic-settings";
 
 export const courseSessionTypeValidator = v.union(
   v.literal("live"),
@@ -77,10 +76,8 @@ export function isValidWeeklySchedule(
         slot.dayOfWeek <= 6 &&
         Number.isInteger(slot.startMinutes) &&
         slot.startMinutes >= scheduleStartMinutes &&
-        slot.startMinutes % COURSE_SCHEDULE_STEP_MINUTES === 0 &&
         Number.isInteger(slot.durationMinutes) &&
-        slot.durationMinutes >= COURSE_SCHEDULE_STEP_MINUTES &&
-        slot.durationMinutes % COURSE_SCHEDULE_STEP_MINUTES === 0 &&
+        slot.durationMinutes >= 1 &&
         slot.durationMinutes <= 8 * 60 &&
         slot.startMinutes + slot.durationMinutes <= scheduleEndMinutes,
     )

@@ -16,10 +16,10 @@ function slot(startMinutes: number, durationMinutes: number) {
   ];
 }
 
-test("weekly course schedules support five-minute precision", () => {
+test("weekly course schedules support exact minute precision", () => {
   assert.equal(
     isValidWeeklySchedule(
-      slot(8 * 60 + 5, 5),
+      slot(8 * 60 + 1, 1),
       scheduleStartMinutes,
       scheduleEndMinutes,
     ),
@@ -27,7 +27,7 @@ test("weekly course schedules support five-minute precision", () => {
   );
   assert.equal(
     isValidWeeklySchedule(
-      slot(8 * 60 + 10, 10),
+      slot(8 * 60 + 7, 43),
       scheduleStartMinutes,
       scheduleEndMinutes,
     ),
@@ -35,10 +35,10 @@ test("weekly course schedules support five-minute precision", () => {
   );
 });
 
-test("weekly course schedules reject times outside five-minute precision", () => {
+test("weekly course schedules reject invalid minute values", () => {
   assert.equal(
     isValidWeeklySchedule(
-      slot(8 * 60 + 1, 5),
+      slot(8 * 60, 0),
       scheduleStartMinutes,
       scheduleEndMinutes,
     ),
@@ -46,7 +46,23 @@ test("weekly course schedules reject times outside five-minute precision", () =>
   );
   assert.equal(
     isValidWeeklySchedule(
-      slot(8 * 60, 6),
+      slot(8 * 60 + 0.5, 30),
+      scheduleStartMinutes,
+      scheduleEndMinutes,
+    ),
+    false,
+  );
+  assert.equal(
+    isValidWeeklySchedule(
+      slot(8 * 60, 30.5),
+      scheduleStartMinutes,
+      scheduleEndMinutes,
+    ),
+    false,
+  );
+  assert.equal(
+    isValidWeeklySchedule(
+      slot(scheduleEndMinutes - 15, 30),
       scheduleStartMinutes,
       scheduleEndMinutes,
     ),
