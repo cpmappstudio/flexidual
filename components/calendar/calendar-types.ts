@@ -58,6 +58,7 @@ export type CalendarEvent = {
   isRecurring?: boolean;
   recurrenceRule?: string;
   recurrenceParentId?: Id<"classSchedule">;
+  cancellationReason?: string;
   teacherName?: string;
   teacherImageUrl?: string;
 

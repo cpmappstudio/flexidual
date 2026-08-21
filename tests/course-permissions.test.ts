@@ -3,6 +3,8 @@ import test from "node:test";
 import type { QueryCtx } from "../convex/_generated/server";
 import type { Id } from "../convex/_generated/dataModel";
 import {
+  canCancelClassOccurrence,
+  canCancelClassSeries,
   canManageCampusPeople,
   canManageClasses,
   canManageInstitution,
@@ -10,6 +12,7 @@ import {
   canViewInstitutionSettings,
   canViewStudentProfile,
 } from "../convex/permissions";
+import type { Doc } from "../convex/_generated/dataModel";
 import type { UserRole } from "../convex/model/roles";
 
 type Assignment = {
@@ -66,6 +69,14 @@ const userId = "user" as Id<"users">;
 const schoolId = "school" as Id<"schools">;
 const campusId = "campus" as Id<"campuses">;
 const otherCampusId = "other-campus" as Id<"campuses">;
+const teacherId = "teacher" as Id<"users">;
+const tutorId = "tutor" as Id<"users">;
+const classData = {
+  teacherId,
+  tutorId,
+  campusId,
+  schoolId,
+} as Doc<"classes">;
 
 test("course management is granted only at administrative scopes", async () => {
   assert.equal(
@@ -115,6 +126,81 @@ test("teachers and tutors cannot mutate course definitions", async () => {
       false,
     );
   }
+});
+
+test("only the assigned teacher or course managers can cancel one class", async () => {
+  const teacherContext = permissionContext([
+    {
+      userId: teacherId,
+      orgId: campusId,
+      orgType: "campus",
+      role: "teacher",
+    },
+  ]);
+  assert.equal(
+    await canCancelClassOccurrence(
+      teacherContext,
+      teacherId,
+      classData,
+      schoolId,
+    ),
+    true,
+  );
+  assert.equal(
+    await canCancelClassOccurrence(
+      teacherContext,
+      tutorId,
+      classData,
+      schoolId,
+    ),
+    false,
+  );
+
+  const principalContext = permissionContext([
+    {
+      userId,
+      orgId: campusId,
+      orgType: "campus",
+      role: "principal",
+    },
+  ]);
+  assert.equal(
+    await canCancelClassOccurrence(
+      principalContext,
+      userId,
+      classData,
+      schoolId,
+    ),
+    true,
+  );
+});
+
+test("only course managers can cancel a future series", async () => {
+  const teacherContext = permissionContext([
+    {
+      userId: teacherId,
+      orgId: campusId,
+      orgType: "campus",
+      role: "teacher",
+    },
+  ]);
+  assert.equal(
+    await canCancelClassSeries(teacherContext, teacherId, classData, schoolId),
+    false,
+  );
+
+  const adminContext = permissionContext([
+    {
+      userId,
+      orgId: schoolId,
+      orgType: "school",
+      role: "admin",
+    },
+  ]);
+  assert.equal(
+    await canCancelClassSeries(adminContext, userId, classData, schoolId),
+    true,
+  );
 });
 
 test("campus people are managed by administrators and assigned principals", async () => {

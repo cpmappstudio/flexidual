@@ -227,6 +227,15 @@ export default defineSchema({
     // Completion tracking
     completedAt: v.optional(v.number()),
 
+    // Cancellation tracking
+    cancellationReason: v.optional(v.string()),
+    cancelledAt: v.optional(v.number()),
+    cancelledBy: v.optional(v.id("users")),
+    cancellationScope: v.optional(
+      v.union(v.literal("occurrence"), v.literal("series")),
+    ),
+    cancellationEffectiveAt: v.optional(v.number()),
+
     // Live lifecycle state. These fields are managed by the room reconciler.
     liveLeaderAbsentSince: v.optional(v.number()),
     liveExtensionEndsAt: v.optional(v.number()),
@@ -255,6 +264,23 @@ export default defineSchema({
     ])
     .index("by_live_expiration", ["status", "isLive", "scheduledEnd"])
     .index("by_recurrence_parent", ["recurrenceParentId"]),
+
+  // Domain events for the future system-notification pipeline.
+  // Delivery and read state intentionally live outside this contract.
+  classCancellationEvents: defineTable({
+    classId: v.id("classes"),
+    schoolId: v.optional(v.id("schools")),
+    scheduleId: v.id("classSchedule"),
+    affectedScheduleIds: v.array(v.id("classSchedule")),
+    actorId: v.id("users"),
+    scope: v.union(v.literal("occurrence"), v.literal("series")),
+    source: v.union(v.literal("calendar"), v.literal("course_schedule")),
+    reason: v.string(),
+    effectiveAt: v.number(),
+    occurredAt: v.number(),
+  })
+    .index("by_class_and_occurred_at", ["classId", "occurredAt"])
+    .index("by_school_and_occurred_at", ["schoolId", "occurredAt"]),
 
   /**
    * CLASS_SESSIONS

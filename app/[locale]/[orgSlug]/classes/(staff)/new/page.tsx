@@ -18,6 +18,16 @@ import {
   CourseWeeklySlot,
 } from "@/components/teaching/classes/course-weekly-calendar";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -28,12 +38,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { Link, useRouter } from "@/i18n/navigation";
 import { todayInTimeZone } from "@/lib/time-zone";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useAlert } from "@/components/providers/alert-provider";
 import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
+import {
+  getRemovedWeeklyScheduleSlots,
+  hasAcademicPeriodStarted,
+  requiresWeeklySlotRemovalConfirmation,
+} from "@/lib/course-schedule-change";
 
 type CourseDetails = NonNullable<FunctionReturnType<typeof api.classes.get>>;
 
@@ -122,6 +138,10 @@ function CourseEditor({
   const updateCourse = useMutation(api.classes.update);
   const deleteCourse = useMutation(api.classes.remove);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingWeeklySlotRemoval, setPendingWeeklySlotRemoval] =
+    useState<CourseWeeklySlot>();
+  const [scheduleCancellationReason, setScheduleCancellationReason] =
+    useState("");
   const [academicPeriodId, setAcademicPeriodId] = useState(
     classToEdit?.academicPeriodId ?? "",
   );
@@ -218,6 +238,69 @@ function CourseEditor({
     teachers,
   ]);
 
+  const weeklySlotConfigs = useMemo(
+    () =>
+      weeklySlots.map((slot) => ({
+        dayOfWeek: slot.dayOfWeek,
+        startMinutes: slot.startMinutes,
+        durationMinutes: slot.endMinutes - slot.startMinutes,
+        sessionType: slot.sessionType,
+      })),
+    [weeklySlots],
+  );
+  const removedWeeklySlots = useMemo(
+    () =>
+      getRemovedWeeklyScheduleSlots(
+        classToEdit?.weeklySlots ?? [],
+        weeklySlotConfigs,
+      ),
+    [classToEdit?.weeklySlots, weeklySlotConfigs],
+  );
+  const requiresScheduleCancellationReason = Boolean(
+    isEditing &&
+      removedWeeklySlots.length > 0 &&
+      selectedAcademicPeriod &&
+      academicSettings?.timeZone &&
+      hasAcademicPeriodStarted(
+        selectedAcademicPeriod.startDate,
+        academicSettings.timeZone,
+      ),
+  );
+
+  const removingSlotRequiresCancellation = (slot: CourseWeeklySlot) =>
+    requiresWeeklySlotRemovalConfirmation({
+      slot: {
+        dayOfWeek: slot.dayOfWeek,
+        startMinutes: slot.startMinutes,
+        durationMinutes: slot.endMinutes - slot.startMinutes,
+        sessionType: slot.sessionType,
+      },
+      originalSlots: classToEdit?.weeklySlots ?? [],
+      periodStartDate: selectedAcademicPeriod?.startDate,
+      timeZone: academicSettings?.timeZone,
+      isEditing,
+    });
+
+  const removeWeeklySlot = (slot: CourseWeeklySlot) => {
+    if (removingSlotRequiresCancellation(slot)) {
+      setPendingWeeklySlotRemoval(slot);
+      return;
+    }
+    setWeeklySlots((current) =>
+      current.filter((candidate) => candidate.id !== slot.id),
+    );
+  };
+
+  const confirmWeeklySlotRemoval = () => {
+    if (!pendingWeeklySlotRemoval) return;
+    setWeeklySlots((current) =>
+      current.filter(
+        (candidate) => candidate.id !== pendingWeeklySlotRemoval.id,
+      ),
+    );
+    setPendingWeeklySlotRemoval(undefined);
+  };
+
   useEffect(() => {
     if (isEditing) return;
     if (availablePeriods.some((period) => period._id === academicPeriodId)) {
@@ -259,11 +342,10 @@ function CourseEditor({
       formData.liveAccess.allowedGradeCodes.length === 0) ||
     !academicPeriodId ||
     !academicSettings?.timeZone ||
-    weeklySlots.length === 0 ||
+    (!isEditing && weeklySlots.length === 0) ||
     (isEditing && !classToEdit);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const persistCourse = async () => {
     if (isSubmitDisabled || !campusId) return;
     setIsSubmitting(true);
 
@@ -277,12 +359,10 @@ function CourseEditor({
           teacherId: formData.teacherId as Id<"users">,
           gradeCode: formData.gradeCode,
           liveAccess: formData.liveAccess,
-          weeklySlots: weeklySlots.map((slot) => ({
-            dayOfWeek: slot.dayOfWeek,
-            startMinutes: slot.startMinutes,
-            durationMinutes: slot.endMinutes - slot.startMinutes,
-            sessionType: slot.sessionType,
-          })),
+          weeklySlots: weeklySlotConfigs,
+          scheduleCancellationReason: requiresScheduleCancellationReason
+            ? scheduleCancellationReason.trim() || undefined
+            : undefined,
         });
         toast.success(t("class.updated"));
         router.push(`/${orgSlug}/classes/${classToEdit._id}`);
@@ -298,12 +378,7 @@ function CourseEditor({
         liveAccess: formData.liveAccess,
         campusId,
         academicPeriodId: academicPeriodId as Id<"academicPeriods">,
-        weeklySlots: weeklySlots.map((slot) => ({
-          dayOfWeek: slot.dayOfWeek,
-          startMinutes: slot.startMinutes,
-          durationMinutes: slot.endMinutes - slot.startMinutes,
-          sessionType: slot.sessionType,
-        })),
+        weeklySlots: weeklySlotConfigs,
       });
       toast.success(t("class.created"));
       router.push(`/${orgSlug}/classes/${result.classId}`);
@@ -316,6 +391,18 @@ function CourseEditor({
       );
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (
+      requiresScheduleCancellationReason &&
+      scheduleCancellationReason.trim().length === 0
+    ) {
+      toast.error(t("schedule.cancellationReasonRequired"));
+      return;
+    }
+    void persistCourse();
   };
 
   const handleDelete = () => {
@@ -561,6 +648,7 @@ function CourseEditor({
             <CourseWeeklyCalendar
               value={weeklySlots}
               onChangeAction={setWeeklySlots}
+              onRemoveAction={removeWeeklySlot}
               courseName={formData.name}
               backgroundSlots={scheduleGuides?.map((guide) => ({
                 id: guide.scheduleId,
@@ -584,6 +672,56 @@ function CourseEditor({
           )}
         </section>
       </form>
+
+      <AlertDialog
+        open={Boolean(pendingWeeklySlotRemoval)}
+        onOpenChange={(open) => {
+          if (!open) setPendingWeeklySlotRemoval(undefined);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("class.cancelFutureClassesTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("class.cancelFutureClassesDescription", {
+                count: 1,
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="schedule-cancellation-reason">
+              {t("schedule.cancellationReason")}
+            </Label>
+            <Textarea
+              id="schedule-cancellation-reason"
+              value={scheduleCancellationReason}
+              onChange={(event) =>
+                setScheduleCancellationReason(event.target.value)
+              }
+              placeholder={t("schedule.cancellationReasonPlaceholder")}
+              aria-invalid={
+                Boolean(pendingWeeklySlotRemoval) &&
+                scheduleCancellationReason.trim().length === 0
+              }
+            />
+            <p className="text-sm text-muted-foreground">
+              {t("class.cancelFutureClassesHelp")}
+            </p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.back")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={scheduleCancellationReason.trim().length === 0}
+              onClick={confirmWeeklySlotRemoval}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t("class.confirmWeeklyBlockRemoval")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

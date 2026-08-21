@@ -62,6 +62,14 @@ import {
   type CourseWeeklySlotConfig,
   type PlannedCourseOccurrence,
 } from "./model/courseSchedule";
+import {
+  getRemovedWeeklyScheduleSlots,
+  hasAcademicPeriodStarted,
+  scheduleMatchesWeeklySlot,
+  scheduleOccurrenceKey,
+  weeklyScheduleSlotKey,
+} from "../lib/course-schedule-change";
+import { recordClassCancellationEvent } from "./model/classCancellationEvents";
 
 const classFields = {
   _id: v.id("classes"),
@@ -1013,6 +1021,8 @@ async function replaceFutureCourseSchedule(
     teacherId,
     className,
     weeklySlots,
+    previousWeeklySlots,
+    cancellationReason,
     updatedBy,
   }: {
     classData: Doc<"classes">;
@@ -1020,6 +1030,8 @@ async function replaceFutureCourseSchedule(
     teacherId?: Id<"users">;
     className: string;
     weeklySlots: CourseWeeklySlotConfig[];
+    previousWeeklySlots: CourseWeeklySlotConfig[];
+    cancellationReason?: string;
     updatedBy: Id<"users">;
   },
 ) {
@@ -1053,6 +1065,7 @@ async function replaceFutureCourseSchedule(
     throw new ConvexError("TIME_ZONE_REQUIRED");
   }
   if (
+    weeklySlots.length > 0 &&
     !isValidWeeklySchedule(
       weeklySlots,
       school.scheduleStartMinutes ?? DEFAULT_SCHEDULE_START_MINUTES,
@@ -1063,26 +1076,132 @@ async function replaceFutureCourseSchedule(
   }
 
   const now = Date.now();
+  const removedSlots = getRemovedWeeklyScheduleSlots(
+    previousWeeklySlots,
+    weeklySlots,
+  );
+  const periodStarted = hasAcademicPeriodStarted(
+    academicPeriod.startDate,
+    timeZone,
+    now,
+  );
+  const reason = cancellationReason?.trim();
+  if (periodStarted && removedSlots.length > 0 && !reason) {
+    throw new ConvexError("CANCELLATION_REASON_REQUIRED");
+  }
+
+  const cancellableSchedules =
+    periodStarted && removedSlots.length > 0
+      ? schedules.filter(
+          (schedule) =>
+            schedule.scheduledStart >= now &&
+            schedule.status === "scheduled" &&
+            schedule.isLive !== true &&
+            (schedule.isRecurring === true ||
+              schedule.recurrenceParentId !== undefined) &&
+            removedSlots.some((slot) =>
+              scheduleMatchesWeeklySlot(schedule, slot, timeZone),
+            ),
+        )
+      : [];
+  const effectiveAtBySlot = new Map<string, number>();
+  for (const schedule of cancellableSchedules) {
+    const slot = removedSlots.find((candidate) =>
+      scheduleMatchesWeeklySlot(schedule, candidate, timeZone),
+    );
+    if (!slot) continue;
+    const key = weeklyScheduleSlotKey(slot);
+    effectiveAtBySlot.set(
+      key,
+      Math.min(
+        effectiveAtBySlot.get(key) ?? schedule.scheduledStart,
+        schedule.scheduledStart,
+      ),
+    );
+  }
+  const cancelledIds = new Set(cancellableSchedules.map(({ _id }) => _id));
+  for (const schedule of cancellableSchedules) {
+    const slot = removedSlots.find((candidate) =>
+      scheduleMatchesWeeklySlot(schedule, candidate, timeZone),
+    );
+    await ctx.db.patch(schedule._id, {
+      status: "cancelled",
+      cancellationReason: reason!,
+      cancelledAt: now,
+      cancelledBy: updatedBy,
+      cancellationScope: "series",
+      cancellationEffectiveAt: slot
+        ? effectiveAtBySlot.get(weeklyScheduleSlotKey(slot))
+        : schedule.scheduledStart,
+    });
+  }
+  for (const slot of removedSlots) {
+    const affectedSchedules = cancellableSchedules.filter((schedule) =>
+      scheduleMatchesWeeklySlot(schedule, slot, timeZone),
+    );
+    const effectiveAt = effectiveAtBySlot.get(weeklyScheduleSlotKey(slot));
+    if (affectedSchedules.length === 0 || effectiveAt === undefined) continue;
+    await recordClassCancellationEvent(ctx, {
+      classId: classData._id,
+      schoolId: curriculum.schoolId,
+      scheduleId: affectedSchedules[0]._id,
+      affectedScheduleIds: affectedSchedules.map(({ _id }) => _id),
+      actorId: updatedBy,
+      scope: "series",
+      source: "course_schedule",
+      reason: reason!,
+      effectiveAt,
+      occurredAt: now,
+    });
+  }
+  const effectiveSchedules = schedules.map((schedule) =>
+    cancelledIds.has(schedule._id)
+      ? ({
+          ...schedule,
+          status: "cancelled" as const,
+        } satisfies Doc<"classSchedule">)
+      : schedule,
+  );
   const periodEndDate = toCivilDate(academicPeriod.endDate);
   const periodEnd =
     localDateTimeToUtc(`${addCivilDays(periodEndDate, 1)}T00:00`, timeZone) - 1;
+  const cancelledOccurrenceKeys = new Set(
+    effectiveSchedules
+      .filter(
+        (schedule) =>
+          schedule.status === "cancelled" && schedule.scheduledStart >= now,
+      )
+      .map(scheduleOccurrenceKey),
+  );
   const occurrencesBySlot = planWeeklyCourseOccurrences({
     slots: weeklySlots,
     periodStartDate: toCivilDate(academicPeriod.startDate),
     periodEndDate,
     timeZone,
     from: now,
-  });
+  }).map((occurrences) =>
+    occurrences.filter(
+      (occurrence) =>
+        !cancelledOccurrenceKeys.has(
+          scheduleOccurrenceKey({
+            scheduledStart: occurrence.start,
+            scheduledEnd: occurrence.end,
+            sessionType: occurrence.sessionType,
+          }),
+        ),
+    ),
+  );
   const plannedClasses = occurrencesBySlot
     .flat()
     .sort((a, b) => a.start - b.start);
-  const schedulesToReplace = schedules.filter(
+  const schedulesToReplace = effectiveSchedules.filter(
     (schedule) =>
       schedule.scheduledStart >= now &&
       (schedule.isRecurring === true ||
         schedule.recurrenceParentId !== undefined) &&
       schedule.status !== "active" &&
       schedule.status !== "completed" &&
+      schedule.status !== "cancelled" &&
       schedule.isLive !== true,
   );
   const replacedIds = new Set(
@@ -1090,7 +1209,7 @@ async function replaceFutureCourseSchedule(
   );
   assertNoCourseScheduleOverlap(
     plannedClasses,
-    schedules.filter((schedule) => !replacedIds.has(schedule._id)),
+    effectiveSchedules.filter((schedule) => !replacedIds.has(schedule._id)),
   );
   if (teacherId) {
     await validateTeacherScheduleConflicts(ctx, {
@@ -1103,7 +1222,14 @@ async function replaceFutureCourseSchedule(
 
   const metadataByOccurrence = mapFutureScheduleMetadata(
     plannedClasses,
-    schedulesToReplace,
+    schedules.filter(
+      (schedule) =>
+        schedule.scheduledStart >= now &&
+        (schedule.isRecurring === true ||
+          schedule.recurrenceParentId !== undefined) &&
+        schedule.status === "scheduled" &&
+        schedule.isLive !== true,
+    ),
     curriculum._id === classData.curriculumId,
   );
   await deleteSchedulesWithDependencies(ctx, schedulesToReplace);
@@ -1315,6 +1441,7 @@ export const update = mutation({
     gradeCode: v.optional(v.string()),
     liveAccess: v.optional(liveAccessValidator),
     weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
+    scheduleCancellationReason: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1408,16 +1535,15 @@ export const update = mutation({
       args.weeklySlots !== undefined &&
       (scheduleChanged || classData.weeklySlots === undefined);
 
-    if (
-      (scheduleChanged || curriculumChanged) &&
-      effectiveWeeklySlots.length > 0
-    ) {
+    if (scheduleChanged || curriculumChanged) {
       await replaceFutureCourseSchedule(ctx, {
         classData,
         curriculum: targetCurriculum,
         teacherId: args.teacherId ?? classData.teacherId,
         className: name ?? classData.name,
         weeklySlots: effectiveWeeklySlots,
+        previousWeeklySlots: currentWeeklySlots ?? [],
+        cancellationReason: args.scheduleCancellationReason,
         updatedBy: user._id,
       });
     } else if (

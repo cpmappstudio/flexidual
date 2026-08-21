@@ -11,7 +11,13 @@ import { internal } from "./_generated/api";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Doc, Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
-import { canAccessClass, canManageClasses, hasSystemRole } from "./permissions";
+import {
+  canAccessClass,
+  canCancelClassOccurrence,
+  canCancelClassSeries,
+  canManageClasses,
+  hasSystemRole,
+} from "./permissions";
 import {
   canStudentAccessLiveClass,
   liveAccessValidator,
@@ -27,6 +33,7 @@ import {
 import { isStudentEnrolled, listClassStudentIds } from "./model/enrollments";
 import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
 import { syncClassTypeFromSchedules } from "./model/classType";
+import { recordClassCancellationEvent } from "./model/classCancellationEvents";
 import {
   civilDayNumber,
   isValidTimeZone,
@@ -86,6 +93,13 @@ const scheduleFields = {
     v.literal("cancelled"),
   ),
   completedAt: v.optional(v.number()),
+  cancellationReason: v.optional(v.string()),
+  cancelledAt: v.optional(v.number()),
+  cancelledBy: v.optional(v.id("users")),
+  cancellationScope: v.optional(
+    v.union(v.literal("occurrence"), v.literal("series")),
+  ),
+  cancellationEffectiveAt: v.optional(v.number()),
   liveLeaderAbsentSince: v.optional(v.number()),
   liveExtensionEndsAt: v.optional(v.number()),
   liveDecisionEndsAt: v.optional(v.number()),
@@ -157,6 +171,7 @@ const scheduleEventValidator = v.object({
   isRecurring: v.boolean(),
   recurrenceRule: v.optional(v.string()),
   recurrenceParentId: v.optional(v.id("classSchedule")),
+  cancellationReason: v.optional(v.string()),
   teacherName: v.optional(v.string()),
   teacherImageUrl: v.optional(v.string()),
   teacherAttendance: v.optional(
@@ -1210,6 +1225,7 @@ export const getMySchedule = query({
           isRecurring: item.isRecurring || false,
           recurrenceRule: recurrenceRule,
           recurrenceParentId: item.recurrenceParentId,
+          cancellationReason: item.cancellationReason,
           teacherName: teacher?.fullName,
           teacherImageUrl: teacher?.imageUrl,
           teacherAttendance: isClassAdminOrTeacher
@@ -2046,7 +2062,7 @@ export const cancelSchedule = mutation({
   args: {
     id: v.id("classSchedule"),
     cancelSeries: v.optional(v.boolean()),
-    reason: v.optional(v.string()),
+    reason: v.string(),
   },
   returns: v.object({
     cancelled: v.number(),
@@ -2060,51 +2076,103 @@ export const cancelSchedule = mutation({
     const classData = await ctx.db.get(schedule.classId);
     if (!classData) throw new Error("Class not found");
     const curriculum = await ctx.db.get(classData.curriculumId);
+    const schoolId = classData.schoolId ?? curriculum?.schoolId;
+    const reason = args.reason.trim();
+    if (!reason) throw new ConvexError("CANCELLATION_REASON_REQUIRED");
 
-    const isAuthorizedAdmin = await canManageClasses(
-      ctx,
-      user._id,
-      classData.campusId,
-      curriculum?.schoolId,
-    );
+    const canCancel = args.cancelSeries
+      ? await canCancelClassSeries(ctx, user._id, classData, schoolId)
+      : await canCancelClassOccurrence(ctx, user._id, classData, schoolId);
+    if (!canCancel) throw new ConvexError("PERMISSION_DENIED");
 
-    if (!isAuthorizedAdmin) throw new ConvexError("PERMISSION_DENIED");
-
-    if (args.cancelSeries && schedule.isRecurring) {
-      const parentId = schedule.recurrenceParentId || schedule._id;
-      const series = await ctx.db
-        .query("classSchedule")
-        .withIndex("by_recurrence_parent", (q) =>
-          q.eq("recurrenceParentId", parentId),
-        )
-        .collect();
-
-      const updateData = {
-        status: "cancelled" as const,
-        description: args.reason
-          ? `${schedule.description || ""}\n\nCancellation reason: ${args.reason}`
-          : schedule.description,
+    if (schedule.status === "cancelled") {
+      return {
+        cancelled: 0,
+        type: args.cancelSeries ? ("series" as const) : ("single" as const),
       };
-      await ctx.db.patch(parentId, updateData);
+    }
 
-      for (const child of series) {
-        await ctx.db.patch(child._id, {
+    const now = Date.now();
+    if (
+      schedule.status !== "scheduled" ||
+      schedule.scheduledStart <= now ||
+      schedule.isLive === true
+    ) {
+      throw new ConvexError("SCHEDULE_CANNOT_BE_CANCELLED");
+    }
+
+    if (args.cancelSeries) {
+      if (!schedule.isRecurring && !schedule.recurrenceParentId) {
+        throw new ConvexError("SCHEDULE_IS_NOT_RECURRING");
+      }
+      const parentId = schedule.recurrenceParentId || schedule._id;
+      const [parent, children] = await Promise.all([
+        ctx.db.get(parentId),
+        ctx.db
+          .query("classSchedule")
+          .withIndex("by_recurrence_parent", (q) =>
+            q.eq("recurrenceParentId", parentId),
+          )
+          .collect(),
+      ]);
+      const series = parent ? [parent, ...children] : children;
+      const futureScheduledItems = series.filter(
+        (item) =>
+          item.scheduledStart >= schedule.scheduledStart &&
+          item.status === "scheduled" &&
+          item.isLive !== true,
+      );
+      for (const item of futureScheduledItems) {
+        await ctx.db.patch(item._id, {
           status: "cancelled" as const,
-          description: args.reason
-            ? `${child.description || ""}\n\nCancellation reason: ${args.reason}`
-            : child.description,
+          cancellationReason: reason,
+          cancelledAt: now,
+          cancelledBy: user._id,
+          cancellationScope: "series" as const,
+          cancellationEffectiveAt: schedule.scheduledStart,
         });
       }
-      return { cancelled: series.length + 1, type: "series" as const };
-    } else {
-      await ctx.db.patch(args.id, {
-        status: "cancelled" as const,
-        description: args.reason
-          ? `${schedule.description || ""}\n\nCancellation reason: ${args.reason}`
-          : schedule.description,
-      });
-      return { cancelled: 1, type: "single" as const };
+      if (futureScheduledItems.length > 0) {
+        await recordClassCancellationEvent(ctx, {
+          classId: classData._id,
+          schoolId,
+          scheduleId: schedule._id,
+          affectedScheduleIds: futureScheduledItems.map(({ _id }) => _id),
+          actorId: user._id,
+          scope: "series",
+          source: "calendar",
+          reason,
+          effectiveAt: schedule.scheduledStart,
+          occurredAt: now,
+        });
+      }
+      return {
+        cancelled: futureScheduledItems.length,
+        type: "series" as const,
+      };
     }
+
+    await ctx.db.patch(args.id, {
+      status: "cancelled" as const,
+      cancellationReason: reason,
+      cancelledAt: now,
+      cancelledBy: user._id,
+      cancellationScope: "occurrence" as const,
+      cancellationEffectiveAt: schedule.scheduledStart,
+    });
+    await recordClassCancellationEvent(ctx, {
+      classId: classData._id,
+      schoolId,
+      scheduleId: schedule._id,
+      affectedScheduleIds: [schedule._id],
+      actorId: user._id,
+      scope: "occurrence",
+      source: "calendar",
+      reason,
+      effectiveAt: schedule.scheduledStart,
+      occurredAt: now,
+    });
+    return { cancelled: 1, type: "single" as const };
   },
 });
 

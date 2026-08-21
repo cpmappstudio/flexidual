@@ -237,7 +237,7 @@ export async function canAccessCurriculumContent(
 }
 
 export async function canManageClasses(
-  ctx: QueryCtx,
+  ctx: QueryCtx | MutationCtx,
   userId: Id<"users">,
   campusId?: Id<"campuses">,
   schoolId?: Id<"schools">,
@@ -247,6 +247,35 @@ export async function canManageClasses(
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .collect();
   return canAssignmentsManageClass(assignments, campusId, schoolId);
+}
+
+export async function canCancelClassOccurrence(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  classData: Doc<"classes">,
+  schoolId?: Id<"schools">,
+) {
+  if (classData.teacherId === userId) return true;
+  return await canManageClasses(
+    ctx,
+    userId,
+    classData.campusId,
+    schoolId ?? classData.schoolId,
+  );
+}
+
+export async function canCancelClassSeries(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  classData: Doc<"classes">,
+  schoolId?: Id<"schools">,
+) {
+  return await canManageClasses(
+    ctx,
+    userId,
+    classData.campusId,
+    schoolId ?? classData.schoolId,
+  );
 }
 
 export async function canAccessClass(

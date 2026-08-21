@@ -333,6 +333,8 @@ function CalendarContent() {
       status: e.status,
       isRecurring: e.isRecurring,
       recurrenceRule: e.recurrenceRule,
+      recurrenceParentId: e.recurrenceParentId,
+      cancellationReason: e.cancellationReason,
       teacherName: e.teacherName,
       teacherImageUrl: e.teacherImageUrl,
       hasRecording: e.hasRecording,
@@ -442,7 +444,9 @@ function CalendarContent() {
           </TabsContent>
         </Tabs>
 
-        <CalendarManageEventDialog readOnly={!access?.canManageCampus} />
+        <CalendarManageEventDialog
+          canManageSeries={access?.canManageCampus ?? false}
+        />
       </div>
     </CalendarProvider>
   );

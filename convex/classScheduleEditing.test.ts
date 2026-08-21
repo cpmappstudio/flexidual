@@ -254,16 +254,25 @@ test("editing a weekly schedule preserves history and replaces only future occur
     },
   ]);
 
+  const changedWeeklySlots = [
+    {
+      dayOfWeek: 3,
+      startMinutes: 10 * 60,
+      durationMinutes: 90,
+      sessionType: "live" as const,
+    },
+  ];
+  await expect(
+    asAdmin.mutation(api.classes.update, {
+      classId: data.classId,
+      weeklySlots: changedWeeklySlots,
+    }),
+  ).rejects.toThrow("CANCELLATION_REASON_REQUIRED");
+
   await asAdmin.mutation(api.classes.update, {
     classId: data.classId,
-    weeklySlots: [
-      {
-        dayOfWeek: 3,
-        startMinutes: 10 * 60,
-        durationMinutes: 90,
-        sessionType: "live",
-      },
-    ],
+    weeklySlots: changedWeeklySlots,
+    scheduleCancellationReason: "The Monday block is no longer offered.",
   });
 
   const result = await t.run(async (ctx) => ({
@@ -281,6 +290,7 @@ test("editing a weekly schedule preserves history and replaces only future occur
     ),
     attendance: await ctx.db.get("class_sessions", data.attendanceId),
     recording: await ctx.db.get("recordings", data.recordingId),
+    cancellationEvents: await ctx.db.query("classCancellationEvents").collect(),
   }));
 
   expect(result.course?.weeklySlots).toEqual([
@@ -291,8 +301,15 @@ test("editing a weekly schedule preserves history and replaces only future occur
       sessionType: "live",
     },
   ]);
-  expect(result.oldFirstFuture).toBeNull();
-  expect(result.oldSecondFuture).toBeNull();
+  for (const cancelled of [result.oldFirstFuture, result.oldSecondFuture]) {
+    expect(cancelled).toMatchObject({
+      status: "cancelled",
+      cancellationReason: "The Monday block is no longer offered.",
+      cancellationScope: "series",
+      cancelledAt: now,
+      cancellationEffectiveAt: localDateTimeToUtc("2026-08-17T09:00", "UTC"),
+    });
+  }
   expect(result.activeSchedule).toMatchObject({
     roomName: "active-room",
     status: "active",
@@ -304,6 +321,16 @@ test("editing a weekly schedule preserves history and replaces only future occur
   });
   expect(result.attendance).not.toBeNull();
   expect(result.recording).not.toBeNull();
+  expect(result.cancellationEvents).toHaveLength(1);
+  expect(result.cancellationEvents[0]).toMatchObject({
+    classId: data.classId,
+    affectedScheduleIds: [data.firstFutureId, data.secondFutureId],
+    scope: "series",
+    source: "course_schedule",
+    reason: "The Monday block is no longer offered.",
+    effectiveAt: localDateTimeToUtc("2026-08-17T09:00", "UTC"),
+    occurredAt: now,
+  });
 
   const pastSchedule = result.schedules.find(
     (schedule) => schedule._id === data.pastScheduleId,
@@ -316,7 +343,9 @@ test("editing a weekly schedule preserves history and replaces only future occur
   const futureSchedules = result.schedules
     .filter(
       (schedule) =>
-        schedule.scheduledStart >= now && schedule.isRecurring === true,
+        schedule.scheduledStart >= now &&
+        schedule.isRecurring === true &&
+        schedule.status === "scheduled",
     )
     .sort((a, b) => a.scheduledStart - b.scheduledStart);
   expect(futureSchedules.length).toBeGreaterThan(0);
@@ -368,7 +397,9 @@ test("editing a weekly schedule preserves history and replaces only future occur
     )
       .filter(
         (schedule) =>
-          schedule.scheduledStart >= now && schedule.isRecurring === true,
+          schedule.scheduledStart >= now &&
+          schedule.isRecurring === true &&
+          schedule.status === "scheduled",
       )
       .sort((a, b) => a.scheduledStart - b.scheduledStart)
       .map((schedule) => schedule._id),
@@ -378,4 +409,153 @@ test("editing a weekly schedule preserves history and replaces only future occur
   });
   expect(textOnlyResult.course?.description).toBeUndefined();
   expect(textOnlyResult.futureScheduleIds).toEqual(futureScheduleIds);
+
+  const cancelledOccurrenceId = futureScheduleIds[1];
+  await asAdmin.mutation(api.schedule.cancelSchedule, {
+    id: cancelledOccurrenceId,
+    reason: "One class will not take place.",
+  });
+  const cancelledStart = await t.run(async (ctx) => {
+    const schedule = await ctx.db.get("classSchedule", cancelledOccurrenceId);
+    return schedule!.scheduledStart;
+  });
+
+  await asAdmin.mutation(api.classes.update, {
+    classId: data.classId,
+    weeklySlots: [
+      ...changedWeeklySlots,
+      {
+        dayOfWeek: 4,
+        startMinutes: 14 * 60,
+        durationMinutes: 60,
+        sessionType: "live",
+      },
+    ],
+  });
+
+  const sameTimeSchedules = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", data.classId))
+        .collect()
+    ).filter((schedule) => schedule.scheduledStart === cancelledStart),
+  );
+  expect(sameTimeSchedules).toHaveLength(1);
+  expect(sameTimeSchedules[0]).toMatchObject({
+    _id: cancelledOccurrenceId,
+    status: "cancelled",
+    cancellationReason: "One class will not take place.",
+    cancellationScope: "occurrence",
+  });
+});
+
+test("removing a weekly block before the academic period starts is structural", async () => {
+  vi.useFakeTimers();
+  const now = localDateTimeToUtc("2026-08-20T12:00", "UTC");
+  vi.setSystemTime(now);
+  const t = convexTest(schema, modules);
+
+  const data = await t.run(async (ctx) => {
+    const adminId = await ctx.db.insert("users", {
+      clerkId: "future-period-admin",
+      email: "future-admin@example.com",
+      firstName: "Future",
+      lastName: "Admin",
+      fullName: "Future Period Admin",
+      isActive: true,
+      createdAt: now,
+    });
+    const schoolId = await ctx.db.insert("schools", {
+      name: "Future School",
+      slug: "future-school",
+      timeZone: "UTC",
+      scheduleStartMinutes: 8 * 60,
+      scheduleEndMinutes: 17 * 60,
+      isActive: true,
+      createdAt: now,
+      createdBy: adminId,
+    });
+    const campusId = await ctx.db.insert("campuses", {
+      schoolId,
+      name: "Future Campus",
+      slug: "future-campus",
+      isActive: true,
+      createdAt: now,
+      createdBy: adminId,
+    });
+    await ctx.db.insert("roleAssignments", {
+      userId: adminId,
+      orgId: schoolId,
+      orgType: "school",
+      role: "admin",
+      schoolId,
+      assignedAt: now,
+      assignedBy: adminId,
+    });
+    const curriculumId = await ctx.db.insert("curriculums", {
+      title: "Future Science",
+      isActive: true,
+      gradeCodes: [],
+      schoolId,
+      createdAt: now,
+      createdBy: adminId,
+    });
+    const academicPeriodId = await ctx.db.insert("academicPeriods", {
+      schoolId,
+      name: "Future Term",
+      startDate: "2026-09-01",
+      endDate: "2026-10-31",
+      createdAt: now,
+      createdBy: adminId,
+    });
+    const weeklySlot = {
+      dayOfWeek: 1,
+      startMinutes: 9 * 60,
+      durationMinutes: 60,
+      sessionType: "live" as const,
+    };
+    const classId = await ctx.db.insert("classes", {
+      name: "Future Science",
+      curriculumId,
+      schoolId,
+      campusId,
+      academicPeriodId,
+      timeZone: "UTC",
+      weeklySlots: [weeklySlot],
+      isActive: true,
+      createdAt: now,
+      createdBy: adminId,
+    });
+    const scheduleId = await ctx.db.insert("classSchedule", {
+      classId,
+      schoolId,
+      lessonIds: [],
+      sessionType: "live",
+      scheduledStart: localDateTimeToUtc("2026-09-07T09:00", "UTC"),
+      scheduledEnd: localDateTimeToUtc("2026-09-07T10:00", "UTC"),
+      roomName: "future-period-room",
+      isRecurring: true,
+      status: "scheduled",
+      createdAt: now,
+      createdBy: adminId,
+    });
+    return { classId, scheduleId };
+  });
+
+  await t
+    .withIdentity({ subject: "future-period-admin" })
+    .mutation(api.classes.update, {
+      classId: data.classId,
+      weeklySlots: [],
+    });
+
+  const state = await t.run(async (ctx) => ({
+    course: await ctx.db.get("classes", data.classId),
+    schedule: await ctx.db.get("classSchedule", data.scheduleId),
+    events: await ctx.db.query("classCancellationEvents").collect(),
+  }));
+  expect(state.course?.weeklySlots).toEqual([]);
+  expect(state.schedule).toBeNull();
+  expect(state.events).toEqual([]);
 });

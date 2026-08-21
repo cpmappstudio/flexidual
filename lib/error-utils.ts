@@ -29,6 +29,9 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
         "CURRICULUM_CODE_IN_USE",
         "INVALID_CURRICULUM_TITLE",
         "COURSE_CLASS_OVERLAP",
+        "CANCELLATION_REASON_REQUIRED",
+        "SCHEDULE_CANNOT_BE_CANCELLED",
+        "SCHEDULE_IS_NOT_RECURRING",
       ];
       const code = knownCodes.find((knownCode) => data.includes(knownCode));
       if (code) return { code };
@@ -105,6 +108,12 @@ export function getErrorMessage(
       return t("errors.curriculumCodeInUse");
     case "INVALID_CURRICULUM_TITLE":
       return t("errors.invalidCurriculumTitle");
+    case "CANCELLATION_REASON_REQUIRED":
+      return t("schedule.cancellationReasonRequired");
+    case "SCHEDULE_CANNOT_BE_CANCELLED":
+      return t("schedule.cannotCancelClass");
+    case "SCHEDULE_IS_NOT_RECURRING":
+      return t("schedule.cannotCancelSeries");
     default:
       return t("errors.operationFailed");
   }

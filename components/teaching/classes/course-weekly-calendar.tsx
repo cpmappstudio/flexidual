@@ -56,6 +56,7 @@ interface DraftSelection {
 interface CourseWeeklyCalendarProps {
   value: CourseWeeklySlot[];
   onChangeAction: (value: CourseWeeklySlot[]) => void;
+  onRemoveAction: (slot: CourseWeeklySlot) => void;
   courseName: string;
   teacherName?: string;
   startMinutes?: number;
@@ -135,6 +136,7 @@ function formatMinutes(minutes: number) {
 export function CourseWeeklyCalendar({
   value,
   onChangeAction,
+  onRemoveAction,
   courseName,
   teacherName,
   startMinutes = DEFAULT_SCHEDULE_START_MINUTES,
@@ -294,9 +296,12 @@ export function CourseWeeklyCalendar({
             type="button"
             className="absolute right-1 top-1 rounded-sm p-0.5 hover:bg-sidebar/80"
             onPointerDown={(event) => event.stopPropagation()}
-            onClick={() =>
-              onChangeAction(value.filter((slot) => slot.id !== selection.id))
-            }
+            onClick={() => {
+              const slot = value.find(
+                (candidate) => candidate.id === selection.id,
+              );
+              if (slot) onRemoveAction(slot);
+            }}
             aria-label={t("common.delete")}
           >
             <Trash2 className="h-3 w-3" />

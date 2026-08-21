@@ -19,6 +19,7 @@ import type * as lessons from "../lessons.js";
 import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
 import type * as model_catalog from "../model/catalog.js";
+import type * as model_classCancellationEvents from "../model/classCancellationEvents.js";
 import type * as model_classType from "../model/classType.js";
 import type * as model_courseSchedule from "../model/courseSchedule.js";
 import type * as model_curriculumIcons from "../model/curriculumIcons.js";
@@ -60,6 +61,7 @@ declare const fullApi: ApiFromModules<{
   livekit: typeof livekit;
   migration: typeof migration;
   "model/catalog": typeof model_catalog;
+  "model/classCancellationEvents": typeof model_classCancellationEvents;
   "model/classType": typeof model_classType;
   "model/courseSchedule": typeof model_courseSchedule;
   "model/curriculumIcons": typeof model_curriculumIcons;
