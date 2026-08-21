@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import type { Id } from "@/convex/_generated/dataModel";
 import {
   Avatar,
   AvatarFallback,
@@ -41,24 +42,21 @@ import {
   ClassroomParticipantRoster,
   ClassroomParticipantRosterSheet,
 } from "./classroom-participant-roster-sheet";
-import {
-  ClassroomChatMock,
-  type ClassroomChatMockCopy,
-} from "./classroom-chat-mock";
-import { ClassroomViewSidebar } from "./classroom-view";
+import { CourseChat } from "@/components/chat/course-chat";
+import { ClassroomLayoutSidebar } from "./classroom-layout";
 import { useClassroomParticipantPagination } from "./use-classroom-participant-pagination";
 
 export type ClassroomPanelTab = "participants" | "chat";
 
 const classroomPanelTabTriggerClassName =
-  "relative h-full min-w-0 rounded-none text-xs font-medium text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-transparent data-[state=active]:after:bg-primary";
+  "relative h-full min-w-0 rounded-none text-xs font-medium text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-transparent data-[state=active]:after:bg-primary";
 
 interface ClassroomParticipantsPanelProps {
+  courseId: Id<"classes">;
   heading: string;
   compactHeading: string;
   compactOpenLabel: string;
   chatLabel: string;
-  chatCopy: ClassroomChatMockCopy;
   isOpen: boolean;
   activeTab: ClassroomPanelTab;
   onTabChange: (tab: ClassroomPanelTab) => void;
@@ -78,11 +76,11 @@ interface ClassroomParticipantsPanelProps {
 }
 
 export function ClassroomParticipantsPanel({
+  courseId,
   heading,
   compactHeading,
   compactOpenLabel,
   chatLabel,
-  chatCopy,
   isOpen,
   activeTab,
   onTabChange,
@@ -128,7 +126,6 @@ export function ClassroomParticipantsPanel({
       ? `${rosterLabel}. ${raisedHandsCountLabel(raisedHandsCount)}`
       : rosterLabel;
   const visibleEndIndex = Math.min(endIndex, participantTiles.length);
-
   useEffect(
     () => () => {
       if (highlightTimeoutRef.current) {
@@ -235,7 +232,7 @@ export function ClassroomParticipantsPanel({
 
   return (
     <>
-      <ClassroomViewSidebar
+      <ClassroomLayoutSidebar
         id="classroom-interaction-panel"
         className={cn("bg-card", !isOpen && "xl:hidden")}
       >
@@ -371,13 +368,12 @@ export function ClassroomParticipantsPanel({
 
           <TabsContent
             value="chat"
-            forceMount
-            className="m-0 min-h-0 flex-1 data-[state=inactive]:hidden"
+            className="m-0 min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
           >
-            <ClassroomChatMock copy={chatCopy} />
+            <CourseChat courseId={courseId} />
           </TabsContent>
         </Tabs>
-      </ClassroomViewSidebar>
+      </ClassroomLayoutSidebar>
 
       <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
         <SheetContent
@@ -427,7 +423,7 @@ export function ClassroomParticipantsPanel({
               value="chat"
               className="m-0 min-h-0 flex-1 overflow-hidden"
             >
-              <ClassroomChatMock copy={chatCopy} />
+              <CourseChat courseId={courseId} />
             </TabsContent>
           </Tabs>
         </SheetContent>

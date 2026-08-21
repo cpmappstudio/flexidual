@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
 import {
@@ -98,10 +99,12 @@ const STUDENT_PREVIEW_LAYERS: Partial<
 };
 
 interface StudentClassroomUIProps {
+  courseId: Id<"classes">;
   roomName: string;
   sessionNow: number;
   className?: string;
   lessonTitle?: string;
+  curriculumIconKey?: string;
   onSwitchClassroom?: (roomName: string) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
@@ -109,10 +112,12 @@ interface StudentClassroomUIProps {
 }
 
 export function StudentClassroomUI({
+  courseId,
   roomName,
   sessionNow,
   className,
   lessonTitle,
+  curriculumIconKey,
   onSwitchClassroom,
   isFullscreen = false,
   onToggleFullscreen,
@@ -732,6 +737,7 @@ export function StudentClassroomUI({
       <ClassroomHeader
         title={className || t("classroom.classroom")}
         subtitle={lessonTitle}
+        curriculumIconKey={curriculumIconKey}
         isActive={Boolean(teacher)}
         activeLabel={t("common.live")}
         waitingLabel={t("classroom.waiting")}
@@ -1091,22 +1097,11 @@ export function StudentClassroomUI({
 
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
+        courseId={courseId}
         heading={t("classroom.classmates")}
         compactHeading={t("classroom.classmatesAndChat")}
         compactOpenLabel={t("classroom.openPanelAction")}
         chatLabel={t("classroom.chat")}
-        chatCopy={{
-          description: t("classroom.classChatDescription"),
-          teacherLabel: t("classroom.teacher"),
-          studentLabel: "Sofía",
-          youLabel: t("classroom.youShort"),
-          teacherMessage: t("classroom.chatTeacherMessage"),
-          studentMessage: t("classroom.chatStudentMessage"),
-          ownMessage: t("classroom.chatOwnMessage"),
-          placeholder: t("classroom.chatPlaceholder"),
-          sendLabel: t("classroom.sendMessage"),
-          scrollToLatestLabel: t("classroom.scrollToLatestMessages"),
-        }}
         isOpen={isClassroomPanelOpen}
         activeTab={classroomPanelTab}
         onTabChange={setClassroomPanelTab}

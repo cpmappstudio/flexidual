@@ -536,6 +536,46 @@ export const backfillClassCatalogFields = internalMutation({
   },
 });
 
+export const scheduleCourseChatArchiving = internalMutation({
+  args: { cursor: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("classes")
+      .paginate({ numItems: 50, cursor: args.cursor ?? null });
+    const now = Date.now();
+
+    for (const classData of result.page) {
+      if (
+        classData.endDate === undefined ||
+        classData.chatArchivedAt !== undefined
+      ) {
+        continue;
+      }
+      if (classData.endDate < now) {
+        await ctx.db.patch("classes", classData._id, {
+          chatArchivedAt: now,
+        });
+      } else {
+        await ctx.scheduler.runAt(
+          classData.endDate + 1,
+          internal.courseChatMessages.archiveAtCourseEnd,
+          { classId: classData._id, expectedEndDate: classData.endDate },
+        );
+      }
+    }
+
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.migration.scheduleCourseChatArchiving,
+        { cursor: result.continueCursor },
+      );
+    }
+    return null;
+  },
+});
+
 export const syncAllUsersToClerk = internalAction({
   args: {},
   returns: v.null(),

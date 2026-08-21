@@ -27,6 +27,7 @@ import {
 import { isStudentEnrolled, listClassStudentIds } from "./model/enrollments";
 import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
 import { syncClassTypeFromSchedules } from "./model/classType";
+import { curriculumIconValidator } from "./model/curriculumIcons";
 import {
   civilDayNumber,
   isValidTimeZone,
@@ -47,6 +48,7 @@ import {
   MAX_LIVE_OVERRUN_MS,
 } from "../lib/live-session-policy";
 import { isExternalClassSession } from "../lib/class-session";
+import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -1385,6 +1387,7 @@ export const getWithDetails = query({
       class: v.object({
         _id: v.id("classes"),
         name: v.string(),
+        curriculumIconKey: curriculumIconValidator,
       }),
     }),
   ),
@@ -1399,10 +1402,12 @@ export const getWithDetails = query({
     const classData = await ctx.db.get(schedule.classId);
     if (!classData) return null;
 
-    const lessons =
+    const [lessons, curriculum] = await Promise.all([
       schedule.lessonIds && schedule.lessonIds.length > 0
-        ? await Promise.all(schedule.lessonIds.map((id) => ctx.db.get(id)))
-        : [];
+        ? Promise.all(schedule.lessonIds.map((id) => ctx.db.get(id)))
+        : Promise.resolve([]),
+      ctx.db.get("curriculums", classData.curriculumId),
+    ]);
     const validLessons = lessons.filter(Boolean);
 
     return {
@@ -1417,6 +1422,7 @@ export const getWithDetails = query({
       class: {
         _id: classData._id,
         name: classData.name,
+        curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
       },
     };
   },

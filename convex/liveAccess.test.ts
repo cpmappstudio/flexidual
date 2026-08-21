@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
 
@@ -23,6 +23,24 @@ test("course access is copied to the session and scoped to active students", asy
       firstName: "Uma",
       lastName: "Teacher",
       fullName: "Uma Teacher",
+      isActive: true,
+      createdAt: now,
+    });
+    const adminId = await ctx.db.insert("users", {
+      clerkId: "admin-clerk-id",
+      email: "admin@example.com",
+      firstName: "Avery",
+      lastName: "Admin",
+      fullName: "Avery Admin",
+      isActive: true,
+      createdAt: now,
+    });
+    const principalId = await ctx.db.insert("users", {
+      clerkId: "principal-clerk-id",
+      email: "principal@example.com",
+      firstName: "Parker",
+      lastName: "Principal",
+      fullName: "Parker Principal",
       isActive: true,
       createdAt: now,
     });
@@ -86,6 +104,15 @@ test("course access is copied to the session and scoped to active students", asy
       assignedBy: teacherId,
     });
     await ctx.db.insert("roleAssignments", {
+      userId: adminId,
+      orgId: schoolAId,
+      orgType: "school",
+      role: "admin",
+      schoolId: schoolAId,
+      assignedAt: now,
+      assignedBy: adminId,
+    });
+    await ctx.db.insert("roleAssignments", {
       userId: teacherId,
       orgId: campusAId,
       orgType: "campus",
@@ -93,6 +120,15 @@ test("course access is copied to the session and scoped to active students", asy
       schoolId: schoolAId,
       assignedAt: now,
       assignedBy: teacherId,
+    });
+    await ctx.db.insert("roleAssignments", {
+      userId: principalId,
+      orgId: campusAId,
+      orgType: "campus",
+      role: "principal",
+      schoolId: schoolAId,
+      assignedAt: now,
+      assignedBy: adminId,
     });
     await ctx.db.insert("roleAssignments", {
       userId: secondTeacherId,
@@ -131,6 +167,7 @@ test("course access is copied to the session and scoped to active students", asy
       campusId: campusAId,
       teacherId,
       classType: "standard",
+      enrollmentsMigratedAt: now,
       gradeCode: "05",
       liveAccess,
       isActive: true,
@@ -315,6 +352,7 @@ test("course access is copied to the session and scoped to active students", asy
       scheduleAId,
       schoolAId,
       teacherId,
+      principalId,
       studentId,
       classAId,
       classBId,
@@ -332,6 +370,45 @@ test("course access is copied to the session and scoped to active students", asy
     id: data.classAId,
   });
   expect(classDetails?.curriculumIconKey).toBe("microscope");
+
+  const chatOptions = await asTeacher.query(api.classes.listChatOptions, {
+    campusId: data.campusAId,
+  });
+  expect(chatOptions).toContainEqual({
+    _id: data.classAId,
+    name: "Class A",
+    curriculumIconKey: "microscope",
+    archived: false,
+  });
+
+  const chatContext = await asTeacher.query(api.classes.getChatContext, {
+    classId: data.classAId,
+  });
+  expect(chatContext).toMatchObject({
+    course: {
+      _id: data.classAId,
+      curriculumIconKey: "microscope",
+    },
+    participants: [
+      {
+        _id: data.teacherId,
+        role: "teacher",
+        isMuted: false,
+      },
+    ],
+    canModerate: true,
+    canDisableChat: false,
+    chatSettings: { studentsMuted: false, disabled: false },
+  });
+  const asPrincipal = t.withIdentity({ subject: "principal-clerk-id" });
+  expect(
+    await asPrincipal.query(api.classes.getChatContext, {
+      classId: data.classAId,
+    }),
+  ).toMatchObject({
+    canModerate: true,
+    canDisableChat: true,
+  });
 
   const pastClasses = await asTeacher.query(
     api.recordings.listRecentPastClasses,
@@ -363,6 +440,18 @@ test("course access is copied to the session and scoped to active students", asy
   const asUnassignedTeacher = t.withIdentity({
     subject: "second-teacher-clerk-id",
   });
+  await expect(
+    asUnassignedTeacher.query(api.courseChatMessages.list, {
+      classId: data.classAId,
+      paginationOpts: { numItems: 20, cursor: null },
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    asUnassignedTeacher.mutation(api.courseChatMessages.send, {
+      classId: data.classAId,
+      body: "I should not be here",
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
   expect(
     await asUnassignedTeacher.query(api.recordings.listRecentPastClasses, {
       classId: data.classAId,
@@ -486,6 +575,244 @@ test("course access is copied to the session and scoped to active students", asy
       enrolledBy: data.teacherId,
     }),
   );
+  await asTeacher.mutation(api.courseChatMessages.send, {
+    classId: data.classAId,
+    body: "  Welcome to the course  ",
+  });
+  await asStudent.mutation(api.courseChatMessages.send, {
+    classId: data.classAId,
+    body: "Thank you!",
+  });
+  const teacherMessages = await asTeacher.query(api.courseChatMessages.list, {
+    classId: data.classAId,
+    paginationOpts: { numItems: 20, cursor: null },
+  });
+  expect(teacherMessages.page).toEqual([
+    expect.objectContaining({
+      authorId: data.studentId,
+      authorName: "Sam Student",
+      authorRole: "member",
+      body: "Thank you!",
+      isOwn: false,
+    }),
+    expect.objectContaining({
+      authorId: data.teacherId,
+      authorName: "Taylor Teacher",
+      authorRole: "teacher",
+      body: "Welcome to the course",
+      isOwn: true,
+    }),
+  ]);
+  const studentMessages = await asStudent.query(api.courseChatMessages.list, {
+    classId: data.classAId,
+    paginationOpts: { numItems: 1, cursor: null },
+  });
+  expect(studentMessages.page[0]).toMatchObject({
+    authorId: data.studentId,
+    isOwn: true,
+  });
+  expect(studentMessages.isDone).toBe(false);
+  const olderStudentMessages = await asStudent.query(
+    api.courseChatMessages.list,
+    {
+      classId: data.classAId,
+      paginationOpts: {
+        numItems: 1,
+        cursor: studentMessages.continueCursor,
+      },
+    },
+  );
+  expect(olderStudentMessages.page[0]).toMatchObject({
+    authorId: data.teacherId,
+    body: "Welcome to the course",
+    isOwn: false,
+  });
+  const asAdmin = t.withIdentity({ subject: "admin-clerk-id" });
+  await asAdmin.mutation(api.courseChatMessages.setMuted, {
+    classId: data.classAId,
+    userId: data.studentId,
+    muted: true,
+  });
+  expect(
+    await asStudent.query(api.courseChatMessages.getMyStatus, {
+      classId: data.classAId,
+    }),
+  ).toEqual({ isMuted: true, archived: false });
+  await expect(
+    asStudent.mutation(api.courseChatMessages.send, {
+      classId: data.classAId,
+      body: "Muted message",
+    }),
+  ).rejects.toThrow("CHAT_MUTED");
+  const mutedChatContext = await asTeacher.query(api.classes.getChatContext, {
+    classId: data.classAId,
+  });
+  expect(
+    mutedChatContext?.participants.find(
+      (participant) => participant._id === data.studentId,
+    ),
+  ).toMatchObject({ isMuted: true });
+  await expect(
+    asStudent.mutation(api.courseChatMessages.setMuted, {
+      classId: data.classAId,
+      userId: data.studentId,
+      muted: false,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await asTeacher.mutation(api.courseChatMessages.setMuted, {
+    classId: data.classAId,
+    userId: data.studentId,
+    muted: false,
+  });
+  expect(
+    await asStudent.query(api.courseChatMessages.getMyStatus, {
+      classId: data.classAId,
+    }),
+  ).toEqual({ isMuted: false, archived: false });
+  await asTeacher.mutation(api.courseChatMessages.setSetting, {
+    classId: data.classAId,
+    setting: "studentsMuted",
+    enabled: true,
+  });
+  expect(
+    await asStudent.query(api.courseChatMessages.getMyStatus, {
+      classId: data.classAId,
+    }),
+  ).toEqual({ isMuted: true, archived: false });
+  expect(
+    await asTeacher.query(api.courseChatMessages.getMyStatus, {
+      classId: data.classAId,
+    }),
+  ).toEqual({ isMuted: false, archived: false });
+  await expect(
+    asTeacher.mutation(api.courseChatMessages.setSetting, {
+      classId: data.classAId,
+      setting: "disabled",
+      enabled: true,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await asPrincipal.mutation(api.courseChatMessages.setSetting, {
+    classId: data.classAId,
+    setting: "disabled",
+    enabled: true,
+  });
+  expect(
+    await asTeacher.query(api.courseChatMessages.getMyStatus, {
+      classId: data.classAId,
+    }),
+  ).toEqual({ isMuted: true, archived: false });
+  await expect(
+    asTeacher.mutation(api.courseChatMessages.send, {
+      classId: data.classAId,
+      body: "Disabled chat message",
+    }),
+  ).rejects.toThrow("CHAT_MUTED");
+  await asPrincipal.mutation(api.courseChatMessages.send, {
+    classId: data.classAId,
+    body: "Moderator announcement",
+  });
+  await asPrincipal.mutation(api.courseChatMessages.setSetting, {
+    classId: data.classAId,
+    setting: "disabled",
+    enabled: false,
+  });
+  await asTeacher.mutation(api.courseChatMessages.setSetting, {
+    classId: data.classAId,
+    setting: "studentsMuted",
+    enabled: false,
+  });
+  await expect(
+    asStudent.mutation(api.courseChatMessages.send, {
+      classId: data.classAId,
+      body: "   ",
+    }),
+  ).rejects.toThrow("MESSAGE_REQUIRED");
+  await expect(
+    asStudent.mutation(api.courseChatMessages.send, {
+      classId: data.classAId,
+      body: "a".repeat(2_001),
+    }),
+  ).rejects.toThrow("MESSAGE_TOO_LONG");
+  await expect(
+    asTeacher.mutation(api.courseChatMessages.clear, {
+      classId: data.classAId,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await asPrincipal.mutation(api.courseChatMessages.clear, {
+    classId: data.classAId,
+  });
+  const clearedMessages = await asStudent.query(api.courseChatMessages.list, {
+    classId: data.classAId,
+    paginationOpts: { numItems: 20, cursor: null },
+  });
+  expect(clearedMessages.page).toEqual([]);
+  await expect(
+    asTeacher.mutation(api.courseChatMessages.setArchived, {
+      classId: data.classAId,
+      archived: true,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await asPrincipal.mutation(api.courseChatMessages.setArchived, {
+    classId: data.classAId,
+    archived: true,
+  });
+  expect(
+    await asTeacher.query(api.classes.getChatContext, {
+      classId: data.classAId,
+    }),
+  ).toBeNull();
+  expect(
+    await asStudent.query(api.courseChatMessages.getMyStatus, {
+      classId: data.classAId,
+    }),
+  ).toEqual({ isMuted: true, archived: true });
+  expect(
+    (
+      await asStudent.query(api.courseChatMessages.list, {
+        classId: data.classAId,
+        paginationOpts: { numItems: 20, cursor: null },
+      })
+    ).page,
+  ).toEqual([]);
+  await expect(
+    asStudent.mutation(api.courseChatMessages.send, {
+      classId: data.classAId,
+      body: "Archived chat message",
+    }),
+  ).rejects.toThrow("CHAT_ARCHIVED");
+  expect(
+    await asTeacher.query(api.classes.listChatOptions, {
+      campusId: data.campusAId,
+    }),
+  ).toContainEqual({
+    _id: data.classAId,
+    name: "Class A",
+    curriculumIconKey: "microscope",
+    archived: true,
+  });
+  await asPrincipal.mutation(api.courseChatMessages.setArchived, {
+    classId: data.classAId,
+    archived: false,
+  });
+  expect(
+    await asStudent.query(api.courseChatMessages.getMyStatus, {
+      classId: data.classAId,
+    }),
+  ).toEqual({ isMuted: false, archived: false });
+  const endedAt = Date.now() - 1;
+  await t.run((ctx) =>
+    ctx.db.patch("classes", data.classAId, { endDate: endedAt }),
+  );
+  await t.mutation(internal.courseChatMessages.archiveAtCourseEnd, {
+    classId: data.classAId,
+    expectedEndDate: endedAt,
+  });
+  expect(
+    await t.run(
+      async (ctx) =>
+        (await ctx.db.get("classes", data.classAId))?.chatArchivedAt,
+    ),
+  ).toBeTypeOf("number");
   const studentDashboard = await asStudent.query(
     api.student.getStudentDashboardStats,
     { now },

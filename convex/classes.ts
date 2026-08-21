@@ -10,7 +10,12 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
-import { canAccessClass, canManageClasses, hasSystemRole } from "./permissions";
+import {
+  canAccessClass,
+  canManageClasses,
+  getCourseChatCapabilities,
+  hasSystemRole,
+} from "./permissions";
 import {
   DEFAULT_SCHEDULE_END_MINUTES,
   DEFAULT_SCHEDULE_START_MINUTES,
@@ -52,6 +57,7 @@ import {
 } from "./model/catalog";
 import { deriveClassType } from "./model/classType";
 import { curriculumIconValidator } from "./model/curriculumIcons";
+import { getUserImageUrl } from "./model/userImage";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 import {
   areWeeklySchedulesEqual,
@@ -84,6 +90,9 @@ const classFields = {
   timeZone: v.optional(v.string()),
   liveAccess: v.optional(liveAccessValidator),
   weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
+  chatStudentsMuted: v.optional(v.boolean()),
+  chatDisabled: v.optional(v.boolean()),
+  chatArchivedAt: v.optional(v.number()),
   isActive: v.boolean(),
   createdAt: v.number(),
   createdBy: v.id("users"),
@@ -100,6 +109,14 @@ const teacherOptionValidator = v.object({
   email: v.optional(v.string()),
   imageUrl: v.optional(v.string()),
 });
+const chatParticipantValidator = v.object({
+  _id: v.id("users"),
+  fullName: v.string(),
+  imageUrl: v.optional(v.string()),
+  role: v.union(v.literal("teacher"), v.literal("tutor"), v.literal("student")),
+  isMuted: v.boolean(),
+});
+
 async function getInstitutionStudents(
   ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
@@ -387,6 +404,154 @@ export const listFilterOptions = query({
         }))
         .sort((a, b) => a.name.localeCompare(b.name)),
       teachers: await getTeacherOptions(ctx, classes),
+    };
+  },
+});
+
+export const listChatOptions = query({
+  args: {
+    schoolId: v.optional(v.id("schools")),
+    campusId: v.optional(v.id("campuses")),
+  },
+  returns: v.array(
+    v.object({
+      _id: v.id("classes"),
+      name: v.string(),
+      curriculumIconKey: curriculumIconValidator,
+      archived: v.boolean(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const [activeClasses, inactiveClasses] = await Promise.all([
+      listAccessibleClasses(ctx, user._id, { ...args, isActive: true }),
+      listAccessibleClasses(ctx, user._id, { ...args, isActive: false }),
+    ]);
+    const classes = [
+      ...activeClasses,
+      ...inactiveClasses.filter(
+        (classData) => classData.chatArchivedAt !== undefined,
+      ),
+    ];
+    const curriculumIds = [
+      ...new Set(classes.map((classData) => classData.curriculumId)),
+    ];
+    const curriculums = await Promise.all(
+      curriculumIds.map((curriculumId) =>
+        ctx.db.get("curriculums", curriculumId),
+      ),
+    );
+    const curriculumIcons = new Map(
+      curriculums
+        .filter((curriculum): curriculum is Doc<"curriculums"> =>
+          Boolean(curriculum),
+        )
+        .map((curriculum) => [curriculum._id, curriculum.iconKey]),
+    );
+
+    return classes
+      .map((classData) => ({
+        _id: classData._id,
+        name: classData.name,
+        curriculumIconKey:
+          curriculumIcons.get(classData.curriculumId) ??
+          DEFAULT_CURRICULUM_ICON,
+        archived: classData.chatArchivedAt !== undefined,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+export const getChatContext = query({
+  args: { classId: v.id("classes") },
+  returns: v.union(
+    v.object({
+      course: v.object({
+        _id: v.id("classes"),
+        name: v.string(),
+        curriculumTitle: v.string(),
+        curriculumIconKey: curriculumIconValidator,
+      }),
+      participants: v.array(chatParticipantValidator),
+      canModerate: v.boolean(),
+      canDisableChat: v.boolean(),
+      chatSettings: v.object({
+        studentsMuted: v.boolean(),
+        disabled: v.boolean(),
+      }),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const currentUser = await getCurrentUserOrThrow(ctx);
+    const classData = await ctx.db.get("classes", args.classId);
+    if (!classData) return null;
+    if (!(await canAccessClass(ctx, currentUser._id, classData))) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
+    if (classData.chatArchivedAt !== undefined) return null;
+
+    const [curriculum, studentIds, mutes, chatCapabilities] = await Promise.all(
+      [
+        ctx.db.get("curriculums", classData.curriculumId),
+        listClassStudentIds(ctx, classData),
+        ctx.db
+          .query("courseChatMutes")
+          .withIndex("by_class_and_user", (q) => q.eq("classId", classData._id))
+          .collect(),
+        getCourseChatCapabilities(ctx, currentUser._id, classData),
+      ],
+    );
+    const mutedUserIds = new Set(mutes.map((mute) => mute.userId));
+    const participantRoles = new Map<
+      Id<"users">,
+      "teacher" | "tutor" | "student"
+    >();
+    if (classData.teacherId) {
+      participantRoles.set(classData.teacherId, "teacher");
+    }
+    if (classData.tutorId && !participantRoles.has(classData.tutorId)) {
+      participantRoles.set(classData.tutorId, "tutor");
+    }
+    for (const studentId of studentIds) {
+      if (!participantRoles.has(studentId)) {
+        participantRoles.set(studentId, "student");
+      }
+    }
+
+    const participants = (
+      await Promise.all(
+        [...participantRoles].map(async ([userId, role]) => {
+          const user = await ctx.db.get("users", userId);
+          if (!user?.isActive) return null;
+          return {
+            _id: user._id,
+            fullName: user.fullName,
+            imageUrl: await getUserImageUrl(ctx, user),
+            role,
+            isMuted: mutedUserIds.has(user._id),
+          };
+        }),
+      )
+    ).filter(
+      (participant): participant is NonNullable<typeof participant> =>
+        participant !== null,
+    );
+
+    return {
+      course: {
+        _id: classData._id,
+        name: classData.name,
+        curriculumTitle: curriculum?.title ?? "Unknown Curriculum",
+        curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
+      },
+      participants,
+      canModerate: chatCapabilities.canModerate,
+      canDisableChat: chatCapabilities.canDisable,
+      chatSettings: {
+        studentsMuted: classData.chatStudentsMuted ?? false,
+        disabled: classData.chatDisabled ?? false,
+      },
     };
   },
 });
@@ -1298,6 +1463,12 @@ export const createWithSchedule = mutation({
       occurrencesBySlot,
     });
 
+    await ctx.scheduler.runAt(
+      endDate + 1,
+      internal.courseChatMessages.archiveAtCourseEnd,
+      { classId, expectedEndDate: endDate },
+    );
+
     return { classId, classesCreated };
   },
 });
@@ -1639,6 +1810,9 @@ export const remove = mutation({
     );
 
     await ctx.db.delete(args.id);
+    await ctx.scheduler.runAfter(0, internal.courseChatMessages.removeByClass, {
+      classId: args.id,
+    });
     return { deleted: true } as const;
   },
 });

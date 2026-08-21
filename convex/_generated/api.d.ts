@@ -11,6 +11,7 @@
 import type * as academicSettings from "../academicSettings.js";
 import type * as campuses from "../campuses.js";
 import type * as classes from "../classes.js";
+import type * as courseChatMessages from "../courseChatMessages.js";
 import type * as crons from "../crons.js";
 import type * as curriculums from "../curriculums.js";
 import type * as grades from "../grades.js";
@@ -29,6 +30,7 @@ import type * as model_membership from "../model/membership.js";
 import type * as model_roles from "../model/roles.js";
 import type * as model_scheduleDeletion from "../model/scheduleDeletion.js";
 import type * as model_timeZone from "../model/timeZone.js";
+import type * as model_userImage from "../model/userImage.js";
 import type * as organizations from "../organizations.js";
 import type * as permissions from "../permissions.js";
 import type * as recordings from "../recordings.js";
@@ -52,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   academicSettings: typeof academicSettings;
   campuses: typeof campuses;
   classes: typeof classes;
+  courseChatMessages: typeof courseChatMessages;
   crons: typeof crons;
   curriculums: typeof curriculums;
   grades: typeof grades;
@@ -70,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   "model/roles": typeof model_roles;
   "model/scheduleDeletion": typeof model_scheduleDeletion;
   "model/timeZone": typeof model_timeZone;
+  "model/userImage": typeof model_userImage;
   organizations: typeof organizations;
   permissions: typeof permissions;
   recordings: typeof recordings;

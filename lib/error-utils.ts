@@ -29,6 +29,7 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
         "CURRICULUM_CODE_IN_USE",
         "INVALID_CURRICULUM_TITLE",
         "COURSE_CLASS_OVERLAP",
+        "CHAT_MUTED",
       ];
       const code = knownCodes.find((knownCode) => data.includes(knownCode));
       if (code) return { code };

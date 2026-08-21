@@ -4,8 +4,8 @@ import * as React from "react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { NavMain } from "@/components/nav-main";
 import { SidebarEdgeTrigger } from "@/components/sidebar-edge-trigger";
+import { SidebarWorkspace } from "@/components/sidebar-workspace";
 import {
   Sidebar,
   SidebarContent,
@@ -47,7 +47,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </>
       )}
       <SidebarContent>
-        <NavMain />
+        <SidebarWorkspace />
       </SidebarContent>
       <SidebarFooter className="gap-0 overflow-hidden p-0">
         <div className="relative h-48 w-full overflow-hidden group-data-[collapsible=icon]:hidden">
