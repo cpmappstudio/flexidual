@@ -804,6 +804,7 @@ export const updateUserWithClerk = action({
       v.literal("campus"),
     ),
     orgId: v.optional(v.string()),
+    targetOrgId: v.optional(v.string()),
   },
   returns: updateUserResultValidator,
   handler: async (ctx, args) => {
@@ -824,6 +825,20 @@ export const updateUserWithClerk = action({
         ? [targetAssignment.role, args.updates.role]
         : [targetAssignment.role],
     });
+    const targetOrgId = args.targetOrgId ?? args.orgId;
+    const organizationChanged = targetOrgId !== args.orgId;
+    if (organizationChanged) {
+      if (args.orgType !== "campus" || !targetOrgId) {
+        throw new Error("A user can only be moved between campuses");
+      }
+      await ctx.runQuery(internal.users.assertCanManageUsers, {
+        orgType: args.orgType,
+        orgId: targetOrgId,
+        roles: args.updates.role
+          ? [targetAssignment.role, args.updates.role]
+          : [targetAssignment.role],
+      });
+    }
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
     const clerk = getClerkClient(clerkSecretKey);
@@ -849,7 +864,7 @@ export const updateUserWithClerk = action({
         internal.grades.validateForOrganization,
         {
           orgType: args.orgType,
-          orgId: args.orgId,
+          orgId: targetOrgId,
           codes: [args.updates.grade],
         },
       );
@@ -949,11 +964,16 @@ export const updateUserWithClerk = action({
       },
     });
 
-    if (args.updates.role || args.updates.grade !== undefined) {
+    if (
+      args.updates.role ||
+      args.updates.grade !== undefined ||
+      organizationChanged
+    ) {
       await ctx.runMutation(internal.roleAssignments.assignRoleInternal, {
         userId: args.userId,
         orgType: args.orgType,
-        orgId: args.orgId,
+        orgId: targetOrgId,
+        previousOrgId: organizationChanged ? args.orgId : undefined,
         role: effectiveRole,
         gradeCode: effectiveRole === "student" ? effectiveGrade : undefined,
       });

@@ -32,6 +32,7 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
         "CANCELLATION_REASON_REQUIRED",
         "SCHEDULE_CANNOT_BE_CANCELLED",
         "SCHEDULE_IS_NOT_RECURRING",
+        "CHAT_MUTED",
       ];
       const code = knownCodes.find((knownCode) => data.includes(knownCode));
       if (code) return { code };

@@ -58,7 +58,7 @@ export function ClassroomParticipantRoster({
               <AvatarFallback>{fallbackInitial}</AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-foreground">
+              <p className="break-words text-sm font-semibold leading-snug whitespace-normal text-foreground">
                 {participantName}
                 {participant.isLocal && (
                   <span className="font-normal text-muted-foreground">
@@ -78,20 +78,20 @@ export function ClassroomParticipantRoster({
         return (
           <div
             key={participant.identity}
-            className="flex min-w-0 items-center gap-3 border-b border-border py-3 last:border-b-0"
+            className="flex min-w-0 items-start gap-3 border-b border-border py-3 last:border-b-0"
           >
             {onSelectParticipant ? (
               <SheetClose asChild>
                 <button
                   type="button"
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-w-0 flex-1 items-start gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => onSelectParticipant(index)}
                 >
                   {participantSummary}
                 </button>
               </SheetClose>
             ) : (
-              <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
                 {participantSummary}
               </div>
             )}

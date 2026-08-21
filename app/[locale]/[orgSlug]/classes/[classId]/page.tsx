@@ -1,9 +1,15 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -17,11 +23,14 @@ import {
 } from "@/components/ui/item";
 import { format } from "date-fns";
 import { TZDate } from "@date-fns/tz";
+import Image from "next/image";
 import {
+  ArchiveRestore,
   BookOpen,
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  LoaderCircle,
   Pencil,
   Users,
 } from "lucide-react";
@@ -45,6 +54,7 @@ import { RocketLaunchButtonContent } from "@/components/student/rocket-transitio
 import { PastClassesPanel } from "@/components/teaching/classes/past-classes-panel";
 import type { ClassSessionType } from "@/lib/class-session";
 import { calculateCourseProgress } from "@/lib/course-progress";
+import { toast } from "sonner";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -72,6 +82,7 @@ export default function ClassDetailPage() {
   const classId = params.classId as Id<"classes">;
   const [activeTab, setActiveTab] = useState("schedule");
   const [isLaunchingClassroom, setIsLaunchingClassroom] = useState(false);
+  const [isRestoringChat, setIsRestoringChat] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const orgSlug = (params.orgSlug as string) || "system";
   const { access } = useStaffAccess();
@@ -83,6 +94,7 @@ export default function ClassDetailPage() {
   const [roadmapPage, setRoadmapPage] = useState(1);
 
   const classData = useQuery(api.classes.get, { id: classId });
+  const setArchived = useMutation(api.courseChatMessages.setArchived);
 
   const lessons = useQuery(
     api.lessons.listByCurriculum,
@@ -170,6 +182,18 @@ export default function ClassDetailPage() {
     if (!nextSchedule) return;
     router.push(`/${orgSlug}/classroom/${nextSchedule.roomName}`);
   };
+  const handleRestoreChat = async () => {
+    if (isRestoringChat) return;
+    setIsRestoringChat(true);
+    try {
+      await setArchived({ classId, archived: false });
+      toast.success(t("navigation.chatRestored"));
+    } catch {
+      toast.error(t("navigation.restoreChatError"));
+    } finally {
+      setIsRestoringChat(false);
+    }
+  };
 
   return (
     <div className="grid gap-5 xl:min-h-[calc(100svh-var(--header-height)-2rem)] xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -192,17 +216,96 @@ export default function ClassDetailPage() {
               </p>
             </div>
           </div>
-          {canManageClass && (
-            <Button asChild className="shrink-0">
-              <Link
-                href={`/${orgSlug}/classes/new?edit=${classData._id}`}
-                aria-label={t("class.edit")}
+          <div className="flex shrink-0 items-center gap-2">
+            {classData.chatArchivedAt !== undefined ? (
+              canManageClass ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t("classroom.archivedChat")}
+                      title={t("classroom.archivedChat")}
+                      className="size-10 border-0 p-0 opacity-50 shadow-none hover:bg-transparent"
+                    >
+                      <Image
+                        src="/chat-icon.svg"
+                        alt=""
+                        width={36}
+                        height={36}
+                        aria-hidden="true"
+                        className="size-9 object-contain grayscale"
+                      />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      disabled={isRestoringChat}
+                      onSelect={() => void handleRestoreChat()}
+                    >
+                      {isRestoringChat ? (
+                        <LoaderCircle className="animate-spin" />
+                      ) : (
+                        <ArchiveRestore />
+                      )}
+                      {t("navigation.unarchiveChat")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled
+                  aria-label={t("classroom.archivedChat")}
+                  title={t("classroom.archivedChat")}
+                  className="size-10 border-0 p-0 opacity-50 shadow-none"
+                >
+                  <Image
+                    src="/chat-icon.svg"
+                    alt=""
+                    width={36}
+                    height={36}
+                    aria-hidden="true"
+                    className="size-9 object-contain grayscale"
+                  />
+                </Button>
+              )
+            ) : (
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className="size-10 border-0 p-0 shadow-none hover:bg-transparent"
               >
-                <Pencil className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">{t("class.edit")}</span>
-              </Link>
-            </Button>
-          )}
+                <Link
+                  href={`/${orgSlug}/chats/${classData._id}`}
+                  aria-label={t("classroom.courseChat")}
+                  title={t("classroom.courseChat")}
+                >
+                  <Image
+                    src="/chat-icon.svg"
+                    alt=""
+                    width={36}
+                    height={36}
+                    aria-hidden="true"
+                    className="size-9 object-contain"
+                  />
+                </Link>
+              </Button>
+            )}
+            {canManageClass && (
+              <Button asChild>
+                <Link
+                  href={`/${orgSlug}/classes/new?edit=${classData._id}`}
+                  aria-label={t("class.edit")}
+                >
+                  <Pencil className="size-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">{t("class.edit")}</span>
+                </Link>
+              </Button>
+            )}
+          </div>
         </div>
 
         <div ref={tabsRef} className="w-full min-w-0">

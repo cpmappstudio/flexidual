@@ -308,6 +308,44 @@ export async function canAccessClass(
   );
 }
 
+export async function canModerateCourseChat(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  classData: Doc<"classes">,
+): Promise<boolean> {
+  return (await getCourseChatCapabilities(ctx, userId, classData)).canModerate;
+}
+
+export async function getCourseChatCapabilities(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  classData: Doc<"classes">,
+) {
+  let schoolId = classData.schoolId;
+  if (!schoolId) {
+    const [campus, curriculum] = await Promise.all([
+      classData.campusId ? ctx.db.get(classData.campusId) : null,
+      ctx.db.get(classData.curriculumId),
+    ]);
+    schoolId = campus?.schoolId ?? curriculum?.schoolId;
+  }
+
+  const canDisable = await canManageClasses(
+    ctx,
+    userId,
+    classData.campusId,
+    schoolId,
+  );
+
+  return {
+    canModerate:
+      canDisable ||
+      classData.teacherId === userId ||
+      classData.tutorId === userId,
+    canDisable,
+  };
+}
+
 export async function canManageRoom(
   ctx: QueryCtx | MutationCtx,
   userId: Id<"users">,

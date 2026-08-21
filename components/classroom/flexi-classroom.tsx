@@ -469,7 +469,7 @@ export default function FlexiClassroom({
   }
 
   // Connecting
-  if (!token) {
+  if (!token || !scheduleDetails) {
     if (resolvedIsStudentView) {
       return <ClassroomRocketLoader label={t("classroom.entering")} />;
     }
@@ -516,10 +516,12 @@ export default function FlexiClassroom({
           />
         ) : resolvedIsStudentView ? (
           <StudentClassroomUI
+            courseId={scheduleDetails.class._id}
             roomName={roomName}
             sessionNow={now}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
+            curriculumIconKey={scheduleDetails.class.curriculumIconKey}
             onSwitchClassroom={handleSwitchClassroom}
             isFullscreen={isFullscreen}
             onToggleFullscreen={
@@ -529,11 +531,13 @@ export default function FlexiClassroom({
           />
         ) : (
           <ActiveClassroomUI
+            courseId={scheduleDetails.class._id}
             currentUserRole={role}
             roomName={roomName}
             sessionNow={now}
             className={scheduleDetails?.class?.name}
             lessonTitle={lessonTitles}
+            curriculumIconKey={scheduleDetails.class.curriculumIconKey}
             sessionIsLive={isClassLive}
             sessionTimeZone={sessionStatus.timeZone}
             isFullscreen={isFullscreen}

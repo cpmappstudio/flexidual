@@ -35,13 +35,13 @@ export default async function OrgLayout({
     <ConvexAuthBoundary>
       <SidebarProvider
         defaultOpen={sidebarDefaultOpen}
-        className="flex-col [--header-height:4rem]"
+        className="flex-col [--header-height:4rem] has-[[data-classroom-layout]]:h-svh has-[[data-classroom-layout]]:overflow-hidden"
       >
         <SiteHeader />
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 has-[[data-classroom-layout]]:overflow-hidden">
           <AppSidebar />
-          <SidebarInset>
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4 has-[[data-classroom-layout]]:gap-0 has-[[data-classroom-layout]]:p-0">
+          <SidebarInset className="min-h-0 has-[[data-classroom-layout]]:overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4 has-[[data-classroom-layout]]:gap-0 has-[[data-classroom-layout]]:overflow-hidden has-[[data-classroom-layout]]:p-0">
               {children}
             </div>
           </SidebarInset>

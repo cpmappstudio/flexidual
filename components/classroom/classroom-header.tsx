@@ -1,13 +1,15 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
-import { ClassroomViewHeader } from "./classroom-view";
+import { ClassroomLayoutHeader } from "./classroom-layout";
 import type { ReactNode } from "react";
 
 interface ClassroomHeaderProps {
   title: string;
   subtitle?: string;
+  curriculumIconKey?: string;
   isActive: boolean;
   activeLabel: string;
   waitingLabel: string;
@@ -24,6 +26,7 @@ interface ClassroomHeaderProps {
 export function ClassroomHeader({
   title,
   subtitle,
+  curriculumIconKey,
   isActive,
   activeLabel,
   waitingLabel,
@@ -40,7 +43,7 @@ export function ClassroomHeader({
   const statusColor = isActive ? "bg-success animate-pulse" : "bg-chart-4";
 
   return (
-    <ClassroomViewHeader isPhoneLandscape={isPhoneLandscape}>
+    <ClassroomLayoutHeader isPhoneLandscape={isPhoneLandscape}>
       {isPhoneLandscape ? (
         <div className="flex items-center gap-2 px-1 py-0.5">
           <span
@@ -48,6 +51,13 @@ export function ClassroomHeader({
             aria-label={statusLabel}
             className={`size-2 shrink-0 rounded-full ${statusColor}`}
           />
+          {curriculumIconKey && (
+            <CurriculumIcon
+              iconKey={curriculumIconKey}
+              size={24}
+              className="size-6"
+            />
+          )}
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <span className="truncate text-xs font-bold text-primary">
               {title}
@@ -65,6 +75,13 @@ export function ClassroomHeader({
         <div className="px-0.5">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 md:flex md:items-center">
             <div className="flex min-w-0 items-center gap-2 md:flex-1">
+              {curriculumIconKey && (
+                <CurriculumIcon
+                  iconKey={curriculumIconKey}
+                  size={44}
+                  className="size-10 md:size-11"
+                />
+              )}
               <div className="flex min-w-0 flex-col">
                 <h2 className="truncate text-base font-bold text-primary">
                   {title}
@@ -117,7 +134,7 @@ export function ClassroomHeader({
           </div>
         </div>
       )}
-    </ClassroomViewHeader>
+    </ClassroomLayoutHeader>
   );
 }
 

@@ -323,6 +323,9 @@ export function UserDialog({
           },
           orgType: finalOrgType,
           orgId: finalOrgId,
+          targetOrgId: campusSelectionSchoolId
+            ? formData.targetCampusId
+            : undefined,
         });
 
         if (result.status === "error") {
@@ -932,7 +935,7 @@ export function UserDialog({
                 </div>
               )}
 
-            {!isEditing && campusSelectionSchoolId && (
+            {campusSelectionSchoolId && (
               <div className="grid gap-2 border-t border-dashed border-muted-foreground/30 pt-4">
                 <Label className="flex items-center gap-1 text-primary">
                   {t("userDialog.assignToCampus")}

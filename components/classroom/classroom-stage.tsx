@@ -17,7 +17,7 @@ import {
   useRef,
 } from "react";
 import { cn } from "@/lib/utils";
-import { ClassroomViewStage } from "./classroom-view";
+import { ClassroomLayoutStage } from "./classroom-layout";
 import { SharedWhiteboard } from "./shared-whiteboard";
 
 interface ClassroomStageProps {
@@ -64,7 +64,7 @@ export function ClassroomStage({
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   return (
-    <ClassroomViewStage>
+    <ClassroomLayoutStage>
       <div
         ref={stageRef}
         className={cn(
@@ -160,7 +160,7 @@ export function ClassroomStage({
           </>
         )}
       </div>
-    </ClassroomViewStage>
+    </ClassroomLayoutStage>
   );
 }
 

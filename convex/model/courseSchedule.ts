@@ -77,7 +77,7 @@ export function isValidWeeklySchedule(
         Number.isInteger(slot.startMinutes) &&
         slot.startMinutes >= scheduleStartMinutes &&
         Number.isInteger(slot.durationMinutes) &&
-        slot.durationMinutes >= 15 &&
+        slot.durationMinutes >= 1 &&
         slot.durationMinutes <= 8 * 60 &&
         slot.startMinutes + slot.durationMinutes <= scheduleEndMinutes,
     )

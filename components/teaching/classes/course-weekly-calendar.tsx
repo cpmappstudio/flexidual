@@ -18,11 +18,16 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import {
+  COURSE_SCHEDULE_STEP_MINUTES,
   DEFAULT_SCHEDULE_END_MINUTES,
   DEFAULT_SCHEDULE_START_MINUTES,
 } from "@/lib/academic-settings";
@@ -65,7 +70,6 @@ interface CourseWeeklyCalendarProps {
   timeZone: string;
 }
 
-const SNAP_MINUTES = 15;
 const localeMap = {
   en: enUS,
   es,
@@ -73,6 +77,7 @@ const localeMap = {
 } as const;
 
 const liveFormatClasses = "border-primary/40 bg-primary/20 text-primary";
+const TIME_INPUT_STEP_SECONDS = 60;
 
 function getFormatClasses(sessionType: CourseClassFormat) {
   const provider = getCalendarProviderAppearanceClasses(sessionType);
@@ -93,13 +98,13 @@ function getPointerMinutes(
       (windowStartMinutes +
         Math.max(0, Math.min(1, ratio)) *
           (windowEndMinutes - windowStartMinutes)) /
-        SNAP_MINUTES,
-    ) * SNAP_MINUTES;
+        COURSE_SCHEDULE_STEP_MINUTES,
+    ) * COURSE_SCHEDULE_STEP_MINUTES;
 
   return isStart
     ? Math.max(
         windowStartMinutes,
-        Math.min(minutes, windowEndMinutes - SNAP_MINUTES),
+        Math.min(minutes, windowEndMinutes - COURSE_SCHEDULE_STEP_MINUTES),
       )
     : Math.max(windowStartMinutes, Math.min(minutes, windowEndMinutes));
 }
@@ -122,7 +127,10 @@ function normalizeSelection(
     startMinutes,
     endMinutes:
       endMinutes === startMinutes
-        ? Math.min(startMinutes + SNAP_MINUTES, windowEndMinutes)
+        ? Math.min(
+            startMinutes + COURSE_SCHEDULE_STEP_MINUTES,
+            windowEndMinutes,
+          )
         : endMinutes,
   };
 }
@@ -131,6 +139,28 @@ function formatMinutes(minutes: number) {
   const date = new Date();
   date.setHours(Math.floor(minutes / 60) % 24, minutes % 60, 0, 0);
   return format(date, "h:mm a");
+}
+
+function formatTimeInput(minutes: number) {
+  const hours = (Math.floor(minutes / 60) % 24).toString().padStart(2, "0");
+  const remainingMinutes = (minutes % 60).toString().padStart(2, "0");
+  return `${hours}:${remainingMinutes}`;
+}
+
+function parseTimeInput(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  if (
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return undefined;
+  }
+
+  return hours * 60 + minutes;
 }
 
 export function CourseWeeklyCalendar({
@@ -150,6 +180,9 @@ export function CourseWeeklyCalendar({
   const [draft, setDraft] = useState<DraftSelection>();
   const [pending, setPending] =
     useState<ReturnType<typeof normalizeSelection>>();
+  const [pendingSessionType, setPendingSessionType] =
+    useState<CourseClassFormat>("live");
+  const [pendingDays, setPendingDays] = useState<number[]>([]);
   const [selectedDayOfWeek, setSelectedDayOfWeek] = useState(1);
   const dateContext = { in: tz(timeZone) };
   const weekStart = startOfWeek(new Date(), {
@@ -208,30 +241,50 @@ export function CourseWeeklyCalendar({
     );
     setDraft(undefined);
     setPending(selection);
+    setPendingSessionType("live");
+    setPendingDays([selection.dayOfWeek]);
   };
 
-  const addSelection = (sessionType: CourseClassFormat) => {
+  const addSelection = () => {
     if (!pending) return;
-    const overlaps = value.some(
-      (slot) =>
-        slot.dayOfWeek === pending.dayOfWeek &&
-        slot.startMinutes < pending.endMinutes &&
-        slot.endMinutes > pending.startMinutes,
+    if (pendingDays.length === 0) {
+      toast.error(t("class.selectScheduleDays"));
+      return;
+    }
+
+    const hasValidTime =
+      Number.isInteger(pending.startMinutes) &&
+      Number.isInteger(pending.endMinutes) &&
+      pending.startMinutes >= startMinutes &&
+      pending.endMinutes <= endMinutes &&
+      pending.startMinutes < pending.endMinutes;
+    if (!hasValidTime) {
+      toast.error(t("class.invalidScheduleTime"));
+      return;
+    }
+
+    const overlaps = pendingDays.some((dayOfWeek) =>
+      value.some(
+        (slot) =>
+          slot.dayOfWeek === dayOfWeek &&
+          slot.startMinutes < pending.endMinutes &&
+          slot.endMinutes > pending.startMinutes,
+      ),
     );
 
     if (overlaps) {
       toast.error(t("class.classTimeOverlap"));
-      setPending(undefined);
       return;
     }
 
     onChangeAction([
       ...value,
-      {
+      ...pendingDays.map((dayOfWeek) => ({
         ...pending,
-        id: `${Date.now()}-${pending.dayOfWeek}-${pending.startMinutes}`,
-        sessionType,
-      },
+        dayOfWeek,
+        id: `${Date.now()}-${dayOfWeek}-${pending.startMinutes}`,
+        sessionType: pendingSessionType,
+      })),
     ]);
     setPending(undefined);
   };
@@ -450,36 +503,149 @@ export function CourseWeeklyCalendar({
         open={Boolean(pending)}
         onOpenChange={(open) => !open && setPending(undefined)}
       >
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{t("schedule.sessionFormat")}</DialogTitle>
+            <DialogTitle>{t("class.addWeeklySchedule")}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-2">
-            {(
-              [
-                ["live", t("class.typeStandard")],
-                ["ignitia", t("schedule.typeIgnitia")],
-                ["abeka", t("schedule.typeAbeka")],
-              ] satisfies [CourseClassFormat, string][]
-            ).map(([sessionType, label]) => (
-              <Button
-                key={sessionType}
+          <div className="grid gap-5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2">
+                <Label htmlFor="course-slot-start-time">
+                  {t("class.startTime")}
+                </Label>
+                <Input
+                  id="course-slot-start-time"
+                  type="time"
+                  step={TIME_INPUT_STEP_SECONDS}
+                  min={formatTimeInput(startMinutes)}
+                  max={formatTimeInput(endMinutes - 1)}
+                  value={pending ? formatTimeInput(pending.startMinutes) : ""}
+                  className="appearance-none bg-sidebar [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                  onChange={(event) => {
+                    const minutes = parseTimeInput(event.target.value);
+                    if (minutes === undefined) return;
+                    setPending((current) =>
+                      current ? { ...current, startMinutes: minutes } : current,
+                    );
+                  }}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="course-slot-end-time">
+                  {t("class.endTime")}
+                </Label>
+                <Input
+                  id="course-slot-end-time"
+                  type="time"
+                  step={TIME_INPUT_STEP_SECONDS}
+                  min={formatTimeInput(startMinutes + 1)}
+                  max={
+                    endMinutes < 24 * 60
+                      ? formatTimeInput(endMinutes)
+                      : undefined
+                  }
+                  value={pending ? formatTimeInput(pending.endMinutes) : ""}
+                  className="appearance-none bg-sidebar [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                  onChange={(event) => {
+                    const parsedMinutes = parseTimeInput(event.target.value);
+                    if (parsedMinutes === undefined) return;
+                    const minutes =
+                      parsedMinutes === 0 && endMinutes === 24 * 60
+                        ? 24 * 60
+                        : parsedMinutes;
+                    setPending((current) =>
+                      current ? { ...current, endMinutes: minutes } : current,
+                    );
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>{t("class.repeatOnDays")}</Label>
+              <ToggleGroup
+                type="multiple"
                 variant="outline"
-                className="h-11 justify-start gap-3"
-                onClick={() => addSelection(sessionType)}
+                size="sm"
+                value={pendingDays.map(String)}
+                onValueChange={(days) =>
+                  setPendingDays(days.map(Number).filter(Number.isInteger))
+                }
+                className="grid w-full grid-cols-4 sm:grid-cols-7"
               >
-                {sessionType === "live" ? (
-                  <Video className="size-5 shrink-0 text-primary" />
-                ) : (
-                  <CalendarProviderMark
-                    sessionType={sessionType}
-                    className="size-5"
-                  />
-                )}
-                {label}
-              </Button>
-            ))}
+                {weekDays.map((day) => {
+                  const dayOfWeek = day.getDay();
+                  return (
+                    <ToggleGroupItem
+                      key={dayOfWeek}
+                      value={String(dayOfWeek)}
+                      aria-label={format(day, "EEEE", {
+                        locale: dateLocale,
+                        ...dateContext,
+                      })}
+                      className="min-w-0 bg-sidebar data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                    >
+                      {format(day, "EEE", {
+                        locale: dateLocale,
+                        ...dateContext,
+                      })}
+                    </ToggleGroupItem>
+                  );
+                })}
+              </ToggleGroup>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>{t("schedule.sessionFormat")}</Label>
+              {(
+                [
+                  ["live", t("class.typeStandard")],
+                  ["ignitia", t("schedule.typeIgnitia")],
+                  ["abeka", t("schedule.typeAbeka")],
+                ] satisfies [CourseClassFormat, string][]
+              ).map(([sessionType, label]) => (
+                <Button
+                  key={sessionType}
+                  type="button"
+                  variant={
+                    pendingSessionType === sessionType ? "default" : "outline"
+                  }
+                  className="h-11 justify-start gap-3"
+                  aria-pressed={pendingSessionType === sessionType}
+                  onClick={() => setPendingSessionType(sessionType)}
+                >
+                  {sessionType === "live" ? (
+                    <Video
+                      className={cn(
+                        "size-5 shrink-0",
+                        pendingSessionType === sessionType
+                          ? "text-primary-foreground"
+                          : "text-primary",
+                      )}
+                    />
+                  ) : (
+                    <CalendarProviderMark
+                      sessionType={sessionType}
+                      className="size-5"
+                    />
+                  )}
+                  {label}
+                </Button>
+              ))}
+            </div>
           </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPending(undefined)}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button type="button" onClick={addSelection}>
+              {t("common.confirm")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

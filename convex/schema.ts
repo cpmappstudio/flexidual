@@ -137,6 +137,9 @@ export default defineSchema({
     timeZone: v.optional(v.string()),
     liveAccess: v.optional(liveAccessValidator),
     weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
+    chatStudentsMuted: v.optional(v.boolean()),
+    chatDisabled: v.optional(v.boolean()),
+    chatArchivedAt: v.optional(v.number()),
 
     // Status
     isActive: v.boolean(),
@@ -181,6 +184,19 @@ export default defineSchema({
   })
     .index("by_class", ["classId", "studentId"])
     .index("by_student", ["studentId", "classId"]),
+
+  courseChatMessages: defineTable({
+    classId: v.id("classes"),
+    authorId: v.id("users"),
+    body: v.string(),
+  }).index("by_class", ["classId"]),
+
+  courseChatMutes: defineTable({
+    classId: v.id("classes"),
+    userId: v.id("users"),
+    mutedAt: v.number(),
+    mutedBy: v.id("users"),
+  }).index("by_class_and_user", ["classId", "userId"]),
 
   /**
    * CLASS_SCHEDULE
