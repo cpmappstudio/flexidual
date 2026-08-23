@@ -10,7 +10,7 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./users";
 import {
   canManageCampusPeople,
@@ -21,6 +21,7 @@ import {
 import { validateGradeCodes } from "./model/grades";
 import { resolveMembershipSchoolId } from "./model/membership";
 import { isRoleValidForOrganization, roleValidator } from "./model/roles";
+import { createSystemNotification } from "./model/systemNotifications";
 
 const roleAssignmentValidator = v.object({
   _id: v.id("roleAssignments"),
@@ -142,6 +143,63 @@ async function scheduleRoleSync(
   }
 }
 
+async function getAssignmentNotificationContext(
+  ctx: MutationCtx,
+  assignment: Pick<Doc<"roleAssignments">, "orgType" | "orgId">,
+) {
+  if (assignment.orgType === "school" && assignment.orgId) {
+    const schoolId = ctx.db.normalizeId("schools", assignment.orgId);
+    const school = schoolId ? await ctx.db.get("schools", schoolId) : null;
+    return {
+      schoolId: school?._id,
+      schoolName: school?.name,
+      organizationSlug: school?.slug,
+      organizationName: school?.name,
+    };
+  }
+  if (assignment.orgType === "campus" && assignment.orgId) {
+    const campusId = ctx.db.normalizeId("campuses", assignment.orgId);
+    const campus = campusId ? await ctx.db.get("campuses", campusId) : null;
+    const school = campus
+      ? await ctx.db.get("schools", campus.schoolId)
+      : null;
+    return {
+      schoolId: school?._id,
+      campusId: campus?._id,
+      schoolName: school?.name,
+      campusName: campus?.name,
+      organizationSlug: campus?.slug,
+      organizationName: campus?.name,
+    };
+  }
+  return {};
+}
+
+async function publishAssignmentRemoved(
+  ctx: MutationCtx,
+  assignment: Doc<"roleAssignments">,
+  actorId: Id<"users"> | undefined,
+  eventKey: string,
+) {
+  if (actorId === assignment.userId) return;
+  const context = await getAssignmentNotificationContext(ctx, assignment);
+  const { organizationName: _organizationName, ...notificationContext } =
+    context;
+  await createSystemNotification(ctx, {
+    recipientId: assignment.userId,
+    actorId,
+    kind:
+      assignment.orgType === "system"
+        ? "role_changed"
+        : "organization_membership_changed",
+    action: "removed",
+    role: assignment.role,
+    previousRole: assignment.role,
+    ...notificationContext,
+    dedupeKey: `assignment_removed:${eventKey}:${assignment.userId}`,
+  });
+}
+
 export async function upsertRoleAssignment(
   ctx: MutationCtx,
   args: {
@@ -158,6 +216,7 @@ export async function upsertRoleAssignment(
     gradeCode?: string;
   },
   assignedBy?: Id<"users">,
+  options?: { skipNotification?: boolean },
 ) {
   const contextual = await assignmentData(ctx, args);
   const affectedUsers = new Set<Id<"users">>([args.userId]);
@@ -185,6 +244,12 @@ export async function upsertRoleAssignment(
       .collect();
     for (const assignment of existingAssignments) {
       if (assignment.orgType !== "system" || assignment.role !== "superadmin") {
+        await publishAssignmentRemoved(
+          ctx,
+          assignment,
+          assignedBy,
+          `superadmin:${assignment._id}`,
+        );
         await ctx.db.delete(assignment._id);
       }
     }
@@ -203,6 +268,12 @@ export async function upsertRoleAssignment(
         assignment.userId !== args.userId
       ) {
         affectedUsers.add(assignment.userId);
+        await publishAssignmentRemoved(
+          ctx,
+          assignment,
+          assignedBy,
+          `principal_replaced:${assignment._id}`,
+        );
         await ctx.db.delete(assignment._id);
       }
     }
@@ -218,23 +289,57 @@ export async function upsertRoleAssignment(
     )
     .first();
 
+  const assignedAt = Date.now();
+  let assignmentId: Id<"roleAssignments">;
   if (existing) {
     await ctx.db.patch(existing._id, {
       role: args.role,
       ...contextual,
-      assignedAt: Date.now(),
+      assignedAt,
       assignedBy,
     });
+    assignmentId = existing._id;
   } else {
-    await ctx.db.insert("roleAssignments", {
+    assignmentId = await ctx.db.insert("roleAssignments", {
       userId: args.userId,
       orgType: args.orgType,
       orgId: args.orgId,
       role: args.role,
       ...contextual,
-      assignedAt: Date.now(),
+      assignedAt,
       assignedBy,
     });
+  }
+
+  if (!options?.skipNotification && assignedBy !== args.userId) {
+    const context = await getAssignmentNotificationContext(ctx, args);
+    const { organizationName: _organizationName, ...notificationContext } =
+      context;
+    if (existing && existing.role !== args.role) {
+      await createSystemNotification(ctx, {
+        recipientId: args.userId,
+        actorId: assignedBy,
+        kind: "role_changed",
+        action: "changed",
+        role: args.role,
+        previousRole: existing.role,
+        ...notificationContext,
+        dedupeKey: `role_changed:${assignmentId}:${assignedAt}:${args.userId}`,
+      });
+    } else if (!existing) {
+      await createSystemNotification(ctx, {
+        recipientId: args.userId,
+        actorId: assignedBy,
+        kind:
+          args.orgType === "system"
+            ? "role_changed"
+            : "organization_membership_changed",
+        action: "added",
+        role: args.role,
+        ...notificationContext,
+        dedupeKey: `assignment_added:${assignmentId}:${args.userId}`,
+      });
+    }
   }
 
   await scheduleRoleSync(ctx, affectedUsers);
@@ -243,6 +348,7 @@ export async function upsertRoleAssignment(
 export async function clearCampusPrincipalAssignments(
   ctx: MutationCtx,
   campusId: Id<"campuses">,
+  assignedBy?: Id<"users">,
 ) {
   const assignments = await ctx.db
     .query("roleAssignments")
@@ -251,9 +357,15 @@ export async function clearCampusPrincipalAssignments(
   const principals = assignments.filter(
     (assignment) => assignment.role === "principal",
   );
-  await Promise.all(
-    principals.map((assignment) => ctx.db.delete(assignment._id)),
-  );
+  for (const assignment of principals) {
+    await publishAssignmentRemoved(
+      ctx,
+      assignment,
+      assignedBy,
+      `principal_cleared:${assignment._id}`,
+    );
+    await ctx.db.delete(assignment._id);
+  }
   await scheduleRoleSync(
     ctx,
     principals.map((assignment) => assignment.userId),
@@ -486,8 +598,9 @@ export const assignRoleInternal = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { previousOrgId, ...assignment } = args;
+    let previousAssignment: Doc<"roleAssignments"> | null = null;
     if (previousOrgId && previousOrgId !== args.orgId) {
-      const previous = await ctx.db
+      previousAssignment = await ctx.db
         .query("roleAssignments")
         .withIndex("by_user_org", (q) =>
           q
@@ -496,10 +609,34 @@ export const assignRoleInternal = internalMutation({
             .eq("orgType", args.orgType),
         )
         .first();
-      if (!previous) throw new Error("Previous role assignment not found");
-      await ctx.db.delete(previous._id);
+      if (!previousAssignment) {
+        throw new Error("Previous role assignment not found");
+      }
+      await ctx.db.delete(previousAssignment._id);
     }
-    await upsertRoleAssignment(ctx, assignment);
+    await upsertRoleAssignment(ctx, assignment, undefined, {
+      skipNotification: Boolean(previousAssignment),
+    });
+    if (previousAssignment) {
+      const [previousContext, nextContext] = await Promise.all([
+        getAssignmentNotificationContext(ctx, previousAssignment),
+        getAssignmentNotificationContext(ctx, assignment),
+      ]);
+      await createSystemNotification(ctx, {
+        recipientId: args.userId,
+        kind: "organization_membership_changed",
+        action: "changed",
+        role: args.role,
+        previousRole: previousAssignment.role,
+        previousOrganizationName: previousContext.organizationName,
+        schoolId: nextContext.schoolId,
+        campusId: nextContext.campusId,
+        schoolName: nextContext.schoolName,
+        campusName: nextContext.campusName,
+        organizationSlug: nextContext.organizationSlug,
+        dedupeKey: `organization_changed:${previousAssignment._id}:${args.orgId}:${args.userId}`,
+      });
+    }
     return null;
   },
 });
@@ -609,6 +746,12 @@ export const removeRole = mutation({
     );
 
     await ctx.db.delete(args.assignmentId);
+    await publishAssignmentRemoved(
+      ctx,
+      assignment,
+      currentUser._id,
+      `manual:${assignment._id}`,
+    );
 
     // Sync to Clerk immediately
     const user = await ctx.db.get(assignment.userId);

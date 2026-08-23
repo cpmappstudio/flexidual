@@ -103,7 +103,7 @@ async function setCampusPrincipal(
   assignedBy: Id<"users">,
 ) {
   if (!principalId) {
-    await clearCampusPrincipalAssignments(ctx, campusId);
+    await clearCampusPrincipalAssignments(ctx, campusId, assignedBy);
     return;
   }
 

@@ -1185,6 +1185,83 @@
     "noResults": "Sem resultados",
     "selectedRows": "{selected} de {total} linha(s) selecionada(s)"
   },
+  "systemNotifications": {
+    "title": "Notificações",
+    "description": "Atualizações sobre seus cursos, aulas e acessos.",
+    "open": "Abrir notificações",
+    "openWithUnread": "Abrir notificações, {count} não lidas",
+    "unread": "Notificação não lida",
+    "markAllRead": "Marcar tudo como lido",
+    "loading": "Carregando notificações...",
+    "loadMore": "Carregar mais",
+    "emptyTitle": "Você está em dia",
+    "emptyDescription": "As atualizações importantes aparecerão aqui.",
+    "fallbackClassName": "seu curso",
+    "fallbackOrganizationName": "sua organização",
+    "reason": "Motivo: {reason}",
+    "items": {
+      "courseEnrollmentAdded": {
+        "title": "Matrícula em curso",
+        "body": "Você foi matriculado em {className}."
+      },
+      "courseEnrollmentRemoved": {
+        "title": "Matrícula encerrada",
+        "body": "Você foi removido de {className}."
+      },
+      "courseAssignmentAdded": {
+        "title": "Atribuição de curso",
+        "body": "Você foi atribuído a {className}."
+      },
+      "courseAssignmentRemoved": {
+        "title": "Atribuição encerrada",
+        "body": "Você não está mais atribuído a {className}."
+      },
+      "class_starting_soon": {
+        "title": "A aula começa em breve",
+        "body": "{className} começa em 5 minutos."
+      },
+      "class_cancelled": {
+        "title": "Aula cancelada",
+        "body": "Uma aula agendada de {className} foi cancelada."
+      },
+      "recording_available": {
+        "title": "Gravação disponível",
+        "body": "Uma gravação de {className} está pronta para assistir."
+      },
+      "roleAdded": {
+        "title": "Função atribuída",
+        "body": "Sua função agora é {role}."
+      },
+      "roleChanged": {
+        "title": "Função atualizada",
+        "body": "Sua função em {organizationName} mudou de {previousRole} para {role}."
+      },
+      "roleRemoved": {
+        "title": "Função removida",
+        "body": "Sua função de {previousRole} foi removida."
+      },
+      "organizationAdded": {
+        "title": "Organização atribuída",
+        "body": "Você foi adicionado a {organizationName}."
+      },
+      "organizationChanged": {
+        "title": "Organização atualizada",
+        "body": "Sua atribuição mudou de {previousOrganizationName} para {organizationName}."
+      },
+      "organizationRemoved": {
+        "title": "Acesso à organização removido",
+        "body": "Seu acesso a {organizationName} foi removido."
+      }
+    },
+    "roleLabels": {
+      "superadmin": "administrador global",
+      "admin": "administrador institucional",
+      "principal": "diretor do campus",
+      "teacher": "professor",
+      "tutor": "tutor",
+      "student": "estudante"
+    }
+  },
   "recordings": {
     "watch": "Gravação",
     "watchRecording": "Ver Gravação",

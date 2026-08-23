@@ -281,8 +281,7 @@ export default defineSchema({
     .index("by_live_expiration", ["status", "isLive", "scheduledEnd"])
     .index("by_recurrence_parent", ["recurrenceParentId"]),
 
-  // Domain events for the future system-notification pipeline.
-  // Delivery and read state intentionally live outside this contract.
+  // Domain events retained independently from per-recipient delivery state.
   classCancellationEvents: defineTable({
     classId: v.id("classes"),
     schoolId: v.optional(v.id("schools")),
@@ -297,6 +296,59 @@ export default defineSchema({
   })
     .index("by_class_and_occurred_at", ["classId", "occurredAt"])
     .index("by_school_and_occurred_at", ["schoolId", "occurredAt"]),
+
+  systemNotifications: defineTable({
+    recipientId: v.id("users"),
+    kind: v.union(
+      v.literal("course_enrollment"),
+      v.literal("course_assignment"),
+      v.literal("class_starting_soon"),
+      v.literal("class_cancelled"),
+      v.literal("recording_available"),
+      v.literal("role_changed"),
+      v.literal("organization_membership_changed"),
+      v.literal("announcement"),
+    ),
+    action: v.optional(
+      v.union(
+        v.literal("added"),
+        v.literal("removed"),
+        v.literal("changed"),
+      ),
+    ),
+    actorId: v.optional(v.id("users")),
+    schoolId: v.optional(v.id("schools")),
+    campusId: v.optional(v.id("campuses")),
+    classId: v.optional(v.id("classes")),
+    scheduleId: v.optional(v.id("classSchedule")),
+    recordingId: v.optional(v.id("recordings")),
+    cancellationEventId: v.optional(v.id("classCancellationEvents")),
+    organizationSlug: v.optional(v.string()),
+    roomName: v.optional(v.string()),
+    className: v.optional(v.string()),
+    schoolName: v.optional(v.string()),
+    campusName: v.optional(v.string()),
+    previousOrganizationName: v.optional(v.string()),
+    role: v.optional(v.string()),
+    previousRole: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    scheduledStart: v.optional(v.number()),
+    scheduledEnd: v.optional(v.number()),
+    announcementTitle: v.optional(v.string()),
+    announcementBody: v.optional(v.string()),
+    announcementUrl: v.optional(v.string()),
+    dedupeKey: v.string(),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+  })
+    .index("by_recipient_and_created_at", ["recipientId", "createdAt"])
+    .index("by_recipient_and_read_at_and_created_at", [
+      "recipientId",
+      "readAt",
+      "createdAt",
+    ])
+    .index("by_dedupe_key", ["dedupeKey"])
+    .index("by_schedule_and_kind", ["scheduleId", "kind"]),
 
   /**
    * CLASS_SESSIONS

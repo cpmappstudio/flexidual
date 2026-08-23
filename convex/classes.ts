@@ -76,6 +76,10 @@ import {
   weeklyScheduleSlotKey,
 } from "../lib/course-schedule-change";
 import { recordClassCancellationEvent } from "./model/classCancellationEvents";
+import {
+  listClassNotificationRecipients,
+  publishCourseNotification,
+} from "./model/systemNotificationEvents";
 
 const classFields = {
   _id: v.id("classes"),
@@ -1595,6 +1599,19 @@ export const createWithSchedule = mutation({
       { classId, expectedEndDate: endDate },
     );
 
+    const createdClass = await ctx.db.get("classes", classId);
+    if (createdClass) {
+      await publishCourseNotification(ctx, {
+        recipientId: args.teacherId,
+        actorId: user._id,
+        classData: createdClass,
+        kind: "course_assignment",
+        action: "added",
+        eventKey: `class_created:${classId}`,
+        role: "teacher",
+      });
+    }
+
     return { classId, classesCreated };
   },
 });
@@ -1748,6 +1765,34 @@ export const update = mutation({
     }
 
     await ctx.db.patch(args.classId, cleanUpdates);
+    if (
+      args.teacherId !== undefined &&
+      args.teacherId !== classData.teacherId
+    ) {
+      const eventKey = `teacher_changed:${args.classId}:${classData.teacherId ?? "none"}:${args.teacherId}:${Date.now()}`;
+      if (classData.teacherId) {
+        await publishCourseNotification(ctx, {
+          recipientId: classData.teacherId,
+          actorId: user._id,
+          classData,
+          kind: "course_assignment",
+          action: "removed",
+          eventKey,
+          role: "teacher",
+          className: name ?? classData.name,
+        });
+      }
+      await publishCourseNotification(ctx, {
+        recipientId: args.teacherId,
+        actorId: user._id,
+        classData,
+        kind: "course_assignment",
+        action: "added",
+        eventKey,
+        role: "teacher",
+        className: name ?? classData.name,
+      });
+    }
     return null;
   },
 });
@@ -1839,11 +1884,20 @@ export const addStudent = mutation({
       });
     }
 
-    await ctx.db.insert("classEnrollments", {
+    const enrollmentId = await ctx.db.insert("classEnrollments", {
       classId: args.classId,
       studentId: args.studentId,
       enrolledAt: Date.now(),
       enrolledBy: user._id,
+    });
+    await publishCourseNotification(ctx, {
+      recipientId: args.studentId,
+      actorId: user._id,
+      classData,
+      kind: "course_enrollment",
+      action: "added",
+      eventKey: `enrollment:${enrollmentId}`,
+      role: "student",
     });
     return null;
   },
@@ -1886,7 +1940,18 @@ export const removeStudent = mutation({
         q.eq("classId", args.classId).eq("studentId", args.studentId),
       )
       .unique();
-    if (enrollment) await ctx.db.delete(enrollment._id);
+    if (enrollment) {
+      await ctx.db.delete(enrollment._id);
+      await publishCourseNotification(ctx, {
+        recipientId: args.studentId,
+        actorId: user._id,
+        classData,
+        kind: "course_enrollment",
+        action: "removed",
+        eventKey: `enrollment:${enrollment._id}`,
+        role: "student",
+      });
+    }
   },
 });
 
@@ -1913,7 +1978,8 @@ export const remove = mutation({
       throw new ConvexError("PERMISSION_DENIED");
     }
 
-    const [schedules, enrollments, preferences] = await Promise.all([
+    const [schedules, enrollments, preferences, notificationRecipients] =
+      await Promise.all([
       ctx.db
         .query("classSchedule")
         .withIndex("by_class", (q) => q.eq("classId", args.id))
@@ -1926,7 +1992,19 @@ export const remove = mutation({
         .query("studentClassPreferences")
         .withIndex("by_class", (q) => q.eq("classId", args.id))
         .collect(),
+      listClassNotificationRecipients(ctx, classData),
     ]);
+    for (const [recipientId, role] of notificationRecipients) {
+      await publishCourseNotification(ctx, {
+        recipientId,
+        actorId: user._id,
+        classData,
+        kind: role === "student" ? "course_enrollment" : "course_assignment",
+        action: "removed",
+        eventKey: `class_removed:${classData._id}`,
+        role,
+      });
+    }
     await deleteSchedulesWithDependencies(ctx, schedules);
     await Promise.all(
       [

@@ -1,4 +1,5 @@
 import type { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
 
 export async function recordClassCancellationEvent(
@@ -16,6 +17,15 @@ export async function recordClassCancellationEvent(
     occurredAt: number;
   },
 ) {
-  if (event.affectedScheduleIds.length === 0) return;
-  await ctx.db.insert("classCancellationEvents", event);
+  if (event.affectedScheduleIds.length === 0) return null;
+  const cancellationEventId = await ctx.db.insert(
+    "classCancellationEvents",
+    event,
+  );
+  await ctx.scheduler.runAfter(
+    0,
+    internal.systemNotifications.publishClassCancellation,
+    { cancellationEventId },
+  );
+  return cancellationEventId;
 }

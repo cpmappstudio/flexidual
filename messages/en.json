@@ -1185,6 +1185,83 @@
     "noResults": "No results",
     "selectedRows": "{selected} of {total} row(s) selected"
   },
+  "systemNotifications": {
+    "title": "Notifications",
+    "description": "Updates about your courses, classes and access.",
+    "open": "Open notifications",
+    "openWithUnread": "Open notifications, {count} unread",
+    "unread": "Unread notification",
+    "markAllRead": "Mark all read",
+    "loading": "Loading notifications...",
+    "loadMore": "Load more",
+    "emptyTitle": "You're all caught up",
+    "emptyDescription": "Important updates will appear here.",
+    "fallbackClassName": "your course",
+    "fallbackOrganizationName": "your organization",
+    "reason": "Reason: {reason}",
+    "items": {
+      "courseEnrollmentAdded": {
+        "title": "Course enrollment",
+        "body": "You were enrolled in {className}."
+      },
+      "courseEnrollmentRemoved": {
+        "title": "Course enrollment ended",
+        "body": "You were removed from {className}."
+      },
+      "courseAssignmentAdded": {
+        "title": "Course assignment",
+        "body": "You were assigned to {className}."
+      },
+      "courseAssignmentRemoved": {
+        "title": "Course assignment ended",
+        "body": "You are no longer assigned to {className}."
+      },
+      "class_starting_soon": {
+        "title": "Class starts soon",
+        "body": "{className} starts in 5 minutes."
+      },
+      "class_cancelled": {
+        "title": "Class cancelled",
+        "body": "A scheduled class for {className} was cancelled."
+      },
+      "recording_available": {
+        "title": "Recording available",
+        "body": "A recording from {className} is ready to watch."
+      },
+      "roleAdded": {
+        "title": "Role assigned",
+        "body": "Your role is now {role}."
+      },
+      "roleChanged": {
+        "title": "Role updated",
+        "body": "Your role in {organizationName} changed from {previousRole} to {role}."
+      },
+      "roleRemoved": {
+        "title": "Role removed",
+        "body": "Your {previousRole} role was removed."
+      },
+      "organizationAdded": {
+        "title": "Organization assigned",
+        "body": "You were added to {organizationName}."
+      },
+      "organizationChanged": {
+        "title": "Organization changed",
+        "body": "Your assignment changed from {previousOrganizationName} to {organizationName}."
+      },
+      "organizationRemoved": {
+        "title": "Organization access removed",
+        "body": "Your access to {organizationName} was removed."
+      }
+    },
+    "roleLabels": {
+      "superadmin": "global administrator",
+      "admin": "institution administrator",
+      "principal": "campus principal",
+      "teacher": "teacher",
+      "tutor": "tutor",
+      "student": "student"
+    }
+  },
   "recordings": {
     "watch": "Recording",
     "watchRecording": "Watch Recording",

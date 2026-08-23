@@ -10,4 +10,11 @@ crons.interval(
   internal.livekit.cleanupStaleSessions,
 );
 
+crons.interval(
+  "Publish upcoming class notifications",
+  { minutes: 1 },
+  internal.systemNotifications.publishUpcomingClasses,
+  {},
+);
+
 export default crons;

@@ -118,4 +118,123 @@ test("moving a role assignment replaces the previous campus membership", async (
     orgType: "campus",
     role: "principal",
   });
+  const notifications = await t.run((ctx) =>
+    ctx.db.query("systemNotifications").collect(),
+  );
+  expect(notifications).toEqual([
+    expect.objectContaining({
+      recipientId: userId,
+      kind: "organization_membership_changed",
+      action: "changed",
+      previousOrganizationName: "First Campus",
+      campusName: "Second Campus",
+      role: "principal",
+    }),
+  ]);
+});
+
+test("role assignment changes and removals notify only the affected user", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const data = await t.run(async (ctx) => {
+    const actorId = await ctx.db.insert("users", {
+      clerkId: "role-notification-actor",
+      firstName: "Alex",
+      lastName: "Admin",
+      fullName: "Alex Admin",
+      isActive: true,
+      createdAt: now,
+    });
+    const targetId = await ctx.db.insert("users", {
+      clerkId: "temp_role_notification_target",
+      firstName: "Taylor",
+      lastName: "User",
+      fullName: "Taylor User",
+      isActive: true,
+      createdAt: now,
+    });
+    const schoolId = await ctx.db.insert("schools", {
+      name: "Role School",
+      slug: "role-school",
+      isActive: true,
+      createdAt: now,
+      createdBy: actorId,
+    });
+    const campusId = await ctx.db.insert("campuses", {
+      schoolId,
+      name: "Role Campus",
+      slug: "role-campus",
+      isActive: true,
+      createdAt: now,
+      createdBy: actorId,
+    });
+    await ctx.db.insert("roleAssignments", {
+      userId: actorId,
+      orgType: "system",
+      role: "superadmin",
+      assignedAt: now,
+      assignedBy: actorId,
+    });
+    return { actorId, targetId, schoolId, campusId };
+  });
+
+  await t.mutation(internal.roleAssignments.assignRoleInternal, {
+    userId: data.targetId,
+    orgType: "campus",
+    orgId: data.campusId,
+    role: "teacher",
+  });
+  await t.mutation(internal.roleAssignments.assignRoleInternal, {
+    userId: data.targetId,
+    orgType: "campus",
+    orgId: data.campusId,
+    role: "principal",
+  });
+  const assignmentId = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user_org", (q) =>
+          q
+            .eq("userId", data.targetId)
+            .eq("orgId", data.campusId)
+            .eq("orgType", "campus"),
+        )
+        .unique()
+    )!._id,
+  );
+  await t
+    .withIdentity({ subject: "role-notification-actor" })
+    .mutation(api.roleAssignments.removeRole, { assignmentId });
+
+  const notifications = await t.run((ctx) =>
+    ctx.db.query("systemNotifications").collect(),
+  );
+  expect(notifications).toHaveLength(3);
+  expect(notifications).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        recipientId: data.targetId,
+        kind: "organization_membership_changed",
+        action: "added",
+        role: "teacher",
+      }),
+      expect.objectContaining({
+        recipientId: data.targetId,
+        kind: "role_changed",
+        action: "changed",
+        previousRole: "teacher",
+        role: "principal",
+      }),
+      expect.objectContaining({
+        recipientId: data.targetId,
+        kind: "organization_membership_changed",
+        action: "removed",
+        previousRole: "principal",
+      }),
+    ]),
+  );
+  expect(
+    notifications.some(({ recipientId }) => recipientId === data.actorId),
+  ).toBe(false);
 });

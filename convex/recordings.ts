@@ -4,6 +4,11 @@ import { getCurrentUserFromAuth } from "./users";
 import { canAccessClass } from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
 import { isExternalClassSession } from "../lib/class-session";
+import { createSystemNotification } from "./model/systemNotifications";
+import {
+  getClassNotificationContext,
+  listClassNotificationRecipients,
+} from "./model/systemNotificationEvents";
 
 const RECENT_PAST_CLASS_LIMIT = 8;
 const RECENT_PAST_CLASS_SCAN_LIMIT = 24;
@@ -114,6 +119,38 @@ export const updateFromWebhook = internalMutation({
       ...(args.fileSize !== undefined && { fileSize: args.fileSize }),
       ...(args.completedAt !== undefined && { completedAt: args.completedAt }),
     });
+
+    const becamePlayable =
+      args.status === "complete" &&
+      Boolean(args.url) &&
+      !(recording.status === "complete" && recording.url);
+    if (becamePlayable) {
+      const schedule = await ctx.db.get("classSchedule", recording.scheduleId);
+      const classData = schedule
+        ? await ctx.db.get("classes", schedule.classId)
+        : null;
+      if (schedule && classData?.isActive) {
+        const [context, recipients] = await Promise.all([
+          getClassNotificationContext(ctx, classData),
+          listClassNotificationRecipients(ctx, classData),
+        ]);
+        for (const [recipientId, role] of recipients) {
+          await createSystemNotification(ctx, {
+            recipientId,
+            kind: "recording_available",
+            classId: classData._id,
+            scheduleId: schedule._id,
+            recordingId: recording._id,
+            className: classData.name,
+            role,
+            scheduledStart: schedule.scheduledStart,
+            scheduledEnd: schedule.scheduledEnd,
+            ...context,
+            dedupeKey: `recording_available:${recording._id}:${recipientId}`,
+          });
+        }
+      }
+    }
 
     return recording._id;
   },

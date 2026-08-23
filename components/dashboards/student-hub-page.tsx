@@ -15,12 +15,11 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BellRing, CalendarDays, Pencil, GraduationCap } from "lucide-react";
+import { CalendarDays, Pencil, GraduationCap } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { format, isSameDay } from "date-fns";
 import { StudentScheduleEvent } from "@/lib/types/student";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Link, useRouter } from "@/i18n/navigation";
 import { useOrgBasePath } from "@/hooks/use-org-base-path";
@@ -54,88 +53,6 @@ const COURSE_CARD_ACCENTS = [
   "border-cyan-200 bg-cyan-50/80 before:bg-cyan-400",
 ];
 
-function CountdownToast({
-  lesson,
-  onStop,
-  onGoToClass,
-  title,
-  stopLabel,
-  goToClassLabel,
-}: {
-  lesson: StudentScheduleEvent;
-  onStop: () => void;
-  onGoToClass: () => void;
-  title: string;
-  stopLabel: string;
-  goToClassLabel: string;
-}) {
-  const [timeLeft, setTimeLeft] = useState(() => lesson.start - Date.now());
-
-  useEffect(() => {
-    const tick = setInterval(() => {
-      const remaining = lesson.start - Date.now();
-      setTimeLeft(remaining);
-      if (remaining <= 0) clearInterval(tick);
-    }, 1000);
-    return () => clearInterval(tick);
-  }, [lesson.start]);
-
-  const formatted = () => {
-    if (timeLeft <= 0) return "🔔 Now!";
-    const m = Math.floor(timeLeft / 60000);
-    const s = Math.floor((timeLeft % 60000) / 1000);
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
-  return (
-    <div className="bg-card rounded-2xl shadow-2xl border-2 border-warning/30 overflow-hidden w-[340px]">
-      {/* Header strip */}
-      <div className="bg-warning px-4 py-2 flex items-center gap-2">
-        <BellRing className="w-4 h-4 text-warning-foreground animate-bounce flex-shrink-0" />
-        <p className="text-warning-foreground font-bold text-sm truncate flex-1">
-          {title}
-        </p>
-        <span
-          className={cn(
-            "font-mono font-black text-warning-foreground text-lg tabular-nums",
-            timeLeft <= 0 && "animate-pulse",
-          )}
-        >
-          {formatted()}
-        </span>
-      </div>
-
-      {/* Body */}
-      <div className="px-4 py-3">
-        <p className="text-sm font-semibold text-card-foreground truncate">
-          🚀 {lesson.title}
-        </p>
-        {lesson.className && (
-          <p className="text-xs text-muted-foreground truncate mt-0.5">
-            📚 {lesson.className}
-          </p>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="px-4 pb-4 flex gap-2">
-        <button
-          onClick={onStop}
-          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 border border-border rounded-xl px-3 py-2 transition-colors"
-        >
-          🔕 {stopLabel}
-        </button>
-        <button
-          onClick={onGoToClass}
-          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-warning-foreground bg-warning hover:bg-warning/90 rounded-xl px-3 py-2 transition-all shadow-sm shadow-warning/20"
-        >
-          🚀 {goToClassLabel}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -155,13 +72,8 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const [isLaunching, setIsLaunching] = useState(false);
   const now = useCurrentMinute();
 
-  const [notifiedLessons, setNotifiedLessons] = useState<Set<string>>(
-    new Set(),
-  );
-
   const [soundEnabled, setSoundEnabled] = useState(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundEnabledRef = useRef(soundEnabled);
 
   const playRocketSound = useCallback(() => {
@@ -319,53 +231,15 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     );
   }, [now, upcomingLessons]);
 
-  const handleLaunchComplete = () => {
-    stopAlarm();
-    setIsLaunching(false);
-  };
+  const handleLaunchComplete = () => setIsLaunching(false);
 
   const handleExitClassroom = () => {
     setActiveLesson(null);
     setIsLaunching(false);
   };
 
-  const playChime = useCallback(async (invert: boolean = false) => {
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    if (ctx.state === "suspended") await ctx.resume();
-
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(invert ? 440 : 1000, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(
-      invert ? 1000 : 440,
-      ctx.currentTime + 0.3,
-    );
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.6);
-  }, []);
-
-  const startAlarm = useCallback(() => {
-    if (alarmIntervalRef.current) return;
-    playChime();
-    alarmIntervalRef.current = setInterval(playChime, 1000);
-  }, [playChime]);
-
-  const stopAlarm = useCallback(() => {
-    if (alarmIntervalRef.current) {
-      clearInterval(alarmIntervalRef.current);
-      alarmIntervalRef.current = null;
-    }
-  }, []);
-
   const handleLessonTap = useCallback(
     (lesson: StudentScheduleEvent) => {
-      stopAlarm();
       playRocketSound();
 
       const isExternalProvider = isExternalClassSession(lesson.sessionType);
@@ -379,12 +253,11 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
       setActiveLesson(lesson);
       setIsLaunching(true);
     },
-    [basePath, playRocketSound, router, stopAlarm],
+    [basePath, playRocketSound, router],
   );
 
   const handleClassroomCta = (lesson: StudentScheduleEvent) => {
     if (ctaLaunchingLesson) return;
-    stopAlarm();
     setCtaLaunchingLesson(lesson);
   };
 
@@ -394,66 +267,6 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     setCtaLaunchingLesson(null);
     handleLessonTap(lesson);
   }, [ctaLaunchingLesson, handleLessonTap]);
-
-  useEffect(() => {
-    if (isViewingStudentProfile) return;
-    if (upcomingLessons.length === 0) return;
-
-    const checkNotifications = () => {
-      const currentTime = Date.now();
-      upcomingLessons.forEach((lesson) => {
-        const timeDiff = lesson.start - currentTime;
-        const minutesLeft = timeDiff / 60000;
-
-        if (
-          minutesLeft <= 5 &&
-          minutesLeft > 0 &&
-          !notifiedLessons.has(lesson.scheduleId)
-        ) {
-          if (soundEnabledRef.current) {
-            startAlarm();
-          }
-
-          toast.custom(
-            () => (
-              <CountdownToast
-                lesson={lesson}
-                onStop={() => {
-                  stopAlarm();
-                  toast.dismiss(lesson.scheduleId);
-                }}
-                onGoToClass={() => {
-                  handleLessonTap(lesson);
-                  toast.dismiss(lesson.scheduleId);
-                }}
-                title={t("schedule.classStartingSoon")}
-                stopLabel={t("common.muteAlarm") || "Stop"}
-                goToClassLabel={t("dashboard.goToClassroom") || "Go to Class"}
-              />
-            ),
-            {
-              id: lesson.scheduleId,
-              duration: 30000,
-              onDismiss: stopAlarm,
-              onAutoClose: stopAlarm,
-            },
-          );
-          setNotifiedLessons((prev) => new Set(prev).add(lesson.scheduleId));
-        }
-      });
-    };
-
-    const interval = setInterval(checkNotifications, 15000);
-    return () => clearInterval(interval);
-  }, [
-    handleLessonTap,
-    isViewingStudentProfile,
-    notifiedLessons,
-    startAlarm,
-    stopAlarm,
-    t,
-    upcomingLessons,
-  ]);
 
   const classStats = dashboardData?.classes ?? [];
   const studentProfile = dashboardData?.student;

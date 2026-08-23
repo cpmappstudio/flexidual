@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
 import { localDateTimeToUtc } from "../lib/time-zone";
@@ -40,6 +40,15 @@ async function setupCancellationTest() {
       firstName: "Terry",
       lastName: "Tutor",
       fullName: "Terry Tutor",
+      isActive: true,
+      createdAt: NOW,
+    });
+    const studentId = await ctx.db.insert("users", {
+      clerkId: "cancel-student",
+      email: "student@example.com",
+      firstName: "Sam",
+      lastName: "Student",
+      fullName: "Sam Student",
       isActive: true,
       createdAt: NOW,
     });
@@ -89,6 +98,7 @@ async function setupCancellationTest() {
       curriculumId,
       teacherId,
       tutorId,
+      students: [studentId],
       schoolId,
       campusId,
       academicPeriodId,
@@ -175,6 +185,7 @@ async function setupCancellationTest() {
       adminId,
       teacherId,
       tutorId,
+      studentId,
       classId,
       parentId,
       earlyFutureId,
@@ -221,6 +232,49 @@ test("the assigned teacher cancels one future occurrence with audit data", async
     reason: "Teacher is unavailable.",
     occurredAt: NOW,
   });
+});
+
+test("a cancellation notifies participants except the actor and removes the upcoming reminder", async () => {
+  const { t, data } = await setupCancellationTest();
+  await t.mutation(internal.systemNotifications.publish, {
+    recipientId: data.studentId,
+    kind: "class_starting_soon",
+    classId: data.classId,
+    scheduleId: data.earlyFutureId,
+    dedupeKey: `class_starting_soon:${data.earlyFutureId}:${data.studentId}`,
+  });
+
+  await t
+    .withIdentity({ subject: "cancel-teacher" })
+    .mutation(api.schedule.cancelSchedule, {
+      id: data.earlyFutureId,
+      reason: "Teacher is unavailable.",
+    });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  const notifications = await t.run((ctx) =>
+    ctx.db.query("systemNotifications").collect(),
+  );
+  expect(notifications).toHaveLength(2);
+  expect(notifications).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        recipientId: data.studentId,
+        kind: "class_cancelled",
+        reason: "Teacher is unavailable.",
+      }),
+      expect.objectContaining({
+        recipientId: data.tutorId,
+        kind: "class_cancelled",
+      }),
+    ]),
+  );
+  expect(
+    notifications.some(({ recipientId }) => recipientId === data.teacherId),
+  ).toBe(false);
+  expect(
+    notifications.some(({ kind }) => kind === "class_starting_soon"),
+  ).toBe(false);
 });
 
 test("teachers and tutors cannot cancel a recurring series", async () => {
