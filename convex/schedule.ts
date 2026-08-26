@@ -53,9 +53,15 @@ import {
   getLiveSessionHardEnd,
   LIVE_EXTENSION_PROMPT_LEAD_MS,
   MAX_LIVE_OVERRUN_MS,
+  STUDENT_ONLY_GRACE_MS,
 } from "../lib/live-session-policy";
 import { isExternalClassSession } from "../lib/class-session";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
+import {
+  sessionClosureStatusValidator,
+  sessionLeaderRoleValidator,
+  type SessionLeaderRole,
+} from "./model/sessionLeadership";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -64,6 +70,20 @@ import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 const FULL_ATTENDANCE_THRESHOLD_PERCENT = 0.5;
 const PARTIAL_ATTENDANCE_THRESHOLD_PERCENT = 0.1;
 const MIN_PARTIAL_SECONDS = 120;
+const attendanceStatusValidator = v.union(
+  v.literal("present"),
+  v.literal("absent"),
+  v.literal("partial"),
+  v.literal("excused"),
+);
+type AttendanceStatus = "present" | "absent" | "partial" | "excused";
+
+function normalizeAttendanceStatus(status: string): AttendanceStatus {
+  if (status === "present" || status === "partial" || status === "excused") {
+    return status;
+  }
+  return "absent";
+}
 /** A session with no leftAt is considered a dropped connection if older than this */
 const SESSION_STALE_MS = 4 * 60 * 60 * 1000;
 const DEFAULT_SCHEDULE_HISTORY_MS = 14 * 24 * 60 * 60 * 1000;
@@ -95,6 +115,18 @@ const scheduleFields = {
     v.literal("cancelled"),
   ),
   completedAt: v.optional(v.number()),
+  sessionLeaderId: v.optional(v.id("users")),
+  sessionLeaderRole: v.optional(sessionLeaderRoleValidator),
+  sessionLeaderSince: v.optional(v.number()),
+  sessionStartedBy: v.optional(v.id("users")),
+  sessionStartedAt: v.optional(v.number()),
+  sessionEndedBy: v.optional(v.id("users")),
+  sessionClosureStatus: v.optional(sessionClosureStatusValidator),
+  sessionClosedBy: v.optional(v.id("users")),
+  sessionClosedAt: v.optional(v.number()),
+  sessionTransferToId: v.optional(v.id("users")),
+  sessionTransferRequestedBy: v.optional(v.id("users")),
+  sessionTransferRequestedAt: v.optional(v.number()),
   cancellationReason: v.optional(v.string()),
   cancelledAt: v.optional(v.number()),
   cancelledBy: v.optional(v.id("users")),
@@ -134,6 +166,8 @@ const viewerSessionStatusValidator = v.object({
   ...sessionStatusFields,
   roomAdmin: v.boolean(),
   isPrimaryTeacher: v.boolean(),
+  isSessionLeader: v.boolean(),
+  leadershipRole: v.union(sessionLeaderRoleValidator, v.null()),
 });
 const scheduleEventValidator = v.object({
   scheduleId: v.id("classSchedule"),
@@ -490,37 +524,160 @@ function getSessionStatusData(
   };
 }
 
-async function assertCanAdministerLiveSchedule(
+async function getEligibleSessionLeaderRole(
   ctx: QueryCtx | MutationCtx,
   userId: Id<"users">,
+  classData: Doc<"classes">,
+  schoolId?: Id<"schools">,
+): Promise<SessionLeaderRole | null> {
+  if (classData.teacherId === userId) return "teacher";
+
+  const assignments = await ctx.db
+    .query("roleAssignments")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  if (
+    assignments.some(
+      (assignment) =>
+        assignment.role === "superadmin" && assignment.orgType === "system",
+    )
+  ) {
+    return "superadmin";
+  }
+  if (
+    schoolId &&
+    assignments.some(
+      (assignment) =>
+        assignment.role === "admin" &&
+        assignment.orgType === "school" &&
+        assignment.orgId === schoolId,
+    )
+  ) {
+    return "admin";
+  }
+  if (
+    classData.campusId &&
+    assignments.some(
+      (assignment) =>
+        assignment.role === "admin" &&
+        assignment.orgType === "campus" &&
+        assignment.orgId === classData.campusId,
+    )
+  ) {
+    return "admin";
+  }
+  if (
+    classData.campusId &&
+    assignments.some(
+      (assignment) =>
+        assignment.role === "principal" &&
+        assignment.orgType === "campus" &&
+        assignment.orgId === classData.campusId,
+    )
+  ) {
+    return "principal";
+  }
+  return null;
+}
+
+async function getScheduleLeadershipContext(
+  ctx: QueryCtx | MutationCtx,
   schedule: Doc<"classSchedule">,
 ) {
   const classData = await ctx.db.get(schedule.classId);
   if (!classData) throw new ConvexError("Class not found");
-
   const [curriculum, campus] = await Promise.all([
     ctx.db.get(classData.curriculumId),
     classData.campusId ? ctx.db.get(classData.campusId) : null,
   ]);
-  const isDirectInstructor =
-    classData.teacherId === userId || classData.tutorId === userId;
-  const classSchoolId =
-    classData.schoolId ??
-    (classData.campusId ? campus?.schoolId : curriculum?.schoolId);
-  const isAuthorizedAdmin = await canManageClasses(
-    ctx,
-    userId,
-    classData.campusId,
-    classSchoolId,
-  );
+  const schoolId =
+    classData.schoolId ?? campus?.schoolId ?? curriculum?.schoolId;
+  return { classData, schoolId };
+}
 
-  if (!isDirectInstructor && !isAuthorizedAdmin) {
-    throw new ConvexError(
-      "Only the class teacher, tutor, or an administrator can manage the live session",
-    );
+async function recordSessionLeadershipEvent(
+  ctx: MutationCtx,
+  args: {
+    scheduleId: Id<"classSchedule">;
+    eventType:
+      | "started"
+      | "claimed"
+      | "transferred"
+      | "transfer_rejected"
+      | "recovered"
+      | "takeover";
+    actorId: Id<"users">;
+    leaderId: Id<"users">;
+    leaderRole: SessionLeaderRole;
+    previousLeaderId?: Id<"users">;
+    transferRequestedBy?: Id<"users">;
+    transferTargetId?: Id<"users">;
+    createdAt: number;
+  },
+) {
+  await ctx.db.insert("classSessionLeadershipEvents", args);
+}
+
+async function assignSessionLeader(
+  ctx: MutationCtx,
+  schedule: Doc<"classSchedule">,
+  args: {
+    actorId: Id<"users">;
+    leaderId: Id<"users">;
+    leaderRole: SessionLeaderRole;
+    eventType: "started" | "claimed" | "transferred" | "recovered" | "takeover";
+    transferRequestedBy?: Id<"users">;
+    transferTargetId?: Id<"users">;
+    now: number;
+  },
+) {
+  const previousLeaderId = schedule.sessionLeaderId;
+  await ctx.db.patch(schedule._id, {
+    sessionLeaderId: args.leaderId,
+    sessionLeaderRole: args.leaderRole,
+    sessionLeaderSince: args.now,
+    sessionTransferToId: undefined,
+    sessionTransferRequestedBy: undefined,
+    sessionTransferRequestedAt: undefined,
+    liveLeaderAbsentSince: undefined,
+  });
+  await recordSessionLeadershipEvent(ctx, {
+    scheduleId: schedule._id,
+    eventType: args.eventType,
+    actorId: args.actorId,
+    leaderId: args.leaderId,
+    leaderRole: args.leaderRole,
+    previousLeaderId,
+    transferRequestedBy: args.transferRequestedBy,
+    transferTargetId: args.transferTargetId,
+    createdAt: args.now,
+  });
+}
+
+async function getLiveLeadershipMutationContext(
+  ctx: MutationCtx,
+  roomName: string,
+) {
+  const user = await getCurrentUserOrThrow(ctx);
+  const schedule = await ctx.db
+    .query("classSchedule")
+    .withIndex("by_room", (q) => q.eq("roomName", roomName))
+    .first();
+  if (!schedule) throw new ConvexError("Schedule not found");
+  if (schedule.status !== "active" || schedule.isLive !== true) {
+    throw new ConvexError("The class is not live");
   }
-
-  return { classData, classSchoolId };
+  const { classData, schoolId } = await getScheduleLeadershipContext(
+    ctx,
+    schedule,
+  );
+  const leaderRole = await getEligibleSessionLeaderRole(
+    ctx,
+    user._id,
+    classData,
+    schoolId,
+  );
+  return { user, schedule, classData, schoolId, leaderRole };
 }
 
 async function getLiveKitAccessData(
@@ -551,6 +708,13 @@ async function getLiveKitAccessData(
     classSchoolId,
   );
   const roomAdmin = isDirectInstructor || isAuthorizedAdmin;
+  const { schoolId } = await getScheduleLeadershipContext(ctx, schedule);
+  const leadershipRole = await getEligibleSessionLeaderRole(
+    ctx,
+    userId,
+    classData,
+    schoolId,
+  );
 
   let authorized = roomAdmin;
   if (!authorized) {
@@ -576,6 +740,8 @@ async function getLiveKitAccessData(
     authorized,
     roomAdmin,
     isPrimaryTeacher,
+    isSessionLeader: schedule.sessionLeaderId === userId,
+    leadershipRole,
     canJoinEarly: roomAdmin,
     computedRole: isPrimaryTeacher
       ? ("teacher" as const)
@@ -1491,6 +1657,287 @@ export const getSessionStatus = query({
       ...access.session,
       roomAdmin: access.roomAdmin,
       isPrimaryTeacher: access.isPrimaryTeacher,
+      isSessionLeader: access.isSessionLeader,
+      leadershipRole: access.leadershipRole,
+    };
+  },
+});
+
+export const getSessionLeadership = query({
+  args: { roomName: v.string(), now: v.number() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      scheduleId: v.id("classSchedule"),
+      closureStatus: v.optional(sessionClosureStatusValidator),
+      leader: v.union(
+        v.null(),
+        v.object({
+          userId: v.id("users"),
+          participantIdentity: v.string(),
+          fullName: v.string(),
+          imageUrl: v.optional(v.string()),
+          role: sessionLeaderRoleValidator,
+          since: v.number(),
+        }),
+      ),
+      pendingTransfer: v.union(
+        v.null(),
+        v.object({
+          targetUserId: v.id("users"),
+          targetName: v.string(),
+          requestedByName: v.string(),
+          requestedAt: v.number(),
+        }),
+      ),
+      latestTransferOutcome: v.union(
+        v.null(),
+        v.object({
+          eventId: v.id("classSessionLeadershipEvents"),
+          status: v.union(v.literal("accepted"), v.literal("rejected")),
+          responderName: v.string(),
+          respondedAt: v.number(),
+        }),
+      ),
+      viewer: v.object({
+        userId: v.id("users"),
+        isLeader: v.boolean(),
+        isPrimaryTeacher: v.boolean(),
+        canClaim: v.boolean(),
+        canRecover: v.boolean(),
+        canTransfer: v.boolean(),
+        canAcceptTransfer: v.boolean(),
+        canTakeover: v.boolean(),
+      }),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (!schedule) return null;
+
+    const access = await getLiveKitAccessData(
+      ctx,
+      user._id,
+      schedule,
+      args.now,
+    );
+    if (!access?.authorized) throw new ConvexError("PERMISSION_DENIED");
+
+    const { classData, schoolId } = await getScheduleLeadershipContext(
+      ctx,
+      schedule,
+    );
+    const viewerRole = await getEligibleSessionLeaderRole(
+      ctx,
+      user._id,
+      classData,
+      schoolId,
+    );
+    const recentLeadershipEvents = await ctx.db
+      .query("classSessionLeadershipEvents")
+      .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+      .order("desc")
+      .take(10);
+    const latestTransferOutcomeEvent = recentLeadershipEvents.find(
+      (event) =>
+        event.transferRequestedBy === user._id &&
+        (event.eventType === "transferred" ||
+          event.eventType === "transfer_rejected") &&
+        event.createdAt >= args.now - 2 * 60_000,
+    );
+    const [leaderUser, transferTarget, transferRequester, transferResponder] =
+      await Promise.all([
+        schedule.sessionLeaderId
+          ? ctx.db.get("users", schedule.sessionLeaderId)
+          : null,
+        schedule.sessionTransferToId
+          ? ctx.db.get("users", schedule.sessionTransferToId)
+          : null,
+        schedule.sessionTransferRequestedBy
+          ? ctx.db.get("users", schedule.sessionTransferRequestedBy)
+          : null,
+        latestTransferOutcomeEvent?.transferTargetId
+          ? ctx.db.get("users", latestTransferOutcomeEvent.transferTargetId)
+          : null,
+      ]);
+    const isLeader = schedule.sessionLeaderId === user._id;
+    const isPrimaryTeacher = classData.teacherId === user._id;
+    const isLiveSession =
+      schedule.status === "active" && schedule.isLive === true;
+    const leaderAbsentLongEnough =
+      schedule.liveLeaderAbsentSince !== undefined &&
+      args.now >= schedule.liveLeaderAbsentSince + STUDENT_ONLY_GRACE_MS;
+
+    return {
+      scheduleId: schedule._id,
+      closureStatus: schedule.sessionClosureStatus,
+      leader:
+        leaderUser && schedule.sessionLeaderRole && schedule.sessionLeaderSince
+          ? {
+              userId: leaderUser._id,
+              participantIdentity: leaderUser.clerkId,
+              fullName: leaderUser.fullName,
+              imageUrl: leaderUser.imageUrl,
+              role: schedule.sessionLeaderRole,
+              since: schedule.sessionLeaderSince,
+            }
+          : null,
+      pendingTransfer:
+        transferTarget &&
+        transferRequester &&
+        schedule.sessionTransferRequestedAt
+          ? {
+              targetUserId: transferTarget._id,
+              targetName: transferTarget.fullName,
+              requestedByName: transferRequester.fullName,
+              requestedAt: schedule.sessionTransferRequestedAt,
+            }
+          : null,
+      latestTransferOutcome:
+        latestTransferOutcomeEvent && transferResponder
+          ? {
+              eventId: latestTransferOutcomeEvent._id,
+              status:
+                latestTransferOutcomeEvent.eventType === "transferred"
+                  ? ("accepted" as const)
+                  : ("rejected" as const),
+              responderName: transferResponder.fullName,
+              respondedAt: latestTransferOutcomeEvent.createdAt,
+            }
+          : null,
+      viewer: {
+        userId: user._id,
+        isLeader,
+        isPrimaryTeacher,
+        canClaim: Boolean(
+          viewerRole && isLiveSession && !schedule.sessionLeaderId,
+        ),
+        canRecover: Boolean(
+          isPrimaryTeacher &&
+            isLiveSession &&
+            schedule.sessionLeaderId &&
+            !isLeader,
+        ),
+        canTransfer: Boolean(isLeader && isLiveSession),
+        canAcceptTransfer:
+          isLiveSession && schedule.sessionTransferToId === user._id,
+        canTakeover: Boolean(
+          viewerRole && isLiveSession && !isLeader && leaderAbsentLongEnough,
+        ),
+      },
+    };
+  },
+});
+
+async function canCloseClassSession(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  schedule: Doc<"classSchedule">,
+) {
+  if (schedule.sessionClosureStatus === "completed") return false;
+  if (schedule.status === "active" && schedule.isLive === true) {
+    return schedule.sessionLeaderId === userId;
+  }
+  const { classData, schoolId } = await getScheduleLeadershipContext(
+    ctx,
+    schedule,
+  );
+  return Boolean(
+    schedule.sessionLeaderId === userId ||
+      (await getEligibleSessionLeaderRole(ctx, userId, classData, schoolId)),
+  );
+}
+
+export const getSessionClosureContext = query({
+  args: { roomName: v.string(), now: v.number() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      scheduleId: v.id("classSchedule"),
+      className: v.string(),
+      canClose: v.boolean(),
+      closureStatus: v.optional(sessionClosureStatusValidator),
+      lessons: v.array(
+        v.object({
+          lessonId: v.id("lessons"),
+          title: v.string(),
+          order: v.number(),
+          selected: v.boolean(),
+        }),
+      ),
+      attendance: v.array(
+        v.object({
+          studentId: v.id("users"),
+          fullName: v.string(),
+          imageUrl: v.optional(v.string()),
+          totalMinutes: v.number(),
+          status: attendanceStatusValidator,
+        }),
+      ),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (!schedule) return null;
+    const classData = await ctx.db.get(schedule.classId);
+    if (!classData) return null;
+    const access = await getLiveKitAccessData(
+      ctx,
+      user._id,
+      schedule,
+      args.now,
+    );
+    if (!access?.authorized) throw new ConvexError("PERMISSION_DENIED");
+
+    const [lessons, attendance, report] = await Promise.all([
+      ctx.db
+        .query("lessons")
+        .withIndex("by_curriculum_active", (q) =>
+          q.eq("curriculumId", classData.curriculumId).eq("isActive", true),
+        )
+        .collect(),
+      getAttendanceDetailsData(ctx, schedule, classData, args.now),
+      ctx.db
+        .query("classSessionReports")
+        .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+        .first(),
+    ]);
+    const reportLessons = report
+      ? await ctx.db
+          .query("classSessionReportLessons")
+          .withIndex("by_report", (q) => q.eq("reportId", report._id))
+          .collect()
+      : [];
+    const selectedLessonIds = new Set(
+      reportLessons.map(({ lessonId }) => lessonId),
+    );
+
+    return {
+      scheduleId: schedule._id,
+      className: classData.name,
+      canClose: await canCloseClassSession(ctx, user._id, schedule),
+      closureStatus: schedule.sessionClosureStatus,
+      lessons: lessons.map((lesson) => ({
+        lessonId: lesson._id,
+        title: lesson.title,
+        order: lesson.order,
+        selected: selectedLessonIds.has(lesson._id),
+      })),
+      attendance: attendance.map((student) => ({
+        studentId: student.studentId,
+        fullName: student.fullName,
+        imageUrl: student.imageUrl,
+        totalMinutes: student.totalMinutes,
+        status: normalizeAttendanceStatus(student.status),
+      })),
     };
   },
 });
@@ -1527,7 +1974,7 @@ export const getLiveExtensionContext = query({
       schedule,
       args.now,
     );
-    if (!access?.authorized || !access.roomAdmin) return null;
+    if (!access?.authorized || !access.isSessionLeader) return null;
 
     const effectiveEnd = getEffectiveLiveEnd(
       schedule.scheduledEnd,
@@ -1668,6 +2115,8 @@ export const checkLiveKitAccess = internalQuery({
       authorized: v.boolean(),
       roomAdmin: v.boolean(),
       isPrimaryTeacher: v.boolean(),
+      isSessionLeader: v.boolean(),
+      leadershipRole: v.union(sessionLeaderRoleValidator, v.null()),
       canJoinEarly: v.boolean(),
       computedRole: v.union(
         v.literal("teacher"),
@@ -1711,6 +2160,75 @@ export const getUsedLessons = query({
   },
 });
 
+async function getAttendanceDetailsData(
+  ctx: QueryCtx | MutationCtx,
+  schedule: Doc<"classSchedule">,
+  classData: Doc<"classes">,
+  now: number,
+) {
+  const studentIds = await listClassStudentIds(ctx, classData);
+  const students = await Promise.all(studentIds.map((id) => ctx.db.get(id)));
+  const sessions = await ctx.db
+    .query("class_sessions")
+    .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+    .collect();
+
+  return students
+    .filter((student): student is Doc<"users"> => student !== null)
+    .map((student) => {
+      const studentSessions = sessions.filter(
+        (session) => session.studentId === student._id,
+      );
+      const totalSeconds = studentSessions.reduce((sum, session) => {
+        const sessionEnd = session.leftAt ?? now;
+        const effectiveStart = Math.max(
+          session.joinedAt,
+          schedule.scheduledStart,
+        );
+        const effectiveEnd = Math.min(sessionEnd, schedule.scheduledEnd);
+        return sum + Math.max(0, (effectiveEnd - effectiveStart) / 1000);
+      }, 0);
+      const manualStatus = studentSessions.find(
+        (session) => session.attendanceStatus,
+      )?.attendanceStatus;
+      const scheduledDuration =
+        (schedule.scheduledEnd - schedule.scheduledStart) / 1000;
+      const ratio =
+        scheduledDuration > 0 ? totalSeconds / scheduledDuration : 0;
+      let computedStatus = "absent";
+      if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) {
+        computedStatus = "present";
+      } else if (
+        ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT ||
+        totalSeconds >= MIN_PARTIAL_SECONDS
+      ) {
+        computedStatus = "partial";
+      }
+      if (
+        schedule.sessionType === "ignitia" &&
+        totalSeconds === 0 &&
+        !manualStatus
+      ) {
+        computedStatus = "pending";
+      }
+
+      return {
+        studentId: student._id,
+        fullName: student.fullName,
+        email: student.email,
+        imageUrl: student.imageUrl,
+        totalMinutes: Math.round(totalSeconds / 60),
+        status: manualStatus ?? computedStatus,
+        isManual: Boolean(manualStatus),
+        lastSeen:
+          studentSessions.length > 0
+            ? Math.max(...studentSessions.map((session) => session.joinedAt))
+            : null,
+      };
+    })
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+
 export const getAttendanceDetails = query({
   args: { scheduleId: v.id("classSchedule"), now: v.number() },
   returns: v.array(
@@ -1745,71 +2263,7 @@ export const getAttendanceDetails = query({
 
     if (!isClassTeacher && !isAuthorizedAdmin) throw new Error("Unauthorized");
 
-    const studentIds = await listClassStudentIds(ctx, classData);
-    const students = await Promise.all(studentIds.map((id) => ctx.db.get(id)));
-    const validStudents = students.filter((s) => s !== null);
-
-    const sessions = await ctx.db
-      .query("class_sessions")
-      .withIndex("by_schedule", (q) => q.eq("scheduleId", args.scheduleId))
-      .collect();
-
-    const now = args.now;
-    const results = validStudents.map((student) => {
-      const studentSessions = sessions.filter(
-        (s) => s.studentId === student!._id,
-      );
-
-      const totalSeconds = studentSessions.reduce((sum, s) => {
-        const sessionStart = s.joinedAt;
-        const sessionEnd = s.leftAt || now;
-        const effectiveStart = Math.max(sessionStart, schedule.scheduledStart);
-        const effectiveEnd = Math.min(sessionEnd, schedule.scheduledEnd);
-        const duration = Math.max(0, (effectiveEnd - effectiveStart) / 1000);
-        return sum + duration;
-      }, 0);
-
-      const manualRecord = studentSessions.find((s) => s.attendanceStatus);
-      const manualStatus = manualRecord?.attendanceStatus;
-
-      const scheduledDuration =
-        (schedule.scheduledEnd - schedule.scheduledStart) / 1000;
-      const ratio =
-        scheduledDuration > 0 ? totalSeconds / scheduledDuration : 0;
-
-      let computedStatus = "absent";
-      if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT)
-        computedStatus = "present";
-      else if (
-        ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT ||
-        totalSeconds >= MIN_PARTIAL_SECONDS
-      )
-        computedStatus = "partial";
-
-      if (
-        schedule.sessionType === "ignitia" &&
-        totalSeconds === 0 &&
-        !manualStatus
-      ) {
-        computedStatus = "pending";
-      }
-
-      return {
-        studentId: student!._id,
-        fullName: student!.fullName,
-        email: student!.email,
-        imageUrl: student!.imageUrl,
-        totalMinutes: Math.round(totalSeconds / 60),
-        status: manualStatus || computedStatus,
-        isManual: !!manualStatus,
-        lastSeen:
-          studentSessions.length > 0
-            ? Math.max(...studentSessions.map((s) => s.joinedAt))
-            : null,
-      };
-    });
-
-    return results.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    return await getAttendanceDetailsData(ctx, schedule, classData, args.now);
   },
 });
 
@@ -2235,6 +2689,329 @@ export const deleteSchedule = mutation({
   },
 });
 
+export const claimSessionLeadership = mutation({
+  args: { roomName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, schedule, leaderRole } =
+      await getLiveLeadershipMutationContext(ctx, args.roomName);
+    if (!leaderRole) throw new ConvexError("PERMISSION_DENIED");
+    if (schedule.sessionLeaderId) {
+      if (schedule.sessionLeaderId === user._id) return null;
+      throw new ConvexError("This class already has a session leader");
+    }
+    await assignSessionLeader(ctx, schedule, {
+      actorId: user._id,
+      leaderId: user._id,
+      leaderRole,
+      eventType: "claimed",
+      now: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const requestSessionLeadershipTransfer = mutation({
+  args: { roomName: v.string(), targetUserId: v.id("users") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, schedule, classData, schoolId } =
+      await getLiveLeadershipMutationContext(ctx, args.roomName);
+    if (schedule.sessionLeaderId !== user._id) {
+      throw new ConvexError("Only the session leader can request a transfer");
+    }
+    if (args.targetUserId === user._id) {
+      throw new ConvexError("Choose another session leader");
+    }
+    const target = await ctx.db.get("users", args.targetUserId);
+    if (!target?.isActive) throw new ConvexError("Target user is unavailable");
+    const targetRole = await getEligibleSessionLeaderRole(
+      ctx,
+      target._id,
+      classData,
+      schoolId,
+    );
+    if (!targetRole)
+      throw new ConvexError("Target user cannot lead this class");
+
+    await ctx.db.patch(schedule._id, {
+      sessionTransferToId: target._id,
+      sessionTransferRequestedBy: user._id,
+      sessionTransferRequestedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const cancelSessionLeadershipTransfer = mutation({
+  args: { roomName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, schedule } = await getLiveLeadershipMutationContext(
+      ctx,
+      args.roomName,
+    );
+    if (schedule.sessionLeaderId !== user._id) {
+      throw new ConvexError("Only the session leader can cancel the transfer");
+    }
+    await ctx.db.patch(schedule._id, {
+      sessionTransferToId: undefined,
+      sessionTransferRequestedBy: undefined,
+      sessionTransferRequestedAt: undefined,
+    });
+    return null;
+  },
+});
+
+export const rejectSessionLeadershipTransfer = mutation({
+  args: { roomName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, schedule } = await getLiveLeadershipMutationContext(
+      ctx,
+      args.roomName,
+    );
+    if (schedule.sessionTransferToId !== user._id) {
+      throw new ConvexError("No leadership transfer is pending for this user");
+    }
+    if (
+      !schedule.sessionLeaderId ||
+      !schedule.sessionLeaderRole ||
+      !schedule.sessionTransferRequestedBy
+    ) {
+      throw new ConvexError("The leadership transfer is no longer available");
+    }
+
+    const respondedAt = Date.now();
+    await ctx.db.patch(schedule._id, {
+      sessionTransferToId: undefined,
+      sessionTransferRequestedBy: undefined,
+      sessionTransferRequestedAt: undefined,
+    });
+    await recordSessionLeadershipEvent(ctx, {
+      scheduleId: schedule._id,
+      eventType: "transfer_rejected",
+      actorId: user._id,
+      leaderId: schedule.sessionLeaderId,
+      leaderRole: schedule.sessionLeaderRole,
+      transferRequestedBy: schedule.sessionTransferRequestedBy,
+      transferTargetId: user._id,
+      createdAt: respondedAt,
+    });
+    return null;
+  },
+});
+
+export const acceptSessionLeadershipTransfer = mutation({
+  args: { roomName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, schedule, leaderRole } =
+      await getLiveLeadershipMutationContext(ctx, args.roomName);
+    if (schedule.sessionTransferToId !== user._id || !leaderRole) {
+      throw new ConvexError("No leadership transfer is pending for this user");
+    }
+    await assignSessionLeader(ctx, schedule, {
+      actorId: user._id,
+      leaderId: user._id,
+      leaderRole,
+      eventType: "transferred",
+      transferRequestedBy: schedule.sessionTransferRequestedBy,
+      transferTargetId: user._id,
+      now: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const recoverSessionLeadership = mutation({
+  args: { roomName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, schedule, classData } =
+      await getLiveLeadershipMutationContext(ctx, args.roomName);
+    if (classData.teacherId !== user._id) {
+      throw new ConvexError("Only the assigned teacher can recover the class");
+    }
+    if (schedule.sessionLeaderId === user._id) return null;
+    await assignSessionLeader(ctx, schedule, {
+      actorId: user._id,
+      leaderId: user._id,
+      leaderRole: "teacher",
+      eventType: "recovered",
+      now: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const takeOverSessionLeadership = mutation({
+  args: { roomName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { user, schedule, leaderRole } =
+      await getLiveLeadershipMutationContext(ctx, args.roomName);
+    if (!leaderRole) throw new ConvexError("PERMISSION_DENIED");
+    if (schedule.sessionLeaderId === user._id) return null;
+    const canTakeOver =
+      schedule.liveLeaderAbsentSince !== undefined &&
+      Date.now() >= schedule.liveLeaderAbsentSince + STUDENT_ONLY_GRACE_MS;
+    if (!canTakeOver) {
+      throw new ConvexError(
+        "The current leader is still responsible for this class",
+      );
+    }
+    await assignSessionLeader(ctx, schedule, {
+      actorId: user._id,
+      leaderId: user._id,
+      leaderRole,
+      eventType: "takeover",
+      now: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const submitSessionClosure = mutation({
+  args: {
+    roomName: v.string(),
+    lessonIds: v.array(v.id("lessons")),
+    attendance: v.array(
+      v.object({
+        studentId: v.id("users"),
+        status: attendanceStatusValidator,
+      }),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (!schedule) throw new ConvexError("Schedule not found");
+    if (!(await canCloseClassSession(ctx, user._id, schedule))) {
+      throw new ConvexError("Only the session leader can close this class");
+    }
+    const classData = await ctx.db.get(schedule.classId);
+    if (!classData) throw new ConvexError("Class not found");
+
+    const uniqueLessonIds = new Set(args.lessonIds);
+    if (
+      uniqueLessonIds.size === 0 ||
+      uniqueLessonIds.size !== args.lessonIds.length
+    ) {
+      throw new ConvexError("Select at least one taught lesson");
+    }
+    const lessons = await Promise.all(
+      args.lessonIds.map((lessonId) => ctx.db.get(lessonId)),
+    );
+    if (
+      lessons.some(
+        (lesson) =>
+          !lesson ||
+          !lesson.isActive ||
+          lesson.curriculumId !== classData.curriculumId,
+      )
+    ) {
+      throw new ConvexError("Invalid taught lesson selection");
+    }
+
+    const enrolledStudentIds = await listClassStudentIds(ctx, classData);
+    const submittedStudentIds = new Set(
+      args.attendance.map(({ studentId }) => studentId),
+    );
+    if (
+      submittedStudentIds.size !== args.attendance.length ||
+      submittedStudentIds.size !== enrolledStudentIds.length ||
+      enrolledStudentIds.some(
+        (studentId) => !submittedStudentIds.has(studentId),
+      )
+    ) {
+      throw new ConvexError("Verify the attendance of every enrolled student");
+    }
+
+    const now = Date.now();
+    const existingReport = await ctx.db
+      .query("classSessionReports")
+      .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+      .first();
+    const reportId = existingReport
+      ? existingReport._id
+      : await ctx.db.insert("classSessionReports", {
+          scheduleId: schedule._id,
+          closedBy: user._id,
+          closedAt: now,
+        });
+    if (existingReport) {
+      await ctx.db.patch(existingReport._id, {
+        closedBy: user._id,
+        closedAt: now,
+      });
+      const previousLessons = await ctx.db
+        .query("classSessionReportLessons")
+        .withIndex("by_report", (q) => q.eq("reportId", existingReport._id))
+        .collect();
+      for (const previousLesson of previousLessons) {
+        await ctx.db.delete(previousLesson._id);
+      }
+    }
+    for (const lessonId of args.lessonIds) {
+      await ctx.db.insert("classSessionReportLessons", {
+        reportId,
+        scheduleId: schedule._id,
+        lessonId,
+      });
+    }
+
+    const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
+    for (const attendance of args.attendance) {
+      const studentSessions = await ctx.db
+        .query("class_sessions")
+        .withIndex("by_student_schedule", (q) =>
+          q
+            .eq("studentId", attendance.studentId)
+            .eq("scheduleId", schedule._id),
+        )
+        .collect();
+      const targetSession =
+        studentSessions.find((session) => session.attendanceStatus) ??
+        studentSessions[0];
+      if (targetSession) {
+        await ctx.db.patch(targetSession._id, {
+          attendanceStatus: attendance.status,
+          manualMarkedBy: user._id,
+          manualMarkedAt: now,
+        });
+      } else {
+        await ctx.db.insert("class_sessions", {
+          scheduleId: schedule._id,
+          studentId: attendance.studentId,
+          joinedAt: now,
+          leftAt: now,
+          durationSeconds: 0,
+          roomName: schedule.roomName,
+          sessionDate: utcToLocalDateTime(
+            schedule.scheduledStart,
+            timeZone,
+          ).slice(0, 10),
+          attendanceStatus: attendance.status,
+          manualMarkedBy: user._id,
+          manualMarkedAt: now,
+        });
+      }
+    }
+
+    await ctx.db.patch(schedule._id, {
+      sessionClosureStatus: "completed",
+      sessionClosedBy: user._id,
+      sessionClosedAt: now,
+    });
+    return null;
+  },
+});
+
 export const markLive = mutation({
   args: {
     roomName: v.string(),
@@ -2250,13 +3027,32 @@ export const markLive = mutation({
       .first();
     if (!schedule) throw new ConvexError("Schedule not found");
 
-    const { classData, classSchoolId } = await assertCanAdministerLiveSchedule(
+    const { classData, schoolId: classSchoolId } =
+      await getScheduleLeadershipContext(ctx, schedule);
+    const leaderRole = await getEligibleSessionLeaderRole(
       ctx,
       user._id,
-      schedule,
+      classData,
+      classSchoolId,
     );
+    if (!leaderRole) {
+      throw new ConvexError(
+        "Only the assigned teacher or an authorized administrator can start this class",
+      );
+    }
 
-    if (schedule.isLive) return null;
+    if (schedule.isLive) {
+      if (!schedule.sessionLeaderId) {
+        await assignSessionLeader(ctx, schedule, {
+          actorId: user._id,
+          leaderId: user._id,
+          leaderRole,
+          eventType: "claimed",
+          now: Date.now(),
+        });
+      }
+      return null;
+    }
     if (schedule.status === "cancelled") {
       throw new ConvexError("Cancelled sessions cannot be started");
     }
@@ -2268,12 +3064,25 @@ export const markLive = mutation({
       throw new ConvexError("Completed sessions cannot be started");
     }
     const liveAccess = normalizeLiveAccess(classData.liveAccess);
+    await assignSessionLeader(ctx, schedule, {
+      actorId: user._id,
+      leaderId: user._id,
+      leaderRole,
+      eventType: "started",
+      now,
+    });
     await ctx.db.patch(schedule._id, {
       isLive: true,
       schoolId: classSchoolId,
       liveAccess,
       status: "active",
       completedAt: undefined,
+      sessionStartedBy: user._id,
+      sessionStartedAt: now,
+      sessionEndedBy: undefined,
+      sessionClosureStatus: "pending",
+      sessionClosedBy: undefined,
+      sessionClosedAt: undefined,
       liveLeaderAbsentSince: undefined,
       liveExtensionEndsAt: undefined,
       liveDecisionEndsAt: undefined,
@@ -2304,7 +3113,9 @@ export const confirmLiveExtension = mutation({
       .first();
     if (!schedule) throw new ConvexError("Schedule not found");
 
-    await assertCanAdministerLiveSchedule(ctx, user._id, schedule);
+    if (schedule.sessionLeaderId !== user._id) {
+      throw new ConvexError("Only the session leader can extend this class");
+    }
 
     const now = Date.now();
     const currentEnd = schedule.liveExtensionEndsAt ?? schedule.scheduledEnd;
@@ -2347,6 +3158,7 @@ export const endLiveSession = internalMutation({
   args: {
     roomName: v.string(),
     endedAt: v.number(),
+    endedBy: v.optional(v.id("users")),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -2360,6 +3172,7 @@ export const endLiveSession = internalMutation({
       isLive: false,
       status: "completed",
       completedAt: schedule.completedAt ?? args.endedAt,
+      sessionEndedBy: args.endedBy ?? schedule.sessionEndedBy,
       liveLeaderAbsentSince: undefined,
       liveExtensionEndsAt: undefined,
       liveDecisionEndsAt: undefined,
@@ -2540,6 +3353,8 @@ export const getLiveLifecycleState = internalQuery({
       liveLeaderAbsentSince: v.optional(v.number()),
       liveExtensionEndsAt: v.optional(v.number()),
       liveDecisionEndsAt: v.optional(v.number()),
+      sessionLeaderId: v.optional(v.id("users")),
+      sessionClosureStatus: v.optional(sessionClosureStatusValidator),
     }),
   ),
   handler: async (ctx, { roomName }) => {
@@ -2557,6 +3372,8 @@ export const getLiveLifecycleState = internalQuery({
       liveLeaderAbsentSince: schedule.liveLeaderAbsentSince,
       liveExtensionEndsAt: schedule.liveExtensionEndsAt,
       liveDecisionEndsAt: schedule.liveDecisionEndsAt,
+      sessionLeaderId: schedule.sessionLeaderId,
+      sessionClosureStatus: schedule.sessionClosureStatus,
     };
   },
 });

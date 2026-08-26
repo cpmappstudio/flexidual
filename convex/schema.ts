@@ -15,6 +15,11 @@ import { v } from "convex/values";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { liveAccessValidator } from "./model/liveAccess";
 import { courseWeeklySlotValidator } from "./model/courseSchedule";
+import {
+  sessionClosureStatusValidator,
+  sessionLeaderRoleValidator,
+  sessionLeadershipEventTypeValidator,
+} from "./model/sessionLeadership";
 
 export default defineSchema({
   /**
@@ -243,6 +248,20 @@ export default defineSchema({
     // Completion tracking
     completedAt: v.optional(v.number()),
 
+    // Temporary responsibility for this occurrence only.
+    sessionLeaderId: v.optional(v.id("users")),
+    sessionLeaderRole: v.optional(sessionLeaderRoleValidator),
+    sessionLeaderSince: v.optional(v.number()),
+    sessionStartedBy: v.optional(v.id("users")),
+    sessionStartedAt: v.optional(v.number()),
+    sessionEndedBy: v.optional(v.id("users")),
+    sessionClosureStatus: v.optional(sessionClosureStatusValidator),
+    sessionClosedBy: v.optional(v.id("users")),
+    sessionClosedAt: v.optional(v.number()),
+    sessionTransferToId: v.optional(v.id("users")),
+    sessionTransferRequestedBy: v.optional(v.id("users")),
+    sessionTransferRequestedAt: v.optional(v.number()),
+
     // Cancellation tracking
     cancellationReason: v.optional(v.string()),
     cancelledAt: v.optional(v.number()),
@@ -281,6 +300,32 @@ export default defineSchema({
     .index("by_live_expiration", ["status", "isLive", "scheduledEnd"])
     .index("by_recurrence_parent", ["recurrenceParentId"]),
 
+  classSessionLeadershipEvents: defineTable({
+    scheduleId: v.id("classSchedule"),
+    eventType: sessionLeadershipEventTypeValidator,
+    actorId: v.id("users"),
+    leaderId: v.id("users"),
+    leaderRole: sessionLeaderRoleValidator,
+    previousLeaderId: v.optional(v.id("users")),
+    transferRequestedBy: v.optional(v.id("users")),
+    transferTargetId: v.optional(v.id("users")),
+    createdAt: v.number(),
+  }).index("by_schedule", ["scheduleId", "createdAt"]),
+
+  classSessionReports: defineTable({
+    scheduleId: v.id("classSchedule"),
+    closedBy: v.id("users"),
+    closedAt: v.number(),
+  }).index("by_schedule", ["scheduleId"]),
+
+  classSessionReportLessons: defineTable({
+    reportId: v.id("classSessionReports"),
+    scheduleId: v.id("classSchedule"),
+    lessonId: v.id("lessons"),
+  })
+    .index("by_report", ["reportId", "lessonId"])
+    .index("by_schedule", ["scheduleId", "lessonId"]),
+
   // Domain events retained independently from per-recipient delivery state.
   classCancellationEvents: defineTable({
     classId: v.id("classes"),
@@ -310,11 +355,7 @@ export default defineSchema({
       v.literal("announcement"),
     ),
     action: v.optional(
-      v.union(
-        v.literal("added"),
-        v.literal("removed"),
-        v.literal("changed"),
-      ),
+      v.union(v.literal("added"), v.literal("removed"), v.literal("changed")),
     ),
     actorId: v.optional(v.id("users")),
     schoolId: v.optional(v.id("schools")),

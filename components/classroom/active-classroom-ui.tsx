@@ -22,8 +22,11 @@ import {
   MonitorUp,
   Hand,
   Loader2,
-  Eye,
   UserStar,
+  ArrowRightLeft,
+  ChevronDown,
+  Clock3,
+  X,
   CircleDot,
   StopCircle,
   TabletSmartphone,
@@ -33,6 +36,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { LeaveClassButton } from "./leave-class-button";
 import { EndClassButton } from "./end-class-button";
+import { SessionCloseoutDialog } from "./session-closeout-dialog";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import {
@@ -62,8 +66,10 @@ import {
 } from "./classroom-ui-preview";
 import {
   createClassroomPreviewParticipants,
+  getParticipantConvexUserId,
   getIsCompanionParticipant as getIsCompanion,
   getParticipantImageUrl as getImageUrl,
+  getParticipantLeadershipRole,
   getParticipantRole as getRole,
 } from "./classroom-participant";
 import { ClassroomParticipantTile as ParticipantTile } from "./classroom-participant-tile";
@@ -87,8 +93,16 @@ import {
   ClassroomActionBar,
   ClassroomActionButton,
 } from "./classroom-action-bar";
-import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
+import { Toggle } from "@/components/ui/toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
   SheetClose,
@@ -154,6 +168,7 @@ const ACTIVE_PREVIEW_LAYERS: Partial<
 interface ActiveClassroomUIProps {
   courseId: Id<"classes">;
   currentUserRole?: string;
+  canLeadSession?: boolean;
   roomName: string;
   sessionNow: number;
   className?: string;
@@ -169,6 +184,7 @@ interface ActiveClassroomUIProps {
 export function ActiveClassroomUI({
   courseId,
   currentUserRole,
+  canLeadSession = false,
   roomName,
   sessionNow,
   className,
@@ -192,6 +208,27 @@ export function ActiveClassroomUI({
   }, [pathname]);
   const markLive = useMutation(api.schedule.markLive);
   const confirmLiveExtension = useMutation(api.schedule.confirmLiveExtension);
+  const claimSessionLeadership = useMutation(
+    api.schedule.claimSessionLeadership,
+  );
+  const recoverSessionLeadership = useMutation(
+    api.schedule.recoverSessionLeadership,
+  );
+  const takeOverSessionLeadership = useMutation(
+    api.schedule.takeOverSessionLeadership,
+  );
+  const requestSessionLeadershipTransfer = useMutation(
+    api.schedule.requestSessionLeadershipTransfer,
+  );
+  const acceptSessionLeadershipTransfer = useMutation(
+    api.schedule.acceptSessionLeadershipTransfer,
+  );
+  const cancelSessionLeadershipTransfer = useMutation(
+    api.schedule.cancelSessionLeadershipTransfer,
+  );
+  const rejectSessionLeadershipTransfer = useMutation(
+    api.schedule.rejectSessionLeadershipTransfer,
+  );
   const toggleRecording = useAction(api.livekit.toggleRecording);
   const endSession = useAction(api.livekit.endSession);
   const notifyRoomAdministratorLeft = useAction(
@@ -214,8 +251,7 @@ export function ActiveClassroomUI({
   );
   const [waitingForApproval, setWaitingForApproval] = useState(false);
   const [shareApproved, setShareApproved] = useState(false);
-  const [presenterMode, setPresenterMode] = useState(false);
-  const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
+  const [isChangingSessionLeader, setIsChangingSessionLeader] = useState(false);
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
   const [isRecording, setIsRecording] = useState(room.isRecording);
   const [showRecordConfirm, setShowRecordConfirm] = useState(false);
@@ -227,6 +263,7 @@ export function ActiveClassroomUI({
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [hasStartedSession, setHasStartedSession] = useState(false);
   const [isEndingSession, setIsEndingSession] = useState(false);
+  const [isCloseoutOpen, setIsCloseoutOpen] = useState(false);
   const [isSessionActionDialogOpen, setIsSessionActionDialogOpen] =
     useState(false);
   const [uiPreviewState, setUiPreviewState] =
@@ -236,6 +273,11 @@ export function ActiveClassroomUI({
   const [classroomPanelTab, setClassroomPanelTab] =
     useState<ClassroomPanelTab>("participants");
   const reconciliationAttemptRef = useRef({ effectiveEnd: 0, attemptedAt: 0 });
+  const leadershipChangeInFlightRef = useRef(false);
+  const handledTransferRequestAtRef = useRef<number | null>(null);
+  const displayedTransferRequestAtRef = useRef<number | null>(null);
+  const transferOutcomeInitializedRef = useRef(false);
+  const lastTransferOutcomeIdRef = useRef<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const { zoom, pan, stageRef, handleZoom, startPanDrag } =
@@ -260,6 +302,12 @@ export function ActiveClassroomUI({
         }
       : "skip",
   );
+  const sessionLeadership = useQuery(api.schedule.getSessionLeadership, {
+    roomName,
+    now: getClassroomQueryNow(sessionNow),
+  });
+  const isAssignedTeacher =
+    sessionLeadership?.viewer.isPrimaryTeacher ?? amITeacher;
 
   const hasExtensionDecision =
     amIAuthority &&
@@ -302,7 +350,7 @@ export function ActiveClassroomUI({
   const isShareApprovedForDisplay = hasActivePreview ? false : shareApproved;
   const visibleLayer = selectClassroomLayer({
     activeLayers: {
-      "session-start": amIAuthority && !sessionIsLive && !hasStartedSession,
+      "session-start": canLeadSession && !sessionIsLive && !hasStartedSession,
       "extension-decision": hasExtensionDecision,
       "share-permission": Boolean(pendingRequest && amIAuthority),
       "recording-confirmation": showRecordConfirm,
@@ -310,7 +358,7 @@ export function ActiveClassroomUI({
       "enable-audio": needsClick,
       fullscreen: pendingFullscreen,
     },
-    isExternalDialogOpen: isSessionActionDialogOpen,
+    isExternalDialogOpen: isSessionActionDialogOpen || isCloseoutOpen,
     isPreviewActive: hasActivePreview,
     previewLayer: ACTIVE_PREVIEW_LAYERS[uiPreviewState] ?? null,
   });
@@ -384,20 +432,29 @@ export function ActiveClassroomUI({
     const role = p.isLocal ? currentUserRole : getRole(p);
     return role === "teacher";
   });
-  const adminPresenterParticipant = adminPresenterId
-    ? participants.find((p) => p.identity === adminPresenterId)
-    : null;
-  const isLocalAdminPresenting =
-    amIAuthority &&
-    !amITeacher &&
-    !actualTeacher &&
-    (hasActivePreview ? isPreviewing("presenter-active") : presenterMode);
+  const persistedLeaderParticipant = sessionLeadership?.leader
+    ? participants.find(
+        (participant) =>
+          participant.identity ===
+          sessionLeadership.leader?.participantIdentity,
+      )
+    : undefined;
+  const isLocalSessionLeader = hasActivePreview
+    ? isPreviewing("presenter-active") || amITeacher
+    : (sessionLeadership?.viewer.isLeader ?? amITeacher);
   const teacher =
-    actualTeacher ||
-    adminPresenterParticipant ||
-    (isLocalAdminPresenting ? localParticipant : null) ||
+    persistedLeaderParticipant ||
+    (isLocalSessionLeader ? localParticipant : null) ||
+    (!sessionLeadership?.leader ? actualTeacher : null) ||
     undefined;
-  const amIIncognito = amIAuthority && !amITeacher && !!actualTeacher;
+  const isLocalObserver = amIAuthority && !isLocalSessionLeader;
+  const leadershipTransferCandidates = participants.filter(
+    (participant) =>
+      !participant.isLocal &&
+      !getIsCompanion(participant) &&
+      Boolean(getParticipantConvexUserId(participant)) &&
+      Boolean(getParticipantLeadershipRole(participant)),
+  );
 
   const handleStartSession = async () => {
     setIsStartingSession(true);
@@ -420,7 +477,7 @@ export function ActiveClassroomUI({
   );
   const hasCompanion = companionParticipants.length > 0;
   const students = participants.filter((p) => {
-    if (p.isLocal && (amITeacher || isLocalAdminPresenting)) return false;
+    if (p.isLocal && isLocalSessionLeader) return false;
     const role = p.isLocal ? currentUserRole : getRole(p);
     return role === "student";
   });
@@ -580,15 +637,6 @@ export function ActiveClassroomUI({
           toast.dismiss(`hand-${msg.participantId}`);
         }
 
-        if (
-          senderIsAuthority &&
-          msg.type === "ADMIN_PRESENTING" &&
-          participant &&
-          !amITeacher
-        ) {
-          setAdminPresenterId(msg.presenting ? participant.identity : null);
-        }
-
         if (senderIsAuthority && msg.type === "WHITEBOARD_STATE") {
           setIsWhiteboardActive(msg.active);
           if (msg.active) {
@@ -613,7 +661,6 @@ export function ActiveClassroomUI({
   }, [
     room,
     amIAuthority,
-    amITeacher,
     isSharingLocally,
     localParticipant,
     playHandChime,
@@ -734,22 +781,192 @@ export function ActiveClassroomUI({
     toast.dismiss(`hand-${participantId}`);
   };
 
-  const togglePresenterMode = async () => {
-    if (isPreviewing("presenter-active")) {
-      setUiPreviewState("none");
+  const sessionLeadershipErrorMessage = t("classroom.sessionLeadershipError");
+  const runLeadershipChange = useCallback(
+    async (change: () => Promise<unknown>) => {
+      if (leadershipChangeInFlightRef.current) return false;
+      leadershipChangeInFlightRef.current = true;
+      setIsChangingSessionLeader(true);
+      try {
+        await change();
+        return true;
+      } catch (error) {
+        console.error("Failed to change the session leader:", error);
+        toast.error(sessionLeadershipErrorMessage);
+        return false;
+      } finally {
+        leadershipChangeInFlightRef.current = false;
+        setIsChangingSessionLeader(false);
+      }
+    },
+    [sessionLeadershipErrorMessage],
+  );
+
+  const leadershipRequestToastId = `session-leadership-request-${roomName}`;
+  const canAcceptLeadershipTransfer =
+    sessionLeadership?.viewer.canAcceptTransfer ?? false;
+  const leadershipRequestAt =
+    sessionLeadership?.pendingTransfer?.requestedAt ?? null;
+  const leadershipRequesterName =
+    sessionLeadership?.pendingTransfer?.requestedByName ?? "";
+  const pendingLeadershipTransfer = sessionLeadership?.pendingTransfer ?? null;
+  const leadershipRequestTitle = leadershipRequesterName
+    ? t("classroom.leadershipTransferRequestTitle", {
+        name: leadershipRequesterName,
+      })
+    : "";
+  const leadershipRequestDescription = t(
+    "classroom.leadershipTransferRequestDescription",
+  );
+  const rejectLeadershipLabel = t("classroom.rejectSessionLeadership");
+  const acceptLeadershipLabel = t("classroom.acceptSessionLeadership");
+  const leadershipRejectedByYouMessage = t(
+    "classroom.leadershipTransferRejectedByYou",
+  );
+  const leadershipAcceptedByYouMessage = t(
+    "classroom.leadershipTransferAcceptedByYou",
+  );
+
+  useEffect(() => {
+    if (sessionLeadership === undefined) return;
+
+    if (
+      !canAcceptLeadershipTransfer ||
+      leadershipRequestAt === null ||
+      !leadershipRequesterName
+    ) {
+      displayedTransferRequestAtRef.current = null;
+      toast.dismiss(leadershipRequestToastId);
       return;
     }
-    const newMode = !presenterMode;
-    setPresenterMode(newMode);
-    const encoder = new TextEncoder();
-    const data = JSON.stringify({
-      type: "ADMIN_PRESENTING",
-      presenting: newMode,
-    });
-    await room.localParticipant.publishData(encoder.encode(data), {
-      reliable: true,
-    });
-  };
+    if (handledTransferRequestAtRef.current === leadershipRequestAt) {
+      displayedTransferRequestAtRef.current = null;
+      toast.dismiss(leadershipRequestToastId);
+      return;
+    }
+    if (displayedTransferRequestAtRef.current === leadershipRequestAt) return;
+
+    displayedTransferRequestAtRef.current = leadershipRequestAt;
+    toast.custom(
+      (toastId) => (
+        <div
+          role="alert"
+          className="w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-primary/25 bg-card p-4 text-card-foreground shadow-lg"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <ArrowRightLeft className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{leadershipRequestTitle}</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                {leadershipRequestDescription}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isChangingSessionLeader}
+              onClick={() => {
+                void (async () => {
+                  const changed = await runLeadershipChange(() =>
+                    rejectSessionLeadershipTransfer({ roomName }),
+                  );
+                  if (!changed) return;
+                  handledTransferRequestAtRef.current = leadershipRequestAt;
+                  toast.dismiss(toastId);
+                  toast.info(leadershipRejectedByYouMessage);
+                })();
+              }}
+            >
+              {rejectLeadershipLabel}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={isChangingSessionLeader}
+              onClick={() => {
+                void (async () => {
+                  const changed = await runLeadershipChange(() =>
+                    acceptSessionLeadershipTransfer({ roomName }),
+                  );
+                  if (!changed) return;
+                  handledTransferRequestAtRef.current = leadershipRequestAt;
+                  toast.dismiss(toastId);
+                  toast.success(leadershipAcceptedByYouMessage);
+                })();
+              }}
+            >
+              <UserStar className="size-4" />
+              {acceptLeadershipLabel}
+            </Button>
+          </div>
+        </div>
+      ),
+      {
+        id: leadershipRequestToastId,
+        duration: Infinity,
+        dismissible: false,
+        position: "bottom-right",
+      },
+    );
+  }, [
+    acceptSessionLeadershipTransfer,
+    acceptLeadershipLabel,
+    canAcceptLeadershipTransfer,
+    isChangingSessionLeader,
+    leadershipAcceptedByYouMessage,
+    leadershipRequestAt,
+    leadershipRequestDescription,
+    leadershipRequestToastId,
+    leadershipRequestTitle,
+    leadershipRejectedByYouMessage,
+    leadershipRequesterName,
+    rejectLeadershipLabel,
+    rejectSessionLeadershipTransfer,
+    roomName,
+    runLeadershipChange,
+    sessionLeadership,
+  ]);
+
+  useEffect(
+    () => () => {
+      displayedTransferRequestAtRef.current = null;
+      toast.dismiss(leadershipRequestToastId);
+    },
+    [leadershipRequestToastId],
+  );
+
+  useEffect(() => {
+    if (sessionLeadership === undefined) return;
+    const outcome = sessionLeadership?.latestTransferOutcome ?? null;
+    if (!transferOutcomeInitializedRef.current) {
+      transferOutcomeInitializedRef.current = true;
+      lastTransferOutcomeIdRef.current = outcome?.eventId ?? null;
+      return;
+    }
+    if (!outcome || lastTransferOutcomeIdRef.current === outcome.eventId) {
+      return;
+    }
+
+    lastTransferOutcomeIdRef.current = outcome.eventId;
+    if (outcome.status === "accepted") {
+      toast.success(
+        t("classroom.leadershipTransferAccepted", {
+          name: outcome.responderName,
+        }),
+      );
+      return;
+    }
+    toast.info(
+      t("classroom.leadershipTransferRejected", {
+        name: outcome.responderName,
+      }),
+    );
+  }, [sessionLeadership, t]);
 
   const handleShareClick = async () => {
     if (isPreviewing("share-waiting")) {
@@ -823,12 +1040,17 @@ export function ActiveClassroomUI({
     }
   };
 
-  const handleEndSession = async () => {
+  const handleEndSession = () => {
+    setIsCloseoutOpen(true);
+  };
+
+  const handleCompleteSession = async () => {
     if (isEndingSession) return;
     setIsEndingSession(true);
     try {
       await endSession({ roomName });
       toast.success(t("classroom.classEnded"));
+      setIsCloseoutOpen(false);
     } catch (error) {
       console.error("Failed to end class:", error);
       toast.error(t("classroom.endClassError"));
@@ -896,9 +1118,7 @@ export function ActiveClassroomUI({
   useEffect(() => {
     if (!localParticipant) return;
     if (!sessionIsLive && !hasStartedSession) return;
-    // Authority non-teachers join with audio=false/video=false at the LiveKitRoom level,
-    // so no media is ever captured. Nothing to do here for them.
-    if (amIAuthority && !amITeacher) return;
+    if (!isLocalSessionLeader) return;
     const initMedia = async () => {
       try {
         await localParticipant.setMicrophoneEnabled(true);
@@ -913,19 +1133,18 @@ export function ActiveClassroomUI({
     };
     initMedia();
   }, [
-    amIAuthority,
-    amITeacher,
     hasStartedSession,
+    isLocalSessionLeader,
     localParticipant,
     sessionIsLive,
   ]);
 
-  // When an admin takes the presenter role, enable their media
+  // The persisted session leader owns the teacher media role.
   useEffect(() => {
-    if (!localParticipant || !isLocalAdminPresenting) return;
+    if (!localParticipant || !isLocalSessionLeader) return;
     localParticipant.setMicrophoneEnabled(true).catch(() => {});
     localParticipant.setCameraEnabled(true).catch(() => {});
-  }, [localParticipant, isLocalAdminPresenting]);
+  }, [localParticipant, isLocalSessionLeader]);
 
   // Auto-close QR dialog when a companion device successfully joins the room
   useEffect(() => {
@@ -1128,14 +1347,40 @@ export function ActiveClassroomUI({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t("classroom.startClassTitle")}
+              {t(
+                isAssignedTeacher
+                  ? "classroom.startClassTitle"
+                  : "classroom.startClassAsLeaderTitle",
+              )}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t("classroom.startClassDescription")}
+              {t(
+                isAssignedTeacher
+                  ? "classroom.startClassDescription"
+                  : "classroom.startClassAsLeaderDescription",
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
+          {!isAssignedTeacher && (
+            <p className="border-t pt-3 text-xs leading-relaxed text-muted-foreground">
+              {t("classroom.startClassAsLeaderDisclosure")}
+            </p>
+          )}
+
           <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={isStartingSession}
+              onClick={() => {
+                if (isPreviewing("start-class")) {
+                  setUiPreviewState("none");
+                  return;
+                }
+                void handleLeaveClick();
+              }}
+            >
+              {t("classroom.backWithoutStarting")}
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={isStartingSession}
               onClick={(event) => {
@@ -1150,7 +1395,11 @@ export function ActiveClassroomUI({
               {isStartingSession && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {t("classroom.confirmStartClass")}
+              {t(
+                isAssignedTeacher
+                  ? "classroom.confirmStartClass"
+                  : "classroom.confirmStartClassAsLeader",
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1226,6 +1475,14 @@ export function ActiveClassroomUI({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SessionCloseoutDialog
+        open={isCloseoutOpen}
+        roomName={roomName}
+        sessionNow={sessionNow}
+        onOpenChange={setIsCloseoutOpen}
+        onComplete={handleCompleteSession}
+      />
 
       <ClassroomFullscreenPrompt
         open={visibleLayer === "fullscreen"}
@@ -1375,13 +1632,14 @@ export function ActiveClassroomUI({
         closePanelLabel={t("classroom.closeInteractionPanel")}
         onPanelOpenChange={setIsClassroomPanelOpen}
         sessionAction={
-          amIAuthority && (sessionIsLive || hasStartedSession) ? (
+          isLocalSessionLeader && (sessionIsLive || hasStartedSession) ? (
             <EndClassButton
               appearance="header"
               onConfirm={handleEndSession}
               onLeave={handleLeaveClick}
               onOpenChange={setIsSessionActionDialogOpen}
               disabled={isEndingSession}
+              confirmBeforeEnd={false}
             />
           ) : (
             <LeaveClassButton
@@ -1392,34 +1650,177 @@ export function ActiveClassroomUI({
           )
         }
         action={
-          amIAuthority && !amITeacher && !actualTeacher ? (
-            <Toggle
+          isLocalSessionLeader ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size={isPhoneLandscape ? "icon-sm" : "sm"}
+                  variant="outline"
+                  disabled={isChangingSessionLeader}
+                  aria-label={
+                    pendingLeadershipTransfer
+                      ? t("classroom.leadershipTransferPendingMenuLabel", {
+                          name: pendingLeadershipTransfer.targetName,
+                        })
+                      : t("classroom.leadingClassMenuLabel")
+                  }
+                  title={
+                    pendingLeadershipTransfer
+                      ? t("classroom.leadershipTransferPendingMenuLabel", {
+                          name: pendingLeadershipTransfer.targetName,
+                        })
+                      : t("classroom.leadingClassMenuLabel")
+                  }
+                  className={
+                    pendingLeadershipTransfer
+                      ? "border-amber-300 bg-amber-50 text-amber-700 shadow-none hover:bg-amber-100 hover:text-amber-800 data-[state=open]:bg-amber-100"
+                      : "border-success/40 bg-success/10 text-success shadow-none hover:bg-success/15 hover:text-success data-[state=open]:bg-success/15"
+                  }
+                >
+                  {pendingLeadershipTransfer ? (
+                    <Clock3 className="size-4" />
+                  ) : (
+                    <UserStar className="size-4" />
+                  )}
+                  {!isPhoneLandscape &&
+                    (pendingLeadershipTransfer
+                      ? t("classroom.leadershipTransferPending")
+                      : t("classroom.leadingClass"))}
+                  <ChevronDown
+                    className={`size-3.5 ${
+                      isPhoneLandscape ? "absolute -right-1 -bottom-1" : ""
+                    }`}
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                {pendingLeadershipTransfer ? (
+                  <>
+                    <DropdownMenuLabel className="space-y-1 py-2.5">
+                      <span className="flex items-center gap-2 text-amber-700">
+                        <Clock3 className="size-4" />
+                        {t("classroom.leadershipTransferPending")}
+                      </span>
+                      <span className="text-muted-foreground block text-xs font-normal leading-snug">
+                        {t("classroom.leadershipTransferWaiting", {
+                          name: pendingLeadershipTransfer.targetName,
+                        })}
+                      </span>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={() => {
+                        void (async () => {
+                          const changed = await runLeadershipChange(() =>
+                            cancelSessionLeadershipTransfer({ roomName }),
+                          );
+                          if (changed) {
+                            toast.info(
+                              t("classroom.leadershipTransferCancelled"),
+                            );
+                          }
+                        })();
+                      }}
+                    >
+                      <X className="size-4" />
+                      {t("classroom.cancelLeadershipTransferRequest")}
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <>
+                    <DropdownMenuLabel>
+                      {t("classroom.transferSessionLeadership")}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {leadershipTransferCandidates.length > 0 ? (
+                      leadershipTransferCandidates.map((participant) => {
+                        const targetUserId = getParticipantConvexUserId(
+                          participant,
+                        ) as Id<"users">;
+                        const targetName =
+                          participant.name || participant.identity;
+                        return (
+                          <DropdownMenuItem
+                            key={participant.identity}
+                            onSelect={() => {
+                              void (async () => {
+                                const changed = await runLeadershipChange(() =>
+                                  requestSessionLeadershipTransfer({
+                                    roomName,
+                                    targetUserId,
+                                  }),
+                                );
+                                if (changed) {
+                                  toast.success(
+                                    t("classroom.leadershipTransferRequested", {
+                                      name: targetName,
+                                    }),
+                                  );
+                                }
+                              })();
+                            }}
+                          >
+                            <ArrowRightLeft className="size-4" />
+                            {targetName}
+                          </DropdownMenuItem>
+                        );
+                      })
+                    ) : (
+                      <DropdownMenuItem disabled>
+                        {t("classroom.noLeadershipCandidates")}
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : sessionLeadership?.viewer.canRecover ? (
+            <Button
               type="button"
-              pressed={isLocalAdminPresenting}
-              aria-label={
-                isLocalAdminPresenting
-                  ? t("classroom.stopLeadingClass")
-                  : t("classroom.startLeadingClass")
+              size="sm"
+              variant="outline"
+              disabled={isChangingSessionLeader}
+              onClick={() =>
+                void runLeadershipChange(() =>
+                  recoverSessionLeadership({ roomName }),
+                )
               }
-              title={
-                isLocalAdminPresenting
-                  ? t("classroom.stopLeadingClass")
-                  : t("classroom.startLeadingClass")
-              }
-              className={`h-8 gap-1.5 rounded-md border border-primary/30 bg-background px-2.5 text-xs font-semibold text-primary shadow-none hover:bg-primary/5 data-[state=on]:border-success/50 data-[state=on]:bg-success/10 data-[state=on]:text-success ${
-                isPhoneLandscape ? "size-7 p-0" : ""
-              }`}
-              onPressedChange={() => void togglePresenterMode()}
             >
               <UserStar className="size-4" />
-              {!isPhoneLandscape && (
-                <span>
-                  {isLocalAdminPresenting
-                    ? t("classroom.leadingClass")
-                    : t("classroom.leadClass")}
-                </span>
-              )}
-            </Toggle>
+              {!isPhoneLandscape && t("classroom.recoverSessionLeadership")}
+            </Button>
+          ) : sessionLeadership?.viewer.canTakeover ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isChangingSessionLeader}
+              onClick={() =>
+                void runLeadershipChange(() =>
+                  takeOverSessionLeadership({ roomName }),
+                )
+              }
+            >
+              <UserStar className="size-4" />
+              {!isPhoneLandscape && t("classroom.takeOverSessionLeadership")}
+            </Button>
+          ) : sessionLeadership?.viewer.canClaim ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isChangingSessionLeader}
+              onClick={() =>
+                void runLeadershipChange(() =>
+                  claimSessionLeadership({ roomName }),
+                )
+              }
+            >
+              <UserStar className="size-4" />
+              {!isPhoneLandscape && t("classroom.leadClass")}
+            </Button>
           ) : undefined
         }
       />
@@ -1451,7 +1852,7 @@ export function ActiveClassroomUI({
               iconOn={<Mic className="w-5 h-5" />}
               iconOff={<MicOff className="w-5 h-5" />}
             />
-            {!amIIncognito && (
+            {!isLocalObserver && (
               <DeviceToggleButton
                 variant="compact"
                 source={Track.Source.Camera}
@@ -1531,11 +1932,12 @@ export function ActiveClassroomUI({
               />
             )}
             <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
-            {amIAuthority && (sessionIsLive || hasStartedSession) && (
+            {isLocalSessionLeader && (sessionIsLive || hasStartedSession) && (
               <EndClassButton
                 onConfirm={handleEndSession}
                 onOpenChange={setIsSessionActionDialogOpen}
                 disabled={isEndingSession}
+                confirmBeforeEnd={false}
                 className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-inverse-foreground/20 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/30 disabled:cursor-wait disabled:opacity-60"
               />
             )}
@@ -1547,12 +1949,6 @@ export function ActiveClassroomUI({
           </>
         }
       >
-        {amIIncognito && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-inverse/60 text-inverse-foreground backdrop-blur-sm rounded-full px-3 py-1 text-xs font-medium flex items-center gap-1.5 shadow-sm pointer-events-none">
-            <Eye className="w-3 h-3 shrink-0" />{" "}
-            {t("classroom.observingIncognito")}
-          </div>
-        )}
         {isWhiteboardActive ? (
           <ClassroomWhiteboardContent
             roomName={roomName}
@@ -1588,7 +1984,7 @@ export function ActiveClassroomUI({
                   youLabel={t("classroom.youShort")}
                   audioMuted={!isTeacherAudioOn}
                 />
-              ) : amITeacher || isLocalAdminPresenting ? (
+              ) : isLocalSessionLeader ? (
                 <div className="z-10 flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-300">
                   <div className="w-28 h-28 bg-success/10 rounded-full flex items-center justify-center border-4 border-success mb-6 shadow-xl animate-pulse">
                     <VideoOff className="w-12 h-12 text-success" />
@@ -1679,7 +2075,7 @@ export function ActiveClassroomUI({
                 iconOn={<Mic />}
                 iconOff={<MicOff />}
               />
-              {!amIIncognito && (
+              {!isLocalObserver && (
                 <DeviceToggleButton
                   variant="toolbar"
                   source={Track.Source.Camera}
@@ -1801,7 +2197,7 @@ export function ActiveClassroomUI({
                 iconOn={<Mic />}
                 iconOff={<MicOff />}
               />
-              {!amIIncognito && (
+              {!isLocalObserver && (
                 <DeviceToggleButton
                   variant="toolbar"
                   source={Track.Source.Camera}
@@ -1958,12 +2354,13 @@ export function ActiveClassroomUI({
           }
           right={
             <>
-              {amIAuthority && (sessionIsLive || hasStartedSession) && (
+              {isLocalSessionLeader && (sessionIsLive || hasStartedSession) && (
                 <EndClassButton
                   appearance="toolbar"
                   onConfirm={handleEndSession}
                   onOpenChange={setIsSessionActionDialogOpen}
                   disabled={isEndingSession}
+                  confirmBeforeEnd={isPreviewing("end-class")}
                   previewOpen={isPreviewing("end-class")}
                   onPreviewOpenChange={(open) => {
                     if (!open) setUiPreviewState("none");
@@ -1998,7 +2395,7 @@ export function ActiveClassroomUI({
         nextLabel={t("common.next")}
         isEmpty={displayedStudents.length === 0}
         emptyContent={
-          amITeacher || isLocalAdminPresenting
+          isLocalSessionLeader
             ? t("classroom.waitingForStudents")
             : t("classroom.youAreFirst")
         }
@@ -2010,9 +2407,7 @@ export function ActiveClassroomUI({
           t("classroom.raisedHandsCount", { count })
         }
         lowerHandLabel={t("classroom.lowerHand")}
-        onLowerHand={
-          amITeacher || isLocalAdminPresenting ? forceLowerHand : undefined
-        }
+        onLowerHand={isLocalSessionLeader ? forceLowerHand : undefined}
       >
         {displayedStudents.map((p) => (
           <ParticipantTile
@@ -2022,7 +2417,7 @@ export function ActiveClassroomUI({
             className="aspect-square h-24 w-24 flex-shrink-0 snap-start snap-always sm:h-28 sm:w-28 landscape:h-auto landscape:w-full xl:aspect-auto xl:h-full xl:w-full"
             raisedHand={raisedHands.has(p.identity)}
             onLowerHand={
-              amITeacher || isLocalAdminPresenting
+              isLocalSessionLeader
                 ? () => forceLowerHand(p.identity)
                 : undefined
             }

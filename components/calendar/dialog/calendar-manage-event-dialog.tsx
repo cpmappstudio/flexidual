@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   CalendarDays,
+  ClipboardCheck,
   Clock3,
   Loader2,
   MoveRight,
@@ -41,6 +42,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
+import { SessionCloseoutDialog } from "@/components/classroom/session-closeout-dialog";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
@@ -76,16 +78,26 @@ export default function CalendarManageEventDialog({
   const [cancellationScope, setCancellationScope] =
     useState<CancellationScope>("single");
   const [recordingOpen, setRecordingOpen] = useState(false);
+  const [closeoutOpen, setCloseoutOpen] = useState(false);
   const [isClassroomLaunching, setIsClassroomLaunching] = useState(false);
   const params = useParams();
   const router = useRouter();
   const orgSlug = (params.orgSlug as string) || "system";
   const cancelSchedule = useMutation(api.schedule.cancelSchedule);
+  const recoveryContext = useQuery(
+    api.schedule.getSessionClosureContext,
+    !isStudent &&
+      selectedEvent?.status === "completed" &&
+      selectedEvent.roomName
+      ? { roomName: selectedEvent.roomName, now }
+      : "skip",
+  );
 
   useEffect(() => {
     setCancellationReason("");
     setCancellationScope("single");
     setCancelDialogOpen(false);
+    setCloseoutOpen(false);
   }, [selectedEvent?.scheduleId]);
 
   if (!selectedEvent) return null;
@@ -286,6 +298,17 @@ export default function CalendarManageEventDialog({
               )}
 
             <DialogFooter className="gap-2 sm:flex-row sm:items-center sm:justify-between">
+              {recoveryContext?.canClose &&
+                recoveryContext.closureStatus !== "completed" && (
+                  <Button
+                    variant="outline"
+                    className="h-11 w-full gap-2 border-warning/50 text-warning-foreground hover:bg-warning/10 sm:w-auto"
+                    onClick={() => setCloseoutOpen(true)}
+                  >
+                    <ClipboardCheck className="size-4" />
+                    {t("classroom.closeout.completePendingReport")}
+                  </Button>
+                )}
               {cancellationCapabilities.canCancelOccurrence && (
                 <Button
                   variant="outline"
@@ -362,6 +385,20 @@ export default function CalendarManageEventDialog({
           open={recordingOpen}
           onOpenChange={setRecordingOpen}
           variant={isStudent ? "student" : "default"}
+        />
+      )}
+
+      {selectedEvent.roomName && (
+        <SessionCloseoutDialog
+          open={closeoutOpen}
+          roomName={selectedEvent.roomName}
+          sessionNow={now}
+          alreadyEnded
+          onOpenChange={setCloseoutOpen}
+          onComplete={() => {
+            setCloseoutOpen(false);
+            toast.success(t("classroom.closeout.recoverySaved"));
+          }}
         />
       )}
 

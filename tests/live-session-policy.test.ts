@@ -41,11 +41,71 @@ test("ignores companion devices and technical participants", () => {
   );
 });
 
+test("counts only the persisted leader when one is defined", () => {
+  assert.deepEqual(
+    getLiveParticipantSnapshot(
+      [
+        JSON.stringify({
+          role: "admin",
+          userId: "clerk_admin",
+          convexUserId: "admin_1",
+          roomAdmin: true,
+        }),
+        JSON.stringify({
+          role: "teacher",
+          userId: "clerk_teacher",
+          convexUserId: "teacher_1",
+          roomAdmin: true,
+        }),
+        JSON.stringify({ role: "student", userId: "student_1" }),
+      ],
+      "teacher_1",
+    ),
+    { responsibleCount: 1, studentCount: 1 },
+  );
+});
+
+test("does not let an observing administrator replace an absent leader", () => {
+  assert.deepEqual(
+    getLiveParticipantSnapshot(
+      [
+        JSON.stringify({
+          role: "admin",
+          userId: "clerk_admin",
+          convexUserId: "admin_1",
+          roomAdmin: true,
+        }),
+        JSON.stringify({ role: "student", userId: "student_1" }),
+      ],
+      "teacher_1",
+    ),
+    { responsibleCount: 0, studentCount: 1 },
+  );
+});
+
 test("uses the scheduled end until an extension is confirmed", () => {
   assert.equal(getEffectiveLiveEnd(scheduledEnd), scheduledEnd);
   assert.equal(
     getEffectiveLiveEnd(scheduledEnd, scheduledEnd + LIVE_EXTENSION_BLOCK_MS),
     scheduledEnd + LIVE_EXTENSION_BLOCK_MS,
+  );
+});
+
+test("gives students five minutes when the leader leaves during class", () => {
+  const now = scheduledEnd - 10 * 60 * 1000;
+
+  assert.deepEqual(
+    evaluateLiveSession({
+      now,
+      scheduledEnd,
+      participants: { responsibleCount: 0, studentCount: 2 },
+    }),
+    {
+      action: "continue",
+      nextCheckAt: now + STUDENT_ONLY_GRACE_MS,
+      leaderAbsentSince: now,
+      extensionEndsAt: undefined,
+    },
   );
 });
 

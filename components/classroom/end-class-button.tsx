@@ -26,6 +26,7 @@ interface EndClassButtonProps {
   onOpenChange?: (open: boolean) => void;
   previewOpen?: boolean;
   onPreviewOpenChange?: (open: boolean) => void;
+  confirmBeforeEnd?: boolean;
 }
 
 export function EndClassButton({
@@ -38,57 +39,61 @@ export function EndClassButton({
   onOpenChange,
   previewOpen = false,
   onPreviewOpenChange,
+  confirmBeforeEnd = true,
 }: EndClassButtonProps) {
   const t = useTranslations("classroom");
   const common = useTranslations("common");
+  const trigger =
+    appearance === "toolbar" ? (
+      <ClassroomActionButton
+        label={t("endClass")}
+        icon={disabled ? <Loader2 className="animate-spin" /> : <PhoneOff />}
+        tone="destructive"
+        emphasis="strong"
+        disabled={disabled}
+        onClick={confirmBeforeEnd ? undefined : () => void onConfirm()}
+      />
+    ) : appearance === "header" ? (
+      <button
+        type="button"
+        title={t(confirmBeforeEnd ? "leave" : "endClass")}
+        aria-label={t(confirmBeforeEnd ? "leave" : "endClass")}
+        className="inline-flex h-9 items-center gap-1.5 rounded-md border border-destructive bg-destructive px-3 text-xs font-semibold text-white transition-colors hover:bg-destructive/90 disabled:cursor-wait disabled:opacity-60 [&_svg]:text-white"
+        disabled={disabled}
+        onClick={confirmBeforeEnd ? undefined : () => void onConfirm()}
+      >
+        {disabled ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <PhoneOff className="size-4" />
+        )}
+        <span>{t(confirmBeforeEnd ? "leave" : "endClass")}</span>
+      </button>
+    ) : (
+      <button
+        type="button"
+        title={t("endClass")}
+        aria-label={t("endClass")}
+        className={className}
+        disabled={disabled}
+        onClick={confirmBeforeEnd ? undefined : () => void onConfirm()}
+      >
+        {disabled ? (
+          <Loader2 className={`${iconClassName} animate-spin`} />
+        ) : (
+          <PhoneOff className={iconClassName} />
+        )}
+      </button>
+    );
+
+  if (!confirmBeforeEnd) return trigger;
 
   return (
     <AlertDialog
       open={previewOpen || undefined}
       onOpenChange={previewOpen ? onPreviewOpenChange : onOpenChange}
     >
-      <AlertDialogTrigger asChild>
-        {appearance === "toolbar" ? (
-          <ClassroomActionButton
-            label={t("endClass")}
-            icon={
-              disabled ? <Loader2 className="animate-spin" /> : <PhoneOff />
-            }
-            tone="destructive"
-            emphasis="strong"
-            disabled={disabled}
-          />
-        ) : appearance === "header" ? (
-          <button
-            type="button"
-            title={t("leave")}
-            aria-label={t("leave")}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-destructive bg-destructive px-3 text-xs font-semibold text-white transition-colors hover:bg-destructive/90 disabled:cursor-wait disabled:opacity-60 [&_svg]:text-white"
-            disabled={disabled}
-          >
-            {disabled ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <PhoneOff className="size-4" />
-            )}
-            <span>{t("leave")}</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            title={t("endClass")}
-            aria-label={t("endClass")}
-            className={className}
-            disabled={disabled}
-          >
-            {disabled ? (
-              <Loader2 className={`${iconClassName} animate-spin`} />
-            ) : (
-              <PhoneOff className={iconClassName} />
-            )}
-          </button>
-        )}
-      </AlertDialogTrigger>
+      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogCancel
           aria-label={common("cancel")}

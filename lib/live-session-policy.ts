@@ -11,6 +11,7 @@ export type LiveParticipantSnapshot = {
 
 export function getLiveParticipantSnapshot(
   participantMetadata: Array<string | undefined>,
+  expectedLeaderUserId?: string,
 ): LiveParticipantSnapshot {
   let responsibleCount = 0;
   let studentCount = 0;
@@ -22,15 +23,21 @@ export function getLiveParticipantSnapshot(
       const metadata = JSON.parse(serializedMetadata) as {
         role?: string;
         userId?: string;
+        convexUserId?: string;
         isCompanion?: boolean;
         roomAdmin?: boolean;
       };
       if (!metadata.userId || metadata.isCompanion) continue;
 
+      const isExpectedLeader =
+        expectedLeaderUserId !== undefined &&
+        metadata.convexUserId === expectedLeaderUserId;
       const isLegacyResponsible =
-        metadata.roomAdmin === undefined &&
-        (metadata.role === "teacher" || metadata.role === "admin");
-      if (metadata.roomAdmin === true || isLegacyResponsible) {
+        expectedLeaderUserId === undefined &&
+        (metadata.roomAdmin === true ||
+          (metadata.roomAdmin === undefined &&
+            (metadata.role === "teacher" || metadata.role === "admin")));
+      if (isExpectedLeader || isLegacyResponsible) {
         responsibleCount += 1;
       } else if (metadata.role === "student") {
         studentCount += 1;
@@ -101,30 +108,30 @@ export function evaluateLiveSession(
     return { action: "end", reason: "empty-room" };
   }
 
-  if (input.now < effectiveEnd) {
-    if (
-      input.extensionEndsAt &&
-      input.participants.responsibleCount === 0 &&
-      input.participants.studentCount > 0
-    ) {
-      const leaderAbsentSince = input.leaderAbsentSince ?? input.now;
-      const graceEndsAt = Math.min(
-        leaderAbsentSince + STUDENT_ONLY_GRACE_MS,
-        effectiveEnd,
-      );
+  if (
+    input.now < effectiveEnd &&
+    input.participants.responsibleCount === 0 &&
+    input.participants.studentCount > 0
+  ) {
+    const leaderAbsentSince = input.leaderAbsentSince ?? input.now;
+    const graceEndsAt = Math.min(
+      leaderAbsentSince + STUDENT_ONLY_GRACE_MS,
+      effectiveEnd,
+    );
 
-      if (input.now >= graceEndsAt) {
-        return { action: "end", reason: "leader-grace-expired" };
-      }
-
-      return {
-        action: "continue",
-        nextCheckAt: graceEndsAt,
-        leaderAbsentSince,
-        extensionEndsAt: input.extensionEndsAt,
-      };
+    if (input.now >= graceEndsAt) {
+      return { action: "end", reason: "leader-grace-expired" };
     }
 
+    return {
+      action: "continue",
+      nextCheckAt: graceEndsAt,
+      leaderAbsentSince,
+      extensionEndsAt: input.extensionEndsAt,
+    };
+  }
+
+  if (input.now < effectiveEnd) {
     return {
       action: "continue",
       nextCheckAt: effectiveEnd,

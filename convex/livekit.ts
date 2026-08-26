@@ -3,6 +3,7 @@
 import { ConvexError, v } from "convex/values";
 import { action, internalAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { randomUUID } from "node:crypto";
 import {
   evaluateLiveSession,
@@ -46,6 +47,19 @@ async function requireRoomAdministrator(ctx: ActionCtx, roomName: string) {
     throw new ConvexError("Only a room administrator can perform this action");
   }
   return access;
+}
+
+async function requireSessionLeader(ctx: ActionCtx, roomName: string) {
+  const { user } = await requireActiveUser(ctx);
+  const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, {
+    userId: user._id,
+    roomName,
+    now: Date.now(),
+  });
+  if (!access?.authorized || !access.isSessionLeader) {
+    throw new ConvexError("Only the session leader can end this class");
+  }
+  return { access, user };
 }
 
 function getLiveKitConfig() {
@@ -108,6 +122,7 @@ async function finalizeLiveSession(
   roomName: string,
   endedAt: number,
   clients?: LiveKitClients,
+  endedBy?: Id<"users">,
 ) {
   if (clients) {
     try {
@@ -124,6 +139,7 @@ async function finalizeLiveSession(
   await ctx.runMutation(internal.schedule.endLiveSession, {
     roomName,
     endedAt,
+    endedBy,
   });
 }
 
@@ -138,15 +154,6 @@ async function reconcileRoom(
   });
   if (!session || session.status !== "active" || !session.isLive) return;
 
-  if (now < session.scheduledEnd) {
-    await ctx.scheduler.runAt(
-      session.scheduledEnd,
-      internal.livekit.reconcileLiveSession,
-      { roomName },
-    );
-    return;
-  }
-
   const hardEndsAt = getLiveSessionHardEnd(session.scheduledEnd);
   if (!clients) {
     if (now >= hardEndsAt) {
@@ -154,6 +161,11 @@ async function reconcileRoom(
     } else {
       console.warn(
         `[LiveKit Lifecycle] Credentials unavailable; deferred reconciliation for ${roomName}.`,
+      );
+      await ctx.scheduler.runAt(
+        Math.max(now + 1_000, session.scheduledEnd),
+        internal.livekit.reconcileLiveSession,
+        { roomName },
       );
     }
     return;
@@ -170,6 +182,7 @@ async function reconcileRoom(
     decisionEndsAt: session.liveDecisionEndsAt,
     participants: getLiveParticipantSnapshot(
       participants.map((participant) => participant.metadata),
+      session.sessionLeaderId,
     ),
   });
 
@@ -277,10 +290,12 @@ export const getToken = action({
       metadata: JSON.stringify({
         role: finalRole,
         userId: identity.subject,
+        convexUserId: user._id,
         fullName: user.fullName,
         imageUrl: user.imageUrl ?? null,
         isCompanion: args.isCompanion || false,
         roomAdmin: access.roomAdmin,
+        leadershipRole: access.leadershipRole,
       }),
     });
 
@@ -494,7 +509,16 @@ export const endSession = action({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireRoomAdministrator(ctx, args.roomName);
+    const { user } = await requireSessionLeader(ctx, args.roomName);
+    const session = await ctx.runQuery(
+      internal.schedule.getLiveLifecycleState,
+      { roomName: args.roomName },
+    );
+    if (session?.sessionClosureStatus !== "completed") {
+      throw new ConvexError(
+        "Complete the lesson and attendance report before ending the class",
+      );
+    }
 
     const config = getLiveKitConfig();
     if (!config) {
@@ -506,6 +530,7 @@ export const endSession = action({
       args.roomName,
       Date.now(),
       createLiveKitClients(config),
+      user._id,
     );
 
     return null;
@@ -622,6 +647,18 @@ export const processEgressWebhook = internalAction({
     } catch (err) {
       console.error("[LiveKit Webhook] Signature verification failed:", err);
       return { ok: false as const, error: "Unauthorized", status: 401 };
+    }
+
+    if (
+      (event.event === "participant_joined" ||
+        event.event === "participant_left") &&
+      event.room?.name
+    ) {
+      await ctx.scheduler.runAfter(
+        1_000,
+        internal.livekit.reconcileLiveSession,
+        { roomName: event.room.name },
+      );
     }
 
     if (!event.egressInfo) {

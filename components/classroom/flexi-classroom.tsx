@@ -533,6 +533,7 @@ export default function FlexiClassroom({
           <ActiveClassroomUI
             courseId={scheduleDetails.class._id}
             currentUserRole={role}
+            canLeadSession={sessionStatus?.leadershipRole != null}
             roomName={roomName}
             sessionNow={now}
             className={scheduleDetails?.class?.name}

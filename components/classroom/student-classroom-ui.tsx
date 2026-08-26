@@ -131,7 +131,6 @@ export function StudentClassroomUI({
   >("idle");
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
   const [handRaised, setHandRaised] = useState(false);
-  const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(room.isRecording);
   const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
   const [followViewport, setFollowViewport] = useState(true);
@@ -152,6 +151,10 @@ export function StudentClassroomUI({
     usePhoneLandscapeStageControls();
 
   const extensionContext = useQuery(api.schedule.getStudentExtensionContext, {
+    roomName,
+    now: getClassroomQueryNow(sessionNow),
+  });
+  const sessionLeadership = useQuery(api.schedule.getSessionLeadership, {
     roomName,
     now: getClassroomQueryNow(sessionNow),
   });
@@ -214,12 +217,17 @@ export function StudentClassroomUI({
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
 
-  const adminPresenterParticipant = adminPresenterId
-    ? participants.find((p) => p.identity === adminPresenterId)
-    : null;
   const teacher =
-    participants.find((p) => getRole(p) === "teacher") ||
-    adminPresenterParticipant ||
+    (sessionLeadership?.leader
+      ? participants.find(
+          (participant) =>
+            participant.identity ===
+            sessionLeadership.leader?.participantIdentity,
+        )
+      : undefined) ||
+    (!sessionLeadership?.leader
+      ? participants.find((p) => getRole(p) === "teacher")
+      : undefined) ||
     undefined;
   const students = participants.filter((p) => {
     const role = getRole(p);
@@ -328,14 +336,6 @@ export function StudentClassroomUI({
             next.delete(participant.identity);
             return next;
           });
-        }
-
-        if (
-          senderIsAuthority &&
-          msg.type === "ADMIN_PRESENTING" &&
-          participant
-        ) {
-          setAdminPresenterId(msg.presenting ? participant.identity : null);
         }
 
         if (senderIsAuthority && msg.type === "WHITEBOARD_STATE") {

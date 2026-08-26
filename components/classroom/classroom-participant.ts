@@ -4,6 +4,8 @@ type ParticipantMetadata = {
   role?: string;
   imageUrl?: string;
   isCompanion?: boolean;
+  convexUserId?: string;
+  leadershipRole?: "teacher" | "principal" | "admin" | "superadmin" | null;
 };
 
 function getParticipantMetadata(
@@ -34,6 +36,18 @@ export function getIsCompanionParticipant(
   participant: Participant | undefined,
 ): boolean {
   return getParticipantMetadata(participant)?.isCompanion === true;
+}
+
+export function getParticipantConvexUserId(
+  participant: Participant | undefined,
+): string | null {
+  return getParticipantMetadata(participant)?.convexUserId || null;
+}
+
+export function getParticipantLeadershipRole(
+  participant: Participant | undefined,
+): ParticipantMetadata["leadershipRole"] {
+  return getParticipantMetadata(participant)?.leadershipRole;
 }
 
 const PREVIEW_STUDENT_NAMES = [

@@ -30,6 +30,7 @@ import type * as model_liveAccess from "../model/liveAccess.js";
 import type * as model_membership from "../model/membership.js";
 import type * as model_roles from "../model/roles.js";
 import type * as model_scheduleDeletion from "../model/scheduleDeletion.js";
+import type * as model_sessionLeadership from "../model/sessionLeadership.js";
 import type * as model_systemNotificationEvents from "../model/systemNotificationEvents.js";
 import type * as model_systemNotifications from "../model/systemNotifications.js";
 import type * as model_timeZone from "../model/timeZone.js";
@@ -77,6 +78,7 @@ declare const fullApi: ApiFromModules<{
   "model/membership": typeof model_membership;
   "model/roles": typeof model_roles;
   "model/scheduleDeletion": typeof model_scheduleDeletion;
+  "model/sessionLeadership": typeof model_sessionLeadership;
   "model/systemNotificationEvents": typeof model_systemNotificationEvents;
   "model/systemNotifications": typeof model_systemNotifications;
   "model/timeZone": typeof model_timeZone;
