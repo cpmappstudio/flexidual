@@ -17,6 +17,7 @@ import {
   CourseWeeklyCalendar,
   CourseWeeklySlot,
 } from "@/components/teaching/classes/course-weekly-calendar";
+import { CourseEnrollmentReviewDialog } from "@/components/teaching/classes/course-enrollment-review-dialog";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -138,6 +139,7 @@ function CourseEditor({
   const updateCourse = useMutation(api.classes.update);
   const deleteCourse = useMutation(api.classes.remove);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEnrollmentReviewOpen, setIsEnrollmentReviewOpen] = useState(false);
   const [pendingWeeklySlotRemoval, setPendingWeeklySlotRemoval] =
     useState<CourseWeeklySlot>();
   const [scheduleCancellationReason, setScheduleCancellationReason] =
@@ -217,6 +219,9 @@ function CourseEditor({
         new Date(`${selectedAcademicPeriod.endDate}T00:00:00Z`),
       )}`
     : classToEdit?.academicYear;
+  const selectedGradeName =
+    grades?.find((grade) => grade.code === formData.gradeCode)?.name ??
+    formData.gradeCode;
   const suggestedName = useMemo(() => {
     const curriculum = curriculums?.find(
       (item) => item._id === formData.curriculumId,
@@ -345,7 +350,7 @@ function CourseEditor({
     (!isEditing && weeklySlots.length === 0) ||
     (isEditing && !classToEdit);
 
-  const persistCourse = async () => {
+  const persistCourse = async (studentIds: Id<"users">[] = []) => {
     if (isSubmitDisabled || !campusId) return;
     setIsSubmitting(true);
 
@@ -375,6 +380,7 @@ function CourseEditor({
         curriculumId: formData.curriculumId as Id<"curriculums">,
         teacherId: formData.teacherId as Id<"users">,
         gradeCode: formData.gradeCode,
+        studentIds,
         liveAccess: formData.liveAccess,
         campusId,
         academicPeriodId: academicPeriodId as Id<"academicPeriods">,
@@ -402,7 +408,11 @@ function CourseEditor({
       toast.error(t("schedule.cancellationReasonRequired"));
       return;
     }
-    void persistCourse();
+    if (isEditing) {
+      void persistCourse();
+      return;
+    }
+    setIsEnrollmentReviewOpen(true);
   };
 
   const handleDelete = () => {
@@ -443,42 +453,53 @@ function CourseEditor({
 
   return (
     <div className="w-full space-y-8">
-      <header className="sticky top-[var(--header-height)] z-30 isolate flex items-center justify-between gap-4 py-2 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:-z-10 after:h-[calc(100%+2rem)] after:bg-gradient-to-b after:from-background after:via-background/80 after:to-background/0 after:content-['']">
+      <header className="sticky top-[var(--header-height)] z-30 isolate flex flex-col items-stretch justify-between gap-4 py-2 sm:flex-row sm:items-center after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:-z-10 after:h-[calc(100%+2rem)] after:bg-gradient-to-b after:from-background after:via-background/80 after:to-background/0 after:content-['']">
         <h1 className="text-2xl font-bold sm:text-3xl">
           {t(isEditing ? "class.edit" : "class.new")}
         </h1>
-        <div className="flex shrink-0 items-center gap-2">
-          {isEditing && (
-            <Button
-              variant="outline"
-              type="button"
-              size="icon"
-              onClick={handleDelete}
-              className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
-              aria-label={t("common.delete")}
-            >
-              <Trash2 className="size-4" aria-hidden="true" />
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex shrink-0 items-center gap-2">
+            {isEditing && (
+              <Button
+                variant="outline"
+                type="button"
+                size="icon"
+                onClick={handleDelete}
+                className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+                aria-label={t("common.delete")}
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+              </Button>
+            )}
+            <Button variant="outline" type="button" asChild>
+              <Link
+                href={
+                  classToEdit
+                    ? `/${orgSlug}/classes/${classToEdit._id}`
+                    : `/${orgSlug}/classes`
+                }
+              >
+                {t("common.cancel")}
+              </Link>
             </Button>
-          )}
-          <Button variant="outline" type="button" asChild>
-            <Link
-              href={
-                classToEdit
-                  ? `/${orgSlug}/classes/${classToEdit._id}`
-                  : `/${orgSlug}/classes`
-              }
+            <Button
+              type="submit"
+              form="course-form"
+              disabled={isSubmitting || isSubmitDisabled}
             >
-              {t("common.cancel")}
-            </Link>
-          </Button>
-          <Button
-            type="submit"
-            form="course-form"
-            disabled={isSubmitting || isSubmitDisabled}
-          >
-            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {t(isEditing ? "common.saveChanges" : "class.createClass")}
-          </Button>
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t(
+                isEditing
+                  ? "common.saveChanges"
+                  : "class.enrollmentReview.continue",
+              )}
+            </Button>
+          </div>
+          {!isEditing && (
+            <p className="max-w-md text-right text-xs text-muted-foreground">
+              {t("class.enrollmentReview.formHint")}
+            </p>
+          )}
         </div>
       </header>
 
@@ -672,6 +693,28 @@ function CourseEditor({
           )}
         </section>
       </form>
+
+      {!isEditing &&
+        campusId &&
+        formData.curriculumId &&
+        formData.gradeCode &&
+        grades && (
+          <CourseEnrollmentReviewDialog
+            open={isEnrollmentReviewOpen}
+            onOpenChange={setIsEnrollmentReviewOpen}
+            onConfirm={(studentIds) => void persistCourse(studentIds)}
+            curriculumId={formData.curriculumId as Id<"curriculums">}
+            campusId={campusId}
+            gradeCode={formData.gradeCode}
+            gradeName={selectedGradeName}
+            grades={grades.map((grade) => ({
+              code: grade.code,
+              name: grade.name,
+            }))}
+            courseName={formData.name.trim()}
+            isSubmitting={isSubmitting}
+          />
+        )}
 
       <AlertDialog
         open={Boolean(pendingWeeklySlotRemoval)}

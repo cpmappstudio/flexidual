@@ -807,6 +807,25 @@
     "deleteConfirm": "¿Eliminar este curso? Sus horarios, historial de clases e inscripciones se eliminarán permanentemente.",
     "typeStandard": "Estándar (Profesor)",
     "typeStandardShort": "Estándar",
+    "enrollmentReview": {
+      "title": "Revisar matrícula inicial",
+      "description": "Revisa los estudiantes que serán matriculados. Puedes retirarlos de la lista o buscar otros para agregarlos.",
+      "continue": "Continuar: revisar estudiantes",
+      "formHint": "Antes de crear el curso, podrás revisar y ajustar los estudiantes que serán matriculados.",
+      "addStudents": "Agregar estudiantes",
+      "searchHelp": "Busca por nombre o correo. Los resultados incluyen estudiantes de todos los grados.",
+      "searchPlaceholder": "Buscar estudiantes para agregar...",
+      "studentsToEnroll": "Estudiantes que serán matriculados",
+      "selectedCount": "{count, plural, one {# seleccionado} other {# seleccionados}}",
+      "noSelectedStudents": "No hay estudiantes seleccionados.",
+      "noGrade": "Sin grado",
+      "confirmationDescription": "Al confirmar, se creará el curso con los estudiantes seleccionados.",
+      "createWithoutStudentsDescription": "Al confirmar, el curso se creará sin estudiantes matriculados.",
+      "backToCourse": "Volver a editar el curso",
+      "creating": "Creando curso...",
+      "createWithoutStudents": "Crear curso sin estudiantes",
+      "createAndEnroll": "Crear curso e inscribir {count, plural, one {# estudiante} other {# estudiantes}}"
+    },
     "notFound": "Curso no encontrado"
   },
   "student": {

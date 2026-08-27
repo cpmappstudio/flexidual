@@ -38,7 +38,6 @@ import {
 } from "./model/membership";
 import {
   ensureClassEnrollmentsMigrated,
-  isStudentEnrolled,
   listClassStudentIds,
 } from "./model/enrollments";
 import { hasOnlyInstructorStaffRoles } from "./model/roles";
@@ -133,6 +132,7 @@ async function getInstitutionStudents(
   ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
   campusId?: Id<"campuses">,
+  includeInactive = false,
 ) {
   const assignments = await listInstitutionStudentMemberships(ctx, schoolId);
   const selected = new Map<Id<"users">, (typeof assignments)[number]>();
@@ -147,7 +147,7 @@ async function getInstitutionStudents(
     await Promise.all(
       [...selected.values()].map(async (assignment) => {
         const user = await ctx.db.get(assignment.userId);
-        if (!user || !user.isActive) return null;
+        if (!user || (!includeInactive && !user.isActive)) return null;
         return {
           user,
           gradeCode: assignment.gradeCode ?? user.grade,
@@ -854,9 +854,145 @@ export const searchStudents = query({
   },
 });
 
+const courseCreationStudentValidator = v.object({
+  _id: v.id("users"),
+  fullName: v.string(),
+  email: v.optional(v.string()),
+  imageUrl: v.optional(v.string()),
+  gradeCode: v.optional(v.string()),
+  isActive: v.boolean(),
+});
+
+async function assertCourseCreationStudentAccess(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  curriculumId: Id<"curriculums">,
+  campusId: Id<"campuses">,
+) {
+  const curriculum = await ctx.db.get(curriculumId);
+  if (!curriculum?.schoolId) throw new ConvexError("INVALID_CURRICULUM");
+  const campus = await ctx.db.get(campusId);
+  if (!campus || campus.schoolId !== curriculum.schoolId) {
+    throw new ConvexError("INVALID_CAMPUS");
+  }
+  if (!(await canManageClasses(ctx, userId, campusId, curriculum.schoolId))) {
+    throw new ConvexError("PERMISSION_DENIED");
+  }
+  return curriculum;
+}
+
+function mapCourseCreationStudent(
+  student: Awaited<ReturnType<typeof getInstitutionStudents>>[number],
+) {
+  return {
+    _id: student.user._id,
+    fullName: student.user.fullName,
+    email: student.user.email,
+    imageUrl: student.user.imageUrl,
+    gradeCode: student.gradeCode,
+    isActive: student.user.isActive,
+  };
+}
+
+export const listCourseCreationGradeStudents = query({
+  args: {
+    curriculumId: v.id("curriculums"),
+    campusId: v.id("campuses"),
+    gradeCode: v.string(),
+  },
+  returns: v.array(courseCreationStudentValidator),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const curriculum = await assertCourseCreationStudentAccess(
+      ctx,
+      user._id,
+      args.curriculumId,
+      args.campusId,
+    );
+    if (
+      (await validateGradeCodes(ctx, curriculum.schoolId!, [args.gradeCode]))
+        .length > 0 ||
+      !isCurriculumAvailableForGrade(curriculum.gradeCodes, args.gradeCode)
+    ) {
+      throw new ConvexError("INVALID_GRADE");
+    }
+
+    const students = await getInstitutionStudents(
+      ctx,
+      curriculum.schoolId!,
+      args.campusId,
+      true,
+    );
+    return students
+      .filter((student) => student.gradeCode === args.gradeCode)
+      .sort((a, b) => a.user.fullName.localeCompare(b.user.fullName))
+      .map(mapCourseCreationStudent);
+  },
+});
+
+export const searchCourseCreationStudents = query({
+  args: {
+    curriculumId: v.id("curriculums"),
+    campusId: v.id("campuses"),
+    searchQuery: v.string(),
+  },
+  returns: v.array(courseCreationStudentValidator),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const curriculum = await assertCourseCreationStudentAccess(
+      ctx,
+      user._id,
+      args.curriculumId,
+      args.campusId,
+    );
+    const searchQuery = args.searchQuery.trim().toLowerCase();
+    if (searchQuery.length < 2) return [];
+
+    const students = await getInstitutionStudents(
+      ctx,
+      curriculum.schoolId!,
+      args.campusId,
+      true,
+    );
+    return students
+      .filter(
+        ({ user: student }) =>
+          student.fullName.toLowerCase().includes(searchQuery) ||
+          (student.email ?? "").toLowerCase().includes(searchQuery) ||
+          (student.username ?? "").toLowerCase().includes(searchQuery),
+      )
+      .sort((a, b) => a.user.fullName.localeCompare(b.user.fullName))
+      .slice(0, 50)
+      .map(mapCourseCreationStudent);
+  },
+});
+
 /**
  * Internal query to check if student is enrolled in a class with the same curriculum
  */
+async function findCurriculumEnrollmentConflict(
+  ctx: QueryCtx | MutationCtx,
+  studentIds: Id<"users">[],
+  curriculumId: Id<"curriculums">,
+  excludeClassId?: Id<"classes">,
+) {
+  const targetStudentIds = new Set(studentIds);
+  const curriculumClasses = await ctx.db
+    .query("classes")
+    .withIndex("by_curriculum", (q) =>
+      q.eq("curriculumId", curriculumId).eq("isActive", true),
+    )
+    .collect();
+
+  for (const classData of curriculumClasses) {
+    if (classData._id === excludeClassId) continue;
+    const enrolledStudentIds = await listClassStudentIds(ctx, classData);
+    const studentId = enrolledStudentIds.find((id) => targetStudentIds.has(id));
+    if (studentId) return { studentId, className: classData.name };
+  }
+  return null;
+}
+
 export const checkStudentCurriculumEnrollment = internalQuery({
   args: {
     studentId: v.id("users"),
@@ -872,31 +1008,17 @@ export const checkStudentCurriculumEnrollment = internalQuery({
     }),
   ),
   handler: async (ctx, args) => {
-    // Get all active classes for this curriculum
-    const curriculumClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_curriculum", (q) =>
-        q.eq("curriculumId", args.curriculumId).eq("isActive", true),
-      )
-      .collect();
-
-    // Find if student is enrolled in any of these classes
-    const enrollment = await Promise.all(
-      curriculumClasses.map((classData) =>
-        isStudentEnrolled(ctx, classData, args.studentId),
-      ),
+    const conflict = await findCurriculumEnrollmentConflict(
+      ctx,
+      [args.studentId],
+      args.curriculumId,
+      args.excludeClassId,
     );
-    const conflict = curriculumClasses.find(
-      (classData, index) =>
-        enrollment[index] &&
-        (!args.excludeClassId || classData._id !== args.excludeClassId),
-    );
-
     if (conflict) {
       const curriculum = await ctx.db.get(args.curriculumId);
       return {
         hasConflict: true as const,
-        className: conflict.name,
+        className: conflict.className,
         curriculumTitle: curriculum?.title || "Unknown",
       };
     }
@@ -1448,6 +1570,7 @@ export const createWithSchedule = mutation({
     teacherId: v.id("users"),
     academicPeriodId: v.id("academicPeriods"),
     gradeCode: v.string(),
+    studentIds: v.array(v.id("users")),
     liveAccess: liveAccessValidator,
     weeklySlots: v.array(courseWeeklySlotValidator),
   },
@@ -1524,6 +1647,40 @@ export const createWithSchedule = mutation({
       ))
     ) {
       throw new ConvexError("INVALID_TEACHER");
+    }
+
+    const studentIds = [...new Set(args.studentIds)];
+    if (studentIds.length !== args.studentIds.length) {
+      throw new ConvexError("INVALID_STUDENTS");
+    }
+    const students = await Promise.all(
+      studentIds.map(async (studentId) => {
+        const [student, membership] = await Promise.all([
+          ctx.db.get(studentId),
+          getStudentMembership(
+            ctx,
+            studentId,
+            curriculum.schoolId!,
+            args.campusId,
+          ),
+        ]);
+        return student && membership ? student : null;
+      }),
+    );
+    if (students.some((student) => student === null)) {
+      throw new ConvexError("INVALID_STUDENTS");
+    }
+    const enrollmentConflict = await findCurriculumEnrollmentConflict(
+      ctx,
+      studentIds,
+      args.curriculumId,
+    );
+    if (enrollmentConflict) {
+      throw new ConvexError({
+        code: "CURRICULUM_CONFLICT",
+        className: enrollmentConflict.className,
+        curriculumTitle: curriculum.title,
+      });
     }
 
     if (
@@ -1607,6 +1764,24 @@ export const createWithSchedule = mutation({
         eventKey: `class_created:${classId}`,
         role: "teacher",
       });
+
+      for (const studentId of studentIds) {
+        const enrollmentId = await ctx.db.insert("classEnrollments", {
+          classId,
+          studentId,
+          enrolledAt: now,
+          enrolledBy: user._id,
+        });
+        await publishCourseNotification(ctx, {
+          recipientId: studentId,
+          actorId: user._id,
+          classData: createdClass,
+          kind: "course_enrollment",
+          action: "added",
+          eventKey: `enrollment:${enrollmentId}`,
+          role: "student",
+        });
+      }
     }
 
     return { classId, classesCreated };
@@ -1977,20 +2152,20 @@ export const remove = mutation({
 
     const [schedules, enrollments, preferences, notificationRecipients] =
       await Promise.all([
-      ctx.db
-        .query("classSchedule")
-        .withIndex("by_class", (q) => q.eq("classId", args.id))
-        .collect(),
-      ctx.db
-        .query("classEnrollments")
-        .withIndex("by_class", (q) => q.eq("classId", args.id))
-        .collect(),
-      ctx.db
-        .query("studentClassPreferences")
-        .withIndex("by_class", (q) => q.eq("classId", args.id))
-        .collect(),
-      listClassNotificationRecipients(ctx, classData),
-    ]);
+        ctx.db
+          .query("classSchedule")
+          .withIndex("by_class", (q) => q.eq("classId", args.id))
+          .collect(),
+        ctx.db
+          .query("classEnrollments")
+          .withIndex("by_class", (q) => q.eq("classId", args.id))
+          .collect(),
+        ctx.db
+          .query("studentClassPreferences")
+          .withIndex("by_class", (q) => q.eq("classId", args.id))
+          .collect(),
+        listClassNotificationRecipients(ctx, classData),
+      ]);
     for (const [recipientId, role] of notificationRecipients) {
       await publishCourseNotification(ctx, {
         recipientId,
