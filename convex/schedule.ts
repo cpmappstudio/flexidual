@@ -62,28 +62,22 @@ import {
   sessionLeaderRoleValidator,
   type SessionLeaderRole,
 } from "./model/sessionLeadership";
+import {
+  getConnectedSecondsWithinSchedule,
+  normalizeExcuseReason,
+  studentAttendanceStatusValidator,
+  suggestStudentAttendanceStatus,
+  type StudentAttendanceStatus,
+} from "./model/studentAttendance";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
 // ============================================================================
 
-const FULL_ATTENDANCE_THRESHOLD_PERCENT = 0.5;
-const PARTIAL_ATTENDANCE_THRESHOLD_PERCENT = 0.1;
-const MIN_PARTIAL_SECONDS = 120;
-const attendanceStatusValidator = v.union(
-  v.literal("present"),
-  v.literal("absent"),
-  v.literal("partial"),
-  v.literal("excused"),
-);
-type AttendanceStatus = "present" | "absent" | "partial" | "excused";
-
-function normalizeAttendanceStatus(status: string): AttendanceStatus {
-  if (status === "present" || status === "partial" || status === "excused") {
-    return status;
-  }
-  return "absent";
-}
+const attendanceStatusValidator = studentAttendanceStatusValidator;
+const LIVE_PRESENCE_PRESENT_RATIO = 0.5;
+const LIVE_PRESENCE_PARTIAL_RATIO = 0.1;
+const LIVE_PRESENCE_MIN_PARTIAL_SECONDS = 120;
 /** A session with no leftAt is considered a dropped connection if older than this */
 const SESSION_STALE_MS = 4 * 60 * 60 * 1000;
 const DEFAULT_SCHEDULE_HISTORY_MS = 14 * 24 * 60 * 60 * 1000;
@@ -220,7 +214,10 @@ const scheduleEventValidator = v.object({
     v.object({
       present: v.number(),
       partial: v.number(),
-      missed: v.number(),
+      absent: v.number(),
+      excused: v.number(),
+      pendingVerification: v.number(),
+      verifiedTotal: v.number(),
       total: v.number(),
     }),
   ),
@@ -1128,6 +1125,36 @@ export const getMySchedule = query({
     const sessionsBySchedule = new Map(
       flatSchedule.map((s, idx) => [s._id, allSessionsForSchedules[idx] || []]),
     );
+    const allAttendanceRecords = includeAttendance
+      ? await Promise.all(
+          flatSchedule.map((schedule) => {
+            const classData = classMap.get(schedule.classId);
+            const needsFullAttendance =
+              isStaffViewer ||
+              classData?.teacherId === user._id ||
+              classData?.tutorId === user._id;
+            return needsFullAttendance
+              ? ctx.db
+                  .query("studentAttendanceRecords")
+                  .withIndex("by_schedule", (q) =>
+                    q.eq("scheduleId", schedule._id),
+                  )
+                  .collect()
+              : ctx.db
+                  .query("studentAttendanceRecords")
+                  .withIndex("by_schedule_and_student", (q) =>
+                    q.eq("scheduleId", schedule._id).eq("studentId", user._id),
+                  )
+                  .collect();
+          }),
+        )
+      : flatSchedule.map(() => []);
+    const attendanceRecordsBySchedule = new Map(
+      flatSchedule.map((schedule, index) => [
+        schedule._id,
+        allAttendanceRecords[index] ?? [],
+      ]),
+    );
 
     const completedRecordings = includeRecordings
       ? await Promise.all(
@@ -1194,6 +1221,7 @@ export const getMySchedule = query({
           | "partial"
           | "in-progress"
           | "late"
+          | "pending"
           | "excused" = "upcoming";
         let timeInClass = 0;
         let isStudentActive = false;
@@ -1201,7 +1229,10 @@ export const getMySchedule = query({
         const attendanceSummary = {
           present: 0,
           partial: 0,
-          missed: 0,
+          absent: 0,
+          excused: 0,
+          pendingVerification: 0,
+          verifiedTotal: 0,
           total: classStudents.length,
         };
         // Student Stats Calculation
@@ -1218,100 +1249,43 @@ export const getMySchedule = query({
             now <= item.scheduledEnd &&
             now - (activeSession?.joinedAt ?? 0) < SESSION_STALE_MS;
 
-          const manualRecord = studentSessions.find((s) => s.attendanceStatus);
-
-          if (manualRecord?.attendanceStatus) {
-            attendanceStatus = manualRecord.attendanceStatus;
-          } else {
-            timeInClass = studentSessions.reduce((sum, s) => {
-              const sessionStart = s.joinedAt;
-              const sessionEnd = s.leftAt || now;
-              const effectiveStart = Math.max(
-                sessionStart,
-                item.scheduledStart,
-              );
-              const effectiveEnd = Math.min(sessionEnd, item.scheduledEnd);
-              const duration = Math.max(
-                0,
-                (effectiveEnd - effectiveStart) / 1000,
-              );
-              return sum + duration;
-            }, 0);
-
-            const scheduledDuration =
-              (item.scheduledEnd - item.scheduledStart) / 1000;
-            const ratio =
-              scheduledDuration > 0 ? timeInClass / scheduledDuration : 0;
-
-            if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT)
-              attendanceStatus = "present";
-            else if (
-              ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT ||
-              timeInClass >= MIN_PARTIAL_SECONDS
-            )
-              attendanceStatus = "partial";
-            else if (item.scheduledStart > now && !isStudentActive)
-              attendanceStatus = "upcoming";
-            else if (now >= item.scheduledStart && now <= item.scheduledEnd)
-              attendanceStatus = isStudentActive ? "in-progress" : "late";
-            else attendanceStatus = "absent";
-          }
+          timeInClass = getConnectedSecondsWithinSchedule(
+            studentSessions,
+            item.scheduledStart,
+            item.scheduledEnd,
+            now,
+          );
+          const finalAttendance = attendanceRecordsBySchedule
+            .get(item._id)
+            ?.find((record) => record.studentId === user._id);
+          if (item.sessionClosureStatus === "completed" && finalAttendance) {
+            attendanceStatus = finalAttendance.status;
+          } else if (item.scheduledStart > now) attendanceStatus = "upcoming";
+          else if (item.status === "active")
+            attendanceStatus = isStudentActive ? "in-progress" : "late";
+          else if (item.status === "completed") attendanceStatus = "pending";
         }
 
         // Teacher/Admin Stats Calculation
         if (isClassAdminOrTeacher) {
-          const studentStats = new Map<
-            string,
-            { totalSeconds: number; manualStatus?: string }
-          >();
-
-          sessions.forEach((s) => {
-            const current = studentStats.get(s.studentId) || {
-              totalSeconds: 0,
-            };
-
-            const sessionStart = s.joinedAt;
-            const sessionEnd = s.leftAt || now;
-            const effectiveStart = Math.max(sessionStart, item.scheduledStart);
-            const effectiveEnd = Math.min(sessionEnd, item.scheduledEnd);
-            const duration = Math.max(
-              0,
-              (effectiveEnd - effectiveStart) / 1000,
-            );
-
-            current.totalSeconds += duration;
-            if (s.attendanceStatus) current.manualStatus = s.attendanceStatus;
-            studentStats.set(s.studentId, current);
-          });
-
-          const scheduledDuration =
-            (item.scheduledEnd - item.scheduledStart) / 1000;
-
-          for (const studentId of classStudents) {
-            const stats = studentStats.get(studentId);
-            let status = "absent";
-
-            if (stats?.manualStatus) {
-              status = stats.manualStatus;
-            } else if (stats) {
-              const ratio =
-                scheduledDuration > 0
-                  ? stats.totalSeconds / scheduledDuration
-                  : 0;
-              if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT)
-                status = "present";
-              else if (
-                ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT ||
-                stats.totalSeconds >= MIN_PARTIAL_SECONDS
-              )
-                status = "partial";
+          const finalAttendance =
+            attendanceRecordsBySchedule.get(item._id) ?? [];
+          if (
+            item.status === "completed" &&
+            item.sessionClosureStatus === "completed"
+          ) {
+            const enrolledStudentIds = new Set(classStudents);
+            for (const record of finalAttendance) {
+              if (!enrolledStudentIds.has(record.studentId)) continue;
+              attendanceSummary[record.status]++;
+              attendanceSummary.verifiedTotal++;
             }
-
-            if (status === "present" || status === "excused")
-              attendanceSummary.present++;
-            else if (status === "partial" || status === "late")
-              attendanceSummary.partial++;
-            else attendanceSummary.missed++;
+            attendanceSummary.pendingVerification = Math.max(
+              0,
+              classStudents.length - attendanceSummary.verifiedTotal,
+            );
+          } else if (item.status === "completed") {
+            attendanceSummary.pendingVerification = classStudents.length;
           }
         }
 
@@ -1349,11 +1323,11 @@ export const getMySchedule = query({
                 ? teacherTimeInClass / scheduledDuration
                 : 0;
 
-            if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT)
+            if (ratio >= LIVE_PRESENCE_PRESENT_RATIO)
               teacherAttendanceStatus = "present";
             else if (
-              ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT ||
-              teacherTimeInClass >= MIN_PARTIAL_SECONDS
+              ratio >= LIVE_PRESENCE_PARTIAL_RATIO ||
+              teacherTimeInClass >= LIVE_PRESENCE_MIN_PARTIAL_SECONDS
             )
               teacherAttendanceStatus = "partial";
             else teacherAttendanceStatus = "absent";
@@ -1406,7 +1380,9 @@ export const getMySchedule = query({
           minutesAttended: Math.round(timeInClass / 60),
           isStudentActive: isStudentActive,
           attendanceSummary: isClassAdminOrTeacher
-            ? attendanceSummary
+            ? item.status === "completed"
+              ? attendanceSummary
+              : undefined
             : undefined,
           hasRecording: scheduleIdsWithRecordings.has(item._id),
         };
@@ -1876,6 +1852,12 @@ export const getSessionClosureContext = query({
           imageUrl: v.optional(v.string()),
           totalMinutes: v.number(),
           status: attendanceStatusValidator,
+          suggestedStatus: v.union(
+            v.literal("present"),
+            v.literal("partial"),
+            v.literal("absent"),
+          ),
+          excuseReason: v.optional(v.string()),
         }),
       ),
     }),
@@ -1936,7 +1918,9 @@ export const getSessionClosureContext = query({
         fullName: student.fullName,
         imageUrl: student.imageUrl,
         totalMinutes: student.totalMinutes,
-        status: normalizeAttendanceStatus(student.status),
+        status: student.status as StudentAttendanceStatus,
+        suggestedStatus: student.suggestedStatus,
+        excuseReason: student.excuseReason,
       })),
     };
   },
@@ -2172,6 +2156,13 @@ async function getAttendanceDetailsData(
     .query("class_sessions")
     .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
     .collect();
+  const attendanceRecords = await ctx.db
+    .query("studentAttendanceRecords")
+    .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+    .collect();
+  const recordsByStudent = new Map(
+    attendanceRecords.map((record) => [record.studentId, record]),
+  );
 
   return students
     .filter((student): student is Doc<"users"> => student !== null)
@@ -2179,38 +2170,19 @@ async function getAttendanceDetailsData(
       const studentSessions = sessions.filter(
         (session) => session.studentId === student._id,
       );
-      const totalSeconds = studentSessions.reduce((sum, session) => {
-        const sessionEnd = session.leftAt ?? now;
-        const effectiveStart = Math.max(
-          session.joinedAt,
-          schedule.scheduledStart,
-        );
-        const effectiveEnd = Math.min(sessionEnd, schedule.scheduledEnd);
-        return sum + Math.max(0, (effectiveEnd - effectiveStart) / 1000);
-      }, 0);
-      const manualStatus = studentSessions.find(
-        (session) => session.attendanceStatus,
-      )?.attendanceStatus;
+      const totalSeconds = getConnectedSecondsWithinSchedule(
+        studentSessions,
+        schedule.scheduledStart,
+        schedule.scheduledEnd,
+        now,
+      );
       const scheduledDuration =
         (schedule.scheduledEnd - schedule.scheduledStart) / 1000;
-      const ratio =
-        scheduledDuration > 0 ? totalSeconds / scheduledDuration : 0;
-      let computedStatus = "absent";
-      if (ratio >= FULL_ATTENDANCE_THRESHOLD_PERCENT) {
-        computedStatus = "present";
-      } else if (
-        ratio >= PARTIAL_ATTENDANCE_THRESHOLD_PERCENT ||
-        totalSeconds >= MIN_PARTIAL_SECONDS
-      ) {
-        computedStatus = "partial";
-      }
-      if (
-        schedule.sessionType === "ignitia" &&
-        totalSeconds === 0 &&
-        !manualStatus
-      ) {
-        computedStatus = "pending";
-      }
+      const suggestedStatus = suggestStudentAttendanceStatus(
+        totalSeconds,
+        scheduledDuration,
+      );
+      const attendanceRecord = recordsByStudent.get(student._id);
 
       return {
         studentId: student._id,
@@ -2218,8 +2190,10 @@ async function getAttendanceDetailsData(
         email: student.email,
         imageUrl: student.imageUrl,
         totalMinutes: Math.round(totalSeconds / 60),
-        status: manualStatus ?? computedStatus,
-        isManual: Boolean(manualStatus),
+        status: attendanceRecord?.status ?? suggestedStatus,
+        suggestedStatus,
+        isConfirmed: Boolean(attendanceRecord),
+        excuseReason: attendanceRecord?.excuseReason,
         lastSeen:
           studentSessions.length > 0
             ? Math.max(...studentSessions.map((session) => session.joinedAt))
@@ -2239,7 +2213,13 @@ export const getAttendanceDetails = query({
       imageUrl: v.optional(v.string()),
       totalMinutes: v.number(),
       status: v.string(),
-      isManual: v.boolean(),
+      suggestedStatus: v.union(
+        v.literal("present"),
+        v.literal("partial"),
+        v.literal("absent"),
+      ),
+      isConfirmed: v.boolean(),
+      excuseReason: v.optional(v.string()),
       lastSeen: v.union(v.number(), v.null()),
     }),
   ),
@@ -2880,6 +2860,7 @@ export const submitSessionClosure = mutation({
       v.object({
         studentId: v.id("users"),
         status: attendanceStatusValidator,
+        excuseReason: v.optional(v.string()),
       }),
     ),
   },
@@ -2965,40 +2946,36 @@ export const submitSessionClosure = mutation({
       });
     }
 
-    const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
     for (const attendance of args.attendance) {
-      const studentSessions = await ctx.db
-        .query("class_sessions")
-        .withIndex("by_student_schedule", (q) =>
+      const excuseReason = normalizeExcuseReason(
+        attendance.status,
+        attendance.excuseReason,
+      );
+      const existingAttendance = await ctx.db
+        .query("studentAttendanceRecords")
+        .withIndex("by_schedule_and_student", (q) =>
           q
-            .eq("studentId", attendance.studentId)
-            .eq("scheduleId", schedule._id),
+            .eq("scheduleId", schedule._id)
+            .eq("studentId", attendance.studentId),
         )
-        .collect();
-      const targetSession =
-        studentSessions.find((session) => session.attendanceStatus) ??
-        studentSessions[0];
-      if (targetSession) {
-        await ctx.db.patch(targetSession._id, {
-          attendanceStatus: attendance.status,
-          manualMarkedBy: user._id,
-          manualMarkedAt: now,
+        .unique();
+      if (existingAttendance) {
+        await ctx.db.patch(existingAttendance._id, {
+          status: attendance.status,
+          excuseReason,
+          lastUpdatedBy: user._id,
+          lastUpdatedAt: now,
         });
       } else {
-        await ctx.db.insert("class_sessions", {
+        await ctx.db.insert("studentAttendanceRecords", {
           scheduleId: schedule._id,
           studentId: attendance.studentId,
-          joinedAt: now,
-          leftAt: now,
-          durationSeconds: 0,
-          roomName: schedule.roomName,
-          sessionDate: utcToLocalDateTime(
-            schedule.scheduledStart,
-            timeZone,
-          ).slice(0, 10),
-          attendanceStatus: attendance.status,
-          manualMarkedBy: user._id,
-          manualMarkedAt: now,
+          status: attendance.status,
+          excuseReason,
+          confirmedBy: user._id,
+          confirmedAt: now,
+          lastUpdatedBy: user._id,
+          lastUpdatedAt: now,
         });
       }
     }
@@ -3272,12 +3249,8 @@ export const updateAttendance = mutation({
   args: {
     scheduleId: v.id("classSchedule"),
     studentId: v.id("users"),
-    status: v.union(
-      v.literal("present"),
-      v.literal("absent"),
-      v.literal("partial"),
-      v.literal("excused"),
-    ),
+    status: attendanceStatusValidator,
+    excuseReason: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -3298,41 +3271,33 @@ export const updateAttendance = mutation({
     );
 
     if (!isClassTeacher && !isAuthorizedAdmin) throw new Error("Unauthorized");
-    const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
-
-    const existingSessions = await ctx.db
-      .query("class_sessions")
-      .withIndex("by_student_schedule", (q) =>
-        q.eq("studentId", args.studentId).eq("scheduleId", args.scheduleId),
-      )
-      .collect();
-
-    const targetSession =
-      existingSessions.find((s) => s.attendanceStatus) || existingSessions[0];
-
-    if (targetSession) {
-      await ctx.db.patch(targetSession._id, {
-        attendanceStatus: args.status,
-        manualMarkedBy: user._id,
-        manualMarkedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("class_sessions", {
-        scheduleId: args.scheduleId,
-        studentId: args.studentId,
-        joinedAt: Date.now(),
-        leftAt: Date.now(),
-        durationSeconds: 0,
-        roomName: schedule.roomName,
-        sessionDate: utcToLocalDateTime(
-          schedule.scheduledStart,
-          timeZone,
-        ).slice(0, 10),
-        attendanceStatus: args.status,
-        manualMarkedBy: user._id,
-        manualMarkedAt: Date.now(),
-      });
+    if (
+      schedule.status !== "completed" ||
+      schedule.sessionClosureStatus !== "completed"
+    ) {
+      throw new ConvexError("Attendance has not been verified yet");
     }
+    const enrolledStudentIds = await listClassStudentIds(ctx, classData);
+    if (!enrolledStudentIds.includes(args.studentId)) {
+      throw new ConvexError("Student is not enrolled in this class");
+    }
+
+    const existingAttendance = await ctx.db
+      .query("studentAttendanceRecords")
+      .withIndex("by_schedule_and_student", (q) =>
+        q.eq("scheduleId", args.scheduleId).eq("studentId", args.studentId),
+      )
+      .unique();
+    if (!existingAttendance) {
+      throw new ConvexError("Attendance record not found");
+    }
+    const now = Date.now();
+    await ctx.db.patch(existingAttendance._id, {
+      status: args.status,
+      excuseReason: normalizeExcuseReason(args.status, args.excuseReason),
+      lastUpdatedBy: user._id,
+      lastUpdatedAt: now,
+    });
   },
 });
 

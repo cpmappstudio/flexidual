@@ -19,16 +19,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { getClassroomQueryNow } from "./use-classroom-clock";
-
-type AttendanceStatus = "present" | "absent" | "partial" | "excused";
+import {
+  AttendanceStatusControl,
+  type AttendanceStatus,
+} from "@/components/attendance/attendance-status-control";
 
 interface SessionCloseoutDialogProps {
   open: boolean;
@@ -60,6 +55,9 @@ export function SessionCloseoutDialog({
   const [attendance, setAttendance] = useState<
     Record<string, AttendanceStatus>
   >({});
+  const [excuseReasons, setExcuseReasons] = useState<Record<string, string>>(
+    {},
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -80,6 +78,14 @@ export function SessionCloseoutDialog({
         ]),
       ),
     );
+    setExcuseReasons(
+      Object.fromEntries(
+        context.attendance.map((student) => [
+          student.studentId,
+          student.excuseReason ?? "",
+        ]),
+      ),
+    );
     setError(undefined);
   }, [context, open]);
 
@@ -91,10 +97,13 @@ export function SessionCloseoutDialog({
         selectedLessonCount: selectedLessons.size,
         isAttendanceComplete:
           context?.attendance.every(
-            (student) => attendance[student.studentId],
+            (student) =>
+              attendance[student.studentId] &&
+              (attendance[student.studentId] !== "excused" ||
+                excuseReasons[student.studentId]?.trim()),
           ) ?? false,
       }),
-    [attendance, context, selectedLessons.size],
+    [attendance, context, excuseReasons, selectedLessons.size],
   );
 
   const handleSubmit = async () => {
@@ -109,6 +118,10 @@ export function SessionCloseoutDialog({
           attendance: context.attendance.map((student) => ({
             studentId: student.studentId,
             status: attendance[student.studentId],
+            excuseReason:
+              attendance[student.studentId] === "excused"
+                ? excuseReasons[student.studentId]
+                : undefined,
           })),
         });
       }
@@ -204,7 +217,7 @@ export function SessionCloseoutDialog({
                 {context?.attendance.map((student) => (
                   <div
                     key={student.studentId}
-                    className="flex items-center justify-between gap-3 p-3"
+                    className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_15rem] sm:items-start"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">
@@ -215,29 +228,36 @@ export function SessionCloseoutDialog({
                           minutes: student.totalMinutes,
                         })}
                       </p>
+                      <p className="text-xs text-muted-foreground">
+                        {t("suggestedStatus", {
+                          status: t(`status.${student.suggestedStatus}`),
+                        })}
+                      </p>
                     </div>
-                    <Select
-                      value={attendance[student.studentId]}
-                      onValueChange={(value: AttendanceStatus) =>
+                    <AttendanceStatusControl
+                      status={attendance[student.studentId]}
+                      excuseReason={excuseReasons[student.studentId]}
+                      labels={{
+                        present: t("status.present"),
+                        partial: t("status.partial"),
+                        absent: t("status.absent"),
+                        excused: t("status.excused"),
+                      }}
+                      reasonLabel={t("excuseReason")}
+                      reasonPlaceholder={t("excuseReasonPlaceholder")}
+                      onStatusChange={(value) =>
                         setAttendance((current) => ({
                           ...current,
                           [student.studentId]: value,
                         }))
                       }
-                    >
-                      <SelectTrigger className="w-36">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(
-                          ["present", "partial", "excused", "absent"] as const
-                        ).map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {t(`status.${status}`)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      onExcuseReasonChange={(reason) =>
+                        setExcuseReasons((current) => ({
+                          ...current,
+                          [student.studentId]: reason,
+                        }))
+                      }
+                    />
                   </div>
                 ))}
               </div>

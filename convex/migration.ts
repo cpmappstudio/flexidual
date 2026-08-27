@@ -1,6 +1,10 @@
 // convex/migration.ts
 import { v } from "convex/values";
-import { internalMutation, internalAction, type MutationCtx } from "./_generated/server";
+import {
+  internalMutation,
+  internalAction,
+  type MutationCtx,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { toCivilDate } from "../lib/time-zone";
@@ -14,6 +18,7 @@ const academicCleanupStageValidator = v.union(
   v.literal("whiteboardSessions"),
   v.literal("recordings"),
   v.literal("class_sessions"),
+  v.literal("studentAttendanceRecords"),
   v.literal("studentClassPreferences"),
   v.literal("classEnrollments"),
   v.literal("classSchedule"),
@@ -23,6 +28,7 @@ type AcademicCleanupStage =
   | "whiteboardSessions"
   | "recordings"
   | "class_sessions"
+  | "studentAttendanceRecords"
   | "studentClassPreferences"
   | "classEnrollments"
   | "classSchedule"
@@ -31,6 +37,7 @@ const ACADEMIC_CLEANUP_STAGES: readonly AcademicCleanupStage[] = [
   "whiteboardSessions",
   "recordings",
   "class_sessions",
+  "studentAttendanceRecords",
   "studentClassPreferences",
   "classEnrollments",
   "classSchedule",
@@ -85,13 +92,15 @@ export const importCurriculum = internalMutation({
 export const importLessonsBatch = internalMutation({
   args: {
     curriculumId: v.id("curriculums"),
-    lessons: v.array(v.object({
-      title: v.string(),
-      description: v.optional(v.string()),
-      content: v.optional(v.string()),
-      isActive: v.boolean(),
-      createdAt: v.number(),
-    })),
+    lessons: v.array(
+      v.object({
+        title: v.string(),
+        description: v.optional(v.string()),
+        content: v.optional(v.string()),
+        isActive: v.boolean(),
+        createdAt: v.number(),
+      }),
+    ),
   },
   returns: v.object({ count: v.number() }),
   handler: async (ctx, args) => {
@@ -99,10 +108,15 @@ export const importLessonsBatch = internalMutation({
 
     const existingLessons = await ctx.db
       .query("lessons")
-      .withIndex("by_curriculum", (q) => q.eq("curriculumId", args.curriculumId))
+      .withIndex("by_curriculum", (q) =>
+        q.eq("curriculumId", args.curriculumId),
+      )
       .collect();
 
-    let currentOrder = existingLessons.reduce((max, l) => Math.max(max, l.order), 0);
+    let currentOrder = existingLessons.reduce(
+      (max, l) => Math.max(max, l.order),
+      0,
+    );
 
     for (const item of args.lessons) {
       currentOrder++;
@@ -111,7 +125,7 @@ export const importLessonsBatch = internalMutation({
         title: item.title,
         description: item.description,
         content: item.content,
-        order: currentOrder, 
+        order: currentOrder,
         isActive: item.isActive,
         createdAt: item.createdAt,
         createdBy: createdBy,
@@ -151,7 +165,12 @@ export const migrateLessonIdToArray = internalMutation({
         migratedCount++;
       }
     }
-    return { success: true, migratedCount, skippedCount, totalProcessed: schedules.length };
+    return {
+      success: true,
+      migratedCount,
+      skippedCount,
+      totalProcessed: schedules.length,
+    };
   },
 });
 
@@ -212,9 +231,7 @@ export const initializeInstitutionGrades = internalMutation({
     for (const school of result.page) {
       const existing = await ctx.db
         .query("institutionGrades")
-        .withIndex("by_school_and_order", (q) =>
-          q.eq("schoolId", school._id),
-        )
+        .withIndex("by_school_and_order", (q) => q.eq("schoolId", school._id))
         .first();
       if (existing) continue;
       await Promise.all(
@@ -257,7 +274,9 @@ export const backfillInstitutionMemberships = internalMutation({
         schoolId = ctx.db.normalizeId("schools", assignment.orgId) ?? undefined;
       } else if (assignment.orgType === "campus" && assignment.orgId) {
         const campusId = ctx.db.normalizeId("campuses", assignment.orgId);
-        schoolId = campusId ? (await ctx.db.get(campusId))?.schoolId : undefined;
+        schoolId = campusId
+          ? (await ctx.db.get(campusId))?.schoolId
+          : undefined;
       }
 
       const requiresCampusScope =
@@ -293,7 +312,7 @@ export const backfillInstitutionMemberships = internalMutation({
         schoolId,
         gradeCode:
           assignment.role === "student"
-            ? assignment.gradeCode ?? legacyUser?.grade
+            ? (assignment.gradeCode ?? legacyUser?.grade)
             : undefined,
       });
     }
@@ -365,6 +384,15 @@ async function deleteAcademicCleanupBatch(
     case "class_sessions": {
       const documents = await ctx.db
         .query("class_sessions")
+        .take(ACADEMIC_CLEANUP_BATCH_SIZE);
+      await Promise.all(
+        documents.map((document) => ctx.db.delete(document._id)),
+      );
+      return documents.length;
+    }
+    case "studentAttendanceRecords": {
+      const documents = await ctx.db
+        .query("studentAttendanceRecords")
         .take(ACADEMIC_CLEANUP_BATCH_SIZE);
       await Promise.all(
         documents.map((document) => ctx.db.delete(document._id)),
@@ -580,7 +608,7 @@ export const syncAllUsersToClerk = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    // Requires an internal query in users.ts: 
+    // Requires an internal query in users.ts:
     // export const getAllUsersInternal = internalQuery({ handler: async (ctx) => await ctx.db.query("users").collect() });
     const users = await ctx.runQuery(internal.users.getAllUsersInternal, {});
 
@@ -593,7 +621,7 @@ export const syncAllUsersToClerk = internalAction({
       }
     }
     return null;
-  }
+  },
 });
 
 export const elevateToSuperadmin = internalMutation({
@@ -606,7 +634,10 @@ export const elevateToSuperadmin = internalMutation({
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
 
-    if (!user) throw new Error(`User with email ${args.email} not found. Please log in first.`);
+    if (!user)
+      throw new Error(
+        `User with email ${args.email} not found. Please log in first.`,
+      );
 
     // 2. Check if already superadmin
     const existing = await ctx.db

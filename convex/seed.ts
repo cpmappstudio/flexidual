@@ -376,14 +376,7 @@ async function deleteSchedulesForClass(
     .collect();
 
   for (const schedule of schedules) {
-    const sessions = await ctx.db
-      .query("class_sessions")
-      .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
-      .collect();
-    for (const session of sessions) {
-      await ctx.db.delete(session._id);
-    }
-    await ctx.db.delete(schedule._id);
+    await deleteScheduleWithDependencies(ctx, schedule);
   }
 }
 
@@ -406,6 +399,10 @@ export const run = internalMutation({
       for (const doc of await ctx.db.query("users").collect())
         await ctx.db.delete(doc._id);
       for (const doc of await ctx.db.query("class_sessions").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db
+        .query("studentAttendanceRecords")
+        .collect())
         await ctx.db.delete(doc._id);
       for (const doc of await ctx.db.query("schools").collect())
         await ctx.db.delete(doc._id);
@@ -605,7 +602,7 @@ export const run = internalMutation({
     const tomorrow10AM = new Date();
     tomorrow10AM.setDate(tomorrow10AM.getDate() + 1);
     tomorrow10AM.setHours(10, 0, 0, 0);
-    await ctx.db.insert("classSchedule", {
+    const completedScheduleId = await ctx.db.insert("classSchedule", {
       classId,
       lessonIds: [lesson2Id],
       scheduledStart: tomorrow10AM.getTime(),
@@ -640,6 +637,9 @@ export const run = internalMutation({
       status: "completed",
       isLive: false,
       completedAt: yesterday + oneHour,
+      sessionClosureStatus: "completed",
+      sessionClosedBy: teacherId,
+      sessionClosedAt: yesterday + oneHour,
       createdAt: yesterday - 2 * 24 * 60 * 60 * 1000,
       createdBy: teacherId,
     });
@@ -647,13 +647,22 @@ export const run = internalMutation({
     // 9. SAMPLE ATTENDANCE
     for (const studentId of studentIds) {
       await ctx.db.insert("class_sessions", {
-        scheduleId: schedule1Id,
+        scheduleId: completedScheduleId,
         studentId,
         joinedAt: yesterday + 5 * 60 * 1000,
         leftAt: yesterday + 55 * 60 * 1000,
         durationSeconds: 50 * 60,
         roomName: `class-${classId}-lesson-${lesson1Id}-${yesterday}`,
         sessionDate: new Date(yesterday).toISOString().split("T")[0],
+      });
+      await ctx.db.insert("studentAttendanceRecords", {
+        scheduleId: completedScheduleId,
+        studentId,
+        status: "present",
+        confirmedBy: teacherId,
+        confirmedAt: yesterday + oneHour,
+        lastUpdatedBy: teacherId,
+        lastUpdatedAt: yesterday + oneHour,
       });
     }
 
@@ -849,6 +858,12 @@ export const createClassesUxDemo = internalMutation({
         isLive: schedule.isLive || false,
         status: schedule.status,
         completedAt: schedule.completedAt,
+        sessionClosureStatus:
+          schedule.status === "completed" ? "completed" : undefined,
+        sessionClosedBy:
+          schedule.status === "completed" ? teacher._id : undefined,
+        sessionClosedAt:
+          schedule.status === "completed" ? schedule.completedAt : undefined,
         isRecurring: false,
         createdAt: now + index,
         createdBy: teacher._id,
@@ -881,8 +896,21 @@ export const createClassesUxDemo = internalMutation({
           sessionDate: new Date(schedule.scheduledStart)
             .toISOString()
             .split("T")[0],
-          attendanceStatus: index === 7 ? "excused" : undefined,
-          manualMarkedBy: index === 7 ? teacher._id : undefined,
+        });
+        const isExcused = index === 7;
+        await ctx.db.insert("studentAttendanceRecords", {
+          scheduleId,
+          studentId: student._id,
+          status: isExcused
+            ? "excused"
+            : index % 4 === 0
+              ? "partial"
+              : "present",
+          excuseReason: isExcused ? "Excused demo absence" : undefined,
+          confirmedBy: teacher._id,
+          confirmedAt: schedule.completedAt ?? schedule.scheduledEnd,
+          lastUpdatedBy: teacher._id,
+          lastUpdatedAt: schedule.completedAt ?? schedule.scheduledEnd,
         });
       }
     }

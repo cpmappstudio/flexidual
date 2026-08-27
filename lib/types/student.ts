@@ -25,6 +25,7 @@ export interface StudentScheduleEvent {
     | "partial"
     | "in-progress"
     | "late"
+    | "pending"
     | "excused";
   minutesAttended: number;
   isStudentActive: boolean;

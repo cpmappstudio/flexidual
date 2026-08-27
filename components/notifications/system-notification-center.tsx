@@ -317,7 +317,7 @@ export function SystemNotificationCenter() {
         className="h-7 w-auto"
       />
       {hasUnread && (
-        <span className="absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-4 font-semibold text-destructive-foreground">
+        <span className="absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-4 font-semibold text-white">
           {(unreadCount ?? 0) >= 100 ? "99+" : unreadCount}
         </span>
       )}

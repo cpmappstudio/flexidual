@@ -7,21 +7,28 @@ export async function deleteSchedulesWithDependencies(
 ) {
   const dependencies = await Promise.all(
     schedules.map(async (schedule) => {
-      const [sessions, recordings, whiteboard] = await Promise.all([
-        ctx.db
-          .query("class_sessions")
-          .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
-          .collect(),
-        ctx.db
-          .query("recordings")
-          .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
-          .collect(),
-        ctx.db
-          .query("whiteboardSessions")
-          .withIndex("by_roomName", (q) => q.eq("roomName", schedule.roomName))
-          .unique(),
-      ]);
-      return { sessions, recordings, whiteboard };
+      const [sessions, attendanceRecords, recordings, whiteboard] =
+        await Promise.all([
+          ctx.db
+            .query("class_sessions")
+            .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+            .collect(),
+          ctx.db
+            .query("studentAttendanceRecords")
+            .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+            .collect(),
+          ctx.db
+            .query("recordings")
+            .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+            .collect(),
+          ctx.db
+            .query("whiteboardSessions")
+            .withIndex("by_roomName", (q) =>
+              q.eq("roomName", schedule.roomName),
+            )
+            .unique(),
+        ]);
+      return { sessions, attendanceRecords, recordings, whiteboard };
     }),
   );
   const whiteboards = [
@@ -42,6 +49,9 @@ export async function deleteSchedulesWithDependencies(
   await Promise.all([
     ...dependencies.flatMap(({ sessions }) =>
       sessions.map((session) => ctx.db.delete(session._id)),
+    ),
+    ...dependencies.flatMap(({ attendanceRecords }) =>
+      attendanceRecords.map((record) => ctx.db.delete(record._id)),
     ),
     ...dependencies.flatMap(({ recordings }) =>
       recordings.map((recording) => ctx.db.delete(recording._id)),

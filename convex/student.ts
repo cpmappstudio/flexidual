@@ -67,8 +67,15 @@ export const getStudentDashboardStats = query({
       overall: v.object({
         activeCourses: v.number(),
         totalSessions: v.number(),
-        attendanceRate: v.number(),
-        completedSessions: v.number(),
+        verifiedSessions: v.number(),
+        pendingVerification: v.number(),
+        upcomingSessions: v.number(),
+        attendanceCounts: v.object({
+          present: v.number(),
+          partial: v.number(),
+          absent: v.number(),
+          excused: v.number(),
+        }),
       }),
       classes: v.array(
         v.object({
@@ -83,9 +90,15 @@ export const getStudentDashboardStats = query({
           }),
           stats: v.object({
             totalClasses: v.number(),
-            completedClasses: v.number(),
-            attendedClasses: v.number(),
-            progressPercentage: v.number(),
+            verifiedClasses: v.number(),
+            pendingVerification: v.number(),
+            upcomingClasses: v.number(),
+            attendanceCounts: v.object({
+              present: v.number(),
+              partial: v.number(),
+              absent: v.number(),
+              excused: v.number(),
+            }),
           }),
           icon: v.union(v.string(), v.null()),
           nextSession: v.optional(v.number()),
@@ -228,18 +241,28 @@ export const getStudentDashboardStats = query({
         overall: {
           activeCourses: 0,
           totalSessions: 0,
-          attendanceRate: 100,
-          completedSessions: 0,
+          verifiedSessions: 0,
+          pendingVerification: 0,
+          upcomingSessions: 0,
+          attendanceCounts: {
+            present: 0,
+            partial: 0,
+            absent: 0,
+            excused: 0,
+          },
         },
         classes: [],
         upcomingLessons: [],
       };
     }
 
-    const mySessions = await ctx.db
-      .query("class_sessions")
-      .withIndex("by_student_date", (q) => q.eq("studentId", user._id))
+    const attendanceRecords = await ctx.db
+      .query("studentAttendanceRecords")
+      .withIndex("by_student", (q) => q.eq("studentId", user._id))
       .collect();
+    const attendanceBySchedule = new Map(
+      attendanceRecords.map((record) => [record.scheduleId, record]),
+    );
 
     // --- Per-class stats ---
     const classDetails = await Promise.all(
@@ -263,35 +286,33 @@ export const getStudentDashboardStats = query({
               : Promise.resolve(undefined),
           ]);
 
-        const pastSchedules = schedules.filter(
-          (schedule) => schedule.scheduledEnd < args.now,
+        const countableSchedules = schedules.filter(
+          (schedule) => schedule.status !== "cancelled",
         );
-        const scheduleIds = new Set(schedules.map((s) => s._id));
-        const classSessions = mySessions.filter((s) =>
-          scheduleIds.has(s.scheduleId),
+        const completedSchedules = countableSchedules.filter(
+          (schedule) => schedule.status === "completed",
         );
-
-        let attendedCount = 0;
-        const processedSchedules = new Set();
-        classSessions.forEach((session) => {
-          if (processedSchedules.has(session.scheduleId)) return;
-          if (
-            session.attendanceStatus === "present" ||
-            session.attendanceStatus === "partial"
-          ) {
-            attendedCount++;
-            processedSchedules.add(session.scheduleId);
-            return;
-          }
-          if ((session.durationSeconds || 0) > 600) {
-            attendedCount++;
-            processedSchedules.add(session.scheduleId);
-          }
-        });
-
-        const totalPast = pastSchedules.length;
-        const progress =
-          totalPast === 0 ? 0 : Math.round((attendedCount / totalPast) * 100);
+        const upcomingClasses = countableSchedules.filter(
+          (schedule) =>
+            schedule.status === "scheduled" || schedule.status === "active",
+        ).length;
+        const attendanceCounts = {
+          present: 0,
+          partial: 0,
+          absent: 0,
+          excused: 0,
+        };
+        let pendingVerification = 0;
+        for (const schedule of completedSchedules) {
+          const attendance = attendanceBySchedule.get(schedule._id);
+          if (schedule.sessionClosureStatus !== "completed" || !attendance) {
+            pendingVerification++;
+          } else attendanceCounts[attendance.status]++;
+        }
+        const verifiedClasses = Object.values(attendanceCounts).reduce(
+          (total, count) => total + count,
+          0,
+        );
 
         return {
           stats: {
@@ -318,10 +339,11 @@ export const getStudentDashboardStats = query({
                   imageUrl: undefined,
                 },
             stats: {
-              totalClasses: schedules.length,
-              completedClasses: pastSchedules.length,
-              attendedClasses: attendedCount,
-              progressPercentage: Math.min(progress, 100),
+              totalClasses: countableSchedules.length,
+              verifiedClasses,
+              pendingVerification,
+              upcomingClasses,
+              attendanceCounts,
             },
             icon: userPreference?.icon || null,
             nextSession: schedules
@@ -373,19 +395,27 @@ export const getStudentDashboardStats = query({
       (acc, c) => acc + c.stats.totalClasses,
       0,
     );
-    const totalAttended = classStats.reduce(
-      (acc, c) => acc + c.stats.attendedClasses,
+    const attendanceCounts = classStats.reduce(
+      (counts, classStat) => ({
+        present: counts.present + classStat.stats.attendanceCounts.present,
+        partial: counts.partial + classStat.stats.attendanceCounts.partial,
+        absent: counts.absent + classStat.stats.attendanceCounts.absent,
+        excused: counts.excused + classStat.stats.attendanceCounts.excused,
+      }),
+      { present: 0, partial: 0, absent: 0, excused: 0 },
+    );
+    const verifiedSessions = Object.values(attendanceCounts).reduce(
+      (total, count) => total + count,
       0,
     );
-    const totalPastSessions = classStats.reduce(
-      (acc, c) => acc + c.stats.completedClasses,
+    const pendingVerification = classStats.reduce(
+      (total, classStat) => total + classStat.stats.pendingVerification,
       0,
     );
-
-    const overallAttendance =
-      totalPastSessions === 0
-        ? 100
-        : Math.round((totalAttended / totalPastSessions) * 100);
+    const upcomingSessions = classStats.reduce(
+      (total, classStat) => total + classStat.stats.upcomingClasses,
+      0,
+    );
 
     return {
       canEdit,
@@ -393,8 +423,10 @@ export const getStudentDashboardStats = query({
       overall: {
         activeCourses: totalCourses,
         totalSessions,
-        attendanceRate: overallAttendance,
-        completedSessions: totalPastSessions,
+        verifiedSessions,
+        pendingVerification,
+        upcomingSessions,
+        attendanceCounts,
       },
       classes: classStats,
       upcomingLessons,

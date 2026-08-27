@@ -14,6 +14,8 @@ import {
   Clock,
   Link as LinkIcon,
   PlayCircle,
+  ShieldCheck,
+  ClipboardClock,
 } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { useParams } from "next/navigation";
@@ -62,7 +64,10 @@ interface ScheduleItemProps {
     attendanceSummary?: {
       present: number;
       partial: number;
-      missed: number;
+      absent: number;
+      excused: number;
+      pendingVerification: number;
+      verifiedTotal: number;
       total: number;
     };
     isRecurring?: boolean;
@@ -164,7 +169,11 @@ export function ScheduleItem({
   const canOpenRoom = !isPast && schedule.status !== "cancelled";
   const canEditSchedule = classId && showEdit && canOpenRoom;
   const showRecordingAction = isPast && !!schedule.hasRecording;
-  const canManageAttendance = classId && showEdit && isPast;
+  const canManageAttendance =
+    classId &&
+    showEdit &&
+    isPast &&
+    Boolean(schedule.attendanceSummary?.verifiedTotal);
   const primarySessionActionLabel = schedule.isLive
     ? t("classroom.joinLive")
     : isIgnitia || isAbeka
@@ -173,7 +182,8 @@ export function ScheduleItem({
 
   const renderAttendanceSummaryContent = () => {
     if (!schedule.attendanceSummary) return null;
-    const { present, partial, missed } = schedule.attendanceSummary;
+    const { present, partial, absent, excused, pendingVerification } =
+      schedule.attendanceSummary;
 
     return (
       <>
@@ -202,11 +212,35 @@ export function ScheduleItem({
             <TooltipTrigger asChild>
               <div className="flex items-center gap-1 text-destructive">
                 <UserX className="w-3.5 h-3.5" />
-                <span>{missed}</span>
+                <span>{absent}</span>
               </div>
             </TooltipTrigger>
             <TooltipContent>{t("schedule.attendance.absent")}</TooltipContent>
           </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1 text-info">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>{excused}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>{t("schedule.attendance.excused")}</TooltipContent>
+          </Tooltip>
+
+          {pendingVerification > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <ClipboardClock className="w-3.5 h-3.5" />
+                  <span>{pendingVerification}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("schedule.attendance.pendingVerification")}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </TooltipProvider>
       </>
     );

@@ -20,6 +20,7 @@ import {
   sessionLeaderRoleValidator,
   sessionLeadershipEventTypeValidator,
 } from "./model/sessionLeadership";
+import { studentAttendanceStatusValidator } from "./model/studentAttendance";
 
 export default defineSchema({
   /**
@@ -410,22 +411,24 @@ export default defineSchema({
 
     // Date for easy querying
     sessionDate: v.string(), // YYYY-MM-DD
-
-    // Manual Status Override
-    attendanceStatus: v.optional(
-      v.union(
-        v.literal("present"),
-        v.literal("absent"),
-        v.literal("partial"),
-        v.literal("excused"),
-      ),
-    ),
-    manualMarkedBy: v.optional(v.id("users")),
-    manualMarkedAt: v.optional(v.number()),
   })
     .index("by_schedule", ["scheduleId", "leftAt"])
     .index("by_student_date", ["studentId", "sessionDate"])
     .index("by_student_schedule", ["studentId", "scheduleId", "leftAt"]),
+
+  studentAttendanceRecords: defineTable({
+    scheduleId: v.id("classSchedule"),
+    studentId: v.id("users"),
+    status: studentAttendanceStatusValidator,
+    excuseReason: v.optional(v.string()),
+    confirmedBy: v.id("users"),
+    confirmedAt: v.number(),
+    lastUpdatedBy: v.id("users"),
+    lastUpdatedAt: v.number(),
+  })
+    .index("by_schedule", ["scheduleId"])
+    .index("by_schedule_and_student", ["scheduleId", "studentId"])
+    .index("by_student", ["studentId"]),
 
   /**
    * STUDENT CLASS PREFERENCES

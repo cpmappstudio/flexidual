@@ -305,18 +305,26 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
       ? studentProfile?.orgId
       : undefined;
 
-  const totalSessions =
-    overallStats?.totalSessions ??
-    classStats.reduce((sum, item) => sum + item.stats.totalClasses, 0);
-  const completedSessions =
-    overallStats?.completedSessions ??
-    classStats.reduce((sum, item) => sum + item.stats.completedClasses, 0);
-  const attendedSessions = classStats.reduce(
-    (sum, item) => sum + item.stats.attendedClasses,
-    0,
-  );
-  const missedSessions = Math.max(0, completedSessions - attendedSessions);
-  const upcomingCount = Math.max(0, totalSessions - completedSessions);
+  const attendanceCounts =
+    overallStats?.attendanceCounts ??
+    classStats.reduce(
+      (counts, item) => ({
+        present: counts.present + item.stats.attendanceCounts.present,
+        partial: counts.partial + item.stats.attendanceCounts.partial,
+        absent: counts.absent + item.stats.attendanceCounts.absent,
+        excused: counts.excused + item.stats.attendanceCounts.excused,
+      }),
+      { present: 0, partial: 0, absent: 0, excused: 0 },
+    );
+  const verifiedSessions =
+    overallStats?.verifiedSessions ??
+    Object.values(attendanceCounts).reduce((total, count) => total + count, 0);
+  const pendingVerification =
+    overallStats?.pendingVerification ??
+    classStats.reduce(
+      (total, item) => total + item.stats.pendingVerification,
+      0,
+    );
   const classroomCtaLabel = t("dashboard.goToClassroom");
 
   if (isViewingStudentProfile && dashboardData === undefined) {
@@ -436,38 +444,52 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                         {t("student.profile.classAttendance")}
                       </h3>
                       <p className="mt-1 text-sm font-medium text-muted-foreground">
-                        {completedSessions > 0
-                          ? t("student.profile.attendanceSummary", {
-                              attended: attendedSessions,
-                              completed: completedSessions,
+                        {verifiedSessions > 0
+                          ? t("student.profile.attendanceVerifiedSummary", {
+                              verified: verifiedSessions,
                             })
                           : t("student.profile.noCompletedClassesYet")}
+                        {pendingVerification > 0 && (
+                          <span className="ml-1">
+                            {t("student.profile.pendingVerificationSummary", {
+                              count: pendingVerification,
+                            })}
+                          </span>
+                        )}
                       </p>
                     </div>
 
-                    <div className="grid w-full grid-cols-3 gap-2 xl:mt-4 xl:gap-3">
+                    <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 xl:mt-4 xl:gap-3">
                       <div className="min-w-0 rounded-2xl bg-success/50 px-2 py-2 text-center text-success-foreground xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:bg-success/60 xl:py-3">
                         <p className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
-                          {attendedSessions}
+                          {attendanceCounts.present}
                         </p>
                         <p className="mt-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
-                          {t("student.profile.classesAttendedShort")}
+                          {t("schedule.attendance.present")}
+                        </p>
+                      </div>
+                      <div className="min-w-0 rounded-2xl bg-warning/20 px-2 py-2 text-center text-warning xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:bg-warning/25 xl:py-3">
+                        <p className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
+                          {attendanceCounts.partial}
+                        </p>
+                        <p className="mt-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
+                          {t("schedule.attendance.partial")}
                         </p>
                       </div>
                       <div className="min-w-0 rounded-2xl bg-destructive/25 px-2 py-2 text-center text-destructive xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:bg-destructive/30 xl:py-3">
                         <p className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
-                          {missedSessions}
+                          {attendanceCounts.absent}
                         </p>
                         <p className="mt-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
-                          {t("student.profile.classesNotAttendedShort")}
+                          {t("schedule.attendance.absent")}
                         </p>
                       </div>
-                      <div className="min-w-0 rounded-2xl bg-info/50 px-2 py-2 text-center text-info-foreground xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:bg-info/60 xl:py-3">
+                      <div className="min-w-0 rounded-2xl bg-info/40 px-2 py-2 text-center text-info-foreground xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:bg-info/50 xl:py-3">
                         <p className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
-                          {upcomingCount}
+                          {attendanceCounts.excused}
                         </p>
                         <p className="mt-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
-                          {t("student.profile.upcomingClassesShort")}
+                          {t("schedule.attendance.excused")}
                         </p>
                       </div>
                     </div>

@@ -270,10 +270,30 @@ function buildAttendance(
   ] = ["present", "partial", "excused", "absent"],
 ) {
   return [
-    { studentId: data.studentId, status: statuses[0] },
-    { studentId: data.secondStudentId, status: statuses[1] },
-    { studentId: data.thirdStudentId, status: statuses[2] },
-    { studentId: data.fourthStudentId, status: statuses[3] },
+    {
+      studentId: data.studentId,
+      status: statuses[0],
+      excuseReason:
+        statuses[0] === "excused" ? "Medical appointment" : undefined,
+    },
+    {
+      studentId: data.secondStudentId,
+      status: statuses[1],
+      excuseReason:
+        statuses[1] === "excused" ? "Medical appointment" : undefined,
+    },
+    {
+      studentId: data.thirdStudentId,
+      status: statuses[2],
+      excuseReason:
+        statuses[2] === "excused" ? "Medical appointment" : undefined,
+    },
+    {
+      studentId: data.fourthStudentId,
+      status: statuses[3],
+      excuseReason:
+        statuses[3] === "excused" ? "Medical appointment" : undefined,
+    },
   ];
 }
 
@@ -736,11 +756,11 @@ test("the session leader records taught lessons and verifies every attendance re
           .collect()
       : [];
     const attendance = await ctx.db
-      .query("class_sessions")
-      .withIndex("by_student_schedule", (q) =>
+      .query("studentAttendanceRecords")
+      .withIndex("by_schedule_and_student", (q) =>
         q
-          .eq("studentId", data.studentId)
-          .eq("scheduleId", data.teacherScheduleId),
+          .eq("scheduleId", data.teacherScheduleId)
+          .eq("studentId", data.studentId),
       )
       .unique();
     return { schedule, report, reportLessons, attendance };
@@ -751,7 +771,11 @@ test("the session leader records taught lessons and verifies every attendance re
   });
   expect(saved.reportLessons).toHaveLength(1);
   expect(saved.reportLessons[0]?.lessonId).toBe(data.lessonId);
-  expect(saved.attendance?.attendanceStatus).toBe("present");
+  expect(saved.attendance).toMatchObject({
+    status: "present",
+    confirmedBy: data.teacherId,
+    lastUpdatedBy: data.teacherId,
+  });
 });
 
 test("session closeout rejects invalid lessons and incomplete attendance", async () => {
@@ -830,15 +854,16 @@ test("all attendance states persist and a completed report cannot be duplicated"
   const savedStatuses = await t.run(async (ctx) =>
     (
       await ctx.db
-        .query("class_sessions")
+        .query("studentAttendanceRecords")
         .withIndex("by_schedule", (q) =>
           q.eq("scheduleId", data.endGateScheduleId),
         )
         .collect()
     ).map((session) => ({
       studentId: session.studentId,
-      status: session.attendanceStatus,
-      markedBy: session.manualMarkedBy,
+      status: session.status,
+      markedBy: session.confirmedBy,
+      excuseReason: session.excuseReason,
     })),
   );
   for (const record of attendance) {
@@ -846,6 +871,7 @@ test("all attendance states persist and a completed report cannot be duplicated"
       studentId: record.studentId,
       status: record.status,
       markedBy: data.teacherId,
+      excuseReason: record.excuseReason,
     });
   }
   await expect(
@@ -864,6 +890,105 @@ test("all attendance states persist and a completed report cannot be duplicated"
       .collect(),
   );
   expect(reports).toHaveLength(1);
+});
+
+test("dashboards count final attendance states and keep pending verification separate", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "end-gate-room",
+    isLive: true,
+  });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "end-gate-room",
+    lessonIds: [data.lessonId],
+    attendance: buildAttendance(data),
+  });
+  await t.mutation(internal.schedule.endLiveSession, {
+    roomName: "end-gate-room",
+    endedAt: NOW + 60_000,
+    endedBy: data.teacherId,
+  });
+  await t.mutation(internal.schedule.endLiveSession, {
+    roomName: "tutor-room",
+    endedAt: NOW + 60_000,
+  });
+
+  const expectedStatuses = [
+    ["leader-student", "present"],
+    ["leader-student-two", "partial"],
+    ["leader-student-three", "excused"],
+    ["leader-student-four", "absent"],
+  ] as const;
+  for (const [subject, status] of expectedStatuses) {
+    const dashboard = await t
+      .withIdentity({ subject })
+      .query(api.student.getStudentDashboardStats, { now: NOW + 60_000 });
+    expect(dashboard?.overall.verifiedSessions).toBe(1);
+    expect(dashboard?.overall.pendingVerification).toBe(1);
+    expect(dashboard?.overall.attendanceCounts).toEqual({
+      present: status === "present" ? 1 : 0,
+      partial: status === "partial" ? 1 : 0,
+      absent: status === "absent" ? 1 : 0,
+      excused: status === "excused" ? 1 : 0,
+    });
+  }
+});
+
+test("authorized corrections preserve confirmation and record the latest editor", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  const admin = t.withIdentity({ subject: "leader-admin" });
+  const otherTeacher = t.withIdentity({ subject: "leader-other-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "end-gate-room",
+    isLive: true,
+  });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "end-gate-room",
+    lessonIds: [data.lessonId],
+    attendance: buildAttendance(data),
+  });
+  await t.mutation(internal.schedule.endLiveSession, {
+    roomName: "end-gate-room",
+    endedAt: NOW + 60_000,
+    endedBy: data.teacherId,
+  });
+
+  await expect(
+    otherTeacher.mutation(api.schedule.updateAttendance, {
+      scheduleId: data.endGateScheduleId,
+      studentId: data.studentId,
+      status: "absent",
+    }),
+  ).rejects.toThrow("Unauthorized");
+
+  vi.setSystemTime(NOW + 120_000);
+  await admin.mutation(api.schedule.updateAttendance, {
+    scheduleId: data.endGateScheduleId,
+    studentId: data.studentId,
+    status: "excused",
+    excuseReason: "  Family appointment  ",
+  });
+
+  const record = await t.run((ctx) =>
+    ctx.db
+      .query("studentAttendanceRecords")
+      .withIndex("by_schedule_and_student", (q) =>
+        q
+          .eq("scheduleId", data.endGateScheduleId)
+          .eq("studentId", data.studentId),
+      )
+      .unique(),
+  );
+  expect(record).toMatchObject({
+    status: "excused",
+    excuseReason: "Family appointment",
+    confirmedBy: data.teacherId,
+    confirmedAt: NOW,
+    lastUpdatedBy: data.adminId,
+    lastUpdatedAt: NOW + 120_000,
+  });
 });
 
 test("authorized leaders can recover a pending closeout after the room ended", async () => {
