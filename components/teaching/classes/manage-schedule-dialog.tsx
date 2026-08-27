@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
@@ -25,20 +25,17 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { BookOpen, Calendar, Edit, Loader2, Trash2 } from "lucide-react";
+import { Edit, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale, useTranslations } from "next-intl";
 import { DateTimePicker } from "@/components/calendar/form/date-time-picker";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
 import { useAlert } from "@/components/providers/alert-provider";
-import { cn } from "@/lib/utils";
 import { utcToLocalDateTime } from "@/lib/time-zone";
 
 interface ManageScheduleDialogProps {
-  classId: Id<"classes">;
   scheduleId: Id<"classSchedule">;
   initialData: {
-    lessonIds?: Id<"lessons">[];
     title?: string;
     description?: string;
     start: number;
@@ -51,10 +48,7 @@ interface ManageScheduleDialogProps {
   trigger?: React.ReactNode;
 }
 
-type ScheduleMode = "curriculum" | "custom";
-
 export function ManageScheduleDialog({
-  classId,
   scheduleId,
   initialData,
   trigger,
@@ -64,12 +58,6 @@ export function ManageScheduleDialog({
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(() =>
-    initialData.lessonIds?.length ? "curriculum" : "custom",
-  );
-  const [lessonIds, setLessonIds] = useState<Id<"lessons">[]>(
-    initialData.lessonIds || [],
-  );
   const [title, setTitle] = useState(initialData.title || "");
   const [description, setDescription] = useState(initialData.description || "");
   const [sessionType, setSessionType] = useState(initialData.sessionType);
@@ -81,67 +69,28 @@ export function ManageScheduleDialog({
   );
   const [updateSeries, setUpdateSeries] = useState(false);
 
-  const classes = useQuery(api.classes.getSchedulableClasses);
-  const selectedClass = classes?.find((c) => c._id === classId);
-  const lessons = useQuery(
-    api.lessons.listByCurriculum,
-    selectedClass ? { curriculumId: selectedClass.curriculumId } : "skip",
-  );
-  const usedLessonIds = useQuery(api.schedule.getUsedLessons, { classId });
   const updateSchedule = useMutation(api.schedule.updateSchedule);
   const deleteSchedule = useMutation(api.schedule.deleteSchedule);
-  const availableLessons =
-    lessons?.filter(
-      (lesson) =>
-        !usedLessonIds?.includes(lesson._id) ||
-        initialData.lessonIds?.includes(lesson._id),
-    ) || [];
 
   useEffect(() => {
     if (!open) return;
 
-    const hasLessons = Boolean(initialData.lessonIds?.length);
-    setLessonIds(initialData.lessonIds || []);
-    setScheduleMode(hasLessons ? "curriculum" : "custom");
     setTitle(initialData.title || "");
     setDescription(initialData.description || "");
     setSessionType(initialData.sessionType);
-    setStartDate(
-      utcToLocalDateTime(initialData.start, initialData.timeZone),
-    );
+    setStartDate(utcToLocalDateTime(initialData.start, initialData.timeZone));
     setDuration(Math.round((initialData.end - initialData.start) / 1000 / 60));
     setUpdateSeries(false);
   }, [open, initialData]);
 
   const handleSubmit = async () => {
-    const isCurriculumSession = scheduleMode === "curriculum";
-    const selectedLessonIds = isCurriculumSession ? lessonIds : [];
-
-    if (isCurriculumSession && selectedLessonIds.length === 0) {
-      toast.error(t("schedule.selectCurriculumLessonRequired"));
-      return;
-    }
-
-    if (!isCurriculumSession && !title.trim()) {
-      toast.error(t("schedule.titleRequired"));
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
-      const finalLessonIds =
-        selectedLessonIds.length > 0 ? selectedLessonIds : undefined;
-      const finalTitle = isCurriculumSession ? "" : title.trim() || undefined;
-      const finalDescription = isCurriculumSession
-        ? ""
-        : description.trim() || undefined;
-
       await updateSchedule({
         id: scheduleId,
-        lessonIds: finalLessonIds,
-        title: finalTitle,
-        description: finalDescription,
+        title: title.trim() || undefined,
+        description: description.trim() || undefined,
         localStart: startDate,
         durationMinutes: duration,
         sessionType,
@@ -186,17 +135,6 @@ export function ManageScheduleDialog({
     });
   };
 
-  const toggleLesson = (id: Id<"lessons">) => {
-    setLessonIds((prev) =>
-      prev.includes(id) ? prev.filter((l) => l !== id) : [...prev, id],
-    );
-  };
-
-  const changeScheduleMode = (mode: ScheduleMode) => {
-    setScheduleMode(mode);
-    if (mode === "custom") setLessonIds([]);
-  };
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -227,15 +165,7 @@ export function ManageScheduleDialog({
 
                 <RadioGroup
                   value={updateSeries ? "series" : "instance"}
-                  onValueChange={(v) => {
-                    const willUpdateSeries = v === "series";
-                    setUpdateSeries(willUpdateSeries);
-
-                    if (willUpdateSeries) {
-                      setLessonIds([]);
-                      setScheduleMode("custom");
-                    }
-                  }}
+                  onValueChange={(v) => setUpdateSeries(v === "series")}
                   className="flex flex-col gap-3"
                 >
                   <div className="flex items-start space-x-3 p-3 rounded-md border border-info/30 bg-card cursor-pointer hover:bg-info/10 transition-colors">
@@ -276,49 +206,6 @@ export function ManageScheduleDialog({
                     </div>
                   </div>
                 </RadioGroup>
-              </div>
-            )}
-
-            {!updateSeries && (
-              <div className="space-y-3">
-                <Label>{t("schedule.whatAreYouScheduling")}</Label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => changeScheduleMode("curriculum")}
-                    className={cn(
-                      "rounded-lg border p-4 text-left transition-colors hover:bg-muted/50",
-                      scheduleMode === "curriculum" &&
-                        "border-primary bg-primary/5",
-                    )}
-                  >
-                    <div className="flex items-center gap-2 font-medium">
-                      <BookOpen className="h-4 w-4 text-primary" />
-                      {t("schedule.curriculumLesson")}
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("schedule.curriculumLessonDescription")}
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => changeScheduleMode("custom")}
-                    className={cn(
-                      "rounded-lg border p-4 text-left transition-colors hover:bg-muted/50",
-                      scheduleMode === "custom" &&
-                        "border-primary bg-primary/5",
-                    )}
-                  >
-                    <div className="flex items-center gap-2 font-medium">
-                      <Calendar className="h-4 w-4 text-primary" />
-                      {t("schedule.customSession")}
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("schedule.customSessionDescription")}
-                    </p>
-                  </button>
-                </div>
               </div>
             )}
 
@@ -384,110 +271,26 @@ export function ManageScheduleDialog({
               </RadioGroup>
             </div>
 
-            {scheduleMode === "curriculum" && !updateSeries && (
+            {!updateSeries && (
               <div className="space-y-2">
-                <Label>
-                  {t("schedule.linkCurriculumLessons")}
-                  {lessonIds.length > 0 && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {t("schedule.selectedLessons", {
-                        count: lessonIds.length,
-                      })}
-                    </span>
-                  )}
-                </Label>
-
-                <div className="border rounded-md max-h-48 overflow-y-auto">
-                  {!lessons ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      {t("schedule.loadingLessons")}
-                    </div>
-                  ) : availableLessons.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      {t("schedule.allLessonsScheduled")}
-                    </div>
-                  ) : (
-                    <div className="divide-y">
-                      {availableLessons.map((lesson) => {
-                        const isSelected = lessonIds.includes(lesson._id);
-
-                        return (
-                          <button
-                            key={lesson._id}
-                            type="button"
-                            onClick={() => toggleLesson(lesson._id)}
-                            className={`w-full cursor-pointer overflow-hidden px-4 py-3 text-left transition-colors hover:bg-accent ${isSelected ? "border-l-4 border-primary bg-primary/10" : ""}`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <div
-                                  className={`flex shrink-0 h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
-                                    isSelected
-                                      ? "bg-primary border-primary"
-                                      : "border-input"
-                                  }`}
-                                >
-                                  {isSelected && (
-                                    <svg
-                                      className="h-3 w-3 text-primary-foreground"
-                                      viewBox="0 0 12 12"
-                                      fill="none"
-                                    >
-                                      <path
-                                        d="M10 3L4.5 8.5L2 6"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      />
-                                    </svg>
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-sm truncate">
-                                    {lesson.order}. {lesson.title}
-                                  </div>
-                                  {lesson.description && (
-                                    <div className="text-xs text-muted-foreground truncate mt-0.5">
-                                      {lesson.description}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <Label>{t("schedule.title")}</Label>
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={t("schedule.enterTitle")}
+                />
               </div>
             )}
-
-            {scheduleMode === "custom" && (
-              <>
-                <div className="space-y-2">
-                  <Label>
-                    {t("schedule.title")}
-                    <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder={t("schedule.enterTitle")}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>{t("schedule.description")}</Label>
-                  <Textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
-                    placeholder={t("schedule.descriptionPlaceholder")}
-                  />
-                </div>
-              </>
+            {!updateSeries && (
+              <div className="space-y-2">
+                <Label>{t("schedule.description")}</Label>
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  placeholder={t("schedule.descriptionPlaceholder")}
+                />
+              </div>
             )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

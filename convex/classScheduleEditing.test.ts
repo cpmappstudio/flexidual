@@ -360,9 +360,9 @@ test("editing a weekly schedule preserves history and replaces only future occur
     }),
   ).toBe(true);
   expect(futureSchedules[0]).toMatchObject({
-    lessonIds: [data.lessonId],
     title: "Cells review",
   });
+  expect(futureSchedules[0].lessonIds).toBeUndefined();
   expect(futureSchedules[0].recurrenceParentId).toBeUndefined();
   expect(
     futureSchedules

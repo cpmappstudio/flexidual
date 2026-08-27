@@ -1098,7 +1098,7 @@ async function validateTeacherScheduleConflicts(
 
 type FutureScheduleMetadata = Pick<
   Doc<"classSchedule">,
-  "lessonIds" | "title" | "description"
+  "title" | "description"
 >;
 
 async function insertCourseSchedule(
@@ -1134,7 +1134,6 @@ async function insertCourseSchedule(
     const parentId = await ctx.db.insert("classSchedule", {
       classId,
       schoolId,
-      lessonIds: firstMetadata?.lessonIds ?? [],
       title: firstMetadata?.title,
       description: firstMetadata?.description,
       sessionType: first.sessionType,
@@ -1162,7 +1161,6 @@ async function insertCourseSchedule(
       await ctx.db.insert("classSchedule", {
         classId,
         schoolId,
-        lessonIds: metadata?.lessonIds ?? [],
         title: metadata?.title,
         description: metadata?.description,
         sessionType: occurrence.sessionType,
@@ -1430,7 +1428,6 @@ function mapFutureScheduleMetadata(
     metadataByOccurrence.set(
       `${occurrence.slotIndex}:${occurrence.occurrenceIndex}`,
       {
-        lessonIds: metadata.lessonIds,
         title: metadata.title,
         description: metadata.description,
       },

@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { BookOpenCheck, Loader2, Users } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { BookOpenCheck, Loader2, MessageSquareText, Users } from "lucide-react";
+import { useFormatter, useTranslations } from "next-intl";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -19,6 +19,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { getClassroomQueryNow } from "./use-classroom-clock";
 import {
   AttendanceStatusControl,
@@ -44,6 +51,7 @@ export function SessionCloseoutDialog({
 }: SessionCloseoutDialogProps) {
   const t = useTranslations("classroom.closeout");
   const common = useTranslations("common");
+  const format = useFormatter();
   const context = useQuery(
     api.schedule.getSessionClosureContext,
     open ? { roomName, now: getClassroomQueryNow(sessionNow) } : "skip",
@@ -59,6 +67,7 @@ export function SessionCloseoutDialog({
     {},
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notes, setNotes] = useState("");
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -86,6 +95,7 @@ export function SessionCloseoutDialog({
         ]),
       ),
     );
+    setNotes(context.notes ?? "");
     setError(undefined);
   }, [context, open]);
 
@@ -94,7 +104,6 @@ export function SessionCloseoutDialog({
       getSessionCloseoutSubmission({
         closureStatus: context?.closureStatus,
         canClose: context?.canClose ?? false,
-        selectedLessonCount: selectedLessons.size,
         isAttendanceComplete:
           context?.attendance.every(
             (student) =>
@@ -103,7 +112,7 @@ export function SessionCloseoutDialog({
                 excuseReasons[student.studentId]?.trim()),
           ) ?? false,
       }),
-    [attendance, context, excuseReasons, selectedLessons.size],
+    [attendance, context, excuseReasons],
   );
 
   const handleSubmit = async () => {
@@ -115,6 +124,7 @@ export function SessionCloseoutDialog({
         await submitClosure({
           roomName,
           lessonIds: [...selectedLessons],
+          notes: notes.trim() || undefined,
           attendance: context.attendance.map((student) => ({
             studentId: student.studentId,
             status: attendance[student.studentId],
@@ -185,8 +195,32 @@ export function SessionCloseoutDialog({
                           });
                         }}
                       />
-                      <span className="text-sm font-medium">
-                        {lesson.order}. {lesson.title}
+                      <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                        <span className="truncate text-sm font-medium">
+                          {lesson.order}. {lesson.title}
+                        </span>
+                        {lesson.previousSessionCount > 0 && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge
+                                variant="outline"
+                                className="border-info/30 bg-info/10 text-info"
+                              >
+                                {t("previouslyRecorded")}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t("previouslyRecordedDetails", {
+                                count: lesson.previousSessionCount,
+                                date: lesson.lastRecordedAt
+                                  ? format.dateTime(lesson.lastRecordedAt, {
+                                      dateStyle: "medium",
+                                    })
+                                  : "",
+                              })}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                       </span>
                     </label>
                   ))}
@@ -196,6 +230,26 @@ export function SessionCloseoutDialog({
                   {t("noLessons")}
                 </p>
               )}
+            </section>
+
+            <section className="space-y-3" aria-labelledby="session-notes">
+              <div className="flex items-start gap-3">
+                <MessageSquareText className="mt-0.5 size-5 shrink-0 text-primary" />
+                <div>
+                  <h3 id="session-notes" className="font-semibold">
+                    {t("notesTitle")}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {t("notesDescription")}
+                  </p>
+                </div>
+              </div>
+              <Textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder={t("notesPlaceholder")}
+                rows={3}
+              />
             </section>
 
             <section

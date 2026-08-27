@@ -155,7 +155,6 @@ flexidual
 │  │  ├─ active-classroom-ui.tsx
 │  │  ├─ flexi-classroom-client.tsx
 │  │  ├─ flexi-classroom.tsx
-│  │  ├─ join-class-button.tsx
 │  │  └─ student-classroom-ui.tsx
 │  ├─ convex-client-provider.tsx
 │  ├─ dashboards

@@ -315,17 +315,24 @@ export default defineSchema({
 
   classSessionReports: defineTable({
     scheduleId: v.id("classSchedule"),
+    classId: v.optional(v.id("classes")),
     closedBy: v.id("users"),
     closedAt: v.number(),
-  }).index("by_schedule", ["scheduleId"]),
+    notes: v.optional(v.string()),
+  })
+    .index("by_schedule", ["scheduleId"])
+    .index("by_class_and_closed_at", ["classId", "closedAt"]),
 
   classSessionReportLessons: defineTable({
     reportId: v.id("classSessionReports"),
     scheduleId: v.id("classSchedule"),
+    classId: v.optional(v.id("classes")),
     lessonId: v.id("lessons"),
   })
     .index("by_report", ["reportId", "lessonId"])
-    .index("by_schedule", ["scheduleId", "lessonId"]),
+    .index("by_schedule", ["scheduleId", "lessonId"])
+    .index("by_class_and_lesson", ["classId", "lessonId"])
+    .index("by_lesson", ["lessonId"]),
 
   // Domain events retained independently from per-recipient delivery state.
   classCancellationEvents: defineTable({

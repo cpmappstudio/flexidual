@@ -131,14 +131,6 @@ export default function FlexiClassroom({
   const hasLoggedJoin = useRef(false);
   const nextRoomRef = useRef<string | null>(null);
 
-  // Format lesson titles for display
-  const lessonTitles =
-    scheduleDetails?.lessons && scheduleDetails.lessons.length > 0
-      ? scheduleDetails.lessons.length === 1
-        ? scheduleDetails.lessons[0].title
-        : `${scheduleDetails.lessons.length} Lessons`
-      : undefined;
-
   useEffect(() => {
     if (!convexUser || !roomName || !shouldConnect) return;
 
@@ -520,7 +512,6 @@ export default function FlexiClassroom({
             roomName={roomName}
             sessionNow={now}
             className={scheduleDetails?.class?.name}
-            lessonTitle={lessonTitles}
             curriculumIconKey={scheduleDetails.class.curriculumIconKey}
             onSwitchClassroom={handleSwitchClassroom}
             isFullscreen={isFullscreen}
@@ -537,7 +528,6 @@ export default function FlexiClassroom({
             roomName={roomName}
             sessionNow={now}
             className={scheduleDetails?.class?.name}
-            lessonTitle={lessonTitles}
             curriculumIconKey={scheduleDetails.class.curriculumIconKey}
             sessionIsLive={isClassLive}
             sessionTimeZone={sessionStatus.timeZone}

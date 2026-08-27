@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Doc, Id } from "@/convex/_generated/dataModel";
+import { Id } from "@/convex/_generated/dataModel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -21,8 +21,6 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item";
-import { format } from "date-fns";
-import { TZDate } from "@date-fns/tz";
 import Image from "next/image";
 import {
   ArchiveRestore,
@@ -39,7 +37,7 @@ import { StudentManager } from "@/components/teaching/classes/student-manager";
 import { Button } from "@/components/ui/button";
 import { useParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
-import { useLocale, useTranslations } from "next-intl";
+import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useMemo, useRef, useState } from "react";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
@@ -52,9 +50,8 @@ import {
 } from "@/components/schedule/next-class-panel";
 import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
 import { PastClassesPanel } from "@/components/teaching/classes/past-classes-panel";
-import type { ClassSessionType } from "@/lib/class-session";
-import { calculateCourseProgress } from "@/lib/course-progress";
 import { toast } from "sonner";
+import type { CurriculumLessonProgress } from "@/lib/course-progress";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -62,16 +59,8 @@ const classTabTriggerClassName =
   "relative mr-3 flex-none shrink-0 gap-1.5 rounded-lg text-sm font-medium text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none after:pointer-events-none after:absolute after:inset-x-2 after:-bottom-[11px] after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-secondary md:text-base";
 
 const curriculumStatusBadgeClassName = {
-  scheduled: "border-success/30 bg-success/10 text-success",
-  past: "border-border bg-muted text-muted-foreground",
-};
-
-type ClassScheduleItem = {
-  lessonIds?: Id<"lessons">[];
-  start: number;
-  end: number;
-  timeZone: string;
-  sessionType?: ClassSessionType;
+  taught: "border-success/30 bg-success/10 text-success",
+  pending: "border-border bg-muted text-muted-foreground",
 };
 
 export default function ClassDetailPage() {
@@ -96,10 +85,9 @@ export default function ClassDetailPage() {
   const classData = useQuery(api.classes.get, { id: classId });
   const setArchived = useMutation(api.courseChatMessages.setArchived);
 
-  const lessons = useQuery(
-    api.lessons.listByCurriculum,
-    classData ? { curriculumId: classData.curriculumId } : "skip",
-  );
+  const curriculumProgress = useQuery(api.lessons.getClassCurriculumProgress, {
+    classId,
+  });
 
   const scheduleResult = useQuery(api.schedule.getMySchedule, {
     classId,
@@ -120,14 +108,11 @@ export default function ClassDetailPage() {
         .sort((a, b) => a.start - b.start),
     [allScheduleItems, classId],
   );
-  const courseProgress = useMemo(
-    () => calculateCourseProgress(classSchedule),
-    [classSchedule],
-  );
+  const lessons = curriculumProgress?.lessons ?? [];
 
   if (
     classData === undefined ||
-    lessons === undefined ||
+    curriculumProgress === undefined ||
     allScheduleItems === undefined
   ) {
     return (
@@ -145,10 +130,6 @@ export default function ClassDetailPage() {
   }
 
   if (!classData) return <div className="p-6">{t("class.notFound")}</div>;
-
-  // Group schedules by lesson vs non-lesson
-  const lessonSchedules =
-    classSchedule?.filter((s) => s.lessonIds && s.lessonIds.length > 0) || [];
 
   const availableSchedules =
     classSchedule?.filter(
@@ -399,7 +380,7 @@ export default function ClassDetailPage() {
                   }))}
                 />
               </NextClassPanel>
-              <PastClassesPanel sessions={pastClasses} lessons={lessons} />
+              <PastClassesPanel sessions={pastClasses} />
             </TabsContent>
 
             {/* --- CURRICULUM TAB --- */}
@@ -407,7 +388,6 @@ export default function ClassDetailPage() {
               <CurriculumOverview
                 lessons={paginatedLessons}
                 totalLessons={lessons.length}
-                lessonSchedules={lessonSchedules as ClassScheduleItem[]}
                 curriculumId={classData.curriculumId}
                 orgSlug={orgSlug}
                 canViewCurriculumSettings={canViewCurriculumSettings}
@@ -432,7 +412,14 @@ export default function ClassDetailPage() {
 
       <ClassOverviewSidebar
         lessons={lessons}
-        progress={courseProgress}
+        progress={
+          curriculumProgress ?? {
+            totalLessons: 0,
+            taughtLessons: 0,
+            pendingLessons: 0,
+            percentage: 0,
+          }
+        }
         onViewAllLessons={handleViewAllLessons}
       />
     </div>
@@ -442,7 +429,6 @@ export default function ClassDetailPage() {
 function CurriculumOverview({
   lessons,
   totalLessons,
-  lessonSchedules,
   curriculumId,
   orgSlug,
   canViewCurriculumSettings,
@@ -450,9 +436,8 @@ function CurriculumOverview({
   totalPages,
   onPageChange,
 }: {
-  lessons: Doc<"lessons">[];
+  lessons: CurriculumLessonProgress[];
   totalLessons: number;
-  lessonSchedules: ClassScheduleItem[];
   curriculumId: Id<"curriculums">;
   orgSlug: string;
   canViewCurriculumSettings: boolean;
@@ -461,6 +446,7 @@ function CurriculumOverview({
   onPageChange: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const t = useTranslations();
+  const format = useFormatter();
 
   return (
     <div>
@@ -498,29 +484,6 @@ function CurriculumOverview({
         ) : (
           <ItemGroup className="gap-3">
             {lessons.map((lesson) => {
-              const scheduledItem = lessonSchedules.find((s) =>
-                s.lessonIds?.includes(lesson._id),
-              );
-              const isPast = scheduledItem
-                ? scheduledItem.end < Date.now()
-                : false;
-              const sessionFormatLabel =
-                scheduledItem?.sessionType === "ignitia"
-                  ? "Ignitia"
-                  : scheduledItem?.sessionType === "abeka"
-                    ? "Abeka"
-                    : null;
-              const scheduledMetaLabel = scheduledItem
-                ? sessionFormatLabel
-                  ? t("class.curriculumScheduledMetaWithPlatform", {
-                      date: `${format(new TZDate(scheduledItem.start, scheduledItem.timeZone), "MMM d, h:mm a")} · ${scheduledItem.timeZone}`,
-                      platform: sessionFormatLabel,
-                    })
-                  : t("class.curriculumScheduledMeta", {
-                      date: `${format(new TZDate(scheduledItem.start, scheduledItem.timeZone), "MMM d, h:mm a")} · ${scheduledItem.timeZone}`,
-                    })
-                : null;
-
               return (
                 <Item key={lesson._id} variant="outline" className="bg-sidebar">
                   <ItemMedia
@@ -532,27 +495,30 @@ function CurriculumOverview({
                   <ItemContent>
                     <ItemTitle className="flex-wrap text-base">
                       <span>{lesson.title}</span>
-                      {scheduledItem && (
-                        <Badge
-                          variant="outline"
-                          className={
-                            isPast
-                              ? curriculumStatusBadgeClassName.past
-                              : curriculumStatusBadgeClassName.scheduled
-                          }
-                        >
-                          {isPast
-                            ? t("schedule.pastSession")
-                            : t("lesson.scheduled")}
-                        </Badge>
-                      )}
+                      <Badge
+                        variant="outline"
+                        className={
+                          curriculumStatusBadgeClassName[lesson.status]
+                        }
+                      >
+                        {t(
+                          lesson.status === "taught"
+                            ? "class.lessonTaught"
+                            : "class.lessonPending",
+                        )}
+                      </Badge>
                     </ItemTitle>
                     <ItemDescription>
                       {lesson.description || t("common.noDescription")}
                     </ItemDescription>
-                    {scheduledMetaLabel && (
+                    {lesson.lastTaughtAt !== undefined && (
                       <p className="text-xs text-muted-foreground">
-                        {scheduledMetaLabel}
+                        {t("class.lessonTaughtDetails", {
+                          count: lesson.sessionCount,
+                          date: format.dateTime(lesson.lastTaughtAt, {
+                            dateStyle: "medium",
+                          }),
+                        })}
                       </p>
                     )}
                   </ItemContent>

@@ -37,7 +37,14 @@ const recordingValidator = v.object({
 
 const pastClassValidator = v.object({
   scheduleId: v.id("classSchedule"),
-  lessonIds: v.array(v.id("lessons")),
+  recordedLessons: v.array(
+    v.object({
+      lessonId: v.id("lessons"),
+      title: v.string(),
+      order: v.number(),
+    }),
+  ),
+  notes: v.union(v.string(), v.null()),
   title: v.union(v.string(), v.null()),
   start: v.number(),
   end: v.number(),
@@ -209,27 +216,64 @@ export const listRecentPastClasses = query({
           !schedule.isLive,
       )
       .slice(0, RECENT_PAST_CLASS_LIMIT);
-    const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
+    const [timeZone, curriculumLessons] = await Promise.all([
+      getClassTimeZone(ctx, classData),
+      ctx.db
+        .query("lessons")
+        .withIndex("by_curriculum", (q) =>
+          q.eq("curriculumId", classData.curriculumId),
+        )
+        .collect(),
+    ]);
+    const curriculumLessonsById = new Map(
+      curriculumLessons.map((lesson) => [lesson._id, lesson]),
+    );
 
     return await Promise.all(
       schedules.map(async (schedule) => {
         const sessionType = schedule.sessionType ?? ("live" as const);
-        const recordings = isExternalClassSession(sessionType)
-          ? []
-          : await ctx.db
-              .query("recordings")
-              .withIndex("by_schedule", (q) =>
-                q.eq("scheduleId", schedule._id).eq("status", "complete"),
-              )
-              .take(RECORDING_PART_LIMIT);
+        const isExternal = isExternalClassSession(sessionType);
+        const [recordings, report] = await Promise.all([
+          isExternal
+            ? []
+            : ctx.db
+                .query("recordings")
+                .withIndex("by_schedule", (q) =>
+                  q.eq("scheduleId", schedule._id).eq("status", "complete"),
+                )
+                .take(RECORDING_PART_LIMIT),
+          isExternal
+            ? null
+            : ctx.db
+                .query("classSessionReports")
+                .withIndex("by_schedule", (q) =>
+                  q.eq("scheduleId", schedule._id),
+                )
+                .first(),
+        ]);
+        const reportLessons = report
+          ? await ctx.db
+              .query("classSessionReportLessons")
+              .withIndex("by_report", (q) => q.eq("reportId", report._id))
+              .collect()
+          : [];
 
         return {
           scheduleId: schedule._id,
-          lessonIds: schedule.lessonIds ?? [],
+          recordedLessons: reportLessons
+            .map(({ lessonId }) => curriculumLessonsById.get(lessonId))
+            .filter((lesson) => lesson !== undefined)
+            .sort((first, second) => first.order - second.order)
+            .map((lesson) => ({
+              lessonId: lesson._id,
+              title: lesson.title,
+              order: lesson.order,
+            })),
+          notes: report?.notes ?? null,
           title: schedule.title ?? null,
           start: schedule.scheduledStart,
           end: schedule.scheduledEnd,
-          timeZone,
+          timeZone: timeZone ?? "UTC",
           sessionType,
           hasRecording: recordings.some((recording) => Boolean(recording.url)),
         };

@@ -136,6 +136,9 @@ const scheduleFields = {
   createdBy: v.id("users"),
 };
 const scheduleValidator = v.object(scheduleFields);
+const { lessonIds: _legacyLessonIdsValidator, ...scheduleDetailsFields } =
+  scheduleFields;
+void _legacyLessonIdsValidator;
 const sessionStatusFields = {
   scheduleId: v.id("classSchedule"),
   isActive: v.boolean(),
@@ -185,14 +188,6 @@ const scheduleEventValidator = v.object({
     v.literal("active"),
     v.literal("completed"),
     v.literal("cancelled"),
-  ),
-  lessonIds: v.array(v.id("lessons")),
-  lessons: v.array(
-    v.object({
-      _id: v.id("lessons"),
-      title: v.string(),
-      order: v.number(),
-    }),
   ),
   classId: v.id("classes"),
   curriculumId: v.id("curriculums"),
@@ -1069,11 +1064,7 @@ export const getMySchedule = query({
     const uniqueTeacherIds = new Set(
       myClasses.map((c) => c.teacherId).filter(Boolean),
     );
-    const uniqueLessonIds = new Set(
-      flatSchedule.flatMap((s) => s.lessonIds || []),
-    );
-
-    const [curriculums, teachers, lessons] = await Promise.all([
+    const [curriculums, teachers] = await Promise.all([
       Promise.all(
         Array.from(uniqueCurriculumIds).map((id) =>
           ctx.db.get(id as Id<"curriculums">),
@@ -1081,11 +1072,6 @@ export const getMySchedule = query({
       ),
       Promise.all(
         Array.from(uniqueTeacherIds).map((id) => ctx.db.get(id as Id<"users">)),
-      ),
-      Promise.all(
-        Array.from(uniqueLessonIds).map((id) =>
-          ctx.db.get(id as Id<"lessons">),
-        ),
       ),
     ]);
 
@@ -1095,7 +1081,6 @@ export const getMySchedule = query({
     const teacherMap = new Map(
       teachers.filter(Boolean).map((t) => [t!._id, t!]),
     );
-    const lessonMap = new Map(lessons.filter(Boolean).map((l) => [l!._id, l!]));
 
     const allSessionsForSchedules = includeAttendance
       ? await Promise.all(
@@ -1198,13 +1183,8 @@ export const getMySchedule = query({
             classData.tutorId === user._id);
         const classStudents = studentIdsByClass.get(classData._id) ?? [];
 
-        const scheduledLessons = (item.lessonIds || [])
-          .map((id) => lessonMap.get(id))
-          .filter(Boolean);
-        const title =
-          item.title || scheduledLessons[0]?.title || "Class Session";
-        const description =
-          item.description || scheduledLessons[0]?.description || "";
+        const title = item.title || classData.name;
+        const description = item.description || "";
 
         let recurrenceRule = item.recurrenceRule;
         if (item.recurrenceParentId && !recurrenceRule) {
@@ -1354,12 +1334,6 @@ export const getMySchedule = query({
           isLive: effectiveIsLive,
           sessionType: item.sessionType || "live",
           status: effectiveStatus,
-          lessonIds: item.lessonIds || [],
-          lessons: scheduledLessons.map((l) => ({
-            _id: l!._id,
-            title: l!.title,
-            order: l!.order,
-          })),
           classId: classData._id,
           curriculumId: classData.curriculumId,
           teacherId: classData.teacherId,
@@ -1532,16 +1506,7 @@ export const getWithDetails = query({
   returns: v.union(
     v.null(),
     v.object({
-      ...scheduleFields,
-      lessons: v.array(
-        v.object({
-          _id: v.id("lessons"),
-          title: v.string(),
-          description: v.optional(v.string()),
-          content: v.optional(v.string()),
-          order: v.number(),
-        }),
-      ),
+      ...scheduleDetailsFields,
       class: v.object({
         _id: v.id("classes"),
         name: v.string(),
@@ -1560,23 +1525,12 @@ export const getWithDetails = query({
     const classData = await ctx.db.get(schedule.classId);
     if (!classData) return null;
 
-    const [lessons, curriculum] = await Promise.all([
-      schedule.lessonIds && schedule.lessonIds.length > 0
-        ? Promise.all(schedule.lessonIds.map((id) => ctx.db.get(id)))
-        : Promise.resolve([]),
-      ctx.db.get("curriculums", classData.curriculumId),
-    ]);
-    const validLessons = lessons.filter(Boolean);
+    const curriculum = await ctx.db.get("curriculums", classData.curriculumId);
 
+    const { lessonIds: _legacyLessonIds, ...scheduleDetails } = schedule;
+    void _legacyLessonIds;
     return {
-      ...schedule,
-      lessons: validLessons.map((l) => ({
-        _id: l!._id,
-        title: l!.title,
-        description: l!.description,
-        content: l!.content,
-        order: l!.order,
-      })),
+      ...scheduleDetails,
       class: {
         _id: classData._id,
         name: classData.name,
@@ -1837,12 +1791,15 @@ export const getSessionClosureContext = query({
       className: v.string(),
       canClose: v.boolean(),
       closureStatus: v.optional(sessionClosureStatusValidator),
+      notes: v.optional(v.string()),
       lessons: v.array(
         v.object({
           lessonId: v.id("lessons"),
           title: v.string(),
           order: v.number(),
           selected: v.boolean(),
+          previousSessionCount: v.number(),
+          lastRecordedAt: v.optional(v.number()),
         }),
       ),
       attendance: v.array(
@@ -1879,19 +1836,34 @@ export const getSessionClosureContext = query({
     );
     if (!access?.authorized) throw new ConvexError("PERMISSION_DENIED");
 
-    const [lessons, attendance, report] = await Promise.all([
-      ctx.db
-        .query("lessons")
-        .withIndex("by_curriculum_active", (q) =>
-          q.eq("curriculumId", classData.curriculumId).eq("isActive", true),
-        )
-        .collect(),
-      getAttendanceDetailsData(ctx, schedule, classData, args.now),
-      ctx.db
-        .query("classSessionReports")
-        .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
-        .first(),
-    ]);
+    if (isExternalClassSession(schedule.sessionType)) return null;
+
+    const [lessons, attendance, report, classReports, classReportLessons] =
+      await Promise.all([
+        ctx.db
+          .query("lessons")
+          .withIndex("by_curriculum_active", (q) =>
+            q.eq("curriculumId", classData.curriculumId).eq("isActive", true),
+          )
+          .collect(),
+        getAttendanceDetailsData(ctx, schedule, classData, args.now),
+        ctx.db
+          .query("classSessionReports")
+          .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+          .first(),
+        ctx.db
+          .query("classSessionReports")
+          .withIndex("by_class_and_closed_at", (q) =>
+            q.eq("classId", classData._id),
+          )
+          .collect(),
+        ctx.db
+          .query("classSessionReportLessons")
+          .withIndex("by_class_and_lesson", (q) =>
+            q.eq("classId", classData._id),
+          )
+          .collect(),
+      ]);
     const reportLessons = report
       ? await ctx.db
           .query("classSessionReportLessons")
@@ -1901,18 +1873,47 @@ export const getSessionClosureContext = query({
     const selectedLessonIds = new Set(
       reportLessons.map(({ lessonId }) => lessonId),
     );
+    const reportClosedAt = new Map(
+      classReports.map((classReport) => [
+        classReport._id,
+        classReport.closedAt,
+      ]),
+    );
+    const historyByLesson = new Map<
+      Id<"lessons">,
+      { count: number; lastRecordedAt?: number }
+    >();
+    for (const reportLesson of classReportLessons) {
+      if (reportLesson.scheduleId === schedule._id) continue;
+      const closedAt = reportClosedAt.get(reportLesson.reportId);
+      if (closedAt === undefined) continue;
+      const history = historyByLesson.get(reportLesson.lessonId) ?? {
+        count: 0,
+      };
+      history.count += 1;
+      history.lastRecordedAt = Math.max(history.lastRecordedAt ?? 0, closedAt);
+      historyByLesson.set(reportLesson.lessonId, history);
+    }
 
     return {
       scheduleId: schedule._id,
       className: classData.name,
       canClose: await canCloseClassSession(ctx, user._id, schedule),
       closureStatus: schedule.sessionClosureStatus,
-      lessons: lessons.map((lesson) => ({
-        lessonId: lesson._id,
-        title: lesson.title,
-        order: lesson.order,
-        selected: selectedLessonIds.has(lesson._id),
-      })),
+      notes: report?.notes,
+      lessons: lessons
+        .sort((a, b) => a.order - b.order)
+        .map((lesson) => {
+          const history = historyByLesson.get(lesson._id);
+          return {
+            lessonId: lesson._id,
+            title: lesson.title,
+            order: lesson.order,
+            selected: selectedLessonIds.has(lesson._id),
+            previousSessionCount: history?.count ?? 0,
+            lastRecordedAt: history?.lastRecordedAt,
+          };
+        }),
       attendance: attendance.map((student) => ({
         studentId: student.studentId,
         fullName: student.fullName,
@@ -2122,28 +2123,6 @@ export const checkLiveKitAccess = internalQuery({
   },
 });
 
-export const getUsedLessons = query({
-  args: { classId: v.id("classes") },
-  returns: v.array(v.id("lessons")),
-  handler: async (ctx, args) => {
-    const user = await getCurrentUserOrThrow(ctx);
-    const classData = await ctx.db.get(args.classId);
-    if (!classData) return [];
-    if (!(await canAccessClass(ctx, user._id, classData))) {
-      throw new ConvexError("PERMISSION_DENIED");
-    }
-    const schedules = await ctx.db
-      .query("classSchedule")
-      .withIndex("by_class", (q) => q.eq("classId", args.classId))
-      .collect();
-    const usedLessons = new Set<Id<"lessons">>();
-    schedules.forEach((s) => {
-      if (s.lessonIds) s.lessonIds.forEach((id) => usedLessons.add(id));
-    });
-    return Array.from(usedLessons);
-  },
-});
-
 async function getAttendanceDetailsData(
   ctx: QueryCtx | MutationCtx,
   schedule: Doc<"classSchedule">,
@@ -2254,7 +2233,6 @@ export const getAttendanceDetails = query({
 export const updateSchedule = mutation({
   args: {
     id: v.id("classSchedule"),
-    lessonIds: v.optional(v.array(v.id("lessons"))),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     localStart: v.optional(v.string()),
@@ -2294,36 +2272,6 @@ export const updateSchedule = mutation({
 
     if (!isAuthorizedAdmin) {
       throw new ConvexError("PERMISSION_DENIED");
-    }
-
-    if (args.updateSeries && args.lessonIds && args.lessonIds.length > 0) {
-      throw new Error(
-        "Cannot add lessons when updating entire series. Edit individual occurrences instead.",
-      );
-    }
-
-    if (args.lessonIds && args.lessonIds.length > 0 && !args.updateSeries) {
-      const usedLessons = await ctx.db
-        .query("classSchedule")
-        .withIndex("by_class", (q) => q.eq("classId", schedule.classId))
-        .collect();
-      const allUsedLessonIds = new Set<string>();
-      usedLessons.forEach((s) => {
-        if (s._id !== args.id && s.lessonIds)
-          s.lessonIds.forEach((id) => allUsedLessonIds.add(id));
-      });
-
-      for (const lessonId of args.lessonIds) {
-        if (allUsedLessonIds.has(lessonId))
-          throw new ConvexError({
-            code: "LESSON_ALREADY_SCHEDULED",
-            lessonId: lessonId,
-          });
-        const lesson = await ctx.db.get(lessonId);
-        if (!lesson) throw new Error("Lesson not found");
-        if (lesson.curriculumId !== classData.curriculumId)
-          throw new Error("Lesson does not belong to this class's curriculum");
-      }
     }
 
     const oldStart = schedule.scheduledStart;
@@ -2382,8 +2330,6 @@ export const updateSchedule = mutation({
       metadataUpdates.sessionType = args.sessionType;
     if (args.description !== undefined)
       metadataUpdates.description = args.description;
-    if (args.lessonIds !== undefined)
-      metadataUpdates.lessonIds = args.lessonIds;
     if (args.status) {
       metadataUpdates.status = args.status;
       if (args.status === "completed" && !schedule.completedAt)
@@ -2856,6 +2802,7 @@ export const submitSessionClosure = mutation({
   args: {
     roomName: v.string(),
     lessonIds: v.array(v.id("lessons")),
+    notes: v.optional(v.string()),
     attendance: v.array(
       v.object({
         studentId: v.id("users"),
@@ -2872,6 +2819,9 @@ export const submitSessionClosure = mutation({
       .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
       .first();
     if (!schedule) throw new ConvexError("Schedule not found");
+    if (isExternalClassSession(schedule.sessionType)) {
+      throw new ConvexError("External classes do not use session closeout");
+    }
     if (!(await canCloseClassSession(ctx, user._id, schedule))) {
       throw new ConvexError("Only the session leader can close this class");
     }
@@ -2879,11 +2829,8 @@ export const submitSessionClosure = mutation({
     if (!classData) throw new ConvexError("Class not found");
 
     const uniqueLessonIds = new Set(args.lessonIds);
-    if (
-      uniqueLessonIds.size === 0 ||
-      uniqueLessonIds.size !== args.lessonIds.length
-    ) {
-      throw new ConvexError("Select at least one taught lesson");
+    if (uniqueLessonIds.size !== args.lessonIds.length) {
+      throw new ConvexError("Duplicate taught lesson selection");
     }
     const lessons = await Promise.all(
       args.lessonIds.map((lessonId) => ctx.db.get(lessonId)),
@@ -2914,6 +2861,7 @@ export const submitSessionClosure = mutation({
     }
 
     const now = Date.now();
+    const notes = args.notes?.trim() || undefined;
     const existingReport = await ctx.db
       .query("classSessionReports")
       .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
@@ -2922,13 +2870,17 @@ export const submitSessionClosure = mutation({
       ? existingReport._id
       : await ctx.db.insert("classSessionReports", {
           scheduleId: schedule._id,
+          classId: classData._id,
           closedBy: user._id,
           closedAt: now,
+          notes,
         });
     if (existingReport) {
       await ctx.db.patch(existingReport._id, {
+        classId: classData._id,
         closedBy: user._id,
         closedAt: now,
+        notes,
       });
       const previousLessons = await ctx.db
         .query("classSessionReportLessons")
@@ -2942,6 +2894,7 @@ export const submitSessionClosure = mutation({
       await ctx.db.insert("classSessionReportLessons", {
         reportId,
         scheduleId: schedule._id,
+        classId: classData._id,
         lessonId,
       });
     }

@@ -6,11 +6,12 @@ import { format } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { PlayCircle, VideoOff } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import type { Doc, Id } from "@/convex/_generated/dataModel";
+import type { Id } from "@/convex/_generated/dataModel";
 import { ScheduleRecordingPlayer } from "@/components/recording-player-modal";
 import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
 import { CalendarProviderMark } from "@/components/calendar/calendar-provider-mark";
 import { getCalendarProviderAppearanceClasses } from "@/components/calendar/calendar-tailwind-classes";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,7 +23,12 @@ import {
 
 export type PastClassItem = {
   scheduleId: Id<"classSchedule">;
-  lessonIds: Id<"lessons">[];
+  recordedLessons: {
+    lessonId: Id<"lessons">;
+    title: string;
+    order: number;
+  }[];
+  notes: string | null;
   title: string | null;
   start: number;
   end: number;
@@ -35,10 +41,8 @@ const dateLocales = { en: enUS, es, "pt-BR": ptBR } as const;
 
 export function PastClassesPanel({
   sessions,
-  lessons,
 }: {
   sessions: PastClassItem[] | undefined;
-  lessons: Doc<"lessons">[];
 }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -56,12 +60,11 @@ export function PastClassesPanel({
   const dateLocale = dateLocales[locale as keyof typeof dateLocales] ?? enUS;
 
   const getSessionTitle = (session: PastClassItem) => {
-    const linkedLessons = lessons
-      .filter((lesson) => session.lessonIds.includes(lesson._id))
-      .sort((first, second) => first.order - second.order);
-    if (linkedLessons.length === 1) return linkedLessons[0].title;
-    if (linkedLessons.length > 1) {
-      return `${linkedLessons[0].title} +${linkedLessons.length - 1}`;
+    if (session.recordedLessons.length === 1) {
+      return session.recordedLessons[0].title;
+    }
+    if (session.recordedLessons.length > 1) {
+      return `${session.recordedLessons[0].title} +${session.recordedLessons.length - 1}`;
     }
     return session.title ?? t("schedule.sessions");
   };
@@ -159,6 +162,45 @@ export function PastClassesPanel({
                     className="rounded-2xl"
                   />
                 ))}
+              {selectedSession &&
+                !selectedSessionIsExternal &&
+                (selectedSession.recordedLessons.length > 0 ||
+                  selectedSession.notes) && (
+                  <div className="mt-3 rounded-2xl border bg-muted/40 px-4 py-3">
+                    {selectedSession.recordedLessons.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">
+                          {t("classroom.closeout.lessonsTitle")}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {selectedSession.recordedLessons.map((lesson) => (
+                            <Badge
+                              key={lesson.lessonId}
+                              variant="outline"
+                              className="rounded-full bg-background px-3 py-1 font-normal"
+                            >
+                              {lesson.order}. {lesson.title}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedSession.notes && (
+                      <div
+                        className={cn(
+                          selectedSession.recordedLessons.length > 0 && "mt-3",
+                        )}
+                      >
+                        <p className="text-xs font-semibold text-foreground">
+                          {t("class.sessionNotes")}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {selectedSession.notes}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
 
             <div

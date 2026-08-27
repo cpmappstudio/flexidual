@@ -6,13 +6,11 @@ import {
   CheckCircle2,
   MonitorPlay,
   Video,
-  BookOpen,
   ArrowRight,
   Users,
   UserCheck,
   UserX,
   Clock,
-  Link as LinkIcon,
   PlayCircle,
   ShieldCheck,
   ClipboardClock,
@@ -44,7 +42,6 @@ const localeMap = {
 interface ScheduleItemProps {
   schedule: {
     scheduleId: Id<"classSchedule">;
-    lessonIds?: Id<"lessons">[]; // ✅ Changed to array
     classId: Id<"classes">;
     title: string;
     description?: string;
@@ -56,11 +53,6 @@ interface ScheduleItemProps {
     status?: "scheduled" | "active" | "cancelled" | "completed";
     className?: string;
     curriculumTitle?: string;
-    lessons?: {
-      _id: Id<"lessons">;
-      title: string;
-      order: number;
-    }[];
     attendanceSummary?: {
       present: number;
       partial: number;
@@ -124,48 +116,8 @@ export function ScheduleItem({
     : isAbeka
       ? "Abeka"
       : t("schedule.platformLive");
-  const linkedLessonCount =
-    schedule.lessons?.length || schedule.lessonIds?.length || 0;
-  const lessonContextLabel =
-    linkedLessonCount > 0
-      ? t("schedule.curriculumSession")
-      : t("schedule.customSession");
-  const classSessionTitle = (() => {
-    if (!schedule.lessons || schedule.lessons.length === 0) {
-      return schedule.title;
-    }
-
-    const sortedLessons = [...schedule.lessons].sort(
-      (a, b) => a.order - b.order,
-    );
-    const firstLesson = sortedLessons[0];
-    const lastLesson = sortedLessons[sortedLessons.length - 1];
-
-    if (sortedLessons.length === 1) {
-      return t("schedule.linkedLesson", {
-        order: firstLesson.order,
-        title: firstLesson.title,
-      });
-    }
-
-    if (sortedLessons.length === 2) {
-      return t("schedule.linkedLessonsPair", {
-        startOrder: firstLesson.order,
-        endOrder: lastLesson.order,
-        firstTitle: firstLesson.title,
-        secondTitle: lastLesson.title,
-      });
-    }
-
-    return t("schedule.linkedLessonsSummary", {
-      startOrder: firstLesson.order,
-      endOrder: lastLesson.order,
-      firstTitle: firstLesson.title,
-      count: sortedLessons.length - 1,
-    });
-  })();
-  const shouldShowDescription =
-    showDescription && !!schedule.description && linkedLessonCount <= 1;
+  const classSessionTitle = schedule.title;
+  const shouldShowDescription = showDescription && !!schedule.description;
   const canOpenRoom = !isPast && schedule.status !== "cancelled";
   const canEditSchedule = classId && showEdit && canOpenRoom;
   const showRecordingAction = isPast && !!schedule.hasRecording;
@@ -291,9 +243,7 @@ export function ScheduleItem({
               )}
             </div>
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              {timeRange} · {lessonContextLabel}
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">{timeRange}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {t("schedule.platform")}: {platformLabel}
             </p>
@@ -382,10 +332,8 @@ export function ScheduleItem({
 
           {canEditSchedule && (
             <ManageScheduleDialog
-              classId={classId}
               scheduleId={schedule.scheduleId}
               initialData={{
-                lessonIds: schedule.lessonIds,
                 title: schedule.title,
                 description: schedule.description,
                 start: startDate.getTime(),
@@ -477,24 +425,6 @@ export function ScheduleItem({
               </Badge>
             )}
 
-            {/* ✅ Updated: Show lesson count instead of single lesson indicator */}
-            {schedule.lessonIds && schedule.lessonIds.length > 0 ? (
-              <Badge variant="outline" className="shrink-0">
-                <LinkIcon className="h-3 w-3 mr-1" />
-                {schedule.lessonIds.length}{" "}
-                {schedule.lessonIds.length === 1
-                  ? t("lesson.linked")
-                  : t("lesson.lessonsLinked")}
-              </Badge>
-            ) : (
-              <Badge
-                variant="outline"
-                className="shrink-0 border-dashed text-muted-foreground"
-              >
-                {t("lesson.noLesson")}
-              </Badge>
-            )}
-
             {/* Active Status */}
             {schedule.isLive &&
               (isIgnitia ? (
@@ -528,22 +458,6 @@ export function ScheduleItem({
               </Badge>
             )}
           </div>
-
-          {/* ✅ NEW: Display linked lessons */}
-          {schedule.lessons && schedule.lessons.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {schedule.lessons.map((lesson) => (
-                <Badge
-                  key={lesson._id}
-                  variant="secondary"
-                  className="text-xs font-normal"
-                >
-                  <BookOpen className="h-3 w-3 mr-1" />
-                  {lesson.order}. {lesson.title}
-                </Badge>
-              ))}
-            </div>
-          )}
 
           {showDescription && schedule.description && (
             <p className="text-sm text-muted-foreground line-clamp-2 mt-1.5">
@@ -616,10 +530,8 @@ export function ScheduleItem({
             {/* Edit Button */}
             {classId && showEdit && (
               <ManageScheduleDialog
-                classId={classId}
                 scheduleId={schedule.scheduleId}
                 initialData={{
-                  lessonIds: schedule.lessonIds,
                   title: schedule.title,
                   description: schedule.description,
                   start: startDate.getTime(),

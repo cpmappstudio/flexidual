@@ -235,6 +235,8 @@ async function setupLeadershipTest() {
       secondStudentId,
       thirdStudentId,
       fourthStudentId,
+      classId,
+      curriculumId,
       lessonId,
       inactiveLessonId,
       foreignLessonId,
@@ -738,6 +740,7 @@ test("the session leader records taught lessons and verifies every attendance re
   await teacher.mutation(api.schedule.submitSessionClosure, {
     roomName: "teacher-led-room",
     lessonIds: [data.lessonId],
+    notes: "  Reviewed the core examples.  ",
     attendance: buildAttendance(data),
   });
 
@@ -769,12 +772,215 @@ test("the session leader records taught lessons and verifies every attendance re
     sessionClosureStatus: "completed",
     sessionClosedBy: data.teacherId,
   });
+  expect(saved.report).toMatchObject({
+    classId: data.classId,
+    notes: "Reviewed the core examples.",
+  });
   expect(saved.reportLessons).toHaveLength(1);
-  expect(saved.reportLessons[0]?.lessonId).toBe(data.lessonId);
+  expect(saved.reportLessons[0]).toMatchObject({
+    classId: data.classId,
+    lessonId: data.lessonId,
+  });
   expect(saved.attendance).toMatchObject({
     status: "present",
     confirmedBy: data.teacherId,
     lastUpdatedBy: data.teacherId,
+  });
+});
+
+test("a live class can close without lessons while preserving an optional session comment", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "concurrent-room",
+    isLive: true,
+  });
+
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "concurrent-room",
+    lessonIds: [],
+    notes: "  We reviewed for the exam.  ",
+    attendance: buildAttendance(data),
+  });
+
+  const saved = await t.run(async (ctx) => {
+    const report = await ctx.db
+      .query("classSessionReports")
+      .withIndex("by_schedule", (q) =>
+        q.eq("scheduleId", data.concurrentScheduleId),
+      )
+      .unique();
+    const reportLessons = report
+      ? await ctx.db
+          .query("classSessionReportLessons")
+          .withIndex("by_report", (q) => q.eq("reportId", report._id))
+          .collect()
+      : [];
+    return { report, reportLessons };
+  });
+  expect(saved.report).toMatchObject({
+    classId: data.classId,
+    notes: "We reviewed for the exam.",
+  });
+  expect(saved.reportLessons).toHaveLength(0);
+
+  const progress = await teacher.query(api.lessons.getClassCurriculumProgress, {
+    classId: data.classId,
+  });
+  expect(progress).toMatchObject({
+    totalLessons: 1,
+    taughtLessons: 0,
+    pendingLessons: 1,
+    percentage: 0,
+  });
+});
+
+test("external class types do not use the Flexidual session closeout", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await t.run((ctx) =>
+    ctx.db.patch("classSchedule", data.teacherScheduleId, {
+      sessionType: "ignitia",
+    }),
+  );
+
+  const context = await teacher.query(api.schedule.getSessionClosureContext, {
+    roomName: "teacher-led-room",
+    now: NOW,
+  });
+  expect(context).toBeNull();
+
+  await expect(
+    teacher.mutation(api.schedule.submitSessionClosure, {
+      roomName: "teacher-led-room",
+      lessonIds: [],
+      notes: "External platform session",
+      attendance: buildAttendance(data),
+    }),
+  ).rejects.toThrow("External classes do not use session closeout");
+});
+
+test("lesson history is scoped to the course and repeated lessons count once in progress", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  const admin = t.withIdentity({ subject: "leader-admin" });
+  await t.run((ctx) =>
+    ctx.db.insert("lessons", {
+      curriculumId: data.curriculumId,
+      title: "Still pending",
+      order: 2,
+      isActive: true,
+      createdAt: NOW,
+      createdBy: data.adminId,
+    }),
+  );
+
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "teacher-led-room",
+    lessonIds: [data.lessonId],
+    notes: "First pass",
+    attendance: buildAttendance(data),
+  });
+
+  vi.setSystemTime(NOW + 1_000);
+  const nextContext = await teacher.query(
+    api.schedule.getSessionClosureContext,
+    { roomName: "tutor-room", now: NOW + 1_000 },
+  );
+  expect(
+    nextContext?.lessons.find(({ lessonId }) => lessonId === data.lessonId),
+  ).toMatchObject({
+    selected: false,
+    previousSessionCount: 1,
+    lastRecordedAt: NOW,
+  });
+
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "tutor-room",
+    isLive: true,
+  });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "tutor-room",
+    lessonIds: [data.lessonId],
+    notes: "Second pass",
+    attendance: buildAttendance(data),
+  });
+
+  const progress = await teacher.query(api.lessons.getClassCurriculumProgress, {
+    classId: data.classId,
+  });
+  expect(progress).toMatchObject({
+    totalLessons: 2,
+    taughtLessons: 1,
+    pendingLessons: 1,
+    percentage: 50,
+  });
+  expect(
+    progress?.lessons.find(({ _id }) => _id === data.lessonId),
+  ).toMatchObject({
+    sessionCount: 2,
+    lastTaughtAt: NOW + 1_000,
+    status: "taught",
+  });
+
+  await expect(
+    admin.mutation(api.lessons.remove, { id: data.lessonId }),
+  ).rejects.toThrow("RECORDED_LESSON_CANNOT_BE_DELETED");
+
+  await t.run(async (ctx) => {
+    const classSchedules = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_class", (q) => q.eq("classId", data.classId))
+      .collect();
+    for (const schedule of classSchedules) {
+      if (
+        schedule._id !== data.teacherScheduleId &&
+        schedule._id !== data.tutorScheduleId
+      ) {
+        await ctx.db.patch("classSchedule", schedule._id, {
+          status: "cancelled",
+          isLive: false,
+        });
+      }
+    }
+    for (const scheduleId of [data.teacherScheduleId, data.tutorScheduleId]) {
+      await ctx.db.patch("classSchedule", scheduleId, {
+        status: "completed",
+        isLive: false,
+      });
+    }
+  });
+  const pastClasses = await teacher.query(
+    api.recordings.listRecentPastClasses,
+    { classId: data.classId, now: NOW + 2 * 60 * 60_000 },
+  );
+  expect(
+    pastClasses.find(({ scheduleId }) => scheduleId === data.teacherScheduleId),
+  ).toMatchObject({
+    recordedLessons: [
+      {
+        lessonId: data.lessonId,
+        title: "Session leadership",
+        order: 1,
+      },
+    ],
+    notes: "First pass",
+  });
+  expect(
+    pastClasses.find(({ scheduleId }) => scheduleId === data.tutorScheduleId),
+  ).toMatchObject({
+    recordedLessons: [
+      {
+        lessonId: data.lessonId,
+        title: "Session leadership",
+        order: 1,
+      },
+    ],
+    notes: "Second pass",
   });
 });
 
@@ -788,7 +994,6 @@ test("session closeout rejects invalid lessons and incomplete attendance", async
   const validAttendance = buildAttendance(data);
 
   for (const lessonIds of [
-    [],
     [data.lessonId, data.lessonId],
     [data.inactiveLessonId],
     [data.foreignLessonId],

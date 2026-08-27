@@ -1,7 +1,6 @@
 export interface SessionCloseoutSubmissionInput {
   closureStatus?: "pending" | "completed";
   canClose: boolean;
-  selectedLessonCount: number;
   isAttendanceComplete: boolean;
 }
 
@@ -10,11 +9,7 @@ export function getSessionCloseoutSubmission(
 ) {
   const isReportSaved = input.closureStatus === "completed";
   return {
-    canSubmit:
-      isReportSaved ||
-      (input.canClose &&
-        input.selectedLessonCount > 0 &&
-        input.isAttendanceComplete),
+    canSubmit: isReportSaved || (input.canClose && input.isAttendanceComplete),
     shouldSaveReport: !isReportSaved,
   };
 }

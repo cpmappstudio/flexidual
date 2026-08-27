@@ -1,9 +1,9 @@
 "use client";
 
-import type { Doc } from "@/convex/_generated/dataModel";
 import { ArrowRight, BookOpen, CircleCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import type { ChartConfig } from "@/components/ui/chart";
 import { RadialChart } from "@/components/ui/radial-chart";
 import {
@@ -13,7 +13,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { CourseProgress } from "@/lib/course-progress";
+import type {
+  CourseProgress,
+  CurriculumLessonProgress,
+} from "@/lib/course-progress";
 
 const overviewCardClassName =
   "min-h-0 gap-4 overflow-hidden rounded-[2rem] border-0 py-5 shadow-md ring-1 ring-border/80";
@@ -25,7 +28,7 @@ export function ClassOverviewSidebar({
   progress,
   onViewAllLessons,
 }: {
-  lessons: Doc<"lessons">[];
+  lessons: CurriculumLessonProgress[];
   progress: CourseProgress;
   onViewAllLessons: () => void;
 }) {
@@ -70,7 +73,7 @@ export function ClassOverviewSidebar({
               </span>
               <div className="min-w-0">
                 <p className="font-bold leading-none text-foreground">
-                  {progress.completedClasses}
+                  {progress.taughtLessons}
                 </p>
                 <p className="mt-1 text-xs leading-tight text-muted-foreground">
                   {t("class.completedClasses")}
@@ -83,7 +86,7 @@ export function ClassOverviewSidebar({
               </span>
               <div className="min-w-0">
                 <p className="font-bold leading-none text-foreground">
-                  {progress.pendingClasses}
+                  {progress.pendingLessons}
                 </p>
                 <p className="mt-1 text-xs leading-tight text-muted-foreground">
                   {t("class.pendingClasses")}
@@ -127,7 +130,7 @@ export function ClassOverviewSidebar({
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary/15 text-sm font-bold text-secondary">
                   {lesson.order}
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="line-clamp-1 text-sm font-semibold text-foreground">
                     {lesson.title}
                   </p>
@@ -137,6 +140,20 @@ export function ClassOverviewSidebar({
                     </p>
                   )}
                 </div>
+                <Badge
+                  variant="outline"
+                  className={
+                    lesson.status === "taught"
+                      ? "border-success/30 bg-success/10 text-success"
+                      : "border-border bg-muted text-muted-foreground"
+                  }
+                >
+                  {t(
+                    lesson.status === "taught"
+                      ? "class.lessonTaught"
+                      : "class.lessonPending",
+                  )}
+                </Badge>
               </div>
             ))
           )}
