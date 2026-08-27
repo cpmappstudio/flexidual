@@ -587,7 +587,7 @@ export const run = internalMutation({
     const now = Date.now();
     const oneHour = 60 * 60 * 1000;
 
-    const schedule1Id = await ctx.db.insert("classSchedule", {
+    await ctx.db.insert("classSchedule", {
       classId,
       lessonIds: [lesson1Id],
       scheduledStart: now - 10 * 60 * 1000,

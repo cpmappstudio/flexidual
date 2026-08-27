@@ -182,9 +182,10 @@ async function publishAssignmentRemoved(
   eventKey: string,
 ) {
   if (actorId === assignment.userId) return;
-  const context = await getAssignmentNotificationContext(ctx, assignment);
-  const { organizationName: _organizationName, ...notificationContext } =
-    context;
+  const notificationContext = {
+    ...(await getAssignmentNotificationContext(ctx, assignment)),
+  };
+  delete notificationContext.organizationName;
   await createSystemNotification(ctx, {
     recipientId: assignment.userId,
     actorId,
@@ -312,9 +313,10 @@ export async function upsertRoleAssignment(
   }
 
   if (!options?.skipNotification && assignedBy !== args.userId) {
-    const context = await getAssignmentNotificationContext(ctx, args);
-    const { organizationName: _organizationName, ...notificationContext } =
-      context;
+    const notificationContext = {
+      ...(await getAssignmentNotificationContext(ctx, args)),
+    };
+    delete notificationContext.organizationName;
     if (existing && existing.role !== args.role) {
       await createSystemNotification(ctx, {
         recipientId: args.userId,
