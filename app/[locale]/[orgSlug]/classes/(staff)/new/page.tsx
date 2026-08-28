@@ -715,13 +715,15 @@ function CourseEditor({
               courseName={formData.name}
               backgroundSlots={
                 showExistingSchedules
-                  ? scheduleGuides?.map((guide) => ({
-                      id: guide.scheduleId,
-                      dayOfWeek: guide.dayOfWeek,
-                      startMinutes: guide.startMinutes,
-                      endMinutes: guide.endMinutes,
-                      label: guide.className,
-                    }))
+                  ? scheduleGuides
+                      ?.filter((guide) => guide.isTeacherCourse)
+                      .map((guide) => ({
+                        id: guide.scheduleId,
+                        dayOfWeek: guide.dayOfWeek,
+                        startMinutes: guide.startMinutes,
+                        endMinutes: guide.endMinutes,
+                        label: guide.className,
+                      }))
                   : []
               }
               teacherConflictSlots={scheduleGuides
