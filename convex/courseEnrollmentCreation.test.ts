@@ -374,7 +374,6 @@ test("course creation reviews every grade student and enrolls the selected roste
     expect.arrayContaining([
       expect.objectContaining({
         classId: result.classId,
-        classType: "standard",
         gradeCode: "05",
         sessionType: "live",
         isTeacherCourse: true,

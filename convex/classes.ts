@@ -586,7 +586,6 @@ export const listWeeklyScheduleGuides = query({
       scheduleId: v.id("classSchedule"),
       classId: v.id("classes"),
       className: v.string(),
-      classType: classFields.classType,
       dayOfWeek: v.number(),
       startMinutes: v.number(),
       endMinutes: v.number(),
@@ -670,9 +669,6 @@ export const listWeeklyScheduleGuides = query({
                 .eq("recurrenceParentId", undefined),
             )
             .collect();
-          const classType =
-            classData.classType ??
-            deriveClassType(schedules.map((schedule) => schedule.sessionType));
 
           return schedules.flatMap((schedule) => {
             if (
@@ -704,7 +700,6 @@ export const listWeeklyScheduleGuides = query({
                 scheduleId: schedule._id,
                 classId: classData._id,
                 className: classData.name,
-                classType,
                 dayOfWeek: new Date(
                   civilDayNumber(localStart.slice(0, 10)) * 86_400_000,
                 ).getUTCDay(),

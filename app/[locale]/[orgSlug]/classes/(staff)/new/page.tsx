@@ -186,15 +186,13 @@ function CourseEditor({
     isAdmin &&
       campusId &&
       academicPeriodId &&
-      formData.gradeCode &&
+      formData.teacherId &&
       (!isEditing || classToEdit)
       ? {
           campusId,
           academicPeriodId: academicPeriodId as Id<"academicPeriods">,
           gradeCode: formData.gradeCode,
-          teacherId: formData.teacherId
-            ? (formData.teacherId as Id<"users">)
-            : undefined,
+          teacherId: formData.teacherId as Id<"users">,
           excludeClassId: classToEdit?._id,
         }
       : "skip",
@@ -695,7 +693,7 @@ function CourseEditor({
                 id="show-existing-course-schedules"
                 checked={showExistingSchedules}
                 onCheckedChange={setShowExistingSchedules}
-                disabled={!formData.gradeCode || !academicPeriodId}
+                disabled={!formData.teacherId || !academicPeriodId}
               />
               <Label
                 htmlFor="show-existing-course-schedules"
@@ -719,7 +717,7 @@ function CourseEditor({
                       ?.filter(
                         (guide) =>
                           guide.isTeacherCourse &&
-                          guide.classType === "standard",
+                          guide.sessionType === "live",
                       )
                       .map((guide) => ({
                         id: guide.scheduleId,
