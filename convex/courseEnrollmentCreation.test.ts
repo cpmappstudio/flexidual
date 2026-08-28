@@ -398,7 +398,6 @@ test("course creation reviews every grade student and enrolls the selected roste
       campusId: data.campusId,
       academicPeriodId: data.academicPeriodId,
       gradeCode: "05",
-      teacherId: data.teacherId,
       excludeClassId: sharedCourse.classId,
     },
   );

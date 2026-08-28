@@ -578,7 +578,7 @@ export const listWeeklyScheduleGuides = query({
     campusId: v.id("campuses"),
     academicPeriodId: v.id("academicPeriods"),
     gradeCode: v.string(),
-    teacherId: v.id("users"),
+    teacherId: v.optional(v.id("users")),
     excludeClassId: v.optional(v.id("classes")),
   },
   returns: v.array(
@@ -625,16 +625,18 @@ export const listWeeklyScheduleGuides = query({
               .eq("isActive", true),
           )
           .collect(),
-        ctx.db
-          .query("classes")
-          .withIndex("by_teacher_campus_period_active", (q) =>
-            q
-              .eq("teacherId", args.teacherId)
-              .eq("campusId", campus._id)
-              .eq("academicPeriodId", academicPeriod._id)
-              .eq("isActive", true),
-          )
-          .collect(),
+        args.teacherId
+          ? ctx.db
+              .query("classes")
+              .withIndex("by_teacher_campus_period_active", (q) =>
+                q
+                  .eq("teacherId", args.teacherId)
+                  .eq("campusId", campus._id)
+                  .eq("academicPeriodId", academicPeriod._id)
+                  .eq("isActive", true),
+              )
+              .collect()
+          : Promise.resolve([]),
         args.excludeClassId
           ? listScheduleShareClassIds(ctx, args.excludeClassId)
           : Promise.resolve(new Set<Id<"classes">>()),
@@ -701,7 +703,9 @@ export const listWeeklyScheduleGuides = query({
                 startMinutes,
                 endMinutes,
                 gradeCode: classData.gradeCode ?? "",
-                isTeacherCourse: classData.teacherId === args.teacherId,
+                isTeacherCourse:
+                  args.teacherId !== undefined &&
+                  classData.teacherId === args.teacherId,
                 canShare: canCoursesShareSchedule(
                   {
                     campusId: campus._id,
