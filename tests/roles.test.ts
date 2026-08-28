@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canRoleBeAssignedToCourse,
   canRoleManageCourses,
   hasOnlyInstructorStaffRoles,
   isRoleValidForOrganization,
@@ -82,4 +83,13 @@ test("only administrators and principals manage course definitions", () => {
   assert.equal(hasOnlyInstructorStaffRoles(["tutor"]), true);
   assert.equal(hasOnlyInstructorStaffRoles(["teacher", "tutor"]), true);
   assert.equal(hasOnlyInstructorStaffRoles(["teacher", "principal"]), false);
+});
+
+test("teachers and principals can be assigned to teach a course", () => {
+  assert.equal(canRoleBeAssignedToCourse("teacher"), true);
+  assert.equal(canRoleBeAssignedToCourse("principal"), true);
+  assert.equal(canRoleBeAssignedToCourse("superadmin"), false);
+  assert.equal(canRoleBeAssignedToCourse("admin"), false);
+  assert.equal(canRoleBeAssignedToCourse("tutor"), false);
+  assert.equal(canRoleBeAssignedToCourse("student"), false);
 });

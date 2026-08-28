@@ -10,7 +10,11 @@ import { classHasLiveSessions } from "./classType";
 import { curriculumIconValidator } from "./curriculumIcons";
 import { canStudentAccessLiveClass, normalizeLiveAccess } from "./liveAccess";
 import { resolveMembershipSchoolId } from "./membership";
-import { canAssignmentsManageClass, isStaffRole } from "./roles";
+import {
+  ASSIGNABLE_COURSE_INSTRUCTOR_ROLES,
+  canAssignmentsManageClass,
+  isStaffRole,
+} from "./roles";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const LEGACY_COURSE_LIMIT = 50;
@@ -682,7 +686,7 @@ export async function getCatalogFilterOptions(
   );
   const schoolId = access.schoolId;
   const teacherSchoolId = selectedCampus?.schoolId ?? schoolId;
-  const [campuses, curriculums, assignments] = await Promise.all([
+  const [campuses, curriculums, assignmentGroups] = await Promise.all([
     schoolId
       ? ctx.db
           .query("campuses")
@@ -705,18 +709,23 @@ export async function getCatalogFilterOptions(
           .query("curriculums")
           .withIndex("by_active", (q) => q.eq("isActive", true))
           .take(FILTER_OPTION_LIMIT),
-    teacherSchoolId
-      ? ctx.db
-          .query("roleAssignments")
-          .withIndex("by_role", (q) =>
-            q.eq("role", "teacher").eq("schoolId", teacherSchoolId),
-          )
-          .take(FILTER_OPTION_LIMIT)
-      : ctx.db
-          .query("roleAssignments")
-          .withIndex("by_role", (q) => q.eq("role", "teacher"))
-          .take(FILTER_OPTION_LIMIT),
+    Promise.all(
+      ASSIGNABLE_COURSE_INSTRUCTOR_ROLES.map((role) =>
+        teacherSchoolId
+          ? ctx.db
+              .query("roleAssignments")
+              .withIndex("by_role", (q) =>
+                q.eq("role", role).eq("schoolId", teacherSchoolId),
+              )
+              .take(FILTER_OPTION_LIMIT)
+          : ctx.db
+              .query("roleAssignments")
+              .withIndex("by_role", (q) => q.eq("role", role))
+              .take(FILTER_OPTION_LIMIT),
+      ),
+    ),
   ]);
+  const assignments = assignmentGroups.flat();
   const teacherIds = [
     ...new Set(
       assignments

@@ -40,7 +40,10 @@ import {
   ensureClassEnrollmentsMigrated,
   listClassStudentIds,
 } from "./model/enrollments";
-import { hasOnlyInstructorStaffRoles } from "./model/roles";
+import {
+  canRoleBeAssignedToCourse,
+  hasOnlyInstructorStaffRoles,
+} from "./model/roles";
 import { deleteSchedulesWithDependencies } from "./model/scheduleDeletion";
 import { isCurriculumAvailableForGrade } from "../lib/curriculum";
 import {
@@ -1086,29 +1089,31 @@ export const checkStudentCurriculumEnrollment = internalQuery({
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-async function isTeacherInInstitution(
+async function isCourseInstructorInInstitution(
   ctx: MutationCtx,
-  teacherId: Id<"users">,
+  instructor: Doc<"users">,
   schoolId: Id<"schools">,
   campusId?: Id<"campuses">,
 ) {
+  if (!instructor.isActive) return false;
+
   const assignments = await ctx.db
     .query("roleAssignments")
-    .withIndex("by_user", (q) => q.eq("userId", teacherId))
+    .withIndex("by_user", (q) => q.eq("userId", instructor._id))
     .collect();
-  const teacherAssignments = assignments.filter(
-    (assignment) => assignment.role === "teacher",
+  const instructorAssignments = assignments.filter((assignment) =>
+    canRoleBeAssignedToCourse(assignment.role),
   );
 
   if (campusId) {
-    return teacherAssignments.some(
+    return instructorAssignments.some(
       (assignment) =>
         assignment.orgType === "campus" && assignment.orgId === campusId,
     );
   }
 
   if (
-    teacherAssignments.some(
+    instructorAssignments.some(
       (assignment) =>
         assignment.orgType === "school" && assignment.orgId === schoolId,
     )
@@ -1116,7 +1121,7 @@ async function isTeacherInInstitution(
     return true;
   }
 
-  const campusAssignments = teacherAssignments.filter(
+  const campusAssignments = instructorAssignments.filter(
     (assignment) => assignment.orgType === "campus" && assignment.orgId,
   );
   const campuses = await Promise.all(
@@ -1788,9 +1793,9 @@ export const createWithSchedule = mutation({
     const teacher = await ctx.db.get(args.teacherId);
     if (
       !teacher ||
-      !(await isTeacherInInstitution(
+      !(await isCourseInstructorInInstitution(
         ctx,
-        args.teacherId,
+        teacher,
         curriculum.schoolId,
         args.campusId,
       ))
@@ -2028,13 +2033,13 @@ export const update = mutation({
     if (args.teacherId) {
       const teacher = await ctx.db.get(args.teacherId);
       if (!teacher) throw new ConvexError("INVALID_TEACHER");
-      const isTeacher = await isTeacherInInstitution(
+      const isInstructor = await isCourseInstructorInInstitution(
         ctx,
-        args.teacherId,
+        teacher,
         targetCurriculum.schoolId,
         classData.campusId,
       );
-      if (!isTeacher) throw new ConvexError("INVALID_TEACHER");
+      if (!isInstructor) throw new ConvexError("INVALID_TEACHER");
     }
 
     const name = args.name?.trim();
