@@ -51,6 +51,7 @@ export type CourseWeeklyGuide = {
   startMinutes: number;
   endMinutes: number;
   label: string;
+  sessionType: CourseClassFormat;
 };
 
 export type CourseWeeklyTeacherConflict = CourseWeeklyGuide & {
@@ -437,10 +438,21 @@ export function CourseWeeklyCalendar({
     return (
       <div
         key={slot.id}
-        className="pointer-events-none absolute inset-x-1 overflow-hidden rounded-md border border-dashed border-muted-foreground/30 bg-muted/70 px-1.5 py-1 text-[10px] text-muted-foreground opacity-70"
+        className={cn(
+          "pointer-events-none absolute inset-x-1 overflow-hidden rounded-md border border-dashed px-1.5 py-1 text-[10px] opacity-70",
+          slot.sessionType === "live"
+            ? "border-muted-foreground/30 bg-muted/70 text-muted-foreground"
+            : getFormatClasses(slot.sessionType),
+        )}
         style={{ top: `${top}%`, height: `${height}%` }}
       >
-        <span className="block truncate font-medium">{slot.label}</span>
+        <span className="flex min-w-0 items-center gap-1 font-medium">
+          <CalendarProviderMark
+            sessionType={slot.sessionType}
+            className="size-3"
+          />
+          <span className="truncate">{slot.label}</span>
+        </span>
         <span className="block truncate">
           {formatMinutes(slot.startMinutes)}–{formatMinutes(slot.endMinutes)}
         </span>

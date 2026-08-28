@@ -725,11 +725,15 @@ function CourseEditor({
                         startMinutes: guide.startMinutes,
                         endMinutes: guide.endMinutes,
                         label: guide.className,
+                        sessionType: guide.sessionType,
                       }))
                   : []
               }
               teacherConflictSlots={scheduleGuides
-                ?.filter((guide) => guide.isTeacherCourse)
+                ?.filter(
+                  (guide) =>
+                    guide.isTeacherCourse && guide.sessionType === "live",
+                )
                 .map((guide) => ({
                   id: guide.scheduleId,
                   classId: guide.classId,
@@ -737,6 +741,7 @@ function CourseEditor({
                   startMinutes: guide.startMinutes,
                   endMinutes: guide.endMinutes,
                   label: guide.className,
+                  sessionType: guide.sessionType,
                   gradeName:
                     grades?.find((grade) => grade.code === guide.gradeCode)
                       ?.name || guide.gradeCode,

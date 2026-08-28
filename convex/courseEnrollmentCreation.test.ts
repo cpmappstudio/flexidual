@@ -611,7 +611,7 @@ test("course creation reviews every grade student and enrolls the selected roste
     }
     return classIds;
   });
-  const standardScheduleGuides = await asAdmin.query(
+  const scheduleGuidesWithProviders = await asAdmin.query(
     api.classes.listWeeklyScheduleGuides,
     {
       campusId: data.campusId,
@@ -622,10 +622,11 @@ test("course creation reviews every grade student and enrolls the selected roste
     },
   );
   expect(
-    standardScheduleGuides.some((guide) =>
-      providerCourseIds.includes(guide.classId),
-    ),
-  ).toBe(false);
+    scheduleGuidesWithProviders
+      .filter((guide) => providerCourseIds.includes(guide.classId))
+      .map((guide) => guide.sessionType)
+      .sort(),
+  ).toEqual(["abeka", "ignitia"]);
 
   await expect(
     asAdmin.mutation(api.classes.createWithSchedule, {

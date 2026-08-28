@@ -63,6 +63,7 @@ import { getUserImageUrl } from "./model/userImage";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 import {
   areWeeklySchedulesEqual,
+  courseSessionTypeValidator,
   courseWeeklySlotValidator,
   inferWeeklySchedule,
   isValidWeeklySchedule,
@@ -593,6 +594,7 @@ export const listWeeklyScheduleGuides = query({
       startMinutes: v.number(),
       endMinutes: v.number(),
       gradeCode: v.string(),
+      sessionType: courseSessionTypeValidator,
       isTeacherCourse: v.boolean(),
       canShare: v.boolean(),
       isScheduleShared: v.boolean(),
@@ -673,11 +675,11 @@ export const listWeeklyScheduleGuides = query({
             if (
               schedule.status === "cancelled" ||
               !schedule.isRecurring ||
-              schedule.recurrenceParentId ||
-              (schedule.sessionType ?? "live") !== "live"
+              schedule.recurrenceParentId
             ) {
               return [];
             }
+            const sessionType = schedule.sessionType ?? "live";
             const localStart = utcToLocalDateTime(
               schedule.scheduledStart,
               timeZone,
@@ -706,6 +708,7 @@ export const listWeeklyScheduleGuides = query({
                 startMinutes,
                 endMinutes,
                 gradeCode: classData.gradeCode ?? "",
+                sessionType,
                 isTeacherCourse:
                   args.teacherId !== undefined &&
                   classData.teacherId === args.teacherId,
@@ -730,7 +733,7 @@ export const listWeeklyScheduleGuides = query({
         rows
           .flat()
           .map((row) => [
-            `${row.classId}:${row.dayOfWeek}:${row.startMinutes}:${row.endMinutes}`,
+            `${row.classId}:${row.sessionType}:${row.dayOfWeek}:${row.startMinutes}:${row.endMinutes}`,
             row,
           ]),
       ).values(),
