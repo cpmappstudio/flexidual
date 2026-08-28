@@ -380,6 +380,34 @@ test("principal, campus administrator, and superadmin can lead within scope", as
   ]);
 });
 
+test("an assigned principal leads the session as the course teacher", async () => {
+  const { t, data } = await setupLeadershipTest();
+  await t.run((ctx) =>
+    ctx.db.patch("classes", data.classId, { teacherId: data.principalId }),
+  );
+  const principal = t.withIdentity({ subject: "leader-principal" });
+
+  await principal.mutation(api.schedule.markLive, {
+    roomName: "principal-led-room",
+    isLive: true,
+  });
+
+  expect(
+    await t.run((ctx) => ctx.db.get("classSchedule", data.principalScheduleId)),
+  ).toMatchObject({
+    sessionLeaderId: data.principalId,
+    sessionLeaderRole: "teacher",
+  });
+  expect(
+    await principal.query(api.schedule.getSessionLeadership, {
+      roomName: "principal-led-room",
+      now: NOW,
+    }),
+  ).toMatchObject({
+    viewer: { isLeader: true, isPrimaryTeacher: true },
+  });
+});
+
 test("students, unrelated teachers, and out-of-scope administrators cannot lead", async () => {
   const { t } = await setupLeadershipTest();
   const deniedActors = [

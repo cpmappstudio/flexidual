@@ -4,6 +4,7 @@ import { Dispatch, ReactNode, SetStateAction, useState } from "react";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import type { LiveAccess } from "@/convex/model/liveAccess";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Command,
   CommandEmpty,
@@ -47,6 +48,7 @@ interface TeacherOption {
   _id: Id<"users">;
   fullName: string;
   email?: string;
+  role?: Doc<"roleAssignments">["role"];
 }
 
 interface CourseFormFieldsProps {
@@ -103,9 +105,15 @@ export function CourseFormFields({
   const selectedCurriculumTitle =
     curriculums?.find((curriculum) => curriculum._id === formData.curriculumId)
       ?.title ?? selectedLabels?.curriculum;
+  const selectedTeacher = teachers?.find(
+    (teacher) => teacher._id === formData.teacherId,
+  );
   const selectedTeacherName =
-    teachers?.find((teacher) => teacher._id === formData.teacherId)?.fullName ??
-    selectedLabels?.teacher;
+    selectedTeacher?.fullName ?? selectedLabels?.teacher;
+  const roleLabels = {
+    teacher: t("class.teacherRole"),
+    principal: t("class.principalRole"),
+  };
 
   return (
     <div className="grid gap-4 py-2">
@@ -231,22 +239,12 @@ export function CourseFormFields({
                               <span className="truncate font-medium">
                                 {curriculum.title}
                               </span>
-                              {(curriculum.code ||
-                                curriculum.gradeCodes?.length) && (
-                                <span className="ml-auto shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                                  {[
-                                    curriculum.code,
-                                    curriculum.gradeCodes?.length
-                                      ? curriculum.gradeCodes
-                                          .map(
-                                            (code) =>
-                                              gradeNames.get(code) ?? code,
-                                          )
-                                          .join(", ")
-                                      : null,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" | ")}
+                              {curriculum.code && (
+                                <span
+                                  className="ml-auto max-w-[45%] shrink-0 truncate rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                                  title={curriculum.code}
+                                >
+                                  {curriculum.code}
                                 </span>
                               )}
                             </div>
@@ -284,8 +282,16 @@ export function CourseFormFields({
                     aria-expanded={openTeacher}
                     className="flex-1 justify-between overflow-hidden bg-sidebar text-left font-normal"
                   >
-                    <span className="truncate">
-                      {selectedTeacherName || t("class.selectTeacher")}
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="truncate">
+                        {selectedTeacherName || t("class.selectTeacher")}
+                      </span>
+                      {(selectedTeacher?.role === "teacher" ||
+                        selectedTeacher?.role === "principal") && (
+                        <Badge variant="role">
+                          {roleLabels[selectedTeacher.role]}
+                        </Badge>
+                      )}
                     </span>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
@@ -296,7 +302,9 @@ export function CourseFormFields({
                       placeholder={t("classDialog.placeholders.searchTeacher")}
                     />
                     <CommandList>
-                      <CommandEmpty>{t("teacher.noResults")}</CommandEmpty>
+                      <CommandEmpty>
+                        {t("class.noAssignableTeachers")}
+                      </CommandEmpty>
                       <CommandGroup>
                         {teachers
                           ?.slice()
@@ -321,14 +329,22 @@ export function CourseFormFields({
                                     : "opacity-0",
                                 )}
                               />
-                              <div className="flex min-w-0 flex-col">
-                                <span className="truncate font-medium">
-                                  {teacher.fullName}
-                                </span>
-                                {teacher.email && (
-                                  <span className="truncate text-[10px] text-muted-foreground">
-                                    {teacher.email}
+                              <div className="flex min-w-0 flex-1 items-center gap-2">
+                                <div className="flex min-w-0 flex-1 flex-col">
+                                  <span className="truncate font-medium">
+                                    {teacher.fullName}
                                   </span>
+                                  {teacher.email && (
+                                    <span className="truncate text-[10px] text-muted-foreground">
+                                      {teacher.email}
+                                    </span>
+                                  )}
+                                </div>
+                                {(teacher.role === "teacher" ||
+                                  teacher.role === "principal") && (
+                                  <Badge variant="role">
+                                    {roleLabels[teacher.role]}
+                                  </Badge>
                                 )}
                               </div>
                             </CommandItem>

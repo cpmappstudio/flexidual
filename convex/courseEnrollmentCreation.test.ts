@@ -34,7 +34,7 @@ async function assignRole(
     userId: Id<"users">;
     schoolId: Id<"schools">;
     orgId: string;
-    role: "admin" | "teacher" | "student";
+    role: "admin" | "principal" | "teacher" | "student";
     gradeCode?: string;
   },
 ) {
@@ -60,6 +60,22 @@ test("course creation reviews every grade student and enrolls the selected roste
       ctx,
       "enrollment-teacher",
       "Taylor Teacher",
+    );
+    const principalId = await seedUser(
+      ctx,
+      "enrollment-principal",
+      "Parker Principal",
+    );
+    const inactivePrincipalId = await seedUser(
+      ctx,
+      "inactive-enrollment-principal",
+      "Ivy Principal",
+      false,
+    );
+    const outsidePrincipalId = await seedUser(
+      ctx,
+      "outside-enrollment-principal",
+      "Owen Principal",
     );
     const activeStudentId = await seedUser(
       ctx,
@@ -129,6 +145,24 @@ test("course creation reviews every grade student and enrolls the selected roste
         schoolId,
         orgId: campusId,
         role: "teacher",
+      }),
+      assignRole(ctx, {
+        userId: principalId,
+        schoolId,
+        orgId: campusId,
+        role: "principal",
+      }),
+      assignRole(ctx, {
+        userId: inactivePrincipalId,
+        schoolId,
+        orgId: campusId,
+        role: "principal",
+      }),
+      assignRole(ctx, {
+        userId: outsidePrincipalId,
+        schoolId: outsideSchoolId,
+        orgId: outsideCampusId,
+        role: "principal",
       }),
       assignRole(ctx, {
         userId: activeStudentId,
@@ -211,6 +245,9 @@ test("course creation reviews every grade student and enrolls the selected roste
       sameGradeCurriculumId,
       academicPeriodId,
       teacherId,
+      principalId,
+      inactivePrincipalId,
+      outsidePrincipalId,
       activeStudentId,
       inactiveStudentId,
       otherGradeStudentId,
@@ -303,6 +340,78 @@ test("course creation reviews every grade student and enrolls the selected roste
     data.inactiveStudentId,
     data.otherGradeStudentId,
   ]);
+
+  for (const teacherId of [data.inactivePrincipalId, data.outsidePrincipalId]) {
+    await expect(
+      asAdmin.mutation(api.classes.createWithSchedule, {
+        ...courseArgs,
+        teacherId,
+        studentIds: [],
+      }),
+    ).rejects.toThrow("INVALID_TEACHER");
+  }
+
+  const principalCourse = await asAdmin.mutation(
+    api.classes.createWithSchedule,
+    {
+      ...courseArgs,
+      name: "Science 5 · Parker Principal · 2026-II",
+      teacherId: data.principalId,
+      studentIds: [],
+      weeklySlots: [
+        {
+          dayOfWeek: 4,
+          startMinutes: 13 * 60,
+          durationMinutes: 60,
+          sessionType: "live",
+        },
+      ],
+    },
+  );
+  expect(
+    await t.run((ctx) => ctx.db.get("classes", principalCourse.classId)),
+  ).toMatchObject({ teacherId: data.principalId });
+
+  const courseToReassign = await asAdmin.mutation(
+    api.classes.createWithSchedule,
+    {
+      ...courseArgs,
+      name: "Science 5 · Reassignment · 2026-II",
+      studentIds: [],
+      weeklySlots: [
+        {
+          dayOfWeek: 3,
+          startMinutes: 15 * 60,
+          durationMinutes: 60,
+          sessionType: "live",
+        },
+      ],
+    },
+  );
+  await asAdmin.mutation(api.classes.update, {
+    classId: courseToReassign.classId,
+    teacherId: data.principalId,
+  });
+  expect(
+    await t.run((ctx) => ctx.db.get("classes", courseToReassign.classId)),
+  ).toMatchObject({ teacherId: data.principalId });
+
+  const principalNotifications = await t.run((ctx) =>
+    ctx.db
+      .query("systemNotifications")
+      .withIndex("by_recipient_and_created_at", (q) =>
+        q.eq("recipientId", data.principalId),
+      )
+      .collect(),
+  );
+  expect(principalNotifications).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "course_assignment",
+        action: "added",
+      }),
+    ]),
+  );
 
   let shareableConflict: unknown;
   try {

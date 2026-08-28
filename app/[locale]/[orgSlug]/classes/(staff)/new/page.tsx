@@ -126,7 +126,8 @@ function CourseEditor({
     api.users.getUsers,
     isAdmin && campusId
       ? {
-          role: "teacher",
+          roles: ["teacher", "principal"],
+          isActive: true,
           orgType: "campus",
           orgId: campusId,
         }

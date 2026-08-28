@@ -740,8 +740,11 @@
     "configureGrades": "Configurar grados",
     "noCurriculums": "No hay currículos disponibles para esta institución.",
     "manageCurriculums": "Gestionar currículos",
-    "assignTeacher": "Asignar Profesor",
-    "selectTeacher": "Seleccionar un profesor",
+    "assignTeacher": "Profesor asignado",
+    "selectTeacher": "Seleccionar profesor o director de campus",
+    "noAssignableTeachers": "No se encontraron profesores ni directores de campus.",
+    "teacherRole": "Profesor",
+    "principalRole": "Director de campus",
     "noTeachers": "No hay profesores disponibles para esta institución.",
     "manageTeachers": "Gestionar profesores",
     "enrollStudent": "Inscribir Estudiante",
@@ -1240,7 +1243,7 @@
       "name": "Dejar vacío para generar automáticamente",
       "description": "Agrega una breve descripción...",
       "searchCurriculum": "Buscar por nombre...",
-      "searchTeacher": "Buscar profesores..."
+      "searchTeacher": "Buscar por nombre o correo..."
     },
     "createSingle": "Crear curso"
   },

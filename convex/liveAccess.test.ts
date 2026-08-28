@@ -401,6 +401,44 @@ test("course access is copied to the session and scoped to active students", asy
     chatSettings: { studentsMuted: false, disabled: false },
   });
   const asPrincipal = t.withIdentity({ subject: "principal-clerk-id" });
+  const courseInstructors = await asPrincipal.query(api.users.getUsers, {
+    roles: ["teacher", "principal"],
+    isActive: true,
+    orgType: "campus",
+    orgId: data.campusAId,
+  });
+  expect(courseInstructors).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        _id: data.teacherId,
+        role: "teacher",
+      }),
+      expect.objectContaining({
+        _id: data.principalId,
+        role: "principal",
+      }),
+    ]),
+  );
+  await t.run((ctx) =>
+    ctx.db.patch("classes", data.classAId, {
+      teacherId: data.principalId,
+    }),
+  );
+  expect(
+    await asPrincipal.query(api.classes.listFilterOptions, {
+      campusId: data.campusAId,
+    }),
+  ).toMatchObject({
+    teachers: expect.arrayContaining([
+      expect.objectContaining({
+        _id: data.principalId,
+        fullName: "Parker Principal",
+      }),
+    ]),
+  });
+  await t.run((ctx) =>
+    ctx.db.patch("classes", data.classAId, { teacherId: data.teacherId }),
+  );
   expect(
     await asPrincipal.query(api.classes.getChatContext, {
       classId: data.classAId,
@@ -538,6 +576,7 @@ test("course access is copied to the session and scoped to active students", asy
     { value: expect.any(String), label: "Curriculum A" },
   ]);
   expect(catalogFilters.teachers).toEqual([
+    { value: data.principalId, label: "Parker Principal" },
     { value: expect.any(String), label: "Taylor Teacher" },
     { value: expect.any(String), label: "Uma Teacher" },
   ]);
@@ -547,6 +586,7 @@ test("course access is copied to the session and scoped to active students", asy
     campusId: data.campusAId,
   });
   expect(campusFilters.teachers).toEqual([
+    { value: data.principalId, label: "Parker Principal" },
     { value: expect.any(String), label: "Taylor Teacher" },
   ]);
 

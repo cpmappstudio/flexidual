@@ -30,7 +30,16 @@ const COURSE_MANAGER_ROLES = new Set<UserRole>([
   "principal",
 ]);
 
-const COURSE_INSTRUCTOR_ROLES = new Set<UserRole>(["teacher", "tutor"]);
+const INSTRUCTOR_ONLY_ROLES = new Set<UserRole>(["teacher", "tutor"]);
+
+export const ASSIGNABLE_COURSE_INSTRUCTOR_ROLES = [
+  "teacher",
+  "principal",
+] as const;
+
+const ASSIGNABLE_COURSE_INSTRUCTOR_ROLE_SET = new Set<UserRole>(
+  ASSIGNABLE_COURSE_INSTRUCTOR_ROLES,
+);
 
 export const roleValidator = v.union(
   v.literal("superadmin"),
@@ -58,9 +67,13 @@ export function isStaffRole(role: UserRole) {
   return STAFF_ROLES.has(role);
 }
 
+export function canRoleBeAssignedToCourse(role: UserRole) {
+  return ASSIGNABLE_COURSE_INSTRUCTOR_ROLE_SET.has(role);
+}
+
 export function hasOnlyInstructorStaffRoles(roles: UserRole[]) {
   return (
-    roles.some((role) => COURSE_INSTRUCTOR_ROLES.has(role)) &&
+    roles.some((role) => INSTRUCTOR_ONLY_ROLES.has(role)) &&
     !roles.some((role) => COURSE_MANAGER_ROLES.has(role))
   );
 }

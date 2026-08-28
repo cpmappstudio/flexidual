@@ -740,8 +740,11 @@
     "configureGrades": "Configure grades",
     "noCurriculums": "No curriculums are available for this institution.",
     "manageCurriculums": "Manage curriculums",
-    "assignTeacher": "Assign Teacher",
-    "selectTeacher": "Select a teacher",
+    "assignTeacher": "Assigned teacher",
+    "selectTeacher": "Select a teacher or campus principal",
+    "noAssignableTeachers": "No matching teachers or campus principals.",
+    "teacherRole": "Teacher",
+    "principalRole": "Campus principal",
     "noTeachers": "No teachers are available for this institution.",
     "manageTeachers": "Manage teachers",
     "enrollStudent": "Enroll Student",
@@ -1240,7 +1243,7 @@
       "name": "Leave empty to auto-generate",
       "description": "Add a brief description...",
       "searchCurriculum": "Search by name...",
-      "searchTeacher": "Search teachers..."
+      "searchTeacher": "Search by name or email..."
     },
     "createSingle": "Create course"
   },
