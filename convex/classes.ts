@@ -722,14 +722,23 @@ export const listWeeklyScheduleGuides = query({
         }),
     );
 
-    return rows
-      .flat()
-      .sort(
-        (a, b) =>
-          a.dayOfWeek - b.dayOfWeek ||
-          a.startMinutes - b.startMinutes ||
-          a.className.localeCompare(b.className),
-      );
+    const uniqueRows = [
+      ...new Map(
+        rows
+          .flat()
+          .map((row) => [
+            `${row.classId}:${row.dayOfWeek}:${row.startMinutes}:${row.endMinutes}`,
+            row,
+          ]),
+      ).values(),
+    ];
+
+    return uniqueRows.sort(
+      (a, b) =>
+        a.dayOfWeek - b.dayOfWeek ||
+        a.startMinutes - b.startMinutes ||
+        a.className.localeCompare(b.className),
+    );
   },
 });
 

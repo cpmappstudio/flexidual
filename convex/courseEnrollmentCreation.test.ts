@@ -390,6 +390,28 @@ test("course creation reviews every grade student and enrolls the selected roste
       createdAt: Date.now(),
       createdBy: otherTeacherId,
     });
+    await ctx.db.insert("classSchedule", {
+      classId,
+      sessionType: "live",
+      scheduledStart: Date.UTC(2026, 8, 10, 12),
+      scheduledEnd: Date.UTC(2026, 8, 10, 13),
+      isRecurring: true,
+      roomName: "same-grade-other-teacher-regenerated-guide",
+      status: "scheduled",
+      createdAt: Date.now(),
+      createdBy: otherTeacherId,
+    });
+    await ctx.db.insert("classSchedule", {
+      classId,
+      sessionType: "live",
+      scheduledStart: Date.UTC(2026, 8, 4, 14),
+      scheduledEnd: Date.UTC(2026, 8, 4, 15),
+      isRecurring: true,
+      roomName: "same-grade-other-teacher-distinct-guide",
+      status: "scheduled",
+      createdAt: Date.now(),
+      createdBy: otherTeacherId,
+    });
     return classId;
   });
   const sameGradeScheduleGuides = await asAdmin.query(
@@ -407,6 +429,24 @@ test("course creation reviews every grade student and enrolls the selected roste
         classId: sameGradeOtherTeacherCourseId,
         gradeCode: "05",
         isTeacherCourse: false,
+      }),
+    ]),
+  );
+  const sameGradeOtherTeacherGuides = sameGradeScheduleGuides.filter(
+    (guide) => guide.classId === sameGradeOtherTeacherCourseId,
+  );
+  expect(sameGradeOtherTeacherGuides).toHaveLength(2);
+  expect(sameGradeOtherTeacherGuides).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        dayOfWeek: 4,
+        startMinutes: 12 * 60,
+        endMinutes: 13 * 60,
+      }),
+      expect.objectContaining({
+        dayOfWeek: 5,
+        startMinutes: 14 * 60,
+        endMinutes: 15 * 60,
       }),
     ]),
   );
