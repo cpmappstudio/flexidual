@@ -716,7 +716,11 @@ function CourseEditor({
               backgroundSlots={
                 showExistingSchedules
                   ? scheduleGuides
-                      ?.filter((guide) => guide.isTeacherCourse)
+                      ?.filter(
+                        (guide) =>
+                          guide.isTeacherCourse &&
+                          guide.classType === "standard",
+                      )
                       .map((guide) => ({
                         id: guide.scheduleId,
                         dayOfWeek: guide.dayOfWeek,
