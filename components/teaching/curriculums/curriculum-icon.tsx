@@ -35,6 +35,7 @@ export function CurriculumIcon({
       alt=""
       width={size}
       height={size}
+      unoptimized
       className={cn("size-10 shrink-0 object-contain", className)}
     />
   );
