@@ -578,7 +578,7 @@ export const listWeeklyScheduleGuides = query({
     campusId: v.id("campuses"),
     academicPeriodId: v.id("academicPeriods"),
     gradeCode: v.string(),
-    teacherId: v.optional(v.id("users")),
+    teacherId: v.id("users"),
     excludeClassId: v.optional(v.id("classes")),
   },
   returns: v.array(
@@ -590,11 +590,6 @@ export const listWeeklyScheduleGuides = query({
       startMinutes: v.number(),
       endMinutes: v.number(),
       gradeCode: v.string(),
-      sessionType: v.union(
-        v.literal("live"),
-        v.literal("ignitia"),
-        v.literal("abeka"),
-      ),
       isTeacherCourse: v.boolean(),
       canShare: v.boolean(),
       isScheduleShared: v.boolean(),
@@ -630,27 +625,26 @@ export const listWeeklyScheduleGuides = query({
               .eq("isActive", true),
           )
           .collect(),
-        args.teacherId
-          ? ctx.db
-              .query("classes")
-              .withIndex("by_teacher", (q) =>
-                q.eq("teacherId", args.teacherId).eq("isActive", true),
-              )
-              .collect()
-          : Promise.resolve([]),
+        ctx.db
+          .query("classes")
+          .withIndex("by_teacher_campus_period_active", (q) =>
+            q
+              .eq("teacherId", args.teacherId)
+              .eq("campusId", campus._id)
+              .eq("academicPeriodId", academicPeriod._id)
+              .eq("isActive", true),
+          )
+          .collect(),
         args.excludeClassId
           ? listScheduleShareClassIds(ctx, args.excludeClassId)
           : Promise.resolve(new Set<Id<"classes">>()),
       ]);
     const classes = [
       ...new Map(
-        [...gradeClasses, ...teacherClasses]
-          .filter(
-            (classData) =>
-              classData.campusId === campus._id &&
-              classData.academicPeriodId === academicPeriod._id,
-          )
-          .map((classData) => [classData._id, classData]),
+        [...gradeClasses, ...teacherClasses].map((classData) => [
+          classData._id,
+          classData,
+        ]),
       ).values(),
     ];
     const rows = await Promise.all(
@@ -674,7 +668,8 @@ export const listWeeklyScheduleGuides = query({
             if (
               schedule.status === "cancelled" ||
               !schedule.isRecurring ||
-              schedule.recurrenceParentId
+              schedule.recurrenceParentId ||
+              (schedule.sessionType ?? "live") !== "live"
             ) {
               return [];
             }
@@ -706,10 +701,7 @@ export const listWeeklyScheduleGuides = query({
                 startMinutes,
                 endMinutes,
                 gradeCode: classData.gradeCode ?? "",
-                sessionType: schedule.sessionType ?? "live",
-                isTeacherCourse:
-                  Boolean(args.teacherId) &&
-                  classData.teacherId === args.teacherId,
+                isTeacherCourse: classData.teacherId === args.teacherId,
                 canShare: canCoursesShareSchedule(
                   {
                     campusId: campus._id,

@@ -177,6 +177,12 @@ export default defineSchema({
       "gradeCode",
       "isActive",
     ])
+    .index("by_teacher_campus_period_active", [
+      "teacherId",
+      "campusId",
+      "academicPeriodId",
+      "isActive",
+    ])
     .searchIndex("search_catalog_name", {
       searchField: "name",
       filterFields: ["schoolId", "isActive", "classType"],

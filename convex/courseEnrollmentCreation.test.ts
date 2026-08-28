@@ -360,6 +360,57 @@ test("course creation reviews every grade student and enrolls the selected roste
     academicPeriodId: data.academicPeriodId,
     teacherId: data.teacherId,
   });
+  const sameGradeOtherTeacherCourseId = await t.run(async (ctx) => {
+    const otherTeacherId = await seedUser(
+      ctx,
+      "other-schedule-guide-teacher",
+      "Morgan Teacher",
+    );
+    const classId = await ctx.db.insert("classes", {
+      name: "Math 5 · Morgan Teacher · 2026-II",
+      curriculumId: data.curriculumId,
+      teacherId: otherTeacherId,
+      classType: "standard",
+      academicPeriodId: data.academicPeriodId,
+      gradeCode: "05",
+      timeZone: "UTC",
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: otherTeacherId,
+      campusId: data.campusId,
+    });
+    await ctx.db.insert("classSchedule", {
+      classId,
+      sessionType: "live",
+      scheduledStart: Date.UTC(2026, 8, 3, 12),
+      scheduledEnd: Date.UTC(2026, 8, 3, 13),
+      isRecurring: true,
+      roomName: "same-grade-other-teacher-guide",
+      status: "scheduled",
+      createdAt: Date.now(),
+      createdBy: otherTeacherId,
+    });
+    return classId;
+  });
+  const sameGradeScheduleGuides = await asAdmin.query(
+    api.classes.listWeeklyScheduleGuides,
+    {
+      campusId: data.campusId,
+      academicPeriodId: data.academicPeriodId,
+      gradeCode: "05",
+      teacherId: data.teacherId,
+      excludeClassId: sharedCourse.classId,
+    },
+  );
+  expect(sameGradeScheduleGuides).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        classId: sameGradeOtherTeacherCourseId,
+        gradeCode: "05",
+        isTeacherCourse: false,
+      }),
+    ]),
+  );
   const teacherScheduleGuides = await asAdmin.query(
     api.classes.listWeeklyScheduleGuides,
     {
@@ -375,13 +426,58 @@ test("course creation reviews every grade student and enrolls the selected roste
       expect.objectContaining({
         classId: result.classId,
         gradeCode: "05",
-        sessionType: "live",
         isTeacherCourse: true,
         canShare: true,
         isScheduleShared: true,
       }),
     ]),
   );
+  const providerCourseIds = await t.run(async (ctx) => {
+    const classIds: Id<"classes">[] = [];
+    for (const sessionType of ["abeka", "ignitia"] as const) {
+      const classId = await ctx.db.insert("classes", {
+        name: `${sessionType} course`,
+        curriculumId: data.curriculumId,
+        teacherId: data.teacherId,
+        classType: sessionType,
+        academicPeriodId: data.academicPeriodId,
+        gradeCode: "05",
+        timeZone: "UTC",
+        isActive: true,
+        createdAt: Date.now(),
+        createdBy: data.teacherId,
+        campusId: data.campusId,
+      });
+      await ctx.db.insert("classSchedule", {
+        classId,
+        sessionType,
+        scheduledStart: Date.UTC(2026, 8, 2, 10),
+        scheduledEnd: Date.UTC(2026, 8, 2, 11),
+        isRecurring: true,
+        roomName: `${sessionType}-schedule-guide`,
+        status: "scheduled",
+        createdAt: Date.now(),
+        createdBy: data.teacherId,
+      });
+      classIds.push(classId);
+    }
+    return classIds;
+  });
+  const standardScheduleGuides = await asAdmin.query(
+    api.classes.listWeeklyScheduleGuides,
+    {
+      campusId: data.campusId,
+      academicPeriodId: data.academicPeriodId,
+      gradeCode: "05",
+      teacherId: data.teacherId,
+      excludeClassId: sharedCourse.classId,
+    },
+  );
+  expect(
+    standardScheduleGuides.some((guide) =>
+      providerCourseIds.includes(guide.classId),
+    ),
+  ).toBe(false);
 
   await expect(
     asAdmin.mutation(api.classes.createWithSchedule, {

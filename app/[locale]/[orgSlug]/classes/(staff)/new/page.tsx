@@ -187,6 +187,7 @@ function CourseEditor({
       campusId &&
       academicPeriodId &&
       formData.teacherId &&
+      formData.gradeCode &&
       (!isEditing || classToEdit)
       ? {
           campusId,
@@ -197,7 +198,6 @@ function CourseEditor({
         }
       : "skip",
   );
-
   useEffect(() => {
     if (!isAccessLoading && access && !access.canManageCampus) {
       router.replace(`/${orgSlug}/classes`);
@@ -693,7 +693,11 @@ function CourseEditor({
                 id="show-existing-course-schedules"
                 checked={showExistingSchedules}
                 onCheckedChange={setShowExistingSchedules}
-                disabled={!formData.teacherId || !academicPeriodId}
+                disabled={
+                  !formData.gradeCode ||
+                  !formData.teacherId ||
+                  !academicPeriodId
+                }
               />
               <Label
                 htmlFor="show-existing-course-schedules"
@@ -715,9 +719,7 @@ function CourseEditor({
                 showExistingSchedules
                   ? scheduleGuides
                       ?.filter(
-                        (guide) =>
-                          guide.isTeacherCourse &&
-                          guide.sessionType === "live",
+                        (guide) => guide.gradeCode === formData.gradeCode,
                       )
                       .map((guide) => ({
                         id: guide.scheduleId,
@@ -729,10 +731,7 @@ function CourseEditor({
                   : []
               }
               teacherConflictSlots={scheduleGuides
-                ?.filter(
-                  (guide) =>
-                    guide.isTeacherCourse && guide.sessionType === "live",
-                )
+                ?.filter((guide) => guide.isTeacherCourse)
                 .map((guide) => ({
                   id: guide.scheduleId,
                   classId: guide.classId,
