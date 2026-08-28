@@ -23,6 +23,7 @@ import type * as model_catalog from "../model/catalog.js";
 import type * as model_classCancellationEvents from "../model/classCancellationEvents.js";
 import type * as model_classType from "../model/classType.js";
 import type * as model_courseSchedule from "../model/courseSchedule.js";
+import type * as model_courseScheduleShares from "../model/courseScheduleShares.js";
 import type * as model_curriculumIcons from "../model/curriculumIcons.js";
 import type * as model_enrollments from "../model/enrollments.js";
 import type * as model_grades from "../model/grades.js";
@@ -72,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   "model/classCancellationEvents": typeof model_classCancellationEvents;
   "model/classType": typeof model_classType;
   "model/courseSchedule": typeof model_courseSchedule;
+  "model/courseScheduleShares": typeof model_courseScheduleShares;
   "model/curriculumIcons": typeof model_curriculumIcons;
   "model/enrollments": typeof model_enrollments;
   "model/grades": typeof model_grades;

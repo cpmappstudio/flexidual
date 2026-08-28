@@ -18,6 +18,7 @@ import {
   CourseWeeklySlot,
 } from "@/components/teaching/classes/course-weekly-calendar";
 import { CourseEnrollmentReviewDialog } from "@/components/teaching/classes/course-enrollment-review-dialog";
+import { TeacherScheduleShareAlertDialog } from "@/components/teaching/classes/teacher-schedule-share-alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -148,6 +149,9 @@ function CourseEditor({
     studentIds: Id<"users">[];
     conflicts: TeacherScheduleConflictDetails[];
   }>();
+  const [approvedScheduleShareIds, setApprovedScheduleShareIds] = useState<
+    Id<"classes">[]
+  >([]);
   const [pendingWeeklySlotRemoval, setPendingWeeklySlotRemoval] =
     useState<CourseWeeklySlot>();
   const [scheduleCancellationReason, setScheduleCancellationReason] =
@@ -180,7 +184,6 @@ function CourseEditor({
   const scheduleGuides = useQuery(
     api.classes.listWeeklyScheduleGuides,
     isAdmin &&
-      showExistingSchedules &&
       campusId &&
       academicPeriodId &&
       formData.gradeCode &&
@@ -189,6 +192,9 @@ function CourseEditor({
           campusId,
           academicPeriodId: academicPeriodId as Id<"academicPeriods">,
           gradeCode: formData.gradeCode,
+          teacherId: formData.teacherId
+            ? (formData.teacherId as Id<"users">)
+            : undefined,
           excludeClassId: classToEdit?._id,
         }
       : "skip",
@@ -360,12 +366,20 @@ function CourseEditor({
 
   const persistCourse = async (
     studentIds: Id<"users">[] = [],
-    approvedScheduleShareIds: Id<"classes">[] = [],
+    additionalApprovedScheduleShareIds: Id<"classes">[] = [],
   ) => {
     if (isSubmitDisabled || !campusId) return;
     setIsSubmitting(true);
+    const effectiveApprovedScheduleShareIds = [
+      ...new Set([
+        ...approvedScheduleShareIds,
+        ...additionalApprovedScheduleShareIds,
+      ]),
+    ];
     const scheduleShareApproval =
-      approvedScheduleShareIds.length > 0 ? { approvedScheduleShareIds } : {};
+      effectiveApprovedScheduleShareIds.length > 0
+        ? { approvedScheduleShareIds: effectiveApprovedScheduleShareIds }
+        : {};
 
     try {
       if (isEditing && classToEdit) {
@@ -699,13 +713,42 @@ function CourseEditor({
               onChangeAction={setWeeklySlots}
               onRemoveAction={removeWeeklySlot}
               courseName={formData.name}
-              backgroundSlots={scheduleGuides?.map((guide) => ({
-                id: guide.scheduleId,
-                dayOfWeek: guide.dayOfWeek,
-                startMinutes: guide.startMinutes,
-                endMinutes: guide.endMinutes,
-                label: guide.className,
-              }))}
+              backgroundSlots={
+                showExistingSchedules
+                  ? scheduleGuides?.map((guide) => ({
+                      id: guide.scheduleId,
+                      dayOfWeek: guide.dayOfWeek,
+                      startMinutes: guide.startMinutes,
+                      endMinutes: guide.endMinutes,
+                      label: guide.className,
+                    }))
+                  : []
+              }
+              teacherConflictSlots={scheduleGuides
+                ?.filter(
+                  (guide) =>
+                    guide.isTeacherCourse && guide.sessionType === "live",
+                )
+                .map((guide) => ({
+                  id: guide.scheduleId,
+                  classId: guide.classId,
+                  dayOfWeek: guide.dayOfWeek,
+                  startMinutes: guide.startMinutes,
+                  endMinutes: guide.endMinutes,
+                  label: guide.className,
+                  gradeName:
+                    grades?.find((grade) => grade.code === guide.gradeCode)
+                      ?.name || guide.gradeCode,
+                  canShare: guide.canShare,
+                  isApproved:
+                    guide.isScheduleShared ||
+                    approvedScheduleShareIds.includes(guide.classId),
+                }))}
+              onApproveScheduleSharesAction={(classIds) =>
+                setApprovedScheduleShareIds((current) => [
+                  ...new Set([...current, ...(classIds as Id<"classes">[])]),
+                ])
+              }
               startMinutes={academicSettings.scheduleStartMinutes}
               endMinutes={academicSettings.scheduleEndMinutes}
               timeZone={academicSettings.timeZone}
@@ -744,69 +787,42 @@ function CourseEditor({
           />
         )}
 
-      <AlertDialog
+      <TeacherScheduleShareAlertDialog
         open={Boolean(pendingScheduleShare)}
         onOpenChange={(open) => {
           if (!open && !isSubmitting) setPendingScheduleShare(undefined);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("class.shareTeacherScheduleTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("class.shareTeacherScheduleDescription", {
-                teacher:
-                  teachers?.find(
-                    (teacher) => teacher._id === formData.teacherId,
-                  )?.fullName ?? t("navigation.teacher"),
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="grid gap-2 rounded-lg border bg-sidebar p-3">
-            {pendingScheduleShare?.conflicts.map((conflict) => (
-              <div key={conflict.classId} className="text-sm">
-                <p className="font-medium">{conflict.className}</p>
-                <p className="text-muted-foreground">
-                  {grades?.find((grade) => grade.code === conflict.gradeCode)
-                    ?.name || conflict.gradeCode}
-                  {" · "}
-                  {new Intl.DateTimeFormat(locale, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                    timeZone: academicSettings?.timeZone,
-                  }).format(new Date(Number(conflict.conflictTime)))}
-                </p>
-              </div>
-            ))}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {t("class.shareTeacherScheduleScope")}
-          </p>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>
-              {t("common.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isSubmitting}
-              onClick={() => {
-                if (!pendingScheduleShare) return;
-                const pending = pendingScheduleShare;
-                setPendingScheduleShare(undefined);
-                void persistCourse(
-                  pending.studentIds,
-                  pending.conflicts.map(
-                    (conflict) => conflict.classId as Id<"classes">,
-                  ),
-                );
-              }}
-            >
-              {t("class.shareTeacherScheduleConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        teacherName={
+          teachers?.find((teacher) => teacher._id === formData.teacherId)
+            ?.fullName ?? t("navigation.teacher")
+        }
+        conflicts={
+          pendingScheduleShare?.conflicts.map((conflict) => ({
+            id: conflict.classId,
+            name: conflict.className,
+            detail: `${
+              grades?.find((grade) => grade.code === conflict.gradeCode)
+                ?.name || conflict.gradeCode
+            } · ${new Intl.DateTimeFormat(locale, {
+              dateStyle: "medium",
+              timeStyle: "short",
+              timeZone: academicSettings?.timeZone,
+            }).format(new Date(Number(conflict.conflictTime)))}`,
+          })) ?? []
+        }
+        isConfirming={isSubmitting}
+        onConfirm={() => {
+          if (!pendingScheduleShare) return;
+          const pending = pendingScheduleShare;
+          setPendingScheduleShare(undefined);
+          void persistCourse(
+            pending.studentIds,
+            pending.conflicts.map(
+              (conflict) => conflict.classId as Id<"classes">,
+            ),
+          );
+        }}
+      />
 
       <AlertDialog
         open={Boolean(pendingWeeklySlotRemoval)}

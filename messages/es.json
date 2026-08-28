@@ -717,6 +717,7 @@
     "liveAccessGrades": "Grados con acceso",
     "liveAccessGradeRequired": "Selecciona al menos un grado.",
     "classTimeOverlap": "Este horario se solapa con otra clase.",
+    "teacherScheduleOverlap": "Este profesor ya tiene {className} en este horario.",
     "shareTeacherScheduleTitle": "¿Compartir el horario del profesor?",
     "shareTeacherScheduleDescription": "{teacher} ya enseña otro curso en este horario. Los cursos pueden compartirlo porque pertenecen a grados diferentes.",
     "shareTeacherScheduleScope": "Solo se aprobará el solapamiento del horario. Los cursos, estudiantes, chats y aulas permanecerán separados.",

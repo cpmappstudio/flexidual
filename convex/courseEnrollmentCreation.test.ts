@@ -360,6 +360,28 @@ test("course creation reviews every grade student and enrolls the selected roste
     academicPeriodId: data.academicPeriodId,
     teacherId: data.teacherId,
   });
+  const teacherScheduleGuides = await asAdmin.query(
+    api.classes.listWeeklyScheduleGuides,
+    {
+      campusId: data.campusId,
+      academicPeriodId: data.academicPeriodId,
+      gradeCode: "06",
+      teacherId: data.teacherId,
+      excludeClassId: sharedCourse.classId,
+    },
+  );
+  expect(teacherScheduleGuides).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        classId: result.classId,
+        gradeCode: "05",
+        sessionType: "live",
+        isTeacherCourse: true,
+        canShare: true,
+        isScheduleShared: true,
+      }),
+    ]),
+  );
 
   await expect(
     asAdmin.mutation(api.classes.createWithSchedule, {

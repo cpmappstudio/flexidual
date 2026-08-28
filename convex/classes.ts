@@ -578,6 +578,7 @@ export const listWeeklyScheduleGuides = query({
     campusId: v.id("campuses"),
     academicPeriodId: v.id("academicPeriods"),
     gradeCode: v.string(),
+    teacherId: v.optional(v.id("users")),
     excludeClassId: v.optional(v.id("classes")),
   },
   returns: v.array(
@@ -588,6 +589,15 @@ export const listWeeklyScheduleGuides = query({
       dayOfWeek: v.number(),
       startMinutes: v.number(),
       endMinutes: v.number(),
+      gradeCode: v.string(),
+      sessionType: v.union(
+        v.literal("live"),
+        v.literal("ignitia"),
+        v.literal("abeka"),
+      ),
+      isTeacherCourse: v.boolean(),
+      canShare: v.boolean(),
+      isScheduleShared: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
@@ -607,19 +617,42 @@ export const listWeeklyScheduleGuides = query({
       throw new ConvexError("PERMISSION_DENIED");
     }
 
-    const [school, classes] = await Promise.all([
-      ctx.db.get(campus.schoolId),
-      ctx.db
-        .query("classes")
-        .withIndex("by_campus_period_grade", (q) =>
-          q
-            .eq("campusId", campus._id)
-            .eq("academicPeriodId", academicPeriod._id)
-            .eq("gradeCode", args.gradeCode)
-            .eq("isActive", true),
-        )
-        .collect(),
-    ]);
+    const [school, gradeClasses, teacherClasses, sharedClassIds] =
+      await Promise.all([
+        ctx.db.get(campus.schoolId),
+        ctx.db
+          .query("classes")
+          .withIndex("by_campus_period_grade", (q) =>
+            q
+              .eq("campusId", campus._id)
+              .eq("academicPeriodId", academicPeriod._id)
+              .eq("gradeCode", args.gradeCode)
+              .eq("isActive", true),
+          )
+          .collect(),
+        args.teacherId
+          ? ctx.db
+              .query("classes")
+              .withIndex("by_teacher", (q) =>
+                q.eq("teacherId", args.teacherId).eq("isActive", true),
+              )
+              .collect()
+          : Promise.resolve([]),
+        args.excludeClassId
+          ? listScheduleShareClassIds(ctx, args.excludeClassId)
+          : Promise.resolve(new Set<Id<"classes">>()),
+      ]);
+    const classes = [
+      ...new Map(
+        [...gradeClasses, ...teacherClasses]
+          .filter(
+            (classData) =>
+              classData.campusId === campus._id &&
+              classData.academicPeriodId === academicPeriod._id,
+          )
+          .map((classData) => [classData._id, classData]),
+      ).values(),
+    ];
     const rows = await Promise.all(
       classes
         .filter((classData) => classData._id !== args.excludeClassId)
@@ -672,6 +705,21 @@ export const listWeeklyScheduleGuides = query({
                 ).getUTCDay(),
                 startMinutes,
                 endMinutes,
+                gradeCode: classData.gradeCode ?? "",
+                sessionType: schedule.sessionType ?? "live",
+                isTeacherCourse:
+                  Boolean(args.teacherId) &&
+                  classData.teacherId === args.teacherId,
+                canShare: canCoursesShareSchedule(
+                  {
+                    campusId: campus._id,
+                    academicPeriodId: academicPeriod._id,
+                    teacherId: args.teacherId,
+                    gradeCode: args.gradeCode,
+                  },
+                  classData,
+                ),
+                isScheduleShared: sharedClassIds.has(classData._id),
               },
             ];
           });

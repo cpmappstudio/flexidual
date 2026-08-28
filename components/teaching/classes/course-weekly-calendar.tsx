@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { TeacherScheduleShareAlertDialog } from "@/components/teaching/classes/teacher-schedule-share-alert-dialog";
 import { cn } from "@/lib/utils";
 import {
   COURSE_SCHEDULE_STEP_MINUTES,
@@ -52,6 +53,13 @@ export type CourseWeeklyGuide = {
   label: string;
 };
 
+export type CourseWeeklyTeacherConflict = CourseWeeklyGuide & {
+  classId: string;
+  gradeName: string;
+  canShare: boolean;
+  isApproved: boolean;
+};
+
 interface DraftSelection {
   dayOfWeek: number;
   anchorMinutes: number;
@@ -67,6 +75,8 @@ interface CourseWeeklyCalendarProps {
   startMinutes?: number;
   endMinutes?: number;
   backgroundSlots?: CourseWeeklyGuide[];
+  teacherConflictSlots?: CourseWeeklyTeacherConflict[];
+  onApproveScheduleSharesAction?: (classIds: string[]) => void;
   timeZone: string;
 }
 
@@ -172,6 +182,8 @@ export function CourseWeeklyCalendar({
   startMinutes = DEFAULT_SCHEDULE_START_MINUTES,
   endMinutes = DEFAULT_SCHEDULE_END_MINUTES,
   backgroundSlots = [],
+  teacherConflictSlots = [],
+  onApproveScheduleSharesAction,
   timeZone,
 }: CourseWeeklyCalendarProps) {
   const t = useTranslations();
@@ -183,6 +195,12 @@ export function CourseWeeklyCalendar({
   const [pendingSessionType, setPendingSessionType] =
     useState<CourseClassFormat>("live");
   const [pendingDays, setPendingDays] = useState<number[]>([]);
+  const [pendingScheduleShare, setPendingScheduleShare] = useState<{
+    selection: NonNullable<typeof pending>;
+    days: number[];
+    sessionType: CourseClassFormat;
+    conflicts: CourseWeeklyTeacherConflict[];
+  }>();
   const [selectedDayOfWeek, setSelectedDayOfWeek] = useState(1);
   const dateContext = { in: tz(timeZone) };
   const weekStart = startOfWeek(new Date(), {
@@ -245,6 +263,23 @@ export function CourseWeeklyCalendar({
     setPendingDays([selection.dayOfWeek]);
   };
 
+  const commitSelection = (
+    selection: NonNullable<typeof pending>,
+    days: number[],
+    sessionType: CourseClassFormat,
+  ) => {
+    onChangeAction([
+      ...value,
+      ...days.map((dayOfWeek) => ({
+        ...selection,
+        dayOfWeek,
+        id: `${Date.now()}-${dayOfWeek}-${selection.startMinutes}`,
+        sessionType,
+      })),
+    ]);
+    setPending(undefined);
+  };
+
   const addSelection = () => {
     if (!pending) return;
     if (pendingDays.length === 0) {
@@ -277,16 +312,42 @@ export function CourseWeeklyCalendar({
       return;
     }
 
-    onChangeAction([
-      ...value,
-      ...pendingDays.map((dayOfWeek) => ({
-        ...pending,
-        dayOfWeek,
-        id: `${Date.now()}-${dayOfWeek}-${pending.startMinutes}`,
+    const teacherConflicts =
+      pendingSessionType === "live"
+        ? teacherConflictSlots.filter(
+            (slot) =>
+              pendingDays.includes(slot.dayOfWeek) &&
+              slot.startMinutes < pending.endMinutes &&
+              slot.endMinutes > pending.startMinutes,
+          )
+        : [];
+    const blockingConflict = teacherConflicts.find(
+      (conflict) => !conflict.canShare,
+    );
+    if (blockingConflict) {
+      toast.error(
+        t("class.teacherScheduleOverlap", {
+          className: blockingConflict.label,
+        }),
+      );
+      return;
+    }
+
+    const unapprovedConflicts = teacherConflicts.filter(
+      (conflict) => !conflict.isApproved,
+    );
+    if (unapprovedConflicts.length > 0) {
+      setPendingScheduleShare({
+        selection: pending,
+        days: pendingDays,
         sessionType: pendingSessionType,
-      })),
-    ]);
-    setPending(undefined);
+        conflicts: unapprovedConflicts,
+      });
+      setPending(undefined);
+      return;
+    }
+
+    commitSelection(pending, pendingDays, pendingSessionType);
   };
 
   const renderSelection = (
@@ -648,6 +709,45 @@ export function CourseWeeklyCalendar({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TeacherScheduleShareAlertDialog
+        open={Boolean(pendingScheduleShare)}
+        onOpenChange={(open) => !open && setPendingScheduleShare(undefined)}
+        teacherName={teacherName || t("navigation.teacher")}
+        conflicts={
+          pendingScheduleShare?.conflicts.map((conflict) => {
+            const day = weekDays.find(
+              (candidate) => candidate.getDay() === conflict.dayOfWeek,
+            );
+            return {
+              id: `${conflict.classId}-${conflict.id}`,
+              name: conflict.label,
+              detail: `${conflict.gradeName} · ${
+                day
+                  ? format(day, "EEEE", {
+                      locale: dateLocale,
+                      ...dateContext,
+                    })
+                  : ""
+              } · ${formatMinutes(conflict.startMinutes)}–${formatMinutes(
+                conflict.endMinutes,
+              )}`,
+            };
+          }) ?? []
+        }
+        onConfirm={() => {
+          if (!pendingScheduleShare) return;
+          onApproveScheduleSharesAction?.(
+            pendingScheduleShare.conflicts.map((conflict) => conflict.classId),
+          );
+          commitSelection(
+            pendingScheduleShare.selection,
+            pendingScheduleShare.days,
+            pendingScheduleShare.sessionType,
+          );
+          setPendingScheduleShare(undefined);
+        }}
+      />
     </>
   );
 }
