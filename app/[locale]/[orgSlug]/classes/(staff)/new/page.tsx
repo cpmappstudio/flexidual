@@ -45,7 +45,11 @@ import { Link, useRouter } from "@/i18n/navigation";
 import { todayInTimeZone } from "@/lib/time-zone";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useAlert } from "@/components/providers/alert-provider";
-import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
+import {
+  getErrorMessage,
+  parseConvexError,
+  type TeacherScheduleConflictDetails,
+} from "@/lib/error-utils";
 import {
   getRemovedWeeklyScheduleSlots,
   hasAcademicPeriodStarted,
@@ -140,6 +144,10 @@ function CourseEditor({
   const deleteCourse = useMutation(api.classes.remove);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEnrollmentReviewOpen, setIsEnrollmentReviewOpen] = useState(false);
+  const [pendingScheduleShare, setPendingScheduleShare] = useState<{
+    studentIds: Id<"users">[];
+    conflicts: TeacherScheduleConflictDetails[];
+  }>();
   const [pendingWeeklySlotRemoval, setPendingWeeklySlotRemoval] =
     useState<CourseWeeklySlot>();
   const [scheduleCancellationReason, setScheduleCancellationReason] =
@@ -350,9 +358,14 @@ function CourseEditor({
     (!isEditing && weeklySlots.length === 0) ||
     (isEditing && !classToEdit);
 
-  const persistCourse = async (studentIds: Id<"users">[] = []) => {
+  const persistCourse = async (
+    studentIds: Id<"users">[] = [],
+    approvedScheduleShareIds: Id<"classes">[] = [],
+  ) => {
     if (isSubmitDisabled || !campusId) return;
     setIsSubmitting(true);
+    const scheduleShareApproval =
+      approvedScheduleShareIds.length > 0 ? { approvedScheduleShareIds } : {};
 
     try {
       if (isEditing && classToEdit) {
@@ -368,6 +381,7 @@ function CourseEditor({
           scheduleCancellationReason: requiresScheduleCancellationReason
             ? scheduleCancellationReason.trim() || undefined
             : undefined,
+          ...scheduleShareApproval,
         });
         toast.success(t("class.updated"));
         router.push(`/${orgSlug}/classes/${classToEdit._id}`);
@@ -385,11 +399,25 @@ function CourseEditor({
         campusId,
         academicPeriodId: academicPeriodId as Id<"academicPeriods">,
         weeklySlots: weeklySlotConfigs,
+        ...scheduleShareApproval,
       });
       toast.success(t("class.created"));
       router.push(`/${orgSlug}/classes/${result.classId}`);
     } catch (error: unknown) {
       const parsedError = parseConvexError(error);
+      if (
+        parsedError?.code === "TEACHER_SCHEDULE_CONFLICT" &&
+        parsedError.canShare &&
+        parsedError.conflicts?.length
+      ) {
+        setIsEnrollmentReviewOpen(false);
+        setPendingScheduleShare({
+          studentIds,
+          conflicts: parsedError.conflicts,
+        });
+        setIsSubmitting(false);
+        return;
+      }
       toast.error(
         parsedError
           ? getErrorMessage(parsedError, t, locale)
@@ -715,6 +743,70 @@ function CourseEditor({
             isSubmitting={isSubmitting}
           />
         )}
+
+      <AlertDialog
+        open={Boolean(pendingScheduleShare)}
+        onOpenChange={(open) => {
+          if (!open && !isSubmitting) setPendingScheduleShare(undefined);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("class.shareTeacherScheduleTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("class.shareTeacherScheduleDescription", {
+                teacher:
+                  teachers?.find(
+                    (teacher) => teacher._id === formData.teacherId,
+                  )?.fullName ?? t("navigation.teacher"),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-2 rounded-lg border bg-sidebar p-3">
+            {pendingScheduleShare?.conflicts.map((conflict) => (
+              <div key={conflict.classId} className="text-sm">
+                <p className="font-medium">{conflict.className}</p>
+                <p className="text-muted-foreground">
+                  {grades?.find((grade) => grade.code === conflict.gradeCode)
+                    ?.name || conflict.gradeCode}
+                  {" · "}
+                  {new Intl.DateTimeFormat(locale, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                    timeZone: academicSettings?.timeZone,
+                  }).format(new Date(Number(conflict.conflictTime)))}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {t("class.shareTeacherScheduleScope")}
+          </p>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>
+              {t("common.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isSubmitting}
+              onClick={() => {
+                if (!pendingScheduleShare) return;
+                const pending = pendingScheduleShare;
+                setPendingScheduleShare(undefined);
+                void persistCourse(
+                  pending.studentIds,
+                  pending.conflicts.map(
+                    (conflict) => conflict.classId as Id<"classes">,
+                  ),
+                );
+              }}
+            >
+              {t("class.shareTeacherScheduleConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={Boolean(pendingWeeklySlotRemoval)}

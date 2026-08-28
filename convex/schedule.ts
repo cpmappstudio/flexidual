@@ -69,6 +69,10 @@ import {
   suggestStudentAttendanceStatus,
   type StudentAttendanceStatus,
 } from "./model/studentAttendance";
+import {
+  areCourseSchedulesShared,
+  canCoursesShareSchedule,
+} from "./model/courseScheduleShares";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -242,12 +246,14 @@ async function validateScheduleOverlap(
     classId,
     start,
     end,
+    sessionType,
     excludeScheduleId,
   }: {
     teacherId?: Id<"users">;
     classId: Id<"classes">;
     start: number;
     end: number;
+    sessionType: "live" | "ignitia" | "abeka";
     excludeScheduleId?: Id<"classSchedule">;
   },
 ) {
@@ -278,7 +284,7 @@ async function validateScheduleOverlap(
   }
 
   // 2. ONLY check teacher overlap if a teacher is actually assigned
-  if (teacherId) {
+  if (teacherId && sessionType === "live") {
     const teacherClasses = await ctx.db
       .query("classes")
       .withIndex("by_teacher", (q) =>
@@ -286,7 +292,11 @@ async function validateScheduleOverlap(
       )
       .collect();
 
-    const teacherClassIds = new Set(teacherClasses.map((c) => c._id));
+    const teacherClassesById = new Map(
+      teacherClasses.map((classData) => [classData._id, classData]),
+    );
+    const teacherClassIds = new Set(teacherClassesById.keys());
+    const currentClass = teacherClassesById.get(classId);
 
     if (teacherClassIds.size > 0) {
       const potentialOverlaps = (
@@ -305,13 +315,38 @@ async function validateScheduleOverlap(
         )
       ).flat();
 
-      const teacherConflict = potentialOverlaps.find(
-        (schedule) =>
-          schedule.status !== "cancelled" &&
-          schedule.scheduledEnd > start &&
-          teacherClassIds.has(schedule.classId) &&
-          schedule._id !== excludeScheduleId,
-      );
+      let teacherConflict: (typeof potentialOverlaps)[number] | undefined;
+      for (const schedule of potentialOverlaps) {
+        if (
+          schedule.status === "cancelled" ||
+          (schedule.sessionType ?? "live") !== "live" ||
+          schedule.scheduledEnd <= start ||
+          !teacherClassIds.has(schedule.classId) ||
+          schedule._id === excludeScheduleId ||
+          schedule.classId === classId
+        ) {
+          continue;
+        }
+        const conflictingClass = teacherClassesById.get(schedule.classId);
+        if (
+          currentClass &&
+          conflictingClass &&
+          (await areCourseSchedulesShared(ctx, classId, schedule.classId)) &&
+          canCoursesShareSchedule(
+            {
+              campusId: currentClass.campusId,
+              academicPeriodId: currentClass.academicPeriodId,
+              teacherId,
+              gradeCode: currentClass.gradeCode,
+            },
+            conflictingClass,
+          )
+        ) {
+          continue;
+        }
+        teacherConflict = schedule;
+        break;
+      }
 
       if (teacherConflict) {
         const conflictClass = teacherClasses.find(
@@ -2320,6 +2355,7 @@ export const updateSchedule = mutation({
         classId: classData._id,
         start: newStart,
         end: newEnd,
+        sessionType: args.sessionType ?? schedule.sessionType ?? "live",
         excludeScheduleId: args.id,
       });
     }
@@ -2401,6 +2437,7 @@ export const updateSchedule = mutation({
             classId: classData._id,
             start: itemNewStart,
             end: itemNewEnd,
+            sessionType: args.sessionType ?? item.sessionType ?? "live",
             excludeScheduleId: item._id,
           });
           updatePatch.scheduledStart = itemNewStart;

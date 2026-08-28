@@ -79,6 +79,11 @@ import {
   listClassNotificationRecipients,
   publishCourseNotification,
 } from "./model/systemNotificationEvents";
+import {
+  canCoursesShareSchedule,
+  insertScheduleShares,
+  listScheduleShareClassIds,
+} from "./model/courseScheduleShares";
 
 const classFields = {
   _id: v.id("classes"),
@@ -1096,6 +1101,8 @@ async function validateExistingScheduleForTeacher(
   classData: Doc<"classes">,
   teacherId: Id<"users">,
   className: string,
+  gradeCode?: string,
+  approvedScheduleShareIds: Id<"classes">[] = [],
 ) {
   const now = Date.now();
   const schedules = await ctx.db
@@ -1119,12 +1126,18 @@ async function validateExistingScheduleForTeacher(
       end: schedule.scheduledEnd,
       sessionType: "live" as const,
     }));
+  const studentIds = await listClassStudentIds(ctx, classData);
 
-  await validateTeacherScheduleConflicts(ctx, {
+  return await validateTeacherScheduleConflicts(ctx, {
     teacherId,
     plannedClasses,
     className,
     excludeClassId: classData._id,
+    campusId: classData.campusId,
+    academicPeriodId: classData.academicPeriodId,
+    gradeCode: gradeCode ?? classData.gradeCode,
+    studentIds,
+    approvedScheduleShareIds,
   });
 }
 
@@ -1153,6 +1166,14 @@ function assertNoCourseScheduleOverlap(
   }
 }
 
+type TeacherScheduleConflict = {
+  classId: Id<"classes">;
+  className: string;
+  gradeCode?: string;
+  conflictTime: number;
+  canShare: boolean;
+};
+
 async function validateTeacherScheduleConflicts(
   ctx: MutationCtx,
   {
@@ -1160,17 +1181,27 @@ async function validateTeacherScheduleConflicts(
     plannedClasses,
     className,
     excludeClassId,
+    campusId,
+    academicPeriodId,
+    gradeCode,
+    studentIds = [],
+    approvedScheduleShareIds = [],
   }: {
     teacherId: Id<"users">;
     plannedClasses: PlannedCourseOccurrence[];
     className: string;
     excludeClassId?: Id<"classes">;
+    campusId?: Id<"campuses">;
+    academicPeriodId?: Id<"academicPeriods">;
+    gradeCode?: string;
+    studentIds?: Id<"users">[];
+    approvedScheduleShareIds?: Id<"classes">[];
   },
 ) {
   const liveClasses = plannedClasses.filter(
     (plannedClass) => plannedClass.sessionType === "live",
   );
-  if (liveClasses.length === 0) return;
+  if (liveClasses.length === 0) return [];
 
   const teacherClasses = (
     await ctx.db
@@ -1180,10 +1211,10 @@ async function validateTeacherScheduleConflicts(
       )
       .collect()
   ).filter((classData) => classData._id !== excludeClassId);
-  if (teacherClasses.length === 0) return;
+  if (teacherClasses.length === 0) return [];
 
-  const rangeStart = liveClasses[0].start;
-  const rangeEnd = liveClasses[liveClasses.length - 1].end;
+  const rangeStart = Math.min(...liveClasses.map(({ start }) => start));
+  const rangeEnd = Math.max(...liveClasses.map(({ end }) => end));
   const teacherSchedules = (
     await Promise.all(
       teacherClasses.map((classData) =>
@@ -1200,22 +1231,81 @@ async function validateTeacherScheduleConflicts(
     )
   )
     .flat()
-    .filter((schedule) => schedule.status !== "cancelled");
+    .filter(
+      (schedule) =>
+        schedule.status !== "cancelled" &&
+        (schedule.sessionType ?? "live") === "live",
+    );
 
+  const teacherClassesById = new Map(
+    teacherClasses.map((classData) => [classData._id, classData]),
+  );
+  const conflictsByClass = new Map<Id<"classes">, TeacherScheduleConflict>();
   for (const plannedClass of liveClasses) {
-    const conflict = teacherSchedules.find(
+    const conflicts = teacherSchedules.filter(
       (schedule) =>
         schedule.scheduledStart < plannedClass.end &&
         schedule.scheduledEnd > plannedClass.start,
     );
-    if (conflict) {
-      throw new ConvexError({
-        code: "TEACHER_SCHEDULE_CONFLICT",
-        className,
-        conflictTime: conflict.scheduledStart.toString(),
+    for (const conflict of conflicts) {
+      const conflictClass = teacherClassesById.get(conflict.classId);
+      if (!conflictClass || conflictsByClass.has(conflict.classId)) continue;
+      conflictsByClass.set(conflict.classId, {
+        classId: conflictClass._id,
+        className: conflictClass.name,
+        gradeCode: conflictClass.gradeCode,
+        conflictTime: conflict.scheduledStart,
+        canShare: canCoursesShareSchedule(
+          { campusId, academicPeriodId, teacherId, gradeCode },
+          conflictClass,
+        ),
       });
     }
   }
+
+  const conflicts = [...conflictsByClass.values()];
+  if (conflicts.length === 0) return [];
+
+  const proposedStudentIds = new Set(studentIds);
+  for (const conflict of conflicts) {
+    if (!conflict.canShare || proposedStudentIds.size === 0) continue;
+    const conflictClass = teacherClassesById.get(conflict.classId);
+    if (!conflictClass) continue;
+    const conflictStudentIds = await listClassStudentIds(ctx, conflictClass);
+    conflict.canShare = !conflictStudentIds.some((studentId) =>
+      proposedStudentIds.has(studentId),
+    );
+  }
+
+  const existingScheduleShareIds = excludeClassId
+    ? await listScheduleShareClassIds(ctx, excludeClassId)
+    : new Set<Id<"classes">>();
+  const approvedIds = new Set(approvedScheduleShareIds);
+  const unapprovedConflicts = conflicts.filter(
+    (conflict) =>
+      !conflict.canShare ||
+      (!approvedIds.has(conflict.classId) &&
+        !existingScheduleShareIds.has(conflict.classId)),
+  );
+  if (unapprovedConflicts.length > 0) {
+    const firstConflict = unapprovedConflicts[0];
+    throw new ConvexError({
+      code: "TEACHER_SCHEDULE_CONFLICT",
+      className: firstConflict.className || className,
+      conflictTime: firstConflict.conflictTime.toString(),
+      canShare: unapprovedConflicts.every((conflict) => conflict.canShare),
+      conflicts: unapprovedConflicts.map((conflict) => ({
+        classId: conflict.classId,
+        className: conflict.className,
+        gradeCode: conflict.gradeCode ?? "",
+        conflictTime: conflict.conflictTime.toString(),
+      })),
+    });
+  }
+
+  return conflicts
+    .filter((conflict) => approvedIds.has(conflict.classId))
+    .map((conflict) => conflict.classId);
 }
 
 type FutureScheduleMetadata = Pick<
@@ -1309,19 +1399,23 @@ async function replaceFutureCourseSchedule(
     curriculum,
     teacherId,
     className,
+    gradeCode,
     weeklySlots,
     previousWeeklySlots,
     cancellationReason,
     updatedBy,
+    approvedScheduleShareIds,
   }: {
     classData: Doc<"classes">;
     curriculum: Doc<"curriculums">;
     teacherId?: Id<"users">;
     className: string;
+    gradeCode?: string;
     weeklySlots: CourseWeeklySlotConfig[];
     previousWeeklySlots: CourseWeeklySlotConfig[];
     cancellationReason?: string;
     updatedBy: Id<"users">;
+    approvedScheduleShareIds?: Id<"classes">[];
   },
 ) {
   if (
@@ -1500,14 +1594,19 @@ async function replaceFutureCourseSchedule(
     plannedClasses,
     effectiveSchedules.filter((schedule) => !replacedIds.has(schedule._id)),
   );
-  if (teacherId) {
-    await validateTeacherScheduleConflicts(ctx, {
-      teacherId,
-      plannedClasses,
-      className,
-      excludeClassId: classData._id,
-    });
-  }
+  const newScheduleShareIds = teacherId
+    ? await validateTeacherScheduleConflicts(ctx, {
+        teacherId,
+        plannedClasses,
+        className,
+        excludeClassId: classData._id,
+        campusId: classData.campusId,
+        academicPeriodId: classData.academicPeriodId,
+        gradeCode: gradeCode ?? classData.gradeCode,
+        studentIds: await listClassStudentIds(ctx, classData),
+        approvedScheduleShareIds,
+      })
+    : [];
 
   const metadataByOccurrence = mapFutureScheduleMetadata(
     plannedClasses,
@@ -1531,6 +1630,7 @@ async function replaceFutureCourseSchedule(
     occurrencesBySlot,
     metadataByOccurrence,
   });
+  return newScheduleShareIds;
 }
 
 function mapFutureScheduleMetadata(
@@ -1573,6 +1673,7 @@ export const createWithSchedule = mutation({
     studentIds: v.array(v.id("users")),
     liveAccess: liveAccessValidator,
     weeklySlots: v.array(courseWeeklySlotValidator),
+    approvedScheduleShareIds: v.optional(v.array(v.id("classes"))),
   },
   returns: v.object({
     classId: v.id("classes"),
@@ -1707,10 +1808,15 @@ export const createWithSchedule = mutation({
       .flat()
       .sort((a, b) => a.start - b.start);
     assertNoCourseScheduleOverlap(plannedClasses);
-    await validateTeacherScheduleConflicts(ctx, {
+    const scheduleShareIds = await validateTeacherScheduleConflicts(ctx, {
       teacherId: args.teacherId,
       plannedClasses,
       className: name,
+      campusId: args.campusId,
+      academicPeriodId: args.academicPeriodId,
+      gradeCode: args.gradeCode,
+      studentIds,
+      approvedScheduleShareIds: args.approvedScheduleShareIds,
     });
 
     const now = Date.now();
@@ -1745,6 +1851,15 @@ export const createWithSchedule = mutation({
       createdAt: now,
       periodEnd: endDate,
       occurrencesBySlot,
+    });
+    await insertScheduleShares(ctx, {
+      classId,
+      sharedClassIds: scheduleShareIds,
+      schoolId: curriculum.schoolId,
+      campusId: args.campusId,
+      academicPeriodId: args.academicPeriodId,
+      teacherId: args.teacherId,
+      createdBy: user._id,
     });
 
     await ctx.scheduler.runAt(
@@ -1802,6 +1917,7 @@ export const update = mutation({
     liveAccess: v.optional(liveAccessValidator),
     weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
     scheduleCancellationReason: v.optional(v.string()),
+    approvedScheduleShareIds: v.optional(v.array(v.id("classes"))),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -1895,27 +2011,50 @@ export const update = mutation({
       args.weeklySlots !== undefined &&
       (scheduleChanged || classData.weeklySlots === undefined);
 
+    let scheduleShareIds: Id<"classes">[] = [];
     if (scheduleChanged || curriculumChanged) {
-      await replaceFutureCourseSchedule(ctx, {
+      scheduleShareIds = await replaceFutureCourseSchedule(ctx, {
         classData,
         curriculum: targetCurriculum,
         teacherId: args.teacherId ?? classData.teacherId,
         className: name ?? classData.name,
+        gradeCode: effectiveGradeCode,
         weeklySlots: effectiveWeeklySlots,
         previousWeeklySlots: currentWeeklySlots ?? [],
         cancellationReason: args.scheduleCancellationReason,
         updatedBy: user._id,
+        approvedScheduleShareIds: args.approvedScheduleShareIds,
       });
     } else if (
       args.teacherId !== undefined &&
       args.teacherId !== classData.teacherId
     ) {
-      await validateExistingScheduleForTeacher(
+      scheduleShareIds = await validateExistingScheduleForTeacher(
         ctx,
         classData,
         args.teacherId,
         name ?? classData.name,
+        effectiveGradeCode,
+        args.approvedScheduleShareIds,
       );
+    }
+
+    const effectiveTeacherId = args.teacherId ?? classData.teacherId;
+    if (
+      scheduleShareIds.length > 0 &&
+      effectiveTeacherId &&
+      classData.campusId &&
+      classData.academicPeriodId
+    ) {
+      await insertScheduleShares(ctx, {
+        classId: classData._id,
+        sharedClassIds: scheduleShareIds,
+        schoolId: targetCurriculum.schoolId,
+        campusId: classData.campusId,
+        academicPeriodId: classData.academicPeriodId,
+        teacherId: effectiveTeacherId,
+        createdBy: user._id,
+      });
     }
 
     const cleanUpdates: Partial<Doc<"classes">> = {};
@@ -2150,22 +2289,38 @@ export const remove = mutation({
       throw new ConvexError("PERMISSION_DENIED");
     }
 
-    const [schedules, enrollments, preferences, notificationRecipients] =
-      await Promise.all([
-        ctx.db
-          .query("classSchedule")
-          .withIndex("by_class", (q) => q.eq("classId", args.id))
-          .collect(),
-        ctx.db
-          .query("classEnrollments")
-          .withIndex("by_class", (q) => q.eq("classId", args.id))
-          .collect(),
-        ctx.db
-          .query("studentClassPreferences")
-          .withIndex("by_class", (q) => q.eq("classId", args.id))
-          .collect(),
-        listClassNotificationRecipients(ctx, classData),
-      ]);
+    const [
+      schedules,
+      enrollments,
+      preferences,
+      scheduleShares,
+      reverseScheduleShares,
+      notificationRecipients,
+    ] = await Promise.all([
+      ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", args.id))
+        .collect(),
+      ctx.db
+        .query("classEnrollments")
+        .withIndex("by_class", (q) => q.eq("classId", args.id))
+        .collect(),
+      ctx.db
+        .query("studentClassPreferences")
+        .withIndex("by_class", (q) => q.eq("classId", args.id))
+        .collect(),
+      ctx.db
+        .query("courseScheduleShares")
+        .withIndex("by_class_and_shared_class", (q) => q.eq("classId", args.id))
+        .collect(),
+      ctx.db
+        .query("courseScheduleShares")
+        .withIndex("by_shared_class_and_class", (q) =>
+          q.eq("sharedClassId", args.id),
+        )
+        .collect(),
+      listClassNotificationRecipients(ctx, classData),
+    ]);
     for (const [recipientId, role] of notificationRecipients) {
       await publishCourseNotification(ctx, {
         recipientId,
@@ -2182,6 +2337,8 @@ export const remove = mutation({
       [
         ...enrollments.map((enrollment) => enrollment._id),
         ...preferences.map((preference) => preference._id),
+        ...scheduleShares.map((share) => share._id),
+        ...reverseScheduleShares.map((share) => share._id),
       ].map((id) => ctx.db.delete(id)),
     );
 

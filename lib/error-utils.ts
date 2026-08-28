@@ -1,11 +1,20 @@
 import { ConvexError } from "convex/values";
 
+export interface TeacherScheduleConflictDetails {
+  classId: string;
+  className: string;
+  gradeCode: string;
+  conflictTime: string;
+}
+
 interface ConvexErrorData {
   code: string;
   className?: string;
   curriculumTitle?: string;
   conflictTime?: string;
   grades?: string;
+  canShare?: boolean;
+  conflicts?: TeacherScheduleConflictDetails[];
 }
 
 export function parseConvexError(error: unknown): ConvexErrorData | null {

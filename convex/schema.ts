@@ -182,6 +182,19 @@ export default defineSchema({
       filterFields: ["schoolId", "isActive", "classType"],
     }),
 
+  courseScheduleShares: defineTable({
+    classId: v.id("classes"),
+    sharedClassId: v.id("classes"),
+    schoolId: v.id("schools"),
+    campusId: v.id("campuses"),
+    academicPeriodId: v.id("academicPeriods"),
+    teacherId: v.id("users"),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_class_and_shared_class", ["classId", "sharedClassId"])
+    .index("by_shared_class_and_class", ["sharedClassId", "classId"]),
+
   classEnrollments: defineTable({
     classId: v.id("classes"),
     studentId: v.id("users"),

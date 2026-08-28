@@ -180,6 +180,22 @@ test("course creation reviews every grade student and enrolls the selected roste
       createdAt: Date.now(),
       createdBy: adminId,
     });
+    const otherGradeCurriculumId = await ctx.db.insert("curriculums", {
+      title: "History 6",
+      isActive: true,
+      gradeCodes: ["06"],
+      schoolId,
+      createdAt: Date.now(),
+      createdBy: adminId,
+    });
+    const sameGradeCurriculumId = await ctx.db.insert("curriculums", {
+      title: "Language 5",
+      isActive: true,
+      gradeCodes: ["05"],
+      schoolId,
+      createdAt: Date.now(),
+      createdBy: adminId,
+    });
     const academicPeriodId = await ctx.db.insert("academicPeriods", {
       schoolId,
       name: "2026-II",
@@ -191,6 +207,8 @@ test("course creation reviews every grade student and enrolls the selected roste
     return {
       campusId,
       curriculumId,
+      otherGradeCurriculumId,
+      sameGradeCurriculumId,
       academicPeriodId,
       teacherId,
       activeStudentId,
@@ -285,4 +303,76 @@ test("course creation reviews every grade student and enrolls the selected roste
     data.inactiveStudentId,
     data.otherGradeStudentId,
   ]);
+
+  let shareableConflict: unknown;
+  try {
+    await asAdmin.mutation(api.classes.createWithSchedule, {
+      ...courseArgs,
+      name: "History 6 · Taylor Teacher · 2026-II",
+      curriculumId: data.otherGradeCurriculumId,
+      gradeCode: "06",
+      studentIds: [],
+    });
+  } catch (error) {
+    shareableConflict = error;
+  }
+  expect(shareableConflict).toMatchObject({
+    data: {
+      code: "TEACHER_SCHEDULE_CONFLICT",
+      canShare: true,
+      conflicts: [{ classId: result.classId, gradeCode: "05" }],
+    },
+  });
+
+  await expect(
+    asAdmin.mutation(api.classes.createWithSchedule, {
+      ...courseArgs,
+      name: "History 6 · Taylor Teacher · 2026-II",
+      curriculumId: data.otherGradeCurriculumId,
+      gradeCode: "06",
+      studentIds: [data.otherGradeStudentId],
+      approvedScheduleShareIds: [result.classId],
+    }),
+  ).rejects.toMatchObject({
+    data: {
+      code: "TEACHER_SCHEDULE_CONFLICT",
+      canShare: false,
+    },
+  });
+
+  const sharedCourse = await asAdmin.mutation(api.classes.createWithSchedule, {
+    ...courseArgs,
+    name: "History 6 · Taylor Teacher · 2026-II",
+    curriculumId: data.otherGradeCurriculumId,
+    gradeCode: "06",
+    studentIds: [],
+    approvedScheduleShareIds: [result.classId],
+  });
+  const shares = await t.run((ctx) =>
+    ctx.db.query("courseScheduleShares").collect(),
+  );
+  expect(shares).toHaveLength(1);
+  expect(new Set([shares[0].classId, shares[0].sharedClassId])).toEqual(
+    new Set([result.classId, sharedCourse.classId]),
+  );
+  expect(shares[0]).toMatchObject({
+    campusId: data.campusId,
+    academicPeriodId: data.academicPeriodId,
+    teacherId: data.teacherId,
+  });
+
+  await expect(
+    asAdmin.mutation(api.classes.createWithSchedule, {
+      ...courseArgs,
+      name: "Language 5 · Taylor Teacher · 2026-II",
+      curriculumId: data.sameGradeCurriculumId,
+      studentIds: [],
+      approvedScheduleShareIds: [result.classId],
+    }),
+  ).rejects.toMatchObject({
+    data: {
+      code: "TEACHER_SCHEDULE_CONFLICT",
+      canShare: false,
+    },
+  });
 });
