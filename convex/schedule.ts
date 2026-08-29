@@ -1043,24 +1043,8 @@ export const getMySchedule = query({
     const classMap = new Map(
       myClasses.map((classData) => [classData._id, classData]),
     );
-    const includeAttendance = args.includeAttendance ?? true;
-    const includeRecordings = args.includeRecordings ?? true;
-    const classesNeedingRosters = includeAttendance
-      ? myClasses.filter(
-          (classData) =>
-            isStaffViewer ||
-            classData.teacherId === user._id ||
-            classData.tutorId === user._id,
-        )
-      : [];
-    const studentIdsByClass = new Map(
-      await Promise.all(
-        classesNeedingRosters.map(
-          async (classData) =>
-            [classData._id, await listClassStudentIds(ctx, classData)] as const,
-        ),
-      ),
-    );
+    const includeAttendance = args.includeAttendance ?? false;
+    const includeRecordings = args.includeRecordings ?? false;
     const now = args.now;
     const from =
       args.from ??
@@ -1095,6 +1079,29 @@ export const getMySchedule = query({
     if (args.status)
       flatSchedule = flatSchedule.filter((s) => s.status === args.status);
 
+    const classesWithCompletedSchedules = new Set(
+      flatSchedule.flatMap((schedule) =>
+        schedule.status === "completed" ? [schedule.classId] : [],
+      ),
+    );
+    const classesNeedingRosters = includeAttendance
+      ? myClasses.filter(
+          (classData) =>
+            classesWithCompletedSchedules.has(classData._id) &&
+            (isStaffViewer ||
+              classData.teacherId === user._id ||
+              classData.tutorId === user._id),
+        )
+      : [];
+    const studentIdsByClass = new Map(
+      await Promise.all(
+        classesNeedingRosters.map(
+          async (classData) =>
+            [classData._id, await listClassStudentIds(ctx, classData)] as const,
+        ),
+      ),
+    );
+
     const uniqueCurriculumIds = new Set(myClasses.map((c) => c.curriculumId));
     const uniqueTeacherIds = new Set(
       myClasses.map((c) => c.teacherId).filter(Boolean),
@@ -1117,286 +1124,320 @@ export const getMySchedule = query({
       teachers.filter(Boolean).map((t) => [t!._id, t!]),
     );
 
-    const allSessionsForSchedules = includeAttendance
-      ? await Promise.all(
-          flatSchedule.map((schedule) => {
-            const classData = classMap.get(schedule.classId);
-            const needsFullAttendance =
-              isStaffViewer ||
-              classData?.teacherId === user._id ||
-              classData?.tutorId === user._id;
-            return needsFullAttendance
-              ? ctx.db
-                  .query("class_sessions")
-                  .withIndex("by_schedule", (q) =>
-                    q.eq("scheduleId", schedule._id),
-                  )
-                  .collect()
-              : ctx.db
-                  .query("class_sessions")
-                  .withIndex("by_student_schedule", (q) =>
-                    q.eq("studentId", user._id).eq("scheduleId", schedule._id),
-                  )
-                  .collect();
-          }),
-        )
-      : flatSchedule.map(() => []);
-
-    const sessionsBySchedule = new Map(
-      flatSchedule.map((s, idx) => [s._id, allSessionsForSchedules[idx] || []]),
-    );
-    const allAttendanceRecords = includeAttendance
-      ? await Promise.all(
-          flatSchedule.map((schedule) => {
-            const classData = classMap.get(schedule.classId);
-            const needsFullAttendance =
-              isStaffViewer ||
-              classData?.teacherId === user._id ||
-              classData?.tutorId === user._id;
-            return needsFullAttendance
-              ? ctx.db
-                  .query("studentAttendanceRecords")
-                  .withIndex("by_schedule", (q) =>
-                    q.eq("scheduleId", schedule._id),
-                  )
-                  .collect()
-              : ctx.db
-                  .query("studentAttendanceRecords")
-                  .withIndex("by_schedule_and_student", (q) =>
-                    q.eq("scheduleId", schedule._id).eq("studentId", user._id),
-                  )
-                  .collect();
-          }),
-        )
-      : flatSchedule.map(() => []);
-    const attendanceRecordsBySchedule = new Map(
-      flatSchedule.map((schedule, index) => [
-        schedule._id,
-        allAttendanceRecords[index] ?? [],
-      ]),
-    );
-
-    const completedRecordings = includeRecordings
-      ? await Promise.all(
-          flatSchedule.map(async (schedule) => {
-            if (isExternalClassSession(schedule.sessionType)) return [];
-            return await ctx.db
-              .query("recordings")
-              .withIndex("by_schedule", (q) =>
-                q.eq("scheduleId", schedule._id).eq("status", "complete"),
-              )
-              .collect();
-          }),
+    const schedulesNeedingPresence = includeAttendance
+      ? flatSchedule.filter(
+          (schedule) =>
+            schedule.status !== "cancelled" && schedule.scheduledStart <= now,
         )
       : [];
+    const sessionsBySchedule = new Map(
+      await Promise.all(
+        schedulesNeedingPresence.map(async (schedule) => {
+          const classData = classMap.get(schedule.classId);
+          const needsFullAttendance =
+            isStaffViewer ||
+            classData?.teacherId === user._id ||
+            classData?.tutorId === user._id;
+          const sessions = needsFullAttendance
+            ? ctx.db
+                .query("class_sessions")
+                .withIndex("by_schedule", (q) =>
+                  q.eq("scheduleId", schedule._id),
+                )
+                .collect()
+            : ctx.db
+                .query("class_sessions")
+                .withIndex("by_student_schedule", (q) =>
+                  q.eq("studentId", user._id).eq("scheduleId", schedule._id),
+                )
+                .collect();
+          return [schedule._id, await sessions] as const;
+        }),
+      ),
+    );
+    const schedulesNeedingAttendanceRecords = includeAttendance
+      ? flatSchedule.filter(
+          (schedule) => schedule.sessionClosureStatus === "completed",
+        )
+      : [];
+    const attendanceRecordsBySchedule = new Map(
+      await Promise.all(
+        schedulesNeedingAttendanceRecords.map(async (schedule) => {
+          const classData = classMap.get(schedule.classId);
+          const needsFullAttendance =
+            isStaffViewer ||
+            classData?.teacherId === user._id ||
+            classData?.tutorId === user._id;
+          const attendanceRecords = needsFullAttendance
+            ? ctx.db
+                .query("studentAttendanceRecords")
+                .withIndex("by_schedule", (q) =>
+                  q.eq("scheduleId", schedule._id),
+                )
+                .collect()
+            : ctx.db
+                .query("studentAttendanceRecords")
+                .withIndex("by_schedule_and_student", (q) =>
+                  q.eq("scheduleId", schedule._id).eq("studentId", user._id),
+                )
+                .collect();
+          return [schedule._id, await attendanceRecords] as const;
+        }),
+      ),
+    );
+
+    const schedulesNeedingRecordings = includeRecordings
+      ? flatSchedule.filter(
+          (schedule) =>
+            schedule.scheduledStart <= now &&
+            !isExternalClassSession(schedule.sessionType),
+        )
+      : [];
+    const recordingsBySchedule = new Map(
+      await Promise.all(
+        schedulesNeedingRecordings.map(async (schedule) => {
+          const recordings = await ctx.db
+            .query("recordings")
+            .withIndex("by_schedule", (q) =>
+              q.eq("scheduleId", schedule._id).eq("status", "complete"),
+            )
+            .collect();
+          return [schedule._id, recordings] as const;
+        }),
+      ),
+    );
     const scheduleIdsWithRecordings = new Set(
-      flatSchedule
-        .filter((_, index) =>
-          completedRecordings[index]?.some((recording) =>
-            Boolean(recording.url),
-          ),
+      schedulesNeedingRecordings
+        .filter((schedule) =>
+          recordingsBySchedule
+            .get(schedule._id)
+            ?.some((recording) => Boolean(recording.url)),
         )
         .map((schedule) => schedule._id),
     );
 
-    const results = await Promise.all(
-      flatSchedule.map(async (item) => {
-        const classData = classMap.get(item.classId);
-        if (!classData) return null;
+    const classesWithSchedules = [
+      ...new Set(flatSchedule.map((schedule) => schedule.classId)),
+    ].flatMap((classId) => {
+      const classData = classMap.get(classId);
+      return classData ? [classData] : [];
+    });
+    const [classTimeZones, recurrenceParents] = await Promise.all([
+      Promise.all(
+        classesWithSchedules.map(
+          async (classData) =>
+            [
+              classData._id,
+              (await getClassTimeZone(ctx, classData)) ?? "UTC",
+            ] as const,
+        ),
+      ),
+      Promise.all(
+        [
+          ...new Set(
+            flatSchedule.flatMap((schedule) =>
+              schedule.recurrenceParentId && !schedule.recurrenceRule
+                ? [schedule.recurrenceParentId]
+                : [],
+            ),
+          ),
+        ].map(
+          async (parentId) => [parentId, await ctx.db.get(parentId)] as const,
+        ),
+      ),
+    ]);
+    const timeZoneByClass = new Map(classTimeZones);
+    const recurrenceParentById = new Map(recurrenceParents);
 
-        const curriculum = curriculumMap.get(classData.curriculumId);
-        const teacher = classData.teacherId
-          ? teacherMap.get(classData.teacherId)
-          : undefined;
-        // ponytail: UTC only protects legacy rows until their institution confirms a zone.
-        const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
+    const results = flatSchedule.map((item) => {
+      const classData = classMap.get(item.classId);
+      if (!classData) return null;
 
-        const isClassAdminOrTeacher =
-          includeAttendance &&
-          (isStaffViewer ||
-            classData.teacherId === user._id ||
-            classData.tutorId === user._id);
-        const classStudents = studentIdsByClass.get(classData._id) ?? [];
+      const curriculum = curriculumMap.get(classData.curriculumId);
+      const teacher = classData.teacherId
+        ? teacherMap.get(classData.teacherId)
+        : undefined;
+      // ponytail: UTC only protects legacy rows until their institution confirms a zone.
+      const timeZone = timeZoneByClass.get(classData._id) ?? "UTC";
 
-        const title = item.title || classData.name;
-        const description = item.description || "";
+      const isClassAdminOrTeacher =
+        includeAttendance &&
+        (isStaffViewer ||
+          classData.teacherId === user._id ||
+          classData.tutorId === user._id);
+      const classStudents = studentIdsByClass.get(classData._id) ?? [];
 
-        let recurrenceRule = item.recurrenceRule;
-        if (item.recurrenceParentId && !recurrenceRule) {
-          const parent = await ctx.db.get(item.recurrenceParentId);
-          recurrenceRule = parent?.recurrenceRule;
+      const title = item.title || classData.name;
+      const description = item.description || "";
+
+      let recurrenceRule = item.recurrenceRule;
+      if (item.recurrenceParentId && !recurrenceRule) {
+        const parent = recurrenceParentById.get(item.recurrenceParentId);
+        recurrenceRule = parent?.recurrenceRule;
+      }
+
+      const sessions = sessionsBySchedule.get(item._id) || [];
+
+      let attendanceStatus:
+        | "upcoming"
+        | "present"
+        | "absent"
+        | "partial"
+        | "in-progress"
+        | "late"
+        | "pending"
+        | "excused" = "upcoming";
+      let timeInClass = 0;
+      let isStudentActive = false;
+
+      const attendanceSummary = {
+        present: 0,
+        partial: 0,
+        absent: 0,
+        excused: 0,
+        pendingVerification: 0,
+        verifiedTotal: 0,
+        total: classStudents.length,
+      };
+      // Student Stats Calculation
+      if (!isClassAdminOrTeacher) {
+        const studentSessions = sessions.filter(
+          (s) => s.studentId === user._id,
+        );
+        const activeSession = studentSessions.find(
+          (s) => s.joinedAt && !s.leftAt,
+        );
+        // Student is only "in class" if the schedule hasn't ended yet and the session isn't stale
+        isStudentActive =
+          !!activeSession &&
+          now <= item.scheduledEnd &&
+          now - (activeSession?.joinedAt ?? 0) < SESSION_STALE_MS;
+
+        timeInClass = getConnectedSecondsWithinSchedule(
+          studentSessions,
+          item.scheduledStart,
+          item.scheduledEnd,
+          now,
+        );
+        const finalAttendance = attendanceRecordsBySchedule
+          .get(item._id)
+          ?.find((record) => record.studentId === user._id);
+        if (item.sessionClosureStatus === "completed" && finalAttendance) {
+          attendanceStatus = finalAttendance.status;
+        } else if (item.scheduledStart > now) attendanceStatus = "upcoming";
+        else if (item.status === "active")
+          attendanceStatus = isStudentActive ? "in-progress" : "late";
+        else if (item.status === "completed") attendanceStatus = "pending";
+      }
+
+      // Teacher/Admin Stats Calculation
+      if (isClassAdminOrTeacher) {
+        const finalAttendance = attendanceRecordsBySchedule.get(item._id) ?? [];
+        if (
+          item.status === "completed" &&
+          item.sessionClosureStatus === "completed"
+        ) {
+          const enrolledStudentIds = new Set(classStudents);
+          for (const record of finalAttendance) {
+            if (!enrolledStudentIds.has(record.studentId)) continue;
+            attendanceSummary[record.status]++;
+            attendanceSummary.verifiedTotal++;
+          }
+          attendanceSummary.pendingVerification = Math.max(
+            0,
+            classStudents.length - attendanceSummary.verifiedTotal,
+          );
+        } else if (item.status === "completed") {
+          attendanceSummary.pendingVerification = classStudents.length;
         }
+      }
 
-        const sessions = sessionsBySchedule.get(item._id) || [];
+      const effectiveIsLive = item.isLive === true && item.status === "active";
+      const effectiveStatus = item.status;
 
-        let attendanceStatus:
-          | "upcoming"
-          | "present"
-          | "absent"
-          | "partial"
-          | "in-progress"
-          | "late"
-          | "pending"
-          | "excused" = "upcoming";
-        let timeInClass = 0;
-        let isStudentActive = false;
+      let teacherAttendanceStatus = "upcoming";
+      let teacherTimeInClass = 0;
 
-        const attendanceSummary = {
-          present: 0,
-          partial: 0,
-          absent: 0,
-          excused: 0,
-          pendingVerification: 0,
-          verifiedTotal: 0,
-          total: classStudents.length,
-        };
-        // Student Stats Calculation
-        if (!isClassAdminOrTeacher) {
-          const studentSessions = sessions.filter(
-            (s) => s.studentId === user._id,
-          );
-          const activeSession = studentSessions.find(
-            (s) => s.joinedAt && !s.leftAt,
-          );
-          // Student is only "in class" if the schedule hasn't ended yet and the session isn't stale
-          isStudentActive =
-            !!activeSession &&
-            now <= item.scheduledEnd &&
-            now - (activeSession?.joinedAt ?? 0) < SESSION_STALE_MS;
-
-          timeInClass = getConnectedSecondsWithinSchedule(
-            studentSessions,
-            item.scheduledStart,
-            item.scheduledEnd,
-            now,
-          );
-          const finalAttendance = attendanceRecordsBySchedule
-            .get(item._id)
-            ?.find((record) => record.studentId === user._id);
-          if (item.sessionClosureStatus === "completed" && finalAttendance) {
-            attendanceStatus = finalAttendance.status;
-          } else if (item.scheduledStart > now) attendanceStatus = "upcoming";
-          else if (item.status === "active")
-            attendanceStatus = isStudentActive ? "in-progress" : "late";
-          else if (item.status === "completed") attendanceStatus = "pending";
-        }
-
-        // Teacher/Admin Stats Calculation
-        if (isClassAdminOrTeacher) {
-          const finalAttendance =
-            attendanceRecordsBySchedule.get(item._id) ?? [];
-          if (
-            item.status === "completed" &&
-            item.sessionClosureStatus === "completed"
-          ) {
-            const enrolledStudentIds = new Set(classStudents);
-            for (const record of finalAttendance) {
-              if (!enrolledStudentIds.has(record.studentId)) continue;
-              attendanceSummary[record.status]++;
-              attendanceSummary.verifiedTotal++;
-            }
-            attendanceSummary.pendingVerification = Math.max(
+      if (isClassAdminOrTeacher) {
+        const teacherSessions = sessions.filter(
+          (s) => s.studentId === classData.teacherId,
+        );
+        if (teacherSessions.length > 0) {
+          teacherTimeInClass = teacherSessions.reduce((sum, s) => {
+            const sessionStart = s.joinedAt;
+            const sessionEnd = s.leftAt || now;
+            const effectiveStart = Math.max(sessionStart, item.scheduledStart);
+            const effectiveEnd = Math.min(sessionEnd, item.scheduledEnd);
+            const duration = Math.max(
               0,
-              classStudents.length - attendanceSummary.verifiedTotal,
+              (effectiveEnd - effectiveStart) / 1000,
             );
-          } else if (item.status === "completed") {
-            attendanceSummary.pendingVerification = classStudents.length;
-          }
+            return sum + duration;
+          }, 0);
+
+          const scheduledDuration =
+            (item.scheduledEnd - item.scheduledStart) / 1000;
+          const ratio =
+            scheduledDuration > 0 ? teacherTimeInClass / scheduledDuration : 0;
+
+          if (ratio >= LIVE_PRESENCE_PRESENT_RATIO)
+            teacherAttendanceStatus = "present";
+          else if (
+            ratio >= LIVE_PRESENCE_PARTIAL_RATIO ||
+            teacherTimeInClass >= LIVE_PRESENCE_MIN_PARTIAL_SECONDS
+          )
+            teacherAttendanceStatus = "partial";
+          else teacherAttendanceStatus = "absent";
+        } else if (item.scheduledEnd < now) {
+          if (effectiveStatus === "completed")
+            teacherAttendanceStatus = "present";
+          else if (effectiveStatus === "cancelled")
+            teacherAttendanceStatus = "excused";
+          else teacherAttendanceStatus = "absent";
         }
+      }
 
-        const effectiveIsLive =
-          item.isLive === true && item.status === "active";
-        const effectiveStatus = item.status;
-
-        let teacherAttendanceStatus = "upcoming";
-        let teacherTimeInClass = 0;
-
-        if (isClassAdminOrTeacher) {
-          const teacherSessions = sessions.filter(
-            (s) => s.studentId === classData.teacherId,
-          );
-          if (teacherSessions.length > 0) {
-            teacherTimeInClass = teacherSessions.reduce((sum, s) => {
-              const sessionStart = s.joinedAt;
-              const sessionEnd = s.leftAt || now;
-              const effectiveStart = Math.max(
-                sessionStart,
-                item.scheduledStart,
-              );
-              const effectiveEnd = Math.min(sessionEnd, item.scheduledEnd);
-              const duration = Math.max(
-                0,
-                (effectiveEnd - effectiveStart) / 1000,
-              );
-              return sum + duration;
-            }, 0);
-
-            const scheduledDuration =
-              (item.scheduledEnd - item.scheduledStart) / 1000;
-            const ratio =
-              scheduledDuration > 0
-                ? teacherTimeInClass / scheduledDuration
-                : 0;
-
-            if (ratio >= LIVE_PRESENCE_PRESENT_RATIO)
-              teacherAttendanceStatus = "present";
-            else if (
-              ratio >= LIVE_PRESENCE_PARTIAL_RATIO ||
-              teacherTimeInClass >= LIVE_PRESENCE_MIN_PARTIAL_SECONDS
-            )
-              teacherAttendanceStatus = "partial";
-            else teacherAttendanceStatus = "absent";
-          } else if (item.scheduledEnd < now) {
-            if (effectiveStatus === "completed")
-              teacherAttendanceStatus = "present";
-            else if (effectiveStatus === "cancelled")
-              teacherAttendanceStatus = "excused";
-            else teacherAttendanceStatus = "absent";
-          }
-        }
-
-        return {
-          scheduleId: item._id,
-          title,
-          description,
-          className: classData.name,
-          curriculumTitle: curriculum?.title || "Unknown",
-          color: curriculum?.color || "#3b82f6",
-          start: item.scheduledStart,
-          end: item.scheduledEnd,
-          timeZone,
-          roomName: item.roomName,
-          isLive: effectiveIsLive,
-          sessionType: item.sessionType || "live",
-          status: effectiveStatus,
-          classId: classData._id,
-          curriculumId: classData.curriculumId,
-          teacherId: classData.teacherId,
-          gradeCode: classData.gradeCode,
-          isRecurring: item.isRecurring || false,
-          recurrenceRule: recurrenceRule,
-          recurrenceParentId: item.recurrenceParentId,
-          cancellationReason: item.cancellationReason,
-          teacherName: teacher?.fullName,
-          teacherImageUrl: teacher?.imageUrl,
-          teacherAttendance: isClassAdminOrTeacher
-            ? {
-                status: teacherAttendanceStatus,
-                minutes: Math.round(teacherTimeInClass / 60),
-              }
-            : undefined,
-          attendance: attendanceStatus,
-          minutesAttended: Math.round(timeInClass / 60),
-          isStudentActive: isStudentActive,
-          attendanceSummary: isClassAdminOrTeacher
-            ? item.status === "completed"
-              ? attendanceSummary
-              : undefined
-            : undefined,
-          hasRecording: scheduleIdsWithRecordings.has(item._id),
-        };
-      }),
-    );
+      return {
+        scheduleId: item._id,
+        title,
+        description,
+        className: classData.name,
+        curriculumTitle: curriculum?.title || "Unknown",
+        color: curriculum?.color || "#3b82f6",
+        start: item.scheduledStart,
+        end: item.scheduledEnd,
+        timeZone,
+        roomName: item.roomName,
+        isLive: effectiveIsLive,
+        sessionType: item.sessionType || "live",
+        status: effectiveStatus,
+        classId: classData._id,
+        curriculumId: classData.curriculumId,
+        teacherId: classData.teacherId,
+        gradeCode: classData.gradeCode,
+        isRecurring: item.isRecurring || false,
+        recurrenceRule: recurrenceRule,
+        recurrenceParentId: item.recurrenceParentId,
+        cancellationReason: item.cancellationReason,
+        teacherName: teacher?.fullName,
+        teacherImageUrl: teacher?.imageUrl,
+        teacherAttendance: isClassAdminOrTeacher
+          ? {
+              status: teacherAttendanceStatus,
+              minutes: Math.round(teacherTimeInClass / 60),
+            }
+          : undefined,
+        attendance: attendanceStatus,
+        minutesAttended: Math.round(timeInClass / 60),
+        isStudentActive: isStudentActive,
+        attendanceSummary: isClassAdminOrTeacher
+          ? item.status === "completed"
+            ? attendanceSummary
+            : undefined
+          : undefined,
+        hasRecording: scheduleIdsWithRecordings.has(item._id),
+      };
+    });
 
     return results
       .filter((r): r is NonNullable<typeof r> => r !== null)

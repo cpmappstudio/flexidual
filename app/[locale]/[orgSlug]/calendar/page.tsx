@@ -285,6 +285,7 @@ function CalendarContent() {
           to: visibleRange.to - 1,
           now,
           includeAttendance: false,
+          includeRecordings: true,
           ...(orgContext.type === "campus"
             ? { campusId: orgContext._id }
             : orgContext.type === "school"

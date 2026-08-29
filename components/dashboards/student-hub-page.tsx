@@ -165,7 +165,13 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const roundedNow = Math.floor(now / 60_000) * 60_000;
   const ownEventsResult = useQuery(
     api.schedule.getMySchedule,
-    isViewingStudentProfile ? "skip" : { now: roundedNow },
+    isViewingStudentProfile
+      ? "skip"
+      : {
+          now: roundedNow,
+          includeAttendance: false,
+          includeRecordings: false,
+        },
   );
   const accessibleLiveClasses = useQuery(
     api.schedule.listAccessibleLiveClasses,

@@ -84,6 +84,8 @@ export default function AdminDashboard() {
     orgContext
       ? {
           now,
+          to: now,
+          includeAttendance: true,
           includeRecordings: false,
           schoolId: orgContext.type === "school" ? orgContext._id : undefined,
           campusId: queryCampusId,
@@ -93,10 +95,7 @@ export default function AdminDashboard() {
   const scheduleScopeKey = orgContext
     ? `${orgContext.type}:${orgContext._id}`
     : "unresolved";
-  const allSchedules = useRetainedQueryResult(
-    scheduleResult,
-    scheduleScopeKey,
-  );
+  const allSchedules = useRetainedQueryResult(scheduleResult, scheduleScopeKey);
 
   const visibleTeacherCount = canViewPeople
     ? teachers?.length
