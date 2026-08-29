@@ -30,9 +30,8 @@ import {
   utcToLocalDateTime,
 } from "../lib/time-zone";
 import { getClassTimeZone } from "./model/timeZone";
-import { validateGradeCodes } from "./model/grades";
+import { getInstitutionGrades, validateGradeCodes } from "./model/grades";
 import {
-  getStudentGradeCode,
   getStudentMembership,
   listInstitutionStudentMemberships,
 } from "./model/membership";
@@ -142,8 +141,18 @@ async function getInstitutionStudents(
   schoolId: Id<"schools">,
   campusId?: Id<"campuses">,
   includeInactive = false,
+  gradeCodes?: readonly string[],
 ) {
-  const assignments = await listInstitutionStudentMemberships(ctx, schoolId);
+  const assignments = (
+    await listInstitutionStudentMemberships(ctx, schoolId, gradeCodes)
+  ).filter(
+    (assignment) =>
+      !campusId ||
+      (assignment.orgType === "campus" && assignment.orgId === campusId),
+  );
+  const selectedGradeCodes = gradeCodes?.length
+    ? new Set(gradeCodes)
+    : undefined;
   const selected = new Map<Id<"users">, (typeof assignments)[number]>();
   for (const assignment of assignments) {
     const current = selected.get(assignment.userId);
@@ -157,9 +166,13 @@ async function getInstitutionStudents(
       [...selected.values()].map(async (assignment) => {
         const user = await ctx.db.get(assignment.userId);
         if (!user || (!includeInactive && !user.isActive)) return null;
+        const gradeCode = assignment.gradeCode ?? user.grade;
+        if (selectedGradeCodes && !selectedGradeCodes.has(gradeCode ?? "")) {
+          return null;
+        }
         return {
           user,
-          gradeCode: assignment.gradeCode ?? user.grade,
+          gradeCode,
         };
       }),
     )
@@ -815,6 +828,8 @@ export const getStudents = query({
       avatarStorageId: v.optional(v.id("_storage")),
       isActive: v.boolean(),
       imageUrl: v.optional(v.string()),
+      gradeCode: v.optional(v.string()),
+      gradeName: v.optional(v.string()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -826,18 +841,42 @@ export const getStudents = query({
     }
 
     const studentIds = await listClassStudentIds(ctx, classData);
-    const students = await Promise.all(studentIds.map((id) => ctx.db.get(id)));
+    const curriculum = classData.schoolId
+      ? null
+      : await ctx.db.get(classData.curriculumId);
+    const schoolId = classData.schoolId ?? curriculum?.schoolId;
+    const [students, memberships, grades] = await Promise.all([
+      Promise.all(studentIds.map((id) => ctx.db.get(id))),
+      schoolId
+        ? Promise.all(
+            studentIds.map((id) =>
+              getStudentMembership(ctx, id, schoolId, classData.campusId),
+            ),
+          )
+        : [],
+      schoolId ? getInstitutionGrades(ctx, schoolId) : [],
+    ]);
+    const gradeNames = new Map(
+      grades.map((grade) => [grade.code, grade.name]),
+    );
 
     return students
-      .filter((s) => s !== null)
-      .map((s) => ({
-        _id: s!._id,
-        fullName: s!.fullName,
-        email: s!.email,
-        avatarStorageId: s!.avatarStorageId,
-        isActive: s!.isActive,
-        imageUrl: s!.imageUrl,
-      }));
+      .flatMap((student, index) => {
+        if (!student) return [];
+        const gradeCode = memberships[index]?.gradeCode ?? student.grade;
+        return [
+          {
+            _id: student._id,
+            fullName: student.fullName,
+            email: student.email,
+            avatarStorageId: student.avatarStorageId,
+            isActive: student.isActive,
+            imageUrl: student.imageUrl,
+            gradeCode,
+            gradeName: gradeCode ? gradeNames.get(gradeCode) : undefined,
+          },
+        ];
+      });
   },
 });
 
@@ -877,20 +916,16 @@ export const searchStudents = query({
       throw new ConvexError("PERMISSION_DENIED");
     }
 
+    const gradeCodes = classData.gradeCode
+      ? [classData.gradeCode]
+      : curriculum.gradeCodes;
     let results = await getInstitutionStudents(
       ctx,
       curriculum.schoolId,
       classData.campusId,
+      false,
+      gradeCodes,
     );
-    const gradeCodes = classData.gradeCode
-      ? [classData.gradeCode]
-      : curriculum.gradeCodes;
-    if (gradeCodes?.length) {
-      results = results.filter(
-        (student) =>
-          student.gradeCode && gradeCodes.includes(student.gradeCode),
-      );
-    }
     const enrolledIds = new Set(await listClassStudentIds(ctx, classData));
     results = results.filter((student) => !enrolledIds.has(student.user._id));
 
@@ -906,15 +941,17 @@ export const searchStudents = query({
       }
     }
 
-    return results.slice(0, 50).map(({ user: student, gradeCode }) => ({
-      _id: student._id,
-      fullName: student.fullName,
-      email: student.email,
-      username: student.username,
-      avatarStorageId: student.avatarStorageId,
-      imageUrl: student.imageUrl,
-      grade: gradeCode,
-    }));
+    return await Promise.all(
+      results.slice(0, 50).map(async ({ user: student, gradeCode }) => ({
+        _id: student._id,
+        fullName: student.fullName,
+        email: student.email,
+        username: student.username,
+        avatarStorageId: student.avatarStorageId,
+        imageUrl: await getUserImageUrl(ctx, student),
+        grade: gradeCode,
+      })),
+    );
   },
 });
 
@@ -986,9 +1023,9 @@ export const listCourseCreationGradeStudents = query({
       curriculum.schoolId!,
       args.campusId,
       true,
+      [args.gradeCode],
     );
     return students
-      .filter((student) => student.gradeCode === args.gradeCode)
       .sort((a, b) => a.user.fullName.localeCompare(b.user.fullName))
       .map(mapCourseCreationStudent);
   },
@@ -2209,17 +2246,15 @@ export const addStudent = mutation({
       curriculum.schoolId,
       classData.campusId,
     );
-    const studentGrade = await getStudentGradeCode(
-      ctx,
-      student._id,
-      curriculum.schoolId,
-      classData.campusId,
-    );
+    const studentGrade = membership?.gradeCode ?? student.grade;
     const allowedGrades = classData.gradeCode
       ? [classData.gradeCode]
       : curriculum.gradeCodes;
     if (
       !membership ||
+      (classData.campusId &&
+        (membership.orgType !== "campus" ||
+          membership.orgId !== classData.campusId)) ||
       (allowedGrades?.length &&
         (!studentGrade || !allowedGrades.includes(studentGrade)))
     ) {

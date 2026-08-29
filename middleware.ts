@@ -121,7 +121,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
 
       // Base org routing (e.g. they typed /boston-public but no sub-path)
       if (!subPath || subPath === "/") {
-         return intlMiddleware(req) // Let it render the org dashboard
+         return intlMiddleware(req) // Let the organization page choose its default destination
       }
     }
 

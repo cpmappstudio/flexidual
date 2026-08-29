@@ -190,10 +190,17 @@ export default function ClassDetailPage() {
             <div className="min-w-0 space-y-1">
               <h1 className="text-3xl font-bold">{classData.name}</h1>
               <p className="text-muted-foreground">
-                {t("navigation.curriculum")}:{" "}
                 <span className="font-medium text-foreground">
                   {classData.curriculumTitle}
                 </span>
+                {(classData.gradeName || classData.gradeCode) && (
+                  <>
+                    <span aria-hidden="true"> · </span>
+                    <span className="font-medium text-foreground">
+                      {classData.gradeName ?? classData.gradeCode}
+                    </span>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -401,7 +408,6 @@ export default function ClassDetailPage() {
             <TabsContent value="students" className="mt-0">
               <StudentManager
                 classId={classId}
-                curriculumId={classData.curriculumId}
                 canManage={canManageClass}
                 canViewProfiles={canViewStudentProfiles}
               />

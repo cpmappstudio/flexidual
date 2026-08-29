@@ -15,7 +15,10 @@ export function ClassFilters({
   onSelectTeacher,
   selectedCurriculumId,
   onSelectCurriculum,
+  selectedGradeCode,
+  onSelectGrade,
   curriculums,
+  grades,
   teachers,
   isAdmin,
 }: {
@@ -26,7 +29,10 @@ export function ClassFilters({
   onSelectTeacher: (id: Id<"users"> | null) => void;
   selectedCurriculumId: Id<"curriculums"> | null;
   onSelectCurriculum: (id: Id<"curriculums"> | null) => void;
+  selectedGradeCode: string | null;
+  onSelectGrade: (code: string | null) => void;
   curriculums: Doc<"curriculums">[];
+  grades: Doc<"institutionGrades">[];
   teachers: {
     _id: Id<"users">;
     fullName: string;
@@ -48,6 +54,17 @@ export function ClassFilters({
       })),
       onChange: (value) =>
         onSelectAcademicPeriod(value as Id<"academicPeriods"> | null),
+    },
+    {
+      key: "grade",
+      label: t("class.grade"),
+      allLabel: t("calendar.allGrades"),
+      value: selectedGradeCode,
+      options: grades.map((grade) => ({
+        value: grade.code,
+        label: grade.name,
+      })),
+      onChange: onSelectGrade,
     },
     {
       key: "curriculum",

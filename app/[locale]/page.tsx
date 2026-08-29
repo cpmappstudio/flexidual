@@ -28,7 +28,7 @@ function OrganizationEntryContent() {
     const destination =
       getCampusDestination(options.campuses, getLastCampusSlug(userId)) ??
       options.schools[0]?.slug;
-    if (destination) router.replace(`/${destination}`);
+    if (destination) router.replace(`/${destination}/catalog`);
   }, [options, router, userId]);
 
   if (options && options.schools.length === 0) {

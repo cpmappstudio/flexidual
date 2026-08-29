@@ -98,6 +98,11 @@ test("course creation reviews every grade student and enrolls the selected roste
       "outside-student",
       "Oscar Outside",
     );
+    const otherCampusStudentId = await seedUser(
+      ctx,
+      "other-campus-student",
+      "Casey Other Campus",
+    );
     const schoolId = await ctx.db.insert("schools", {
       name: "Enrollment School",
       slug: "enrollment-school",
@@ -112,6 +117,15 @@ test("course creation reviews every grade student and enrolls the selected roste
       schoolId,
       name: "Main Campus",
       slug: "enrollment-campus",
+      timeZone: "UTC",
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: adminId,
+    });
+    const otherCampusId = await ctx.db.insert("campuses", {
+      schoolId,
+      name: "Other Campus",
+      slug: "other-enrollment-campus",
       timeZone: "UTC",
       isActive: true,
       createdAt: Date.now(),
@@ -192,6 +206,13 @@ test("course creation reviews every grade student and enrolls the selected roste
         role: "student",
         gradeCode: "05",
       }),
+      assignRole(ctx, {
+        userId: otherCampusStudentId,
+        schoolId,
+        orgId: otherCampusId,
+        role: "student",
+        gradeCode: "05",
+      }),
     ]);
     for (const [code, name, order] of [
       ["05", "5th Grade", 5],
@@ -252,6 +273,7 @@ test("course creation reviews every grade student and enrolls the selected roste
       inactiveStudentId,
       otherGradeStudentId,
       outsideStudentId,
+      otherCampusStudentId,
     };
   });
 
@@ -340,6 +362,22 @@ test("course creation reviews every grade student and enrolls the selected roste
     data.inactiveStudentId,
     data.otherGradeStudentId,
   ]);
+  expect(
+    await asAdmin.query(api.classes.getStudents, { classId: result.classId }),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        _id: data.activeStudentId,
+        gradeCode: "05",
+        gradeName: "5th Grade",
+      }),
+      expect.objectContaining({
+        _id: data.otherGradeStudentId,
+        gradeCode: "06",
+        gradeName: "6th Grade",
+      }),
+    ]),
+  );
 
   for (const teacherId of [data.inactivePrincipalId, data.outsidePrincipalId]) {
     await expect(
@@ -371,6 +409,42 @@ test("course creation reviews every grade student and enrolls the selected roste
   expect(
     await t.run((ctx) => ctx.db.get("classes", principalCourse.classId)),
   ).toMatchObject({ teacherId: data.principalId });
+
+  await t.run(async (ctx) => {
+    const avatarStorageId = await ctx.storage.store(
+      new Blob(["avatar"], { type: "image/png" }),
+    );
+    await ctx.db.patch("users", data.activeStudentId, { avatarStorageId });
+  });
+  const enrollmentCandidates = await asAdmin.query(
+    api.classes.searchStudents,
+    { classId: principalCourse.classId },
+  );
+  expect(
+    enrollmentCandidates.find(
+      (student) => student._id === data.activeStudentId,
+    )?.imageUrl,
+  ).toBeTruthy();
+  expect(enrollmentCandidates.every((student) => student.grade === "05")).toBe(
+    true,
+  );
+  expect(enrollmentCandidates.map((student) => student._id)).not.toContain(
+    data.otherGradeStudentId,
+  );
+  expect(enrollmentCandidates.map((student) => student._id)).not.toContain(
+    data.otherCampusStudentId,
+  );
+  for (const studentId of [
+    data.otherGradeStudentId,
+    data.otherCampusStudentId,
+  ]) {
+    await expect(
+      asAdmin.mutation(api.classes.addStudent, {
+        classId: principalCourse.classId,
+        studentId,
+      }),
+    ).rejects.toThrow("INVALID_STUDENT");
+  }
 
   const courseToReassign = await asAdmin.mutation(
     api.classes.createWithSchedule,

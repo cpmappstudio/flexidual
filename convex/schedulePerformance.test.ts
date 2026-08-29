@@ -97,7 +97,7 @@ test("getMySchedule preserves attendance, recordings, recurrence, access, and or
       "schedule-functional-student",
       "Sam Student",
     );
-    const outsiderId = await createUser(
+    await createUser(
       "schedule-functional-outsider",
       "Olivia Outsider",
     );

@@ -18,6 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
 
 const ALL = "all";
@@ -100,37 +106,50 @@ export function ResponsiveFilters({
           <DropdownMenuLabel>{menuLabel}</DropdownMenuLabel>
           <DropdownMenuSeparator />
 
-          <div className="space-y-2">
+          <Accordion type="single" collapsible>
             {filters.map((filter) => (
-              <div
+              <AccordionItem
                 key={filter.key}
-                className="border-b pb-2 last:border-b-0 last:pb-0"
+                value={filter.key}
               >
-                <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {filter.label}
-                </p>
-                <DropdownMenuItem
-                  onSelect={() => filter.onChange(null)}
-                  className="justify-between gap-3"
+                <AccordionTrigger
+                  className="px-2 py-2 hover:no-underline"
                 >
-                  <span>{filter.allLabel}</span>
-                  {!filter.value && <Check className="size-4" />}
-                </DropdownMenuItem>
-                {filter.options.map((option) => (
+                  <span className="min-w-0 text-left">
+                    <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {filter.label}
+                    </span>
+                    <span className="block truncate text-sm font-normal text-foreground">
+                      {filter.options.find(
+                        (option) => option.value === filter.value,
+                      )?.label ?? filter.allLabel}
+                    </span>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="pb-2">
                   <DropdownMenuItem
-                    key={option.value}
-                    onSelect={() => filter.onChange(option.value)}
+                    onSelect={() => filter.onChange(null)}
                     className="justify-between gap-3"
                   >
-                    <span>{option.label}</span>
-                    {filter.value === option.value && (
-                      <Check className="size-4" />
-                    )}
+                    <span>{filter.allLabel}</span>
+                    {!filter.value && <Check className="size-4" />}
                   </DropdownMenuItem>
-                ))}
-              </div>
+                  {filter.options.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onSelect={() => filter.onChange(option.value)}
+                      className="justify-between gap-3"
+                    >
+                      <span>{option.label}</span>
+                      {filter.value === option.value && (
+                        <Check className="size-4" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </AccordionContent>
+              </AccordionItem>
             ))}
-          </div>
+          </Accordion>
 
           {hasActiveFilters && (
             <>

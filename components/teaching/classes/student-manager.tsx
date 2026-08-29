@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
+import type { FunctionReturnType } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import Image from "next/image";
 import { Trash2 } from "lucide-react";
@@ -34,19 +35,13 @@ import { AddStudentDialog } from "./add-student-dialog";
 
 interface StudentManagerProps {
   classId: Id<"classes">;
-  curriculumId?: Id<"curriculums">;
   canManage?: boolean;
   canViewProfiles?: boolean;
 }
 
-type ClassStudent = {
-  _id: Id<"users">;
-  fullName: string;
-  email?: string;
-  avatarStorageId?: Id<"_storage">;
-  imageUrl?: string;
-  isActive: boolean;
-};
+type ClassStudent = FunctionReturnType<
+  typeof api.classes.getStudents
+>[number];
 
 type StudentToRemove = Pick<ClassStudent, "_id" | "fullName">;
 
@@ -108,7 +103,6 @@ function StudentCell({ student }: { student: ClassStudent }) {
 
 export function StudentManager({
   classId,
-  curriculumId,
   canManage = false,
   canViewProfiles = false,
 }: StudentManagerProps) {
@@ -153,6 +147,13 @@ export function StudentManager({
         header: createSortableHeader(t("navigation.student")),
         accessorFn: (row) => row.fullName,
         cell: ({ row }) => <StudentCell student={row.original} />,
+      },
+      {
+        id: "grade",
+        accessorFn: (row) => row.gradeName ?? row.gradeCode ?? "",
+        header: createSortableHeader(t("student.grade")),
+        cell: ({ row }) =>
+          row.original.gradeName ?? row.original.gradeCode ?? "-",
       },
       {
         accessorKey: "isActive",
@@ -210,7 +211,7 @@ export function StudentManager({
         emptyMessage={t("class.noStudents")}
         createAction={
           canManage ? (
-            <AddStudentDialog classId={classId} curriculumId={curriculumId} />
+            <AddStudentDialog classId={classId} />
           ) : undefined
         }
         onRowClick={

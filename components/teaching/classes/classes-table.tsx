@@ -18,6 +18,7 @@ import { useOrgBasePath } from "@/hooks/use-org-base-path";
 interface ClassesTableProps {
   data: ClassTableRow[];
   curriculums?: Doc<"curriculums">[];
+  grades?: Doc<"institutionGrades">[];
   academicPeriods?: Doc<"academicPeriods">[];
   teachers?: {
     _id: Id<"users">;
@@ -34,6 +35,7 @@ type ClassTableRow = Doc<"classes"> & { studentCount: number };
 export function ClassesTable({
   data,
   curriculums,
+  grades,
   academicPeriods,
   teachers,
   customFilter,
@@ -52,6 +54,9 @@ export function ClassesTable({
   const getTeacher = (id?: string) => {
     return teachers?.find((teacher) => teacher._id === id);
   };
+
+  const getGradeName = (code?: string) =>
+    grades?.find((grade) => grade.code === code)?.name || code || "-";
 
   const getAcademicPeriodName = (id?: Id<"academicPeriods">) =>
     academicPeriods?.find((period) => period._id === id)?.name || "-";
@@ -121,6 +126,7 @@ export function ClassesTable({
         [
           row.name,
           getCurriculumName(row.curriculumId),
+          getGradeName(row.gradeCode),
           getTeacherOrTypeLabel(row),
           getAcademicPeriodName(row.academicPeriodId),
         ]
@@ -141,6 +147,12 @@ export function ClassesTable({
               <span className="font-mono">{t("navigation.curriculum")}:</span>
               <span className="break-words text-muted-foreground whitespace-normal">
                 {getCurriculumName(row.original.curriculumId)}
+              </span>
+            </div>
+            <div className="inline-flex items-center text-xs">
+              <span className="font-mono">{t("class.grade")}:</span>
+              <span className="break-words text-muted-foreground whitespace-normal">
+                {getGradeName(row.original.gradeCode)}
               </span>
             </div>
             <div className="inline-flex items-center text-xs">
@@ -172,6 +184,17 @@ export function ClassesTable({
       cell: ({ row }) => (
         <span className="break-words whitespace-normal">
           {getCurriculumName(row.getValue("curriculumId"))}
+        </span>
+      ),
+    },
+    {
+      id: "grade",
+      accessorFn: (row) => getGradeName(row.gradeCode),
+      header: createSortableHeader(t("class.grade")),
+      meta: { className: "hidden lg:table-cell" },
+      cell: ({ row }) => (
+        <span className="break-words whitespace-normal">
+          {getGradeName(row.original.gradeCode)}
         </span>
       ),
     },

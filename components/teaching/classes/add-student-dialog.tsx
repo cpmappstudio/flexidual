@@ -15,45 +15,35 @@ import {
 import { Input } from "@/components/ui/input";
 import { Filter, Loader2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
-import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
 import { parseConvexError, getErrorMessage } from "@/lib/error-utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { PageCreateButton } from "@/components/ui/responsive-page-action";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
 interface AddStudentDialogProps {
   classId: Id<"classes">;
-  curriculumId?: Id<"curriculums">;
 }
 
-export function AddStudentDialog({
-  classId,
-  curriculumId,
-}: AddStudentDialogProps) {
+export function AddStudentDialog({ classId }: AddStudentDialogProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const t = useTranslations();
   const locale = useLocale();
+  const debouncedSearch = useDebouncedValue(search);
 
-  const curriculum = useQuery(
-    api.curriculums.get,
-    curriculumId ? { id: curriculumId } : "skip",
+  const classData = useQuery(
+    api.classes.get,
+    open ? { id: classId } : "skip",
   );
-  const classData = useQuery(api.classes.get, { id: classId });
+  const courseGradeCode = classData?.gradeCode;
+  const courseGradeName = classData?.gradeName ?? courseGradeCode;
 
-  const gradeCodes = classData?.gradeCode
-    ? [classData.gradeCode]
-    : curriculum?.gradeCodes || [];
-  const grades = useQuery(
-    api.grades.list,
-    curriculum?.schoolId ? { schoolId: curriculum.schoolId } : "skip",
+  const searchResults = useQuery(
+    api.classes.searchStudents,
+    open ? { searchQuery: debouncedSearch, classId } : "skip",
   );
-  const gradeNames = new Map(grades?.map((grade) => [grade.code, grade.name]));
-
-  const searchResults = useQuery(api.classes.searchStudents, {
-    searchQuery: search,
-    classId,
-  });
 
   const addStudent = useMutation(api.classes.addStudent);
 
@@ -72,7 +62,13 @@ export function AddStudentDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setSearch("");
+      }}
+    >
       <DialogTrigger asChild>
         <PageCreateButton label={t("class.enrollStudent")} />
       </DialogTrigger>
@@ -82,7 +78,7 @@ export function AddStudentDialog({
         </DialogHeader>
 
         <div className="space-y-4 pt-4">
-          {gradeCodes.length > 0 && (
+          {courseGradeCode && (
             <div className="bg-info/10 p-3 rounded-md flex items-start gap-3 border border-info/30">
               <Filter className="h-4 w-4 text-info mt-1" />
               <div className="text-sm">
@@ -90,15 +86,12 @@ export function AddStudentDialog({
                   {t("student.filteringByGrade")}
                 </p>
                 <div className="flex flex-wrap gap-1 mt-1.5">
-                  {gradeCodes.map((code) => (
-                    <Badge
-                      key={code}
-                      variant="secondary"
-                      className="bg-card/50 text-xs"
-                    >
-                      {gradeNames.get(code) ?? code}
-                    </Badge>
-                  ))}
+                  <Badge
+                    variant="secondary"
+                    className="bg-card/50 text-xs"
+                  >
+                    {courseGradeName}
+                  </Badge>
                 </div>
               </div>
             </div>
@@ -122,7 +115,7 @@ export function AddStudentDialog({
             ) : searchResults.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <p>{t("student.noResults")}</p>
-                {gradeCodes.length > 0 && (
+                {courseGradeCode && (
                   <p className="text-xs mt-1 opacity-70">
                     Try clearing filters or adding students to the platform
                     first.
@@ -136,21 +129,15 @@ export function AddStudentDialog({
                   className="flex items-center justify-between p-2 rounded-lg border hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-border bg-muted">
-                      {student.imageUrl ? (
-                        <Image
-                          src={student.imageUrl}
-                          alt={student.fullName}
-                          height={64}
-                          width={64}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-xs font-medium text-muted-foreground">
-                          {student.fullName.substring(0, 2)}
-                        </div>
-                      )}
-                    </div>
+                    <Avatar className="size-9 border">
+                      <AvatarImage
+                        src={student.imageUrl}
+                        alt={student.fullName}
+                      />
+                      <AvatarFallback className="text-xs font-medium">
+                        {student.fullName.substring(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
 
                     <div className="text-sm">
                       <div className="flex items-center gap-2">
@@ -160,7 +147,9 @@ export function AddStudentDialog({
                             variant="outline"
                             className="text-[10px] h-5 px-1.5 text-muted-foreground"
                           >
-                            {gradeNames.get(student.grade) ?? student.grade}
+                            {student.grade === courseGradeCode
+                              ? courseGradeName
+                              : student.grade}
                           </Badge>
                         )}
                       </div>

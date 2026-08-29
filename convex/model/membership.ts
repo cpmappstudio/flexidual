@@ -141,13 +141,40 @@ export async function getSoleStudentCampusId(
 export async function listInstitutionStudentMemberships(
   ctx: DbCtx,
   schoolId: Id<"schools">,
+  gradeCodes?: readonly string[],
 ) {
-  const indexed = await ctx.db
-    .query("roleAssignments")
-    .withIndex("by_school_role_grade", (q) =>
-      q.eq("schoolId", schoolId).eq("role", "student"),
-    )
-    .collect();
+  const selectedGradeCodes = [...new Set(gradeCodes ?? [])];
+  const indexed = selectedGradeCodes.length
+    ? (
+        await Promise.all([
+          ...selectedGradeCodes.map((gradeCode) =>
+            ctx.db
+              .query("roleAssignments")
+              .withIndex("by_school_role_grade", (q) =>
+                q
+                  .eq("schoolId", schoolId)
+                  .eq("role", "student")
+                  .eq("gradeCode", gradeCode),
+              )
+              .collect(),
+          ),
+          ctx.db
+            .query("roleAssignments")
+            .withIndex("by_school_role_grade", (q) =>
+              q
+                .eq("schoolId", schoolId)
+                .eq("role", "student")
+                .eq("gradeCode", undefined),
+            )
+            .collect(),
+        ])
+      ).flat()
+    : await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_school_role_grade", (q) =>
+          q.eq("schoolId", schoolId).eq("role", "student"),
+        )
+        .collect();
 
   // ponytail: remove the legacy branch after the production backfill.
   const campuses = await ctx.db
@@ -175,7 +202,11 @@ export async function listInstitutionStudentMemberships(
     .flat()
     .filter(
       (assignment) =>
-        assignment.role === "student" && assignment.schoolId === undefined,
+        assignment.role === "student" &&
+        assignment.schoolId === undefined &&
+        (selectedGradeCodes.length === 0 ||
+          assignment.gradeCode === undefined ||
+          selectedGradeCodes.includes(assignment.gradeCode)),
     );
 
   return [...indexed, ...legacy];

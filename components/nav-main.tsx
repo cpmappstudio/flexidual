@@ -37,28 +37,6 @@ export function NavMain() {
             <SidebarMenuItem>
               <SidebarMenuButton
                 asChild
-                isActive={pathname === basePath}
-                tooltip={t("navigation.dashboard")}
-                aria-label={t("navigation.dashboard")}
-                className="h-12 gap-3 px-2 text-base group-data-[collapsible=icon]:p-1!"
-              >
-                <Link href={basePath}>
-                  <Image
-                    src="/home-icon.svg"
-                    alt=""
-                    width={32}
-                    height={32}
-                    aria-hidden="true"
-                    className="group-data-[collapsible=icon]:size-6"
-                  />
-                  <span>{t("navigation.dashboard")}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
                 isActive={pathname.includes(`${basePath}/catalog`)}
                 tooltip={t("navigation.catalog")}
                 aria-label={t("navigation.catalog")}

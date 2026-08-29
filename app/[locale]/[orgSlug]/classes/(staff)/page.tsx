@@ -38,6 +38,9 @@ export default function MyClassesPage() {
     useState<Id<"curriculums"> | null>(null);
   const [selectedAcademicPeriodId, setSelectedAcademicPeriodId] =
     useState<Id<"academicPeriods"> | null>(null);
+  const [selectedGradeCode, setSelectedGradeCode] = useState<string | null>(
+    null,
+  );
 
   const querySchoolId =
     orgContext?.type === "school" ? orgContext._id : undefined;
@@ -69,6 +72,10 @@ export default function MyClassesPage() {
         }
       : "skip",
   );
+  const grades = useQuery(
+    api.grades.list,
+    institutionSchoolId ? { schoolId: institutionSchoolId } : "skip",
+  );
   const classes = useMemo(() => {
     if (!tableData) return undefined;
     return tableData.classes.filter(
@@ -77,16 +84,21 @@ export default function MyClassesPage() {
         (!selectedCurriculumId ||
           classData.curriculumId === selectedCurriculumId) &&
         (!selectedAcademicPeriodId ||
-          classData.academicPeriodId === selectedAcademicPeriodId),
+          classData.academicPeriodId === selectedAcademicPeriodId) &&
+        (!selectedGradeCode || classData.gradeCode === selectedGradeCode),
     );
   }, [
     selectedAcademicPeriodId,
     selectedCurriculumId,
+    selectedGradeCode,
     selectedTeacherId,
     tableData,
   ]);
   const hasTableFilters = Boolean(
-    selectedTeacherId || selectedCurriculumId || selectedAcademicPeriodId,
+    selectedTeacherId ||
+      selectedCurriculumId ||
+      selectedAcademicPeriodId ||
+      selectedGradeCode,
   );
 
   if (
@@ -94,6 +106,7 @@ export default function MyClassesPage() {
     isSettingsLoading ||
     classes === undefined ||
     curriculums === undefined ||
+    grades === undefined ||
     academicSettings === undefined ||
     tableData === undefined
   ) {
@@ -117,6 +130,7 @@ export default function MyClassesPage() {
         <ClassesTable
           data={classes}
           curriculums={curriculums ?? undefined}
+          grades={grades}
           academicPeriods={academicSettings?.periods}
           teachers={tableData.teachers}
           customFilter={
@@ -128,9 +142,12 @@ export default function MyClassesPage() {
               onSelectTeacher={setSelectedTeacherId}
               selectedCurriculumId={selectedCurriculumId}
               onSelectCurriculum={setSelectedCurriculumId}
+              selectedGradeCode={selectedGradeCode}
+              onSelectGrade={setSelectedGradeCode}
               curriculums={
                 curriculums?.filter((curriculum) => curriculum.isActive) ?? []
               }
+              grades={grades}
               teachers={tableData.teachers}
               isAdmin={canManage}
             />
