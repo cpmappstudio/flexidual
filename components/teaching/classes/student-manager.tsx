@@ -156,6 +156,12 @@ export function StudentManager({
           row.original.gradeName ?? row.original.gradeCode ?? "-",
       },
       {
+        id: "campus",
+        accessorFn: (row) => row.campusName ?? "",
+        header: createSortableHeader(t("navigation.campus")),
+        cell: ({ row }) => row.original.campusName ?? "-",
+      },
+      {
         accessorKey: "isActive",
         header: createSortableHeader(t("common.status")),
         cell: ({ row }) => (

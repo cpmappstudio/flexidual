@@ -260,6 +260,7 @@ test("course creation reviews every grade student and enrolls the selected roste
       createdBy: adminId,
     });
     return {
+      adminId,
       campusId,
       curriculumId,
       otherGradeCurriculumId,
@@ -370,6 +371,7 @@ test("course creation reviews every grade student and enrolls the selected roste
         _id: data.activeStudentId,
         gradeCode: "05",
         gradeName: "5th Grade",
+        campusName: "Main Campus",
       }),
       expect.objectContaining({
         _id: data.otherGradeStudentId,
@@ -377,6 +379,28 @@ test("course creation reviews every grade student and enrolls the selected roste
         gradeName: "6th Grade",
       }),
     ]),
+  );
+
+  const mismatchedEnrollmentId = await t.run((ctx) =>
+    ctx.db.insert("classEnrollments", {
+      classId: result.classId,
+      studentId: data.otherCampusStudentId,
+      enrolledAt: Date.now(),
+      enrolledBy: data.adminId,
+    }),
+  );
+  expect(
+    await asAdmin.query(api.classes.getStudents, { classId: result.classId }),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        _id: data.otherCampusStudentId,
+        campusName: "Other Campus",
+      }),
+    ]),
+  );
+  await t.run((ctx) =>
+    ctx.db.delete("classEnrollments", mismatchedEnrollmentId),
   );
 
   for (const teacherId of [data.inactivePrincipalId, data.outsidePrincipalId]) {
