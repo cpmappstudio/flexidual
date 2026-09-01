@@ -830,6 +830,7 @@ export const getStudents = query({
       imageUrl: v.optional(v.string()),
       gradeCode: v.optional(v.string()),
       gradeName: v.optional(v.string()),
+      campusName: v.optional(v.string()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -856,6 +857,15 @@ export const getStudents = query({
         : [],
       schoolId ? getInstitutionGrades(ctx, schoolId) : [],
     ]);
+    const campuses = await Promise.all(
+      memberships.map((membership) => {
+        const campusId =
+          membership?.orgType === "campus" && membership.orgId
+            ? ctx.db.normalizeId("campuses", membership.orgId)
+            : null;
+        return campusId ? ctx.db.get("campuses", campusId) : null;
+      }),
+    );
     const gradeNames = new Map(
       grades.map((grade) => [grade.code, grade.name]),
     );
@@ -874,6 +884,7 @@ export const getStudents = query({
             imageUrl: student.imageUrl,
             gradeCode,
             gradeName: gradeCode ? gradeNames.get(gradeCode) : undefined,
+            campusName: campuses[index]?.name,
           },
         ];
       });
