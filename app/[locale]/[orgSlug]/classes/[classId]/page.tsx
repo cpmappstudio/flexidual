@@ -44,6 +44,7 @@ import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 import { ClassOverviewSidebar } from "@/components/teaching/classes/class-overview-sidebar";
+import { LESSON_STATUS_STYLES } from "@/components/teaching/classes/lesson-status-styles";
 import {
   NextClassPanel,
   NextClassPreview,
@@ -57,11 +58,6 @@ const ITEMS_PER_PAGE = 10;
 
 const classTabTriggerClassName =
   "relative mr-3 flex-none shrink-0 gap-1.5 rounded-lg text-sm font-medium text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none after:pointer-events-none after:absolute after:inset-x-2 after:-bottom-[11px] after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-secondary md:text-base";
-
-const curriculumStatusBadgeClassName = {
-  taught: "border-success/30 bg-success/10 text-success",
-  pending: "border-border bg-muted text-muted-foreground",
-};
 
 export default function ClassDetailPage() {
   const t = useTranslations();
@@ -494,7 +490,7 @@ function CurriculumOverview({
                 <Item key={lesson._id} variant="outline" className="bg-sidebar">
                   <ItemMedia
                     variant="icon"
-                    className="rounded-full border-0 bg-primary/10 font-bold text-primary"
+                    className={`rounded-full border-0 font-bold ${LESSON_STATUS_STYLES[lesson.status].indicator}`}
                   >
                     {lesson.order}
                   </ItemMedia>
@@ -503,9 +499,7 @@ function CurriculumOverview({
                       <span>{lesson.title}</span>
                       <Badge
                         variant="outline"
-                        className={
-                          curriculumStatusBadgeClassName[lesson.status]
-                        }
+                        className={LESSON_STATUS_STYLES[lesson.status].badge}
                       >
                         {t(
                           lesson.status === "taught"

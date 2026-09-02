@@ -57,6 +57,7 @@ export function AttendanceDialog({
   title,
 }: AttendanceDialogProps) {
   const t = useTranslations();
+  const attendanceT = useTranslations("attendance");
   const format = useFormatter();
   const now = useCurrentMinute();
   const [internalOpen, setInternalOpen] = useState(false);
@@ -114,10 +115,16 @@ export function AttendanceDialog({
   };
 
   const statusLabels = {
-    present: t("schedule.attendance.present"),
-    partial: t("schedule.attendance.partial"),
-    absent: t("schedule.attendance.absent"),
-    excused: t("schedule.attendance.excused"),
+    present: attendanceT("status.present"),
+    partial: attendanceT("status.partial"),
+    absent: attendanceT("status.absent"),
+    excused: attendanceT("status.excused"),
+  };
+  const statusDescriptions = {
+    present: attendanceT("description.present"),
+    partial: attendanceT("description.partial"),
+    absent: attendanceT("description.absent"),
+    excused: attendanceT("description.excused"),
   };
   const statusStyles: Record<AttendanceStatus, string> = {
     present: "bg-success/10 text-success",
@@ -210,6 +217,10 @@ export function AttendanceDialog({
                             status={draft.status}
                             excuseReason={draft.excuseReason}
                             labels={statusLabels}
+                            descriptions={statusDescriptions}
+                            ariaLabel={attendanceT("controlLabel", {
+                              name: student.fullName,
+                            })}
                             reasonLabel={t("schedule.attendance.excuseReason")}
                             reasonPlaceholder={t(
                               "schedule.attendance.excuseReasonPlaceholder",

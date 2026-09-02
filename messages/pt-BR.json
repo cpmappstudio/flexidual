@@ -78,6 +78,21 @@
     "soundAlerts": "Alertas de Som",
     "muteAlarm": "Silenciar Alarme"
   },
+  "attendance": {
+    "controlLabel": "Status de presença de {name}",
+    "status": {
+      "present": "Presente",
+      "partial": "Parcial",
+      "absent": "Ausente",
+      "excused": "Ausência justificada"
+    },
+    "description": {
+      "present": "Participou durante a maior parte da aula.",
+      "partial": "Participou somente durante parte da aula.",
+      "absent": "Não participou ou registrou conexão mínima.",
+      "excused": "Ausência com motivo obrigatório registrado."
+    }
+  },
   "settings": {
     "title": "Configurações",
     "selectSection": "Selecione uma seção de configurações",
@@ -578,6 +593,17 @@
       "recoveryDescription": "A sala já foi encerrada, mas ainda é necessário confirmar as lições ministradas e a presença.",
       "lessonsTitle": "Lições ministradas",
       "lessonsDescription": "Selecione as lições trabalhadas durante esta aula. Você pode escolher nenhuma, uma ou várias. As lições registradas anteriormente continuarão disponíveis caso tenham sido retomadas.",
+      "lessonsStep": "Lições",
+      "attendanceStep": "Presença",
+      "selectedLessons": "{count, plural, one {# selecionada} other {# selecionadas}}",
+      "searchLessons": "Buscar por número ou nome...",
+      "filterLabel": "Filtrar lições por status",
+      "filter": {
+        "pending": "Pendentes",
+        "taught": "Ministradas",
+        "all": "Todas"
+      },
+      "noMatchingLessons": "Nenhuma lição corresponde a estes filtros.",
       "noLessons": "Este currículo não possui lições ativas.",
       "previouslyRecorded": "Já registrada",
       "previouslyRecordedDetails": "{count, plural, one {# sessão} other {# sessões}} · Última: {date}",
@@ -586,7 +612,9 @@
       "notesPlaceholder": "Ex.: Revisamos para a prova.",
       "attendanceTitle": "Verificar presença",
       "attendanceDescription": "Os registros de conexão são uma sugestão. Ajuste para quem participou presencialmente.",
-      "connectedMinutes": "{minutes, plural, one {# minuto conectado} other {# minutos conectado}}",
+      "searchStudents": "Buscar estudante por nome...",
+      "noMatchingStudents": "Nenhum estudante corresponde a esta busca.",
+      "connectedMinutes": "{minutes, plural, one {# minuto conectado} other {# minutos conectados}}",
       "suggestedStatus": "Sugestão pela conexão: {status}",
       "excuseReason": "Motivo da ausência justificada",
       "excuseReasonPlaceholder": "Explique brevemente a ausência justificada...",
@@ -597,6 +625,9 @@
         "excused": "Justificado",
         "absent": "Ausente"
       },
+      "saveConfirmation": "Ao salvar, você confirma os status sugeridos. Altere apenas os casos necessários.",
+      "backToLessons": "Voltar às lições",
+      "continueToAttendance": "Continuar para presença",
       "submit": "Salvar e encerrar aula",
       "recoverySubmit": "Salvar relatório",
       "completePendingReport": "Concluir relatório",

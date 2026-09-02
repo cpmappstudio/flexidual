@@ -78,6 +78,21 @@
     "soundAlerts": "Sound Alerts",
     "muteAlarm": "Mute Alarm"
   },
+  "attendance": {
+    "controlLabel": "Attendance status for {name}",
+    "status": {
+      "present": "Present",
+      "partial": "Partial",
+      "absent": "Absent",
+      "excused": "Excused absence"
+    },
+    "description": {
+      "present": "Participated during most of the class.",
+      "partial": "Participated during only part of the class.",
+      "absent": "Did not participate or recorded minimal connection.",
+      "excused": "Absence with a required recorded reason."
+    }
+  },
   "settings": {
     "title": "Settings",
     "selectSection": "Select a settings section",
@@ -578,6 +593,17 @@
       "recoveryDescription": "The room has already ended, but you still need to confirm the lessons taught and attendance.",
       "lessonsTitle": "Lessons taught",
       "lessonsDescription": "Select the lessons covered during this class. You may choose none, one, or several. Previously recorded lessons remain available if they were revisited.",
+      "lessonsStep": "Lessons",
+      "attendanceStep": "Attendance",
+      "selectedLessons": "{count, plural, one {# selected} other {# selected}}",
+      "searchLessons": "Search by number or name...",
+      "filterLabel": "Filter lessons by status",
+      "filter": {
+        "pending": "Pending",
+        "taught": "Taught",
+        "all": "All"
+      },
+      "noMatchingLessons": "No lessons match these filters.",
       "noLessons": "This curriculum has no active lessons.",
       "previouslyRecorded": "Already recorded",
       "previouslyRecordedDetails": "{count, plural, one {# session} other {# sessions}} · Last: {date}",
@@ -586,6 +612,8 @@
       "notesPlaceholder": "E.g. We reviewed for the exam.",
       "attendanceTitle": "Verify attendance",
       "attendanceDescription": "Connection records are a suggestion. Adjust them for anyone who attended in person.",
+      "searchStudents": "Search student by name...",
+      "noMatchingStudents": "No students match this search.",
       "connectedMinutes": "{minutes, plural, one {# minute connected} other {# minutes connected}}",
       "suggestedStatus": "Suggested by connection: {status}",
       "excuseReason": "Excuse reason",
@@ -597,6 +625,9 @@
         "excused": "Excused",
         "absent": "Absent"
       },
+      "saveConfirmation": "Saving confirms the suggested statuses. Change only the cases that need it.",
+      "backToLessons": "Back to lessons",
+      "continueToAttendance": "Continue to attendance",
       "submit": "Save and end class",
       "recoverySubmit": "Save report",
       "completePendingReport": "Complete report",
