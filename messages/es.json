@@ -1396,6 +1396,104 @@
       "student": "estudiante"
     }
   },
+  "marketing": {
+    "metadata": {
+      "title": "FlexiDual | Aprendizaje flexible, futuro sin límites",
+      "description": "Una plataforma educativa para conectar clases, currículos, estudiantes y equipos académicos en un solo lugar."
+    },
+    "navigation": {
+      "menu": "Navegación principal",
+      "home": "Inicio",
+      "features": "Funciones",
+      "benefits": "Beneficios",
+      "institutions": "Para instituciones"
+    },
+    "actions": {
+      "signIn": "Iniciar sesión",
+      "learnMore": "Conocer más"
+    },
+    "hero": {
+      "eyebrow": "Una plataforma para toda tu comunidad educativa",
+      "title": "Aprendizaje flexible, futuro sin límites",
+      "description": "Gestiona clases, currículos, calendarios y comunicación académica desde una experiencia clara para estudiantes, docentes e instituciones.",
+      "imageAlt": "Estudiantes y docentes conectados mediante aprendizaje digital",
+      "quick": {
+        "liveClasses": "Clases en vivo y grabaciones",
+        "curricula": "Currículos y lecciones",
+        "tracking": "Calendario y seguimiento"
+      },
+      "callout": {
+        "title": "Tu comunidad conectada",
+        "description": "Cursos, chats y clases en un mismo espacio."
+      }
+    },
+    "features": {
+      "label": "¿Qué es FlexiDual?",
+      "title": "Todo lo que necesitas para acompañar el aprendizaje",
+      "description": "FlexiDual reúne la operación académica diaria en un entorno coherente, accesible y fácil de seguir.",
+      "items": {
+        "centralized": {
+          "title": "Gestión centralizada",
+          "description": "Clases, cursos y estudiantes organizados en un solo lugar."
+        },
+        "flexible": {
+          "title": "Aprendizaje flexible",
+          "description": "Combina clases en vivo, grabaciones y lecciones programadas."
+        },
+        "simple": {
+          "title": "Fácil de usar",
+          "description": "Una interfaz clara para cada rol de la comunidad educativa."
+        },
+        "realtime": {
+          "title": "Seguimiento en tiempo real",
+          "description": "Consulta calendarios, asistencia y progreso cuando lo necesites."
+        },
+        "secure": {
+          "title": "Acceso por roles",
+          "description": "Cada persona accede solo a las herramientas que le corresponden."
+        }
+      }
+    },
+    "institutions": {
+      "title": "Hecho para cada etapa educativa",
+      "description": "Una solución adaptable a la estructura de tu institución.",
+      "items": {
+        "elementary": {
+          "title": "Primaria y secundaria básica",
+          "description": "Un entorno sencillo para acompañar cada clase y mantener a las familias informadas."
+        },
+        "highSchool": {
+          "title": "Secundaria superior",
+          "description": "Organiza cursos, horarios y contenidos con claridad para docentes y estudiantes."
+        },
+        "institutions": {
+          "title": "Colegios e instituciones",
+          "description": "Coordina campus, equipos académicos y comunidades desde una sola plataforma."
+        }
+      }
+    },
+    "benefits": {
+      "titleBefore": "¿Por qué elegir",
+      "titleAfter": "para tu institución?",
+      "imageAlt": "Docente acompañando a un estudiante durante una actividad digital",
+      "items": {
+        "communication": "Mejora la comunicación entre estudiantes, docentes y equipos académicos.",
+        "management": "Reduce el tiempo dedicado a la gestión cotidiana de cursos y horarios.",
+        "engagement": "Facilita el seguimiento del aprendizaje y la participación estudiantil.",
+        "platform": "Mantén las herramientas esenciales en una sola plataforma."
+      }
+    },
+    "cta": {
+      "title": "Una experiencia educativa sin límites",
+      "description": "Entra a FlexiDual y conecta con tu comunidad académica desde cualquier lugar."
+    },
+    "footer": {
+      "navigation": "Enlaces",
+      "access": "Plataforma",
+      "tagline": "Aprendizaje flexible, futuro sin límites.",
+      "rights": "© 2026 FlexiDual. Todos los derechos reservados."
+    }
+  },
   "recordings": {
     "watch": "Grabación",
     "watchRecording": "Ver Grabación",
