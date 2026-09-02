@@ -11,6 +11,8 @@ import type { Id } from "./_generated/dataModel";
 import { validateGradeCodes } from "./model/grades";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 import { curriculumIconValidator } from "./model/curriculumIcons";
+import { insertLessonBatch, lessonDraftValidator } from "./model/lessons";
+import { MAX_BULK_LESSONS } from "../lib/bulk-lessons";
 
 const curriculumValidator = v.object({
   _id: v.id("curriculums"),
@@ -277,6 +279,7 @@ export const createBatch = mutation({
         code: v.optional(v.string()),
         iconKey: v.optional(curriculumIconValidator),
         gradeCodes: v.optional(v.array(v.string())),
+        lessons: v.optional(v.array(lessonDraftValidator)),
       }),
     ),
   },
@@ -311,7 +314,15 @@ export const createBatch = mutation({
       code: normalizeCurriculumCode(item.code),
       iconKey: item.iconKey ?? DEFAULT_CURRICULUM_ICON,
       gradeCodes: [...new Set(item.gradeCodes ?? [])],
+      lessons: item.lessons ?? [],
     }));
+    const lessonCount = curriculums.reduce(
+      (count, item) => count + item.lessons.length,
+      0,
+    );
+    if (lessonCount > MAX_BULK_LESSONS) {
+      throw new ConvexError("INVALID_LESSON_BATCH");
+    }
     const codes = curriculums.flatMap((item) => (item.code ? [item.code] : []));
     if (new Set(codes).size !== codes.length) {
       throw new ConvexError("CURRICULUM_CODE_IN_USE");
@@ -345,6 +356,11 @@ export const createBatch = mutation({
         isActive: true,
         createdAt: Date.now(),
         createdBy: user._id,
+      });
+      await insertLessonBatch(ctx, {
+        curriculumId: id,
+        createdBy: user._id,
+        lessons: item.lessons,
       });
       createdIds.push(id);
     }

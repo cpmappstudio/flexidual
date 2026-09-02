@@ -709,7 +709,17 @@
     "noLesson": "Sin lección específica",
     "linked": "Lección Vinculada",
     "lessonsLinked": "Lecciones vinculadas",
-    "reorderFailed": "Error al reordenar lecciones"
+    "reorderFailed": "Error al reordenar lecciones",
+    "bulk": {
+      "title": "Creación masiva",
+      "label": "Títulos de las lecciones",
+      "lessonCount": "{count, plural, one {# lección} other {# lecciones}}",
+      "placeholder": "Lección 1 – Reconocimiento de letras\nLección 2 – Sonidos iniciales\n---\nLección 3 – Evaluación oral",
+      "titleDescriptionFormat": "Escribe una lección por línea. El texto después de “–” o “ - ” se usará como descripción.",
+      "separatorFormat": "Usa “---” en una línea independiente para separar bloques sin crear una lección.",
+      "invalidLines": "Añade un título a las lecciones de las líneas: {lines}.",
+      "tooMany": "Puedes crear como máximo {count} lecciones a la vez."
+    }
   },
   "class": {
     "class": "Curso",

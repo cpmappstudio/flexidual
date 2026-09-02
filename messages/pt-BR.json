@@ -709,7 +709,17 @@
     "noLesson": "Sem aula específica",
     "linked": "Aula Vinculada",
     "lessonsLinked": "Aulas vinculadas",
-    "reorderFailed": "Falha ao reordenar aulas"
+    "reorderFailed": "Falha ao reordenar aulas",
+    "bulk": {
+      "title": "Criação em massa",
+      "label": "Títulos das aulas",
+      "lessonCount": "{count, plural, one {# aula} other {# aulas}}",
+      "placeholder": "Aula 1 – Reconhecimento de letras\nAula 2 – Sons iniciais\n---\nAula 3 – Avaliação oral",
+      "titleDescriptionFormat": "Digite uma aula por linha. O texto após “–” ou “ - ” será usado como descrição.",
+      "separatorFormat": "Use “---” em uma linha separada para dividir blocos sem criar uma aula.",
+      "invalidLines": "Adicione um título às aulas nas linhas: {lines}.",
+      "tooMany": "Você pode criar no máximo {count} aulas por vez."
+    }
   },
   "class": {
     "class": "Curso",

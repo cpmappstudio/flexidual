@@ -709,7 +709,17 @@
     "noLesson": "No specific lesson",
     "linked": "Linked Lesson",
     "lessonsLinked": "Lessons linked",
-    "reorderFailed": "Failed to reorder lessons"
+    "reorderFailed": "Failed to reorder lessons",
+    "bulk": {
+      "title": "Bulk create",
+      "label": "Lesson titles",
+      "lessonCount": "{count, plural, one {# lesson} other {# lessons}}",
+      "placeholder": "Lesson 1 – Letter recognition\nLesson 2 – Beginning sounds\n---\nLesson 3 – Oral evaluation",
+      "titleDescriptionFormat": "Enter one lesson per line. Text after “–” or “ - ” becomes the description.",
+      "separatorFormat": "Use “---” on its own line to separate blocks without creating a lesson.",
+      "invalidLines": "Add a title to the lessons on lines: {lines}.",
+      "tooMany": "You can create at most {count} lessons at once."
+    }
   },
   "class": {
     "class": "Course",

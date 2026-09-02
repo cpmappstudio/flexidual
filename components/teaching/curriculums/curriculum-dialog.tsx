@@ -35,6 +35,12 @@ import {
   type CurriculumIconKey,
 } from "@/lib/curriculum-icons";
 import { CurriculumIcon, CurriculumIconPicker } from "./curriculum-icon";
+import { BulkLessonsInput } from "@/components/teaching/lessons/bulk-lessons-input";
+import {
+  MAX_BULK_LESSONS,
+  parseBulkLessons,
+  type LessonDraft,
+} from "@/lib/bulk-lessons";
 
 // Multi-tenant imports
 import { useParams } from "next/navigation";
@@ -54,6 +60,7 @@ type PendingCurriculum = {
   description: string;
   iconKey: CurriculumIconKey;
   gradeCodes?: string[];
+  lessons: LessonDraft[];
 };
 
 export function CurriculumDialog({
@@ -107,6 +114,7 @@ export function CurriculumDialog({
     iconKey: DEFAULT_CURRICULUM_ICON,
     isActive: true,
     gradeCodes: [] as string[],
+    bulkLessonsText: "",
   });
 
   useEffect(() => {
@@ -119,6 +127,7 @@ export function CurriculumDialog({
           iconKey: getCurriculumIconKey(curriculum.iconKey),
           isActive: curriculum.isActive,
           gradeCodes: curriculum.gradeCodes || [],
+          bulkLessonsText: "",
         });
       } else {
         setQueue([]);
@@ -129,6 +138,7 @@ export function CurriculumDialog({
           iconKey: DEFAULT_CURRICULUM_ICON,
           isActive: true,
           gradeCodes: [],
+          bulkLessonsText: "",
         });
       }
     }
@@ -153,13 +163,24 @@ export function CurriculumDialog({
     e.preventDefault();
     if (!formData.title) return;
 
+    const parsedLessons = parseBulkLessons(formData.bulkLessonsText);
+    if (parsedLessons.invalidLines.length > 0) {
+      toast.error(
+        t("lesson.bulk.invalidLines", {
+          lines: parsedLessons.invalidLines.join(", "),
+        }),
+      );
+      return;
+    }
+
     const newItem: PendingCurriculum = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       title: formData.title,
       code: formData.code,
       description: formData.description,
       iconKey: formData.iconKey,
       gradeCodes: formData.gradeCodes,
+      lessons: parsedLessons.lessons,
     };
 
     setQueue([...queue, newItem]);
@@ -170,6 +191,7 @@ export function CurriculumDialog({
       iconKey: DEFAULT_CURRICULUM_ICON,
       isActive: true,
       gradeCodes: [],
+      bulkLessonsText: "",
     });
   };
 
@@ -203,6 +225,15 @@ export function CurriculumDialog({
       } else {
         const finalQueue = [...queue];
         if (finalQueue.length === 0 && formData.title) {
+          const parsedLessons = parseBulkLessons(formData.bulkLessonsText);
+          if (parsedLessons.invalidLines.length > 0) {
+            toast.error(
+              t("lesson.bulk.invalidLines", {
+                lines: parsedLessons.invalidLines.join(", "),
+              }),
+            );
+            return;
+          }
           finalQueue.push({
             id: "temp",
             title: formData.title,
@@ -210,10 +241,19 @@ export function CurriculumDialog({
             description: formData.description,
             iconKey: formData.iconKey,
             gradeCodes: formData.gradeCodes,
+            lessons: parsedLessons.lessons,
           });
         }
 
         if (finalQueue.length === 0) return;
+        const lessonCount = finalQueue.reduce(
+          (count, item) => count + item.lessons.length,
+          0,
+        );
+        if (lessonCount > MAX_BULK_LESSONS) {
+          toast.error(t("lesson.bulk.tooMany", { count: MAX_BULK_LESSONS }));
+          return;
+        }
 
         // 2. Pass context so the backend links it to the right School!
         await createBatch({
@@ -233,6 +273,7 @@ export function CurriculumDialog({
             description: q.description || undefined,
             iconKey: q.iconKey,
             gradeCodes: q.gradeCodes ?? [],
+            lessons: q.lessons,
           })),
         });
 
@@ -505,6 +546,13 @@ export function CurriculumDialog({
               />
             </div>
 
+            <BulkLessonsInput
+              value={formData.bulkLessonsText}
+              onValueChange={(bulkLessonsText) =>
+                setFormData((current) => ({ ...current, bulkLessonsText }))
+              }
+            />
+
             {/* Add to Queue Button — desktop only */}
             <div className="justify-end hidden md:flex">
               <Button
@@ -578,6 +626,13 @@ export function CurriculumDialog({
                           <div className="text-muted-foreground text-xs line-clamp-1">
                             {q.description}
                           </div>
+                          {q.lessons.length > 0 && (
+                            <div className="text-xs text-primary">
+                              {t("lesson.bulk.lessonCount", {
+                                count: q.lessons.length,
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <Button
