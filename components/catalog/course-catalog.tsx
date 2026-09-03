@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -38,6 +38,7 @@ type CatalogCourse = FunctionReturnType<
   typeof api.classes.listCatalog
 >["page"][number];
 type TileContext = "live" | "upcoming" | "course";
+type CatalogVisibility = "public" | "private";
 
 function CourseRail({
   title,
@@ -72,9 +73,11 @@ function CourseRail({
 function CourseTile({
   course,
   context,
+  className,
 }: {
   course: CatalogCourse;
   context: TileContext;
+  className?: string;
 }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -104,7 +107,10 @@ function CourseTile({
   return (
     <Link
       href={href}
-      className="w-[18rem] shrink-0 snap-start rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-[20rem]"
+      className={cn(
+        "w-[18rem] shrink-0 snap-start rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-[20rem]",
+        className,
+      )}
       aria-label={`${t("catalog.viewCourse")}: ${course.name}`}
     >
       <article className="min-w-0">
@@ -212,6 +218,32 @@ function CourseTile({
   );
 }
 
+function CourseGrid({
+  title,
+  courses,
+}: {
+  title: string;
+  courses: CatalogCourse[];
+}) {
+  if (courses.length === 0) return null;
+
+  return (
+    <section className="min-w-0 space-y-3" aria-label={title}>
+      <h2 className="text-lg font-bold text-foreground sm:text-xl">{title}</h2>
+      <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {courses.map((course) => (
+          <CourseTile
+            key={course._id}
+            course={course}
+            context="course"
+            className="w-full sm:w-full"
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function CatalogRailsSkeleton() {
   return (
     <div className="space-y-8" aria-hidden="true">
@@ -251,6 +283,8 @@ export function CourseCatalog() {
     useState<Id<"campuses"> | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
+  const [selectedVisibility, setSelectedVisibility] =
+    useState<CatalogVisibility | null>("public");
   const canQuery = isAuthenticated;
   const filterOptions = useQuery(
     api.classes.getCatalogFilters,
@@ -273,27 +307,13 @@ export function CourseCatalog() {
             curriculumId: selectedCurriculumId,
           }),
           ...(selectedTeacherId && { teacherId: selectedTeacherId }),
+          visibility: filterOptions?.canViewPrivateCourses
+            ? (selectedVisibility ?? "all")
+            : "public",
         }
       : "skip",
     { initialNumItems: 24 },
   );
-  const curriculumGroups = useMemo(() => {
-    const groups = new Map<
-      string,
-      { id: string; title: string; courses: CatalogCourse[] }
-    >();
-    for (const course of results) {
-      const group = groups.get(course.curriculumId) ?? {
-        id: course.curriculumId,
-        title: course.curriculumTitle,
-        courses: [],
-      };
-      group.courses.push(course);
-      groups.set(course.curriculumId, group);
-    }
-    return [...groups.values()];
-  }, [results]);
-
   if (isAuthLoading) {
     return <CatalogSkeleton />;
   }
@@ -327,6 +347,22 @@ export function CourseCatalog() {
       options: filterOptions?.teachers ?? [],
       onChange: (value) => setSelectedTeacherId(value as Id<"users"> | null),
     },
+    ...(filterOptions?.canViewPrivateCourses
+      ? [
+          {
+            key: "visibility",
+            label: t("catalog.visibility"),
+            allLabel: t("catalog.allVisibility"),
+            value: selectedVisibility,
+            options: [
+              { value: "public", label: t("catalog.public") },
+              { value: "private", label: t("catalog.privateCourses") },
+            ],
+            onChange: (value: string | null) =>
+              setSelectedVisibility(value as CatalogVisibility | null),
+          },
+        ]
+      : []),
   ];
 
   const liveCourses = results.filter((course) => course.liveSession);
@@ -385,14 +421,7 @@ export function CourseCatalog() {
             courses={upcomingCourses}
             context="upcoming"
           />
-          {curriculumGroups.map((group) => (
-            <CourseRail
-              key={group.id}
-              title={group.title}
-              courses={group.courses}
-              context="course"
-            />
-          ))}
+          <CourseGrid title={t("catalog.allCourses")} courses={results} />
         </>
       )}
 

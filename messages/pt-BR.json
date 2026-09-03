@@ -353,6 +353,11 @@
   "catalog": {
     "liveNow": "Ao vivo",
     "upcoming": "Em breve",
+    "allCourses": "Todos os cursos",
+    "visibility": "Visibilidade",
+    "allVisibility": "Todos",
+    "public": "Públicos",
+    "privateCourses": "Privados",
     "private": "Privado",
     "institution": "Instituição",
     "viewCourse": "Ver aula ao vivo",
