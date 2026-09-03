@@ -3,7 +3,33 @@
 import { Button } from "@/components/ui/button";
 import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+  useSyncExternalStore,
+} from "react";
+
+const COMPACT_CONTROLS_QUERY = "(max-width: 1023px)";
+
+function subscribeToControlsLayout(onChange: () => void) {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+
+  const mediaQuery = window.matchMedia(COMPACT_CONTROLS_QUERY);
+  mediaQuery.addEventListener("change", onChange);
+  return () => mediaQuery.removeEventListener("change", onChange);
+}
+
+function getCompactControlsSnapshot() {
+  return (
+    typeof window !== "undefined" &&
+    Boolean(window.matchMedia?.(COMPACT_CONTROLS_QUERY).matches)
+  );
+}
+
+function getServerControlsSnapshot() {
+  return false;
+}
 
 type ActionTone = "default" | "success" | "warning" | "destructive";
 
@@ -122,29 +148,31 @@ export function ClassroomActionBar({
   right,
   mobile,
 }: ClassroomActionBarProps) {
-  return (
-    <>
-      {mobile && (
-        <div className="grid min-h-20 w-full grid-cols-4 items-center justify-items-center bg-card px-1 py-1 lg:hidden">
-          {mobile}
-        </div>
-      )}
-      <div
-        className={cn(
-          "min-h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center bg-card px-1.5 py-1 sm:px-2",
-          mobile ? "hidden lg:grid" : "grid",
-        )}
-      >
-        <div className="flex min-w-0 items-center justify-start gap-0.5 border-r border-border/70 pr-1 sm:gap-1 sm:pr-2">
-          {left}
-        </div>
-        <div className="scrollbar-thin flex min-w-0 items-center justify-start gap-0.5 overflow-x-auto px-1 sm:justify-center sm:gap-1 sm:px-2">
-          {center}
-        </div>
-        <div className="flex min-w-0 items-center justify-end gap-0.5 border-l border-border/70 pl-1 sm:gap-1 sm:pl-2">
-          {right}
-        </div>
+  const isCompact = useSyncExternalStore(
+    subscribeToControlsLayout,
+    getCompactControlsSnapshot,
+    getServerControlsSnapshot,
+  );
+
+  if (mobile && isCompact) {
+    return (
+      <div className="grid min-h-20 w-full grid-cols-4 items-center justify-items-center bg-card px-1 py-1">
+        {mobile}
       </div>
-    </>
+    );
+  }
+
+  return (
+    <div className="grid min-h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center bg-card px-1.5 py-1 sm:px-2">
+      <div className="flex min-w-0 items-center justify-start gap-0.5 border-r border-border/70 pr-1 sm:gap-1 sm:pr-2">
+        {left}
+      </div>
+      <div className="scrollbar-thin flex min-w-0 items-center justify-start gap-0.5 overflow-x-auto px-1 sm:justify-center sm:gap-1 sm:px-2">
+        {center}
+      </div>
+      <div className="flex min-w-0 items-center justify-end gap-0.5 border-l border-border/70 pl-1 sm:gap-1 sm:pl-2">
+        {right}
+      </div>
+    </div>
   );
 }

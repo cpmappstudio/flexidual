@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef } from "react";
-import { useAction, useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { LiveKitRoom } from "@livekit/components-react";
+import { DisconnectReason } from "livekit-client";
 import { api } from "@/convex/_generated/api";
 import { ActiveClassroomUI } from "./active-classroom-ui";
 import { StudentClassroomUI } from "./student-classroom-ui";
@@ -19,11 +20,13 @@ import { Button } from "@/components/ui/button";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { useSidebar } from "@/components/ui/sidebar";
 import { CompanionClassroomUI } from "./companion-classroom-ui";
 import { useFullscreen } from "@/hooks/use-fullscreen";
 import { ClassroomRocketLoader } from "@/components/student/rocket-transition";
 import { useClassroomClock } from "./use-classroom-clock";
+import { useClassroomToken } from "@/hooks/use-classroom-token";
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -31,6 +34,54 @@ interface FlexiClassroomProps {
   isStudentView?: boolean;
   isCompanion?: boolean;
   onLeave?: () => void;
+}
+
+interface ClassroomConnectionErrorProps {
+  className?: string;
+  isOverlay?: boolean;
+  message: string;
+  retryLabel: string;
+  leaveLabel: string;
+  onRetry: () => void;
+  onLeave?: () => void;
+}
+
+function ClassroomConnectionError({
+  className,
+  isOverlay = false,
+  message,
+  retryLabel,
+  leaveLabel,
+  onRetry,
+  onLeave,
+}: ClassroomConnectionErrorProps) {
+  return (
+    <div
+      className={`${
+        isOverlay
+          ? "absolute inset-0 z-50 bg-background/75 backdrop-blur-sm"
+          : "h-full w-full bg-destructive/5 rounded-lg"
+      } flex items-center justify-center ${className ?? ""}`}
+    >
+      <div className="text-center p-6 bg-card border border-destructive/20 rounded-xl shadow-sm">
+        <div className="text-destructive font-bold mb-2">{message}</div>
+        <div className="flex gap-2 justify-center mt-4">
+          <Button variant="outline" onClick={onRetry}>
+            {retryLabel}
+          </Button>
+          {onLeave && (
+            <Button
+              variant="ghost"
+              onClick={onLeave}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              {leaveLabel}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SidebarAutoCollapser() {
@@ -81,8 +132,6 @@ export default function FlexiClassroom({
   const t = useTranslations();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [token, setToken] = useState<string>("");
-  const [error, setError] = useState<string>("");
   const containerRef = useRef<HTMLDivElement>(null);
   const { isFullscreen, isSupported, toggleFullscreen } = useFullscreen();
   const handleToggleFullscreen = () => toggleFullscreen(containerRef.current);
@@ -92,21 +141,34 @@ export default function FlexiClassroom({
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
 
-  const { user: convexUser } = useCurrentUser();
+  const {
+    user: currentUserResult,
+    isLoading: isCurrentUserLoading,
+    isAuthenticated: isCurrentUserAuthenticated,
+  } = useCurrentUser();
+  const currentUserQueryResult =
+    !isCurrentUserLoading && !isCurrentUserAuthenticated
+      ? null
+      : currentUserResult;
+  const convexUser = useRetainedQueryResult(currentUserQueryResult, roomName);
 
   const logPresence = useMutation(api.schedule.logStudentPresence);
 
-  const sessionStatus = useQuery(api.schedule.getSessionStatus, {
+  const sessionStatusResult = useQuery(api.schedule.getSessionStatus, {
     sessionId: roomName,
     now: Math.floor(now / 60_000) * 60_000,
   });
+  const sessionStatus = useRetainedQueryResult(sessionStatusResult, roomName);
 
-  const scheduleDetails = useQuery(
+  const scheduleDetailsResult = useQuery(
     api.schedule.getWithDetails,
     sessionStatus?.scheduleId ? { id: sessionStatus.scheduleId } : "skip",
   );
-
-  const getToken = useAction(api.livekit.getToken);
+  const scheduleDetailsScope = `${roomName}:${sessionStatus?.scheduleId ?? "pending"}`;
+  const scheduleDetails = useRetainedQueryResult(
+    scheduleDetailsResult,
+    scheduleDetailsScope,
+  );
 
   const role = sessionStatus
     ? sessionStatus.isPrimaryTeacher
@@ -127,53 +189,68 @@ export default function FlexiClassroom({
   const shouldConnect =
     !isSessionClosed && (isClassLive || canJoinEarly) && !!convexUser;
 
-  // Use a ref to ensure we don't log join multiple times for the same session
-  const hasLoggedJoin = useRef(false);
+  const {
+    token,
+    error: tokenError,
+    clear: clearToken,
+    retry: retryToken,
+  } = useClassroomToken({
+    roomName,
+    userId: convexUser?._id,
+    isCompanion,
+    shouldRequest: shouldConnect,
+  });
+  const connectionScope = `${roomName}:${convexUser?._id ?? "anonymous"}:${isCompanion ? "companion" : "primary"}`;
+  const [roomErrorState, setRoomErrorState] = useState<{
+    scopeKey: string;
+    message: string;
+  } | null>(null);
+  const roomError =
+    roomErrorState?.scopeKey === connectionScope ? roomErrorState.message : "";
+  const error =
+    roomError ||
+    (tokenError === "not-started"
+      ? t("classroom.hasntStarted")
+      : tokenError === "connection"
+        ? t("classroom.connectionError")
+        : "");
+
+  const loggedScheduleRef = useRef<string | null>(null);
   const nextRoomRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!convexUser || !roomName || !shouldConnect) return;
-
-    const fetchToken = async () => {
-      try {
-        const jwt = await getToken({
-          roomName,
-          isCompanion,
-        });
-        setToken(jwt);
-      } catch (err) {
-        console.error("Error fetching token:", err);
-        if ((err as Error).message.includes("not started")) {
-          setError(t("classroom.hasntStarted"));
-        } else {
-          setError(t("classroom.connectionError"));
-        }
-      }
-    };
-
-    fetchToken();
-  }, [convexUser, roomName, getToken, shouldConnect, isCompanion, t]);
+  const currentRoomRef = useRef(roomName);
+  const sessionClosedRef = useRef(isSessionClosed);
+  currentRoomRef.current = roomName;
+  sessionClosedRef.current = isSessionClosed;
 
   const handleConnected = useCallback(async () => {
+    setRoomErrorState((current) =>
+      current?.scopeKey === connectionScope ? null : current,
+    );
+
     if (
       !resolvedIsStudentView ||
       !sessionStatus?.scheduleId ||
-      hasLoggedJoin.current
+      loggedScheduleRef.current === sessionStatus.scheduleId
     ) {
       return;
     }
 
-    hasLoggedJoin.current = true;
+    loggedScheduleRef.current = sessionStatus.scheduleId;
     try {
       await logPresence({
         scheduleId: sessionStatus.scheduleId,
         action: "join",
       });
     } catch (err) {
-      hasLoggedJoin.current = false;
+      loggedScheduleRef.current = null;
       console.error("Failed to log presence:", err);
     }
-  }, [logPresence, resolvedIsStudentView, sessionStatus?.scheduleId]);
+  }, [
+    connectionScope,
+    logPresence,
+    resolvedIsStudentView,
+    sessionStatus?.scheduleId,
+  ]);
 
   const exitClassroom = useCallback(() => {
     if (resolvedIsStudentView && onLeave) {
@@ -186,46 +263,80 @@ export default function FlexiClassroom({
   const handleRoomError = useCallback(
     (roomError: Error) => {
       console.error("LiveKit connection error:", roomError);
-      setError(t("classroom.connectionError"));
+      setRoomErrorState({
+        scopeKey: connectionScope,
+        message: t("classroom.connectionError"),
+      });
     },
-    [t],
+    [connectionScope, t],
   );
 
-  // Handle disconnect (leave)
-  const handleDisconnect = useCallback(async () => {
-    if (
-      resolvedIsStudentView &&
-      sessionStatus?.scheduleId &&
-      hasLoggedJoin.current
-    ) {
-      try {
-        await logPresence({
-          scheduleId: sessionStatus.scheduleId,
-          action: "leave",
-        });
-      } catch (e) {
-        console.error("Error logging leave:", e);
+  const handleDisconnect = useCallback(
+    async (reason?: DisconnectReason) => {
+      if (currentRoomRef.current !== roomName || sessionClosedRef.current) {
+        return;
       }
-    }
 
-    setToken("");
-    hasLoggedJoin.current = false;
-    const nextRoom = nextRoomRef.current;
-    if (nextRoom) {
-      nextRoomRef.current = null;
-      router.push(`/${params.locale}/${orgSlug}/classroom/${nextRoom}`);
-      return;
-    }
-    exitClassroom();
-  }, [
-    exitClassroom,
-    logPresence,
-    orgSlug,
-    params.locale,
-    resolvedIsStudentView,
-    router,
-    sessionStatus?.scheduleId,
-  ]);
+      const isClientInitiated = reason === DisconnectReason.CLIENT_INITIATED;
+      if (!isClientInitiated) {
+        setRoomErrorState({
+          scopeKey: connectionScope,
+          message:
+            reason === DisconnectReason.DUPLICATE_IDENTITY
+              ? t("classroom.duplicateSession")
+              : t("classroom.connectionError"),
+        });
+      }
+
+      if (
+        resolvedIsStudentView &&
+        sessionStatus?.scheduleId &&
+        loggedScheduleRef.current === sessionStatus.scheduleId
+      ) {
+        try {
+          await logPresence({
+            scheduleId: sessionStatus.scheduleId,
+            action: "leave",
+          });
+        } catch (e) {
+          console.error("Error logging leave:", e);
+        }
+      }
+
+      loggedScheduleRef.current = null;
+
+      if (!isClientInitiated) return;
+
+      clearToken();
+      const nextRoom = nextRoomRef.current;
+      if (nextRoom) {
+        nextRoomRef.current = null;
+        router.push(`/${params.locale}/${orgSlug}/classroom/${nextRoom}`);
+        return;
+      }
+      exitClassroom();
+    },
+    [
+      clearToken,
+      connectionScope,
+      exitClassroom,
+      logPresence,
+      orgSlug,
+      params.locale,
+      resolvedIsStudentView,
+      router,
+      roomName,
+      sessionStatus?.scheduleId,
+      t,
+    ],
+  );
+
+  const handleRetry = useCallback(() => {
+    setRoomErrorState((current) =>
+      current?.scopeKey === connectionScope ? null : current,
+    );
+    retryToken();
+  }, [connectionScope, retryToken]);
 
   const handleSwitchClassroom = useCallback((nextRoomName: string) => {
     nextRoomRef.current = nextRoomName;
@@ -264,7 +375,7 @@ export default function FlexiClassroom({
   }
 
   // Room Not Found
-  if (!sessionStatus) {
+  if (!sessionStatus || scheduleDetails === null) {
     return (
       <div
         className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}
@@ -430,33 +541,16 @@ export default function FlexiClassroom({
   }
 
   // Error State
-  if (error) {
+  if (error && (!token || !scheduleDetails)) {
     return (
-      <div
-        className={`flex h-full w-full items-center justify-center bg-destructive/5 rounded-lg ${className}`}
-      >
-        <div className="text-center p-6 bg-card border border-destructive/20 rounded-xl shadow-sm">
-          <div className="text-destructive font-bold mb-2">
-            {t("classroom.connectionError")}
-          </div>
-          <div className="text-muted-foreground text-sm mb-4">{error}</div>
-
-          <div className="flex gap-2 justify-center">
-            <Button variant="outline" onClick={() => window.location.reload()}>
-              {t("classroom.tryAgain")}
-            </Button>
-            {resolvedIsStudentView && (
-              <Button
-                variant="ghost"
-                onClick={exitClassroom}
-                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              >
-                {t("classroom.leave")}
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
+      <ClassroomConnectionError
+        className={className}
+        message={error}
+        retryLabel={t("classroom.tryAgain")}
+        leaveLabel={t("classroom.leave")}
+        onRetry={handleRetry}
+        onLeave={resolvedIsStudentView ? exitClassroom : undefined}
+      />
     );
   }
 
@@ -484,10 +578,11 @@ export default function FlexiClassroom({
   return (
     <div
       ref={containerRef}
-      className={`h-full w-full overflow-hidden ${className}`}
+      className={`relative h-full w-full overflow-hidden ${className}`}
     >
       {!resolvedIsStudentView && <SidebarAutoCollapser />}
       <LiveKitRoom
+        key={connectionScope}
         video={false}
         audio={false}
         token={token}
@@ -539,6 +634,16 @@ export default function FlexiClassroom({
           />
         )}
       </LiveKitRoom>
+      {error && (
+        <ClassroomConnectionError
+          isOverlay
+          message={error}
+          retryLabel={t("classroom.tryAgain")}
+          leaveLabel={t("classroom.leave")}
+          onRetry={handleRetry}
+          onLeave={resolvedIsStudentView ? exitClassroom : undefined}
+        />
+      )}
     </div>
   );
 }

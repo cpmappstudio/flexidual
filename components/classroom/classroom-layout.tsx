@@ -84,11 +84,12 @@ export function ClassroomLayoutControls({
   isPhoneLandscape = false,
   ...props
 }: ClassroomRegionProps) {
+  if (isPhoneLandscape) return null;
+
   return (
     <div
       className={cn(
         "col-start-1 row-start-4 z-10 overflow-hidden border-t border-border bg-card xl:col-start-1 xl:row-start-3",
-        isPhoneLandscape ? "hidden" : "",
         className,
       )}
       {...props}
