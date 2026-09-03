@@ -353,6 +353,11 @@
   "catalog": {
     "liveNow": "Live now",
     "upcoming": "Coming up",
+    "allCourses": "All courses",
+    "visibility": "Visibility",
+    "allVisibility": "All",
+    "public": "Public",
+    "privateCourses": "Private",
     "private": "Private",
     "institution": "Institution",
     "viewCourse": "View live class",
@@ -714,7 +719,17 @@
     "noLesson": "No specific lesson",
     "linked": "Linked Lesson",
     "lessonsLinked": "Lessons linked",
-    "reorderFailed": "Failed to reorder lessons"
+    "reorderFailed": "Failed to reorder lessons",
+    "bulk": {
+      "title": "Bulk create",
+      "label": "Lesson titles",
+      "lessonCount": "{count, plural, one {# lesson} other {# lessons}}",
+      "placeholder": "Lesson 1 – Letter recognition\nLesson 2 – Beginning sounds\n---\nLesson 3 – Oral evaluation",
+      "titleDescriptionFormat": "Enter one lesson per line. Text after “–” or “ - ” becomes the description.",
+      "separatorFormat": "Use “---” on its own line to separate blocks without creating a lesson.",
+      "invalidLines": "Add a title to the lessons on lines: {lines}.",
+      "tooMany": "You can create at most {count} lessons at once."
+    }
   },
   "class": {
     "class": "Course",
@@ -1389,6 +1404,104 @@
       "teacher": "teacher",
       "tutor": "tutor",
       "student": "student"
+    }
+  },
+  "marketing": {
+    "metadata": {
+      "title": "FlexiDual | Flexible learning, limitless future",
+      "description": "An educational platform connecting classes, curricula, students, and academic teams in one place."
+    },
+    "navigation": {
+      "menu": "Main navigation",
+      "home": "Home",
+      "features": "Features",
+      "benefits": "Benefits",
+      "institutions": "For institutions"
+    },
+    "actions": {
+      "signIn": "Sign in",
+      "learnMore": "Learn more"
+    },
+    "hero": {
+      "eyebrow": "One platform for your entire learning community",
+      "title": "Flexible learning, limitless future",
+      "description": "Manage classes, curricula, calendars, and academic communication through a clear experience for students, teachers, and institutions.",
+      "imageAlt": "Students and teachers connected through digital learning",
+      "quick": {
+        "liveClasses": "Live classes and recordings",
+        "curricula": "Curricula and lessons",
+        "tracking": "Calendar and tracking"
+      },
+      "callout": {
+        "title": "Your community, connected",
+        "description": "Courses, chats, and classes in one place."
+      }
+    },
+    "features": {
+      "label": "What is FlexiDual?",
+      "title": "Everything you need to support learning",
+      "description": "FlexiDual brings daily academic operations together in one coherent, accessible, and easy-to-follow environment.",
+      "items": {
+        "centralized": {
+          "title": "Centralized management",
+          "description": "Classes, courses, and students organized in one place."
+        },
+        "flexible": {
+          "title": "Flexible learning",
+          "description": "Combine live classes, recordings, and scheduled lessons."
+        },
+        "simple": {
+          "title": "Easy to use",
+          "description": "A clear interface for every role in the learning community."
+        },
+        "realtime": {
+          "title": "Real-time tracking",
+          "description": "Review calendars, attendance, and progress whenever needed."
+        },
+        "secure": {
+          "title": "Role-based access",
+          "description": "Each person accesses only the tools intended for them."
+        }
+      }
+    },
+    "institutions": {
+      "title": "Built for every learning stage",
+      "description": "A solution that adapts to your institution's structure.",
+      "items": {
+        "elementary": {
+          "title": "Elementary and middle school",
+          "description": "A simple environment to support every class and keep families informed."
+        },
+        "highSchool": {
+          "title": "High school",
+          "description": "Organize courses, schedules, and content clearly for teachers and students."
+        },
+        "institutions": {
+          "title": "Schools and institutions",
+          "description": "Coordinate campuses, academic teams, and communities from one platform."
+        }
+      }
+    },
+    "benefits": {
+      "titleBefore": "Why choose",
+      "titleAfter": "for your institution?",
+      "imageAlt": "Teacher supporting a student during a digital learning activity",
+      "items": {
+        "communication": "Improve communication among students, teachers, and academic teams.",
+        "management": "Reduce time spent on everyday course and schedule management.",
+        "engagement": "Make learning progress and student participation easier to follow.",
+        "platform": "Keep essential tools together on one platform."
+      }
+    },
+    "cta": {
+      "title": "A learning experience without limits",
+      "description": "Enter FlexiDual and connect with your academic community from anywhere."
+    },
+    "footer": {
+      "navigation": "Links",
+      "access": "Platform",
+      "tagline": "Flexible learning, limitless future.",
+      "rights": "© 2026 FlexiDual. All rights reserved."
     }
   },
   "recordings": {

@@ -53,6 +53,7 @@ export const catalogResultValidator = paginationResultValidator(
 );
 
 export const catalogFilterOptionsValidator = v.object({
+  canViewPrivateCourses: v.boolean(),
   campuses: v.array(
     v.object({
       value: v.id("campuses"),
@@ -83,6 +84,7 @@ type CatalogAccess = {
   schoolId?: Id<"schools">;
   assignments: Doc<"roleAssignments">[];
   isStaffViewer: boolean;
+  canViewPrivateCourses: boolean;
   studentMemberships: ScopedAssignment[];
   studentSchoolIds: Set<string>;
 };
@@ -100,6 +102,7 @@ export type CatalogFilters = {
   campusId?: Id<"campuses">;
   curriculumId?: Id<"curriculums">;
   teacherId?: Id<"users">;
+  visibility?: "public" | "private" | "all";
 };
 
 async function resolveCatalogSchoolId(
@@ -193,6 +196,18 @@ async function getCatalogAccess(
         ({ assignment, schoolId: assignmentSchoolId }) =>
           assignmentSchoolId === schoolId && isStaffRole(assignment.role),
       ));
+  const canViewPrivateCourses =
+    assignments.some(
+      (assignment) =>
+        assignment.role === "superadmin" && assignment.orgType === "system",
+    ) ||
+    (schoolId !== undefined &&
+      scopedAssignments.some(
+        ({ assignment, schoolId: assignmentSchoolId }) =>
+          assignmentSchoolId === schoolId &&
+          assignment.role === "admin" &&
+          assignment.orgType === "school",
+      ));
   const studentMemberships = schoolId
     ? scopedAssignments.filter(
         ({ assignment, schoolId: assignmentSchoolId }) =>
@@ -205,6 +220,7 @@ async function getCatalogAccess(
     schoolId,
     assignments,
     isStaffViewer,
+    canViewPrivateCourses,
     studentMemberships,
     studentSchoolIds: new Set(
       studentMemberships.flatMap(({ schoolId: membershipSchoolId }) =>
@@ -238,6 +254,8 @@ async function isCatalogCourse(ctx: QueryCtx, classData: Doc<"classes">) {
 }
 
 function isVisibleCourse(access: CatalogAccess, classData: Doc<"classes">) {
+  const isPublic = normalizeLiveAccess(classData.liveAccess).mode === "school";
+  if (!isPublic) return access.canViewPrivateCourses;
   if (access.isStaffViewer) return true;
   return canStudentAccessLiveClass({
     isEnrolled: false,
@@ -249,11 +267,16 @@ function isVisibleCourse(access: CatalogAccess, classData: Doc<"classes">) {
 }
 
 function matchesFilters(classData: Doc<"classes">, filters: CatalogFilters) {
+  const accessMode = normalizeLiveAccess(classData.liveAccess).mode;
   return (
     (!filters.campusId || classData.campusId === filters.campusId) &&
     (!filters.curriculumId ||
       classData.curriculumId === filters.curriculumId) &&
     (!filters.teacherId || classData.teacherId === filters.teacherId) &&
+    (!filters.visibility ||
+      filters.visibility === "all" ||
+      (filters.visibility === "public" && accessMode === "school") ||
+      (filters.visibility === "private" && accessMode === "private")) &&
     (!filters.search ||
       classData.name.toLocaleLowerCase().includes(filters.search))
   );
@@ -288,6 +311,11 @@ async function paginateCurrentClasses(
     return await searchQuery
       .filter((q) =>
         q.and(
+          filters.visibility === "all"
+            ? q.eq(true, true)
+            : filters.visibility === "private"
+              ? q.neq(q.field("liveAccess.mode"), "school")
+              : q.eq(q.field("liveAccess.mode"), "school"),
           filters.curriculumId
             ? q.eq(q.field("curriculumId"), filters.curriculumId)
             : q.eq(true, true),
@@ -327,6 +355,11 @@ async function paginateCurrentClasses(
   return await classesQuery
     .filter((q) =>
       q.and(
+        filters.visibility === "all"
+          ? q.eq(true, true)
+          : filters.visibility === "private"
+            ? q.neq(q.field("liveAccess.mode"), "school")
+            : q.eq(q.field("liveAccess.mode"), "school"),
         filters.curriculumId
           ? q.eq(q.field("curriculumId"), filters.curriculumId)
           : q.eq(true, true),
@@ -646,8 +679,13 @@ export async function listCatalogCourses(
 ) {
   const access = await getCatalogAccess(ctx, user, orgSlug);
   await validateCatalogCampus(ctx, access.schoolId, filters.campusId);
+  const visibility = filters.visibility ?? "public";
+  if (visibility !== "public" && !access.canViewPrivateCourses) {
+    throw new ConvexError("PERMISSION_DENIED");
+  }
   const normalizedFilters = {
     ...filters,
+    visibility,
     search: filters.search?.trim().toLocaleLowerCase() || undefined,
   };
   const pageResult = await paginateCurrentClasses(
@@ -742,6 +780,7 @@ export async function getCatalogFilterOptions(
   ).filter((teacher): teacher is Doc<"users"> => Boolean(teacher?.isActive));
 
   return {
+    canViewPrivateCourses: access.canViewPrivateCourses,
     campuses: campuses
       .map((campus) => ({ value: campus._id, label: campus.name }))
       .sort((a, b) => a.label.localeCompare(b.label)),

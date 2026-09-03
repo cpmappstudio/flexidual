@@ -3,9 +3,12 @@ import CalendarBodyDayEvents from "./calendar-body-day-events";
 import { useCalendarContext } from "../../calendar-context";
 import CalendarBodyDayContent from "./calendar-body-day-content";
 import CalendarBodyMarginDayMargin from "./calendar-body-margin-day-margin";
-import { isSameDay } from "date-fns";
 import { buildCompressedDayTimeScale } from "../../calendar-time-scale";
-import { tz } from "@date-fns/tz";
+import { useMemo } from "react";
+import {
+  getCalendarEventDayKey,
+  groupCalendarEventsByDay,
+} from "../../calendar-event-layout";
 
 export default function CalendarBodyDay() {
   const {
@@ -16,9 +19,12 @@ export default function CalendarBodyDay() {
     displayTimeZone,
     isStudent,
   } = useCalendarContext();
-  const dayEvents = events.filter((event) =>
-    isSameDay(event.start, date, { in: tz(displayTimeZone) }),
+  const eventsByDay = useMemo(
+    () => groupCalendarEventsByDay(events, displayTimeZone),
+    [displayTimeZone, events],
   );
+  const dayEvents =
+    eventsByDay.get(getCalendarEventDayKey(date, displayTimeZone)) ?? [];
   const timeScale = isStudent
     ? buildCompressedDayTimeScale({
         events: dayEvents,
@@ -50,7 +56,7 @@ export default function CalendarBodyDay() {
       <div className="hidden w-64 flex-col divide-y overflow-hidden lg:flex">
         <CalendarBodyDayCalendar compact={isStudent} />
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <CalendarBodyDayEvents />
+          <CalendarBodyDayEvents events={dayEvents} />
         </div>
       </div>
     </div>

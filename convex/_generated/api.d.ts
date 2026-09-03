@@ -9,6 +9,7 @@
  */
 
 import type * as academicSettings from "../academicSettings.js";
+import type * as calendar from "../calendar.js";
 import type * as campuses from "../campuses.js";
 import type * as classes from "../classes.js";
 import type * as courseChatMessages from "../courseChatMessages.js";
@@ -27,9 +28,11 @@ import type * as model_courseScheduleShares from "../model/courseScheduleShares.
 import type * as model_curriculumIcons from "../model/curriculumIcons.js";
 import type * as model_enrollments from "../model/enrollments.js";
 import type * as model_grades from "../model/grades.js";
+import type * as model_lessons from "../model/lessons.js";
 import type * as model_liveAccess from "../model/liveAccess.js";
 import type * as model_membership from "../model/membership.js";
 import type * as model_roles from "../model/roles.js";
+import type * as model_scheduleAccess from "../model/scheduleAccess.js";
 import type * as model_scheduleDeletion from "../model/scheduleDeletion.js";
 import type * as model_sessionLeadership from "../model/sessionLeadership.js";
 import type * as model_studentAttendance from "../model/studentAttendance.js";
@@ -59,6 +62,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   academicSettings: typeof academicSettings;
+  calendar: typeof calendar;
   campuses: typeof campuses;
   classes: typeof classes;
   courseChatMessages: typeof courseChatMessages;
@@ -77,9 +81,11 @@ declare const fullApi: ApiFromModules<{
   "model/curriculumIcons": typeof model_curriculumIcons;
   "model/enrollments": typeof model_enrollments;
   "model/grades": typeof model_grades;
+  "model/lessons": typeof model_lessons;
   "model/liveAccess": typeof model_liveAccess;
   "model/membership": typeof model_membership;
   "model/roles": typeof model_roles;
+  "model/scheduleAccess": typeof model_scheduleAccess;
   "model/scheduleDeletion": typeof model_scheduleDeletion;
   "model/sessionLeadership": typeof model_sessionLeadership;
   "model/studentAttendance": typeof model_studentAttendance;

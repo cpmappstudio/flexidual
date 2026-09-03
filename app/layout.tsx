@@ -9,17 +9,15 @@ const nunito = Nunito({
   display: "swap",
 });
 
-
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
-
-
 export const metadata: Metadata = {
   title: "FlexiDual",
-  description: "TODO: Add description",
+  description:
+    "A flexible educational platform for classes, curricula, communication, and academic management.",
   icons: {
     icon: [
       {

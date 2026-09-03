@@ -122,8 +122,9 @@ flexidual
 │  │  │  ├─ month
 │  │  │  │  └─ calendar-body-month.tsx
 │  │  │  └─ week
-│  │  │     ├─ calendar-body-week-events.tsx
+│  │  │     ├─ calendar-body-week-summary.tsx
 │  │  │     └─ calendar-body-week.tsx
+│  │  ├─ calendar-agenda-event.tsx
 │  │  ├─ calendar-context.tsx
 │  │  ├─ calendar-event.tsx
 │  │  ├─ calendar-mode-icon-map.tsx

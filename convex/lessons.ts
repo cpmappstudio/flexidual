@@ -7,6 +7,7 @@ import {
   canModifyCurriculumContent,
 } from "./permissions";
 import type { Id } from "./_generated/dataModel";
+import { insertLessonBatch, lessonDraftValidator } from "./model/lessons";
 
 const lessonFields = {
   _id: v.id("lessons"),
@@ -293,13 +294,7 @@ export const create = mutation({
 export const createBatch = mutation({
   args: {
     curriculumId: v.id("curriculums"),
-    lessons: v.array(
-      v.object({
-        title: v.string(),
-        description: v.optional(v.string()),
-        content: v.optional(v.string()),
-      }),
-    ),
+    lessons: v.array(lessonDraftValidator),
   },
   returns: v.array(
     v.object({
@@ -320,48 +315,28 @@ export const createBatch = mutation({
       throw new Error("Not authorized to add lessons to this curriculum.");
     }
 
-    // 1. Get current max order
-    const existingLessons = await ctx.db
+    const lastLesson = await ctx.db
       .query("lessons")
       .withIndex("by_curriculum", (q) =>
         q.eq("curriculumId", args.curriculumId),
       )
-      .collect();
+      .order("desc")
+      .first();
+    const normalizedLessons = args.lessons.map((lesson) => ({
+      ...lesson,
+      title: lesson.title.trim(),
+    }));
+    await insertLessonBatch(ctx, {
+      curriculumId: args.curriculumId,
+      createdBy: user._id,
+      lessons: normalizedLessons,
+      startingOrder: lastLesson?.order ?? 0,
+    });
 
-    let currentOrder = existingLessons.reduce(
-      (max, l) => Math.max(max, l.order),
-      0,
-    );
-
-    const results = [];
-
-    // 2. Insert items sequentially
-    for (const item of args.lessons) {
-      try {
-        currentOrder++; // Increment for next item
-
-        await ctx.db.insert("lessons", {
-          curriculumId: args.curriculumId,
-          title: item.title,
-          description: item.description,
-          content: item.content,
-          order: currentOrder,
-          isActive: true,
-          createdAt: Date.now(),
-          createdBy: user._id,
-        });
-
-        results.push({ title: item.title, status: "success" as const });
-      } catch (e) {
-        results.push({
-          title: item.title,
-          status: "error" as const,
-          reason: (e as Error).message,
-        });
-      }
-    }
-
-    return results;
+    return normalizedLessons.map((lesson) => ({
+      title: lesson.title,
+      status: "success" as const,
+    }));
   },
 });
 

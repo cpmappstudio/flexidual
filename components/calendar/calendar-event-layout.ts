@@ -1,21 +1,35 @@
+import { format } from "date-fns";
+import { tz } from "@date-fns/tz";
+
 export type CalendarEventInterval = {
   id: string;
   start: Date;
   end: Date;
 };
 
+export function getCalendarEventDayKey(date: Date, timeZone: string) {
+  return format(date, "yyyy-MM-dd", { in: tz(timeZone) });
+}
+
+export function groupCalendarEventsByDay<T extends CalendarEventInterval>(
+  events: readonly T[],
+  timeZone: string,
+) {
+  const groups = new Map<string, T[]>();
+  for (const event of events) {
+    const key = getCalendarEventDayKey(event.start, timeZone);
+    const dayEvents = groups.get(key);
+    if (dayEvents) dayEvents.push(event);
+    else groups.set(key, [event]);
+  }
+  for (const dayEvents of groups.values()) dayEvents.sort(compareIntervals);
+  return groups;
+}
+
 export type CalendarEventColumnLayout = {
   columnIndex: number;
   columnCount: number;
 };
-
-function isSameCalendarDay(first: Date, second: Date) {
-  return (
-    first.getFullYear() === second.getFullYear() &&
-    first.getMonth() === second.getMonth() &&
-    first.getDate() === second.getDate()
-  );
-}
 
 function compareIntervals(
   first: CalendarEventInterval,
@@ -28,52 +42,75 @@ function compareIntervals(
   );
 }
 
-export function getCalendarEventColumnLayout(
-  event: CalendarEventInterval,
-  allEvents: CalendarEventInterval[],
-): CalendarEventColumnLayout {
-  const dayEvents = allEvents
-    .filter(
-      (candidate) =>
-        candidate.end > candidate.start &&
-        isSameCalendarDay(event.start, candidate.start),
-    )
-    .sort(compareIntervals);
+function getCalendarDayKey(date: Date) {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
 
-  let cluster: CalendarEventInterval[] = [];
-  let clusterEnd = Number.NEGATIVE_INFINITY;
-
-  for (const candidate of dayEvents) {
-    if (cluster.length > 0 && candidate.start.getTime() >= clusterEnd) {
-      if (cluster.some((item) => item.id === event.id)) break;
-      cluster = [];
-      clusterEnd = Number.NEGATIVE_INFINITY;
-    }
-
-    cluster.push(candidate);
-    clusterEnd = Math.max(clusterEnd, candidate.end.getTime());
-  }
-
-  if (!cluster.some((item) => item.id === event.id)) {
-    return { columnIndex: 0, columnCount: 1 };
-  }
-
+function assignClusterLayouts(
+  cluster: CalendarEventInterval[],
+  layouts: Map<string, CalendarEventColumnLayout>,
+) {
   const columnEnds: number[] = [];
   const columnByEvent = new Map<string, number>();
 
-  for (const candidate of cluster) {
+  for (const event of cluster) {
     const reusableColumn = columnEnds.findIndex(
-      (end) => end <= candidate.start.getTime(),
+      (end) => end <= event.start.getTime(),
     );
     const columnIndex =
       reusableColumn === -1 ? columnEnds.length : reusableColumn;
 
-    columnEnds[columnIndex] = candidate.end.getTime();
-    columnByEvent.set(candidate.id, columnIndex);
+    columnEnds[columnIndex] = event.end.getTime();
+    columnByEvent.set(event.id, columnIndex);
   }
 
-  return {
-    columnIndex: columnByEvent.get(event.id) ?? 0,
-    columnCount: Math.max(columnEnds.length, 1),
-  };
+  const columnCount = Math.max(columnEnds.length, 1);
+  for (const event of cluster) {
+    layouts.set(event.id, {
+      columnIndex: columnByEvent.get(event.id) ?? 0,
+      columnCount,
+    });
+  }
+}
+
+export function getCalendarEventColumnLayouts(events: CalendarEventInterval[]) {
+  const eventsByDay = new Map<string, CalendarEventInterval[]>();
+  for (const event of events) {
+    if (event.end <= event.start) continue;
+    const key = getCalendarDayKey(event.start);
+    const dayEvents = eventsByDay.get(key);
+    if (dayEvents) dayEvents.push(event);
+    else eventsByDay.set(key, [event]);
+  }
+
+  const layouts = new Map<string, CalendarEventColumnLayout>();
+  for (const dayEvents of eventsByDay.values()) {
+    dayEvents.sort(compareIntervals);
+    let cluster: CalendarEventInterval[] = [];
+    let clusterEnd = Number.NEGATIVE_INFINITY;
+
+    for (const event of dayEvents) {
+      if (cluster.length > 0 && event.start.getTime() >= clusterEnd) {
+        assignClusterLayouts(cluster, layouts);
+        cluster = [];
+        clusterEnd = Number.NEGATIVE_INFINITY;
+      }
+      cluster.push(event);
+      clusterEnd = Math.max(clusterEnd, event.end.getTime());
+    }
+
+    if (cluster.length > 0) assignClusterLayouts(cluster, layouts);
+  }
+
+  return layouts;
+}
+
+export function getMaxCalendarEventConcurrency(
+  events: CalendarEventInterval[],
+) {
+  let maximum = 0;
+  for (const layout of getCalendarEventColumnLayouts(events).values()) {
+    maximum = Math.max(maximum, layout.columnCount);
+  }
+  return maximum;
 }

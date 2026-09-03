@@ -5,6 +5,8 @@ import { CalendarTimeGridDay } from "../week/calendar-week-time-grid";
 import { CalendarEvent as CalendarEventType } from "../../calendar-types";
 import { CalendarTimeScale } from "../../calendar-time-scale";
 import { tz } from "@date-fns/tz";
+import { useMemo } from "react";
+import { getCalendarEventColumnLayouts } from "../../calendar-event-layout";
 
 export default function CalendarBodyDayContent({
   date,
@@ -33,11 +35,18 @@ export default function CalendarBodyDayContent({
 }) {
   const { events, scheduleStartMinutes, scheduleEndMinutes, displayTimeZone } =
     useCalendarContext();
-  const dayEvents =
-    providedEvents ??
-    events.filter((event) =>
-      isSameDay(event.start, date, { in: tz(displayTimeZone) }),
-    );
+  const dayEvents = useMemo(
+    () =>
+      providedEvents ??
+      events.filter((event) =>
+        isSameDay(event.start, date, { in: tz(displayTimeZone) }),
+      ),
+    [date, displayTimeZone, events, providedEvents],
+  );
+  const columnLayouts = useMemo(
+    () => getCalendarEventColumnLayouts(dayEvents),
+    [dayEvents],
+  );
 
   return (
     <CalendarTimeGridDay
@@ -56,6 +65,7 @@ export default function CalendarBodyDayContent({
             timeScale={timeScale}
             responsiveCompact
             hideResponsiveTime={hideResponsiveEventTime}
+            columnLayout={columnLayouts.get(event.id)}
           />
         ) : (
           <CalendarEvent
@@ -67,6 +77,7 @@ export default function CalendarBodyDayContent({
             floatingTime={floatingEventTime}
             hideResponsiveTime={hideResponsiveEventTime}
             contentClassName={eventContentClassName}
+            columnLayout={columnLayouts.get(event.id)}
           />
         ),
       )}

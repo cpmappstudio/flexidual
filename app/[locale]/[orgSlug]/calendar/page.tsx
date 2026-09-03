@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, Suspense } from "react";
+import dynamic from "next/dynamic";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -15,7 +16,6 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import CalendarProvider from "@/components/calendar/calendar-provider";
 
-import CalendarManageEventDialog from "@/components/calendar/dialog/calendar-manage-event-dialog";
 import { useCalendarContext } from "@/components/calendar/calendar-context";
 import { useTranslations, useLocale } from "next-intl";
 import { useAuth } from "@clerk/nextjs";
@@ -26,7 +26,6 @@ import { ScheduleItem } from "@/components/schedule/schedule-item";
 
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { useStaffAccess } from "@/hooks/use-staff-access";
-import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { getRoleForOrg } from "@/lib/rbac";
 import {
@@ -34,6 +33,10 @@ import {
   resolveCalendarTimeZones,
 } from "@/lib/calendar-time-zone";
 import { dateInTimeZone } from "@/lib/time-zone";
+
+const CalendarManageEventDialog = dynamic(
+  () => import("@/components/calendar/dialog/calendar-manage-event-dialog"),
+);
 
 const localeMap = {
   en: enUS,
@@ -195,7 +198,6 @@ function CalendarContent() {
   const { context: settingsContext } = useSettingsContext();
   const { access } = useStaffAccess();
   const canViewAllCampusCourses = access?.canManageCampus ?? false;
-  const now = useCurrentMinute();
   const calendarSchoolId = settingsContext?.institution._id;
   const calendarCampusId =
     orgContext?.type === "campus"
@@ -278,14 +280,14 @@ function CalendarContent() {
   }, [date, displayTimeZone, isCalendarAuthReady, mode]);
 
   const scheduleResult = useQuery(
-    api.schedule.getMySchedule,
+    api.calendar.listEvents,
     orgContext && visibleRange
       ? {
           from: visibleRange.from,
           to: visibleRange.to - 1,
-          now,
-          includeAttendance: false,
-          includeRecordings: true,
+          ...(selectedCourseId ? { classId: selectedCourseId } : {}),
+          ...(selectedTeacherId ? { teacherId: selectedTeacherId } : {}),
+          ...(selectedGradeCode ? { gradeCode: selectedGradeCode } : {}),
           ...(orgContext.type === "campus"
             ? { campusId: orgContext._id }
             : orgContext.type === "school"
@@ -338,7 +340,6 @@ function CalendarContent() {
       cancellationReason: e.cancellationReason,
       teacherName: e.teacherName,
       teacherImageUrl: e.teacherImageUrl,
-      hasRecording: e.hasRecording,
     }));
   }, [displayTimeZone, gradeNameByCode, scheduleData]);
 

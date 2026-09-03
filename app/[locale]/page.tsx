@@ -1,47 +1,21 @@
-"use client";
+import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
+import { LandingPage } from "@/components/marketing/landing-page";
 
-import { useEffect } from "react";
-import { useAuth } from "@clerk/nextjs";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { useRouter } from "@/i18n/navigation";
-import { Skeleton } from "@/components/ui/skeleton";
-import { SchoolDialog } from "@/components/admin/schools/school-dialog";
-import { ConvexAuthBoundary } from "@/components/convex-auth-boundary";
-import { getCampusDestination, getLastCampusSlug } from "@/lib/last-campus";
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "marketing.metadata" });
 
-export default function OrganizationEntryPage() {
-  return (
-    <ConvexAuthBoundary>
-      <OrganizationEntryContent />
-    </ConvexAuthBoundary>
-  );
+  return {
+    title: t("title"),
+    description: t("description"),
+  };
 }
 
-function OrganizationEntryContent() {
-  const router = useRouter();
-  const { userId } = useAuth();
-  const options = useQuery(api.organizations.getSwitcherOptions);
-
-  useEffect(() => {
-    if (!options || !userId) return;
-    const destination =
-      getCampusDestination(options.campuses, getLastCampusSlug(userId)) ??
-      options.schools[0]?.slug;
-    if (destination) router.replace(`/${destination}/catalog`);
-  }, [options, router, userId]);
-
-  if (options && options.schools.length === 0) {
-    return (
-      <main className="grid min-h-svh place-items-center p-6">
-        <SchoolDialog />
-      </main>
-    );
-  }
-
-  return (
-    <main className="grid min-h-svh place-items-center p-6">
-      <Skeleton className="h-10 w-56" />
-    </main>
-  );
+export default function HomePage() {
+  return <LandingPage />;
 }

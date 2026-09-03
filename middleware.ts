@@ -9,6 +9,7 @@ const intlMiddleware = createIntlMiddleware(routing)
 
 function isPublicPath(pathname: string) {
   return (
+    pathname === '/' ||
     pathname === '/pending-role' ||
     pathname === '/sign-in' ||
     pathname.startsWith('/sign-in/') ||
@@ -68,7 +69,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
       return intlMiddleware(req)
     }
 
-    // 4. Root Routing (Log in -> Where do I go?)
+    // 4. The public root is the marketing landing page.
     if (pathWithoutLocale === '/') {
       return intlMiddleware(req)
     }
@@ -77,7 +78,12 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     // Send it through the validated campus entry flow instead of treating
     // "dashboard" as an organization slug.
     if (pathWithoutLocale === '/dashboard') {
-      return NextResponse.redirect(new URL(`/${locale}`, req.url))
+      return NextResponse.redirect(new URL(`/${locale}/app`, req.url))
+    }
+
+    // Resolve the user's organization before entering the authenticated shell.
+    if (pathWithoutLocale === '/app') {
+      return intlMiddleware(req)
     }
 
     // 5. Retire the former shared /admin namespace. Old bookmarks keep their

@@ -368,6 +368,9 @@ export const listCatalog = query({
     campusId: v.optional(v.id("campuses")),
     curriculumId: v.optional(v.id("curriculums")),
     teacherId: v.optional(v.id("users")),
+    visibility: v.optional(
+      v.union(v.literal("public"), v.literal("private"), v.literal("all")),
+    ),
     paginationOpts: paginationOptsValidator,
   },
   returns: catalogResultValidator,
@@ -383,6 +386,7 @@ export const listCatalog = query({
         campusId: args.campusId,
         curriculumId: args.curriculumId,
         teacherId: args.teacherId,
+        visibility: args.visibility,
       },
       args.paginationOpts,
     );
