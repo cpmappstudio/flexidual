@@ -237,6 +237,11 @@ async function scheduleLiveReconciliation(
     internal.livekit.reconcileLiveSession,
     { roomName },
   );
+  await ctx.scheduler.runAt(
+    Math.max(Date.now(), getLiveSessionHardEnd(scheduledEnd)),
+    internal.livekit.reconcileLiveSession,
+    { roomName },
+  );
 }
 
 async function validateScheduleOverlap(
@@ -3175,6 +3180,9 @@ export const endLiveSession = internalMutation({
       .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
       .first();
     if (!schedule) return null;
+    if (schedule.status === "completed" && schedule.isLive !== true) {
+      return null;
+    }
 
     await ctx.db.patch(schedule._id, {
       isLive: false,
@@ -3384,6 +3392,7 @@ export const updateLiveLifecycleState = internalMutation({
     leaderAbsentSince: v.union(v.number(), v.null()),
     extensionEndsAt: v.union(v.number(), v.null()),
     decisionEndsAt: v.union(v.number(), v.null()),
+    nextCheckAt: v.number(),
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
@@ -3403,29 +3412,47 @@ export const updateLiveLifecycleState = internalMutation({
       return false;
     }
 
+    const introducesDeadline =
+      (args.leaderAbsentSince !== null &&
+        args.leaderAbsentSince !== schedule.liveLeaderAbsentSince) ||
+      (args.extensionEndsAt !== null &&
+        args.extensionEndsAt !== schedule.liveExtensionEndsAt) ||
+      (args.decisionEndsAt !== null &&
+        args.decisionEndsAt !== schedule.liveDecisionEndsAt);
+
     await ctx.db.patch(schedule._id, {
       liveLeaderAbsentSince: args.leaderAbsentSince ?? undefined,
       liveExtensionEndsAt: args.extensionEndsAt ?? undefined,
       liveDecisionEndsAt: args.decisionEndsAt ?? undefined,
       liveLastReconciledAt: args.reconciledAt,
     });
+    if (
+      introducesDeadline &&
+      args.nextCheckAt < getLiveSessionHardEnd(schedule.scheduledEnd)
+    ) {
+      await ctx.scheduler.runAt(
+        Math.max(args.reconciledAt, args.nextCheckAt),
+        internal.livekit.reconcileLiveSession,
+        { roomName: args.roomName },
+      );
+    }
     return true;
   },
 });
 
-export const listExpiredLiveSessions = internalQuery({
-  args: { now: v.number(), limit: v.number() },
+export const listActiveLiveSessions = internalQuery({
+  args: { limit: v.number() },
   returns: v.array(
     v.object({
       roomName: v.string(),
       scheduledEnd: v.number(),
     }),
   ),
-  handler: async (ctx, { now, limit }) => {
+  handler: async (ctx, { limit }) => {
     const activeSchedules = await ctx.db
       .query("classSchedule")
-      .withIndex("by_live_expiration", (q) =>
-        q.eq("status", "active").eq("isLive", true).lte("scheduledEnd", now),
+      .withIndex("by_status_and_is_live", (q) =>
+        q.eq("status", "active").eq("isLive", true),
       )
       .take(Math.min(Math.max(limit, 1), 200));
 

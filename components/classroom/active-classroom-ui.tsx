@@ -124,6 +124,9 @@ import {
 import { getClassroomEndingSoonState } from "./classroom-session-timing";
 import { useClassroomEndingSoonNotice } from "./use-classroom-ending-soon-notice";
 import { getClassroomQueryNow } from "./use-classroom-clock";
+import { useClassroomMediaInitialization } from "@/hooks/use-classroom-media-initialization";
+import { useClassroomMediaDeviceErrors } from "@/hooks/use-classroom-media-errors";
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import {
   selectClassroomLayer,
   type ClassroomLayer,
@@ -234,9 +237,6 @@ export function ActiveClassroomUI({
   const notifyRoomAdministratorLeft = useAction(
     api.livekit.notifyRoomAdministratorLeft,
   );
-  const requestLiveReconciliation = useAction(
-    api.livekit.requestLiveReconciliation,
-  );
   const setScreenSharePermission = useAction(
     api.livekit.setParticipantScreenSharePermission,
   );
@@ -272,7 +272,6 @@ export function ActiveClassroomUI({
   const [isClassroomPanelOpen, setIsClassroomPanelOpen] = useState(true);
   const [classroomPanelTab, setClassroomPanelTab] =
     useState<ClassroomPanelTab>("participants");
-  const reconciliationAttemptRef = useRef({ effectiveEnd: 0, attemptedAt: 0 });
   const leadershipChangeInFlightRef = useRef(false);
   const handledTransferRequestAtRef = useRef<number | null>(null);
   const displayedTransferRequestAtRef = useRef<number | null>(null);
@@ -293,19 +292,28 @@ export function ActiveClassroomUI({
   const isPreviewing = (state: ActiveClassroomPreviewState) =>
     uiPreviewEnabled && uiPreviewState === state;
 
-  const extensionContext = useQuery(
+  const shouldLoadExtensionContext = amIAuthority && sessionIsLive;
+  const extensionContextResult = useQuery(
     api.schedule.getLiveExtensionContext,
-    amIAuthority && sessionIsLive
+    shouldLoadExtensionContext
       ? {
           roomName,
           now: getClassroomQueryNow(sessionNow),
         }
       : "skip",
   );
-  const sessionLeadership = useQuery(api.schedule.getSessionLeadership, {
+  const extensionContext = useRetainedQueryResult(
+    extensionContextResult,
+    `${roomName}:${shouldLoadExtensionContext ? "live" : "inactive"}`,
+  );
+  const sessionLeadershipResult = useQuery(api.schedule.getSessionLeadership, {
     roomName,
     now: getClassroomQueryNow(sessionNow),
   });
+  const sessionLeadership = useRetainedQueryResult(
+    sessionLeadershipResult,
+    roomName,
+  );
   const isAssignedTeacher =
     sessionLeadership?.viewer.isPrimaryTeacher ?? amITeacher;
 
@@ -362,41 +370,6 @@ export function ActiveClassroomUI({
     isPreviewActive: hasActivePreview,
     previewLayer: ACTIVE_PREVIEW_LAYERS[uiPreviewState] ?? null,
   });
-
-  useEffect(() => {
-    if (
-      !amIAuthority ||
-      !sessionIsLive ||
-      !extensionContext ||
-      extensionContext.decisionEndsAt ||
-      sessionNow < extensionContext.effectiveEnd
-    ) {
-      return;
-    }
-
-    const previousAttempt = reconciliationAttemptRef.current;
-    if (
-      previousAttempt.effectiveEnd === extensionContext.effectiveEnd &&
-      sessionNow - previousAttempt.attemptedAt < 10_000
-    ) {
-      return;
-    }
-
-    reconciliationAttemptRef.current = {
-      effectiveEnd: extensionContext.effectiveEnd,
-      attemptedAt: sessionNow,
-    };
-    void requestLiveReconciliation({ roomName }).catch((error) => {
-      console.error("Failed to reconcile live session:", error);
-    });
-  }, [
-    amIAuthority,
-    extensionContext,
-    sessionNow,
-    requestLiveReconciliation,
-    roomName,
-    sessionIsLive,
-  ]);
 
   const playHandChime = useCallback(() => {
     if (!amIAuthority) return;
@@ -667,23 +640,7 @@ export function ActiveClassroomUI({
     t,
   ]);
 
-  useEffect(() => {
-    const handleMediaError = (error: Error) => {
-      if (
-        error.message?.includes("Device in use") ||
-        error.name === "NotReadableError" ||
-        error.name === "TrackStartError"
-      ) {
-        toast.error(t("classroom.cameraInUse"));
-      } else {
-        console.error("Room media devices error:", error);
-      }
-    };
-    room.on(RoomEvent.MediaDevicesError, handleMediaError);
-    return () => {
-      room.off(RoomEvent.MediaDevicesError, handleMediaError);
-    };
-  }, [room, t]);
+  const handleMediaError = useClassroomMediaDeviceErrors(room);
 
   useEffect(() => {
     setIsRecording(room.isRecording);
@@ -1115,36 +1072,11 @@ export function ActiveClassroomUI({
     unlockAudio();
   }, [room]);
 
-  useEffect(() => {
-    if (!localParticipant) return;
-    if (!sessionIsLive && !hasStartedSession) return;
-    if (!isLocalSessionLeader) return;
-    const initMedia = async () => {
-      try {
-        await localParticipant.setMicrophoneEnabled(true);
-      } catch (error) {
-        console.error("Failed to enable microphone:", error);
-      }
-      try {
-        await localParticipant.setCameraEnabled(true);
-      } catch (error) {
-        console.error("Failed to enable camera:", error);
-      }
-    };
-    initMedia();
-  }, [
-    hasStartedSession,
-    isLocalSessionLeader,
+  useClassroomMediaInitialization(
     localParticipant,
-    sessionIsLive,
-  ]);
-
-  // The persisted session leader owns the teacher media role.
-  useEffect(() => {
-    if (!localParticipant || !isLocalSessionLeader) return;
-    localParticipant.setMicrophoneEnabled(true).catch(() => {});
-    localParticipant.setCameraEnabled(true).catch(() => {});
-  }, [localParticipant, isLocalSessionLeader]);
+    isLocalSessionLeader && (sessionIsLive || hasStartedSession),
+    handleMediaError,
+  );
 
   // Auto-close QR dialog when a companion device successfully joins the room
   useEffect(() => {

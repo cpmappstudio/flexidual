@@ -317,7 +317,7 @@ export default defineSchema({
       "status",
       "scheduledStart",
     ])
-    .index("by_live_expiration", ["status", "isLive", "scheduledEnd"])
+    .index("by_status_and_is_live", ["status", "isLive"])
     .index("by_recurrence_parent", ["recurrenceParentId"]),
 
   classSessionLeadershipEvents: defineTable({

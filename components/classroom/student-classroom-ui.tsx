@@ -73,6 +73,9 @@ import {
 import { getClassroomEndingSoonState } from "./classroom-session-timing";
 import { useClassroomEndingSoonNotice } from "./use-classroom-ending-soon-notice";
 import { getClassroomQueryNow } from "./use-classroom-clock";
+import { useClassroomMediaInitialization } from "@/hooks/use-classroom-media-initialization";
+import { useClassroomMediaDeviceErrors } from "@/hooks/use-classroom-media-errors";
+import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import {
   selectClassroomLayer,
   type ClassroomLayer,
@@ -150,14 +153,25 @@ export function StudentClassroomUI({
   const { isPhoneLandscape, stageControlsVisible, showStageControls } =
     usePhoneLandscapeStageControls();
 
-  const extensionContext = useQuery(api.schedule.getStudentExtensionContext, {
+  const extensionContextResult = useQuery(
+    api.schedule.getStudentExtensionContext,
+    {
+      roomName,
+      now: getClassroomQueryNow(sessionNow),
+    },
+  );
+  const extensionContext = useRetainedQueryResult(
+    extensionContextResult,
+    roomName,
+  );
+  const sessionLeadershipResult = useQuery(api.schedule.getSessionLeadership, {
     roomName,
     now: getClassroomQueryNow(sessionNow),
   });
-  const sessionLeadership = useQuery(api.schedule.getSessionLeadership, {
+  const sessionLeadership = useRetainedQueryResult(
+    sessionLeadershipResult,
     roomName,
-    now: getClassroomQueryNow(sessionNow),
-  });
+  );
   const hasActivePreview =
     uiPreviewEnabled && (uiPreviewState !== "none" || showPreviewParticipants);
   const isPreviewing = (state: StudentClassroomPreviewState) =>
@@ -360,23 +374,7 @@ export function StudentClassroomUI({
     };
   }, [room, isSharingLocally, localParticipant, t]);
 
-  useEffect(() => {
-    const handleMediaError = (error: Error) => {
-      if (
-        error.message?.includes("Device in use") ||
-        error.name === "NotReadableError" ||
-        error.name === "TrackStartError"
-      ) {
-        toast.error(t("classroom.cameraInUse"));
-      } else {
-        console.error("Room media devices error:", error);
-      }
-    };
-    room.on(RoomEvent.MediaDevicesError, handleMediaError);
-    return () => {
-      room.off(RoomEvent.MediaDevicesError, handleMediaError);
-    };
-  }, [room, t]);
+  const handleMediaError = useClassroomMediaDeviceErrors(room);
 
   useEffect(() => {
     const handleRecordingChange = (recording: boolean) => {
@@ -496,22 +494,7 @@ export function StudentClassroomUI({
     unlockAudio();
   }, [room]);
 
-  useEffect(() => {
-    if (!localParticipant) return;
-    const initMedia = async () => {
-      try {
-        await localParticipant.setMicrophoneEnabled(true);
-      } catch (error) {
-        console.error("Failed to enable microphone:", error);
-      }
-      try {
-        await localParticipant.setCameraEnabled(true);
-      } catch (error) {
-        console.error("Failed to enable camera:", error);
-      }
-    };
-    initMedia();
-  }, [localParticipant]);
+  useClassroomMediaInitialization(localParticipant, true, handleMediaError);
 
   // Auto-fullscreen: prompt user to go fullscreen when remote content appears.
   // requestFullscreen() requires a user gesture, so we cannot call it from a useEffect directly.

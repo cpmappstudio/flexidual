@@ -133,7 +133,14 @@ async function finalizeLiveSession(
         error,
       );
     }
-    await deleteRoomIfPresent(clients.roomClient, roomName);
+    try {
+      await deleteRoomIfPresent(clients.roomClient, roomName);
+    } catch (error) {
+      console.error(
+        `[LiveKit Lifecycle] Failed to delete room ${roomName}:`,
+        error,
+      );
+    }
   }
 
   await ctx.runMutation(internal.schedule.endLiveSession, {
@@ -160,12 +167,7 @@ async function reconcileRoom(
       await finalizeLiveSession(ctx, roomName, now);
     } else {
       console.warn(
-        `[LiveKit Lifecycle] Credentials unavailable; deferred reconciliation for ${roomName}.`,
-      );
-      await ctx.scheduler.runAt(
-        Math.max(now + 1_000, session.scheduledEnd),
-        internal.livekit.reconcileLiveSession,
-        { roomName },
+        `[LiveKit Lifecycle] Credentials unavailable; skipped participant reconciliation for ${roomName}.`,
       );
     }
     return;
@@ -202,6 +204,7 @@ async function reconcileRoom(
       leaderAbsentSince: decision.leaderAbsentSince ?? null,
       extensionEndsAt: decision.extensionEndsAt ?? null,
       decisionEndsAt: decision.decisionEndsAt ?? null,
+      nextCheckAt: decision.nextCheckAt,
     },
   );
   if (!updated) {
@@ -210,12 +213,6 @@ async function reconcileRoom(
     });
     return;
   }
-
-  await ctx.scheduler.runAt(
-    decision.nextCheckAt,
-    internal.livekit.reconcileLiveSession,
-    { roomName },
-  );
 }
 
 export const getToken = action({
@@ -549,22 +546,6 @@ export const notifyRoomAdministratorLeft = action({
   },
 });
 
-export const requestLiveReconciliation = action({
-  args: { roomName: v.string() },
-  returns: v.null(),
-  handler: async (ctx, { roomName }) => {
-    await requireRoomAdministrator(ctx, roomName);
-    const config = getLiveKitConfig();
-    await reconcileRoom(
-      ctx,
-      roomName,
-      Date.now(),
-      config ? createLiveKitClients(config) : null,
-    );
-    return null;
-  },
-});
-
 export const reconcileLiveSession = internalAction({
   args: { roomName: v.string() },
   returns: v.null(),
@@ -580,16 +561,16 @@ export const reconcileLiveSession = internalAction({
   },
 });
 
-export const cleanupStaleSessions = internalAction({
+export const reconcileActiveSessions = internalAction({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
     const now = Date.now();
-    const expiredSessions = await ctx.runQuery(
-      internal.schedule.listExpiredLiveSessions,
-      { now, limit: 100 },
+    const activeSessions = await ctx.runQuery(
+      internal.schedule.listActiveLiveSessions,
+      { limit: 100 },
     );
-    if (expiredSessions.length === 0) return null;
+    if (activeSessions.length === 0) return null;
 
     const config = getLiveKitConfig();
     if (!config) {
@@ -599,7 +580,7 @@ export const cleanupStaleSessions = internalAction({
     }
     const clients = config ? createLiveKitClients(config) : null;
 
-    for (const session of expiredSessions) {
+    for (const session of activeSessions) {
       try {
         await reconcileRoom(ctx, session.roomName, now, clients);
       } catch (error) {

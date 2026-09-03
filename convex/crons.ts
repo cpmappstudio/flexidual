@@ -3,11 +3,10 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Backstop scheduled reconciliation when a client disconnects ungracefully.
 crons.interval(
-  "Cleanup stale LiveKit sessions",
+  "Reconcile active LiveKit sessions",
   { minutes: 5 },
-  internal.livekit.cleanupStaleSessions,
+  internal.livekit.reconcileActiveSessions,
 );
 
 crons.interval(

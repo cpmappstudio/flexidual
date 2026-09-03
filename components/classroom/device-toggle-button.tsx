@@ -4,10 +4,13 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import {
   useMediaDeviceSelect,
   useTrackToggle,
-  useLocalParticipant,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { ChevronUp, Check, Volume2 } from "lucide-react";
+import {
+  normalizeClassroomMediaError,
+  useClassroomMediaErrorHandler,
+} from "@/hooks/use-classroom-media-errors";
 import { ClassroomActionButton } from "./classroom-action-bar";
 
 // ---------------------------------------------------------------------------
@@ -19,7 +22,7 @@ type Variant = "compact" | "default" | "purple" | "toolbar";
 // Detect touch/mobile — used to simplify the audio device picker on mobile
 // ---------------------------------------------------------------------------
 function isTouchDevice(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined" || !window.matchMedia) return false;
   return window.matchMedia("(pointer: coarse)").matches;
 }
 
@@ -325,6 +328,84 @@ export interface DeviceToggleButtonProps {
   includeAudioOutput?: boolean;
 }
 
+interface AudioOutputPickerProps {
+  micDevices: MediaDeviceInfo[];
+  activeMicId: string;
+  onMicSelect: (id: string) => void;
+  open: boolean;
+  onOpen: (event: React.MouseEvent) => void;
+  onClose: () => void;
+  side: "left" | "right";
+  variant: Variant;
+  label: string;
+  onError: (error: Error) => void;
+}
+
+function AudioOutputPicker({
+  micDevices,
+  activeMicId,
+  onMicSelect,
+  open,
+  onOpen,
+  onClose,
+  side,
+  variant,
+  label,
+  onError,
+}: AudioOutputPickerProps) {
+  const {
+    devices: outputDevices,
+    activeDeviceId: activeOutputId,
+    setActiveMediaDevice: setOutputDevice,
+  } = useMediaDeviceSelect({
+    kind: "audiooutput",
+    requestPermissions: false,
+    onError,
+  });
+  const isSelectingRef = useRef(false);
+
+  const handleSelectOutput = useCallback(
+    async (id: string) => {
+      if (isSelectingRef.current) return;
+      isSelectingRef.current = true;
+      try {
+        await setOutputDevice(id);
+        onClose();
+      } catch (error) {
+        onError(normalizeClassroomMediaError(error, "Speaker failed"));
+      } finally {
+        isSelectingRef.current = false;
+      }
+    },
+    [onClose, onError, setOutputDevice],
+  );
+
+  if (micDevices.length <= 1 && outputDevices.length <= 1) return null;
+
+  return (
+    <>
+      <DeviceNotch
+        compact={variant === "compact"}
+        toolbar={variant === "toolbar"}
+        label={label}
+        onClick={onOpen}
+      />
+      {open && (
+        <SectionedDeviceDropdown
+          micDevices={micDevices}
+          activeMicId={activeMicId}
+          onMicSelect={onMicSelect}
+          speakerDevices={outputDevices}
+          activeSpeakerId={activeOutputId}
+          onSpeakerSelect={handleSelectOutput}
+          side={side}
+          variant={variant}
+        />
+      )}
+    </>
+  );
+}
+
 export function DeviceToggleButton({
   source,
   kind,
@@ -337,34 +418,34 @@ export function DeviceToggleButton({
   pickerLabel,
   includeAudioOutput = false,
 }: DeviceToggleButtonProps) {
+  const reportMediaError = useClassroomMediaErrorHandler();
   const { toggle, enabled, pending } = useTrackToggle({ source });
-  const { localParticipant } = useLocalParticipant();
   const { devices, activeDeviceId, setActiveMediaDevice } =
-    useMediaDeviceSelect({ kind });
-  // Always call — only rendered when includeAudioOutput is true
-  const {
-    devices: outputDevices,
-    activeDeviceId: activeOutputId,
-    setActiveMediaDevice: setOutputDevice,
-  } = useMediaDeviceSelect({ kind: "audiooutput" });
+    useMediaDeviceSelect({
+      kind,
+      requestPermissions: Boolean(enabled),
+      onError: reportMediaError,
+    });
 
   const [open, setOpen] = useState(false);
   const [dropSide, setDropSide] = useState<"left" | "right">("right");
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const isTogglingRef = useRef(false);
+  const isSelectingRef = useRef(false);
 
   useDropdownClose(open, setOpen, wrapperRef);
 
   const handleToggle = async () => {
+    if (isTogglingRef.current) return;
+    isTogglingRef.current = true;
     try {
       await toggle();
-      // Release hardware when camera is turned off so other apps can access it
-      if (enabled && source === Track.Source.Camera) {
-        localParticipant
-          .getTrackPublication(Track.Source.Camera)
-          ?.track?.mediaStreamTrack?.stop();
-      }
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      reportMediaError(
+        normalizeClassroomMediaError(error, "Media toggle failed"),
+      );
+    } finally {
+      isTogglingRef.current = false;
     }
   };
 
@@ -381,18 +462,20 @@ export function DeviceToggleButton({
 
   const handleSelect = useCallback(
     async (id: string) => {
-      await setActiveMediaDevice(id);
-      setOpen(false);
+      if (isSelectingRef.current) return;
+      isSelectingRef.current = true;
+      try {
+        await setActiveMediaDevice(id);
+        setOpen(false);
+      } catch (error) {
+        reportMediaError(
+          normalizeClassroomMediaError(error, "Device selection failed"),
+        );
+      } finally {
+        isSelectingRef.current = false;
+      }
     },
-    [setActiveMediaDevice],
-  );
-
-  const handleSelectOutput = useCallback(
-    async (id: string) => {
-      await setOutputDevice(id);
-      setOpen(false);
-    },
-    [setOutputDevice],
+    [reportMediaError, setActiveMediaDevice],
   );
 
   const mobile = isTouchDevice();
@@ -400,9 +483,7 @@ export function DeviceToggleButton({
   // to avoid surfacing confusing OS audio routing options (speakerphone, etc.)
   const showPicker = mobile
     ? kind === "videoinput" && devices.length > 1
-    : kind === "audioinput" && includeAudioOutput
-      ? devices.length > 1 || outputDevices.length > 1
-      : devices.length > 1;
+    : devices.length > 1;
 
   const compact = variant === "compact";
   const toolbar = variant === "toolbar";
@@ -424,35 +505,41 @@ export function DeviceToggleButton({
           type="button"
           onClick={handleToggle}
           disabled={!!pending}
+          aria-label={
+            label ?? (kind === "audioinput" ? "Microphone" : "Camera")
+          }
+          aria-pressed={Boolean(enabled)}
           className={circleClass(variant, !!enabled, !!pending)}
         >
           {enabled ? iconOn : iconOff}
         </button>
       )}
 
-      {showPicker && (
+      {kind === "audioinput" && includeAudioOutput && !mobile ? (
+        <AudioOutputPicker
+          micDevices={devices}
+          activeMicId={activeDeviceId}
+          onMicSelect={handleSelect}
+          open={open}
+          onOpen={openDropdown}
+          onClose={() => setOpen(false)}
+          side={dropSide}
+          variant={variant}
+          label={pickerLabel ?? "Select device"}
+          onError={reportMediaError}
+        />
+      ) : showPicker ? (
         <DeviceNotch
           compact={compact}
           toolbar={toolbar}
           label={pickerLabel ?? "Select device"}
           onClick={openDropdown}
         />
-      )}
+      ) : null}
 
       {open &&
         showPicker &&
-        (kind === "audioinput" && includeAudioOutput ? (
-          <SectionedDeviceDropdown
-            micDevices={devices}
-            activeMicId={activeDeviceId}
-            onMicSelect={handleSelect}
-            speakerDevices={outputDevices}
-            activeSpeakerId={activeOutputId}
-            onSpeakerSelect={handleSelectOutput}
-            side={dropSide}
-            variant={variant}
-          />
-        ) : (
+        !(kind === "audioinput" && includeAudioOutput && !mobile) && (
           <DeviceList
             devices={devices}
             activeDeviceId={activeDeviceId}
@@ -461,7 +548,7 @@ export function DeviceToggleButton({
             kind={kind}
             variant={variant}
           />
-        ))}
+        )}
     </div>
   );
 }
@@ -476,22 +563,34 @@ export interface SpeakerSelectButtonProps {
 export function SpeakerSelectButton({
   variant = "default",
 }: SpeakerSelectButtonProps) {
+  const reportMediaError = useClassroomMediaErrorHandler();
   const { devices, activeDeviceId, setActiveMediaDevice } =
     useMediaDeviceSelect({
       kind: "audiooutput",
+      requestPermissions: false,
+      onError: reportMediaError,
     });
   const [open, setOpen] = useState(false);
   const [dropSide, setDropSide] = useState<"left" | "right">("right");
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const isSelectingRef = useRef(false);
 
   useDropdownClose(open, setOpen, wrapperRef);
 
   const handleSelect = useCallback(
     async (id: string) => {
-      await setActiveMediaDevice(id);
-      setOpen(false);
+      if (isSelectingRef.current) return;
+      isSelectingRef.current = true;
+      try {
+        await setActiveMediaDevice(id);
+        setOpen(false);
+      } catch (error) {
+        reportMediaError(normalizeClassroomMediaError(error, "Speaker failed"));
+      } finally {
+        isSelectingRef.current = false;
+      }
     },
-    [setActiveMediaDevice],
+    [reportMediaError, setActiveMediaDevice],
   );
 
   const openDropdown = useCallback((e: React.MouseEvent) => {

@@ -3,12 +3,16 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
-import { STUDENT_ONLY_GRACE_MS } from "../lib/live-session-policy";
+import {
+  getLiveSessionHardEnd,
+  STUDENT_ONLY_GRACE_MS,
+} from "../lib/live-session-policy";
 
 const NOW = Date.UTC(2026, 7, 26, 15, 0, 0);
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 async function setupLeadershipTest() {
@@ -345,6 +349,178 @@ test("starting a class assigns one persistent session leader", async () => {
       isLive: true,
     }),
   ).rejects.toThrow("assigned teacher or an authorized administrator");
+});
+
+test("starting a class atomically schedules its end and hard-limit checks", async () => {
+  const { t } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+
+  const jobs = await t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect(),
+  );
+  expect(
+    jobs.map(({ name, scheduledTime, state }) => ({
+      name,
+      scheduledTime,
+      state: state.kind,
+    })),
+  ).toEqual([
+    {
+      name: "livekit:reconcileLiveSession",
+      scheduledTime: NOW + 60 * 60_000,
+      state: "pending",
+    },
+    {
+      name: "livekit:reconcileLiveSession",
+      scheduledTime: getLiveSessionHardEnd(NOW + 60 * 60_000),
+      state: "pending",
+    },
+  ]);
+});
+
+test("a lifecycle deadline is scheduled once when duplicate reconcilers agree", async () => {
+  const { t } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+
+  const graceEndsAt = NOW + STUDENT_ONLY_GRACE_MS;
+  expect(
+    await t.mutation(internal.schedule.updateLiveLifecycleState, {
+      roomName: "teacher-led-room",
+      reconciledAt: NOW,
+      expectedLeaderAbsentSince: null,
+      expectedExtensionEndsAt: null,
+      expectedDecisionEndsAt: null,
+      leaderAbsentSince: NOW,
+      extensionEndsAt: null,
+      decisionEndsAt: null,
+      nextCheckAt: graceEndsAt,
+    }),
+  ).toBe(true);
+  expect(
+    await t.mutation(internal.schedule.updateLiveLifecycleState, {
+      roomName: "teacher-led-room",
+      reconciledAt: NOW + 1_000,
+      expectedLeaderAbsentSince: NOW,
+      expectedExtensionEndsAt: null,
+      expectedDecisionEndsAt: null,
+      leaderAbsentSince: NOW,
+      extensionEndsAt: null,
+      decisionEndsAt: null,
+      nextCheckAt: graceEndsAt,
+    }),
+  ).toBe(true);
+
+  const jobs = await t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect(),
+  );
+  expect(
+    jobs.filter(
+      ({ name, scheduledTime }) =>
+        name === "livekit:reconcileLiveSession" &&
+        scheduledTime === graceEndsAt,
+    ),
+  ).toHaveLength(1);
+});
+
+test("the backstop includes live sessions before their scheduled end", async () => {
+  const { t } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+
+  expect(
+    await t.query(internal.schedule.listActiveLiveSessions, { limit: 100 }),
+  ).toContainEqual({
+    roomName: "teacher-led-room",
+    scheduledEnd: NOW + 60 * 60_000,
+  });
+});
+
+test("missing LiveKit credentials avoid tight retries and still enforce the hard limit", async () => {
+  vi.stubEnv("LIVEKIT_URL", "");
+  vi.stubEnv("LIVEKIT_API_KEY", "");
+  vi.stubEnv("LIVEKIT_API_SECRET", "");
+  const { t } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  const countScheduledJobs = () =>
+    t.run(
+      async (ctx) =>
+        (await ctx.db.system.query("_scheduled_functions").collect()).length,
+    );
+  const before = await countScheduledJobs();
+
+  await t.action(internal.livekit.reconcileLiveSession, {
+    roomName: "teacher-led-room",
+  });
+
+  expect(await countScheduledJobs()).toBe(before);
+
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(
+    await t.run((ctx) =>
+      ctx.db
+        .query("classSchedule")
+        .withIndex("by_room", (q) => q.eq("roomName", "teacher-led-room"))
+        .unique(),
+    ),
+  ).toMatchObject({ isLive: false, status: "completed" });
+});
+
+test("ending a live session twice preserves the first closure", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  const connectionId = await t.run((ctx) =>
+    ctx.db.insert("class_sessions", {
+      scheduleId: data.teacherScheduleId,
+      studentId: data.studentId,
+      joinedAt: NOW,
+      roomName: "teacher-led-room",
+      sessionDate: "2026-08-26",
+    }),
+  );
+
+  await t.mutation(internal.schedule.endLiveSession, {
+    roomName: "teacher-led-room",
+    endedAt: NOW + 30_000,
+  });
+  await t.mutation(internal.schedule.endLiveSession, {
+    roomName: "teacher-led-room",
+    endedAt: NOW + 60_000,
+  });
+
+  const state = await t.run(async (ctx) => ({
+    schedule: await ctx.db.get("classSchedule", data.teacherScheduleId),
+    connection: await ctx.db.get("class_sessions", connectionId),
+  }));
+  expect(state.schedule).toMatchObject({
+    isLive: false,
+    status: "completed",
+    completedAt: NOW + 30_000,
+    liveLastReconciledAt: NOW + 30_000,
+  });
+  expect(state.connection).toMatchObject({
+    leftAt: NOW + 30_000,
+    durationSeconds: 30,
+  });
 });
 
 test("principal, campus administrator, and superadmin can lead within scope", async () => {

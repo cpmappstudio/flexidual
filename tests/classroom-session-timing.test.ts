@@ -4,8 +4,14 @@ import test from "node:test";
 import { getClassroomEndingSoonState } from "../components/classroom/classroom-session-timing";
 import { getClassroomQueryNow } from "../components/classroom/use-classroom-clock";
 
-test("uses one stable query bucket for the classroom clock", () => {
+test("keeps the classroom query time stable inside a 15-second bucket", () => {
+  assert.equal(getClassroomQueryNow(30_000), 30_000);
   assert.equal(getClassroomQueryNow(31_234), 30_000);
+  assert.equal(getClassroomQueryNow(44_999), 30_000);
+});
+
+test("advances the classroom query time at the next bucket boundary", () => {
+  assert.equal(getClassroomQueryNow(45_000), 45_000);
 });
 
 test("shows the ending notice only inside the warning window", () => {
