@@ -14,7 +14,9 @@ import {
   groupCalendarEventsByDay,
 } from "../../calendar-event-layout";
 import { useMemo } from "react";
-import CalendarBodyWeekSummary from "./calendar-body-week-summary";
+import CalendarBodyWeekSummary, {
+  CalendarBodyWeekDaySummary,
+} from "./calendar-body-week-summary";
 
 const localeMap = {
   en: enUS,
@@ -134,41 +136,51 @@ export default function CalendarBodyWeek() {
                   </span>
                   <span
                     className={cn(
-                      "mt-1 h-1.5 w-1.5 rounded-full",
-                      dayEvents.length
-                        ? "bg-primary"
-                        : isCurrentDay
-                          ? "bg-muted-foreground/40"
-                          : "bg-transparent",
+                      "mt-1 flex h-3 min-w-3 items-center justify-center rounded-full text-[8px] font-semibold tabular-nums",
+                      dayEvents.length && useSummaryLayout
+                        ? "bg-primary/15 px-1 text-primary"
+                        : dayEvents.length
+                          ? "h-1.5 w-1.5 bg-primary text-transparent"
+                          : isCurrentDay
+                            ? "h-1.5 w-1.5 bg-muted-foreground/40 text-transparent"
+                            : "h-1.5 w-1.5 bg-transparent text-transparent",
                     )}
-                  />
+                  >
+                    {useSummaryLayout ? dayEvents.length : null}
+                  </span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [--calendar-hour-height:4rem] xl:[--calendar-hour-height:5rem] 2xl:[--calendar-hour-height:6rem]">
-          <div className="relative flex min-h-full">
-            <CalendarBodyMarginDayMargin
-              className="pt-3"
-              startMinutes={scheduleStartMinutes}
-              endMinutes={scheduleEndMinutes}
-              timeScale={responsiveTimeScale}
-              showHeader={false}
-            />
-            <CalendarBodyDayContent
-              date={date}
-              events={selectedDayEvents}
-              timeScale={responsiveTimeScale}
-              surfaceClassName="pt-3"
-              compactEvents
-              floatingEventTime
-              hideResponsiveEventTime
-              showHeader={false}
-            />
+        {useSummaryLayout ? (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <CalendarBodyWeekDaySummary events={selectedDayEvents} />
           </div>
-        </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [--calendar-hour-height:4rem] xl:[--calendar-hour-height:5rem] 2xl:[--calendar-hour-height:6rem]">
+            <div className="relative flex min-h-full">
+              <CalendarBodyMarginDayMargin
+                className="pt-3"
+                startMinutes={scheduleStartMinutes}
+                endMinutes={scheduleEndMinutes}
+                timeScale={responsiveTimeScale}
+                showHeader={false}
+              />
+              <CalendarBodyDayContent
+                date={date}
+                events={selectedDayEvents}
+                timeScale={responsiveTimeScale}
+                surfaceClassName="pt-3"
+                compactEvents
+                floatingEventTime
+                hideResponsiveEventTime
+                showHeader={false}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

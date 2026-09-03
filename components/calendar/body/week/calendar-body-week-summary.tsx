@@ -14,6 +14,28 @@ const localeMap = {
   "pt-BR": ptBR,
 } as const;
 
+export function CalendarBodyWeekDaySummary({
+  events,
+}: {
+  events: CalendarEvent[];
+}) {
+  const t = useTranslations("calendar");
+
+  return (
+    <div className="space-y-1.5 p-1.5">
+      {events.length > 0 ? (
+        events.map((event) => (
+          <CalendarAgendaEvent key={event.id} event={event} />
+        ))
+      ) : (
+        <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+          {t("noEventsDay")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function CalendarBodyWeekSummary({
   eventsByDay,
 }: {
@@ -52,17 +74,7 @@ export default function CalendarBodyWeekSummary({
                   {dayEvents.length === 1 ? t("event") : t("events")}
                 </p>
               </header>
-              <div className="space-y-1.5 p-1.5">
-                {dayEvents.length > 0 ? (
-                  dayEvents.map((event) => (
-                    <CalendarAgendaEvent key={event.id} event={event} />
-                  ))
-                ) : (
-                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-                    {t("noEventsDay")}
-                  </p>
-                )}
-              </div>
+              <CalendarBodyWeekDaySummary events={dayEvents} />
             </section>
           );
         })}
