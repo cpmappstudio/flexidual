@@ -8,7 +8,6 @@ import {
   isSameMonth,
   isSameDay,
   format,
-  isWithinInterval,
   type Locale,
 } from "date-fns";
 import { TZDate, tz } from "@date-fns/tz";
@@ -17,14 +16,15 @@ import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import CalendarEvent from "../../calendar-event";
 import { AnimatePresence, motion } from "framer-motion";
-import { useRef, useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarEvent as CalendarEventType } from "../../calendar-types";
 import { getCalendarEventAppearanceClasses } from "../../calendar-tailwind-classes";
+import { isCalendarEventPast } from "../../calendar-event-display";
 import {
-  getCalendarEventDisplay,
-  isCalendarEventPast,
-} from "../../calendar-event-display";
-import { CalendarProviderMark } from "../../calendar-provider-mark";
+  getCalendarEventDayKey,
+  groupCalendarEventsByDay,
+} from "../../calendar-event-layout";
+import { CalendarAgendaEvent } from "../../calendar-agenda-event";
 
 const localeMap = {
   en: enUS,
@@ -33,16 +33,8 @@ const localeMap = {
 } as const;
 
 export default function CalendarBodyMonth() {
-  const {
-    date,
-    events,
-    setDate,
-    setMode,
-    displayTimeZone,
-    setManageEventDialogOpen,
-    setSelectedEvent,
-    isStudent,
-  } = useCalendarContext();
+  const { date, events, setDate, setMode, displayTimeZone } =
+    useCalendarContext();
   const locale = useLocale();
   const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS;
   const t = useTranslations("calendar");
@@ -71,29 +63,29 @@ export default function CalendarBodyMonth() {
 
   const today = TZDate.tz(displayTimeZone);
 
-  const visibleEvents = events.filter(
-    (event) =>
-      isWithinInterval(
-        event.start,
-        {
-          start: calendarStart,
-          end: calendarEnd,
-        },
-        dateContext,
-      ) ||
-      isWithinInterval(
-        event.end,
-        { start: calendarStart, end: calendarEnd },
-        dateContext,
+  const calendarStartTime = calendarStart.getTime();
+  const calendarEndTime = calendarEnd.getTime();
+  const visibleEvents = useMemo(
+    () =>
+      events.filter(
+        (event) =>
+          (event.start.getTime() >= calendarStartTime &&
+            event.start.getTime() <= calendarEndTime) ||
+          (event.end.getTime() >= calendarStartTime &&
+            event.end.getTime() <= calendarEndTime),
       ),
+    [calendarEndTime, calendarStartTime, events],
+  );
+  const eventsByDay = useMemo(
+    () => groupCalendarEventsByDay(visibleEvents, displayTimeZone),
+    [displayTimeZone, visibleEvents],
   );
 
   const weekDays = calendarDays
     .slice(0, 7)
     .map((day) => format(day, "EEE", { locale: dateLocale, ...dateContext }));
-  const selectedDayEvents = visibleEvents
-    .filter((event) => isSameDay(event.start, date, dateContext))
-    .sort((first, second) => first.start.getTime() - second.start.getTime());
+  const selectedDayEvents =
+    eventsByDay.get(getCalendarEventDayKey(date, displayTimeZone)) ?? [];
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-sidebar">
@@ -112,9 +104,9 @@ export default function CalendarBodyMonth() {
 
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((day) => {
-              const dayEvents = visibleEvents.filter((event) =>
-                isSameDay(event.start, day, dateContext),
-              );
+              const dayEvents =
+                eventsByDay.get(getCalendarEventDayKey(day, displayTimeZone)) ??
+                [];
 
               return (
                 <MobileDayCell
@@ -138,15 +130,10 @@ export default function CalendarBodyMonth() {
           events={selectedDayEvents}
           dateLocale={dateLocale}
           displayTimeZone={displayTimeZone}
-          isStudent={isStudent}
           emptyLabel={t("noEventsDay")}
           classesLabel={
             selectedDayEvents.length === 1 ? t("event") : t("events")
           }
-          onEventClick={(event) => {
-            setSelectedEvent(event);
-            setManageEventDialogOpen(true);
-          }}
         />
       </div>
 
@@ -164,9 +151,9 @@ export default function CalendarBodyMonth() {
 
         <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-[repeat(auto-fit,minmax(0,1fr))] overflow-hidden">
           {calendarDays.map((day) => {
-            const dayEvents = visibleEvents.filter((event) =>
-              isSameDay(event.start, day, dateContext),
-            );
+            const dayEvents =
+              eventsByDay.get(getCalendarEventDayKey(day, displayTimeZone)) ??
+              [];
             const isToday = isSameDay(day, today, dateContext);
             const isCurrentMonth = isSameMonth(day, date, dateContext);
 
@@ -268,19 +255,15 @@ function MobileDayAgenda({
   events,
   dateLocale,
   displayTimeZone,
-  isStudent,
   emptyLabel,
   classesLabel,
-  onEventClick,
 }: {
   date: Date;
   events: CalendarEventType[];
   dateLocale: Locale;
   displayTimeZone: string;
-  isStudent: boolean | undefined;
   emptyLabel: string;
   classesLabel: string;
-  onEventClick: (event: CalendarEventType) => void;
 }) {
   const dateContext = { in: tz(displayTimeZone) };
 
@@ -316,56 +299,13 @@ function MobileDayAgenda({
           transition={{ duration: 0.15 }}
         >
           {events.length ? (
-            events.map((event) => {
-              const { primaryLabel, secondaryLabel, gradeLabel } =
-                getCalendarEventDisplay(event, { showGrade: !isStudent });
-              const timeLabel = `${format(event.start, "h:mm a", dateContext)} - ${format(event.end, "h:mm a", dateContext)}`;
-              const isPast = isCalendarEventPast(event);
-              const appearance = getCalendarEventAppearanceClasses({
-                color: event.color,
-                sessionType: event.sessionType,
-                status: event.status,
-                isPast,
-              });
-
-              return (
-                <button
-                  key={event.id}
-                  type="button"
-                  className={cn(
-                    "flex w-full min-w-0 flex-col rounded-md border-l-4 px-3 py-2 text-left transition-colors",
-                    appearance.event,
-                  )}
-                  onClick={() => onEventClick(event)}
-                >
-                  <span className="flex min-w-0 items-start justify-between gap-2">
-                    <span className="flex min-w-0 items-start gap-1">
-                      <span className="line-clamp-2 min-w-0 text-sm font-semibold leading-tight text-foreground">
-                        {primaryLabel}
-                      </span>
-                      <CalendarProviderMark
-                        sessionType={event.sessionType}
-                        isPast={isPast}
-                        className="mt-0.5 size-3.5"
-                      />
-                    </span>
-                    <span className="shrink-0 text-[10px] leading-tight text-muted-foreground/80">
-                      {timeLabel}
-                    </span>
-                  </span>
-                  {gradeLabel && (
-                    <span className="mt-1 truncate text-[10px] font-semibold uppercase text-muted-foreground">
-                      {gradeLabel}
-                    </span>
-                  )}
-                  {secondaryLabel && (
-                    <span className="mt-1 truncate text-xs font-medium text-muted-foreground">
-                      {secondaryLabel}
-                    </span>
-                  )}
-                </button>
-              );
-            })
+            events.map((event) => (
+              <CalendarAgendaEvent
+                key={event.id}
+                event={event}
+                className="px-3 py-2"
+              />
+            ))
           ) : (
             <div className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
               {emptyLabel}

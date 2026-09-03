@@ -45,6 +45,7 @@ import { RocketLaunchButtonContent } from "@/components/student/rocket-transitio
 import { SessionCloseoutDialog } from "@/components/classroom/session-closeout-dialog";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
+import { isExternalClassSession } from "@/lib/class-session";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getCalendarCancellationCapabilities } from "../calendar-cancellation";
@@ -90,6 +91,17 @@ export default function CalendarManageEventDialog({
       selectedEvent?.status === "completed" &&
       selectedEvent.roomName
       ? { roomName: selectedEvent.roomName, now }
+      : "skip",
+  );
+  const recordings = useQuery(
+    api.recordings.getBySchedule,
+    manageEventDialogOpen &&
+      selectedEvent &&
+      !selectedEvent.hasRecording &&
+      !selectedEvent.isLive &&
+      selectedEvent.end.getTime() < now &&
+      !isExternalClassSession(selectedEvent.sessionType)
+      ? { scheduleId: selectedEvent.scheduleId }
       : "skip",
   );
 
@@ -146,6 +158,9 @@ export default function CalendarManageEventDialog({
     minute: "2-digit",
     timeZone: displayTimeZone,
   });
+  const hasRecording =
+    Boolean(selectedEvent.hasRecording) ||
+    Boolean(recordings?.some((recording) => recording.url));
   const primaryAction = getCalendarEventPrimaryAction({
     isStudent: Boolean(isStudent),
     now,
@@ -153,7 +168,7 @@ export default function CalendarManageEventDialog({
     end: selectedEvent.end.getTime(),
     status: selectedEvent.status,
     isLive: selectedEvent.isLive,
-    hasRecording: selectedEvent.hasRecording,
+    hasRecording,
     roomName: selectedEvent.roomName,
   });
   const canWatchRecording = primaryAction === "watch-recording";

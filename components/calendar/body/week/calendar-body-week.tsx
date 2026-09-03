@@ -1,7 +1,5 @@
 import { useCalendarContext } from "../../calendar-context";
 import CalendarBodyDayContent from "../day/calendar-body-day-content";
-import CalendarBodyDayCalendar from "../day/calendar-body-day-calendar";
-import CalendarBodyWeekEvents from "./calendar-body-week-events";
 import CalendarBodyMarginDayMargin from "../day/calendar-body-margin-day-margin";
 import { CalendarWeekTimeGrid } from "./calendar-week-time-grid";
 import { addDays, format, isSameDay, startOfWeek } from "date-fns";
@@ -10,12 +8,21 @@ import { enUS, es, ptBR } from "date-fns/locale";
 import { useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { buildCompressedDayTimeScale } from "../../calendar-time-scale";
+import {
+  getCalendarEventDayKey,
+  getMaxCalendarEventConcurrency,
+  groupCalendarEventsByDay,
+} from "../../calendar-event-layout";
+import { useMemo } from "react";
+import CalendarBodyWeekSummary from "./calendar-body-week-summary";
 
 const localeMap = {
   en: enUS,
   es,
   "pt-BR": ptBR,
 } as const;
+
+const MAX_READABLE_WEEK_CONCURRENCY = 3;
 
 export default function CalendarBodyWeek() {
   const {
@@ -37,8 +44,15 @@ export default function CalendarBodyWeek() {
   const weekDays = Array.from({ length: 7 }, (_, index) =>
     addDays(weekStart, index, dateContext),
   );
-  const selectedDayEvents = events.filter((event) =>
-    isSameDay(event.start, date, dateContext),
+  const eventsByDay = useMemo(() => {
+    return groupCalendarEventsByDay(events, displayTimeZone);
+  }, [displayTimeZone, events]);
+  const selectedDayEvents =
+    eventsByDay.get(getCalendarEventDayKey(date, displayTimeZone)) ?? [];
+  const useSummaryLayout = useMemo(
+    () =>
+      getMaxCalendarEventConcurrency(events) > MAX_READABLE_WEEK_CONCURRENCY,
+    [events],
   );
   const responsiveTimeScale = isStudent
     ? buildCompressedDayTimeScale({
@@ -50,16 +64,29 @@ export default function CalendarBodyWeek() {
 
   return (
     <div className="flex h-full divide-x overflow-hidden">
-      <CalendarWeekTimeGrid
-        className="hidden lg:flex"
-        date={date}
-        startMinutes={scheduleStartMinutes}
-        endMinutes={scheduleEndMinutes}
-        displayTimeZone={displayTimeZone}
-        renderDayAction={(day) => (
-          <CalendarBodyDayContent date={day} compactEvents />
-        )}
-      />
+      {useSummaryLayout ? (
+        <div className="hidden min-w-0 flex-1 lg:block">
+          <CalendarBodyWeekSummary eventsByDay={eventsByDay} />
+        </div>
+      ) : (
+        <CalendarWeekTimeGrid
+          className="hidden lg:flex"
+          date={date}
+          startMinutes={scheduleStartMinutes}
+          endMinutes={scheduleEndMinutes}
+          displayTimeZone={displayTimeZone}
+          renderDayAction={(day) => (
+            <CalendarBodyDayContent
+              date={day}
+              events={
+                eventsByDay.get(getCalendarEventDayKey(day, displayTimeZone)) ??
+                []
+              }
+              compactEvents
+            />
+          )}
+        />
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-sidebar lg:hidden">
         <div className="shrink-0 bg-sidebar">
@@ -71,9 +98,9 @@ export default function CalendarBodyWeek() {
                 TZDate.tz(displayTimeZone),
                 dateContext,
               );
-              const dayEvents = events.filter((event) =>
-                isSameDay(event.start, day, dateContext),
-              );
+              const dayEvents =
+                eventsByDay.get(getCalendarEventDayKey(day, displayTimeZone)) ??
+                [];
 
               return (
                 <button
@@ -141,12 +168,6 @@ export default function CalendarBodyWeek() {
               showHeader={false}
             />
           </div>
-        </div>
-      </div>
-      <div className="hidden w-64 flex-col divide-y overflow-hidden lg:flex">
-        <CalendarBodyDayCalendar />
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <CalendarBodyWeekEvents />
         </div>
       </div>
     </div>
