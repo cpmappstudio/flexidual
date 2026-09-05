@@ -567,6 +567,7 @@
     "moreActions": "Más",
     "moreActionsTitle": "Más acciones",
     "recordingStarted": "Grabación iniciada",
+    "recordingStopping": "Finalizando grabación…",
     "recordingStopped": "Grabación detenida",
     "recordingError": "Error al cambiar el estado de la grabación",
     "startRecordingTitle": "¿Iniciar grabación?",

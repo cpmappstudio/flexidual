@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ClassroomLayoutHeader } from "./classroom-layout";
 import type { ReactNode } from "react";
 
@@ -14,6 +14,8 @@ interface ClassroomHeaderProps {
   activeLabel: string;
   waitingLabel: string;
   isRecording: boolean;
+  isFinalizingRecording?: boolean;
+  finalizingRecordingLabel?: string;
   isPhoneLandscape: boolean;
   isPanelOpen: boolean;
   openPanelLabel: string;
@@ -31,6 +33,8 @@ export function ClassroomHeader({
   activeLabel,
   waitingLabel,
   isRecording,
+  isFinalizingRecording = false,
+  finalizingRecordingLabel,
   isPhoneLandscape,
   isPanelOpen,
   openPanelLabel,
@@ -68,7 +72,12 @@ export function ClassroomHeader({
               </span>
             )}
           </div>
-          {isRecording && <RecordingIndicator compact />}
+          <RecordingStatusIndicator
+            compact
+            isRecording={isRecording}
+            isFinalizing={isFinalizingRecording}
+            finalizingLabel={finalizingRecordingLabel}
+          />
           {action}
         </div>
       ) : (
@@ -92,11 +101,11 @@ export function ClassroomHeader({
                   </p>
                 )}
               </div>
-              {isRecording && (
-                <div className="shrink-0">
-                  <RecordingIndicator />
-                </div>
-              )}
+              <RecordingStatusIndicator
+                isRecording={isRecording}
+                isFinalizing={isFinalizingRecording}
+                finalizingLabel={finalizingRecordingLabel}
+              />
             </div>
             {action && (
               <div className="col-start-1 row-start-2 flex shrink-0 items-center md:col-auto md:row-auto">
@@ -136,6 +145,42 @@ export function ClassroomHeader({
       )}
     </ClassroomLayoutHeader>
   );
+}
+
+function RecordingStatusIndicator({
+  compact = false,
+  isRecording,
+  isFinalizing,
+  finalizingLabel,
+}: {
+  compact?: boolean;
+  isRecording: boolean;
+  isFinalizing: boolean;
+  finalizingLabel?: string;
+}) {
+  if (isFinalizing && finalizingLabel) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-label={finalizingLabel}
+        title={finalizingLabel}
+        className={`flex shrink-0 items-center rounded-full border border-warning/30 bg-warning/10 text-warning-foreground ${
+          compact ? "size-7 justify-center" : "gap-1.5 px-2.5 py-1"
+        }`}
+      >
+        <Loader2
+          aria-hidden="true"
+          className={`${compact ? "size-3.5" : "size-4"} animate-spin`}
+        />
+        <span className={compact ? "sr-only" : "text-xs font-medium"}>
+          {finalizingLabel}
+        </span>
+      </div>
+    );
+  }
+
+  return isRecording ? <RecordingIndicator compact={compact} /> : null;
 }
 
 function RecordingIndicator({ compact = false }: { compact?: boolean }) {

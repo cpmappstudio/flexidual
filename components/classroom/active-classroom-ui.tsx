@@ -4,6 +4,7 @@ import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
+  useIsRecording,
   useLocalParticipant,
   useRoomContext,
   useParticipants,
@@ -68,7 +69,6 @@ import {
   createClassroomPreviewParticipants,
   getParticipantConvexUserId,
   getIsCompanionParticipant as getIsCompanion,
-  getParticipantImageUrl as getImageUrl,
   getParticipantLeadershipRole,
   getParticipantRole as getRole,
 } from "./classroom-participant";
@@ -116,6 +116,7 @@ import {
   ClassroomStage,
   ClassroomWhiteboardContent,
 } from "./classroom-stage";
+import { ClassroomPresenterContent } from "./classroom-presenter-content";
 import {
   ClassroomEnableAudioOverlay,
   ClassroomEndingSoonNotice,
@@ -253,9 +254,10 @@ export function ActiveClassroomUI({
   const [shareApproved, setShareApproved] = useState(false);
   const [isChangingSessionLeader, setIsChangingSessionLeader] = useState(false);
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
-  const [isRecording, setIsRecording] = useState(room.isRecording);
+  const isRecording = useIsRecording(room);
   const [showRecordConfirm, setShowRecordConfirm] = useState(false);
   const [isTogglingRecord, setIsTogglingRecord] = useState(false);
+  const [isStoppingRecording, setIsStoppingRecording] = useState(false);
   const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
   const [followViewport, setFollowViewport] = useState(true);
   const [pendingFullscreen, setPendingFullscreen] = useState(false);
@@ -349,9 +351,18 @@ export function ActiveClassroomUI({
   const affectedStudentCount = isPreviewing("extend-class")
     ? 3
     : (extensionContext?.affectedStudentCount ?? 0);
+  const isStoppingRecordingForDisplay =
+    !hasActivePreview && isStoppingRecording;
   const isRecordingForDisplay = hasActivePreview
     ? isPreviewing("recording-active")
-    : isRecording;
+    : isRecording && !isStoppingRecordingForDisplay;
+  const isRecordingActionPending =
+    isTogglingRecord || isStoppingRecordingForDisplay;
+  const recordingActionTitle = isStoppingRecordingForDisplay
+    ? t("classroom.recordingStopping")
+    : isRecordingForDisplay
+      ? t("classroom.stopRecording")
+      : t("classroom.startRecording");
   const isWaitingForApprovalForDisplay = hasActivePreview
     ? isPreviewing("share-waiting")
     : waitingForApproval;
@@ -643,16 +654,11 @@ export function ActiveClassroomUI({
   const handleMediaError = useClassroomMediaDeviceErrors(room);
 
   useEffect(() => {
-    setIsRecording(room.isRecording);
+    if (!isStoppingRecording || isRecording) return;
 
-    const handleRecordingChange = (recording: boolean) =>
-      setIsRecording(recording);
-    room.on(RoomEvent.RecordingStatusChanged, handleRecordingChange);
-
-    return () => {
-      room.off(RoomEvent.RecordingStatusChanged, handleRecordingChange);
-    };
-  }, [room, room.isRecording]);
+    setIsStoppingRecording(false);
+    toast.success(t("classroom.recordingStopped"));
+  }, [isRecording, isStoppingRecording, t]);
 
   const requestPermission = async () => {
     if (isScreenSharingActive && !isSharingLocally) {
@@ -980,6 +986,7 @@ export function ActiveClassroomUI({
       setUiPreviewState("none");
       return;
     }
+    if (isRecordingActionPending) return;
     if (isRecording) {
       executeRecordingToggle(false);
     } else {
@@ -1030,7 +1037,7 @@ export function ActiveClassroomUI({
   };
 
   const executeRecordingToggle = async (start: boolean) => {
-    if (isTogglingRecord) return;
+    if (isRecordingActionPending) return;
     setIsTogglingRecord(true);
     try {
       // Store the result of the mutation
@@ -1045,11 +1052,12 @@ export function ActiveClassroomUI({
         return;
       }
 
-      toast.success(
-        start
-          ? t("classroom.recordingStarted")
-          : t("classroom.recordingStopped"),
-      );
+      if (start) {
+        toast.success(t("classroom.recordingStarted"));
+      } else {
+        setIsStoppingRecording(true);
+        toast.info(t("classroom.recordingStopping"));
+      }
     } catch {
       toast.error(t("classroom.recordingError"));
     } finally {
@@ -1470,7 +1478,7 @@ export function ActiveClassroomUI({
                 }
                 void executeRecordingToggle(true);
               }}
-              disabled={isTogglingRecord}
+              disabled={isRecordingActionPending}
             >
               {isTogglingRecord ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -1558,6 +1566,8 @@ export function ActiveClassroomUI({
         activeLabel={t("classroom.live")}
         waitingLabel={t("classroom.waiting")}
         isRecording={isRecordingForDisplay}
+        isFinalizingRecording={isStoppingRecordingForDisplay}
+        finalizingRecordingLabel={t("classroom.recordingStopping")}
         isPhoneLandscape={isPhoneLandscape}
         isPanelOpen={isClassroomPanelOpen}
         openPanelLabel={t("classroom.openInteractionPanel")}
@@ -1815,19 +1825,15 @@ export function ActiveClassroomUI({
             {amIAuthority && (
               <button
                 onClick={handleRecordClick}
-                disabled={isTogglingRecord}
-                title={
-                  isRecordingForDisplay
-                    ? t("classroom.stopRecording")
-                    : t("classroom.startRecording")
-                }
+                disabled={isRecordingActionPending}
+                title={recordingActionTitle}
                 className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-lg border-2 ${
                   isRecordingForDisplay
                     ? "bg-destructive/80 text-destructive-foreground border-destructive animate-pulse"
                     : "bg-inverse-foreground/20 text-inverse-foreground border-inverse-foreground/30 hover:bg-inverse-foreground/30"
-                } ${isTogglingRecord ? "opacity-50 cursor-wait" : ""}`}
+                } ${isRecordingActionPending ? "opacity-50 cursor-wait" : ""}`}
               >
-                {isTogglingRecord ? (
+                {isRecordingActionPending ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : isRecordingForDisplay ? (
                   <StopCircle className="w-5 h-5" />
@@ -1905,87 +1911,21 @@ export function ActiveClassroomUI({
         ) : (
           <>
             <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
-            {teacher ? (
-              isTeacherVideoOn ? (
-                <ParticipantTile
-                  participant={teacher}
-                  variant="stage"
-                  className="w-full h-full object-contain bg-transparent"
-                  showLabel={true}
-                  roleBadge={t("classroom.teacher")}
-                  youLabel={t("classroom.youShort")}
-                  audioMuted={!isTeacherAudioOn}
-                />
-              ) : isLocalSessionLeader ? (
-                <div className="z-10 flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-300">
-                  <div className="w-28 h-28 bg-success/10 rounded-full flex items-center justify-center border-4 border-success mb-6 shadow-xl animate-pulse">
-                    <VideoOff className="w-12 h-12 text-success" />
-                  </div>
-                  <h2 className="text-3xl font-bold text-foreground">
-                    {t("classroom.youAreLive")}
-                  </h2>
-                  <p className="text-muted-foreground mt-2 text-lg">
-                    {t("classroom.cameraOff")}
-                  </p>
-                </div>
-              ) : (
-                <div className="z-10 flex flex-col items-center justify-center p-8">
-                  <div className="w-32 h-32 bg-secondary rounded-full flex items-center justify-center border-2 border-inverse-foreground/20 mb-6 shadow-lg overflow-hidden">
-                    {getImageUrl(teacher) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={getImageUrl(teacher)!}
-                        alt={teacher.name || ""}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-5xl font-bold text-secondary-foreground">
-                        {teacher.name?.charAt(0) || "T"}
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="text-2xl font-bold text-foreground">
-                    {teacher.name || t("classroom.teacher")}
-                  </h2>
-                  <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-                    <div className="bg-secondary/80 px-3 py-1.5 rounded-full border border-border flex items-center gap-1.5">
-                      <VideoOff className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm text-secondary-foreground font-medium">
-                        {t("classroom.cameraOffLabel")}
-                      </span>
-                    </div>
-                    <div
-                      className={`px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${
-                        isTeacherAudioOn
-                          ? "bg-secondary/80 border-border"
-                          : "bg-destructive/10 border-destructive/20"
-                      }`}
-                    >
-                      <Mic
-                        className={`w-4 h-4 ${isTeacherAudioOn ? "animate-pulse text-success" : "text-destructive"}`}
-                      />
-                      <span className="text-sm font-medium text-secondary-foreground">
-                        {isTeacherAudioOn
-                          ? t("classroom.audioOnly")
-                          : t("classroom.micOff")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            ) : (
-              <div className="text-center z-10 p-8">
-                <div className="w-32 h-32 mx-auto bg-background/50 backdrop-blur-sm rounded-full flex items-center justify-center border-2 border-border mb-4 shadow-sm">
-                  <span className="text-6xl">👩‍🏫</span>
-                </div>
-                <h2 className="text-2xl font-bold text-foreground">
-                  {className || t("classroom.class")}
-                </h2>
-                <p className="text-muted-foreground mt-2 font-medium">
-                  {t("classroom.waitingForTeacher")}
-                </p>
-              </div>
-            )}
+            <ClassroomPresenterContent
+              participant={teacher}
+              isVideoOn={isTeacherVideoOn}
+              isAudioOn={isTeacherAudioOn}
+              isLocalLeader={isLocalSessionLeader}
+              className={className || t("classroom.class")}
+              roleBadge={t("classroom.teacher")}
+              youLabel={t("classroom.youShort")}
+              youAreLiveLabel={t("classroom.youAreLive")}
+              cameraOffLabel={t("classroom.cameraOffLabel")}
+              localCameraOffLabel={t("classroom.cameraOff")}
+              audioOnlyLabel={t("classroom.audioOnly")}
+              microphoneOffLabel={t("classroom.micOff")}
+              waitingLabel={t("classroom.waitingForTeacher")}
+            />
           </>
         )}
       </ClassroomStage>
@@ -2063,28 +2003,24 @@ export function ActiveClassroomUI({
                         <Toggle
                           type="button"
                           pressed={isRecordingForDisplay}
-                          aria-label={
-                            isRecordingForDisplay
-                              ? t("classroom.stopRecording")
-                              : t("classroom.startRecording")
-                          }
-                          title={
-                            isRecordingForDisplay
-                              ? t("classroom.stopRecording")
-                              : t("classroom.startRecording")
-                          }
+                          aria-label={recordingActionTitle}
+                          title={recordingActionTitle}
                           className="h-12 w-full justify-start gap-3 px-3 font-normal data-[state=on]:bg-destructive/10 data-[state=on]:text-destructive"
-                          disabled={isTogglingRecord}
+                          disabled={isRecordingActionPending}
                           onPressedChange={handleRecordClick}
                         >
-                          {isTogglingRecord ? (
+                          {isRecordingActionPending ? (
                             <Loader2 className="size-5 animate-spin" />
                           ) : isRecordingForDisplay ? (
                             <StopCircle className="size-5 text-destructive" />
                           ) : (
                             <CircleDot className="size-5" />
                           )}
-                          <span>{t("classroom.record")}</span>
+                          <span>
+                            {isStoppingRecordingForDisplay
+                              ? t("classroom.recordingStopping")
+                              : t("classroom.record")}
+                          </span>
                         </Toggle>
                       </SheetClose>
                       <SheetClose asChild>
@@ -2172,7 +2108,7 @@ export function ActiveClassroomUI({
               {amIAuthority && (
                 <ClassroomActionButton
                   icon={
-                    isTogglingRecord ? (
+                    isRecordingActionPending ? (
                       <Loader2 className="animate-spin" />
                     ) : isRecordingForDisplay ? (
                       <StopCircle />
@@ -2180,20 +2116,22 @@ export function ActiveClassroomUI({
                       <CircleDot />
                     )
                   }
-                  label={t("classroom.record")}
+                  label={
+                    isStoppingRecordingForDisplay
+                      ? t("classroom.recordingStopping")
+                      : t("classroom.record")
+                  }
                   pressed={isRecordingForDisplay}
                   statusLabel={
-                    isRecordingForDisplay
-                      ? t("common.active")
-                      : t("common.inactive")
+                    isStoppingRecordingForDisplay
+                      ? t("classroom.recordingStopping")
+                      : isRecordingForDisplay
+                        ? t("common.active")
+                        : t("common.inactive")
                   }
                   tone="destructive"
-                  disabled={isTogglingRecord}
-                  title={
-                    isRecordingForDisplay
-                      ? t("classroom.stopRecording")
-                      : t("classroom.startRecording")
-                  }
+                  disabled={isRecordingActionPending}
+                  title={recordingActionTitle}
                   onPressedChange={handleRecordClick}
                 />
               )}

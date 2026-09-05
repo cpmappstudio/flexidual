@@ -19,6 +19,7 @@ import {
   EgressStatus,
   RoomServiceClient,
   TrackSource,
+  WebhookConfig,
   WebhookReceiver,
 } from "livekit-server-sdk";
 
@@ -352,32 +353,43 @@ export const toggleRecording = action({
       const isAlreadyRunning = existingEgresses.some(
         (e) =>
           e.status === EgressStatus.EGRESS_STARTING ||
-          e.status === EgressStatus.EGRESS_ACTIVE,
+          e.status === EgressStatus.EGRESS_ACTIVE ||
+          e.status === EgressStatus.EGRESS_ENDING,
       );
 
       if (isAlreadyRunning) {
         return {
           success: false,
-          message: "A recording is already starting or active.",
+          message: "A recording is already active or stopping.",
         };
       }
 
       // Proceed with starting the recording
+      const accessKey = process.env.S3_ACCESS_KEY;
+      const secret = process.env.S3_SECRET_KEY;
+      const region = process.env.S3_REGION;
+      const bucket = process.env.S3_BUCKET;
+      const endpoint = process.env.S3_ENDPOINT;
+      const publicUrl = process.env.R2_PUBLIC_URL;
+
       if (
-        !process.env.S3_ACCESS_KEY ||
-        !process.env.S3_SECRET_KEY ||
-        !process.env.S3_REGION ||
-        !process.env.S3_BUCKET
+        !accessKey ||
+        !secret ||
+        !region ||
+        !bucket ||
+        !endpoint ||
+        !publicUrl
       ) {
-        throw new Error("Recording storage credentials are not configured.");
+        throw new Error("Recording storage configuration is incomplete.");
       }
 
       const s3Upload = new S3Upload({
-        accessKey: process.env.S3_ACCESS_KEY,
-        secret: process.env.S3_SECRET_KEY,
-        region: process.env.S3_REGION,
-        bucket: process.env.S3_BUCKET,
-        endpoint: process.env.S3_ENDPOINT,
+        accessKey,
+        secret,
+        region,
+        bucket,
+        endpoint,
+        forcePathStyle: true,
       });
 
       const fileOutput = new EncodedFileOutput({
@@ -391,6 +403,10 @@ export const toggleRecording = action({
         throw new Error(
           "NEXT_PUBLIC_APP_URL is not defined in environment variables.",
         );
+      const convexSiteUrl = process.env.CONVEX_SITE_URL;
+      if (!convexSiteUrl) {
+        throw new Error("CONVEX_SITE_URL is not available.");
+      }
 
       const recordingToken = randomUUID();
       await ctx.runMutation(internal.whiteboardSessions.setRecordingToken, {
@@ -404,6 +420,12 @@ export const toggleRecording = action({
           fileOutput,
           {
             customBaseUrl: `${baseUrl}/recording?whiteboardToken=${encodeURIComponent(recordingToken)}`,
+            webhooks: [
+              new WebhookConfig({
+                url: `${convexSiteUrl.replace(/\/$/, "")}/livekit-egress-webhook`,
+                signingKey: apiKey,
+              }),
+            ],
           },
         );
         if (!egressInfo.egressId) {
@@ -439,6 +461,9 @@ export const toggleRecording = action({
           e.status === EgressStatus.EGRESS_STARTING ||
           e.status === EgressStatus.EGRESS_ACTIVE,
       );
+      const isAlreadyStopping = egresses.some(
+        (e) => e.status === EgressStatus.EGRESS_ENDING,
+      );
 
       if (activeEgresses.length > 0) {
         // Stop all active egresses found for this room
@@ -451,8 +476,8 @@ export const toggleRecording = action({
         roomName: args.roomName,
         recordingToken: undefined,
       });
-      return activeEgresses.length > 0
-        ? { success: true, message: "Recording stopped" }
+      return activeEgresses.length > 0 || isAlreadyStopping
+        ? { success: true, message: "Recording stop requested" }
         : { success: false, message: "No active recording found" };
     }
   },
@@ -670,6 +695,9 @@ export const processEgressWebhook = internalAction({
     let durationMs: number | undefined;
     let fileSize: number | undefined;
     let completedAt: number | undefined;
+    const error = info.error || undefined;
+    const errorCode = info.errorCode || undefined;
+    const details = info.details || undefined;
 
     if (
       status === "complete" &&
@@ -699,6 +727,9 @@ export const processEgressWebhook = internalAction({
         ...(durationMs !== undefined && { durationMs }),
         ...(fileSize !== undefined && { fileSize }),
         ...(completedAt !== undefined && { completedAt }),
+        ...(error !== undefined && { error }),
+        ...(errorCode !== undefined && { errorCode }),
+        ...(details !== undefined && { details }),
       });
     }
     if (

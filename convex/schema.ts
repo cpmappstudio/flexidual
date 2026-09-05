@@ -600,6 +600,9 @@ export default defineSchema({
     url: v.optional(v.string()), // Public playback URL
     durationMs: v.optional(v.number()),
     fileSize: v.optional(v.number()),
+    error: v.optional(v.string()),
+    errorCode: v.optional(v.number()),
+    details: v.optional(v.string()),
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
   })

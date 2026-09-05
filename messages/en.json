@@ -567,6 +567,7 @@
     "moreActions": "More",
     "moreActionsTitle": "More actions",
     "recordingStarted": "Recording started",
+    "recordingStopping": "Finalizing recording…",
     "recordingStopped": "Recording stopped",
     "recordingError": "Failed to toggle recording",
     "startRecordingTitle": "Start Recording?",

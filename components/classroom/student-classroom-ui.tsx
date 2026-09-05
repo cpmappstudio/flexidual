@@ -39,7 +39,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   createClassroomPreviewParticipants,
-  getParticipantImageUrl as getImageUrl,
   getParticipantRole as getRole,
 } from "./classroom-participant";
 import { ClassroomParticipantTile as ParticipantTile } from "./classroom-participant-tile";
@@ -65,6 +64,7 @@ import {
   ClassroomStage,
   ClassroomWhiteboardContent,
 } from "./classroom-stage";
+import { ClassroomPresenterContent } from "./classroom-presenter-content";
 import {
   ClassroomEnableAudioOverlay,
   ClassroomEndingSoonNotice,
@@ -834,75 +834,18 @@ export function StudentClassroomUI({
         ) : (
           <>
             <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
-            {teacher ? (
-              isTeacherVideoOn ? (
-                <ParticipantTile
-                  participant={teacher}
-                  variant="stage"
-                  className="w-full h-full object-contain bg-transparent"
-                  showLabel={true}
-                  roleBadge={t("classroom.teacher")}
-                  youLabel={t("classroom.youShort")}
-                  audioMuted={!isTeacherAudioOn}
-                />
-              ) : (
-                <div className="z-10 flex flex-col items-center justify-center p-8 text-center">
-                  <div className="mb-5 flex size-32 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-secondary shadow-lg">
-                    {getImageUrl(teacher) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={getImageUrl(teacher)!}
-                        alt={teacher.name || ""}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-5xl font-bold text-secondary-foreground">
-                        {teacher.name?.charAt(0) || "T"}
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="text-2xl font-bold text-foreground">
-                    {teacher.name || t("classroom.teacher")}
-                  </h2>
-                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                    <div className="flex items-center gap-1.5 rounded-full border border-border bg-secondary/80 px-3 py-1.5">
-                      <VideoOff className="size-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-secondary-foreground">
-                        {t("classroom.cameraOffLabel")}
-                      </span>
-                    </div>
-                    <div
-                      className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
-                        isTeacherAudioOn
-                          ? "border-border bg-secondary/80"
-                          : "border-destructive/20 bg-destructive/10"
-                      }`}
-                    >
-                      <Mic
-                        className={`size-4 ${isTeacherAudioOn ? "animate-pulse text-success" : "text-destructive"}`}
-                      />
-                      <span className="text-sm font-medium text-secondary-foreground">
-                        {isTeacherAudioOn
-                          ? t("classroom.audioOnly")
-                          : t("classroom.micOff")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            ) : (
-              <div className="z-10 p-8 text-center">
-                <div className="mx-auto mb-4 flex size-32 items-center justify-center rounded-full border-2 border-border bg-background/50 shadow-sm backdrop-blur-sm">
-                  <span className="text-6xl">👩‍🏫</span>
-                </div>
-                <h2 className="text-2xl font-bold text-foreground">
-                  {className || t("classroom.class")}
-                </h2>
-                <p className="mt-2 font-medium text-muted-foreground">
-                  {t("classroom.waitingForTeacher")}
-                </p>
-              </div>
-            )}
+            <ClassroomPresenterContent
+              participant={teacher}
+              isVideoOn={isTeacherVideoOn}
+              isAudioOn={isTeacherAudioOn}
+              className={className || t("classroom.class")}
+              roleBadge={t("classroom.teacher")}
+              youLabel={t("classroom.youShort")}
+              cameraOffLabel={t("classroom.cameraOffLabel")}
+              audioOnlyLabel={t("classroom.audioOnly")}
+              microphoneOffLabel={t("classroom.micOff")}
+              waitingLabel={t("classroom.waitingForTeacher")}
+            />
           </>
         )}
       </ClassroomStage>

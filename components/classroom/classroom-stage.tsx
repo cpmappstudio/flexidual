@@ -167,11 +167,13 @@ export function ClassroomStage({
 interface ClassroomWhiteboardContentProps {
   roomName: string;
   followViewport: boolean;
+  recordingToken?: string;
 }
 
 export function ClassroomWhiteboardContent({
   roomName,
   followViewport,
+  recordingToken,
 }: ClassroomWhiteboardContentProps) {
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -179,6 +181,7 @@ export function ClassroomWhiteboardContent({
         roomName={roomName}
         isReadonly={true}
         followViewport={followViewport}
+        recordingToken={recordingToken}
       />
     </div>
   );
@@ -187,6 +190,24 @@ export function ClassroomWhiteboardContent({
 type ScreenTrackReference = NonNullable<
   ComponentProps<typeof VideoTrack>["trackRef"]
 >;
+
+interface ClassroomScreenShareCanvasProps {
+  trackRef: ScreenTrackReference;
+  className?: string;
+}
+
+export function ClassroomScreenShareCanvas({
+  trackRef,
+  className,
+}: ClassroomScreenShareCanvasProps) {
+  return (
+    <VideoTrack
+      trackRef={trackRef}
+      className={cn("h-full w-full object-contain", className)}
+      onError={(event) => console.error("Video Track Error", event)}
+    />
+  );
+}
 
 interface ClassroomScreenShareContentProps {
   trackRef: ScreenTrackReference;
@@ -243,11 +264,7 @@ export function ClassroomScreenShareContent({
             : undefined
         }
       >
-        <VideoTrack
-          trackRef={trackRef}
-          className="h-full w-full object-contain"
-          onError={(event) => console.error("Video Track Error", event)}
-        />
+        <ClassroomScreenShareCanvas trackRef={trackRef} />
 
         {(!trackRef.publication.isSubscribed ||
           !trackRef.publication.track) && (
