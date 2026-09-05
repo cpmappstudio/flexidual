@@ -13,13 +13,24 @@ const fileRefValidator = v.object({
 
 const MAX_WHITEBOARD_FILE_SIZE = 10 * 1024 * 1024;
 
+function hasRecordingAccess(
+  recordingToken: string | undefined,
+  storedToken: string | undefined,
+) {
+  return Boolean(
+    recordingToken && storedToken && recordingToken === storedToken,
+  );
+}
+
 async function requireRoomManager(
   ctx: Parameters<typeof getCurrentUserOrThrow>[0],
   roomName: string,
 ) {
   const user = await getCurrentUserOrThrow(ctx);
   if (!(await canManageRoom(ctx, user._id, roomName))) {
-    throw new ConvexError("You do not have permission to manage this whiteboard");
+    throw new ConvexError(
+      "You do not have permission to manage this whiteboard",
+    );
   }
 }
 
@@ -43,7 +54,11 @@ export const upsertScene = mutation({
     if (existing) {
       await ctx.db.patch(existing._id, { elements, updatedAt: now });
     } else {
-      await ctx.db.insert("whiteboardSessions", { roomName, elements, updatedAt: now });
+      await ctx.db.insert("whiteboardSessions", {
+        roomName,
+        elements,
+        updatedAt: now,
+      });
     }
     return null;
   },
@@ -93,7 +108,12 @@ export const addFileRef = mutation({
     if (existing) {
       await ctx.db.patch(existing._id, { fileRefs, updatedAt: now });
     } else {
-      await ctx.db.insert("whiteboardSessions", { roomName, elements: [], fileRefs, updatedAt: now });
+      await ctx.db.insert("whiteboardSessions", {
+        roomName,
+        elements: [],
+        fileRefs,
+        updatedAt: now,
+      });
     }
     if (replacedStorageId && replacedStorageId !== storageId) {
       await ctx.storage.delete(replacedStorageId).catch(() => undefined);
@@ -139,11 +159,7 @@ export const getScene = query({
       if (!schedule || !(await canAccessSchedule(ctx, user._id, schedule))) {
         throw new ConvexError("PERMISSION_DENIED");
       }
-    } else if (
-      !recordingToken ||
-      !session.recordingToken ||
-      recordingToken !== session.recordingToken
-    ) {
+    } else if (!hasRecordingAccess(recordingToken, session.recordingToken)) {
       throw new ConvexError("PERMISSION_DENIED");
     }
 
@@ -154,6 +170,42 @@ export const getScene = query({
       elements: session.elements,
       fileRefs: session.fileRefs,
       updatedAt: session.updatedAt,
+    };
+  },
+});
+
+export const getRecordingContext = query({
+  args: {
+    roomName: v.string(),
+    recordingToken: v.string(),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      leaderParticipantIdentity: v.union(v.string(), v.null()),
+    }),
+  ),
+  handler: async (ctx, { roomName, recordingToken }) => {
+    const session = await ctx.db
+      .query("whiteboardSessions")
+      .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
+      .unique();
+    if (!session) return null;
+    if (!hasRecordingAccess(recordingToken, session.recordingToken)) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
+
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", roomName))
+      .first();
+    if (!schedule) return null;
+
+    const leader = schedule.sessionLeaderId
+      ? await ctx.db.get("users", schedule.sessionLeaderId)
+      : null;
+    return {
+      leaderParticipantIdentity: leader?.clerkId ?? null,
     };
   },
 });

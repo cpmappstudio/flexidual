@@ -1,284 +1,262 @@
 "use client";
 
-import { 
-  LiveKitRoom, 
+import {
+  LiveKitRoom,
   useRemoteParticipants,
-  RoomAudioRenderer,
-  useConnectionState,
+  useRoomContext,
   useTracks,
-  useIsSpeaking,
-  useRoomContext
 } from "@livekit/components-react";
-import { VideoTrack } from "@livekit/components-react";
-import { ConnectionState, Participant, Track, RemoteParticipant, TrackPublication } from "livekit-client";
+import { api } from "@/convex/_generated/api";
+import { ConvexProvider, ConvexReactClient, useQuery } from "convex/react";
+import {
+  Participant,
+  RemoteParticipant,
+  RoomEvent,
+  Track,
+} from "livekit-client";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Hand, MicOff } from "lucide-react";
-import { SharedWhiteboard } from "@/components/classroom/shared-whiteboard";
-import Image from "next/image";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { cn } from "@/lib/utils";
+import { isClassroomSessionAuthority } from "@/components/classroom/classroom-capabilities";
+import {
+  getIsCompanionParticipant,
+  getParticipantRole,
+} from "@/components/classroom/classroom-participant";
+import { ClassroomParticipantTile } from "@/components/classroom/classroom-participant-tile";
+import { ClassroomRecordingTrigger } from "@/components/classroom/classroom-recording-trigger";
+import {
+  ClassroomLayoutSidebar,
+  ClassroomLayoutStage,
+} from "@/components/classroom/classroom-layout";
+import {
+  ClassroomScreenShareCanvas,
+  ClassroomWhiteboardContent,
+} from "@/components/classroom/classroom-stage";
+import { ClassroomPresenterContent } from "@/components/classroom/classroom-presenter-content";
+import { ClassroomView } from "@/components/classroom/classroom-view";
 
-// Module-level unauthenticated client for the LiveKit egress browser.
-// SharedWhiteboard authorizes its read with the short-lived recording token.
 const convexClient = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
-// --- Helpers (Kept DRY from your main UI) ---
-const getRole = (p: Participant | undefined): string => {
-  if (!p || !p.metadata) return "student";
-  try { return JSON.parse(p.metadata).role || "student"; } 
-  catch { return "student"; }
-};
-
-const isAuthority = (role: string) =>
-  role === "teacher" || role === "admin";
-
-const getImageUrl = (p: Participant | undefined): string | null => {
-  if (!p || !p.metadata) return null;
-  try { return JSON.parse(p.metadata).imageUrl || null; } 
-  catch { return null; }
-};
-
-// --- Failsafe Trigger ---
-function RecordingTrigger() {
-  const state = useConnectionState();
-  useEffect(() => {
-    const fallbackTimer = setTimeout(() => { console.log("START_RECORDING"); }, 5000);
-    if (state === ConnectionState.Connected) {
-      console.log("START_RECORDING");
-      clearTimeout(fallbackTimer);
-    }
-    return () => clearTimeout(fallbackTimer);
-  }, [state]);
-  return null;
-}
-
-// --- The UI Tile (Mimics ParticipantTile) ---
-function RecordingTile({ 
-  participant, 
-  variant = "grid", 
-  raisedHand = false,
-  roleBadge 
-}: { 
-  participant: Participant, 
-  variant?: "stage" | "grid",
-  raisedHand?: boolean,
-  roleBadge?: string
-}) {
-  const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
-  const audioTrack = participant.getTrackPublication(Track.Source.Microphone);
-  const isSpeaking = useIsSpeaking(participant);
-  
-  const isVideoEnabled = cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
-  const isAudioMuted = !audioTrack || !audioTrack.isSubscribed || audioTrack.isMuted;
-  const imageUrl = getImageUrl(participant);
-  const name = participant.name || participant.identity || "Unknown";
-
-  const avatarSize = variant === "stage" ? "w-32 h-32 text-6xl" : "w-16 h-16 text-2xl";
-
+function isTrackReady(participant: Participant, source: Track.Source) {
+  const publication = participant.getTrackPublication(source);
   return (
-    <div className={`relative bg-muted overflow-hidden transition-all duration-300 ${isSpeaking ? "ring-4 ring-success shadow-[0_0_15px] shadow-success/40 z-20" : ""} ${variant === "grid" ? "aspect-square rounded-xl border-2 border-border" : "w-full h-full"}`}>
-      {isVideoEnabled && cameraTrack?.track ? (
-        <VideoTrack 
-          trackRef={{ participant, source: Track.Source.Camera, publication: cameraTrack as TrackPublication }} 
-          className="w-full h-full object-cover" 
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center bg-secondary">
-          <div className={`${avatarSize} relative rounded-full flex items-center justify-center font-bold text-secondary-foreground shadow-xl overflow-hidden bg-secondary`}>
-            {imageUrl ? (
-              <Image
-                src={imageUrl}
-                alt={name}
-                fill
-                sizes={variant === "stage" ? "128px" : "64px"}
-                className="object-cover"
-                unoptimized
-              />
-            ) : (
-              name.charAt(0).toUpperCase()
-            )}
-          </div>
-        </div>
-      )}
-      
-      {/* Name and Role Labels */}
-      {variant === "stage" ? (
-        <div className="absolute bottom-6 left-6 bg-inverse/70 backdrop-blur-sm px-4 py-2 rounded-lg flex items-center gap-2 border border-inverse-foreground/10 shadow-md z-10">
-          {roleBadge && <span className="text-xs font-bold text-primary-foreground bg-primary px-2 py-1 rounded uppercase tracking-wide">{roleBadge}</span>}
-          <span className="text-lg font-bold text-inverse-foreground">{name}</span>
-        </div>
-      ) : (
-        <div className="absolute bottom-1 left-1 bg-inverse/60 px-2 py-1 rounded text-[10px] text-inverse-foreground font-medium truncate max-w-[90%] backdrop-blur-sm">
-          {name}
-        </div>
-      )}
-
-      {/* Overlays: Raised Hand & Muted State */}
-      {raisedHand && (
-        <div className="absolute top-2 right-2 bg-warning rounded-full p-1.5 shadow-md">
-          <Hand className="w-4 h-4 text-warning-foreground" />
-        </div>
-      )}
-      {isAudioMuted && (
-        <div className={`absolute pointer-events-none bg-destructive/80 rounded-full shadow-sm ${variant === "stage" ? "bottom-6 right-6 p-2" : "bottom-1 right-1 p-1"}`}>
-          <MicOff className={`text-destructive-foreground ${variant === "stage" ? "w-5 h-5" : "w-3 h-3"}`} />
-        </div>
-      )}
-    </div>
+    !publication ||
+    publication.isMuted ||
+    (publication.isSubscribed && Boolean(publication.track))
   );
 }
 
-// --- The Core Layout Architecture ---
+function isTrackEnabled(participant: Participant, source: Track.Source) {
+  const publication = participant.getTrackPublication(source);
+  return Boolean(publication && !publication.isMuted);
+}
+
 function RecordingLayout({ recordingToken }: { recordingToken: string }) {
   const room = useRoomContext();
-  const remoteParticipants = useRemoteParticipants(); // Excludes the bot
-  const screenTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false });
-  
+  const participants = useRemoteParticipants();
+  const screenTracks = useTracks([Track.Source.ScreenShare], {
+    onlySubscribed: false,
+  });
+  const recordingContext = useQuery(
+    api.whiteboardSessions.getRecordingContext,
+    { roomName: room.name, recordingToken },
+  );
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
   const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
-  const [adminPresenterId, setAdminPresenterId] = useState<string | null>(null);
 
-  // Listen to data channels exactly like the main UI to catch hands in the recording
   useEffect(() => {
     const decoder = new TextDecoder();
-    const handleData = (payload: Uint8Array, participant?: RemoteParticipant) => {
+    const handleData = (
+      payload: Uint8Array,
+      participant?: RemoteParticipant,
+    ) => {
       try {
-        const msg = JSON.parse(decoder.decode(payload));
-        const senderRole = getRole(participant);
-        const senderIsAuthority = isAuthority(senderRole);
-        const senderIsStudent = senderRole === "student";
+        const message = JSON.parse(decoder.decode(payload));
+        const role = getParticipantRole(participant);
+        const isAuthority = isClassroomSessionAuthority(role);
 
-        if (senderIsStudent && msg.type === "RAISE_HAND" && participant) {
-          setRaisedHands((prev) => new Set(prev).add(participant.identity));
-        }
-        if (senderIsStudent && msg.type === "LOWER_HAND" && participant) {
-          setRaisedHands((prev) => { const next = new Set(prev); next.delete(participant.identity); return next; });
+        if (
+          role === "student" &&
+          message.type === "RAISE_HAND" &&
+          participant
+        ) {
+          setRaisedHands((current) =>
+            new Set(current).add(participant.identity),
+          );
         }
         if (
-          senderIsAuthority &&
-          msg.type === "FORCE_LOWER_HAND" &&
-          typeof msg.participantId === "string"
+          role === "student" &&
+          message.type === "LOWER_HAND" &&
+          participant
         ) {
-          setRaisedHands((prev) => { const next = new Set(prev); next.delete(msg.participantId); return next; });
+          setRaisedHands((current) => {
+            const next = new Set(current);
+            next.delete(participant.identity);
+            return next;
+          });
         }
-        if (senderIsAuthority && msg.type === "ADMIN_PRESENTING" && participant) {
-          setAdminPresenterId(msg.presenting ? participant.identity : null);
+        if (
+          isAuthority &&
+          message.type === "FORCE_LOWER_HAND" &&
+          typeof message.participantId === "string"
+        ) {
+          setRaisedHands((current) => {
+            const next = new Set(current);
+            next.delete(message.participantId);
+            return next;
+          });
         }
-        if (senderIsAuthority && msg.type === "WHITEBOARD_STATE") {
-          setIsWhiteboardActive(!!msg.active);
+        if (isAuthority && message.type === "WHITEBOARD_STATE") {
+          setIsWhiteboardActive(Boolean(message.active));
         }
-      } catch { /* ignore */ }
+      } catch {
+        return;
+      }
     };
-    room.on("dataReceived", handleData);
-    return () => { room.off("dataReceived", handleData); };
+
+    room.on(RoomEvent.DataReceived, handleData);
+    return () => {
+      room.off(RoomEvent.DataReceived, handleData);
+    };
   }, [room]);
 
-  // Sort and assign participants
-  const teacher =
-    remoteParticipants.find((participant) => getRole(participant) === "teacher") ??
-    remoteParticipants.find(
-      (participant) => participant.identity === adminPresenterId,
-    );
-  const students = remoteParticipants.filter(p => getRole(p) === "student");
-  const activeScreenTrack = screenTracks[0]; // Take the first active screen share
+  const presenter = recordingContext
+    ? recordingContext.leaderParticipantIdentity
+      ? participants.find(
+          ({ identity }) =>
+            identity === recordingContext.leaderParticipantIdentity,
+        )
+      : participants.find(
+          (participant) => getParticipantRole(participant) === "teacher",
+        )
+    : undefined;
+  const students = participants.filter(
+    (participant) =>
+      getParticipantRole(participant) === "student" &&
+      !getIsCompanionParticipant(participant),
+  );
+  const activeScreenTrack = screenTracks.find(
+    ({ publication }) => !publication.isMuted,
+  );
+  const screenShareReady = activeScreenTrack
+    ? activeScreenTrack.publication.isSubscribed &&
+      Boolean(activeScreenTrack.publication.track)
+    : true;
+  const presenterReady = presenter
+    ? isTrackReady(presenter, Track.Source.Camera)
+    : false;
+  const isSceneReady = Boolean(
+    recordingContext && presenter && presenterReady && screenShareReady,
+  );
+  const presenterVideoOn = presenter
+    ? isTrackEnabled(presenter, Track.Source.Camera)
+    : false;
+  const presenterAudioOn = presenter
+    ? isTrackEnabled(presenter, Track.Source.Microphone)
+    : false;
 
   return (
-    <div className="w-screen h-screen bg-background flex flex-row overflow-hidden font-sans text-foreground">
-      <RoomAudioRenderer />
-      
-      {/* LEFT: MAIN STAGE */}
-      <div className="flex-1 relative bg-muted border-r border-border flex items-center justify-center p-2">
-        {/* Base layer: screen share → teacher cam → waiting placeholder */}
-        <div className="w-full h-full relative rounded-2xl overflow-hidden border-2 border-border shadow-xl">
+    <ClassroomView className="h-screen w-screen" isSidebarOpen>
+      <ClassroomRecordingTrigger isSceneReady={isSceneReady} />
+      <ClassroomLayoutStage className="p-2">
+        <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-border bg-muted shadow-xl">
+          <div className="pointer-events-none absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')] opacity-10" />
           {activeScreenTrack ? (
-            <div className="w-full h-full bg-inverse relative">
-              <VideoTrack
-                trackRef={activeScreenTrack}
-                className="w-full h-full object-contain"
-              />
-              {teacher && (
-                <div className="absolute bottom-4 left-4 w-48 h-36 rounded-xl overflow-hidden shadow-2xl border-2 border-border z-50">
-                  <RecordingTile participant={teacher} variant="grid" roleBadge="Teacher" />
+            <div className="relative h-full w-full bg-inverse">
+              <ClassroomScreenShareCanvas trackRef={activeScreenTrack} />
+              {presenter && (
+                <div className="absolute bottom-4 left-4 z-50 h-36 w-48 overflow-hidden rounded-xl border-2 border-border shadow-2xl">
+                  <ClassroomParticipantTile
+                    participant={presenter}
+                    roleBadge="Teacher"
+                    audioMuted={!presenterAudioOn}
+                  />
                 </div>
               )}
             </div>
-          ) : teacher ? (
-            <RecordingTile participant={teacher} variant="stage" roleBadge="Teacher" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="text-center p-8">
-                <div className="w-24 h-24 mx-auto bg-background/50 rounded-full flex items-center justify-center border-2 border-border mb-4">
-                  <span className="text-4xl">👩‍🏫</span>
-                </div>
-                <h2 className="text-xl font-bold">Waiting for Teacher</h2>
+            <ClassroomPresenterContent
+              participant={presenter}
+              isVideoOn={presenterVideoOn}
+              isAudioOn={presenterAudioOn}
+              roleBadge="Teacher"
+              cameraOffLabel="Camera off"
+              audioOnlyLabel="Audio only"
+              microphoneOffLabel="Microphone off"
+              waitingLabel="Waiting for teacher"
+            />
+          )}
+
+          <div
+            className={cn(
+              "absolute inset-0 overflow-hidden bg-whiteboard",
+              !isWhiteboardActive && "invisible",
+            )}
+          >
+            <ClassroomWhiteboardContent
+              roomName={room.name}
+              followViewport
+              recordingToken={recordingToken}
+            />
+            {presenter && (
+              <div className="absolute bottom-4 left-4 z-50 h-36 w-48 overflow-hidden rounded-xl border-2 border-border shadow-2xl">
+                <ClassroomParticipantTile
+                  participant={presenter}
+                  roleBadge="Teacher"
+                  audioMuted={!presenterAudioOn}
+                />
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+      </ClassroomLayoutStage>
 
-        {/* Whiteboard overlay — always mounted so Excalidraw's dynamic import resolves
-            before the companion activates it. Hidden via CSS (not unmounted) so the
-            LiveKit DataChannel listener + Convex subscription stay active throughout,
-            meaning pan/zoom and scene changes are tracked even while the overlay is hidden. */}
-        <div
-          className="absolute inset-2 overflow-hidden rounded-2xl border-2 border-border bg-whiteboard shadow-xl"
-          style={{ display: isWhiteboardActive ? "block" : "none" }}
-        >
-          <SharedWhiteboard
-            roomName={room.name}
-            isReadonly={true}
-            followViewport={true}
-            recordingToken={recordingToken}
-          />
-          {teacher && (
-            <div className="absolute bottom-4 left-4 w-48 h-36 rounded-xl overflow-hidden shadow-2xl border-2 border-border z-50">
-              <RecordingTile participant={teacher} variant="grid" roleBadge="Teacher" />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* RIGHT: CLASSMATES SIDEBAR */}
-      <div className="w-[320px] bg-card flex flex-col shadow-xl z-20">
-        <div className="bg-primary text-primary-foreground px-4 py-3 border-b border-border shadow-sm">
+      <ClassroomLayoutSidebar>
+        <div className="border-b border-border bg-primary px-4 py-3 text-primary-foreground shadow-sm">
           <h3 className="text-sm font-bold uppercase tracking-widest">
             Classmates ({students.length})
           </h3>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-muted/30">
-          <div className="grid grid-cols-2 gap-3 auto-rows-max">
-            {students.map(p => (
-              <RecordingTile 
-                key={p.identity} 
-                participant={p} 
-                variant="grid" 
-                raisedHand={raisedHands.has(p.identity)}
+        <div className="flex-1 overflow-y-auto bg-muted/30 p-4">
+          <div className="grid grid-cols-2 gap-3">
+            {students.map((participant) => (
+              <ClassroomParticipantTile
+                key={participant.identity}
+                participant={participant}
+                className="aspect-square"
+                raisedHand={raisedHands.has(participant.identity)}
+                audioMuted={
+                  !isTrackEnabled(participant, Track.Source.Microphone)
+                }
               />
             ))}
           </div>
           {students.length === 0 && (
-            <div className="text-center text-muted-foreground text-sm italic mt-10">
-              No other students have joined yet.
-            </div>
+            <p className="mt-10 text-center text-sm italic text-muted-foreground">
+              No students have joined yet.
+            </p>
           )}
         </div>
-      </div>
-    </div>
+      </ClassroomLayoutSidebar>
+    </ClassroomView>
   );
 }
 
-// --- Main Wrapper ---
 function RecordingContent() {
   const searchParams = useSearchParams();
-  const url = searchParams.get("url");
-  const token = searchParams.get("token");
+  const serverUrl = searchParams.get("url");
+  const livekitToken = searchParams.get("token");
   const recordingToken = searchParams.get("whiteboardToken");
 
-  if (!url || !token || !recordingToken) return null;
+  if (!serverUrl || !livekitToken || !recordingToken) return null;
 
   return (
-    <LiveKitRoom serverUrl={url} token={token} audio={true} video={true}>
-      <RecordingTrigger />
+    <LiveKitRoom
+      serverUrl={serverUrl}
+      token={livekitToken}
+      audio={false}
+      video={false}
+    >
       <RecordingLayout recordingToken={recordingToken} />
     </LiveKitRoom>
   );
@@ -287,7 +265,7 @@ function RecordingContent() {
 export default function RecordingPage() {
   return (
     <ConvexProvider client={convexClient}>
-      <Suspense fallback={<div className="w-screen h-screen bg-inverse" />}>
+      <Suspense fallback={<div className="h-screen w-screen bg-inverse" />}>
         <RecordingContent />
       </Suspense>
     </ConvexProvider>

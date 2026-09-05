@@ -31,6 +31,9 @@ const recordingValidator = v.object({
   url: v.optional(v.string()),
   durationMs: v.optional(v.number()),
   fileSize: v.optional(v.number()),
+  error: v.optional(v.string()),
+  errorCode: v.optional(v.number()),
+  details: v.optional(v.string()),
   startedAt: v.number(),
   completedAt: v.optional(v.number()),
 });
@@ -103,6 +106,9 @@ export const updateFromWebhook = internalMutation({
     durationMs: v.optional(v.number()),
     fileSize: v.optional(v.number()),
     completedAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+    errorCode: v.optional(v.number()),
+    details: v.optional(v.string()),
   },
   returns: v.union(v.id("recordings"), v.null()),
   handler: async (ctx, args) => {
@@ -118,13 +124,16 @@ export const updateFromWebhook = internalMutation({
       return null;
     }
 
-    await ctx.db.patch(recording._id, {
+    await ctx.db.patch("recordings", recording._id, {
       status: args.status,
       ...(args.fileKey !== undefined && { fileKey: args.fileKey }),
       ...(args.url !== undefined && { url: args.url }),
       ...(args.durationMs !== undefined && { durationMs: args.durationMs }),
       ...(args.fileSize !== undefined && { fileSize: args.fileSize }),
       ...(args.completedAt !== undefined && { completedAt: args.completedAt }),
+      ...(args.error !== undefined && { error: args.error }),
+      ...(args.errorCode !== undefined && { errorCode: args.errorCode }),
+      ...(args.details !== undefined && { details: args.details }),
     });
 
     const becamePlayable =

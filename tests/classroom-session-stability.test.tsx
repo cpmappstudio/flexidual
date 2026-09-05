@@ -1,5 +1,12 @@
 import { createElement, type ReactNode } from "react";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const testState = vi.hoisted(() => {
@@ -61,7 +68,7 @@ const testState = vi.hoisted(() => {
 
   return {
     administrativeParticipant,
-    backendCall: vi.fn(async () => null),
+    backendCall: vi.fn(async (_args?: unknown): Promise<unknown> => null),
     extensionContext: null as {
       affectedStudentCount: number;
       effectiveEnd: number;
@@ -134,6 +141,7 @@ vi.mock("convex/react", () => ({
 }));
 
 vi.mock("@livekit/components-react", () => ({
+  useIsRecording: () => testState.room.isRecording,
   useLocalParticipant: () => ({
     localParticipant: testState.localParticipant,
   }),
@@ -197,14 +205,38 @@ vi.mock("@/components/classroom/classroom-view", () => ({
     createElement("div", null, children),
 }));
 vi.mock("@/components/classroom/classroom-header", () => ({
-  ClassroomHeader: ({ action }: { action?: ReactNode }) =>
-    createElement("header", null, action),
+  ClassroomHeader: ({
+    action,
+    isFinalizingRecording,
+    isRecording,
+  }: {
+    action?: ReactNode;
+    isFinalizingRecording?: boolean;
+    isRecording: boolean;
+  }) =>
+    createElement(
+      "header",
+      {
+        "data-finalizing-recording": String(isFinalizingRecording),
+        "data-recording": String(isRecording),
+      },
+      action,
+    ),
 }));
 vi.mock("@/components/classroom/classroom-stage", () => ({
   ClassroomScreenShareContent: () => null,
   ClassroomStage: ({ children }: { children: ReactNode }) =>
     createElement("main", null, children),
   ClassroomWhiteboardContent: () => null,
+}));
+vi.mock("@/components/classroom/classroom-presenter-content", () => ({
+  ClassroomPresenterContent: ({
+    participant,
+    waitingLabel,
+  }: {
+    participant?: { name?: string };
+    waitingLabel: string;
+  }) => createElement("div", null, participant?.name ?? waitingLabel),
 }));
 vi.mock("@/components/classroom/classroom-participants-panel", () => ({
   ClassroomParticipantsPanel: ({ children }: { children?: ReactNode }) =>
@@ -220,7 +252,15 @@ vi.mock("@/components/classroom/classroom-action-bar", () => ({
     left: ReactNode;
     right: ReactNode;
   }) => createElement("nav", null, left, center, right),
-  ClassroomActionButton: () => null,
+  ClassroomActionButton: ({
+    disabled,
+    onPressedChange,
+    title,
+  }: {
+    disabled?: boolean;
+    onPressedChange?: () => void;
+    title?: string;
+  }) => createElement("button", { disabled, onClick: onPressedChange, title }),
 }));
 vi.mock("@/components/classroom/classroom-overlays", () => ({
   ClassroomEnableAudioOverlay: () => null,
@@ -260,6 +300,7 @@ vi.mock("@/components/classroom/classroom-ui-preview", () => ({
 
 import { ActiveClassroomUI } from "@/components/classroom/active-classroom-ui";
 import { StudentClassroomUI } from "@/components/classroom/student-classroom-ui";
+import { toast } from "sonner";
 
 const INITIAL_NOW = Date.UTC(2026, 8, 3, 14, 0);
 
@@ -301,8 +342,10 @@ describe("classroom session stability", () => {
     testState.isLeadershipLoading = false;
     testState.leadership = testState.initialLeadership;
     testState.localParticipant = testState.administrativeParticipant;
+    testState.room.isRecording = false;
     testState.room.localParticipant = testState.administrativeParticipant;
     testState.participants = [testState.administrativeParticipant];
+    testState.backendCall.mockResolvedValue(null);
   });
 
   afterEach(() => cleanup());
@@ -504,5 +547,77 @@ describe("classroom session stability", () => {
     });
 
     expect(screen.queryByText("classroom.classEndingSoon")).toBeNull();
+  });
+
+  it("keeps the stop action pending until LiveKit confirms recording ended", async () => {
+    testState.room.isRecording = true;
+    testState.backendCall.mockImplementation(async (args?: unknown) => {
+      if (
+        typeof args === "object" &&
+        args !== null &&
+        "start" in args &&
+        args.start === false
+      ) {
+        return { success: true, message: "Recording stop requested" };
+      }
+      return null;
+    });
+    const view = renderActiveClassroom();
+
+    expect(screen.getByRole("banner").getAttribute("data-recording")).toBe(
+      "true",
+    );
+    fireEvent.click(screen.getAllByTitle("classroom.stopRecording")[0]);
+
+    await waitFor(() => {
+      expect(testState.backendCall).toHaveBeenCalledWith({
+        roomName: "room-1",
+        start: false,
+      });
+      expect(vi.mocked(toast.info)).toHaveBeenCalledWith(
+        "classroom.recordingStopping",
+      );
+    });
+    expect(
+      (
+        screen.getAllByTitle(
+          "classroom.recordingStopping",
+        )[0] as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.getByRole("banner").getAttribute("data-recording")).toBe(
+      "false",
+    );
+    expect(
+      screen.getByRole("banner").getAttribute("data-finalizing-recording"),
+    ).toBe("true");
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith(
+      "classroom.recordingStopped",
+    );
+
+    testState.room.isRecording = false;
+    act(() => {
+      view.rerender(
+        createElement(ActiveClassroomUI, {
+          courseId: "class-1" as never,
+          currentUserRole: "admin",
+          roomName: "room-1",
+          sessionNow: INITIAL_NOW + 1_000,
+          sessionIsLive: true,
+          sessionTimeZone: "America/Bogota",
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "classroom.recordingStopped",
+      );
+    });
+    expect(screen.queryByTitle("classroom.recordingStopping")).toBeNull();
+    expect(
+      (screen.getAllByTitle("classroom.startRecording")[0] as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 });

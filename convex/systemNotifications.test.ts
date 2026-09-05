@@ -110,7 +110,9 @@ test("does not let another user mark a notification as read", async () => {
 
   await t
     .withIdentity({ subject: "notification-second-user" })
-    .mutation(api.systemNotifications.markRead, { notificationId: notificationId! });
+    .mutation(api.systemNotifications.markRead, {
+      notificationId: notificationId!,
+    });
 
   const notification = await t.run((ctx) =>
     ctx.db.get("systemNotifications", notificationId!),
@@ -419,7 +421,7 @@ test("publishes a recording only after it has a playable URL", async () => {
       status: "active",
       startedAt: now - 60 * 60 * 1000,
     });
-    return { teacherId, studentId };
+    return { teacherId, studentId, scheduleId };
   });
 
   await t.mutation(internal.recordings.updateFromWebhook, {
@@ -453,5 +455,37 @@ test("publishes a recording only after it has a playable URL", async () => {
   expect(notifications[0]).toMatchObject({
     kind: "recording_available",
     className: "Media Lab",
+  });
+
+  await t.run((ctx) =>
+    ctx.db.insert("recordings", {
+      scheduleId: data.scheduleId,
+      roomName: "media-lab-room",
+      egressId: "failed-recording-egress",
+      status: "active",
+      startedAt: now,
+    }),
+  );
+  await t.mutation(internal.recordings.updateFromWebhook, {
+    egressId: "failed-recording-egress",
+    status: "failed",
+    error: "S3 upload failed: AccessDenied",
+    errorCode: 400,
+    details: "End reason: StopEgress API",
+  });
+
+  const failedRecording = await t.run((ctx) =>
+    ctx.db
+      .query("recordings")
+      .withIndex("by_egress_id", (q) =>
+        q.eq("egressId", "failed-recording-egress"),
+      )
+      .unique(),
+  );
+  expect(failedRecording).toMatchObject({
+    status: "failed",
+    error: "S3 upload failed: AccessDenied",
+    errorCode: 400,
+    details: "End reason: StopEgress API",
   });
 });
