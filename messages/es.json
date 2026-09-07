@@ -351,6 +351,7 @@
     "curriculumSummary": "Gestiona programas académicos, plantillas de cursos y planes de lecciones."
   },
   "catalog": {
+    "current": "Ahora",
     "liveNow": "En vivo",
     "upcoming": "Próximamente",
     "allCourses": "Todos los cursos",

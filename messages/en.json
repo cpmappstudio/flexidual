@@ -351,6 +351,7 @@
     "curriculumSummary": "Manage academic programs, course templates, and lesson plans."
   },
   "catalog": {
+    "current": "Now",
     "liveNow": "Live now",
     "upcoming": "Coming up",
     "allCourses": "All courses",

@@ -6,6 +6,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { DEFAULT_CURRICULUM_ICON } from "../../lib/curriculum-icons";
+import { isLiveClassSession } from "../../lib/class-session";
 import { classHasLiveSessions } from "./classType";
 import { curriculumIconValidator } from "./curriculumIcons";
 import { canStudentAccessLiveClass, normalizeLiveAccess } from "./liveAccess";
@@ -26,6 +27,7 @@ const catalogSessionValidator = v.object({
   timeZone: v.string(),
   roomName: v.string(),
   canOpen: v.boolean(),
+  isLive: v.boolean(),
 });
 
 export const catalogCourseValidator = v.object({
@@ -45,6 +47,7 @@ export const catalogCourseValidator = v.object({
   gradeName: v.optional(v.string()),
   accessMode: v.union(v.literal("private"), v.literal("school")),
   liveSession: v.optional(catalogSessionValidator),
+  currentSession: v.optional(catalogSessionValidator),
   nextSession: v.optional(catalogSessionValidator),
 });
 
@@ -539,8 +542,15 @@ function toCatalogCourse(
   access: CatalogAccess,
   resources: CatalogResources,
   classData: Doc<"classes">,
-  liveSchedule?: Doc<"classSchedule">,
-  nextSchedule?: Doc<"classSchedule">,
+  {
+    liveSchedule,
+    nextSchedule,
+    currentSchedule,
+  }: {
+    liveSchedule?: Doc<"classSchedule">;
+    nextSchedule?: Doc<"classSchedule">;
+    currentSchedule?: Doc<"classSchedule">;
+  },
 ) {
   const curriculum = resources.curriculums.get(classData.curriculumId);
   const campus = classData.campusId
@@ -565,17 +575,18 @@ function toCatalogCourse(
     timeZone,
     roomName: schedule.roomName,
     canOpen,
+    isLive: isLiveClassSession(schedule),
   });
-  const canOpenLive = liveSchedule
-    ? staffCanOpen ||
+  const canOpenSession = (schedule: Doc<"classSchedule">) =>
+    schedule.status !== "completed" &&
+    (staffCanOpen ||
       canStudentAccessLiveClass({
         isEnrolled: false,
-        liveAccess: liveSchedule.liveAccess,
+        liveAccess: schedule.liveAccess,
         studentGrade,
         classSchoolId: schoolId,
         studentSchoolIds: access.studentSchoolIds,
-      })
-    : false;
+      }));
 
   return {
     _id: classData._id,
@@ -601,7 +612,15 @@ function toCatalogCourse(
     }),
     ...(grade?.name !== undefined && { gradeName: grade.name }),
     accessMode: normalizeLiveAccess(classData.liveAccess).mode,
-    ...(liveSchedule && { liveSession: toSession(liveSchedule, canOpenLive) }),
+    ...(liveSchedule && {
+      liveSession: toSession(liveSchedule, canOpenSession(liveSchedule)),
+    }),
+    ...(currentSchedule && {
+      currentSession: toSession(
+        currentSchedule,
+        canOpenSession(currentSchedule),
+      ),
+    }),
     ...(nextSchedule && { nextSession: toSession(nextSchedule, staffCanOpen) }),
   };
 }
@@ -619,15 +638,15 @@ async function getCatalogSchedulesForClass(
       .query("classSchedule")
       .withIndex(
         "by_class_and_status_and_session_type_and_scheduled_start",
-        (q) =>
-          q
+        (q) => {
+          const scoped = q
             .eq("classId", classId)
             .eq("status", status)
-            .eq("sessionType", sessionType)
-            .gte(
-              "scheduledStart",
-              status === "active" ? now - ONE_DAY_MS : now,
-            ),
+            .eq("sessionType", sessionType);
+          return status === "active"
+            ? scoped.gte("scheduledStart", now - ONE_DAY_MS)
+            : scoped.gt("scheduledStart", now);
+        },
       );
   const [activeLive, activeLegacy, nextLive, nextLegacy] = await Promise.all([
     querySchedule("active", "live").order("desc").take(10),
@@ -637,7 +656,7 @@ async function getCatalogSchedulesForClass(
   ]);
   const liveSchedule = [...activeLive, ...activeLegacy]
     .sort((a, b) => b.scheduledStart - a.scheduledStart)
-    .find((schedule) => schedule.isLive === true);
+    .find(isLiveClassSession);
   const nextSchedule = [nextLive, nextLegacy]
     .filter((schedule): schedule is Doc<"classSchedule"> => Boolean(schedule))
     .sort((a, b) => a.scheduledStart - b.scheduledStart)[0];
@@ -659,14 +678,109 @@ async function enrichCourses(
     ),
   ]);
   return classes.map((classData, index) =>
-    toCatalogCourse(
-      access,
-      resources,
-      classData,
-      schedules[index].liveSchedule,
-      schedules[index].nextSchedule,
-    ),
+    toCatalogCourse(access, resources, classData, schedules[index]),
   );
+}
+
+async function resolveCatalogFilters(
+  ctx: QueryCtx,
+  access: CatalogAccess,
+  filters: CatalogFilters,
+) {
+  await validateCatalogCampus(ctx, access.schoolId, filters.campusId);
+  const visibility =
+    filters.visibility ?? (access.canViewPrivateCourses ? "all" : "public");
+  if (visibility !== "public" && !access.canViewPrivateCourses) {
+    throw new ConvexError("PERMISSION_DENIED");
+  }
+  return {
+    ...filters,
+    visibility,
+    search: filters.search?.trim().toLocaleLowerCase() || undefined,
+  };
+}
+
+export async function listCurrentCatalogCourses(
+  ctx: QueryCtx,
+  user: Doc<"users">,
+  orgSlug: string,
+  now: number,
+  filters: CatalogFilters,
+  paginationOpts: PaginationOptions,
+) {
+  const access = await getCatalogAccess(ctx, user, orgSlug);
+  const normalizedFilters = await resolveCatalogFilters(ctx, access, filters);
+  // The time window bounds reads independently of the total course history.
+  // Include legacy rows without schoolId; verify their school after hydration.
+  const schedules = await ctx.db
+    .query("classSchedule")
+    .withIndex("by_scheduled_start", (q) =>
+      q.gte("scheduledStart", now - ONE_DAY_MS).lte("scheduledStart", now),
+    )
+    .filter((q) =>
+      q.and(
+        q.neq(q.field("status"), "cancelled"),
+        q.or(
+          q.gt(q.field("scheduledEnd"), now),
+          q.and(
+            q.eq(q.field("status"), "active"),
+            q.eq(q.field("isLive"), true),
+          ),
+        ),
+        q.or(
+          q.eq(q.field("sessionType"), "live"),
+          q.eq(q.field("sessionType"), undefined),
+        ),
+        access.schoolId
+          ? q.or(
+              q.eq(q.field("schoolId"), access.schoolId),
+              q.eq(q.field("schoolId"), undefined),
+            )
+          : q.eq(true, true),
+      ),
+    )
+    .paginate({
+      ...paginationOpts,
+      numItems: Math.min(paginationOpts.numItems, 48),
+      maximumRowsRead: 256,
+    });
+  const classIds = [
+    ...new Set(
+      schedules.page.flatMap((schedule) =>
+        schedule.classId ? [schedule.classId] : [],
+      ),
+    ),
+  ];
+  const classes = (
+    await Promise.all(classIds.map((id) => ctx.db.get(id)))
+  ).filter((course): course is Doc<"classes"> => Boolean(course?.isActive));
+  const resources = await loadResources(ctx, classes);
+  const visibleClasses = new Map(
+    classes
+      .filter(
+        (course) =>
+          (!access.schoolId ||
+            getCourseSchoolId(course, resources) === access.schoolId) &&
+          course.classType !== "abeka" &&
+          course.classType !== "ignitia" &&
+          matchesFilters(course, normalizedFilters) &&
+          isVisibleCourse(access, course),
+      )
+      .map((course) => [course._id, course]),
+  );
+  return {
+    ...schedules,
+    page: schedules.page.flatMap((schedule) => {
+      const course = schedule.classId && visibleClasses.get(schedule.classId);
+      return course
+        ? [
+            toCatalogCourse(access, resources, course, {
+              currentSchedule: schedule,
+            }),
+          ]
+        : [];
+    }),
+  };
 }
 
 export async function listCatalogCourses(
@@ -678,16 +792,7 @@ export async function listCatalogCourses(
   paginationOpts: PaginationOptions,
 ) {
   const access = await getCatalogAccess(ctx, user, orgSlug);
-  await validateCatalogCampus(ctx, access.schoolId, filters.campusId);
-  const visibility = filters.visibility ?? "public";
-  if (visibility !== "public" && !access.canViewPrivateCourses) {
-    throw new ConvexError("PERMISSION_DENIED");
-  }
-  const normalizedFilters = {
-    ...filters,
-    visibility,
-    search: filters.search?.trim().toLocaleLowerCase() || undefined,
-  };
+  const normalizedFilters = await resolveCatalogFilters(ctx, access, filters);
   const pageResult = await paginateCurrentClasses(
     ctx,
     access.schoolId,

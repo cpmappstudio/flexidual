@@ -54,6 +54,7 @@ import {
 import {
   catalogFilterOptionsValidator,
   catalogResultValidator,
+  listCurrentCatalogCourses,
   getCatalogFilterOptions,
   listCatalogCourses,
 } from "./model/catalog";
@@ -361,19 +362,37 @@ export const listOverview = query({
   },
 });
 
-export const listCatalog = query({
-  args: {
-    orgSlug: v.string(),
-    now: v.number(),
-    search: v.optional(v.string()),
-    campusId: v.optional(v.id("campuses")),
-    curriculumId: v.optional(v.id("curriculums")),
-    teacherId: v.optional(v.id("users")),
-    visibility: v.optional(
-      v.union(v.literal("public"), v.literal("private"), v.literal("all")),
-    ),
-    paginationOpts: paginationOptsValidator,
+const catalogArgs = {
+  orgSlug: v.string(),
+  now: v.number(),
+  search: v.optional(v.string()),
+  campusId: v.optional(v.id("campuses")),
+  curriculumId: v.optional(v.id("curriculums")),
+  teacherId: v.optional(v.id("users")),
+  visibility: v.optional(
+    v.union(v.literal("public"), v.literal("private"), v.literal("all")),
+  ),
+  paginationOpts: paginationOptsValidator,
+};
+
+export const listCurrentCatalog = query({
+  args: catalogArgs,
+  returns: catalogResultValidator,
+  handler: async (ctx, { orgSlug, now, paginationOpts, ...filters }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    return await listCurrentCatalogCourses(
+      ctx,
+      user,
+      orgSlug,
+      now,
+      filters,
+      paginationOpts,
+    );
   },
+});
+
+export const listCatalog = query({
+  args: catalogArgs,
   returns: catalogResultValidator,
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);

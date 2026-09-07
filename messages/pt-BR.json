@@ -351,6 +351,7 @@
     "curriculumSummary": "Gerencie programas acadêmicos, modelos de cursos e planos de aulas."
   },
   "catalog": {
+    "current": "Agora",
     "liveNow": "Ao vivo",
     "upcoming": "Em breve",
     "allCourses": "Todos os cursos",

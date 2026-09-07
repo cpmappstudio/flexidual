@@ -302,6 +302,7 @@ export default defineSchema({
     createdBy: v.id("users"),
   })
     .index("by_class", ["classId", "scheduledStart"])
+    .index("by_scheduled_start", ["scheduledStart"])
     .index("by_class_and_session_type", ["classId", "sessionType"])
     .index("by_class_and_status_and_session_type_and_scheduled_start", [
       "classId",

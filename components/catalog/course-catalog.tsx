@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
+import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useLocale, useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
@@ -29,7 +29,7 @@ import {
   ResponsiveFilters,
   type ResponsiveFilter,
 } from "@/components/ui/responsive-filters";
-import { getCurrentMinute } from "@/hooks/use-current-minute";
+import { getCurrentMinute, useCurrentMinute } from "@/hooks/use-current-minute";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
@@ -37,8 +37,12 @@ import { cn } from "@/lib/utils";
 type CatalogCourse = FunctionReturnType<
   typeof api.classes.listCatalog
 >["page"][number];
-type TileContext = "live" | "upcoming" | "course";
+type TileContext = "current" | "upcoming" | "course";
 type CatalogVisibility = "public" | "private";
+type CatalogQueryFilters = Omit<
+  FunctionArgs<typeof api.classes.listCurrentCatalog>,
+  "now" | "paginationOpts"
+>;
 
 function CourseRail({
   title,
@@ -49,16 +53,23 @@ function CourseRail({
   courses: CatalogCourse[];
   context: TileContext;
 }) {
-  if (courses.length === 0) return null;
+  const now = useCurrentMinute();
+  const visibleCourses =
+    context === "upcoming"
+      ? courses.filter(
+          (course) => course.nextSession && course.nextSession.start > now,
+        )
+      : courses;
+  if (visibleCourses.length === 0) return null;
 
   return (
     <section className="min-w-0 space-y-3" aria-label={title}>
       <h2 className="text-lg font-bold text-foreground sm:text-xl">{title}</h2>
       <ScrollArea className="w-full [&_[data-slot=scroll-area-viewport]]:snap-x [&_[data-slot=scroll-area-viewport]]:snap-mandatory">
         <div className="flex w-max gap-3 pb-4 sm:gap-4">
-          {courses.map((course) => (
+          {visibleCourses.map((course) => (
             <CourseTile
-              key={`${context}-${course._id}`}
+              key={`${context}-${course._id}-${course.currentSession?.roomName ?? ""}`}
               course={course}
               context={context}
             />
@@ -67,6 +78,46 @@ function CourseRail({
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
     </section>
+  );
+}
+
+function CurrentCatalogRail({
+  filters,
+}: {
+  filters: CatalogQueryFilters | "skip";
+}) {
+  const t = useTranslations();
+  const now = useCurrentMinute();
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.classes.listCurrentCatalog,
+    filters === "skip" ? "skip" : { ...filters, now },
+    { initialNumItems: 24 },
+  );
+  // Authorization and course filters can leave an occurrence page empty.
+  useEffect(() => {
+    if (results.length === 0 && status === "CanLoadMore") loadMore(24);
+  }, [results.length, status, loadMore]);
+
+  if (status === "LoadingFirstPage") return <Skeleton className="h-6 w-36" />;
+  if (status === "Exhausted" && results.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      <CourseRail
+        title={t("catalog.current")}
+        courses={results}
+        context="current"
+      />
+      {(status === "CanLoadMore" || status === "LoadingMore") && (
+        <Button
+          variant="outline"
+          disabled={status === "LoadingMore"}
+          onClick={() => loadMore(24)}
+          aria-label={`${t("common.loadMore")}: ${t("catalog.current")}`}
+        >
+          {t("common.loadMore")}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -82,7 +133,9 @@ function CourseTile({
   const t = useTranslations();
   const locale = useLocale();
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  const session = context === "live" ? course.liveSession : course.nextSession;
+  const session =
+    context === "current" ? course.currentSession : course.nextSession;
+  const isLive = session?.isLive === true;
   const scheduleLabel = session
     ? new Intl.DateTimeFormat(locale, {
         weekday: "short",
@@ -130,7 +183,7 @@ function CourseTile({
             size={96}
             className="relative size-20 drop-shadow-sm"
           />
-          {context === "live" && (
+          {isLive && (
             <Badge className="absolute top-3 right-3 bg-destructive uppercase text-white">
               {t("common.live")}
             </Badge>
@@ -140,7 +193,7 @@ function CourseTile({
               variant="outline"
               className={cn(
                 "absolute top-3 left-3 min-w-0 bg-background/90",
-                context === "live"
+                isLive
                   ? "max-w-[calc(100%-6rem)]"
                   : "max-w-[calc(100%-1.5rem)]",
               )}
@@ -192,7 +245,7 @@ function CourseTile({
                 <span
                   className={cn(
                     "flex min-w-0 items-center gap-1 font-medium",
-                    context === "live" && "text-destructive",
+                    isLive && "text-destructive",
                   )}
                 >
                   <CalendarClock
@@ -284,7 +337,7 @@ export function CourseCatalog() {
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
   const [selectedVisibility, setSelectedVisibility] =
-    useState<CatalogVisibility | null>("public");
+    useState<CatalogVisibility | null>(null);
   const canQuery = isAuthenticated;
   const filterOptions = useQuery(
     api.classes.getCatalogFilters,
@@ -295,23 +348,24 @@ export function CourseCatalog() {
         }
       : "skip",
   );
-  const { results, status, loadMore } = usePaginatedQuery(
-    api.classes.listCatalog,
-    canQuery
+  const catalogFilters: CatalogQueryFilters | "skip" =
+    canQuery && filterOptions
       ? {
           orgSlug,
-          now,
           ...(debouncedSearch && { search: debouncedSearch }),
           ...(selectedCampusId && { campusId: selectedCampusId }),
           ...(selectedCurriculumId && {
             curriculumId: selectedCurriculumId,
           }),
           ...(selectedTeacherId && { teacherId: selectedTeacherId }),
-          visibility: filterOptions?.canViewPrivateCourses
+          visibility: filterOptions.canViewPrivateCourses
             ? (selectedVisibility ?? "all")
             : "public",
         }
-      : "skip",
+      : "skip";
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.classes.listCatalog,
+    catalogFilters === "skip" ? "skip" : { ...catalogFilters, now },
     { initialNumItems: 24 },
   );
   if (isAuthLoading) {
@@ -365,7 +419,6 @@ export function CourseCatalog() {
       : []),
   ];
 
-  const liveCourses = results.filter((course) => course.liveSession);
   const upcomingCourses = results
     .filter((course) => course.nextSession)
     .sort((a, b) => (a.nextSession?.start ?? 0) - (b.nextSession?.start ?? 0));
@@ -391,6 +444,8 @@ export function CourseCatalog() {
         />
       </div>
 
+      <CurrentCatalogRail filters={catalogFilters} />
+
       {status === "LoadingFirstPage" ? (
         <CatalogRailsSkeleton />
       ) : results.length === 0 && status === "Exhausted" ? (
@@ -411,11 +466,6 @@ export function CourseCatalog() {
         </div>
       ) : (
         <>
-          <CourseRail
-            title={t("catalog.liveNow")}
-            courses={liveCourses}
-            context="live"
-          />
           <CourseRail
             title={t("catalog.upcoming")}
             courses={upcomingCourses}
