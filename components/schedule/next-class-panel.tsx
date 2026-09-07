@@ -6,7 +6,7 @@ import { Clock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
-import type { ClassSessionType } from "@/lib/class-session";
+import { isLiveClassSession, type ClassSessionType } from "@/lib/class-session";
 import { cn } from "@/lib/utils";
 
 export type NextClassPanelItem = {
@@ -16,7 +16,6 @@ export type NextClassPanelItem = {
   end: number;
   status?: "scheduled" | "active" | "completed" | "cancelled";
   isLive?: boolean;
-  isParticipantActive?: boolean;
   sessionType: ClassSessionType;
 };
 
@@ -120,13 +119,7 @@ export function NextClassPanel({
 
   const now = currentTime ?? internalTime;
 
-  const isLive = Boolean(
-    nextClass &&
-      (nextClass.status === "active" ||
-        nextClass.isLive ||
-        nextClass.isParticipantActive ||
-        (now >= nextClass.start && now <= nextClass.end)),
-  );
+  const isLive = Boolean(nextClass && isLiveClassSession(nextClass));
 
   return (
     <section
@@ -166,7 +159,13 @@ export function NextClassPanel({
                   <Badge className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 px-2.5 py-0.5 text-xs text-muted-foreground ring-1 ring-border/40 xl:gap-2 xl:px-3 xl:py-1 xl:text-sm">
                     <Clock className="size-3.5 xl:size-4" aria-hidden="true" />
                     <span className="tabular-nums">
-                      {formatCountdown(nextClass.start, now)}
+                      {now < nextClass.start
+                        ? formatCountdown(nextClass.start, now)
+                        : t(
+                            nextClass.sessionType === "live"
+                              ? "classroom.notLive"
+                              : "schedule.scheduled",
+                          )}
                     </span>
                   </Badge>
                 )}

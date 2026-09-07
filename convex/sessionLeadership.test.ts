@@ -226,6 +226,8 @@ async function setupLeadershipTest() {
     );
     const endGateScheduleId = await createSchedule("end-gate-room");
     return {
+      campusId,
+      schoolId,
       teacherId,
       otherTeacherId,
       principalId,
@@ -1299,6 +1301,62 @@ test("all attendance states persist and a completed report cannot be duplicated"
       .collect(),
   );
   expect(reports).toHaveLength(1);
+});
+
+test("student profiles exclude early closures and retain genuine live extensions", async () => {
+  const { t, data } = await setupLeadershipTest();
+  await t.run(async (ctx) => {
+    await ctx.db.insert("roleAssignments", {
+      userId: data.studentId,
+      orgId: data.campusId,
+      orgType: "campus",
+      role: "student",
+      schoolId: data.schoolId,
+      assignedAt: NOW,
+      assignedBy: data.adminId,
+    });
+    await ctx.db.patch("classSchedule", data.teacherScheduleId, {
+      status: "completed",
+      isLive: false,
+      completedAt: NOW,
+    });
+    await ctx.db.patch("classSchedule", data.adminScheduleId, {
+      status: "cancelled",
+    });
+    await ctx.db.patch("classSchedule", data.tutorScheduleId, {
+      status: "active",
+      isLive: true,
+      scheduledEnd: NOW - 1,
+    });
+  });
+  const dashboard = await t
+    .withIdentity({ subject: "leader-admin" })
+    .query(api.student.getStudentDashboardStats, {
+      studentId: data.studentId,
+      orgSlug: "leadership-campus",
+      now: NOW,
+    });
+  const lessons = dashboard?.upcomingLessons ?? [];
+  expect(
+    lessons.some((lesson) => lesson.scheduleId === data.teacherScheduleId),
+  ).toBe(false);
+  expect(
+    lessons.some((lesson) => lesson.scheduleId === data.adminScheduleId),
+  ).toBe(false);
+  expect(lessons).toContainEqual(
+    expect.objectContaining({
+      scheduleId: data.tutorScheduleId,
+      status: "active",
+      isLive: true,
+    }),
+  );
+  expect(lessons).toContainEqual(
+    expect.objectContaining({
+      scheduleId: data.principalScheduleId,
+      status: "scheduled",
+      isLive: false,
+    }),
+  );
 });
 
 test("dashboards count final attendance states and keep pending verification separate", async () => {

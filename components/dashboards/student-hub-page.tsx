@@ -30,7 +30,11 @@ import {
   NextClassPanel,
   NextClassPreview,
 } from "@/components/schedule/next-class-panel";
-import { isExternalClassSession } from "@/lib/class-session";
+import {
+  isExternalClassSession,
+  isLiveClassSession,
+  isUpcomingClassSession,
+} from "@/lib/class-session";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 
 const ClassroomDropZone = dynamic(() =>
@@ -227,7 +231,9 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const upcomingLessons = useMemo(() => {
     if (!events) return [];
 
-    return events.filter((e) => e.end > now).sort((a, b) => a.start - b.start);
+    return events
+      .filter((event) => isUpcomingClassSession(event, event.end, now))
+      .sort((a, b) => a.start - b.start);
   }, [events, now]);
 
   const todayLessons = useMemo(() => {
@@ -279,9 +285,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const overallStats = dashboardData?.overall;
 
   const liveLessons = isViewingStudentProfile
-    ? (dashboardData?.upcomingLessons.filter(
-        (lesson) => lesson.status === "active" && lesson.isLive,
-      ) ?? [])
+    ? (dashboardData?.upcomingLessons.filter(isLiveClassSession) ?? [])
     : (accessibleLiveClasses ?? []);
   const nextLesson = liveLessons[0] ?? todayLessons[0] ?? null;
   const laterTodayLessons = todayLessons
@@ -567,7 +571,6 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                         end: nextLesson.end,
                         status: nextLesson.status,
                         isLive: nextLesson.isLive,
-                        isParticipantActive: nextLesson.isStudentActive,
                         sessionType: nextLesson.sessionType ?? "live",
                       }
                     : null
