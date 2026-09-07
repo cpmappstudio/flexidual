@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { modules } from "./test.setup";
@@ -302,11 +302,10 @@ test("course creation reviews every grade student and enrolls the selected roste
       curriculumId: data.curriculumId,
       campusId: data.campusId,
       searchQuery: "Olivia",
+      gradeCode: "05",
     },
   );
-  expect(searchResults).toMatchObject([
-    { _id: data.otherGradeStudentId, gradeCode: "06", isActive: true },
-  ]);
+  expect(searchResults).toEqual([]);
 
   const courseArgs = {
     name: "Science 5 · Taylor Teacher · 2026-II",
@@ -332,13 +331,21 @@ test("course creation reviews every grade student and enrolls the selected roste
     }),
   ).rejects.toThrow();
 
+  for (const studentId of [
+    data.otherGradeStudentId,
+    data.otherCampusStudentId,
+  ]) {
+    await expect(
+      asAdmin.mutation(api.classes.createWithSchedule, {
+        ...courseArgs,
+        studentIds: [studentId],
+      }),
+    ).rejects.toThrow("INVALID_STUDENTS");
+  }
+
   const result = await asAdmin.mutation(api.classes.createWithSchedule, {
     ...courseArgs,
-    studentIds: [
-      data.activeStudentId,
-      data.inactiveStudentId,
-      data.otherGradeStudentId,
-    ],
+    studentIds: [data.activeStudentId, data.inactiveStudentId],
   });
   const persisted = await t.run(async (ctx) => {
     const [classes, enrollments] = await Promise.all([
@@ -358,11 +365,7 @@ test("course creation reviews every grade student and enrolls the selected roste
   expect(persisted.classes).toHaveLength(1);
   expect(
     persisted.enrollments.map((enrollment) => enrollment.studentId),
-  ).toEqual([
-    data.activeStudentId,
-    data.inactiveStudentId,
-    data.otherGradeStudentId,
-  ]);
+  ).toEqual([data.activeStudentId, data.inactiveStudentId]);
   expect(
     await asAdmin.query(api.classes.getStudents, { classId: result.classId }),
   ).toEqual(
@@ -372,11 +375,6 @@ test("course creation reviews every grade student and enrolls the selected roste
         gradeCode: "05",
         gradeName: "5th Grade",
         campusName: "Main Campus",
-      }),
-      expect.objectContaining({
-        _id: data.otherGradeStudentId,
-        gradeCode: "06",
-        gradeName: "6th Grade",
       }),
     ]),
   );
@@ -440,14 +438,12 @@ test("course creation reviews every grade student and enrolls the selected roste
     );
     await ctx.db.patch("users", data.activeStudentId, { avatarStorageId });
   });
-  const enrollmentCandidates = await asAdmin.query(
-    api.classes.searchStudents,
-    { classId: principalCourse.classId },
-  );
+  const enrollmentCandidates = await asAdmin.query(api.classes.searchStudents, {
+    classId: principalCourse.classId,
+  });
   expect(
-    enrollmentCandidates.find(
-      (student) => student._id === data.activeStudentId,
-    )?.imageUrl,
+    enrollmentCandidates.find((student) => student._id === data.activeStudentId)
+      ?.imageUrl,
   ).toBeTruthy();
   expect(enrollmentCandidates.every((student) => student.grade === "05")).toBe(
     true,
@@ -531,6 +527,16 @@ test("course creation reviews every grade student and enrolls the selected roste
     },
   });
 
+  // An existing legacy cross-grade roster still blocks shared schedules.
+  const legacyCrossGradeEnrollment = await t.run((ctx) =>
+    ctx.db.insert("classEnrollments", {
+      classId: result.classId,
+      studentId: data.otherGradeStudentId,
+      enrolledAt: Date.now(),
+      enrolledBy: data.adminId,
+    }),
+  );
+
   await expect(
     asAdmin.mutation(api.classes.createWithSchedule, {
       ...courseArgs,
@@ -546,6 +552,7 @@ test("course creation reviews every grade student and enrolls the selected roste
       canShare: false,
     },
   });
+  await t.run((ctx) => ctx.db.delete(legacyCrossGradeEnrollment));
 
   const sharedCourse = await asAdmin.mutation(api.classes.createWithSchedule, {
     ...courseArgs,
@@ -740,4 +747,79 @@ test("course creation reviews every grade student and enrolls the selected roste
       canShare: false,
     },
   });
+
+  // Course edits may not silently invalidate the current roster.
+  await expect(
+    asAdmin.mutation(api.classes.update, {
+      classId: result.classId,
+      gradeCode: "06",
+      curriculumId: data.otherGradeCurriculumId,
+    }),
+  ).rejects.toThrow("INVALID_STUDENTS");
+
+  const history = await t.run(async (ctx) => {
+    const course = (await ctx.db.get(result.classId))!;
+    const { _id, _creationTime, ...fields } = course;
+    const pastClassId = await ctx.db.insert("classes", {
+      ...fields,
+      endDate: Date.now() - 1,
+    });
+    await ctx.db.insert("classEnrollments", {
+      classId: pastClassId,
+      studentId: data.inactiveStudentId,
+      enrolledAt: Date.now(),
+      enrolledBy: data.adminId,
+    });
+    const legacyClassId = await ctx.db.insert("classes", {
+      ...fields,
+      endDate: undefined,
+      enrollmentsMigratedAt: undefined,
+      students: [data.inactiveStudentId, data.activeStudentId],
+    });
+    const compatibleClassId = await ctx.db.insert("classes", {
+      ...fields,
+      curriculumId: data.otherGradeCurriculumId,
+      gradeCode: "06",
+    });
+    await ctx.db.insert("classEnrollments", {
+      classId: compatibleClassId,
+      studentId: data.inactiveStudentId,
+      enrolledAt: Date.now(),
+      enrolledBy: data.adminId,
+    });
+    // A stale users.grade must not override the campus grade after editing.
+    await ctx.db.patch(data.inactiveStudentId, { grade: "05" });
+    return {
+      pastClassId,
+      legacyClassId,
+      compatibleClassId,
+      scheduleCount: (await ctx.db.query("classSchedule").collect()).length,
+    };
+  });
+  await t.mutation(internal.roleAssignments.assignRoleInternal, {
+    userId: data.inactiveStudentId,
+    orgType: "campus",
+    orgId: data.campusId,
+    role: "student",
+    gradeCode: "06",
+  });
+  const afterGradeChange = await t.run(async (ctx) => ({
+    enrollments: await ctx.db
+      .query("classEnrollments")
+      .withIndex("by_student", (q) => q.eq("studentId", data.inactiveStudentId))
+      .collect(),
+    legacy: await ctx.db.get(history.legacyClassId),
+    scheduleCount: (await ctx.db.query("classSchedule").collect()).length,
+  }));
+  expect(afterGradeChange.enrollments.map((e) => e.classId).sort()).toEqual(
+    [history.pastClassId, history.compatibleClassId].sort(),
+  );
+  expect(afterGradeChange.legacy?.students).toEqual([data.activeStudentId]);
+  expect(afterGradeChange.scheduleCount).toBe(history.scheduleCount);
+  await expect(
+    asAdmin.mutation(api.classes.addStudent, {
+      classId: principalCourse.classId,
+      studentId: data.inactiveStudentId,
+    }),
+  ).rejects.toThrow("INVALID_STUDENT");
 });

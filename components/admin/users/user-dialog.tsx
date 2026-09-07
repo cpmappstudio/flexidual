@@ -730,6 +730,13 @@ export function UserDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {isEditing &&
+                formData.grade &&
+                formData.grade !== user?.grade && (
+                  <p className="text-sm text-muted-foreground">
+                    {t("student.gradeChangeEnrollmentNotice")}
+                  </p>
+                )}
             </div>
           </div>
         )}

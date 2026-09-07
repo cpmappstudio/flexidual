@@ -889,6 +889,7 @@
     "notFound": "Curso no encontrado"
   },
   "student": {
+    "gradeChangeEnrollmentNotice": "Cambiar el grado retira las matrículas de cursos vigentes de otros grados. Los cursos finalizados y el historial académico se conservan; las matrículas en nuevos cursos se revisan por separado.",
     "name": "Nombre del estudiante",
     "firstName": "Nombre",
     "lastName": "Apellido",
@@ -1309,7 +1310,7 @@
     "curriculumConflictShort": "El estudiante ya está inscrito en un curso con este currículo",
     "studentAlreadyEnrolled": "El estudiante ya está inscrito en este curso",
     "invalidStudent": "Estudiante inválido",
-    "invalidStudents": "Uno o más estudiantes inválidos",
+    "invalidStudents": "Uno o más estudiantes no son válidos para el grado y campus del curso. Revisa las matrículas antes de continuar.",
     "classNotFound": "Curso no encontrado",
     "classScheduleConflict": "Este curso ya tiene una clase programada a las {conflictTime}",
     "teacherScheduleConflict": "El profesor ya está enseñando \"{className}\" a las {conflictTime}",

@@ -889,6 +889,7 @@
     "notFound": "Curso não encontrado"
   },
   "student": {
+    "gradeChangeEnrollmentNotice": "Alterar a série remove as matrículas em cursos em andamento de outras séries. Os cursos concluídos e o histórico acadêmico são preservados; as matrículas em novos cursos são revisadas separadamente.",
     "name": "Nome do Estudante",
     "firstName": "Nome",
     "lastName": "Sobrenome",
@@ -1309,7 +1310,7 @@
     "curriculumConflictShort": "Aluno já matriculado em um curso com este currículo",
     "studentAlreadyEnrolled": "O aluno já está matriculado neste curso",
     "invalidStudent": "Aluno inválido",
-    "invalidStudents": "Um ou mais alunos inválidos",
+    "invalidStudents": "Um ou mais alunos não são válidos para a série e o campus do curso. Revise as matrículas antes de continuar.",
     "classNotFound": "Curso não encontrado",
     "classScheduleConflict": "Este curso já tem uma aula agendada para {conflictTime}",
     "teacherScheduleConflict": "O professor já está ensinando \"{className}\" em {conflictTime}",

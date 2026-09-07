@@ -115,7 +115,7 @@ export function CourseEnrollmentReviewDialog({
   const searchResults = useQuery(
     api.classes.searchCourseCreationStudents,
     open && debouncedSearch.length >= 2
-      ? { curriculumId, campusId, searchQuery: debouncedSearch }
+      ? { curriculumId, campusId, gradeCode, searchQuery: debouncedSearch }
       : "skip",
   );
 

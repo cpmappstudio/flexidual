@@ -889,6 +889,7 @@
     "notFound": "Course not found"
   },
   "student": {
+    "gradeChangeEnrollmentNotice": "Changing the grade removes enrollment in ongoing courses of other grades. Completed courses and academic records are kept; enrollment in new courses is reviewed separately.",
     "name": "Student Name",
     "firstName": "First Name",
     "lastName": "Last Name",
@@ -1309,7 +1310,7 @@
     "curriculumConflictShort": "Student already enrolled in a course with this curriculum",
     "studentAlreadyEnrolled": "Student is already enrolled in this course",
     "invalidStudent": "Invalid student",
-    "invalidStudents": "One or more invalid students",
+    "invalidStudents": "One or more students are not eligible for the course grade and campus. Review the enrollments before continuing.",
     "classNotFound": "Course not found",
     "classScheduleConflict": "This course already has a class scheduled at {conflictTime}",
     "teacherScheduleConflict": "Teacher is already teaching \"{className}\" at {conflictTime}",

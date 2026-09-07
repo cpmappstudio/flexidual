@@ -22,6 +22,7 @@ import { validateGradeCodes } from "./model/grades";
 import { resolveMembershipSchoolId } from "./model/membership";
 import { isRoleValidForOrganization, roleValidator } from "./model/roles";
 import { createSystemNotification } from "./model/systemNotifications";
+import { reconcileStudentGradeEnrollments } from "./model/enrollments";
 
 const roleAssignmentValidator = v.object({
   _id: v.id("roleAssignments"),
@@ -160,9 +161,7 @@ async function getAssignmentNotificationContext(
   if (assignment.orgType === "campus" && assignment.orgId) {
     const campusId = ctx.db.normalizeId("campuses", assignment.orgId);
     const campus = campusId ? await ctx.db.get("campuses", campusId) : null;
-    const school = campus
-      ? await ctx.db.get("schools", campus.schoolId)
-      : null;
+    const school = campus ? await ctx.db.get("schools", campus.schoolId) : null;
     return {
       schoolId: school?._id,
       campusId: campus?._id,
@@ -291,6 +290,24 @@ export async function upsertRoleAssignment(
     .first();
 
   const assignedAt = Date.now();
+  if (
+    existing?.role === "student" &&
+    args.role === "student" &&
+    args.orgType === "campus" &&
+    args.orgId &&
+    contextual.gradeCode &&
+    existing.gradeCode !== contextual.gradeCode
+  ) {
+    const campusId = ctx.db.normalizeId("campuses", args.orgId);
+    if (campusId) {
+      await reconcileStudentGradeEnrollments(
+        ctx,
+        args.userId,
+        campusId,
+        contextual.gradeCode,
+      );
+    }
+  }
   let assignmentId: Id<"roleAssignments">;
   if (existing) {
     await ctx.db.patch(existing._id, {
