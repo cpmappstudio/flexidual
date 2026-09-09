@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { LiveKitRoom } from "@livekit/components-react";
 import { DisconnectReason } from "livekit-client";
 import { api } from "@/convex/_generated/api";
@@ -27,6 +27,7 @@ import { useFullscreen } from "@/hooks/use-fullscreen";
 import { ClassroomRocketLoader } from "@/components/student/rocket-transition";
 import { useClassroomClock } from "./use-classroom-clock";
 import { useClassroomToken } from "@/hooks/use-classroom-token";
+import { SessionCloseoutDialog } from "./session-closeout-dialog";
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -153,6 +154,8 @@ export default function FlexiClassroom({
   const convexUser = useRetainedQueryResult(currentUserQueryResult, roomName);
 
   const logPresence = useMutation(api.schedule.logStudentPresence);
+  const endSession = useAction(api.livekit.endSession);
+  const [closeoutScope, setCloseoutScope] = useState<string | null>(null);
 
   const sessionStatusResult = useQuery(api.schedule.getSessionStatus, {
     sessionId: roomName,
@@ -201,6 +204,38 @@ export default function FlexiClassroom({
     shouldRequest: shouldConnect,
   });
   const connectionScope = `${roomName}:${convexUser?._id ?? "anonymous"}:${isCompanion ? "companion" : "primary"}`;
+  const requiresCloseout =
+    !isCompanion &&
+    !resolvedIsStudentView &&
+    !!convexUser &&
+    scheduleDetails?.sessionLeaderId === convexUser._id &&
+    sessionStatus?.status === "completed" &&
+    scheduleDetails?.sessionClosureStatus === "pending";
+  const isCloseoutOpen =
+    !!convexUser && (closeoutScope === connectionScope || requiresCloseout);
+
+  useEffect(() => {
+    if (requiresCloseout) setCloseoutScope(connectionScope);
+    else if (
+      isSessionClosed &&
+      scheduleDetails?.sessionClosureStatus === "completed"
+    ) {
+      setCloseoutScope((current) =>
+        current === connectionScope ? null : current,
+      );
+    }
+  }, [
+    connectionScope,
+    requiresCloseout,
+    isSessionClosed,
+    scheduleDetails?.sessionClosureStatus,
+  ]);
+
+  useEffect(() => {
+    if (isCloseoutOpen && document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+    }
+  }, [isCloseoutOpen]);
   const [roomErrorState, setRoomErrorState] = useState<{
     scopeKey: string;
     message: string;
@@ -221,6 +256,13 @@ export default function FlexiClassroom({
   const sessionClosedRef = useRef(isSessionClosed);
   currentRoomRef.current = roomName;
   sessionClosedRef.current = isSessionClosed;
+
+  const handleCompleteSession = async () => {
+    if (!sessionClosedRef.current) await endSession({ roomName });
+    setCloseoutScope((current) =>
+      current === connectionScope ? null : current,
+    );
+  };
 
   const handleConnected = useCallback(async () => {
     setRoomErrorState((current) =>
@@ -354,296 +396,325 @@ export default function FlexiClassroom({
     return `${hours > 0 ? `${hours}:` : ""}${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  // Loading State
-  if (!convexUser || sessionStatus === undefined) {
-    if (resolvedIsStudentView) {
-      return <ClassroomRocketLoader label={t("classroom.checkingStatus")} />;
+  const renderClassroom = () => {
+    // Loading State
+    if (!convexUser || sessionStatus === undefined) {
+      if (resolvedIsStudentView) {
+        return <ClassroomRocketLoader label={t("classroom.checkingStatus")} />;
+      }
+
+      return (
+        <div
+          className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}
+        >
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            <p className="text-sm font-medium text-muted-foreground animate-pulse">
+              {t("classroom.checkingStatus")}
+            </p>
+          </div>
+        </div>
+      );
     }
 
-    return (
-      <div
-        className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}
-      >
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-primary animate-spin" />
-          <p className="text-sm font-medium text-muted-foreground animate-pulse">
-            {t("classroom.checkingStatus")}
-          </p>
+    // Room Not Found
+    if (!sessionStatus || scheduleDetails === null) {
+      return (
+        <div
+          className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}
+        >
+          <div className="text-center p-8 max-w-md">
+            <School className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-foreground">
+              {t("classroom.notFound")}
+            </h3>
+            <p className="text-muted-foreground mt-2">
+              {t("classroom.notFoundDescription")}
+            </p>
+
+            {resolvedIsStudentView ? (
+              <Button
+                variant="outline"
+                className="mt-6 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={exitClassroom}
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                {t("classroom.leave")}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="mt-6"
+                onClick={exitClassroom}
+              >
+                {t("common.back")}
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // Room Not Found
-  if (!sessionStatus || scheduleDetails === null) {
-    return (
-      <div
-        className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}
-      >
-        <div className="text-center p-8 max-w-md">
-          <School className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-foreground">
-            {t("classroom.notFound")}
-          </h3>
-          <p className="text-muted-foreground mt-2">
-            {t("classroom.notFoundDescription")}
-          </p>
-
-          {resolvedIsStudentView ? (
-            <Button
-              variant="outline"
-              className="mt-6 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={exitClassroom}
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              {t("classroom.leave")}
-            </Button>
-          ) : (
+    if (isSessionClosed) {
+      return (
+        <div
+          className={`flex h-full w-full items-center justify-center rounded-lg bg-muted/30 ${className}`}
+        >
+          <div className="max-w-md p-8 text-center">
+            <CalendarClock className="mx-auto mb-4 size-16 text-muted-foreground/40" />
+            <h3 className="text-xl font-bold text-foreground">
+              {sessionStatus.status === "completed"
+                ? t("classroom.classEnded")
+                : t("classroom.notActive")}
+            </h3>
             <Button variant="outline" className="mt-6" onClick={exitClassroom}>
               {t("common.back")}
             </Button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (isSessionClosed) {
-    return (
-      <div
-        className={`flex h-full w-full items-center justify-center rounded-lg bg-muted/30 ${className}`}
-      >
-        <div className="max-w-md p-8 text-center">
-          <CalendarClock className="mx-auto mb-4 size-16 text-muted-foreground/40" />
-          <h3 className="text-xl font-bold text-foreground">
-            {sessionStatus.status === "completed"
-              ? t("classroom.classEnded")
-              : t("classroom.notActive")}
-          </h3>
-          <Button variant="outline" className="mt-6" onClick={exitClassroom}>
-            {t("common.back")}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Waiting Room
-  if (!shouldConnect && !token) {
-    const timeDiff = sessionStatus.start - now;
-    const isUrgent = timeDiff > 0 && timeDiff <= 15 * 60 * 1000;
-    const isLate = timeDiff <= 0;
-
-    return (
-      <div
-        className={`flex h-full w-full items-center justify-center bg-muted/30 rounded-lg ${className}`}
-      >
-        <div className="text-center p-8 max-w-md bg-card shadow-xl rounded-2xl border-4 border-primary/20 animate-in fade-in zoom-in duration-500">
-          <div
-            className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${
-              isLate
-                ? "bg-destructive/10 animate-pulse"
-                : "bg-primary/10 animate-bounce"
-            }`}
-          >
-            {isLate ? (
-              <AlertCircle className="w-10 h-10 text-destructive" />
-            ) : (
-              <CalendarClock className="w-10 h-10 text-primary" />
-            )}
           </div>
+        </div>
+      );
+    }
 
-          <h2 className="text-2xl font-bold text-card-foreground mb-2">
-            {isLate
-              ? t("classroom.waitingForTeacher")
-              : t("classroom.waitingTitle")}
-          </h2>
+    // Waiting Room
+    if (!shouldConnect && !token) {
+      const timeDiff = sessionStatus.start - now;
+      const isUrgent = timeDiff > 0 && timeDiff <= 15 * 60 * 1000;
+      const isLate = timeDiff <= 0;
 
-          <div className="space-y-4 my-6">
+      return (
+        <div
+          className={`flex h-full w-full items-center justify-center bg-muted/30 rounded-lg ${className}`}
+        >
+          <div className="text-center p-8 max-w-md bg-card shadow-xl rounded-2xl border-4 border-primary/20 animate-in fade-in zoom-in duration-500">
             <div
-              className={`p-4 rounded-lg border flex flex-col items-center justify-center ${
-                isUrgent
-                  ? "bg-accent border-accent-foreground/20"
-                  : "bg-muted border-border"
+              className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${
+                isLate
+                  ? "bg-destructive/10 animate-pulse"
+                  : "bg-primary/10 animate-bounce"
               }`}
             >
               {isLate ? (
-                <>
-                  <p className="text-xs font-bold text-destructive uppercase tracking-wider mb-1">
-                    {t("classroom.shouldHaveStarted")}
-                  </p>
-                  <p className="text-2xl font-mono font-bold text-destructive">
-                    {format(
-                      new TZDate(sessionStatus.start, sessionStatus.timeZone),
-                      "h:mm a",
-                    )}{" "}
-                    · {sessionStatus.timeZone}
-                  </p>
-                </>
+                <AlertCircle className="w-10 h-10 text-destructive" />
               ) : (
-                <>
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
-                    {isUrgent
-                      ? t("classroom.startsIn")
-                      : t("classroom.scheduledStart")}
-                  </p>
-                  <p
-                    className={`text-3xl font-mono font-bold ${
-                      isUrgent ? "text-accent-foreground" : "text-foreground"
-                    }`}
-                  >
-                    {isUrgent
-                      ? getCountdown(sessionStatus.start)
-                      : `${format(new TZDate(sessionStatus.start, sessionStatus.timeZone), "h:mm a")} · ${sessionStatus.timeZone}`}
-                  </p>
-                  {!isUrgent && (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {format(
-                        new TZDate(sessionStatus.start, sessionStatus.timeZone),
-                        "EEEE, MMMM do",
-                      )}
-                    </p>
-                  )}
-                </>
+                <CalendarClock className="w-10 h-10 text-primary" />
               )}
             </div>
 
-            <p className="text-muted-foreground text-sm leading-relaxed">
+            <h2 className="text-2xl font-bold text-card-foreground mb-2">
               {isLate
-                ? t("classroom.teacherRunningLate")
-                : t("classroom.waitingMessage")}
-            </p>
+                ? t("classroom.waitingForTeacher")
+                : t("classroom.waitingTitle")}
+            </h2>
+
+            <div className="space-y-4 my-6">
+              <div
+                className={`p-4 rounded-lg border flex flex-col items-center justify-center ${
+                  isUrgent
+                    ? "bg-accent border-accent-foreground/20"
+                    : "bg-muted border-border"
+                }`}
+              >
+                {isLate ? (
+                  <>
+                    <p className="text-xs font-bold text-destructive uppercase tracking-wider mb-1">
+                      {t("classroom.shouldHaveStarted")}
+                    </p>
+                    <p className="text-2xl font-mono font-bold text-destructive">
+                      {format(
+                        new TZDate(sessionStatus.start, sessionStatus.timeZone),
+                        "h:mm a",
+                      )}{" "}
+                      · {sessionStatus.timeZone}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                      {isUrgent
+                        ? t("classroom.startsIn")
+                        : t("classroom.scheduledStart")}
+                    </p>
+                    <p
+                      className={`text-3xl font-mono font-bold ${
+                        isUrgent ? "text-accent-foreground" : "text-foreground"
+                      }`}
+                    >
+                      {isUrgent
+                        ? getCountdown(sessionStatus.start)
+                        : `${format(new TZDate(sessionStatus.start, sessionStatus.timeZone), "h:mm a")} · ${sessionStatus.timeZone}`}
+                    </p>
+                    {!isUrgent && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {format(
+                          new TZDate(
+                            sessionStatus.start,
+                            sessionStatus.timeZone,
+                          ),
+                          "EEEE, MMMM do",
+                        )}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                {isLate
+                  ? t("classroom.teacherRunningLate")
+                  : t("classroom.waitingMessage")}
+              </p>
+            </div>
+
+            {resolvedIsStudentView && (
+              <Button
+                variant="outline"
+                onClick={exitClassroom}
+                className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                {t("classroom.leave")}
+              </Button>
+            )}
+
+            {!resolvedIsStudentView && (
+              <Button
+                variant="outline"
+                onClick={() => router.back()}
+                className="w-full"
+              >
+                {t("classroom.backToDashboard")}
+              </Button>
+            )}
           </div>
-
-          {resolvedIsStudentView && (
-            <Button
-              variant="outline"
-              onClick={exitClassroom}
-              className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              {t("classroom.leave")}
-            </Button>
-          )}
-
-          {!resolvedIsStudentView && (
-            <Button
-              variant="outline"
-              onClick={() => router.back()}
-              className="w-full"
-            >
-              {t("classroom.backToDashboard")}
-            </Button>
-          )}
         </div>
-      </div>
-    );
-  }
-
-  // Error State
-  if (error && (!token || !scheduleDetails)) {
-    return (
-      <ClassroomConnectionError
-        className={className}
-        message={error}
-        retryLabel={t("classroom.tryAgain")}
-        leaveLabel={t("classroom.leave")}
-        onRetry={handleRetry}
-        onLeave={resolvedIsStudentView ? exitClassroom : undefined}
-      />
-    );
-  }
-
-  // Connecting
-  if (!token || !scheduleDetails) {
-    if (resolvedIsStudentView) {
-      return <ClassroomRocketLoader label={t("classroom.entering")} />;
+      );
     }
 
-    return (
-      <div
-        className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-sm rounded-lg ${className}`}
-      >
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-10 h-10 text-primary animate-spin" />
-          <p className="text-foreground font-medium">
-            {t("classroom.entering")}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Active Classroom
-  return (
-    <div
-      ref={containerRef}
-      className={`relative h-full w-full overflow-hidden ${className}`}
-    >
-      {!resolvedIsStudentView && <SidebarAutoCollapser />}
-      <LiveKitRoom
-        key={connectionScope}
-        video={false}
-        audio={false}
-        token={token}
-        serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-        data-lk-theme="default"
-        style={{ height: "100%", width: "100%" }}
-        onConnected={handleConnected}
-        onDisconnected={handleDisconnect}
-        onError={handleRoomError}
-      >
-        {isCompanion ? (
-          <CompanionClassroomUI
-            roomName={roomName}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={
-              isSupported ? handleToggleFullscreen : undefined
-            }
-          />
-        ) : resolvedIsStudentView ? (
-          <StudentClassroomUI
-            courseId={scheduleDetails.class._id}
-            roomName={roomName}
-            sessionNow={now}
-            className={scheduleDetails?.class?.name}
-            curriculumIconKey={scheduleDetails.class.curriculumIconKey}
-            onSwitchClassroom={handleSwitchClassroom}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={
-              isSupported ? handleToggleFullscreen : undefined
-            }
-            uiPreviewEnabled={uiPreviewEnabled}
-          />
-        ) : (
-          <ActiveClassroomUI
-            courseId={scheduleDetails.class._id}
-            currentUserRole={role}
-            canLeadSession={sessionStatus?.leadershipRole != null}
-            roomName={roomName}
-            sessionNow={now}
-            className={scheduleDetails?.class?.name}
-            curriculumIconKey={scheduleDetails.class.curriculumIconKey}
-            sessionIsLive={isClassLive}
-            sessionTimeZone={sessionStatus.timeZone}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={
-              isSupported ? handleToggleFullscreen : undefined
-            }
-            uiPreviewEnabled={uiPreviewEnabled}
-          />
-        )}
-      </LiveKitRoom>
-      {error && (
+    // Error State
+    if (error && (!token || !scheduleDetails)) {
+      return (
         <ClassroomConnectionError
-          isOverlay
+          className={className}
           message={error}
           retryLabel={t("classroom.tryAgain")}
           leaveLabel={t("classroom.leave")}
           onRetry={handleRetry}
           onLeave={resolvedIsStudentView ? exitClassroom : undefined}
         />
-      )}
-    </div>
+      );
+    }
+
+    // Connecting
+    if (!token || !scheduleDetails) {
+      if (resolvedIsStudentView) {
+        return <ClassroomRocketLoader label={t("classroom.entering")} />;
+      }
+
+      return (
+        <div
+          className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-sm rounded-lg ${className}`}
+        >
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+            <p className="text-foreground font-medium">
+              {t("classroom.entering")}
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Active Classroom
+    return (
+      <div
+        ref={containerRef}
+        className={`relative h-full w-full overflow-hidden ${className}`}
+      >
+        {!resolvedIsStudentView && <SidebarAutoCollapser />}
+        <LiveKitRoom
+          key={connectionScope}
+          video={false}
+          audio={false}
+          token={token}
+          serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
+          data-lk-theme="default"
+          style={{ height: "100%", width: "100%" }}
+          onConnected={handleConnected}
+          onDisconnected={handleDisconnect}
+          onError={handleRoomError}
+        >
+          {isCompanion ? (
+            <CompanionClassroomUI
+              roomName={roomName}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={
+                isSupported ? handleToggleFullscreen : undefined
+              }
+            />
+          ) : resolvedIsStudentView ? (
+            <StudentClassroomUI
+              courseId={scheduleDetails.class._id}
+              roomName={roomName}
+              sessionNow={now}
+              className={scheduleDetails?.class?.name}
+              curriculumIconKey={scheduleDetails.class.curriculumIconKey}
+              onSwitchClassroom={handleSwitchClassroom}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={
+                isSupported ? handleToggleFullscreen : undefined
+              }
+              uiPreviewEnabled={uiPreviewEnabled}
+            />
+          ) : (
+            <ActiveClassroomUI
+              courseId={scheduleDetails.class._id}
+              currentUserRole={role}
+              canLeadSession={sessionStatus?.leadershipRole != null}
+              roomName={roomName}
+              sessionNow={now}
+              className={scheduleDetails?.class?.name}
+              curriculumIconKey={scheduleDetails.class.curriculumIconKey}
+              sessionIsLive={isClassLive}
+              sessionTimeZone={sessionStatus.timeZone}
+              isCloseoutOpen={isCloseoutOpen}
+              onRequestCloseout={() => setCloseoutScope(connectionScope)}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={
+                isSupported ? handleToggleFullscreen : undefined
+              }
+              uiPreviewEnabled={uiPreviewEnabled}
+            />
+          )}
+        </LiveKitRoom>
+        {error && (
+          <ClassroomConnectionError
+            isOverlay
+            message={error}
+            retryLabel={t("classroom.tryAgain")}
+            leaveLabel={t("classroom.leave")}
+            onRetry={handleRetry}
+            onLeave={resolvedIsStudentView ? exitClassroom : undefined}
+          />
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {renderClassroom()}
+      <SessionCloseoutDialog
+        key={connectionScope}
+        open={isCloseoutOpen}
+        roomName={roomName}
+        sessionNow={now}
+        required
+        alreadyEnded={isSessionClosed}
+        onOpenChange={(open) => {
+          if (open) setCloseoutScope(connectionScope);
+        }}
+        onComplete={handleCompleteSession}
+      />
+    </>
   );
 }

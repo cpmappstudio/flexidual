@@ -46,6 +46,7 @@ interface SessionCloseoutDialogProps {
   onOpenChange: (open: boolean) => void;
   onComplete: () => void | Promise<void>;
   alreadyEnded?: boolean;
+  required?: boolean;
 }
 
 type CloseoutStep = "lessons" | "attendance";
@@ -75,6 +76,7 @@ export function SessionCloseoutDialog({
   onOpenChange,
   onComplete,
   alreadyEnded = false,
+  required = false,
 }: SessionCloseoutDialogProps) {
   const t = useTranslations("classroom.closeout");
   const attendanceT = useTranslations("attendance");
@@ -286,7 +288,7 @@ export function SessionCloseoutDialog({
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && isSubmitting) return;
+    if (!nextOpen && (isSubmitting || required)) return;
     onOpenChange(nextOpen);
   };
 
@@ -339,6 +341,7 @@ export function SessionCloseoutDialog({
                   </div>
                 </div>
                 <Textarea
+                  aria-labelledby="session-notes"
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   placeholder={t("notesPlaceholder")}
@@ -597,23 +600,25 @@ export function SessionCloseoutDialog({
 
           <DialogFooter className="flex-col gap-3 border-t bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-end">
             <div className="flex w-full gap-2 sm:w-auto">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isSubmitting}
-                className="flex-1 sm:flex-none"
-                onClick={() => {
-                  if (activeStep === "attendance") setActiveStep("lessons");
-                  else onOpenChange(false);
-                }}
-              >
-                {activeStep === "attendance" && (
-                  <ChevronLeft className="size-4" aria-hidden="true" />
-                )}
-                {activeStep === "attendance"
-                  ? t("backToLessons")
-                  : common("cancel")}
-              </Button>
+              {(!required || activeStep === "attendance") && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSubmitting}
+                  className="flex-1 sm:flex-none"
+                  onClick={() => {
+                    if (activeStep === "attendance") setActiveStep("lessons");
+                    else onOpenChange(false);
+                  }}
+                >
+                  {activeStep === "attendance" && (
+                    <ChevronLeft className="size-4" aria-hidden="true" />
+                  )}
+                  {activeStep === "attendance"
+                    ? t("backToLessons")
+                    : common("cancel")}
+                </Button>
+              )}
               {activeStep === "lessons" ? (
                 <Button
                   type="button"
