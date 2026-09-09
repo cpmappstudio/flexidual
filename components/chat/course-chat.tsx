@@ -23,6 +23,7 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScrollerVisibility,
 } from "@/components/ui/message-scroller";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
@@ -36,7 +37,7 @@ import {
 } from "convex/react";
 import { ArrowDown, LoaderCircle, SendHorizontal } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 interface CourseChatProps {
@@ -82,6 +83,7 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
       )}
     >
       <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+        <ChatReadReceipt messageId={results[0]?._id} />
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport>
             <MessageScrollerContent className="gap-4 px-3 py-4">
@@ -204,6 +206,40 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
       </MessageScrollerProvider>
     </div>
   );
+}
+
+function ChatReadReceipt({
+  messageId,
+}: {
+  messageId?: Id<"courseChatMessages">;
+}) {
+  const { visibleMessageIds } = useMessageScrollerVisibility();
+  const markRead = useMutation(api.courseChatNotifications.markRead);
+  const [isFocused, setIsFocused] = useState(false);
+  const isVisible = Boolean(messageId && visibleMessageIds.includes(messageId));
+  useEffect(() => {
+    const update = () =>
+      setIsFocused(
+        document.visibilityState === "visible" && document.hasFocus(),
+      );
+    update();
+    document.addEventListener("visibilitychange", update);
+    window.addEventListener("focus", update);
+    window.addEventListener("blur", update);
+    return () => {
+      document.removeEventListener("visibilitychange", update);
+      window.removeEventListener("focus", update);
+      window.removeEventListener("blur", update);
+    };
+  }, []);
+  useEffect(() => {
+    if (messageId && isVisible && isFocused) {
+      void markRead({ messageId }).catch((error) =>
+        console.error("Chat read receipt failed", error),
+      );
+    }
+  }, [messageId, isVisible, isFocused, markRead]);
+  return null;
 }
 
 export function CourseChatComposer({

@@ -14,6 +14,9 @@ export function getSystemNotificationHref(
 ) {
   const orgSlug = notification.organizationSlug;
   if (!orgSlug) return null;
+  if (notification.kind === "course_chat" && notification.classId) {
+    return `/${orgSlug}/chats/${notification.classId}`;
+  }
 
   if (notification.kind === "class_starting_soon" && notification.roomName) {
     return `/${orgSlug}/classroom/${encodeURIComponent(notification.roomName)}`;

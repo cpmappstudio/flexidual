@@ -1333,6 +1333,8 @@
     "selectedRows": "{selected} of {total} row(s) selected"
   },
   "systemNotifications": {
+    "unreadChats": "{count, plural, one {# chat with unread messages} other {# chats with unread messages}}",
+    "unreadMessages": "{count, plural, one {# unread message} other {# unread messages}}",
     "title": "Notifications",
     "description": "Updates about your courses, classes and access.",
     "open": "Open notifications",
@@ -1350,6 +1352,10 @@
       "courseEnrollmentAdded": {
         "title": "Course enrollment",
         "body": "You were enrolled in {className}."
+      },
+      "course_chat": {
+        "title": "Course chat",
+        "body": "{count, plural, one {You have # new message} other {You have # new messages}} in {className}."
       },
       "courseEnrollmentRemoved": {
         "title": "Course enrollment ended",

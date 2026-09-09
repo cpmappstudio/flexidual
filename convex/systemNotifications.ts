@@ -4,14 +4,12 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import {
-  internalMutation,
-  mutation,
-  query,
-} from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import {
   createSystemNotification,
   deleteStartingSoonNotifications,
+  filterVisibleNotifications,
+  notificationPaginationOptions,
   type SystemNotificationInput,
 } from "./model/systemNotifications";
 import {
@@ -29,6 +27,7 @@ const notificationKindValidator = v.union(
   v.literal("role_changed"),
   v.literal("organization_membership_changed"),
   v.literal("announcement"),
+  v.literal("course_chat"),
 );
 
 const notificationActionValidator = v.union(
@@ -63,6 +62,8 @@ const notificationPayloadFields = {
   announcementBody: v.optional(v.string()),
   announcementUrl: v.optional(v.string()),
   dedupeKey: v.string(),
+  chatMessageCount: v.optional(v.number()),
+  chatReadThrough: v.optional(v.number()),
 };
 
 const notificationFields = {
@@ -92,16 +93,22 @@ export const list = query({
   returns: paginationResultValidator(notificationValidator),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
-    return await ctx.db
+    const result = await ctx.db
       .query("systemNotifications")
       .withIndex("by_recipient_and_created_at", (index) =>
         index.eq("recipientId", user._id),
       )
       .order("desc")
-      .paginate(args.paginationOpts);
+      .paginate(notificationPaginationOptions(args.paginationOpts));
+    return {
+      ...result,
+      page: await filterVisibleNotifications(ctx, result.page),
+    };
   },
 });
 
+// Compatibility for already-open clients. The new bell uses listUnread below
+// to count beyond this bounded window without skipping visible notifications.
 export const getUnreadCount = query({
   args: {},
   returns: v.number(),
@@ -112,8 +119,26 @@ export const getUnreadCount = query({
       .withIndex("by_recipient_and_read_at_and_created_at", (index) =>
         index.eq("recipientId", user._id).eq("readAt", undefined),
       )
+      .order("desc")
       .take(unreadLimit);
-    return notifications.length;
+    return (await filterVisibleNotifications(ctx, notifications)).length;
+  },
+});
+
+export const listUnread = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(v.id("systemNotifications")),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const result = await ctx.db
+      .query("systemNotifications")
+      .withIndex("by_recipient_and_read_at_and_created_at", (index) =>
+        index.eq("recipientId", user._id).eq("readAt", undefined),
+      )
+      .order("desc")
+      .paginate(notificationPaginationOptions(args.paginationOpts));
+    const visible = await filterVisibleNotifications(ctx, result.page);
+    return { ...result, page: visible.map((item) => item._id) };
   },
 });
 
@@ -127,6 +152,8 @@ export const markRead = mutation({
       args.notificationId,
     );
     if (!notification || notification.recipientId !== user._id) return null;
+    // Chat navigation acknowledges only messages actually displayed in the chat.
+    if (notification.kind === "course_chat") return null;
     if (notification.readAt === undefined) {
       await ctx.db.patch("systemNotifications", notification._id, {
         readAt: Date.now(),
@@ -139,17 +166,26 @@ export const markRead = mutation({
 async function markUnreadBatch(
   ctx: Parameters<typeof createSystemNotification>[0],
   recipientId: SystemNotificationInput["recipientId"],
+  through: number,
 ) {
   const unread = await ctx.db
     .query("systemNotifications")
     .withIndex("by_recipient_and_read_at_and_created_at", (index) =>
-      index.eq("recipientId", recipientId).eq("readAt", undefined),
+      index
+        .eq("recipientId", recipientId)
+        .eq("readAt", undefined)
+        .lte("createdAt", through),
     )
     .take(markReadBatchSize);
   const readAt = Date.now();
   await Promise.all(
     unread.map((notification) =>
-      ctx.db.patch("systemNotifications", notification._id, { readAt }),
+      ctx.db.patch("systemNotifications", notification._id, {
+        readAt,
+        ...(notification.kind === "course_chat"
+          ? { chatReadThrough: through }
+          : {}),
+      }),
     ),
   );
   return unread.length;
@@ -160,12 +196,20 @@ export const markAllRead = mutation({
   returns: v.null(),
   handler: async (ctx) => {
     const user = await getCurrentUserOrThrow(ctx);
-    const marked = await markUnreadBatch(ctx, user._id);
+    const latest = await ctx.db
+      .query("systemNotifications")
+      .withIndex("by_recipient_and_created_at", (q) =>
+        q.eq("recipientId", user._id),
+      )
+      .order("desc")
+      .first();
+    const through = latest?.createdAt ?? 0;
+    const marked = await markUnreadBatch(ctx, user._id, through);
     if (marked === markReadBatchSize) {
       await ctx.scheduler.runAfter(
         0,
         internal.systemNotifications.markAllReadInternal,
-        { recipientId: user._id },
+        { recipientId: user._id, through },
       );
     }
     return null;
@@ -173,15 +217,16 @@ export const markAllRead = mutation({
 });
 
 export const markAllReadInternal = internalMutation({
-  args: { recipientId: v.id("users") },
+  args: { recipientId: v.id("users"), through: v.optional(v.number()) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const marked = await markUnreadBatch(ctx, args.recipientId);
+    const through = args.through ?? Date.now();
+    const marked = await markUnreadBatch(ctx, args.recipientId, through);
     if (marked === markReadBatchSize) {
       await ctx.scheduler.runAfter(
         0,
         internal.systemNotifications.markAllReadInternal,
-        args,
+        { ...args, through },
       );
     }
     return null;

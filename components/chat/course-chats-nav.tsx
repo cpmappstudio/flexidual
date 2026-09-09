@@ -26,9 +26,16 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { toast } from "sonner";
+import type { Id } from "@/convex/_generated/dataModel";
+import { UnreadIndicator } from "@/components/notifications/unread-indicator";
 
-export function CourseChatsNav() {
+export function CourseChatsNav({
+  unreadChats,
+}: {
+  unreadChats: ReadonlyMap<Id<"classes">, number>;
+}) {
   const t = useTranslations("navigation");
+  const notificationT = useTranslations("systemNotifications");
   const pathname = usePathname();
   const basePath = useOrgBasePath();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -96,11 +103,20 @@ export function CourseChatsNav() {
                       className="h-11 gap-3 px-2 text-sm group-data-[collapsible=icon]:p-1!"
                     >
                       <Link href={href}>
-                        <CurriculumIcon
-                          iconKey={course.curriculumIconKey}
-                          className="size-7"
-                          size={28}
-                        />
+                        <span className="relative shrink-0">
+                          <CurriculumIcon
+                            iconKey={course.curriculumIconKey}
+                            className="size-7"
+                            size={28}
+                          />
+                          <UnreadIndicator
+                            count={unreadChats.get(course._id) ?? 0}
+                            dot
+                            label={notificationT("unreadMessages", {
+                              count: unreadChats.get(course._id) ?? 0,
+                            })}
+                          />
+                        </span>
                         <span>{course.name}</span>
                       </Link>
                     </SidebarMenuButton>

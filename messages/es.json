@@ -1333,6 +1333,8 @@
     "selectedRows": "{selected} de {total} fila(s) seleccionada(s)"
   },
   "systemNotifications": {
+    "unreadChats": "{count, plural, one {# chat con mensajes pendientes} other {# chats con mensajes pendientes}}",
+    "unreadMessages": "{count, plural, one {# mensaje pendiente} other {# mensajes pendientes}}",
     "title": "Notificaciones",
     "description": "Novedades sobre tus cursos, clases y accesos.",
     "open": "Abrir notificaciones",
@@ -1350,6 +1352,10 @@
       "courseEnrollmentAdded": {
         "title": "Inscripción a curso",
         "body": "Fuiste inscrito en {className}."
+      },
+      "course_chat": {
+        "title": "Chat del curso",
+        "body": "{count, plural, one {Tienes # mensaje nuevo} other {Tienes # mensajes nuevos}} en {className}."
       },
       "courseEnrollmentRemoved": {
         "title": "Inscripción finalizada",

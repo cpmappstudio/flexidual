@@ -146,6 +146,7 @@ export default defineSchema({
     chatStudentsMuted: v.optional(v.boolean()),
     chatDisabled: v.optional(v.boolean()),
     chatArchivedAt: v.optional(v.number()),
+    chatNotificationsClearedThrough: v.optional(v.number()),
 
     // Status
     isActive: v.boolean(),
@@ -381,6 +382,7 @@ export default defineSchema({
       v.literal("role_changed"),
       v.literal("organization_membership_changed"),
       v.literal("announcement"),
+      v.literal("course_chat"),
     ),
     action: v.optional(
       v.union(v.literal("added"), v.literal("removed"), v.literal("changed")),
@@ -407,6 +409,8 @@ export default defineSchema({
     announcementBody: v.optional(v.string()),
     announcementUrl: v.optional(v.string()),
     dedupeKey: v.string(),
+    chatMessageCount: v.optional(v.number()),
+    chatReadThrough: v.optional(v.number()),
     createdAt: v.number(),
     readAt: v.optional(v.number()),
   })
@@ -417,6 +421,8 @@ export default defineSchema({
       "createdAt",
     ])
     .index("by_dedupe_key", ["dedupeKey"])
+    .index("by_recipient_and_kind_and_read_at", ["recipientId", "kind", "readAt"])
+    .index("by_class_and_kind", ["classId", "kind"])
     .index("by_schedule_and_kind", ["scheduleId", "kind"]),
 
   /**

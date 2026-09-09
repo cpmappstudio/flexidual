@@ -1,5 +1,7 @@
-import type { Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { PaginationOptions } from "convex/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { canAccessClass } from "../permissions";
 
 export type SystemNotificationKind =
   | "course_enrollment"
@@ -9,6 +11,7 @@ export type SystemNotificationKind =
   | "recording_available"
   | "role_changed"
   | "organization_membership_changed"
+  | "course_chat"
   | "announcement";
 
 export type SystemNotificationAction = "added" | "removed" | "changed";
@@ -40,7 +43,46 @@ export type SystemNotificationInput = {
   announcementUrl?: string;
   dedupeKey: string;
   createdAt?: number;
+  chatMessageCount?: number;
+  chatReadThrough?: number;
 };
+
+// Re-check course access on reads as enrollment/assignments can change independently.
+export async function isNotificationVisible(
+  ctx: QueryCtx | MutationCtx,
+  notification: Doc<"systemNotifications">,
+) {
+  if (notification.kind !== "course_chat") return true;
+  if (!notification.classId || !notification.chatMessageCount) return false;
+  const course = await ctx.db.get("classes", notification.classId);
+  return Boolean(
+    course &&
+      course.chatArchivedAt === undefined &&
+      notification.createdAt > (course.chatNotificationsClearedThrough ?? 0) &&
+      (await canAccessClass(ctx, notification.recipientId, course)),
+  );
+}
+
+export function notificationPaginationOptions(options: PaginationOptions) {
+  return {
+    ...options,
+    maximumRowsRead: Math.max(1, Math.min(options.maximumRowsRead ?? 100, 100)),
+    maximumBytesRead: Math.max(
+      1,
+      Math.min(options.maximumBytesRead ?? 1_000_000, 1_000_000),
+    ),
+  };
+}
+
+export async function filterVisibleNotifications(
+  ctx: QueryCtx,
+  notifications: Doc<"systemNotifications">[],
+) {
+  const visible = await Promise.all(
+    notifications.map((item) => isNotificationVisible(ctx, item)),
+  );
+  return notifications.filter((_, index) => visible[index]);
+}
 
 export async function createSystemNotification(
   ctx: MutationCtx,
@@ -72,9 +114,7 @@ export async function deleteStartingSoonNotifications(
     const notifications = await ctx.db
       .query("systemNotifications")
       .withIndex("by_schedule_and_kind", (query) =>
-        query
-          .eq("scheduleId", scheduleId)
-          .eq("kind", "class_starting_soon"),
+        query.eq("scheduleId", scheduleId).eq("kind", "class_starting_soon"),
       )
       .collect();
     await Promise.all(

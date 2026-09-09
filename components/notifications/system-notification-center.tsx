@@ -13,14 +13,9 @@ import {
   Megaphone,
   Shield,
 } from "lucide-react";
-import {
-  useConvexAuth,
-  useMutation,
-  usePaginatedQuery,
-  useQuery,
-} from "convex/react";
+import { useConvexAuth, useMutation, usePaginatedQuery } from "convex/react";
 import { useFormatter, useNow, useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -39,9 +34,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useUnreadNotificationCount } from "@/hooks/use-unread-notification-count";
 import { useRouter } from "@/i18n/navigation";
 import { getSystemNotificationHref } from "@/lib/system-notification-navigation";
 import { cn } from "@/lib/utils";
+import { UnreadIndicator } from "./unread-indicator";
 
 type SystemNotification = Doc<"systemNotifications">;
 
@@ -64,6 +61,17 @@ function getNotificationTone(notification: SystemNotification) {
 }
 
 function NotificationIcon({ kind }: Pick<SystemNotification, "kind">) {
+  if (kind === "course_chat")
+    return (
+      <Image
+        src="/chat-icon.svg"
+        alt=""
+        width={24}
+        height={24}
+        unoptimized
+        aria-hidden="true"
+      />
+    );
   const Icon =
     kind === "class_starting_soon"
       ? AlarmClock
@@ -131,6 +139,7 @@ function NotificationItem({
   const organizationName =
     notification.campusName ?? notification.schoolName ?? "";
   const bodyValues = {
+    count: notification.chatMessageCount ?? 0,
     className: notification.className ?? t("fallbackClassName"),
     organizationName: organizationName || t("fallbackOrganizationName"),
     previousOrganizationName:
@@ -209,6 +218,9 @@ function NotificationFeed({ onClose }: { onClose: () => void }) {
   );
   const markRead = useMutation(api.systemNotifications.markRead);
   const markAllRead = useMutation(api.systemNotifications.markAllRead);
+  useEffect(() => {
+    if (results.length === 0 && status === "CanLoadMore") loadMore(20);
+  }, [results.length, status, loadMore]);
 
   const handleSelect = async (notification: SystemNotification) => {
     if (notification.readAt === undefined) {
@@ -289,11 +301,7 @@ function NotificationFeed({ onClose }: { onClose: () => void }) {
 export function SystemNotificationCenter() {
   const t = useTranslations("systemNotifications");
   const isMobile = useIsMobile();
-  const { isAuthenticated } = useConvexAuth();
-  const unreadCount = useQuery(
-    api.systemNotifications.getUnreadCount,
-    isAuthenticated ? {} : "skip",
-  );
+  const unreadCount = useUnreadNotificationCount();
   const [open, setOpen] = useState(false);
   const hasUnread = (unreadCount ?? 0) > 0;
   const unreadLabel = hasUnread
@@ -316,11 +324,7 @@ export function SystemNotificationCenter() {
         unoptimized
         className="h-7 w-auto"
       />
-      {hasUnread && (
-        <span className="absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-4 font-semibold text-white">
-          {(unreadCount ?? 0) >= 100 ? "99+" : unreadCount}
-        </span>
-      )}
+      <UnreadIndicator count={unreadCount ?? 0} label={unreadLabel} />
     </Button>
   );
 

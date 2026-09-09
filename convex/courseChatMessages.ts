@@ -84,6 +84,18 @@ async function deleteMessageBatch(
   return messages.length === DELETE_BATCH_SIZE;
 }
 
+async function getChatClearThrough(ctx: MutationCtx, course: Doc<"classes">) {
+  const latest = await ctx.db
+    .query("courseChatMessages")
+    .withIndex("by_class", (q) => q.eq("classId", course._id))
+    .order("desc")
+    .first();
+  return Math.max(
+    course.chatNotificationsClearedThrough ?? 0,
+    latest?._creationTime ?? 0,
+  );
+}
+
 async function isChatMutedForUser(
   ctx: QueryCtx | MutationCtx,
   classData: Doc<"classes">,
@@ -183,11 +195,17 @@ export const send = mutation({
       throw new ConvexError("MESSAGE_TOO_LONG");
     }
 
-    return await ctx.db.insert("courseChatMessages", {
+    const messageId = await ctx.db.insert("courseChatMessages", {
       classId: classData._id,
       authorId: currentUser._id,
       body,
     });
+    await ctx.scheduler.runAfter(0, internal.courseChatNotifications.publish, {
+      messageId,
+      cursor: null,
+      legacyOffset: 0,
+    });
+    return messageId;
   },
 });
 
@@ -304,7 +322,10 @@ export const clear = mutation({
     }
     assertChatActive(classData);
 
-    const throughCreationTime = Date.now();
+    const throughCreationTime = await getChatClearThrough(ctx, classData);
+    await ctx.db.patch("classes", classData._id, {
+      chatNotificationsClearedThrough: throughCreationTime,
+    });
     if (await deleteMessageBatch(ctx, classData._id, throughCreationTime)) {
       await ctx.scheduler.runAfter(
         0,
@@ -339,6 +360,14 @@ export const setArchived = mutation({
 
     await ctx.db.patch("classes", classData._id, {
       chatArchivedAt: args.archived ? Date.now() : undefined,
+      ...(args.archived
+        ? {
+            chatNotificationsClearedThrough: await getChatClearThrough(
+              ctx,
+              classData,
+            ),
+          }
+        : {}),
     });
     return null;
   },
@@ -363,6 +392,10 @@ export const archiveAtCourseEnd = internalMutation({
 
     await ctx.db.patch("classes", classData._id, {
       chatArchivedAt: Date.now(),
+      chatNotificationsClearedThrough: await getChatClearThrough(
+        ctx,
+        classData,
+      ),
     });
     return null;
   },

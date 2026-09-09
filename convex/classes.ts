@@ -114,6 +114,7 @@ const classFields = {
   chatStudentsMuted: v.optional(v.boolean()),
   chatDisabled: v.optional(v.boolean()),
   chatArchivedAt: v.optional(v.number()),
+  chatNotificationsClearedThrough: v.optional(v.number()),
   isActive: v.boolean(),
   createdAt: v.number(),
   createdBy: v.id("users"),
@@ -2491,6 +2492,9 @@ export const remove = mutation({
 
     await ctx.db.delete(args.id);
     await ctx.scheduler.runAfter(0, internal.courseChatMessages.removeByClass, {
+      classId: args.id,
+    });
+    await ctx.scheduler.runAfter(0, internal.courseChatNotifications.removeByClass, {
       classId: args.id,
     });
     return { deleted: true } as const;

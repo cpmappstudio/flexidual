@@ -5,6 +5,14 @@ import { getSystemNotificationHref } from "../lib/system-notification-navigation
 test("routes class notifications to their contextual destinations", () => {
   assert.equal(
     getSystemNotificationHref({
+      kind: "course_chat",
+      organizationSlug: "main-campus",
+      classId: "class-id" as never,
+    }),
+    "/main-campus/chats/class-id",
+  );
+  assert.equal(
+    getSystemNotificationHref({
       kind: "class_starting_soon",
       organizationSlug: "main-campus",
       roomName: "science room",

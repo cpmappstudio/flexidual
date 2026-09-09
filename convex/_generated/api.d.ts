@@ -13,6 +13,7 @@ import type * as calendar from "../calendar.js";
 import type * as campuses from "../campuses.js";
 import type * as classes from "../classes.js";
 import type * as courseChatMessages from "../courseChatMessages.js";
+import type * as courseChatNotifications from "../courseChatNotifications.js";
 import type * as crons from "../crons.js";
 import type * as curriculums from "../curriculums.js";
 import type * as grades from "../grades.js";
@@ -66,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   campuses: typeof campuses;
   classes: typeof classes;
   courseChatMessages: typeof courseChatMessages;
+  courseChatNotifications: typeof courseChatNotifications;
   crons: typeof crons;
   curriculums: typeof curriculums;
   grades: typeof grades;
