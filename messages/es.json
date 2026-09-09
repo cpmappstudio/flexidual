@@ -961,7 +961,7 @@
       "totalSessions": "Total Programado",
       "sessionsCompleted": "{count} clases completadas",
       "currentLevel": "Nivel Actual",
-      "classAttendance": "Asistencia a clases",
+      "classAttendance": "Asistencia de clases Standard",
       "attendanceSummary": "Has asistido a {attended} de {completed} {completed, plural, one {clase realizada} other {clases realizadas}}.",
       "attendanceVerifiedSummary": "{verified, plural, one {# clase verificada} other {# clases verificadas}}.",
       "pendingVerificationSummary": "{count, plural, one {# clase está pendiente de verificación.} other {# clases están pendientes de verificación.}}",

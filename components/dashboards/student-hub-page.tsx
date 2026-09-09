@@ -446,14 +446,14 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                   <div className="min-w-0 xl:border-l xl:border-border/60 xl:pl-5">
                     <div
                       className={cn(
-                        "hidden xl:block",
+                        "mb-3 xl:mb-0",
                         editableStudentOrgId && "xl:pr-28",
                       )}
                     >
-                      <h3 className="text-xl font-bold text-foreground">
+                      <h3 className="text-sm font-bold text-foreground xl:text-xl">
                         {t("student.profile.classAttendance")}
                       </h3>
-                      <p className="mt-1 text-sm font-medium text-muted-foreground">
+                      <p className="mt-1 hidden text-sm font-medium text-muted-foreground xl:block">
                         {verifiedSessions > 0
                           ? t("student.profile.attendanceVerifiedSummary", {
                               verified: verifiedSessions,

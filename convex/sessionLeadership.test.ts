@@ -1359,6 +1359,121 @@ test("student profiles exclude early closures and retain genuine live extensions
   );
 });
 
+for (const hasStandardSessions of [true, false]) {
+  test(`attendance statistics exclude external sessions in ${hasStandardSessions ? "mixed" : "external-only"} courses`, async () => {
+    const { t, data } = await setupLeadershipTest();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("roleAssignments", {
+        userId: data.studentId,
+        orgId: data.campusId,
+        orgType: "campus",
+        role: "student",
+        schoolId: data.schoolId,
+        assignedAt: NOW,
+        assignedBy: data.adminId,
+      });
+      const existing = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", data.classId))
+        .collect();
+      for (const schedule of existing)
+        await ctx.db.patch(schedule._id, { status: "cancelled" });
+
+      const addSession = async (
+        sessionType: "live" | "abeka" | "ignitia" | undefined,
+        status: "scheduled" | "completed" | "cancelled",
+        attendance?: "present" | "partial" | "absent" | "excused",
+      ) => {
+        const scheduleId = await ctx.db.insert("classSchedule", {
+          classId: data.classId,
+          schoolId: data.schoolId,
+          sessionType,
+          status,
+          scheduledStart:
+            status === "scheduled" ? NOW + 60_000 : NOW - 3_600_000,
+          scheduledEnd: status === "scheduled" ? NOW + 3_600_000 : NOW - 60_000,
+          roomName: `attendance-${sessionType}-${status}-${attendance}`,
+          sessionClosureStatus: attendance ? "completed" : undefined,
+          createdAt: NOW,
+          createdBy: data.teacherId,
+        });
+        if (attendance)
+          await ctx.db.insert("studentAttendanceRecords", {
+            scheduleId,
+            studentId: data.studentId,
+            status: attendance,
+            confirmedBy: data.teacherId,
+            confirmedAt: NOW,
+            lastUpdatedBy: data.teacherId,
+            lastUpdatedAt: NOW,
+          });
+      };
+      const types = hasStandardSessions
+        ? (["live", "abeka", "ignitia"] as const)
+        : (["abeka", "ignitia"] as const);
+      for (const type of types) {
+        for (const status of [
+          "present",
+          "partial",
+          "absent",
+          "excused",
+        ] as const) {
+          await addSession(type, "completed", status);
+        }
+        await addSession(type, "completed");
+        await addSession(type, "scheduled");
+        await addSession(type, "cancelled", "present");
+      }
+      if (hasStandardSessions)
+        await addSession(undefined, "completed", "present");
+    });
+
+    const dashboard = await t
+      .withIdentity({ subject: "leader-admin" })
+      .query(api.student.getStudentDashboardStats, {
+        studentId: data.studentId,
+        orgSlug: "leadership-campus",
+        now: NOW,
+      });
+    const counts = hasStandardSessions
+      ? { present: 2, partial: 1, absent: 1, excused: 1 }
+      : { present: 0, partial: 0, absent: 0, excused: 0 };
+    expect(dashboard?.overall).toEqual({
+      activeCourses: 1,
+      totalSessions: hasStandardSessions ? 7 : 0,
+      verifiedSessions: hasStandardSessions ? 5 : 0,
+      pendingVerification: hasStandardSessions ? 1 : 0,
+      upcomingSessions: hasStandardSessions ? 1 : 0,
+      attendanceCounts: counts,
+    });
+    expect(dashboard?.classes).toHaveLength(1);
+    expect(dashboard?.classes[0].stats).toEqual({
+      totalClasses: hasStandardSessions ? 7 : 0,
+      verifiedClasses: hasStandardSessions ? 5 : 0,
+      pendingVerification: hasStandardSessions ? 1 : 0,
+      upcomingClasses: hasStandardSessions ? 1 : 0,
+      attendanceCounts: counts,
+    });
+    expect(
+      dashboard?.upcomingLessons.map((lesson) => lesson.sessionType).sort(),
+    ).toEqual(
+      hasStandardSessions ? ["abeka", "ignitia", "live"] : ["abeka", "ignitia"],
+    );
+    const selfDashboard = await t
+      .withIdentity({ subject: "leader-student" })
+      .query(api.student.getStudentDashboardStats, { now: NOW });
+    expect(selfDashboard?.overall).toEqual(dashboard?.overall);
+    expect(
+      await t.run((ctx) =>
+        ctx.db
+          .query("studentAttendanceRecords")
+          .withIndex("by_student", (q) => q.eq("studentId", data.studentId))
+          .collect(),
+      ),
+    ).toHaveLength(hasStandardSessions ? 16 : 10);
+  });
+}
+
 test("dashboards count final attendance states and keep pending verification separate", async () => {
   const { t, data } = await setupLeadershipTest();
   const teacher = t.withIdentity({ subject: "leader-teacher" });

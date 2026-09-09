@@ -12,6 +12,7 @@ import { getClassTimeZone } from "./model/timeZone";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 import {
+  isExternalClassSession,
   isLiveClassSession,
   isUpcomingClassSession,
 } from "../lib/class-session";
@@ -291,7 +292,9 @@ export const getStudentDashboardStats = query({
           ]);
 
         const countableSchedules = schedules.filter(
-          (schedule) => schedule.status !== "cancelled",
+          (schedule) =>
+            schedule.status !== "cancelled" &&
+            !isExternalClassSession(schedule.sessionType),
         );
         const completedSchedules = countableSchedules.filter(
           (schedule) => schedule.status === "completed",

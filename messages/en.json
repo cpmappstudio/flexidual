@@ -961,7 +961,7 @@
       "totalSessions": "Total Scheduled",
       "sessionsCompleted": "{count} classes completed",
       "currentLevel": "Current Level",
-      "classAttendance": "Class Attendance",
+      "classAttendance": "Standard Class Attendance",
       "attendanceSummary": "You have attended {attended} of {completed} {completed, plural, one {class held} other {classes held}}.",
       "attendanceVerifiedSummary": "{verified, plural, one {# class verified} other {# classes verified}}.",
       "pendingVerificationSummary": "{count, plural, one {# class is pending verification.} other {# classes are pending verification.}}",
