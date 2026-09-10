@@ -604,7 +604,10 @@ test("course access is copied to the session and scoped to active students", asy
     ...currentArgs,
     now: now - 60_000,
   });
-  expect(nextAtStart.page[0].nextSession?.roomName).toBe("room-a-next");
+  expect(
+    nextAtStart.page.find((course) => course._id === data.classAId)?.nextSession
+      ?.roomName,
+  ).toBe("room-a-next");
   for (const sessionType of ["ignitia", "abeka"] as const) {
     await t.run((ctx) => ctx.db.patch(data.scheduleAId, { sessionType }));
     expect(
@@ -663,7 +666,10 @@ test("course access is copied to the session and scoped to active students", asy
     now,
     paginationOpts: { numItems: 10, cursor: null },
   });
-  expect(staffCatalog.page.map((course) => course.name)).toEqual(["Class A"]);
+  expect(staffCatalog.page.map((course) => course.name).sort()).toEqual([
+    "Class A",
+    "Private Class A",
+  ]);
   expect(
     staffCatalog.page.find((course) => course.name === "Class A")?.nextSession,
   ).toMatchObject({ roomName: "room-a-next", canOpen: true });
@@ -769,7 +775,7 @@ test("course access is copied to the session and scoped to active students", asy
     (
       await asTeacher.query(api.classes.listCurrentCatalog, currentArgs)
     ).page.map((course) => course.name),
-  ).toEqual(["Class A"]);
+  ).toEqual(["Class A", "Private Class A"]);
   await t.run((ctx) => ctx.db.delete(privateScheduleId));
 
   const catalogFilters = await asTeacher.query(api.classes.getCatalogFilters, {
@@ -804,7 +810,10 @@ test("course access is copied to the session and scoped to active students", asy
     campusId: data.campusAId,
     paginationOpts: { numItems: 10, cursor: null },
   });
-  expect(campusCatalog.page.map((course) => course.name)).toEqual(["Class A"]);
+  expect(campusCatalog.page.map((course) => course.name).sort()).toEqual([
+    "Class A",
+    "Private Class A",
+  ]);
   expect(
     (
       await asCatalogAdmin.query(api.classes.getCatalogFilters, {
@@ -812,14 +821,16 @@ test("course access is copied to the session and scoped to active students", asy
       })
     ).canViewPrivateCourses,
   ).toBe(true);
-  await expect(
-    asPrincipal.query(api.classes.listCatalog, {
-      orgSlug: "campus-a",
-      now,
-      visibility: "all",
-      paginationOpts: { numItems: 10, cursor: null },
-    }),
-  ).rejects.toThrow("PERMISSION_DENIED");
+  const principalCatalog = await asPrincipal.query(api.classes.listCatalog, {
+    orgSlug: "campus-a",
+    now,
+    visibility: "all",
+    paginationOpts: { numItems: 10, cursor: null },
+  });
+  expect(principalCatalog.page.map((course) => course.name).sort()).toEqual([
+    "Class A",
+    "Private Class A",
+  ]);
   await expect(
     asTeacher.query(api.classes.getCatalogFilters, {
       orgSlug: "campus-a",

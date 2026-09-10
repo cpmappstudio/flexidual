@@ -9,6 +9,7 @@ import { DEFAULT_CURRICULUM_ICON } from "../../lib/curriculum-icons";
 import { isLiveClassSession } from "../../lib/class-session";
 import { classHasLiveSessions } from "./classType";
 import { curriculumIconValidator } from "./curriculumIcons";
+import { isStudentEnrolled } from "./enrollments";
 import { canStudentAccessLiveClass, normalizeLiveAccess } from "./liveAccess";
 import { resolveMembershipSchoolId } from "./membership";
 import {
@@ -46,6 +47,7 @@ export const catalogCourseValidator = v.object({
   gradeCode: v.optional(v.string()),
   gradeName: v.optional(v.string()),
   accessMode: v.union(v.literal("private"), v.literal("school")),
+  canViewDetails: v.boolean(),
   liveSession: v.optional(catalogSessionValidator),
   currentSession: v.optional(catalogSessionValidator),
   nextSession: v.optional(catalogSessionValidator),
@@ -208,8 +210,9 @@ async function getCatalogAccess(
       scopedAssignments.some(
         ({ assignment, schoolId: assignmentSchoolId }) =>
           assignmentSchoolId === schoolId &&
-          assignment.role === "admin" &&
-          assignment.orgType === "school",
+          ((assignment.role === "admin" && assignment.orgType === "school") ||
+            (assignment.role === "principal" &&
+              assignment.orgType === "campus")),
       ));
   const studentMemberships = schoolId
     ? scopedAssignments.filter(
@@ -256,7 +259,33 @@ async function isCatalogCourse(ctx: QueryCtx, classData: Doc<"classes">) {
   return await classHasLiveSessions(ctx, classData._id);
 }
 
-function isVisibleCourse(access: CatalogAccess, classData: Doc<"classes">) {
+type CoursePermissions = {
+  staffCanOpen: boolean;
+  isEnrolled: boolean;
+  canViewDetails: boolean;
+};
+
+async function getCoursePermissions(
+  ctx: QueryCtx,
+  access: CatalogAccess,
+  course: Doc<"classes">,
+): Promise<CoursePermissions> {
+  const staffCanOpen = canOpenCourse(access, course);
+  const isEnrolled =
+    !staffCanOpen && (await isStudentEnrolled(ctx, course, access.user._id));
+  return {
+    staffCanOpen,
+    isEnrolled,
+    canViewDetails: staffCanOpen || isEnrolled,
+  };
+}
+
+function isVisibleCourse(
+  access: CatalogAccess,
+  classData: Doc<"classes">,
+  permissions: CoursePermissions,
+) {
+  if (permissions.canViewDetails) return true;
   const isPublic = normalizeLiveAccess(classData.liveAccess).mode === "school";
   if (!isPublic) return access.canViewPrivateCourses;
   if (access.isStaffViewer) return true;
@@ -546,7 +575,9 @@ function toCatalogCourse(
     liveSchedule,
     nextSchedule,
     currentSchedule,
+    permissions,
   }: {
+    permissions: CoursePermissions;
     liveSchedule?: Doc<"classSchedule">;
     nextSchedule?: Doc<"classSchedule">;
     currentSchedule?: Doc<"classSchedule">;
@@ -567,7 +598,7 @@ function toCatalogCourse(
       : undefined;
   const timeZone =
     classData.timeZone ?? campus?.timeZone ?? school?.timeZone ?? "UTC";
-  const staffCanOpen = canOpenCourse(access, classData);
+  const { staffCanOpen, isEnrolled, canViewDetails } = permissions;
   const studentGrade = getStudentGrade(access, classData);
   const toSession = (schedule: Doc<"classSchedule">, canOpen: boolean) => ({
     title: schedule.title ?? classData.name,
@@ -581,7 +612,7 @@ function toCatalogCourse(
     schedule.status !== "completed" &&
     (staffCanOpen ||
       canStudentAccessLiveClass({
-        isEnrolled: false,
+        isEnrolled,
         liveAccess: schedule.liveAccess,
         studentGrade,
         classSchoolId: schoolId,
@@ -590,6 +621,7 @@ function toCatalogCourse(
 
   return {
     _id: classData._id,
+    canViewDetails,
     name: classData.name,
     ...(classData.description !== undefined && {
       description: classData.description,
@@ -666,9 +698,10 @@ async function getCatalogSchedulesForClass(
 async function enrichCourses(
   ctx: QueryCtx,
   access: CatalogAccess,
-  classes: Doc<"classes">[],
+  entries: { course: Doc<"classes">; permissions: CoursePermissions }[],
   now: number,
 ) {
+  const classes = entries.map(({ course }) => course);
   const [resources, schedules] = await Promise.all([
     loadResources(ctx, classes),
     Promise.all(
@@ -678,7 +711,10 @@ async function enrichCourses(
     ),
   ]);
   return classes.map((classData, index) =>
-    toCatalogCourse(access, resources, classData, schedules[index]),
+    toCatalogCourse(access, resources, classData, {
+      ...schedules[index],
+      permissions: entries[index].permissions,
+    }),
   );
 }
 
@@ -688,14 +724,17 @@ async function resolveCatalogFilters(
   filters: CatalogFilters,
 ) {
   await validateCatalogCampus(ctx, access.schoolId, filters.campusId);
-  const visibility =
-    filters.visibility ?? (access.canViewPrivateCourses ? "all" : "public");
-  if (visibility !== "public" && !access.canViewPrivateCourses) {
+  if (
+    filters.visibility &&
+    filters.visibility !== "public" &&
+    !access.canViewPrivateCourses
+  ) {
     throw new ConvexError("PERMISSION_DENIED");
   }
   return {
     ...filters,
-    visibility,
+    // Without an explicit filter, authorization selects public or owned courses.
+    visibility: filters.visibility ?? "all",
     search: filters.search?.trim().toLocaleLowerCase() || undefined,
   };
 }
@@ -755,27 +794,34 @@ export async function listCurrentCatalogCourses(
     await Promise.all(classIds.map((id) => ctx.db.get(id)))
   ).filter((course): course is Doc<"classes"> => Boolean(course?.isActive));
   const resources = await loadResources(ctx, classes);
+  const entries = await Promise.all(
+    classes.map(async (course) => ({
+      course,
+      permissions: await getCoursePermissions(ctx, access, course),
+    })),
+  );
   const visibleClasses = new Map(
-    classes
+    entries
       .filter(
-        (course) =>
+        ({ course, permissions }) =>
           (!access.schoolId ||
             getCourseSchoolId(course, resources) === access.schoolId) &&
           course.classType !== "abeka" &&
           course.classType !== "ignitia" &&
           matchesFilters(course, normalizedFilters) &&
-          isVisibleCourse(access, course),
+          isVisibleCourse(access, course, permissions),
       )
-      .map((course) => [course._id, course]),
+      .map((entry) => [entry.course._id, entry]),
   );
   return {
     ...schedules,
     page: schedules.page.flatMap((schedule) => {
-      const course = schedule.classId && visibleClasses.get(schedule.classId);
-      return course
+      const entry = schedule.classId && visibleClasses.get(schedule.classId);
+      return entry
         ? [
-            toCatalogCourse(access, resources, course, {
+            toCatalogCourse(access, resources, entry.course, {
               currentSchedule: schedule,
+              permissions: entry.permissions,
             }),
           ]
         : [];
@@ -797,7 +843,11 @@ export async function listCatalogCourses(
     ctx,
     access.schoolId,
     normalizedFilters,
-    paginationOpts,
+    {
+      ...paginationOpts,
+      numItems: Math.min(paginationOpts.numItems, 48),
+      maximumRowsRead: 128,
+    },
   );
   const legacyClasses = await listLegacyClasses(
     ctx,
@@ -805,8 +855,14 @@ export async function listCatalogCourses(
     normalizedFilters,
     paginationOpts.cursor === null,
   );
-  const visibleClasses = [...legacyClasses, ...pageResult.page].filter(
-    (classData) => isVisibleCourse(access, classData),
+  const entries = await Promise.all(
+    [...legacyClasses, ...pageResult.page].map(async (course) => ({
+      course,
+      permissions: await getCoursePermissions(ctx, access, course),
+    })),
+  );
+  const visibleClasses = entries.filter(({ course, permissions }) =>
+    isVisibleCourse(access, course, permissions),
   );
 
   return {

@@ -155,119 +155,128 @@ function CourseTile({
   const href =
     session?.canOpen === true
       ? `/${orgSlug}/classroom/${session.roomName}`
-      : `/${orgSlug}/classes/${course._id}`;
+      : course.canViewDetails === true
+        ? `/${orgSlug}/classes/${course._id}`
+        : undefined;
+  const tileClassName = cn(
+    "w-[18rem] shrink-0 snap-start rounded-lg sm:w-[20rem]",
+    className,
+  );
 
-  return (
+  const content = (
+    <article className="min-w-0">
+      <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-sidebar-border bg-sidebar">
+        <span
+          className="absolute inset-0 opacity-10"
+          style={{ backgroundColor: course.curriculumColor }}
+          aria-hidden="true"
+        />
+        <span
+          className="absolute -top-12 -right-8 size-40 rounded-full opacity-15"
+          style={{ backgroundColor: course.curriculumColor }}
+          aria-hidden="true"
+        />
+        <CurriculumIcon
+          iconKey={course.curriculumIconKey}
+          size={96}
+          className="relative size-20 drop-shadow-sm"
+        />
+        {isLive && (
+          <Badge className="absolute top-3 right-3 bg-destructive uppercase text-white">
+            {t("common.live")}
+          </Badge>
+        )}
+        {course.campusName && (
+          <Badge
+            variant="outline"
+            className={cn(
+              "absolute top-3 left-3 min-w-0 bg-background/90",
+              isLive ? "max-w-[calc(100%-6rem)]" : "max-w-[calc(100%-1.5rem)]",
+            )}
+            aria-label={`${course.campusName} · ${
+              course.accessMode === "private"
+                ? t("catalog.private")
+                : t("catalog.institution")
+            }`}
+            title={course.campusName}
+          >
+            {course.accessMode === "private" ? (
+              <LockKeyhole aria-hidden="true" />
+            ) : (
+              <School aria-hidden="true" />
+            )}
+            <span className="truncate">{course.campusName}</span>
+          </Badge>
+        )}
+      </div>
+
+      <div className="mt-3 flex min-w-0 items-start gap-2.5">
+        <Avatar className="size-8 shrink-0">
+          {course.teacherImageUrl && (
+            <AvatarImage
+              src={course.teacherImageUrl}
+              alt={course.teacherName ?? ""}
+              className="object-cover"
+            />
+          )}
+          <AvatarFallback className="text-[10px]">
+            {initials || <BookOpen className="size-3.5" aria-hidden="true" />}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground">
+            {course.name}
+          </h3>
+          {session?.title && session.title !== course.name && (
+            <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+              {session.title}
+            </p>
+          )}
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {course.curriculumTitle}
+            {course.teacherName ? ` · ${course.teacherName}` : ""}
+          </p>
+          <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            {scheduleLabel && (
+              <span
+                className={cn(
+                  "flex min-w-0 items-center gap-1 font-medium",
+                  isLive && "text-destructive",
+                )}
+              >
+                <CalendarClock
+                  className="size-3.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="truncate">{scheduleLabel}</span>
+              </span>
+            )}
+            {scheduleLabel && (course.gradeName ?? course.gradeCode) && (
+              <span aria-hidden="true">·</span>
+            )}
+            {(course.gradeName ?? course.gradeCode) && (
+              <span className="shrink-0">
+                {course.gradeName ?? course.gradeCode}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+  return href ? (
     <Link
       href={href}
       className={cn(
-        "w-[18rem] shrink-0 snap-start rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-[20rem]",
-        className,
+        tileClassName,
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       )}
       aria-label={`${t("catalog.viewCourse")}: ${course.name}`}
     >
-      <article className="min-w-0">
-        <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-sidebar-border bg-sidebar">
-          <span
-            className="absolute inset-0 opacity-10"
-            style={{ backgroundColor: course.curriculumColor }}
-            aria-hidden="true"
-          />
-          <span
-            className="absolute -top-12 -right-8 size-40 rounded-full opacity-15"
-            style={{ backgroundColor: course.curriculumColor }}
-            aria-hidden="true"
-          />
-          <CurriculumIcon
-            iconKey={course.curriculumIconKey}
-            size={96}
-            className="relative size-20 drop-shadow-sm"
-          />
-          {isLive && (
-            <Badge className="absolute top-3 right-3 bg-destructive uppercase text-white">
-              {t("common.live")}
-            </Badge>
-          )}
-          {course.campusName && (
-            <Badge
-              variant="outline"
-              className={cn(
-                "absolute top-3 left-3 min-w-0 bg-background/90",
-                isLive
-                  ? "max-w-[calc(100%-6rem)]"
-                  : "max-w-[calc(100%-1.5rem)]",
-              )}
-              aria-label={`${course.campusName} · ${
-                course.accessMode === "private"
-                  ? t("catalog.private")
-                  : t("catalog.institution")
-              }`}
-              title={course.campusName}
-            >
-              {course.accessMode === "private" ? (
-                <LockKeyhole aria-hidden="true" />
-              ) : (
-                <School aria-hidden="true" />
-              )}
-              <span className="truncate">{course.campusName}</span>
-            </Badge>
-          )}
-        </div>
-
-        <div className="mt-3 flex min-w-0 items-start gap-2.5">
-          <Avatar className="size-8 shrink-0">
-            {course.teacherImageUrl && (
-              <AvatarImage
-                src={course.teacherImageUrl}
-                alt={course.teacherName ?? ""}
-                className="object-cover"
-              />
-            )}
-            <AvatarFallback className="text-[10px]">
-              {initials || <BookOpen className="size-3.5" aria-hidden="true" />}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground">
-              {course.name}
-            </h3>
-            {session?.title && session.title !== course.name && (
-              <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                {session.title}
-              </p>
-            )}
-            <p className="mt-1 truncate text-xs text-muted-foreground">
-              {course.curriculumTitle}
-              {course.teacherName ? ` · ${course.teacherName}` : ""}
-            </p>
-            <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-              {scheduleLabel && (
-                <span
-                  className={cn(
-                    "flex min-w-0 items-center gap-1 font-medium",
-                    isLive && "text-destructive",
-                  )}
-                >
-                  <CalendarClock
-                    className="size-3.5 shrink-0"
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">{scheduleLabel}</span>
-                </span>
-              )}
-              {scheduleLabel && (course.gradeName ?? course.gradeCode) && (
-                <span aria-hidden="true">·</span>
-              )}
-              {(course.gradeName ?? course.gradeCode) && (
-                <span className="shrink-0">
-                  {course.gradeName ?? course.gradeCode}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </article>
+      {content}
     </Link>
+  ) : (
+    <div className={tileClassName}>{content}</div>
   );
 }
 
@@ -358,9 +367,9 @@ export function CourseCatalog() {
             curriculumId: selectedCurriculumId,
           }),
           ...(selectedTeacherId && { teacherId: selectedTeacherId }),
-          visibility: filterOptions.canViewPrivateCourses
-            ? (selectedVisibility ?? "all")
-            : "public",
+          ...(filterOptions.canViewPrivateCourses && {
+            visibility: selectedVisibility ?? "all",
+          }),
         }
       : "skip";
   const { results, status, loadMore } = usePaginatedQuery(
@@ -368,6 +377,9 @@ export function CourseCatalog() {
     catalogFilters === "skip" ? "skip" : { ...catalogFilters, now },
     { initialNumItems: 24 },
   );
+  useEffect(() => {
+    if (results.length === 0 && status === "CanLoadMore") loadMore(24);
+  }, [results.length, status, loadMore]);
   if (isAuthLoading) {
     return <CatalogSkeleton />;
   }
