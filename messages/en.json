@@ -279,6 +279,8 @@
     "browse": "Browse",
     "chats": "Chats",
     "noChats": "No course chats yet",
+    "searchChats": "Search chats...",
+    "noMatchingChats": "No matching chats",
     "archivedChats": "Archived chats",
     "unarchiveChat": "Unarchive chat",
     "chatRestored": "The chat is active again.",

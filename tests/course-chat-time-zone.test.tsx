@@ -5,7 +5,12 @@ import { hydrateRoot } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, expect, test, vi } from "vitest";
 import { CourseChatMessages } from "@/components/chat/course-chat";
+import { CourseChatParticipants } from "@/components/chat/course-chat-participants";
 import type { Id } from "@/convex/_generated/dataModel";
+
+vi.mock("@/i18n/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
 
 const state = vi.hoisted(() => ({
   timestamp: 0,
@@ -62,7 +67,7 @@ function simulateBrowserTimeZone(timeZone: string) {
     });
 }
 
-function Chat() {
+function Chat({ children }: PropsWithChildren) {
   return (
     <NextIntlClientProvider
       locale="en"
@@ -71,10 +76,15 @@ function Chat() {
         classroom: {
           classChatDescription: "Course chat",
           scrollToLatestMessages: "Latest messages",
+          teacher: "Teacher",
+          tutor: "Tutor",
+          student: "Student",
+          participants: "Participants",
+          courseParticipantsCount: "{count} participants",
         },
       }}
     >
-      <CourseChatMessages courseId={"course" as Id<"classes">} />
+      {children ?? <CourseChatMessages courseId={"course" as Id<"classes">} />}
     </NextIntlClientProvider>
   );
 }
@@ -84,6 +94,64 @@ afterEach(() => {
   vi.restoreAllMocks();
   state.messages = [];
 });
+
+test.each([false, true])(
+  "teacher styling is consistent in chat and participants (own: %s)",
+  (isOwn) => {
+    const roles = ["teacher", "teacher", "tutor", "member"];
+    state.messages = roles
+      .map((role, index) => ({
+        _id: `message-${index}`,
+        _creationTime: index + 1,
+        authorId: role,
+        authorName: role,
+        authorRole: role,
+        body: `Message ${index}`,
+        isOwn: role === "teacher" && isOwn,
+      }))
+      .reverse();
+    const { container, getAllByRole, rerender, getByText } = render(<Chat />);
+    expect(
+      [...container.querySelectorAll('[data-slot="bubble"]')].map((bubble) =>
+        bubble.getAttribute("data-variant"),
+      ),
+    ).toEqual(["default", "default", "tinted", "secondary"]);
+    expect(getAllByRole("img", { name: "Teacher" })).toHaveLength(1);
+    expect(
+      getAllByRole("img", { name: "Teacher" })[0].getAttribute("src"),
+    ).toBe("/professors-icon.svg");
+
+    rerender(
+      <Chat>
+        <CourseChatParticipants
+          classId={"course" as Id<"classes">}
+          participants={(["teacher", "tutor", "student"] as const).map(
+            (role) => ({
+              _id: role as Id<"users">,
+              fullName: `${role} name`,
+              role,
+              isMuted: false,
+            }),
+          )}
+          isOpen
+          canModerate={false}
+          canDisableChat={false}
+          chatSettings={{ studentsMuted: false, disabled: false }}
+        />
+      </Chat>,
+    );
+    expect(getAllByRole("img", { name: "Teacher" })).toHaveLength(1);
+    expect(getByText("teacher name").classList.contains("text-primary")).toBe(
+      true,
+    );
+    expect(getByText("tutor name").classList.contains("text-primary")).toBe(
+      false,
+    );
+    expect(getByText("student name").classList.contains("text-primary")).toBe(
+      false,
+    );
+  },
+);
 
 test.each([
   ["America/Bogota", "2026-09-09T19:08:00Z", "September 9, 2026", "2:08 PM"],

@@ -19,6 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { TeacherIcon } from "@/components/teaching/teacher-icon";
 import { ClassroomLayoutSidebar } from "@/components/classroom/classroom-layout";
 import {
   ContextMenu,
@@ -103,8 +104,19 @@ function ParticipantRow({
         </AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
-        <p className="break-words text-sm font-medium leading-snug whitespace-normal">
+        <p
+          className={cn(
+            "break-words text-sm font-medium leading-snug whitespace-normal",
+            participant.role === "teacher" && "text-primary",
+          )}
+        >
           {participant.fullName}
+          {participant.role === "teacher" && (
+            <>
+              {" "}
+              <TeacherIcon label={t("teacher")} />
+            </>
+          )}
         </p>
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
           <span>{t(participant.role)}</span>

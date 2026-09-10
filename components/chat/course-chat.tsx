@@ -2,6 +2,7 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { TeacherIcon } from "@/components/teaching/teacher-icon";
 import {
   InputGroup,
   InputGroupAddon,
@@ -157,12 +158,13 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
               ) : null}
               {messages.map(({ message, day, startsDay, startsGroup }) => {
                 const isOwn = message.isOwn;
-                const variant = isOwn
-                  ? "default"
-                  : message.authorRole === "teacher" ||
-                      message.authorRole === "tutor"
-                    ? "tinted"
-                    : "secondary";
+                const isTeacher = message.authorRole === "teacher";
+                const variant =
+                  isOwn || isTeacher
+                    ? "default"
+                    : message.authorRole === "tutor"
+                      ? "tinted"
+                      : "secondary";
 
                 return (
                   <Fragment key={message._id}>
@@ -218,6 +220,12 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
                               {startsGroup && (
                                 <span className="text-xs font-bold sm:text-sm">
                                   {message.authorName}
+                                  {isTeacher && (
+                                    <>
+                                      {" "}
+                                      <TeacherIcon label={t("teacher")} />
+                                    </>
+                                  )}
                                 </span>
                               )}
                               <div className="flex min-w-0 items-end gap-2">
