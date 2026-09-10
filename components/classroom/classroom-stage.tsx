@@ -11,6 +11,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import {
+  type ComponentPropsWithoutRef,
   type ComponentProps,
   type ReactNode,
   type RefObject,
@@ -19,6 +20,32 @@ import {
 import { cn } from "@/lib/utils";
 import { ClassroomLayoutStage } from "./classroom-layout";
 import { SharedWhiteboard } from "./shared-whiteboard";
+
+interface ClassroomStageSurfaceProps extends ComponentPropsWithoutRef<"div"> {
+  stageRef?: RefObject<HTMLDivElement | null>;
+}
+
+export function ClassroomStageSurface({
+  stageRef,
+  children,
+  className,
+  ...props
+}: ClassroomStageSurfaceProps) {
+  return (
+    <ClassroomLayoutStage>
+      <div
+        ref={stageRef}
+        className={cn(
+          "group relative flex min-h-0 flex-1 items-center justify-center overflow-hidden",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    </ClassroomLayoutStage>
+  );
+}
 
 interface ClassroomStageProps {
   stageRef: RefObject<HTMLDivElement | null>;
@@ -64,103 +91,93 @@ export function ClassroomStage({
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   return (
-    <ClassroomLayoutStage>
-      <div
-        ref={stageRef}
-        className={cn(
-          "group relative flex min-h-0 flex-1 items-center justify-center overflow-hidden",
-          className,
-        )}
-      >
-        {(contentActive || (onToggleFullscreen && !isPhoneLandscape)) && (
-          <div className="pointer-events-none absolute right-2 top-2 z-30 flex flex-col items-end gap-1.5">
-            {isWhiteboardActive && (
-              <button
-                type="button"
-                onClick={onToggleFollowViewport}
-                className={cn(
-                  "pointer-events-auto flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold shadow-lg transition-all",
-                  followViewport
-                    ? "border-success/50 bg-success/90 text-success-foreground hover:bg-success/80"
-                    : "border-inverse-foreground/20 bg-inverse/60 text-inverse-foreground/80 hover:bg-inverse/80",
-                )}
-              >
-                {followViewport ? (
-                  <Eye className="size-3" />
-                ) : (
-                  <EyeOff className="size-3" />
-                )}
-                {followViewport ? followingLabel : unlockedLabel}
-              </button>
-            )}
-
-            {onToggleFullscreen && !isPhoneLandscape && (
-              <button
-                type="button"
-                onClick={onToggleFullscreen}
-                title={
-                  isFullscreen ? exitFullscreenLabel : enterFullscreenLabel
-                }
-                className="pointer-events-auto flex size-8 items-center justify-center rounded-full border border-inverse-foreground/20 bg-inverse/60 text-inverse-foreground shadow-lg transition-all hover:bg-inverse/80"
-              >
-                {isFullscreen ? (
-                  <Minimize2 className="size-4" />
-                ) : (
-                  <Maximize2 className="size-4" />
-                )}
-              </button>
-            )}
-          </div>
-        )}
-
-        {children}
-
-        {isPhoneLandscape && (
-          <>
-            <div
-              className="absolute inset-0 z-[25]"
-              style={{ pointerEvents: zoom > 1 ? "none" : "auto" }}
-              onTouchStart={(event) => {
-                touchStartRef.current = {
-                  x: event.touches[0].clientX,
-                  y: event.touches[0].clientY,
-                };
-              }}
-              onTouchEnd={(event) => {
-                const touchStart = touchStartRef.current;
-                if (!touchStart) return;
-
-                const deltaX = Math.abs(
-                  event.changedTouches[0].clientX - touchStart.x,
-                );
-                const deltaY = Math.abs(
-                  event.changedTouches[0].clientY - touchStart.y,
-                );
-                touchStartRef.current = null;
-                if (deltaX < 8 && deltaY < 8) onRevealControls();
-              }}
-              onClick={onRevealControls}
-            />
-
-            <div
+    <ClassroomStageSurface stageRef={stageRef} className={className}>
+      {(contentActive || (onToggleFullscreen && !isPhoneLandscape)) && (
+        <div className="pointer-events-none absolute right-2 top-2 z-30 flex flex-col items-end gap-1.5">
+          {isWhiteboardActive && (
+            <button
+              type="button"
+              onClick={onToggleFollowViewport}
               className={cn(
-                "pointer-events-none absolute inset-x-0 bottom-3 z-[35] flex items-center justify-center transition-all duration-300",
-                stageControlsVisible
-                  ? "translate-y-0 opacity-100"
-                  : "translate-y-2 opacity-0",
+                "pointer-events-auto flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold shadow-lg transition-all",
+                followViewport
+                  ? "border-success/50 bg-success/90 text-success-foreground hover:bg-success/80"
+                  : "border-inverse-foreground/20 bg-inverse/60 text-inverse-foreground/80 hover:bg-inverse/80",
               )}
             >
-              <div
-                className="pointer-events-auto flex items-center gap-2 rounded-full border border-inverse-foreground/20 bg-inverse/60 px-4 py-2.5 shadow-2xl backdrop-blur-md"
-                onClick={onRevealControls}
-              >
-                {phoneControls}
-              </div>
+              {followViewport ? (
+                <Eye className="size-3" />
+              ) : (
+                <EyeOff className="size-3" />
+              )}
+              {followViewport ? followingLabel : unlockedLabel}
+            </button>
+          )}
+
+          {onToggleFullscreen && !isPhoneLandscape && (
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              title={isFullscreen ? exitFullscreenLabel : enterFullscreenLabel}
+              className="pointer-events-auto flex size-8 items-center justify-center rounded-full border border-inverse-foreground/20 bg-inverse/60 text-inverse-foreground shadow-lg transition-all hover:bg-inverse/80"
+            >
+              {isFullscreen ? (
+                <Minimize2 className="size-4" />
+              ) : (
+                <Maximize2 className="size-4" />
+              )}
+            </button>
+          )}
+        </div>
+      )}
+
+      {children}
+
+      {isPhoneLandscape && (
+        <>
+          <div
+            className="absolute inset-0 z-[25]"
+            style={{ pointerEvents: zoom > 1 ? "none" : "auto" }}
+            onTouchStart={(event) => {
+              touchStartRef.current = {
+                x: event.touches[0].clientX,
+                y: event.touches[0].clientY,
+              };
+            }}
+            onTouchEnd={(event) => {
+              const touchStart = touchStartRef.current;
+              if (!touchStart) return;
+
+              const deltaX = Math.abs(
+                event.changedTouches[0].clientX - touchStart.x,
+              );
+              const deltaY = Math.abs(
+                event.changedTouches[0].clientY - touchStart.y,
+              );
+              touchStartRef.current = null;
+              if (deltaX < 8 && deltaY < 8) onRevealControls();
+            }}
+            onClick={onRevealControls}
+          />
+
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-x-0 bottom-3 z-[35] flex items-center justify-center transition-all duration-300",
+              stageControlsVisible
+                ? "translate-y-0 opacity-100"
+                : "translate-y-2 opacity-0",
+            )}
+          >
+            <div
+              className="pointer-events-auto flex items-center gap-2 rounded-full border border-inverse-foreground/20 bg-inverse/60 px-4 py-2.5 shadow-2xl backdrop-blur-md"
+              onClick={onRevealControls}
+            >
+              {phoneControls}
             </div>
-          </>
-        )}
-      </div>
-    </ClassroomLayoutStage>
+          </div>
+        </>
+      )}
+    </ClassroomStageSurface>
   );
 }
 
@@ -168,21 +185,31 @@ interface ClassroomWhiteboardContentProps {
   roomName: string;
   followViewport: boolean;
   recordingToken?: string;
+  presentationMode?: boolean;
+  onReady?: () => void;
+  previewContent?: ReactNode;
 }
 
 export function ClassroomWhiteboardContent({
   roomName,
   followViewport,
   recordingToken,
+  presentationMode = false,
+  onReady,
+  previewContent,
 }: ClassroomWhiteboardContentProps) {
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <SharedWhiteboard
-        roomName={roomName}
-        isReadonly={true}
-        followViewport={followViewport}
-        recordingToken={recordingToken}
-      />
+      {previewContent ?? (
+        <SharedWhiteboard
+          roomName={roomName}
+          isReadonly={true}
+          followViewport={followViewport}
+          recordingToken={recordingToken}
+          presentationMode={presentationMode}
+          onReady={onReady}
+        />
+      )}
     </div>
   );
 }
@@ -194,23 +221,28 @@ type ScreenTrackReference = NonNullable<
 interface ClassroomScreenShareCanvasProps {
   trackRef: ScreenTrackReference;
   className?: string;
+  onVideoReady?: () => void;
 }
 
 export function ClassroomScreenShareCanvas({
   trackRef,
   className,
+  onVideoReady,
 }: ClassroomScreenShareCanvasProps) {
   return (
     <VideoTrack
       trackRef={trackRef}
       className={cn("h-full w-full object-contain", className)}
+      onCanPlay={onVideoReady}
+      onLoadedData={onVideoReady}
       onError={(event) => console.error("Video Track Error", event)}
     />
   );
 }
 
 interface ClassroomScreenShareContentProps {
-  trackRef: ScreenTrackReference;
+  trackRef?: ScreenTrackReference;
+  previewContent?: ReactNode;
   zoom: number;
   pan: { x: number; y: number };
   isPhoneLandscape: boolean;
@@ -220,10 +252,13 @@ interface ClassroomScreenShareContentProps {
   onZoom: (delta: number) => void;
   loadingLabel: string;
   presenterDescription?: string;
+  showControls?: boolean;
+  onVideoReady?: () => void;
 }
 
 export function ClassroomScreenShareContent({
   trackRef,
+  previewContent,
   zoom,
   pan,
   isPhoneLandscape,
@@ -233,11 +268,20 @@ export function ClassroomScreenShareContent({
   onZoom,
   loadingLabel,
   presenterDescription,
+  showControls = true,
+  onVideoReady,
 }: ClassroomScreenShareContentProps) {
+  if (!trackRef && !previewContent) return null;
+
+  const isMediaReady = Boolean(
+    previewContent ||
+      (trackRef?.publication.isSubscribed && trackRef.publication.track),
+  );
+
   return (
     <>
       <div
-        key={trackRef.publication.trackSid}
+        key={trackRef?.publication.trackSid ?? "preview-screen-share"}
         className={cn(
           "relative flex h-full w-full origin-center select-none items-center justify-center bg-inverse",
           zoom > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-default",
@@ -264,10 +308,14 @@ export function ClassroomScreenShareContent({
             : undefined
         }
       >
-        <ClassroomScreenShareCanvas trackRef={trackRef} />
+        {previewContent ?? (
+          <ClassroomScreenShareCanvas
+            trackRef={trackRef!}
+            onVideoReady={onVideoReady}
+          />
+        )}
 
-        {(!trackRef.publication.isSubscribed ||
-          !trackRef.publication.track) && (
+        {!isMediaReady && (
           <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-inverse/90 backdrop-blur-sm">
             <Loader2 className="mb-4 size-12 animate-spin text-info" />
             <p className="text-lg font-bold text-inverse-foreground">
@@ -282,32 +330,34 @@ export function ClassroomScreenShareContent({
         )}
       </div>
 
-      <div
-        className={cn(
-          "absolute right-4 top-4 z-40 flex gap-2 rounded-lg border border-border/50 bg-background/60 p-1.5 text-foreground backdrop-blur-sm transition-all duration-300",
-          isPhoneLandscape && !stageControlsVisible
-            ? "pointer-events-none -translate-y-2 opacity-0"
-            : "translate-y-0 opacity-100",
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => onZoom(-0.25)}
-          className="rounded p-2 hover:bg-foreground/20"
+      {showControls && (
+        <div
+          className={cn(
+            "absolute right-4 top-4 z-40 flex gap-2 rounded-lg border border-border/50 bg-background/60 p-1.5 text-foreground backdrop-blur-sm transition-all duration-300",
+            isPhoneLandscape && !stageControlsVisible
+              ? "pointer-events-none -translate-y-2 opacity-0"
+              : "translate-y-0 opacity-100",
+          )}
         >
-          <ZoomOut className="size-4" />
-        </button>
-        <span className="min-w-[3ch] py-2 text-center font-mono text-xs">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          type="button"
-          onClick={() => onZoom(0.25)}
-          className="rounded p-2 hover:bg-foreground/20"
-        >
-          <ZoomIn className="size-4" />
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => onZoom(-0.25)}
+            className="rounded p-2 hover:bg-foreground/20"
+          >
+            <ZoomOut className="size-4" />
+          </button>
+          <span className="min-w-[3ch] py-2 text-center font-mono text-xs">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => onZoom(0.25)}
+            className="rounded p-2 hover:bg-foreground/20"
+          >
+            <ZoomIn className="size-4" />
+          </button>
+        </div>
+      )}
     </>
   );
 }

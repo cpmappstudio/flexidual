@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, MutableRefObject } from "react";
 import dynamic from "next/dynamic";
 import { useMutation, useQuery } from "convex/react";
@@ -21,9 +21,12 @@ import type {
   NormalizedZoomValue,
 } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
+import { cn } from "@/lib/utils";
 
 // Derived from the onChange signature — avoids importing the unexported OrderedExcalidrawElement
-type ExcalidrawElements = Parameters<NonNullable<ExcalidrawProps["onChange"]>>[0];
+type ExcalidrawElements = Parameters<
+  NonNullable<ExcalidrawProps["onChange"]>
+>[0];
 
 // Dynamic import required — Excalidraw uses browser-only APIs (no SSR)
 const Excalidraw = dynamic(
@@ -35,8 +38,74 @@ const Excalidraw = dynamic(
         Loading whiteboard…
       </div>
     ),
-  }
+  },
 ) as ComponentType<ExcalidrawProps>;
+
+const WHITEBOARD_UI_OPTIONS: ExcalidrawProps["UIOptions"] = {
+  canvasActions: {
+    saveToActiveFile: false,
+    loadScene: false,
+    export: false,
+    toggleTheme: false,
+  },
+};
+
+interface WhiteboardCanvasProps {
+  initialData: ExcalidrawInitialDataState;
+  excalidrawAPI?: ExcalidrawProps["excalidrawAPI"];
+  onChange?: ExcalidrawProps["onChange"];
+  onPointerUpdate?: ExcalidrawProps["onPointerUpdate"];
+  isReadonly?: boolean;
+  presentationMode?: boolean;
+}
+
+function WhiteboardCanvas({
+  initialData,
+  excalidrawAPI,
+  onChange,
+  onPointerUpdate,
+  isReadonly = true,
+  presentationMode = false,
+}: WhiteboardCanvasProps) {
+  return (
+    <div
+      className={cn(
+        "relative h-full w-full touch-none overflow-hidden overscroll-none rounded-lg border border-border bg-whiteboard",
+        presentationMode &&
+          "classroom-whiteboard-presentation pointer-events-none",
+      )}
+    >
+      {presentationMode ? (
+        <style>{`
+          .classroom-whiteboard-presentation .App-menu,
+          .classroom-whiteboard-presentation .layer-ui__wrapper,
+          .classroom-whiteboard-presentation .main-menu-trigger {
+            display: none !important;
+          }
+        `}</style>
+      ) : null}
+      <Excalidraw
+        initialData={initialData}
+        excalidrawAPI={excalidrawAPI}
+        onChange={onChange}
+        onPointerUpdate={onPointerUpdate}
+        viewModeEnabled={isReadonly}
+        zenModeEnabled={presentationMode}
+        UIOptions={WHITEBOARD_UI_OPTIONS}
+      />
+    </div>
+  );
+}
+
+export function ClassroomWhiteboardPreview() {
+  return (
+    <WhiteboardCanvas
+      initialData={{ elements: [] }}
+      presentationMode
+      isReadonly
+    />
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Wire protocol — only ephemeral real-time events (pointer + viewport).
@@ -92,7 +161,10 @@ async function compressImage(
   maxDimension = 1920,
   quality = 0.82,
 ): Promise<{ blob: Blob; mimeType: string }> {
-  const raster = mimeType === "image/png" || mimeType === "image/jpeg" || mimeType === "image/webp";
+  const raster =
+    mimeType === "image/png" ||
+    mimeType === "image/jpeg" ||
+    mimeType === "image/webp";
   if (!raster) {
     const res = await fetch(dataUrl);
     return { blob: await res.blob(), mimeType };
@@ -109,7 +181,10 @@ async function compressImage(
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      if (!ctx) { reject(new Error("canvas 2d unavailable")); return; }
+      if (!ctx) {
+        reject(new Error("canvas 2d unavailable"));
+        return;
+      }
 
       // Fill white background for JPEG (which has no alpha channel)
       const outputType = mimeType === "image/png" ? "image/png" : "image/jpeg";
@@ -139,7 +214,10 @@ async function compressImage(
 // ---------------------------------------------------------------------------
 
 /** Derives a stable HSL colour from a participant identity string. */
-function identityColor(identity: string): { background: string; stroke: string } {
+function identityColor(identity: string): {
+  background: string;
+  stroke: string;
+} {
   let hash = 0;
   for (let i = 0; i < identity.length; i++) {
     hash = identity.charCodeAt(i) + ((hash << 5) - hash);
@@ -172,7 +250,9 @@ export interface SharedWhiteboardProps {
    * Populated by SharedWhiteboard. Call with optional destinationIdentities
    * to re-broadcast all uploaded image refs (e.g. on re-present or late joiner).
    */
-  broadcastRef?: MutableRefObject<((destinationIdentities?: string[]) => Promise<void>) | null>;
+  broadcastRef?: MutableRefObject<
+    ((destinationIdentities?: string[]) => Promise<void>) | null
+  >;
   /**
    * Populated by SharedWhiteboard. Call on session end to delete all Convex
    * storage objects uploaded during this session and clear localStorage.
@@ -184,12 +264,26 @@ export interface SharedWhiteboardProps {
    */
   followViewport?: boolean;
   recordingToken?: string;
+  presentationMode?: boolean;
+  onReady?: () => void;
 }
 
-export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, broadcastRef, cleanupRef, followViewport = true, recordingToken }: SharedWhiteboardProps) {
+export function SharedWhiteboard({
+  roomName,
+  isReadonly = false,
+  onApiReady,
+  broadcastRef,
+  cleanupRef,
+  followViewport = true,
+  recordingToken,
+  presentationMode = false,
+  onReady,
+}: SharedWhiteboardProps) {
   const room = useRoomContext();
   const generateUploadUrl = useMutation(api.whiteboardFiles.generateUploadUrl);
-  const deleteSessionFiles = useMutation(api.whiteboardFiles.deleteSessionFiles);
+  const deleteSessionFiles = useMutation(
+    api.whiteboardFiles.deleteSessionFiles,
+  );
   const upsertScene = useMutation(api.whiteboardSessions.upsertScene);
   const addFileRefMutation = useMutation(api.whiteboardSessions.addFileRef);
   const clearSessionMutation = useMutation(api.whiteboardSessions.clearSession);
@@ -201,16 +295,28 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
   );
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const onReadyRef = useRef(onReady);
+  const hasSignaledReadyRef = useRef(false);
+  const [isCanvasReady, setIsCanvasReady] = useState(false);
   const suppressRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Throttle: stores the timestamp of the last pointer message sent
   const lastPointerSentRef = useRef(0);
   // Viewport sync — tracks last-broadcast viewport to avoid redundant sends
-  const lastViewportRef = useRef<{ scrollX: number; scrollY: number; zoom: number } | null>(null);
+  const lastViewportRef = useRef<{
+    scrollX: number;
+    scrollY: number;
+    zoom: number;
+  } | null>(null);
   const lastViewportSentRef = useRef(0);
   // Ref so the dataReceived closure always reads the latest followViewport value
   const followViewportRef = useRef(followViewport);
-  useEffect(() => { followViewportRef.current = followViewport; }, [followViewport]);
+  useEffect(() => {
+    followViewportRef.current = followViewport;
+  }, [followViewport]);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
   // Track file IDs already fetched and added to the canvas (reader side)
   const addedFileIdsRef = useRef<Set<string>>(new Set());
@@ -243,7 +349,9 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
           initialFiles: scene.files ?? ({} as BinaryFiles),
         };
       }
-    } catch { /* ignore parse/quota errors */ }
+    } catch {
+      /* ignore parse/quota errors */
+    }
     return empty;
   }, [roomName]);
 
@@ -258,9 +366,14 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
   useEffect(() => {
     if (!room) return;
 
-    const handleDataReceived = (payload: Uint8Array, participant?: RemoteParticipant) => {
+    const handleDataReceived = (
+      payload: Uint8Array,
+      participant?: RemoteParticipant,
+    ) => {
       try {
-        const msg = JSON.parse(new TextDecoder().decode(payload)) as WhiteboardMessage;
+        const msg = JSON.parse(
+          new TextDecoder().decode(payload),
+        ) as WhiteboardMessage;
         if (!isWhiteboardBroadcaster(participant)) return;
 
         if (msg.type === "WHITEBOARD_VIEWPORT" && followViewportRef.current) {
@@ -278,7 +391,11 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
           }
         }
 
-        if (msg.type === "WHITEBOARD_POINTER" && participant) {
+        if (
+          msg.type === "WHITEBOARD_POINTER" &&
+          participant &&
+          !presentationMode
+        ) {
           const id = participant.identity as SocketId;
           collaboratorsRef.current.set(id, {
             pointer: { x: msg.x, y: msg.y, tool: msg.tool },
@@ -290,14 +407,20 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
           // No setTimeout here — pointer updates must reach Excalidraw immediately
           // for the laser trail to render. LiveKit dataReceived fires outside React's
           // render cycle so there is no setState-in-update risk.
-          apiRef.current?.updateScene({ collaborators: new Map(collaboratorsRef.current) });
+          apiRef.current?.updateScene({
+            collaborators: new Map(collaboratorsRef.current),
+          });
         }
-      } catch { /* ignore non-whiteboard packets */ }
+      } catch {
+        /* ignore non-whiteboard packets */
+      }
     };
 
     room.on("dataReceived", handleDataReceived);
-    return () => { room.off("dataReceived", handleDataReceived); };
-  }, [room]);
+    return () => {
+      room.off("dataReceived", handleDataReceived);
+    };
+  }, [presentationMode, room]);
 
   // ---------------------------------------------------------------------------
   // Helpers — upload to Convex, cache CDN URL, broadcast ref; cleanup
@@ -309,8 +432,13 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
       const raw = localStorage.getItem(`${WB_STORAGE_PREFIX}${roomName}`);
       if (!raw) return;
       const scene = JSON.parse(raw) as PersistedScene;
-      localStorage.setItem(`${WB_STORAGE_PREFIX}${roomName}`, JSON.stringify({ ...scene, fileRefs: fileRefsRef.current }));
-    } catch { /* ignore QuotaExceededError */ }
+      localStorage.setItem(
+        `${WB_STORAGE_PREFIX}${roomName}`,
+        JSON.stringify({ ...scene, fileRefs: fileRefsRef.current }),
+      );
+    } catch {
+      /* ignore QuotaExceededError */
+    }
   }, [roomName]);
 
   /**
@@ -318,35 +446,42 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
    * whiteboardSessions mutation. All readers receive it reactively — no
    * DataChannel publish needed, so there are no size or connectivity issues.
    */
-  const uploadAndBroadcastFile = useCallback(async (file: BinaryFileData) => {
-    sentFileIdsRef.current.add(file.id);
-    try {
-      const uploadUrl = await generateUploadUrl({ roomName });
-      const { blob, mimeType: uploadMimeType } = await compressImage(file.dataURL, file.mimeType);
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "POST",
-        body: blob,
-        headers: { "Content-Type": uploadMimeType },
-      });
-      if (!uploadResponse.ok) throw new Error("Whiteboard image upload failed");
-      const { storageId } = (await uploadResponse.json()) as {
-        storageId: Id<"_storage">;
-      };
-      const fileRef = await addFileRefMutation({
-        roomName,
-        fileId: file.id,
-        storageId,
-        created: file.created,
-      });
+  const uploadAndBroadcastFile = useCallback(
+    async (file: BinaryFileData) => {
+      sentFileIdsRef.current.add(file.id);
+      try {
+        const uploadUrl = await generateUploadUrl({ roomName });
+        const { blob, mimeType: uploadMimeType } = await compressImage(
+          file.dataURL,
+          file.mimeType,
+        );
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "POST",
+          body: blob,
+          headers: { "Content-Type": uploadMimeType },
+        });
+        if (!uploadResponse.ok)
+          throw new Error("Whiteboard image upload failed");
+        const { storageId } = (await uploadResponse.json()) as {
+          storageId: Id<"_storage">;
+        };
+        const fileRef = await addFileRefMutation({
+          roomName,
+          fileId: file.id,
+          storageId,
+          created: file.created,
+        });
 
-      // Cache locally so a page refresh doesn't lose the mapping
-      fileRefsRef.current[file.id] = fileRef;
-      persistFileRefs();
-    } catch (err) {
-      console.error("[Whiteboard] Image upload failed:", err);
-      sentFileIdsRef.current.delete(file.id);
-    }
-  }, [generateUploadUrl, persistFileRefs, addFileRefMutation, roomName]);
+        // Cache locally so a page refresh doesn't lose the mapping
+        fileRefsRef.current[file.id] = fileRef;
+        persistFileRefs();
+      } catch (err) {
+        console.error("[Whiteboard] Image upload failed:", err);
+        sentFileIdsRef.current.delete(file.id);
+      }
+    },
+    [generateUploadUrl, persistFileRefs, addFileRefMutation, roomName],
+  );
 
   /**
    * No-op: Convex reactive queries automatically deliver the current scene
@@ -395,20 +530,25 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
       setTimeout(() => {
         suppressRef.current = true;
         api.updateScene({ elements });
-        setTimeout(() => { suppressRef.current = false; }, 0);
+        setTimeout(() => {
+          suppressRef.current = false;
+        }, 0);
       }, 0);
     } else {
       // API not mounted yet — buffer until excalidrawAPI callback fires
       pendingElementsRef.current = elements;
     }
-  // sceneData?.updatedAt is the minimal dependency: changes only when the writer saves
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // sceneData?.updatedAt is the minimal dependency: changes only when the writer saves
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReadonly, sceneData?.updatedAt]);
 
   // Load new images from Convex file refs as they are added.
   useEffect(() => {
     if (!isReadonly || !sceneData?.fileRefs) return;
-    const fileRefs = sceneData.fileRefs as Record<string, { url: string; mimeType: string; created: number }>;
+    const fileRefs = sceneData.fileRefs as Record<
+      string,
+      { url: string; mimeType: string; created: number }
+    >;
     for (const [fileId, ref] of Object.entries(fileRefs)) {
       if (addedFileIdsRef.current.has(fileId)) continue;
       addedFileIdsRef.current.add(fileId);
@@ -421,7 +561,8 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
           const response = await fetch(proxyUrl, {
             headers: { "ngrok-skip-browser-warning": "true" },
           });
-          if (!response.ok) throw new Error(`Proxy fetch failed (${response.status})`);
+          if (!response.ok)
+            throw new Error(`Proxy fetch failed (${response.status})`);
           const blob = await response.blob();
           const dataUrl = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
@@ -449,6 +590,23 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
     }
   }, [isReadonly, sceneData?.fileRefs]);
 
+  useEffect(() => {
+    if (
+      !isCanvasReady ||
+      hasSignaledReadyRef.current ||
+      (isReadonly && sceneData === undefined)
+    ) {
+      return;
+    }
+
+    const readyTimer = setTimeout(() => {
+      if (hasSignaledReadyRef.current) return;
+      hasSignaledReadyRef.current = true;
+      onReadyRef.current?.();
+    }, 0);
+
+    return () => clearTimeout(readyTimer);
+  }, [isCanvasReady, isReadonly, sceneData]);
 
   const handleChange = useCallback(
     (elements: ExcalidrawElements, appState: AppState, files: BinaryFiles) => {
@@ -479,26 +637,45 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
       const lastVP = lastViewportRef.current;
       const nowVP = Date.now();
       if (
-        (!lastVP || lastVP.scrollX !== scrollX || lastVP.scrollY !== scrollY || lastVP.zoom !== zoomValue) &&
+        (!lastVP ||
+          lastVP.scrollX !== scrollX ||
+          lastVP.scrollY !== scrollY ||
+          lastVP.zoom !== zoomValue) &&
         nowVP - lastViewportSentRef.current >= 33 &&
         room.state === ConnectionState.Connected
       ) {
         lastViewportRef.current = { scrollX, scrollY, zoom: zoomValue };
         lastViewportSentRef.current = nowVP;
-        const vpMsg: WhiteboardViewportMsg = { type: "WHITEBOARD_VIEWPORT", scrollX, scrollY, zoom: zoomValue };
+        const vpMsg: WhiteboardViewportMsg = {
+          type: "WHITEBOARD_VIEWPORT",
+          scrollX,
+          scrollY,
+          zoom: zoomValue,
+        };
         try {
           room.localParticipant.publishData(
             new TextEncoder().encode(JSON.stringify(vpMsg)),
             { reliable: false },
           );
-        } catch { /* ephemeral — next change will retry */ }
+        } catch {
+          /* ephemeral — next change will retry */
+        }
       }
 
       // Persist to session-scoped localStorage (fileRefs included for refresh recovery)
       try {
-        const scene: PersistedScene = { elements, files, fileRefs: fileRefsRef.current };
-        localStorage.setItem(`${WB_STORAGE_PREFIX}${roomName}`, JSON.stringify(scene));
-      } catch { /* ignore QuotaExceededError */ }
+        const scene: PersistedScene = {
+          elements,
+          files,
+          fileRefs: fileRefsRef.current,
+        };
+        localStorage.setItem(
+          `${WB_STORAGE_PREFIX}${roomName}`,
+          JSON.stringify(scene),
+        );
+      } catch {
+        /* ignore QuotaExceededError */
+      }
     },
     [room, isReadonly, roomName, uploadAndBroadcastFile, upsertScene],
   );
@@ -510,7 +687,10 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
   // Debounce would only send the final resting position, destroying the laser
   // trail which needs a continuous stream of intermediate positions.
   const handlePointerUpdate = useCallback(
-    ({ pointer, button }: Parameters<NonNullable<ExcalidrawProps["onPointerUpdate"]>>[0]) => {
+    ({
+      pointer,
+      button,
+    }: Parameters<NonNullable<ExcalidrawProps["onPointerUpdate"]>>[0]) => {
       if (!room || isReadonly) return;
       if (room.state !== ConnectionState.Connected) return; // DataChannel not ready
       const now = Date.now();
@@ -528,46 +708,42 @@ export function SharedWhiteboard({ roomName, isReadonly = false, onApiReady, bro
           new TextEncoder().encode(JSON.stringify(msg)),
           { reliable: false },
         );
-      } catch { /* ephemeral — next pointer event will retry */ }
+      } catch {
+        /* ephemeral — next pointer event will retry */
+      }
     },
     [room, isReadonly],
   );
 
   return (
-    <div className="relative h-full w-full touch-none overflow-hidden overscroll-none rounded-lg border border-border bg-whiteboard">
-      <Excalidraw
-        initialData={initialData}
-        excalidrawAPI={(api: ExcalidrawImperativeAPI) => {
-          apiRef.current = api;
-          onApiReady?.(api);
-          // Flush data buffered while the API was loading.
-          // setTimeout(0) is a macrotask — it fires AFTER React has fully committed
-          // Excalidraw's initial render, preventing the "setState inside update" error
-          // that occurs when requestAnimationFrame fires mid-reconciliation.
-          setTimeout(() => {
-            if (pendingElementsRef.current) {
-              suppressRef.current = true;
-              api.updateScene({ elements: pendingElementsRef.current });
-              pendingElementsRef.current = null;
-              setTimeout(() => { suppressRef.current = false; }, 0);
-            }
-            if (pendingFilesRef.current.length > 0) {
-              api.addFiles(pendingFilesRef.current.splice(0));
-            }
-          }, 0);
-        }}
-        onChange={handleChange}
-        onPointerUpdate={!isReadonly ? handlePointerUpdate : undefined}
-        viewModeEnabled={isReadonly}
-        UIOptions={{
-          canvasActions: {
-            saveToActiveFile: false,
-            loadScene: false,
-            export: false,
-            toggleTheme: false,
-          },
-        }}
-      />
-    </div>
+    <WhiteboardCanvas
+      initialData={initialData}
+      excalidrawAPI={(api: ExcalidrawImperativeAPI) => {
+        apiRef.current = api;
+        onApiReady?.(api);
+        // Flush data buffered while the API was loading.
+        // setTimeout(0) is a macrotask — it fires AFTER React has fully committed
+        // Excalidraw's initial render, preventing the "setState inside update" error
+        // that occurs when requestAnimationFrame fires mid-reconciliation.
+        setTimeout(() => {
+          if (pendingElementsRef.current) {
+            suppressRef.current = true;
+            api.updateScene({ elements: pendingElementsRef.current });
+            pendingElementsRef.current = null;
+            setTimeout(() => {
+              suppressRef.current = false;
+            }, 0);
+          }
+          if (pendingFilesRef.current.length > 0) {
+            api.addFiles(pendingFilesRef.current.splice(0));
+          }
+          setIsCanvasReady(true);
+        }, 0);
+      }}
+      onChange={handleChange}
+      onPointerUpdate={!isReadonly ? handlePointerUpdate : undefined}
+      isReadonly={isReadonly}
+      presentationMode={presentationMode}
+    />
   );
 }

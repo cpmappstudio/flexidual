@@ -4,13 +4,15 @@ import { RoomAudioRenderer } from "@livekit/components-react";
 import { ClassroomLayout, ClassroomLayoutControls } from "./classroom-layout";
 import { forwardRef, type ComponentPropsWithoutRef } from "react";
 
-type ClassroomViewProps = ComponentPropsWithoutRef<typeof ClassroomLayout>;
+type ClassroomViewProps = ComponentPropsWithoutRef<typeof ClassroomLayout> & {
+  includeRoomAudio?: boolean;
+};
 
 export const ClassroomView = forwardRef<HTMLDivElement, ClassroomViewProps>(
-  function ClassroomView({ children, ...props }, ref) {
+  function ClassroomView({ children, includeRoomAudio = true, ...props }, ref) {
     return (
       <ClassroomLayout ref={ref} {...props}>
-        <RoomAudioRenderer />
+        {includeRoomAudio && <RoomAudioRenderer />}
         {children}
       </ClassroomLayout>
     );

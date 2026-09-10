@@ -3,6 +3,7 @@
 import { VideoTrack, useIsSpeaking } from "@livekit/components-react";
 import { Hand, MicOff } from "lucide-react";
 import { Participant, Track, TrackPublication } from "livekit-client";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { getParticipantImageUrl } from "./classroom-participant";
 
@@ -19,6 +20,8 @@ interface ClassroomParticipantTileProps {
   roleBadge?: string;
   youLabel?: string;
   audioMuted?: boolean;
+  videoContent?: ReactNode;
+  onVideoReady?: () => void;
 }
 
 export function ClassroomParticipantTile({
@@ -32,11 +35,14 @@ export function ClassroomParticipantTile({
   roleBadge,
   youLabel,
   audioMuted = false,
+  videoContent,
+  onVideoReady,
 }: ClassroomParticipantTileProps) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
   const isSpeaking = useIsSpeaking(participant);
   const isVideoEnabled =
-    cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted;
+    Boolean(videoContent) ||
+    Boolean(cameraTrack && cameraTrack.isSubscribed && !cameraTrack.isMuted);
   const imageUrl = getParticipantImageUrl(participant);
 
   const avatarSize =
@@ -71,14 +77,21 @@ export function ClassroomParticipantTile({
       )}
     >
       {isVideoEnabled ? (
-        <VideoTrack
-          trackRef={{
-            participant,
-            source: Track.Source.Camera,
-            publication: cameraTrack as TrackPublication,
-          }}
-          className="w-full h-full object-cover"
-        />
+        (videoContent ?? (
+          <VideoTrack
+            trackRef={{
+              participant,
+              source: Track.Source.Camera,
+              publication: cameraTrack as TrackPublication,
+            }}
+            className={cn(
+              "h-full w-full",
+              variant === "stage" ? "object-contain" : "object-cover",
+            )}
+            onCanPlay={onVideoReady}
+            onLoadedData={onVideoReady}
+          />
+        ))
       ) : (
         <div
           className={cn(

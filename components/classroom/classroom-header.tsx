@@ -5,6 +5,7 @@ import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-ico
 import { Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ClassroomLayoutHeader } from "./classroom-layout";
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 interface ClassroomHeaderProps {
   title: string;
@@ -23,6 +24,7 @@ interface ClassroomHeaderProps {
   onPanelOpenChange: (open: boolean) => void;
   action?: ReactNode;
   sessionAction?: ReactNode;
+  layoutMode?: "responsive" | "recording";
 }
 
 export function ClassroomHeader({
@@ -42,12 +44,16 @@ export function ClassroomHeader({
   onPanelOpenChange,
   action,
   sessionAction,
+  layoutMode = "responsive",
 }: ClassroomHeaderProps) {
   const statusLabel = isActive ? activeLabel : waitingLabel;
   const statusColor = isActive ? "bg-success animate-pulse" : "bg-chart-4";
 
   return (
-    <ClassroomLayoutHeader isPhoneLandscape={isPhoneLandscape}>
+    <ClassroomLayoutHeader
+      isPhoneLandscape={isPhoneLandscape}
+      layoutMode={layoutMode}
+    >
       {isPhoneLandscape ? (
         <div className="flex items-center gap-2 px-1 py-0.5">
           <span
@@ -82,13 +88,26 @@ export function ClassroomHeader({
         </div>
       ) : (
         <div className="px-0.5">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 md:flex md:items-center">
-            <div className="flex min-w-0 items-center gap-2 md:flex-1">
+          <div
+            className={cn(
+              "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 md:flex md:items-center",
+              layoutMode === "recording" && "flex items-center",
+            )}
+          >
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-2 md:flex-1",
+                layoutMode === "recording" && "flex-1",
+              )}
+            >
               {curriculumIconKey && (
                 <CurriculumIcon
                   iconKey={curriculumIconKey}
                   size={44}
-                  className="size-10 md:size-11"
+                  className={cn(
+                    "size-10 md:size-11",
+                    layoutMode === "recording" && "size-11",
+                  )}
                 />
               )}
               <div className="flex min-w-0 flex-col">
@@ -112,7 +131,12 @@ export function ClassroomHeader({
                 {action}
               </div>
             )}
-            <div className="hidden shrink-0 items-center gap-2 border-l border-border pl-2 xl:flex">
+            <div
+              className={cn(
+                "hidden shrink-0 items-center gap-2 border-l border-border pl-2 xl:flex",
+                layoutMode === "recording" && "flex",
+              )}
+            >
               <Button
                 type="button"
                 variant="ghost"

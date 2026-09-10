@@ -57,14 +57,14 @@ async function setupRecordingContext() {
       recordingToken: "valid-recording-token",
       updatedAt: now,
     });
-    return { scheduleId, secondLeaderId };
+    return { classId, scheduleId, secondLeaderId };
   });
 
   return { t, ...data };
 }
 
 test("returns the persisted session leader to an authorized recording", async () => {
-  const { t } = await setupRecordingContext();
+  const { t, classId } = await setupRecordingContext();
 
   await expect(
     t.query(api.whiteboardSessions.getRecordingContext, {
@@ -72,6 +72,9 @@ test("returns the persisted session leader to an authorized recording", async ()
       recordingToken: "valid-recording-token",
     }),
   ).resolves.toEqual({
+    className: "Recording class",
+    courseId: classId,
+    curriculumIconKey: "books",
     leaderParticipantIdentity: "recording-leader-one",
   });
 });
@@ -88,7 +91,8 @@ test("rejects a recording with the wrong token", async () => {
 });
 
 test("reflects a leadership transfer in the recording context", async () => {
-  const { t, scheduleId, secondLeaderId } = await setupRecordingContext();
+  const { t, classId, scheduleId, secondLeaderId } =
+    await setupRecordingContext();
   await t.run((ctx) =>
     ctx.db.patch(scheduleId, {
       sessionLeaderId: secondLeaderId,
@@ -103,6 +107,9 @@ test("reflects a leadership transfer in the recording context", async () => {
       recordingToken: "valid-recording-token",
     }),
   ).resolves.toEqual({
+    className: "Recording class",
+    courseId: classId,
+    curriculumIconKey: "books",
     leaderParticipantIdentity: "recording-leader-two",
   });
 });

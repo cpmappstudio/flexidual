@@ -73,6 +73,7 @@ interface ClassroomParticipantsPanelProps {
   lowerHandLabel: string;
   onLowerHand?: (identity: string) => void;
   children: ReactNode;
+  layoutMode?: "responsive" | "recording";
 }
 
 export function ClassroomParticipantsPanel({
@@ -97,6 +98,7 @@ export function ClassroomParticipantsPanel({
   lowerHandLabel,
   onLowerHand,
   children,
+  layoutMode = "responsive",
 }: ClassroomParticipantsPanelProps) {
   const participantTiles = Children.toArray(children);
   const {
@@ -234,11 +236,18 @@ export function ClassroomParticipantsPanel({
     <>
       <ClassroomLayoutSidebar
         id="classroom-interaction-panel"
-        className={cn("bg-card", !isOpen && "xl:hidden")}
+        layoutMode={layoutMode}
+        className={cn(
+          "bg-card",
+          layoutMode === "responsive" && !isOpen && "xl:hidden",
+        )}
       >
         <button
           type="button"
-          className="flex h-full min-w-0 items-center gap-2 border-b border-primary/20 bg-card px-3 text-left text-primary outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:hidden"
+          className={cn(
+            "h-full min-w-0 items-center gap-2 border-b border-primary/20 bg-card px-3 text-left text-primary outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+            layoutMode === "recording" ? "hidden" : "flex xl:hidden",
+          )}
           aria-label={`${compactHeading}. ${compactPanelLabel}`}
           onClick={() => setIsMobileSheetOpen(true)}
         >
@@ -264,9 +273,18 @@ export function ClassroomParticipantsPanel({
         <Tabs
           value={activeTab}
           onValueChange={(value) => onTabChange(value as ClassroomPanelTab)}
-          className="hidden h-full min-h-0 gap-0 xl:flex"
+          className={cn(
+            "h-full min-h-0 gap-0",
+            layoutMode === "recording" ? "flex" : "hidden xl:flex",
+          )}
         >
-          <TabsList className="h-12 w-full shrink-0 rounded-none border-b border-border/70 bg-transparent p-0 text-foreground xl:h-[var(--classroom-header-height)]">
+          <TabsList
+            className={cn(
+              "h-12 w-full shrink-0 rounded-none border-b border-border/70 bg-transparent p-0 text-foreground xl:h-[var(--classroom-header-height)]",
+              layoutMode === "recording" &&
+                "h-[var(--classroom-header-height)]",
+            )}
+          >
             <TabsTrigger
               value="participants"
               className={classroomPanelTabTriggerClassName}
@@ -375,59 +393,63 @@ export function ClassroomParticipantsPanel({
         </Tabs>
       </ClassroomLayoutSidebar>
 
-      <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
-        <SheetContent
-          side="right"
-          className="w-[min(92vw,24rem)] gap-0 p-0 sm:max-w-sm xl:hidden [&>button]:right-0 [&>button]:top-0 [&>button]:z-10 [&>button]:flex [&>button]:size-12 [&>button]:items-center [&>button]:justify-center"
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>
-              {mobileTab === "chat" ? chatLabel : heading}
-            </SheetTitle>
-            <SheetDescription>{compactPanelLabel}</SheetDescription>
-          </SheetHeader>
-          <Tabs
-            value={mobileTab}
-            onValueChange={(value) => setMobileTab(value as ClassroomPanelTab)}
-            className="h-full min-h-0 gap-0"
+      {layoutMode === "responsive" && (
+        <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
+          <SheetContent
+            side="right"
+            className="w-[min(92vw,24rem)] gap-0 p-0 sm:max-w-sm xl:hidden [&>button]:right-0 [&>button]:top-0 [&>button]:z-10 [&>button]:flex [&>button]:size-12 [&>button]:items-center [&>button]:justify-center"
           >
-            <TabsList className="h-12 w-full shrink-0 rounded-none border-b border-border/70 bg-transparent p-0 pr-12 text-foreground">
-              <TabsTrigger
+            <SheetHeader className="sr-only">
+              <SheetTitle>
+                {mobileTab === "chat" ? chatLabel : heading}
+              </SheetTitle>
+              <SheetDescription>{compactPanelLabel}</SheetDescription>
+            </SheetHeader>
+            <Tabs
+              value={mobileTab}
+              onValueChange={(value) =>
+                setMobileTab(value as ClassroomPanelTab)
+              }
+              className="h-full min-h-0 gap-0"
+            >
+              <TabsList className="h-12 w-full shrink-0 rounded-none border-b border-border/70 bg-transparent p-0 pr-12 text-foreground">
+                <TabsTrigger
+                  value="participants"
+                  className={classroomPanelTabTriggerClassName}
+                >
+                  <Users />
+                  {heading}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="chat"
+                  className={classroomPanelTabTriggerClassName}
+                >
+                  <MessageCircle />
+                  {chatLabel}
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent
                 value="participants"
-                className={classroomPanelTabTriggerClassName}
+                className="m-0 min-h-0 flex-1 overflow-hidden"
               >
-                <Users />
-                {heading}
-              </TabsTrigger>
-              <TabsTrigger
+                {isEmpty ? (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm italic text-muted-foreground">
+                    {emptyContent}
+                  </div>
+                ) : (
+                  roster
+                )}
+              </TabsContent>
+              <TabsContent
                 value="chat"
-                className={classroomPanelTabTriggerClassName}
+                className="m-0 min-h-0 flex-1 overflow-hidden"
               >
-                <MessageCircle />
-                {chatLabel}
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent
-              value="participants"
-              className="m-0 min-h-0 flex-1 overflow-hidden"
-            >
-              {isEmpty ? (
-                <div className="flex h-full items-center justify-center px-6 text-center text-sm italic text-muted-foreground">
-                  {emptyContent}
-                </div>
-              ) : (
-                roster
-              )}
-            </TabsContent>
-            <TabsContent
-              value="chat"
-              className="m-0 min-h-0 flex-1 overflow-hidden"
-            >
-              <CourseChat courseId={courseId} />
-            </TabsContent>
-          </Tabs>
-        </SheetContent>
-      </Sheet>
+                <CourseChat courseId={courseId} />
+              </TabsContent>
+            </Tabs>
+          </SheetContent>
+        </Sheet>
+      )}
     </>
   );
 }

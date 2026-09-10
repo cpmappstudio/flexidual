@@ -65,6 +65,7 @@ import {
   ClassroomWhiteboardContent,
 } from "./classroom-stage";
 import { ClassroomPresenterContent } from "./classroom-presenter-content";
+import { ClassroomScene } from "./classroom-scene";
 import {
   ClassroomEnableAudioOverlay,
   ClassroomEndingSoonNotice,
@@ -814,26 +815,8 @@ export function StudentClassroomUI({
           </>
         }
       >
-        {isWhiteboardActive ? (
-          <ClassroomWhiteboardContent
-            roomName={room.name}
-            followViewport={followViewport}
-          />
-        ) : isScreenSharingActive ? (
-          <ClassroomScreenShareContent
-            trackRef={activeScreenTrack}
-            zoom={zoom}
-            pan={pan}
-            isPhoneLandscape={isPhoneLandscape}
-            stageControlsVisible={stageControlsVisible}
-            onRevealControls={showStageControls}
-            onStartPan={startPanDrag}
-            onZoom={handleZoom}
-            loadingLabel={t("classroom.loadingShare")}
-          />
-        ) : (
-          <>
-            <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
+        <ClassroomScene
+          presenter={
             <ClassroomPresenterContent
               participant={teacher}
               isVideoOn={isTeacherVideoOn}
@@ -846,8 +829,31 @@ export function StudentClassroomUI({
               microphoneOffLabel={t("classroom.micOff")}
               waitingLabel={t("classroom.waitingForTeacher")}
             />
-          </>
-        )}
+          }
+          screenShare={
+            activeScreenTrack ? (
+              <ClassroomScreenShareContent
+                trackRef={activeScreenTrack}
+                zoom={zoom}
+                pan={pan}
+                isPhoneLandscape={isPhoneLandscape}
+                stageControlsVisible={stageControlsVisible}
+                onRevealControls={showStageControls}
+                onStartPan={startPanDrag}
+                onZoom={handleZoom}
+                loadingLabel={t("classroom.loadingShare")}
+              />
+            ) : undefined
+          }
+          whiteboard={
+            isWhiteboardActive ? (
+              <ClassroomWhiteboardContent
+                roomName={room.name}
+                followViewport={followViewport}
+              />
+            ) : undefined
+          }
+        />
       </ClassroomStage>
 
       {/* 3. Controls — hidden in phone landscape (replaced by floating stage overlay) */}

@@ -3,6 +3,7 @@
 import { Mic, VideoOff } from "lucide-react";
 import type { Participant } from "livekit-client";
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 import { getParticipantImageUrl } from "./classroom-participant";
 import { ClassroomParticipantTile } from "./classroom-participant-tile";
 
@@ -20,6 +21,8 @@ interface ClassroomPresenterContentProps {
   audioOnlyLabel: string;
   microphoneOffLabel: string;
   waitingLabel: string;
+  videoContent?: ReactNode;
+  onVideoReady?: () => void;
 }
 
 export function ClassroomPresenterContent({
@@ -36,6 +39,8 @@ export function ClassroomPresenterContent({
   audioOnlyLabel,
   microphoneOffLabel,
   waitingLabel,
+  videoContent,
+  onVideoReady,
 }: ClassroomPresenterContentProps) {
   if (!participant) {
     return (
@@ -60,6 +65,8 @@ export function ClassroomPresenterContent({
         roleBadge={roleBadge}
         youLabel={youLabel}
         audioMuted={!isAudioOn}
+        videoContent={videoContent}
+        onVideoReady={onVideoReady}
       />
     );
   }
