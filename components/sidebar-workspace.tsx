@@ -10,6 +10,7 @@ import { usePathname } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import { useUnreadCourseChats } from "@/hooks/use-unread-course-chats";
 import { UnreadIndicator } from "@/components/notifications/unread-indicator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type SidebarWorkspaceTab = "navigation" | "chats";
 
@@ -76,9 +77,14 @@ export function SidebarWorkspace() {
       </TabsContent>
       <TabsContent
         value="chats"
-        className="m-0 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden"
+        className="m-0 min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
       >
-        <CourseChatsNav unreadChats={unreadChats} />
+        <ScrollArea
+          type="auto"
+          className="h-full w-full [&_[data-slot=scroll-area-viewport]>div]:block!"
+        >
+          <CourseChatsNav unreadChats={unreadChats} />
+        </ScrollArea>
       </TabsContent>
     </Tabs>
   );
