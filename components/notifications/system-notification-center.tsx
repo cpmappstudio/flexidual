@@ -19,21 +19,8 @@ import { useEffect, useState } from "react";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { ResponsiveFeedPanel } from "@/components/ui/responsive-feed-panel";
 import { useUnreadNotificationCount } from "@/hooks/use-unread-notification-count";
 import { useRouter } from "@/i18n/navigation";
 import { getSystemNotificationHref } from "@/lib/system-notification-navigation";
@@ -300,7 +287,6 @@ function NotificationFeed({ onClose }: { onClose: () => void }) {
 
 export function SystemNotificationCenter() {
   const t = useTranslations("systemNotifications");
-  const isMobile = useIsMobile();
   const unreadCount = useUnreadNotificationCount();
   const [open, setOpen] = useState(false);
   const hasUnread = (unreadCount ?? 0) > 0;
@@ -328,31 +314,15 @@ export function SystemNotificationCenter() {
     </Button>
   );
 
-  if (isMobile) {
-    return (
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>{trigger}</SheetTrigger>
-        <SheetContent className="w-[min(92vw,24rem)] gap-0 p-0 sm:max-w-sm">
-          <SheetHeader className="sr-only">
-            <SheetTitle>{t("title")}</SheetTitle>
-            <SheetDescription>{t("description")}</SheetDescription>
-          </SheetHeader>
-          <NotificationFeed onClose={() => setOpen(false)} />
-        </SheetContent>
-      </Sheet>
-    );
-  }
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent
-        align="end"
-        sideOffset={10}
-        className="flex h-[min(36rem,var(--radix-popover-content-available-height))] w-[24rem] flex-col overflow-hidden p-0"
-      >
-        <NotificationFeed onClose={() => setOpen(false)} />
-      </PopoverContent>
-    </Popover>
+    <ResponsiveFeedPanel
+      open={open}
+      onOpenChange={setOpen}
+      trigger={trigger}
+      title={t("title")}
+      description={t("description")}
+    >
+      <NotificationFeed onClose={() => setOpen(false)} />
+    </ResponsiveFeedPanel>
   );
 }

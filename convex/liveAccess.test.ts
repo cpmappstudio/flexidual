@@ -908,7 +908,12 @@ test("course access is copied to the session and scoped to active students", asy
     await asStudent.query(api.courseChatMessages.getMyStatus, {
       classId: data.classAId,
     }),
-  ).toEqual({ isMuted: true, archived: false });
+  ).toEqual({
+    isMuted: true,
+    archived: false,
+    canAttach: false,
+    canPin: false,
+  });
   await expect(
     asStudent.mutation(api.courseChatMessages.send, {
       classId: data.classAId,
@@ -939,7 +944,7 @@ test("course access is copied to the session and scoped to active students", asy
     await asStudent.query(api.courseChatMessages.getMyStatus, {
       classId: data.classAId,
     }),
-  ).toEqual({ isMuted: false, archived: false });
+  ).toMatchObject({ isMuted: false, archived: false });
   await asTeacher.mutation(api.courseChatMessages.setSetting, {
     classId: data.classAId,
     setting: "studentsMuted",
@@ -949,12 +954,12 @@ test("course access is copied to the session and scoped to active students", asy
     await asStudent.query(api.courseChatMessages.getMyStatus, {
       classId: data.classAId,
     }),
-  ).toEqual({ isMuted: true, archived: false });
+  ).toMatchObject({ isMuted: true, archived: false });
   expect(
     await asTeacher.query(api.courseChatMessages.getMyStatus, {
       classId: data.classAId,
     }),
-  ).toEqual({ isMuted: false, archived: false });
+  ).toMatchObject({ isMuted: false, archived: false });
   await expect(
     asTeacher.mutation(api.courseChatMessages.setSetting, {
       classId: data.classAId,
@@ -971,7 +976,7 @@ test("course access is copied to the session and scoped to active students", asy
     await asTeacher.query(api.courseChatMessages.getMyStatus, {
       classId: data.classAId,
     }),
-  ).toEqual({ isMuted: true, archived: false });
+  ).toMatchObject({ isMuted: true, archived: false });
   await expect(
     asTeacher.mutation(api.courseChatMessages.send, {
       classId: data.classAId,
@@ -1036,7 +1041,7 @@ test("course access is copied to the session and scoped to active students", asy
     await asStudent.query(api.courseChatMessages.getMyStatus, {
       classId: data.classAId,
     }),
-  ).toEqual({ isMuted: true, archived: true });
+  ).toMatchObject({ isMuted: true, archived: true });
   expect(
     (
       await asStudent.query(api.courseChatMessages.list, {
@@ -1069,7 +1074,7 @@ test("course access is copied to the session and scoped to active students", asy
     await asStudent.query(api.courseChatMessages.getMyStatus, {
       classId: data.classAId,
     }),
-  ).toEqual({ isMuted: false, archived: false });
+  ).toMatchObject({ isMuted: false, archived: false });
   const endedAt = Date.now() - 1;
   await t.run((ctx) =>
     ctx.db.patch("classes", data.classAId, { endDate: endedAt }),

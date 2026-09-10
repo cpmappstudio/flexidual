@@ -144,8 +144,10 @@ export default defineSchema({
     liveAccess: v.optional(liveAccessValidator),
     weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
     chatStudentsMuted: v.optional(v.boolean()),
+    chatStudentAttachmentsEnabled: v.optional(v.boolean()),
     chatDisabled: v.optional(v.boolean()),
     chatArchivedAt: v.optional(v.number()),
+    chatLastPinnedAt: v.optional(v.number()),
     chatNotificationsClearedThrough: v.optional(v.number()),
 
     // Status
@@ -215,7 +217,29 @@ export default defineSchema({
     classId: v.id("classes"),
     authorId: v.id("users"),
     body: v.string(),
-  }).index("by_class", ["classId"]),
+    linksEnabled: v.optional(v.boolean()),
+    attachmentIds: v.optional(v.array(v.id("courseChatAttachments"))),
+    pinnedAt: v.optional(v.number()),
+  })
+    .index("by_class", ["classId"])
+    .index("by_classId_and_pinnedAt", ["classId", "pinnedAt"]),
+
+  courseChatPinReads: defineTable({
+    classId: v.id("classes"),
+    userId: v.id("users"),
+    seenThrough: v.number(),
+  }).index("by_classId_and_userId", ["classId", "userId"]),
+
+  courseChatAttachments: defineTable({
+    classId: v.id("classes"),
+    uploadedBy: v.id("users"),
+    name: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    storageId: v.optional(v.id("_storage")),
+    messageId: v.optional(v.id("courseChatMessages")),
+    expiresAt: v.optional(v.number()),
+  }).index("by_classId", ["classId"]),
 
   courseChatMutes: defineTable({
     classId: v.id("classes"),
@@ -421,7 +445,11 @@ export default defineSchema({
       "createdAt",
     ])
     .index("by_dedupe_key", ["dedupeKey"])
-    .index("by_recipient_and_kind_and_read_at", ["recipientId", "kind", "readAt"])
+    .index("by_recipient_and_kind_and_read_at", [
+      "recipientId",
+      "kind",
+      "readAt",
+    ])
     .index("by_class_and_kind", ["classId", "kind"])
     .index("by_schedule_and_kind", ["scheduleId", "kind"]),
 

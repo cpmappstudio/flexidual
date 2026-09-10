@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("convex/react", () => ({
   useConvexAuth: () => ({ isAuthenticated: true }),
+  useQuery: () => ({ canPin: false }),
   useMutation: () => state.markRead,
   usePaginatedQuery: () => ({
     status: "Exhausted",
