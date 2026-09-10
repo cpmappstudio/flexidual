@@ -109,7 +109,8 @@ test("gives students five minutes when the leader leaves during class", () => {
   );
 });
 
-test("opens a one-minute decision window instead of extending automatically", () => {
+test("opens a five-minute decision window instead of extending automatically", () => {
+  assert.equal(LIVE_DECISION_WINDOW_MS, 5 * 60 * 1000);
   assert.deepEqual(
     evaluateLiveSession({
       now: scheduledEnd,

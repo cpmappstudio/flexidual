@@ -5,6 +5,11 @@ import { useOrgBasePath } from "@/hooks/use-org-base-path";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { api } from "@/convex/_generated/api";
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -21,14 +26,21 @@ import {
 } from "@/components/ui/sidebar";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { ArchiveRestore, LoaderCircle } from "lucide-react";
+import { ArchiveRestore, LoaderCircle, Search } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import type { Id } from "@/convex/_generated/dataModel";
+import { UnreadIndicator } from "@/components/notifications/unread-indicator";
 
-export function CourseChatsNav() {
+export function CourseChatsNav({
+  unreadChats,
+}: {
+  unreadChats: ReadonlyMap<Id<"classes">, number>;
+}) {
   const t = useTranslations("navigation");
+  const notificationT = useTranslations("systemNotifications");
   const pathname = usePathname();
   const basePath = useOrgBasePath();
   const { orgSlug } = useParams<{ orgSlug: string }>();
@@ -36,6 +48,8 @@ export function CourseChatsNav() {
   const { access } = useStaffAccess();
   const setArchived = useMutation(api.courseChatMessages.setArchived);
   const [restoringId, setRestoringId] = useState<string>();
+  const [search, setSearch] = useState("");
+  useEffect(() => setSearch(""), [orgSlug]);
   const orgContext = useQuery(
     api.organizations.resolveSlug,
     isAuthenticated ? { slug: orgSlug } : "skip",
@@ -50,8 +64,16 @@ export function CourseChatsNav() {
           ? { schoolId: orgContext._id }
           : {},
   );
-  const activeChats = chats?.filter((chat) => !chat.archived) ?? [];
-  const archivedChats = chats?.filter((chat) => chat.archived) ?? [];
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const { activeChats, archivedChats } = useMemo(() => {
+    const activeChats: NonNullable<typeof chats> = [];
+    const archivedChats: NonNullable<typeof chats> = [];
+    for (const chat of chats ?? []) {
+      if (!chat.name.toLocaleLowerCase().includes(normalizedSearch)) continue;
+      (chat.archived ? archivedChats : activeChats).push(chat);
+    }
+    return { activeChats, archivedChats };
+  }, [chats, normalizedSearch]);
   const canRestoreChats = access?.canManageCampus ?? false;
 
   const restoreChat = async (
@@ -72,16 +94,27 @@ export function CourseChatsNav() {
   return (
     <>
       <SidebarGroup>
-        <SidebarGroupLabel>{t("chats")}</SidebarGroupLabel>
+        <InputGroup className="mb-2 bg-background group-data-[collapsible=icon]:hidden">
+          <InputGroupAddon>
+            <Search aria-hidden="true" />
+          </InputGroupAddon>
+          <InputGroupInput
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={t("searchChats")}
+            aria-label={t("searchChats")}
+          />
+        </InputGroup>
         <SidebarGroupContent>
           <SidebarMenu>
             {chats === undefined ? (
               Array.from({ length: 3 }, (_, index) => (
                 <SidebarMenuSkeleton key={index} showIcon />
               ))
-            ) : activeChats.length === 0 ? (
+            ) : activeChats.length === 0 && archivedChats.length === 0 ? (
               <li className="px-2 py-3 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
-                {t("noChats")}
+                {t(normalizedSearch ? "noMatchingChats" : "noChats")}
               </li>
             ) : (
               activeChats.map((course) => {
@@ -96,11 +129,20 @@ export function CourseChatsNav() {
                       className="h-11 gap-3 px-2 text-sm group-data-[collapsible=icon]:p-1!"
                     >
                       <Link href={href}>
-                        <CurriculumIcon
-                          iconKey={course.curriculumIconKey}
-                          className="size-7"
-                          size={28}
-                        />
+                        <span className="relative shrink-0">
+                          <CurriculumIcon
+                            iconKey={course.curriculumIconKey}
+                            className="size-7"
+                            size={28}
+                          />
+                          <UnreadIndicator
+                            count={unreadChats.get(course._id) ?? 0}
+                            dot
+                            label={notificationT("unreadMessages", {
+                              count: unreadChats.get(course._id) ?? 0,
+                            })}
+                          />
+                        </span>
                         <span>{course.name}</span>
                       </Link>
                     </SidebarMenuButton>

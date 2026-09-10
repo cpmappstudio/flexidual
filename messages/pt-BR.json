@@ -279,6 +279,8 @@
     "browse": "Explorar",
     "chats": "Chats",
     "noChats": "Ainda não há chats de cursos",
+    "searchChats": "Buscar chats...",
+    "noMatchingChats": "Nenhum chat encontrado",
     "archivedChats": "Chats arquivados",
     "unarchiveChat": "Desarquivar chat",
     "chatRestored": "O chat está ativo novamente.",
@@ -351,6 +353,7 @@
     "curriculumSummary": "Gerencie programas acadêmicos, modelos de cursos e planos de aulas."
   },
   "catalog": {
+    "current": "Agora",
     "liveNow": "Ao vivo",
     "upcoming": "Em breve",
     "allCourses": "Todos os cursos",
@@ -889,6 +892,7 @@
     "notFound": "Curso não encontrado"
   },
   "student": {
+    "gradeChangeEnrollmentNotice": "Alterar a série remove as matrículas em cursos em andamento de outras séries. Os cursos concluídos e o histórico acadêmico são preservados; as matrículas em novos cursos são revisadas separadamente.",
     "name": "Nome do Estudante",
     "firstName": "Nome",
     "lastName": "Sobrenome",
@@ -959,7 +963,7 @@
       "totalSessions": "Total Agendado",
       "sessionsCompleted": "{count} aulas concluídas",
       "currentLevel": "Nível Atual",
-      "classAttendance": "Presença nas aulas",
+      "classAttendance": "Presença nas aulas Standard",
       "attendanceSummary": "Você participou de {attended} de {completed} {completed, plural, one {aula realizada} other {aulas realizadas}}.",
       "attendanceVerifiedSummary": "{verified, plural, one {# aula verificada} other {# aulas verificadas}}.",
       "pendingVerificationSummary": "{count, plural, one {# aula está pendente de verificação.} other {# aulas estão pendentes de verificação.}}",
@@ -1309,7 +1313,7 @@
     "curriculumConflictShort": "Aluno já matriculado em um curso com este currículo",
     "studentAlreadyEnrolled": "O aluno já está matriculado neste curso",
     "invalidStudent": "Aluno inválido",
-    "invalidStudents": "Um ou mais alunos inválidos",
+    "invalidStudents": "Um ou mais alunos não são válidos para a série e o campus do curso. Revise as matrículas antes de continuar.",
     "classNotFound": "Curso não encontrado",
     "classScheduleConflict": "Este curso já tem uma aula agendada para {conflictTime}",
     "teacherScheduleConflict": "O professor já está ensinando \"{className}\" em {conflictTime}",
@@ -1331,6 +1335,8 @@
     "selectedRows": "{selected} de {total} linha(s) selecionada(s)"
   },
   "systemNotifications": {
+    "unreadChats": "{count, plural, one {# chat com mensagens não lidas} other {# chats com mensagens não lidas}}",
+    "unreadMessages": "{count, plural, one {# mensagem não lida} other {# mensagens não lidas}}",
     "title": "Notificações",
     "description": "Atualizações sobre seus cursos, aulas e acessos.",
     "open": "Abrir notificações",
@@ -1348,6 +1354,10 @@
       "courseEnrollmentAdded": {
         "title": "Matrícula em curso",
         "body": "Você foi matriculado em {className}."
+      },
+      "course_chat": {
+        "title": "Chat do curso",
+        "body": "{count, plural, one {Você tem # nova mensagem} other {Você tem # novas mensagens}} em {className}."
       },
       "courseEnrollmentRemoved": {
         "title": "Matrícula encerrada",

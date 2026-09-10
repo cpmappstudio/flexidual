@@ -11,6 +11,11 @@ import { canManageCampusPeople, canViewStudentProfile } from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
+import {
+  isExternalClassSession,
+  isLiveClassSession,
+  isUpcomingClassSession,
+} from "../lib/class-session";
 
 const dashboardScheduleValidator = v.object({
   scheduleId: v.id("classSchedule"),
@@ -287,7 +292,9 @@ export const getStudentDashboardStats = query({
           ]);
 
         const countableSchedules = schedules.filter(
-          (schedule) => schedule.status !== "cancelled",
+          (schedule) =>
+            schedule.status !== "cancelled" &&
+            !isExternalClassSession(schedule.sessionType),
         );
         const completedSchedules = countableSchedules.filter(
           (schedule) => schedule.status === "completed",
@@ -353,10 +360,12 @@ export const getStudentDashboardStats = query({
           },
           upcomingLessons: includeUpcomingLessons
             ? schedules
-                .filter(
-                  (schedule) =>
-                    schedule.status !== "cancelled" &&
-                    schedule.scheduledEnd > args.now,
+                .filter((schedule) =>
+                  isUpcomingClassSession(
+                    schedule,
+                    schedule.scheduledEnd,
+                    args.now,
+                  ),
                 )
                 .map((schedule) => ({
                   scheduleId: schedule._id,
@@ -369,7 +378,7 @@ export const getStudentDashboardStats = query({
                   end: schedule.scheduledEnd,
                   timeZone: timeZone ?? "UTC",
                   roomName: schedule.roomName,
-                  isLive: schedule.isLive === true,
+                  isLive: isLiveClassSession(schedule),
                   color: curriculum?.color || "#3b82f6",
                   status: schedule.status,
                   ...(schedule.sessionType !== undefined

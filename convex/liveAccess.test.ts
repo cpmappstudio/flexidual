@@ -497,6 +497,18 @@ test("course access is copied to the session and scoped to active students", asy
     }),
   ).toEqual([]);
 
+  const waitingCatalog = await asTeacher.query(api.classes.listCurrentCatalog, {
+    orgSlug: "campus-a",
+    now,
+    paginationOpts: { numItems: 10, cursor: null },
+  });
+  expect(waitingCatalog.page.map((course) => course.name)).toEqual(["Class A"]);
+  expect(waitingCatalog.page[0].currentSession).toMatchObject({
+    roomName: "room-a",
+    isLive: false,
+    canOpen: true,
+  });
+
   await asTeacher.mutation(api.schedule.markLive, {
     roomName: "room-a",
     isLive: true,
@@ -534,13 +546,130 @@ test("course access is copied to the session and scoped to active students", asy
     canOpen: false,
   });
   expect(studentCatalog.page[0].curriculumIconKey).toBe("microscope");
+  const currentCatalog = await asStudent.query(api.classes.listCurrentCatalog, {
+    orgSlug: "campus-a",
+    now,
+    paginationOpts: { numItems: 10, cursor: null },
+  });
+  expect(currentCatalog.page.map((course) => course.name)).toEqual(["Class A"]);
+  expect(currentCatalog.page[0].currentSession).toMatchObject({
+    roomName: "room-a",
+    isLive: true,
+    canOpen: true,
+  });
+  const currentArgs = {
+    orgSlug: "campus-a",
+    now,
+    paginationOpts: { numItems: 10, cursor: null },
+  };
+  for (const status of [
+    "scheduled",
+    "active",
+    "completed",
+    "cancelled",
+  ] as const) {
+    await t.run((ctx) =>
+      ctx.db.patch(data.scheduleAId, { status, isLive: false }),
+    );
+    const result = await asTeacher.query(
+      api.classes.listCurrentCatalog,
+      currentArgs,
+    );
+    expect(result.page).toHaveLength(status === "cancelled" ? 0 : 1);
+    if (status !== "cancelled")
+      expect(result.page[0].currentSession).toMatchObject({
+        isLive: false,
+        canOpen: status !== "completed",
+      });
+  }
+  await t.run((ctx) =>
+    ctx.db.patch(data.scheduleAId, { status: "scheduled", isLive: false }),
+  );
+  const atStart = await asTeacher.query(api.classes.listCurrentCatalog, {
+    ...currentArgs,
+    now: now - 60_000,
+  });
+  expect(atStart.page).toHaveLength(1);
+  const beforeStart = await asTeacher.query(api.classes.listCurrentCatalog, {
+    ...currentArgs,
+    now: now - 60_001,
+  });
+  expect(beforeStart.page).toHaveLength(0);
+  const atEnd = await asTeacher.query(api.classes.listCurrentCatalog, {
+    ...currentArgs,
+    now: now + 60 * 60_000,
+  });
+  expect(atEnd.page).toHaveLength(0);
+  const nextAtStart = await asTeacher.query(api.classes.listCatalog, {
+    ...currentArgs,
+    now: now - 60_000,
+  });
+  expect(
+    nextAtStart.page.find((course) => course._id === data.classAId)?.nextSession
+      ?.roomName,
+  ).toBe("room-a-next");
+  for (const sessionType of ["ignitia", "abeka"] as const) {
+    await t.run((ctx) => ctx.db.patch(data.scheduleAId, { sessionType }));
+    expect(
+      (await asTeacher.query(api.classes.listCurrentCatalog, currentArgs)).page,
+    ).toHaveLength(0);
+  }
+  await t.run((ctx) =>
+    ctx.db.patch(data.scheduleAId, {
+      sessionType: "live",
+      status: "active",
+      isLive: true,
+    }),
+  );
+  const extended = await asTeacher.query(api.classes.listCurrentCatalog, {
+    ...currentArgs,
+    now: now + 60 * 60_000,
+  });
+  expect(extended.page[0].currentSession?.isLive).toBe(true);
+  expect(
+    (
+      await asTeacher.query(api.classes.listCurrentCatalog, {
+        ...currentArgs,
+        search: "does not match",
+      })
+    ).page,
+  ).toHaveLength(0);
+  expect(
+    (
+      await asTeacher.query(api.classes.listCurrentCatalog, {
+        ...currentArgs,
+        campusId: data.secondCampusAId,
+      })
+    ).page,
+  ).toHaveLength(0);
+  await expect(
+    asTeacher.query(api.classes.listCurrentCatalog, {
+      ...currentArgs,
+      campusId: data.campusBId,
+    }),
+  ).rejects.toThrow("INVALID_CAMPUS");
+  await expect(
+    asStudent.query(api.classes.listCurrentCatalog, {
+      ...currentArgs,
+      visibility: "all",
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    asTeacher.query(api.classes.listCurrentCatalog, {
+      ...currentArgs,
+      visibility: "private",
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
 
   const staffCatalog = await asTeacher.query(api.classes.listCatalog, {
     orgSlug: "campus-a",
     now,
     paginationOpts: { numItems: 10, cursor: null },
   });
-  expect(staffCatalog.page.map((course) => course.name)).toEqual(["Class A"]);
+  expect(staffCatalog.page.map((course) => course.name).sort()).toEqual([
+    "Class A",
+    "Private Class A",
+  ]);
   expect(
     staffCatalog.page.find((course) => course.name === "Class A")?.nextSession,
   ).toMatchObject({ roomName: "room-a-next", canOpen: true });
@@ -563,8 +692,9 @@ test("course access is copied to the session and scoped to active students", asy
       paginationOpts: { numItems: 10, cursor: null },
     },
   );
-  expect(defaultAdminCatalog.page.map((course) => course.name)).toEqual([
+  expect(defaultAdminCatalog.page.map((course) => course.name).sort()).toEqual([
     "Class A",
+    "Private Class A",
   ]);
   const privateCatalog = await asCatalogAdmin.query(api.classes.listCatalog, {
     orgSlug: "campus-a",
@@ -594,6 +724,59 @@ test("course access is copied to the session and scoped to active students", asy
   expect(
     [...firstPage.page, ...secondPage.page].map((course) => course.name).sort(),
   ).toEqual(["Class A", "Private Class A"]);
+  expect(firstPage.page.map((course) => course.name)).toEqual([
+    "Private Class A",
+  ]);
+  // Current occurrences are discoverable even if their course is not on page one.
+  expect(
+    (
+      await asCatalogAdmin.query(api.classes.listCurrentCatalog, currentArgs)
+    ).page.map((course) => course.name),
+  ).toEqual(["Class A"]);
+  const privateScheduleId = await t.run(async (ctx) => {
+    const privateCourse = await ctx.db
+      .query("classes")
+      .filter((q) => q.eq(q.field("name"), "Private Class A"))
+      .unique();
+    return await ctx.db.insert("classSchedule", {
+      classId: privateCourse!._id,
+      schoolId: data.schoolAId,
+      sessionType: "live",
+      scheduledStart: now,
+      scheduledEnd: now + 60_000,
+      roomName: "private-now",
+      status: "scheduled",
+      liveAccess: { mode: "private", allowedGradeCodes: [] },
+      createdAt: now,
+      createdBy: data.teacherId,
+    });
+  });
+  expect(
+    (
+      await asCatalogAdmin.query(api.classes.listCurrentCatalog, currentArgs)
+    ).page
+      .map((course) => course.name)
+      .sort(),
+  ).toEqual(["Class A", "Private Class A"]);
+  expect(
+    (
+      await asCatalogAdmin.query(api.classes.listCurrentCatalog, {
+        ...currentArgs,
+        visibility: "private",
+      })
+    ).page.map((course) => course.name),
+  ).toEqual(["Private Class A"]);
+  expect(
+    (
+      await asStudent.query(api.classes.listCurrentCatalog, currentArgs)
+    ).page.map((course) => course.name),
+  ).toEqual(["Class A"]);
+  expect(
+    (
+      await asTeacher.query(api.classes.listCurrentCatalog, currentArgs)
+    ).page.map((course) => course.name),
+  ).toEqual(["Class A", "Private Class A"]);
+  await t.run((ctx) => ctx.db.delete(privateScheduleId));
 
   const catalogFilters = await asTeacher.query(api.classes.getCatalogFilters, {
     orgSlug: "campus-a",
@@ -627,7 +810,10 @@ test("course access is copied to the session and scoped to active students", asy
     campusId: data.campusAId,
     paginationOpts: { numItems: 10, cursor: null },
   });
-  expect(campusCatalog.page.map((course) => course.name)).toEqual(["Class A"]);
+  expect(campusCatalog.page.map((course) => course.name).sort()).toEqual([
+    "Class A",
+    "Private Class A",
+  ]);
   expect(
     (
       await asCatalogAdmin.query(api.classes.getCatalogFilters, {
@@ -635,14 +821,16 @@ test("course access is copied to the session and scoped to active students", asy
       })
     ).canViewPrivateCourses,
   ).toBe(true);
-  await expect(
-    asPrincipal.query(api.classes.listCatalog, {
-      orgSlug: "campus-a",
-      now,
-      visibility: "all",
-      paginationOpts: { numItems: 10, cursor: null },
-    }),
-  ).rejects.toThrow("PERMISSION_DENIED");
+  const principalCatalog = await asPrincipal.query(api.classes.listCatalog, {
+    orgSlug: "campus-a",
+    now,
+    visibility: "all",
+    paginationOpts: { numItems: 10, cursor: null },
+  });
+  expect(principalCatalog.page.map((course) => course.name).sort()).toEqual([
+    "Class A",
+    "Private Class A",
+  ]);
   await expect(
     asTeacher.query(api.classes.getCatalogFilters, {
       orgSlug: "campus-a",

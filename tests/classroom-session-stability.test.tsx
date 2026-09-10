@@ -75,6 +75,7 @@ const testState = vi.hoisted(() => {
       hardEndsAt: number;
       proposedEnd: number;
       warningStartsAt: number;
+      decisionEndsAt?: number;
     } | null,
     isExtensionLoading: false,
     isLeadershipLoading: false,
@@ -307,6 +308,8 @@ const INITIAL_NOW = Date.UTC(2026, 8, 3, 14, 0);
 function renderActiveClassroom(sessionNow = INITIAL_NOW) {
   return render(
     createElement(ActiveClassroomUI, {
+      isCloseoutOpen: false,
+      onRequestCloseout: vi.fn(),
       courseId: "class-1" as never,
       currentUserRole: "admin",
       roomName: "room-1",
@@ -348,7 +351,79 @@ describe("classroom session stability", () => {
     testState.backendCall.mockResolvedValue(null);
   });
 
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("sounds one chime per extension decision, not on countdown updates", async () => {
+    const oscillator = vi.fn(() => ({
+      connect: vi.fn(),
+      frequency: { value: 0 },
+      type: "sine",
+      start: vi.fn(),
+      stop: vi.fn(),
+    }));
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        state = "running";
+        currentTime = 0;
+        destination = {};
+        resume = vi.fn(async () => {});
+        close = vi.fn(async () => {});
+        createOscillator = oscillator;
+        createGain = () => ({
+          connect: vi.fn(),
+          gain: {
+            setValueAtTime: vi.fn(),
+            linearRampToValueAtTime: vi.fn(),
+            exponentialRampToValueAtTime: vi.fn(),
+          },
+        });
+      },
+    );
+    testState.extensionContext = {
+      affectedStudentCount: 0,
+      effectiveEnd: INITIAL_NOW,
+      proposedEnd: INITIAL_NOW + 600_000,
+      warningStartsAt: INITIAL_NOW - 120_000,
+      hardEndsAt: INITIAL_NOW + 3_600_000,
+      decisionEndsAt: INITIAL_NOW + 300_000,
+    };
+    const view = renderActiveClassroom();
+    await waitFor(() => expect(oscillator).toHaveBeenCalledTimes(3));
+    view.rerender(
+      createElement(ActiveClassroomUI, {
+        courseId: "class-1" as never,
+        currentUserRole: "admin",
+        roomName: "room-1",
+        sessionNow: INITIAL_NOW + 1_000,
+        sessionIsLive: true,
+        sessionTimeZone: "America/Bogota",
+        isCloseoutOpen: false,
+        onRequestCloseout: vi.fn(),
+      }),
+    );
+    expect(oscillator).toHaveBeenCalledTimes(3);
+    testState.extensionContext = {
+      ...testState.extensionContext,
+      decisionEndsAt: INITIAL_NOW + 900_000,
+    };
+    view.rerender(
+      createElement(ActiveClassroomUI, {
+        courseId: "class-1" as never,
+        currentUserRole: "admin",
+        roomName: "room-1",
+        sessionNow: INITIAL_NOW + 600_000,
+        sessionIsLive: true,
+        sessionTimeZone: "America/Bogota",
+        isCloseoutOpen: false,
+        onRequestCloseout: vi.fn(),
+      }),
+    );
+    await waitFor(() => expect(oscillator).toHaveBeenCalledTimes(6));
+  });
 
   it("keeps the administrative leader visible during a 15-second query transition", async () => {
     const view = renderActiveClassroom();
@@ -366,6 +441,8 @@ describe("classroom session stability", () => {
     testState.isLeadershipLoading = true;
     view.rerender(
       createElement(ActiveClassroomUI, {
+        isCloseoutOpen: false,
+        onRequestCloseout: vi.fn(),
         courseId: "class-1" as never,
         currentUserRole: "admin",
         roomName: "room-1",
@@ -412,6 +489,8 @@ describe("classroom session stability", () => {
     act(() => {
       view.rerender(
         createElement(ActiveClassroomUI, {
+          isCloseoutOpen: false,
+          onRequestCloseout: vi.fn(),
           courseId: "class-1" as never,
           currentUserRole: "admin",
           roomName: "room-1",
@@ -432,6 +511,8 @@ describe("classroom session stability", () => {
     act(() => {
       view.rerender(
         createElement(ActiveClassroomUI, {
+          isCloseoutOpen: false,
+          onRequestCloseout: vi.fn(),
           courseId: "class-2" as never,
           currentUserRole: "admin",
           roomName: "room-2",
@@ -481,6 +562,8 @@ describe("classroom session stability", () => {
     act(() => {
       view.rerender(
         createElement(ActiveClassroomUI, {
+          isCloseoutOpen: false,
+          onRequestCloseout: vi.fn(),
           courseId: "class-1" as never,
           currentUserRole: "admin",
           roomName: "room-1",
@@ -536,6 +619,8 @@ describe("classroom session stability", () => {
     act(() => {
       view.rerender(
         createElement(ActiveClassroomUI, {
+          isCloseoutOpen: false,
+          onRequestCloseout: vi.fn(),
           courseId: "class-1" as never,
           currentUserRole: "admin",
           roomName: "room-1",
@@ -599,6 +684,8 @@ describe("classroom session stability", () => {
     act(() => {
       view.rerender(
         createElement(ActiveClassroomUI, {
+          isCloseoutOpen: false,
+          onRequestCloseout: vi.fn(),
           courseId: "class-1" as never,
           currentUserRole: "admin",
           roomName: "room-1",

@@ -279,6 +279,8 @@
     "browse": "Browse",
     "chats": "Chats",
     "noChats": "No course chats yet",
+    "searchChats": "Search chats...",
+    "noMatchingChats": "No matching chats",
     "archivedChats": "Archived chats",
     "unarchiveChat": "Unarchive chat",
     "chatRestored": "The chat is active again.",
@@ -351,6 +353,7 @@
     "curriculumSummary": "Manage academic programs, course templates, and lesson plans."
   },
   "catalog": {
+    "current": "Now",
     "liveNow": "Live now",
     "upcoming": "Coming up",
     "allCourses": "All courses",
@@ -889,6 +892,7 @@
     "notFound": "Course not found"
   },
   "student": {
+    "gradeChangeEnrollmentNotice": "Changing the grade removes enrollment in ongoing courses of other grades. Completed courses and academic records are kept; enrollment in new courses is reviewed separately.",
     "name": "Student Name",
     "firstName": "First Name",
     "lastName": "Last Name",
@@ -959,7 +963,7 @@
       "totalSessions": "Total Scheduled",
       "sessionsCompleted": "{count} classes completed",
       "currentLevel": "Current Level",
-      "classAttendance": "Class Attendance",
+      "classAttendance": "Standard Class Attendance",
       "attendanceSummary": "You have attended {attended} of {completed} {completed, plural, one {class held} other {classes held}}.",
       "attendanceVerifiedSummary": "{verified, plural, one {# class verified} other {# classes verified}}.",
       "pendingVerificationSummary": "{count, plural, one {# class is pending verification.} other {# classes are pending verification.}}",
@@ -1309,7 +1313,7 @@
     "curriculumConflictShort": "Student already enrolled in a course with this curriculum",
     "studentAlreadyEnrolled": "Student is already enrolled in this course",
     "invalidStudent": "Invalid student",
-    "invalidStudents": "One or more invalid students",
+    "invalidStudents": "One or more students are not eligible for the course grade and campus. Review the enrollments before continuing.",
     "classNotFound": "Course not found",
     "classScheduleConflict": "This course already has a class scheduled at {conflictTime}",
     "teacherScheduleConflict": "Teacher is already teaching \"{className}\" at {conflictTime}",
@@ -1331,6 +1335,8 @@
     "selectedRows": "{selected} of {total} row(s) selected"
   },
   "systemNotifications": {
+    "unreadChats": "{count, plural, one {# chat with unread messages} other {# chats with unread messages}}",
+    "unreadMessages": "{count, plural, one {# unread message} other {# unread messages}}",
     "title": "Notifications",
     "description": "Updates about your courses, classes and access.",
     "open": "Open notifications",
@@ -1348,6 +1354,10 @@
       "courseEnrollmentAdded": {
         "title": "Course enrollment",
         "body": "You were enrolled in {className}."
+      },
+      "course_chat": {
+        "title": "Course chat",
+        "body": "{count, plural, one {You have # new message} other {You have # new messages}} in {className}."
       },
       "courseEnrollmentRemoved": {
         "title": "Course enrollment ended",

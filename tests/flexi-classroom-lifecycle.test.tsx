@@ -28,6 +28,8 @@ const createSessionStatus = () => ({
 });
 
 const createScheduleDetails = (roomName = "room-1") => ({
+  sessionLeaderId: "user-1",
+  sessionClosureStatus: "pending",
   class: {
     _id: `class-${roomName}`,
     name: `Classroom ${roomName}`,
@@ -59,6 +61,7 @@ const testState = vi.hoisted(() => ({
     isAuthenticated: true,
   },
   getToken: vi.fn(),
+  endSession: vi.fn(async () => null),
   logPresence: vi.fn(async () => null),
   translate: vi.fn((key: string) => key),
   searchParams: { get: () => null },
@@ -78,6 +81,7 @@ vi.mock("@/convex/_generated/api", () => ({
   api: {
     livekit: {
       getToken: "getToken",
+      endSession: "endSession",
     },
     schedule: {
       getSessionStatus: "getSessionStatus",
@@ -91,7 +95,8 @@ vi.mock("convex/react", async () => {
   const React = await import("react");
 
   return {
-    useAction: () => testState.getToken,
+    useAction: (action: string) =>
+      action === "endSession" ? testState.endSession : testState.getToken,
     useMutation: () => testState.logPresence,
     useQuery: (query: string, args: unknown) => {
       const isSessionStatus = query === "getSessionStatus";
@@ -179,8 +184,44 @@ vi.mock("@/components/ui/sidebar", () => ({
 }));
 
 vi.mock("@/components/classroom/active-classroom-ui", () => ({
-  ActiveClassroomUI: () => null,
+  ActiveClassroomUI: ({
+    onRequestCloseout,
+  }: {
+    onRequestCloseout: () => void;
+  }) => createElement("button", { onClick: onRequestCloseout }, "Open report"),
 }));
+
+vi.mock("@/components/classroom/session-closeout-dialog", async () => {
+  const React = await import("react");
+  return {
+    SessionCloseoutDialog: ({
+      open,
+      onComplete,
+    }: {
+      open: boolean;
+      onComplete: () => Promise<void>;
+    }) => {
+      const [notes, setNotes] = React.useState("");
+      return open
+        ? React.createElement(
+            "div",
+            { "data-testid": "closeout" },
+            React.createElement("input", {
+              "aria-label": "Report notes",
+              value: notes,
+              onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
+                setNotes(event.target.value),
+            }),
+            React.createElement(
+              "button",
+              { onClick: () => void onComplete().catch(() => {}) },
+              "Save report",
+            ),
+          )
+        : null;
+    },
+  };
+});
 
 vi.mock("@/components/classroom/student-classroom-ui", () => ({
   StudentClassroomUI: () => null,
@@ -490,6 +531,96 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
 
     expect(testState.router.push).not.toHaveBeenCalled();
     expect(screen.getByText("classroom.classEnded")).toBeTruthy();
+  });
+
+  it("preserves the report draft when the live room closes automatically", async () => {
+    const view = render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+    fireEvent.click(screen.getByText("Open report"));
+    const notes = screen.getByLabelText("Report notes");
+    fireEvent.change(notes, { target: { value: "Unfinished lesson notes" } });
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "completed",
+      isLive: false,
+    };
+    view.rerender(createElement(FlexiClassroom, { roomName: "room-1" }));
+    expect(screen.queryByTestId("livekit-room")).toBeNull();
+    expect(screen.getByLabelText("Report notes")).toBe(notes);
+    expect((notes as HTMLInputElement).value).toBe("Unfinished lesson notes");
+    expect(testState.router.push).not.toHaveBeenCalled();
+
+    testState.scheduleDetails = {
+      ...createScheduleDetails(),
+      sessionClosureStatus: "completed",
+    };
+    fireEvent.click(screen.getByText("Save report"));
+    view.rerender(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+    expect(testState.endSession).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("closeout")).toBeNull();
+  });
+
+  it("opens a pending report on reentry only for its responsible person", async () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "completed",
+      isLive: false,
+    };
+    const view = render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    expect(screen.getByTestId("closeout")).toBeTruthy();
+    testState.currentUser.user = { _id: "other-staff" };
+    view.rerender(createElement(FlexiClassroom, { roomName: "room-1" }));
+    expect(screen.queryByTestId("closeout")).toBeNull();
+  });
+
+  it("does not force a closeout for students or companion devices", () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "completed",
+      isLive: false,
+    };
+    const view = render(
+      createElement(FlexiClassroom, {
+        roomName: "room-1",
+        isStudentView: true,
+      }),
+    );
+    expect(screen.queryByTestId("closeout")).toBeNull();
+    view.rerender(
+      createElement(FlexiClassroom, { roomName: "room-1", isCompanion: true }),
+    );
+    expect(screen.queryByTestId("closeout")).toBeNull();
+  });
+
+  it("closes a pending report when another authorized device completes it", () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "completed",
+      isLive: false,
+    };
+    const view = render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    expect(screen.getByTestId("closeout")).toBeTruthy();
+    testState.scheduleDetails = {
+      ...createScheduleDetails(),
+      sessionClosureStatus: "completed",
+    };
+    view.rerender(createElement(FlexiClassroom, { roomName: "room-1" }));
+    expect(screen.queryByTestId("closeout")).toBeNull();
+  });
+
+  it("keeps the report open if ending the live room fails", async () => {
+    testState.endSession.mockRejectedValueOnce(new Error("temporary failure"));
+    render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+    fireEvent.click(screen.getByText("Open report"));
+    fireEvent.click(screen.getByText("Save report"));
+    await flushPromises();
+    expect(screen.getByTestId("closeout")).toBeTruthy();
+    fireEvent.click(screen.getByText("Save report"));
+    await flushPromises();
+    expect(testState.endSession).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("closeout")).toBeNull();
   });
 
   it("unmounts when Convex confirms that the room no longer exists", async () => {

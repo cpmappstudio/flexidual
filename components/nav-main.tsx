@@ -34,6 +34,29 @@ export function NavMain() {
         )}
         <SidebarGroupContent>
           <SidebarMenu>
+            {role === "student" && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === basePath || pathname === `${basePath}/`}
+                  tooltip={t("navigation.dashboard")}
+                  aria-label={t("navigation.dashboard")}
+                  className="h-12 gap-3 px-2 text-base group-data-[collapsible=icon]:p-1!"
+                >
+                  <Link href={basePath}>
+                    <Image
+                      src="/home-icon.svg"
+                      alt=""
+                      width={32}
+                      height={32}
+                      aria-hidden="true"
+                      className="group-data-[collapsible=icon]:size-6"
+                    />
+                    <span>{t("navigation.dashboard")}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
             <SidebarMenuItem>
               <SidebarMenuButton
                 asChild

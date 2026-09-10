@@ -37,6 +37,7 @@ import {
 } from "./model/membership";
 import {
   ensureClassEnrollmentsMigrated,
+  isEligibleForCourse,
   listClassStudentIds,
 } from "./model/enrollments";
 import {
@@ -53,6 +54,7 @@ import {
 import {
   catalogFilterOptionsValidator,
   catalogResultValidator,
+  listCurrentCatalogCourses,
   getCatalogFilterOptions,
   listCatalogCourses,
 } from "./model/catalog";
@@ -112,6 +114,7 @@ const classFields = {
   chatStudentsMuted: v.optional(v.boolean()),
   chatDisabled: v.optional(v.boolean()),
   chatArchivedAt: v.optional(v.number()),
+  chatNotificationsClearedThrough: v.optional(v.number()),
   isActive: v.boolean(),
   createdAt: v.number(),
   createdBy: v.id("users"),
@@ -360,19 +363,37 @@ export const listOverview = query({
   },
 });
 
-export const listCatalog = query({
-  args: {
-    orgSlug: v.string(),
-    now: v.number(),
-    search: v.optional(v.string()),
-    campusId: v.optional(v.id("campuses")),
-    curriculumId: v.optional(v.id("curriculums")),
-    teacherId: v.optional(v.id("users")),
-    visibility: v.optional(
-      v.union(v.literal("public"), v.literal("private"), v.literal("all")),
-    ),
-    paginationOpts: paginationOptsValidator,
+const catalogArgs = {
+  orgSlug: v.string(),
+  now: v.number(),
+  search: v.optional(v.string()),
+  campusId: v.optional(v.id("campuses")),
+  curriculumId: v.optional(v.id("curriculums")),
+  teacherId: v.optional(v.id("users")),
+  visibility: v.optional(
+    v.union(v.literal("public"), v.literal("private"), v.literal("all")),
+  ),
+  paginationOpts: paginationOptsValidator,
+};
+
+export const listCurrentCatalog = query({
+  args: catalogArgs,
+  returns: catalogResultValidator,
+  handler: async (ctx, { orgSlug, now, paginationOpts, ...filters }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    return await listCurrentCatalogCourses(
+      ctx,
+      user,
+      orgSlug,
+      now,
+      filters,
+      paginationOpts,
+    );
   },
+});
+
+export const listCatalog = query({
+  args: catalogArgs,
   returns: catalogResultValidator,
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -870,28 +891,25 @@ export const getStudents = query({
         return campusId ? ctx.db.get("campuses", campusId) : null;
       }),
     );
-    const gradeNames = new Map(
-      grades.map((grade) => [grade.code, grade.name]),
-    );
+    const gradeNames = new Map(grades.map((grade) => [grade.code, grade.name]));
 
-    return students
-      .flatMap((student, index) => {
-        if (!student) return [];
-        const gradeCode = memberships[index]?.gradeCode ?? student.grade;
-        return [
-          {
-            _id: student._id,
-            fullName: student.fullName,
-            email: student.email,
-            avatarStorageId: student.avatarStorageId,
-            isActive: student.isActive,
-            imageUrl: student.imageUrl,
-            gradeCode,
-            gradeName: gradeCode ? gradeNames.get(gradeCode) : undefined,
-            campusName: campuses[index]?.name,
-          },
-        ];
-      });
+    return students.flatMap((student, index) => {
+      if (!student) return [];
+      const gradeCode = memberships[index]?.gradeCode ?? student.grade;
+      return [
+        {
+          _id: student._id,
+          fullName: student.fullName,
+          email: student.email,
+          avatarStorageId: student.avatarStorageId,
+          isActive: student.isActive,
+          imageUrl: student.imageUrl,
+          gradeCode,
+          gradeName: gradeCode ? gradeNames.get(gradeCode) : undefined,
+          campusName: campuses[index]?.name,
+        },
+      ];
+    });
   },
 });
 
@@ -1051,6 +1069,7 @@ export const searchCourseCreationStudents = query({
     curriculumId: v.id("curriculums"),
     campusId: v.id("campuses"),
     searchQuery: v.string(),
+    gradeCode: v.optional(v.string()),
   },
   returns: v.array(courseCreationStudentValidator),
   handler: async (ctx, args) => {
@@ -1069,6 +1088,7 @@ export const searchCourseCreationStudents = query({
       curriculum.schoolId!,
       args.campusId,
       true,
+      args.gradeCode ? [args.gradeCode] : curriculum.gradeCodes,
     );
     return students
       .filter(
@@ -1878,7 +1898,9 @@ export const createWithSchedule = mutation({
             args.campusId,
           ),
         ]);
-        return student && membership ? student : null;
+        return isEligibleForCourse(student, membership, args, curriculum)
+          ? student
+          : null;
       }),
     );
     if (students.some((student) => student === null)) {
@@ -2090,6 +2112,32 @@ export const update = mutation({
             args.liveAccess,
           );
 
+    if (
+      effectiveGradeCode !== classData.gradeCode ||
+      targetCurriculum._id !== classData.curriculumId
+    ) {
+      const studentIds = await listClassStudentIds(ctx, classData);
+      for (const studentId of studentIds) {
+        const student = await ctx.db.get(studentId);
+        const membership = await getStudentMembership(
+          ctx,
+          studentId,
+          targetCurriculum.schoolId,
+          classData.campusId,
+        );
+        if (
+          !isEligibleForCourse(
+            student,
+            membership,
+            { ...classData, gradeCode: effectiveGradeCode },
+            targetCurriculum,
+          )
+        ) {
+          throw new ConvexError("INVALID_STUDENTS");
+        }
+      }
+    }
+
     if (args.teacherId) {
       const teacher = await ctx.db.get(args.teacherId);
       if (!teacher) throw new ConvexError("INVALID_TEACHER");
@@ -2261,18 +2309,7 @@ export const addStudent = mutation({
       curriculum.schoolId,
       classData.campusId,
     );
-    const studentGrade = membership?.gradeCode ?? student.grade;
-    const allowedGrades = classData.gradeCode
-      ? [classData.gradeCode]
-      : curriculum.gradeCodes;
-    if (
-      !membership ||
-      (classData.campusId &&
-        (membership.orgType !== "campus" ||
-          membership.orgId !== classData.campusId)) ||
-      (allowedGrades?.length &&
-        (!studentGrade || !allowedGrades.includes(studentGrade)))
-    ) {
+    if (!isEligibleForCourse(student, membership, classData, curriculum)) {
       throw new ConvexError("INVALID_STUDENT");
     }
 
@@ -2455,6 +2492,9 @@ export const remove = mutation({
 
     await ctx.db.delete(args.id);
     await ctx.scheduler.runAfter(0, internal.courseChatMessages.removeByClass, {
+      classId: args.id,
+    });
+    await ctx.scheduler.runAfter(0, internal.courseChatNotifications.removeByClass, {
       classId: args.id,
     });
     return { deleted: true } as const;

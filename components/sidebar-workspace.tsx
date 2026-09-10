@@ -8,6 +8,8 @@ import { useOrgBasePath } from "@/hooks/use-org-base-path";
 import { LayoutGrid, MessageCircle } from "lucide-react";
 import { usePathname } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
+import { useUnreadCourseChats } from "@/hooks/use-unread-course-chats";
+import { UnreadIndicator } from "@/components/notifications/unread-indicator";
 
 type SidebarWorkspaceTab = "navigation" | "chats";
 
@@ -16,6 +18,8 @@ const workspaceTabTriggerClassName =
 
 export function SidebarWorkspace() {
   const t = useTranslations("navigation");
+  const notificationT = useTranslations("systemNotifications");
+  const unreadChats = useUnreadCourseChats();
   const pathname = usePathname();
   const basePath = useOrgBasePath();
   const isChatRoute = pathname.startsWith(`${basePath}/chats/`);
@@ -51,7 +55,14 @@ export function SidebarWorkspace() {
           title={t("chats")}
           className={workspaceTabTriggerClassName}
         >
-          <MessageCircle className="size-4 group-data-[collapsible=icon]:size-5" />
+          <span className="relative shrink-0">
+            <MessageCircle className="size-4 group-data-[collapsible=icon]:size-5" />
+            <UnreadIndicator
+              count={unreadChats.size}
+              dot
+              label={notificationT("unreadChats", { count: unreadChats.size })}
+            />
+          </span>
           <span className="group-data-[collapsible=icon]:hidden">
             {t("chats")}
           </span>
@@ -67,7 +78,7 @@ export function SidebarWorkspace() {
         value="chats"
         className="m-0 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden"
       >
-        <CourseChatsNav />
+        <CourseChatsNav unreadChats={unreadChats} />
       </TabsContent>
     </Tabs>
   );

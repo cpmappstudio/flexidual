@@ -43,6 +43,9 @@ import {
   ClassroomParticipantRosterSheet,
 } from "./classroom-participant-roster-sheet";
 import { CourseChat } from "@/components/chat/course-chat";
+import { UnreadIndicator } from "@/components/notifications/unread-indicator";
+import { useUnreadCourseChats } from "@/hooks/use-unread-course-chats";
+import { useTranslations } from "next-intl";
 import { ClassroomLayoutSidebar } from "./classroom-layout";
 import { useClassroomParticipantPagination } from "./use-classroom-participant-pagination";
 
@@ -77,6 +80,46 @@ interface ClassroomParticipantsPanelProps {
 }
 
 export function ClassroomParticipantsPanel({
+  layoutMode = "responsive",
+  ...props
+}: ClassroomParticipantsPanelProps) {
+  if (layoutMode === "recording") {
+    return (
+      <ClassroomParticipantsPanelContent
+        {...props}
+        layoutMode={layoutMode}
+        unreadCount={0}
+        unreadLabel=""
+      />
+    );
+  }
+
+  return <ClassroomParticipantsPanelWithUnread {...props} />;
+}
+
+function ClassroomParticipantsPanelWithUnread(
+  props: ClassroomParticipantsPanelProps,
+) {
+  const notificationT = useTranslations("systemNotifications");
+  const unreadCount = useUnreadCourseChats().get(props.courseId) ?? 0;
+  const unreadLabel = notificationT("unreadMessages", { count: unreadCount });
+
+  return (
+    <ClassroomParticipantsPanelContent
+      {...props}
+      unreadCount={unreadCount}
+      unreadLabel={unreadLabel}
+    />
+  );
+}
+
+interface ClassroomParticipantsPanelContentProps
+  extends ClassroomParticipantsPanelProps {
+  unreadCount: number;
+  unreadLabel: string;
+}
+
+function ClassroomParticipantsPanelContent({
   courseId,
   heading,
   compactHeading,
@@ -99,7 +142,17 @@ export function ClassroomParticipantsPanel({
   onLowerHand,
   children,
   layoutMode = "responsive",
-}: ClassroomParticipantsPanelProps) {
+  unreadCount,
+  unreadLabel,
+}: ClassroomParticipantsPanelContentProps) {
+  const chatTabLabel =
+    unreadCount > 0 ? `${chatLabel}. ${unreadLabel}` : chatLabel;
+  const chatIcon = (
+    <span className="relative inline-flex shrink-0">
+      <MessageCircle className="size-4" />
+      <UnreadIndicator count={unreadCount} label={unreadLabel} dot />
+    </span>
+  );
   const participantTiles = Children.toArray(children);
   const {
     gridRef,
@@ -248,12 +301,13 @@ export function ClassroomParticipantsPanel({
             "h-full min-w-0 items-center gap-2 border-b border-primary/20 bg-card px-3 text-left text-primary outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
             layoutMode === "recording" ? "hidden" : "flex xl:hidden",
           )}
-          aria-label={`${compactHeading}. ${compactPanelLabel}`}
+          aria-label={`${compactHeading}. ${compactPanelLabel}${unreadCount > 0 ? `. ${unreadLabel}` : ""}`}
           onClick={() => setIsMobileSheetOpen(true)}
         >
           <h3 className="min-w-0 truncate text-xs font-bold uppercase tracking-widest">
             {compactHeading}
           </h3>
+          {unreadCount > 0 && chatIcon}
           {isEmpty ? (
             <span className="ml-auto flex shrink-0 items-center gap-1 text-xs font-semibold">
               {compactOpenLabel}
@@ -294,9 +348,10 @@ export function ClassroomParticipantsPanel({
             </TabsTrigger>
             <TabsTrigger
               value="chat"
+              aria-label={chatTabLabel}
               className={classroomPanelTabTriggerClassName}
             >
-              <MessageCircle className="size-4" />
+              {chatIcon}
               <span className="truncate">{chatLabel}</span>
             </TabsTrigger>
           </TabsList>
@@ -422,9 +477,10 @@ export function ClassroomParticipantsPanel({
                 </TabsTrigger>
                 <TabsTrigger
                   value="chat"
+                  aria-label={chatTabLabel}
                   className={classroomPanelTabTriggerClassName}
                 >
-                  <MessageCircle />
+                  {chatIcon}
                   {chatLabel}
                 </TabsTrigger>
               </TabsList>

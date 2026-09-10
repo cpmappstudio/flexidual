@@ -37,7 +37,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { LeaveClassButton } from "./leave-class-button";
 import { EndClassButton } from "./end-class-button";
-import { SessionCloseoutDialog } from "./session-closeout-dialog";
+import { LIVE_DECISION_WINDOW_MS } from "@/lib/live-session-policy";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import {
@@ -181,6 +181,8 @@ interface ActiveClassroomUIProps {
   curriculumIconKey?: string;
   sessionIsLive: boolean;
   sessionTimeZone: string;
+  isCloseoutOpen: boolean;
+  onRequestCloseout: () => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   uiPreviewEnabled?: boolean;
@@ -197,6 +199,8 @@ export function ActiveClassroomUI({
   curriculumIconKey,
   sessionIsLive,
   sessionTimeZone,
+  isCloseoutOpen,
+  onRequestCloseout,
   isFullscreen = false,
   onToggleFullscreen,
   uiPreviewEnabled = false,
@@ -235,7 +239,6 @@ export function ActiveClassroomUI({
     api.schedule.rejectSessionLeadershipTransfer,
   );
   const toggleRecording = useAction(api.livekit.toggleRecording);
-  const endSession = useAction(api.livekit.endSession);
   const notifyRoomAdministratorLeft = useAction(
     api.livekit.notifyRoomAdministratorLeft,
   );
@@ -265,8 +268,6 @@ export function ActiveClassroomUI({
   const [showQR, setShowQR] = useState(false);
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [hasStartedSession, setHasStartedSession] = useState(false);
-  const [isEndingSession, setIsEndingSession] = useState(false);
-  const [isCloseoutOpen, setIsCloseoutOpen] = useState(false);
   const [isSessionActionDialogOpen, setIsSessionActionDialogOpen] =
     useState(false);
   const [uiPreviewState, setUiPreviewState] =
@@ -281,6 +282,7 @@ export function ActiveClassroomUI({
   const transferOutcomeInitializedRef = useRef(false);
   const lastTransferOutcomeIdRef = useRef<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const soundedDecisionRef = useRef<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const { zoom, pan, stageRef, handleZoom, startPanDrag } =
     useClassroomStageViewport();
@@ -326,7 +328,7 @@ export function ActiveClassroomUI({
     !!extensionContext?.decisionEndsAt &&
     sessionNow < extensionContext.decisionEndsAt;
   const decisionSecondsRemaining = isPreviewing("extend-class")
-    ? 60
+    ? LIVE_DECISION_WINDOW_MS / 1000
     : extensionContext?.decisionEndsAt
       ? Math.max(
           0,
@@ -383,12 +385,12 @@ export function ActiveClassroomUI({
     previewLayer: ACTIVE_PREVIEW_LAYERS[uiPreviewState] ?? null,
   });
 
-  const playHandChime = useCallback(() => {
+  const playNotificationChime = useCallback(async () => {
     if (!amIAuthority) return;
     try {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") ctx.resume();
+      if (ctx.state === "suspended") await ctx.resume();
       const t0 = ctx.currentTime;
       [
         [660, 0],
@@ -410,6 +412,47 @@ export function ActiveClassroomUI({
     } catch {
       /* non-critical */
     }
+  }, [amIAuthority]);
+
+  useEffect(() => {
+    const deadline = extensionContext?.decisionEndsAt;
+    if (
+      !hasExtensionDecision ||
+      visibleLayer !== "extension-decision" ||
+      !deadline ||
+      soundedDecisionRef.current === deadline
+    )
+      return;
+    soundedDecisionRef.current = deadline;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+    }
+    void playNotificationChime();
+  }, [
+    extensionContext?.decisionEndsAt,
+    hasExtensionDecision,
+    visibleLayer,
+    playNotificationChime,
+  ]);
+
+  useEffect(() => {
+    const unlockChime = () => {
+      if (!amIAuthority) return;
+      try {
+        if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+        void audioCtxRef.current.resume().catch(() => {});
+      } catch {
+        /* Audio is optional on unsupported browsers. */
+      }
+    };
+    window.addEventListener("pointerdown", unlockChime);
+    window.addEventListener("keydown", unlockChime);
+    return () => {
+      window.removeEventListener("pointerdown", unlockChime);
+      window.removeEventListener("keydown", unlockChime);
+      void audioCtxRef.current?.close().catch(() => {});
+      audioCtxRef.current = null;
+    };
   }, [amIAuthority]);
 
   // --- ROLE & PARTICIPANT LOGIC ---
@@ -554,7 +597,7 @@ export function ActiveClassroomUI({
         if (senderIsStudent && msg.type === "RAISE_HAND" && participant) {
           setRaisedHands((prev) => new Set(prev).add(participant.identity));
           if (amIAuthority) {
-            playHandChime();
+            void playNotificationChime();
             const name = participant.name || participant.identity;
             toast.custom(
               (toastId) => (
@@ -648,7 +691,7 @@ export function ActiveClassroomUI({
     amIAuthority,
     isSharingLocally,
     localParticipant,
-    playHandChime,
+    playNotificationChime,
     t,
   ]);
 
@@ -1006,21 +1049,7 @@ export function ActiveClassroomUI({
   };
 
   const handleEndSession = () => {
-    setIsCloseoutOpen(true);
-  };
-
-  const handleCompleteSession = async () => {
-    if (isEndingSession) return;
-    setIsEndingSession(true);
-    try {
-      await endSession({ roomName });
-      toast.success(t("classroom.classEnded"));
-      setIsCloseoutOpen(false);
-    } catch (error) {
-      console.error("Failed to end class:", error);
-      toast.error(t("classroom.endClassError"));
-      setIsEndingSession(false);
-    }
+    onRequestCloseout();
   };
 
   const handleConfirmExtension = async () => {
@@ -1072,8 +1101,6 @@ export function ActiveClassroomUI({
     const unlockAudio = async () => {
       try {
         await room.startAudio();
-        if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-        audioCtxRef.current.resume().catch(() => {});
       } catch {
         setNeedsClick(true);
       }
@@ -1386,7 +1413,7 @@ export function ActiveClassroomUI({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel
-              disabled={isEndingSession}
+              disabled={isCloseoutOpen}
               onClick={() => {
                 if (isPreviewing("extend-class")) {
                   setUiPreviewState("none");
@@ -1416,14 +1443,6 @@ export function ActiveClassroomUI({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <SessionCloseoutDialog
-        open={isCloseoutOpen}
-        roomName={roomName}
-        sessionNow={sessionNow}
-        onOpenChange={setIsCloseoutOpen}
-        onComplete={handleCompleteSession}
-      />
 
       <ClassroomFullscreenPrompt
         open={visibleLayer === "fullscreen"}
@@ -1581,7 +1600,7 @@ export function ActiveClassroomUI({
               onConfirm={handleEndSession}
               onLeave={handleLeaveClick}
               onOpenChange={setIsSessionActionDialogOpen}
-              disabled={isEndingSession}
+              disabled={isCloseoutOpen}
               confirmBeforeEnd={false}
             />
           ) : (
@@ -1875,7 +1894,7 @@ export function ActiveClassroomUI({
               <EndClassButton
                 onConfirm={handleEndSession}
                 onOpenChange={setIsSessionActionDialogOpen}
-                disabled={isEndingSession}
+                disabled={isCloseoutOpen}
                 confirmBeforeEnd={false}
                 className="flex size-11 items-center justify-center rounded-full border-2 border-destructive/60 bg-inverse-foreground/20 text-destructive-foreground shadow-lg transition-colors hover:bg-destructive/30 disabled:cursor-wait disabled:opacity-60"
               />
@@ -2236,7 +2255,7 @@ export function ActiveClassroomUI({
                   appearance="toolbar"
                   onConfirm={handleEndSession}
                   onOpenChange={setIsSessionActionDialogOpen}
-                  disabled={isEndingSession}
+                  disabled={isCloseoutOpen}
                   confirmBeforeEnd={isPreviewing("end-class")}
                   previewOpen={isPreviewing("end-class")}
                   onPreviewOpenChange={(open) => {

@@ -183,7 +183,7 @@ function CalendarContent() {
   const orgSlug = (params.orgSlug as string) || "system";
   const role = getRoleForOrg(sessionClaims, orgSlug);
   const isStudent = role === "student";
-  const mode = selectedMode ?? (isStudent ? "day" : "month");
+  const mode = selectedMode ?? (isStudent ? "day" : "week");
   const isCalendarAuthReady =
     isClerkLoaded &&
     isSignedIn === true &&

@@ -1,4 +1,4 @@
-import type { ClassSessionType } from "./class-session";
+import { isLiveClassSession, type ClassSessionType } from "./class-session";
 
 type CourseClassroomSchedule = {
   sessionType: ClassSessionType;
@@ -9,12 +9,5 @@ type CourseClassroomSchedule = {
 export function findLiveStandardClassroom<T extends CourseClassroomSchedule>(
   schedules: T[],
 ) {
-  return (
-    schedules.find(
-      (schedule) =>
-        schedule.sessionType === "live" &&
-        schedule.status !== "cancelled" &&
-        (schedule.isLive || schedule.status === "active"),
-    ) ?? null
-  );
+  return schedules.find(isLiveClassSession) ?? null;
 }

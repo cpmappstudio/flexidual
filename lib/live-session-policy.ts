@@ -1,7 +1,7 @@
 export const STUDENT_ONLY_GRACE_MS = 5 * 60 * 1000;
 export const LIVE_EXTENSION_BLOCK_MS = 10 * 60 * 1000;
 export const LIVE_EXTENSION_PROMPT_LEAD_MS = 2 * 60 * 1000;
-export const LIVE_DECISION_WINDOW_MS = 60 * 1000;
+export const LIVE_DECISION_WINDOW_MS = 5 * 60 * 1000;
 export const MAX_LIVE_OVERRUN_MS = 60 * 60 * 1000;
 
 export type LiveParticipantSnapshot = {
