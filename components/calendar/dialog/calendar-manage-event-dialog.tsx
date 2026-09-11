@@ -4,15 +4,15 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { useLocale, useTranslations } from "next-intl";
 import {
+  ArrowUpRight,
   CalendarDays,
-  ClipboardCheck,
   Clock3,
+  ExternalLink,
   Loader2,
   MoveRight,
-  PlayCircle,
   X,
   XCircle,
 } from "lucide-react";
@@ -43,9 +43,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
 import { SessionCloseoutDialog } from "@/components/classroom/session-closeout-dialog";
+import {
+  getSessionRecordings,
+  SessionRecordView,
+  useSessionRecord,
+} from "@/components/classroom/session-record";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 import { getErrorMessage, parseConvexError } from "@/lib/error-utils";
-import { isExternalClassSession } from "@/lib/class-session";
+import { getExternalClassPlatform } from "@/lib/class-session";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getCalendarCancellationCapabilities } from "../calendar-cancellation";
@@ -85,24 +90,17 @@ export default function CalendarManageEventDialog({
   const router = useRouter();
   const orgSlug = (params.orgSlug as string) || "system";
   const cancelSchedule = useMutation(api.schedule.cancelSchedule);
-  const recoveryContext = useQuery(
-    api.schedule.getSessionClosureContext,
-    !isStudent &&
-      selectedEvent?.status === "completed" &&
-      selectedEvent.roomName
-      ? { roomName: selectedEvent.roomName, now }
-      : "skip",
-  );
-  const recordings = useQuery(
-    api.recordings.getBySchedule,
+  const shouldLoadSessionRecord = Boolean(
     manageEventDialogOpen &&
       selectedEvent &&
-      !selectedEvent.hasRecording &&
       !selectedEvent.isLive &&
       selectedEvent.end.getTime() < now &&
-      !isExternalClassSession(selectedEvent.sessionType)
-      ? { scheduleId: selectedEvent.scheduleId }
-      : "skip",
+      selectedEvent.status !== "cancelled" &&
+      selectedEvent.sessionType === "live",
+  );
+  const sessionRecord = useSessionRecord(
+    selectedEvent?.scheduleId,
+    shouldLoadSessionRecord,
   );
 
   useEffect(() => {
@@ -110,6 +108,7 @@ export default function CalendarManageEventDialog({
     setCancellationScope("single");
     setCancelDialogOpen(false);
     setCloseoutOpen(false);
+    setRecordingOpen(false);
   }, [selectedEvent?.scheduleId]);
 
   if (!selectedEvent) return null;
@@ -158,9 +157,6 @@ export default function CalendarManageEventDialog({
     minute: "2-digit",
     timeZone: displayTimeZone,
   });
-  const hasRecording =
-    Boolean(selectedEvent.hasRecording) ||
-    Boolean(recordings?.some((recording) => recording.url));
   const primaryAction = getCalendarEventPrimaryAction({
     isStudent: Boolean(isStudent),
     now,
@@ -168,11 +164,14 @@ export default function CalendarManageEventDialog({
     end: selectedEvent.end.getTime(),
     status: selectedEvent.status,
     isLive: selectedEvent.isLive,
-    hasRecording,
+    hasRecording: false,
     roomName: selectedEvent.roomName,
+    sessionType: selectedEvent.sessionType,
   });
-  const canWatchRecording = primaryAction === "watch-recording";
   const classroomHref = `/${orgSlug}/classroom/${selectedEvent.roomName}`;
+  const externalPlatform = getExternalClassPlatform(selectedEvent.sessionType);
+  const sessionRecordings = getSessionRecordings(sessionRecord);
+  const courseHref = `/${locale}/${orgSlug}/classes/${selectedEvent.classId}`;
 
   function handleClose() {
     setIsClassroomLaunching(false);
@@ -219,8 +218,17 @@ export default function CalendarManageEventDialog({
   const classIdentity = (
     <div className="min-w-0">
       <h2 className="text-xl font-bold leading-tight text-foreground sm:text-2xl">
-        {primaryLabel}
-        {gradeLabel && ` (${gradeLabel})`}
+        <Link
+          href={courseHref}
+          title={t("classroom.viewCourseDetails")}
+          className="group/course-link inline-flex max-w-full cursor-pointer items-start gap-1.5 rounded-sm transition-colors hover:text-primary focus-visible:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <span className="min-w-0 decoration-primary decoration-2 underline-offset-4 group-hover/course-link:underline group-focus-visible/course-link:underline">
+            {primaryLabel}
+            {gradeLabel && ` (${gradeLabel})`}
+          </span>
+          <ArrowUpRight className="mt-1 size-4 shrink-0 -translate-x-1 opacity-0 transition-all group-hover/course-link:translate-x-0 group-hover/course-link:opacity-100 group-focus-visible/course-link:translate-x-0 group-focus-visible/course-link:opacity-100" />
+        </Link>
       </h2>
       {(secondaryText || selectedEvent.sessionType) && (
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -312,18 +320,15 @@ export default function CalendarManageEventDialog({
                 </div>
               )}
 
+            {shouldLoadSessionRecord && (
+              <SessionRecordView
+                record={sessionRecord}
+                onWatchRecording={() => setRecordingOpen(true)}
+                onCompleteReport={() => setCloseoutOpen(true)}
+              />
+            )}
+
             <DialogFooter className="gap-2 sm:flex-row sm:items-center sm:justify-between">
-              {recoveryContext?.canClose &&
-                recoveryContext.closureStatus !== "completed" && (
-                  <Button
-                    variant="outline"
-                    className="h-11 w-full gap-2 border-warning/50 text-warning-foreground hover:bg-warning/10 sm:w-auto"
-                    onClick={() => setCloseoutOpen(true)}
-                  >
-                    <ClipboardCheck className="size-4" />
-                    {t("classroom.closeout.completePendingReport")}
-                  </Button>
-                )}
               {cancellationCapabilities.canCancelOccurrence && (
                 <Button
                   variant="outline"
@@ -334,13 +339,21 @@ export default function CalendarManageEventDialog({
                   {t("schedule.cancelClass")}
                 </Button>
               )}
-              {canWatchRecording ? (
+              {primaryAction === "open-external" && externalPlatform ? (
                 <Button
-                  className="h-11 w-full gap-2 sm:w-auto sm:min-w-44"
-                  onClick={() => setRecordingOpen(true)}
+                  className="h-11 w-full gap-2 sm:ml-auto sm:w-auto sm:min-w-44"
+                  asChild
                 >
-                  <PlayCircle className="size-4" />
-                  {t("recordings.watchRecording")}
+                  <a
+                    href={externalPlatform.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {t("classroom.goToPlatform", {
+                      platform: externalPlatform.name,
+                    })}
+                    <ExternalLink className="size-4" />
+                  </a>
                 </Button>
               ) : primaryAction === "go-to-classroom" ? (
                 <Button
@@ -388,7 +401,7 @@ export default function CalendarManageEventDialog({
         </DialogContent>
       </Dialog>
 
-      {canWatchRecording && (
+      {sessionRecordings.length > 0 && (
         <RecordingPlayerModal
           scheduleId={selectedEvent.scheduleId}
           title={primaryLabel}
@@ -400,6 +413,7 @@ export default function CalendarManageEventDialog({
           open={recordingOpen}
           onOpenChange={setRecordingOpen}
           variant={isStudent ? "student" : "default"}
+          recordings={sessionRecordings}
         />
       )}
 

@@ -20,6 +20,10 @@ import {
 } from "@/components/attendance/attendance-status-control";
 import { LESSON_STATUS_STYLES } from "@/components/teaching/classes/lesson-status-styles";
 import { Button } from "@/components/ui/button";
+import {
+  ClassSessionTabsList,
+  ClassSessionTabsTrigger,
+} from "@/components/classroom/class-session-tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -31,7 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
@@ -310,20 +314,14 @@ export function SessionCloseoutDialog({
             <DialogDescription>
               {t(alreadyEnded ? "recoveryDescription" : "description")}
             </DialogDescription>
-            <TabsList className="mt-3 grid h-11 w-full grid-cols-2 rounded-none bg-transparent p-0">
-              <TabsTrigger
-                value="lessons"
-                className="h-11 rounded-none border-0 border-b-2 border-transparent data-[state=active]:border-secondary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-              >
+            <ClassSessionTabsList className="mt-3">
+              <ClassSessionTabsTrigger value="lessons">
                 {t("lessonsStep")}
-              </TabsTrigger>
-              <TabsTrigger
-                value="attendance"
-                className="h-11 rounded-none border-0 border-b-2 border-transparent data-[state=active]:border-secondary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-              >
+              </ClassSessionTabsTrigger>
+              <ClassSessionTabsTrigger value="attendance">
                 {t("attendanceStep")}
-              </TabsTrigger>
-            </TabsList>
+              </ClassSessionTabsTrigger>
+            </ClassSessionTabsList>
           </DialogHeader>
 
           <ScrollArea ref={scrollAreaRef} className="min-h-0">

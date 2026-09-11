@@ -1056,6 +1056,16 @@ test("external class types do not use the Flexidual session closeout", async () 
   });
   expect(context).toBeNull();
 
+  expect(
+    await teacher.query(api.sessionRecords.get, {
+      scheduleId: data.teacherScheduleId,
+      now: NOW + 2 * 60 * 60_000,
+    }),
+  ).toEqual({
+    state: "notApplicable",
+    scheduleId: data.teacherScheduleId,
+  });
+
   await expect(
     teacher.mutation(api.schedule.submitSessionClosure, {
       roomName: "teacher-led-room",
@@ -1160,33 +1170,190 @@ test("lesson history is scoped to the course and repeated lessons count once in 
       });
     }
   });
-  const pastClasses = await teacher.query(
-    api.recordings.listRecentPastClasses,
-    { classId: data.classId, now: NOW + 2 * 60 * 60_000 },
-  );
+  const pastClasses = await teacher.query(api.sessionRecords.listRecent, {
+    classId: data.classId,
+    now: NOW + 2 * 60 * 60_000,
+  });
   expect(
     pastClasses.find(({ scheduleId }) => scheduleId === data.teacherScheduleId),
   ).toMatchObject({
-    recordedLessons: [
-      {
-        lessonId: data.lessonId,
-        title: "Session leadership",
-        order: 1,
-      },
-    ],
-    notes: "First pass",
+    scheduleId: data.teacherScheduleId,
+    sessionType: "live",
   });
   expect(
     pastClasses.find(({ scheduleId }) => scheduleId === data.tutorScheduleId),
   ).toMatchObject({
-    recordedLessons: [
+    scheduleId: data.tutorScheduleId,
+    sessionType: "live",
+  });
+
+  const firstRecord = await teacher.query(api.sessionRecords.get, {
+    scheduleId: data.teacherScheduleId,
+    now: NOW + 2 * 60 * 60_000,
+  });
+  const secondRecord = await teacher.query(api.sessionRecords.get, {
+    scheduleId: data.tutorScheduleId,
+    now: NOW + 2 * 60 * 60_000,
+  });
+  expect(firstRecord).toMatchObject({
+    state: "completed",
+    lessons: [
       {
         lessonId: data.lessonId,
         title: "Session leadership",
         order: 1,
       },
     ],
-    notes: "Second pass",
+    staffDetails: { notes: "First pass" },
+  });
+  expect(secondRecord).toMatchObject({
+    state: "completed",
+    lessons: [
+      {
+        lessonId: data.lessonId,
+        title: "Session leadership",
+        order: 1,
+      },
+    ],
+    staffDetails: { notes: "Second pass" },
+  });
+});
+
+test("the shared session record protects attendance and filters recordings", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "teacher-led-room",
+    lessonIds: [data.lessonId],
+    notes: "Staff-only context",
+    attendance: buildAttendance(data),
+  });
+  await t.run(async (ctx) => {
+    await ctx.db.patch("classSchedule", data.teacherScheduleId, {
+      status: "completed",
+      isLive: false,
+    });
+    await ctx.db.insert("recordings", {
+      scheduleId: data.teacherScheduleId,
+      roomName: "teacher-led-room",
+      egressId: "playable-recording",
+      status: "complete",
+      url: "https://recordings.example/class.mp4",
+      durationMs: 1_200_000,
+      startedAt: NOW,
+    });
+    await ctx.db.insert("recordings", {
+      scheduleId: data.teacherScheduleId,
+      roomName: "teacher-led-room",
+      egressId: "missing-url",
+      status: "complete",
+      startedAt: NOW + 1,
+    });
+    await ctx.db.insert("recordings", {
+      scheduleId: data.teacherScheduleId,
+      roomName: "teacher-led-room",
+      egressId: "failed-recording",
+      status: "failed",
+      url: "https://recordings.example/failed.mp4",
+      startedAt: NOW + 2,
+    });
+  });
+
+  const staffRecord = await teacher.query(api.sessionRecords.get, {
+    scheduleId: data.teacherScheduleId,
+    now: NOW + 2 * 60 * 60_000,
+  });
+  expect(staffRecord).toMatchObject({
+    state: "completed",
+    lessons: [{ lessonId: data.lessonId }],
+    recordings: [
+      {
+        url: "https://recordings.example/class.mp4",
+        durationMs: 1_200_000,
+      },
+    ],
+    staffDetails: {
+      notes: "Staff-only context",
+      attendance: {
+        summary: { present: 1, partial: 1, absent: 1, excused: 1 },
+      },
+    },
+  });
+
+  const student = t.withIdentity({ subject: "leader-student" });
+  expect(
+    await student.query(api.sessionRecords.get, {
+      scheduleId: data.teacherScheduleId,
+      now: NOW + 2 * 60 * 60_000,
+    }),
+  ).toMatchObject({
+    state: "completed",
+    lessons: [{ lessonId: data.lessonId }],
+    recordings: [{ url: "https://recordings.example/class.mp4" }],
+    staffDetails: null,
+  });
+
+  const tutor = t.withIdentity({ subject: "leader-tutor" });
+  expect(
+    await tutor.query(api.sessionRecords.get, {
+      scheduleId: data.teacherScheduleId,
+      now: NOW + 2 * 60 * 60_000,
+    }),
+  ).toMatchObject({ state: "completed", staffDetails: null });
+
+  const admin = t.withIdentity({ subject: "leader-admin" });
+  expect(
+    await admin.query(api.sessionRecords.get, {
+      scheduleId: data.teacherScheduleId,
+      now: NOW + 2 * 60 * 60_000,
+    }),
+  ).toMatchObject({
+    state: "completed",
+    staffDetails: { attendance: { students: expect.any(Array) } },
+  });
+
+  const outsideAdmin = t.withIdentity({
+    subject: "leader-out-of-scope-admin",
+  });
+  await expect(
+    outsideAdmin.query(api.sessionRecords.get, {
+      scheduleId: data.teacherScheduleId,
+      now: NOW + 2 * 60 * 60_000,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+});
+
+test("a past live session without a report exposes only a pending state", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  const student = t.withIdentity({ subject: "leader-student" });
+  const recordNow = NOW + 2 * 60 * 60_000;
+
+  expect(
+    await teacher.query(api.sessionRecords.get, {
+      scheduleId: data.teacherScheduleId,
+      now: recordNow,
+    }),
+  ).toEqual({
+    state: "pending",
+    scheduleId: data.teacherScheduleId,
+    recordings: [],
+    canCompleteReport: true,
+  });
+  expect(
+    await student.query(api.sessionRecords.get, {
+      scheduleId: data.teacherScheduleId,
+      now: recordNow,
+    }),
+  ).toEqual({
+    state: "pending",
+    scheduleId: data.teacherScheduleId,
+    recordings: [],
+    canCompleteReport: false,
   });
 });
 

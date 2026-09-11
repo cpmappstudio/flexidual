@@ -1,3 +1,6 @@
+import type { ClassSessionType } from "./class-session";
+import { isExternalClassSession } from "./class-session";
+
 const STUDENT_JOIN_WINDOW_MS = 5 * 60 * 1000;
 
 type CalendarEventActionInput = {
@@ -9,6 +12,7 @@ type CalendarEventActionInput = {
   isLive: boolean;
   hasRecording?: boolean;
   roomName?: string;
+  sessionType?: ClassSessionType;
 };
 
 export type CalendarEventPrimaryAction =
@@ -16,6 +20,7 @@ export type CalendarEventPrimaryAction =
   | "go-to-classroom"
   | "enter-live"
   | "prepare-room"
+  | "open-external"
   | null;
 
 export function getCalendarEventPrimaryAction({
@@ -27,8 +32,11 @@ export function getCalendarEventPrimaryAction({
   isLive,
   hasRecording,
   roomName,
+  sessionType,
 }: CalendarEventActionInput): CalendarEventPrimaryAction {
-  if (status === "cancelled" || !roomName) return null;
+  if (status === "cancelled") return null;
+  if (isExternalClassSession(sessionType)) return "open-external";
+  if (!roomName) return null;
   if (isLive) return isStudent ? "go-to-classroom" : "enter-live";
   if (end <= now) return hasRecording ? "watch-recording" : null;
 

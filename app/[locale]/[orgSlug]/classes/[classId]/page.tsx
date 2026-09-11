@@ -28,6 +28,7 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   LoaderCircle,
   Pencil,
   Users,
@@ -53,6 +54,7 @@ import { RocketLaunchButtonContent } from "@/components/student/rocket-transitio
 import { PastClassesPanel } from "@/components/teaching/classes/past-classes-panel";
 import { toast } from "sonner";
 import type { CurriculumLessonProgress } from "@/lib/course-progress";
+import { getExternalClassPlatform } from "@/lib/class-session";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -91,7 +93,7 @@ export default function ClassDetailPage() {
     includeAttendance: false,
     includeRecordings: false,
   });
-  const pastClassesResult = useQuery(api.recordings.listRecentPastClasses, {
+  const pastClassesResult = useQuery(api.sessionRecords.listRecent, {
     classId,
     now: queryNow,
   });
@@ -140,6 +142,9 @@ export default function ClassDetailPage() {
     ) ??
     availableSchedules[0] ??
     null;
+  const nextScheduleExternalPlatform = getExternalClassPlatform(
+    nextSchedule?.sessionType,
+  );
   const laterSchedules = nextSchedule
     ? availableSchedules
         .filter((schedule) => schedule.scheduleId !== nextSchedule.scheduleId)
@@ -344,7 +349,23 @@ export default function ClassDetailPage() {
                     : null
                 }
                 action={
-                  nextSchedule ? (
+                  nextSchedule && nextScheduleExternalPlatform ? (
+                    <Button
+                      asChild
+                      className="mt-4 h-10 rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
+                    >
+                      <a
+                        href={nextScheduleExternalPlatform.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {t("classroom.goToPlatform", {
+                          platform: nextScheduleExternalPlatform.name,
+                        })}
+                        <ExternalLink className="size-4" aria-hidden="true" />
+                      </a>
+                    </Button>
+                  ) : nextSchedule ? (
                     <Button
                       type="button"
                       onClick={() => {

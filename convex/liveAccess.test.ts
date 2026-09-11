@@ -448,28 +448,34 @@ test("course access is copied to the session and scoped to active students", asy
     canDisableChat: true,
   });
 
-  const pastClasses = await asTeacher.query(
-    api.recordings.listRecentPastClasses,
-    { classId: data.classAId, now },
-  );
+  const pastClasses = await asTeacher.query(api.sessionRecords.listRecent, {
+    classId: data.classAId,
+    now,
+  });
   expect(pastClasses).toEqual([
     expect.objectContaining({
       scheduleId: data.pastRecordedScheduleId,
       title: "Recorded review",
-      hasRecording: true,
     }),
     expect.objectContaining({
       scheduleId: data.pastUnrecordedScheduleId,
       title: "Unrecorded review",
-      hasRecording: false,
     }),
     expect.objectContaining({
       scheduleId: data.pastIgnitiaScheduleId,
       title: "Ignitia practice",
       sessionType: "ignitia",
-      hasRecording: false,
     }),
   ]);
+  expect(
+    await asTeacher.query(api.sessionRecords.get, {
+      scheduleId: data.pastRecordedScheduleId,
+      now,
+    }),
+  ).toMatchObject({
+    state: "pending",
+    recordings: [expect.objectContaining({ url: expect.any(String) })],
+  });
   expect(
     await asTeacher.query(api.recordings.getBySchedule, {
       scheduleId: data.pastIgnitiaScheduleId,
@@ -491,7 +497,7 @@ test("course access is copied to the session and scoped to active students", asy
     }),
   ).rejects.toThrow("PERMISSION_DENIED");
   expect(
-    await asUnassignedTeacher.query(api.recordings.listRecentPastClasses, {
+    await asUnassignedTeacher.query(api.sessionRecords.listRecent, {
       classId: data.classAId,
       now,
     }),
