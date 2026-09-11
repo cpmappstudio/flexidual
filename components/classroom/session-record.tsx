@@ -223,8 +223,19 @@ function AttendancePanel({
   const t = useTranslations("sessionRecord");
   const attendanceT = useTranslations("attendance.status");
   const attendance = record.staffDetails?.attendance;
+  const students =
+    attendance?.students ??
+    (record.ownAttendance
+      ? [
+          {
+            studentId: "self",
+            fullName: t("yourAttendance"),
+            ...record.ownAttendance,
+          },
+        ]
+      : []);
 
-  if (!attendance) return null;
+  if (!attendance && record.ownAttendance === undefined) return null;
 
   const statuses = ["present", "partial", "absent", "excused"] as const;
 
@@ -234,7 +245,9 @@ function AttendancePanel({
         <div className="flex items-start gap-3">
           <Users className="mt-0.5 size-5 shrink-0 text-primary" />
           <div>
-            <h3 className="font-semibold">{t("attendanceTitle")}</h3>
+            <h3 className="font-semibold">
+              {t(attendance ? "attendanceTitle" : "yourAttendance")}
+            </h3>
             <p className="text-sm text-muted-foreground">
               {t("attendanceDescription")}
             </p>
@@ -242,34 +255,36 @@ function AttendancePanel({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {statuses.map((status) => {
-          const Icon = attendanceAppearance[status].icon;
-          return (
-            <div
-              key={status}
-              className={cn(
-                "flex items-center gap-2 rounded-xl px-3 py-2",
-                attendanceAppearance[status].className,
-              )}
-            >
-              <Icon className="size-4 shrink-0" aria-hidden="true" />
-              <span className="text-sm font-bold tabular-nums">
-                {attendance.summary[status]}
-              </span>
-              <span className="truncate text-xs">{attendanceT(status)}</span>
-            </div>
-          );
-        })}
-      </div>
+      {attendance && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {statuses.map((status) => {
+            const Icon = attendanceAppearance[status].icon;
+            return (
+              <div
+                key={status}
+                className={cn(
+                  "flex items-center gap-2 rounded-xl px-3 py-2",
+                  attendanceAppearance[status].className,
+                )}
+              >
+                <Icon className="size-4 shrink-0" aria-hidden="true" />
+                <span className="text-sm font-bold tabular-nums">
+                  {attendance.summary[status]}
+                </span>
+                <span className="truncate text-xs">{attendanceT(status)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {attendance.students.length === 0 ? (
+      {students.length === 0 ? (
         <p className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">
-          {t("noAttendance")}
+          {t(attendance ? "noAttendance" : "noOwnAttendance")}
         </p>
       ) : (
         <div className="overflow-hidden rounded-2xl border">
-          {attendance.students.map((student) => {
+          {students.map((student) => {
             const appearance = attendanceAppearance[student.status];
             const Icon = appearance.icon;
             return (
@@ -330,7 +345,7 @@ export function SessionRecordView({
     );
   }
 
-  if (record.state === "notApplicable" || record.state === "unavailable") {
+  if (record.state !== "completed" && record.state !== "pending") {
     return null;
   }
 
@@ -369,7 +384,8 @@ export function SessionRecordView({
     );
   }
 
-  const canViewAttendance = record.staffDetails !== null;
+  const canViewAttendance =
+    record.staffDetails !== null || record.ownAttendance !== undefined;
 
   return (
     <section className={cn("space-y-4", className)}>
@@ -385,7 +401,7 @@ export function SessionRecordView({
               {t("lessonsTab")}
             </ClassSessionTabsTrigger>
             <ClassSessionTabsTrigger value="attendance">
-              {t("attendanceTab")}
+              {t(record.staffDetails ? "attendanceTab" : "yourAttendance")}
             </ClassSessionTabsTrigger>
           </ClassSessionTabsList>
           <TabsContent value="lessons" className="m-0 pt-4">

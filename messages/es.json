@@ -1540,6 +1540,8 @@
     "noRecordingDescription": "Esta clase no tiene una grabación reproducible.",
     "lessonsTab": "Lecciones",
     "attendanceTab": "Asistencia",
+    "yourAttendance": "Tu asistencia",
+    "noOwnAttendance": "No hay un registro de tu asistencia para esta clase.",
     "lessonsTitle": "Lecciones de esta clase",
     "lessonsDescription": "Lecciones confirmadas al finalizar la clase.",
     "noLessons": "No se registraron lecciones para esta clase.",

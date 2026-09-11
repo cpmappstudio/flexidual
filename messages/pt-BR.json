@@ -1540,6 +1540,8 @@
     "noRecordingDescription": "Esta aula não possui uma gravação reproduzível.",
     "lessonsTab": "Lições",
     "attendanceTab": "Presença",
+    "yourAttendance": "Sua presença",
+    "noOwnAttendance": "Não há um registro da sua presença nesta aula.",
     "lessonsTitle": "Lições desta aula",
     "lessonsDescription": "Lições confirmadas ao finalizar a aula.",
     "noLessons": "Nenhuma lição foi registrada para esta aula.",

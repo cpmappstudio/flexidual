@@ -1,4 +1,4 @@
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import { query, type QueryCtx } from "./_generated/server";
@@ -7,6 +7,7 @@ import { getClassTimeZone } from "./model/timeZone";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
 import { isExternalClassSession } from "../lib/class-session";
+import { isStudentEnrolled } from "./model/enrollments";
 
 const RECENT_SESSION_LIMIT = 8;
 const RECENT_SESSION_SCAN_LIMIT = 24;
@@ -60,6 +61,15 @@ const completedRecordValidator = v.object({
   scheduleId: v.id("classSchedule"),
   lessons: v.array(lessonValidator),
   recordings: v.array(recordingPartValidator),
+  ownAttendance: v.optional(
+    v.union(
+      v.null(),
+      v.object({
+        status: studentAttendanceStatusValidator,
+        excuseReason: v.union(v.string(), v.null()),
+      }),
+    ),
+  ),
   staffDetails: v.union(
     v.null(),
     v.object({
@@ -173,7 +183,7 @@ export const get = query({
     now: v.number(),
   },
   returns: sessionRecordValidator,
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Infer<typeof sessionRecordValidator>> => {
     const user = await getCurrentUserOrThrow(ctx);
     const schedule = await ctx.db.get("classSchedule", args.scheduleId);
     if (!schedule) throw new ConvexError("Schedule not found");
@@ -234,12 +244,31 @@ export const get = query({
       }));
 
     if (!canViewAttendance) {
+      const isStudent = await isStudentEnrolled(ctx, classData, user._id);
+      const attendance = isStudent
+        ? await ctx.db
+            .query("studentAttendanceRecords")
+            .withIndex("by_schedule_and_student", (q) =>
+              q.eq("scheduleId", schedule._id).eq("studentId", user._id),
+            )
+            .unique()
+        : null;
       return {
         state: "completed" as const,
         scheduleId: schedule._id,
         lessons,
         recordings,
         staffDetails: null,
+        ...(isStudent
+          ? {
+              ownAttendance: attendance
+                ? {
+                    status: attendance.status,
+                    excuseReason: attendance.excuseReason ?? null,
+                  }
+                : null,
+            }
+          : {}),
       };
     }
 

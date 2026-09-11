@@ -110,6 +110,42 @@ test("panel records omit headings already represented by their tabs", () => {
   expect(screen.queryByText("lessonsDescription")).toBeNull();
 });
 
+test.each(["default", "panel"] as const)(
+  "students see only their own attendance in the %s view",
+  (variant) => {
+    const record: SessionRecordData = {
+      ...staffRecord,
+      staffDetails: null,
+      ownAttendance: { status: "partial", excuseReason: null },
+    };
+    const { rerender } = render(
+      <SessionRecordView
+        record={record}
+        variant={variant}
+        onWatchRecording={vi.fn()}
+      />,
+    );
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "yourAttendance" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(screen.getByText("partial")).toBeTruthy();
+    expect(screen.queryByText("present")).toBeNull();
+    expect(screen.queryByText("Ana Martínez")).toBeNull();
+    expect(screen.queryByText("Diego Ruiz")).toBeNull();
+    expect(screen.queryByText("Reviewed map coordinates.")).toBeNull();
+    rerender(
+      <SessionRecordView
+        record={{ ...record, ownAttendance: null }}
+        variant={variant}
+        onWatchRecording={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("noOwnAttendance")).toBeTruthy();
+    expect(screen.queryByText("absent")).toBeNull();
+  },
+);
+
 test("only authorized pending records expose the completion action", () => {
   const pendingRecord: SessionRecordData = {
     state: "pending",

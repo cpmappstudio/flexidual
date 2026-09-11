@@ -1540,6 +1540,8 @@
     "noRecordingDescription": "This class does not have a playable recording.",
     "lessonsTab": "Lessons",
     "attendanceTab": "Attendance",
+    "yourAttendance": "Your attendance",
+    "noOwnAttendance": "There is no attendance record for you for this class.",
     "lessonsTitle": "Lessons from this class",
     "lessonsDescription": "Lessons confirmed when the class was completed.",
     "noLessons": "No lessons were recorded for this class.",

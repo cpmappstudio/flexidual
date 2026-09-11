@@ -1295,6 +1295,47 @@ test("the shared session record protects attendance and filters recordings", asy
     lessons: [{ lessonId: data.lessonId }],
     recordings: [{ url: "https://recordings.example/class.mp4" }],
     staffDetails: null,
+    ownAttendance: { status: "present", excuseReason: null },
+  });
+
+  const secondStudent = t.withIdentity({ subject: "leader-student-two" });
+  const secondStudentRecord = await secondStudent.query(
+    api.sessionRecords.get,
+    {
+      scheduleId: data.teacherScheduleId,
+      now: NOW + 2 * 60 * 60_000,
+    },
+  );
+  expect(secondStudentRecord.state).toBe("completed");
+  if (secondStudentRecord.state !== "completed")
+    throw new Error("Expected completed record");
+  expect(secondStudentRecord.staffDetails).toBeNull();
+  expect(secondStudentRecord.ownAttendance).toEqual({
+    status: "partial",
+    excuseReason: null,
+  });
+
+  await t.run(async (ctx) => {
+    const attendance = await ctx.db
+      .query("studentAttendanceRecords")
+      .withIndex("by_schedule_and_student", (q) =>
+        q
+          .eq("scheduleId", data.teacherScheduleId)
+          .eq("studentId", data.secondStudentId),
+      )
+      .unique();
+    if (attendance)
+      await ctx.db.delete("studentAttendanceRecords", attendance._id);
+  });
+  expect(
+    await secondStudent.query(api.sessionRecords.get, {
+      scheduleId: data.teacherScheduleId,
+      now: NOW + 2 * 60 * 60_000,
+    }),
+  ).toMatchObject({
+    state: "completed",
+    staffDetails: null,
+    ownAttendance: null,
   });
 
   const tutor = t.withIdentity({ subject: "leader-tutor" });
