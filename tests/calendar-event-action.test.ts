@@ -67,6 +67,28 @@ test("staff prepare future classes and enter live classes", () => {
   );
 });
 
+test("external classes open their platform for students and staff", () => {
+  for (const sessionType of ["abeka", "ignitia"] as const) {
+    assert.equal(
+      getCalendarEventPrimaryAction({
+        ...baseEvent,
+        isStudent: true,
+        roomName: undefined,
+        sessionType,
+      }),
+      "open-external",
+    );
+    assert.equal(
+      getCalendarEventPrimaryAction({
+        ...baseEvent,
+        isStudent: false,
+        sessionType,
+      }),
+      "open-external",
+    );
+  }
+});
+
 test("students and staff can reenter a live class after its scheduled end", () => {
   const overrunEvent = {
     ...baseEvent,

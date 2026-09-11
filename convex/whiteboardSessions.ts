@@ -3,6 +3,8 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { canManageRoom } from "./permissions";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { canAccessSchedule } from "./schedule";
+import { curriculumIconValidator } from "./model/curriculumIcons";
+import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 
 const fileRefValidator = v.object({
   url: v.string(),
@@ -183,6 +185,9 @@ export const getRecordingContext = query({
     v.null(),
     v.object({
       leaderParticipantIdentity: v.union(v.string(), v.null()),
+      courseId: v.id("classes"),
+      className: v.string(),
+      curriculumIconKey: curriculumIconValidator,
     }),
   ),
   handler: async (ctx, { roomName, recordingToken }) => {
@@ -201,11 +206,18 @@ export const getRecordingContext = query({
       .first();
     if (!schedule) return null;
 
+    const classData = await ctx.db.get("classes", schedule.classId);
+    if (!classData) return null;
+
+    const curriculum = await ctx.db.get("curriculums", classData.curriculumId);
     const leader = schedule.sessionLeaderId
       ? await ctx.db.get("users", schedule.sessionLeaderId)
       : null;
     return {
       leaderParticipantIdentity: leader?.clerkId ?? null,
+      courseId: classData._id,
+      className: classData.name,
+      curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
     };
   },
 });

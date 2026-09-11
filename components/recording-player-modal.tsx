@@ -28,6 +28,13 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export type RecordingPlaybackPart = {
+  _id: Id<"recordings">;
+  url: string | null;
+  durationMs: number | null;
+  startedAt: number;
+};
+
 export interface RecordingPlayerProps {
   scheduleId: Id<"classSchedule">;
   title: string;
@@ -39,6 +46,7 @@ export interface RecordingPlayerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   variant?: "student" | "default";
+  recordings?: RecordingPlaybackPart[];
 }
 
 export interface ScheduleRecordingPlayerProps {
@@ -46,6 +54,7 @@ export interface ScheduleRecordingPlayerProps {
   enabled?: boolean;
   variant?: "student" | "default";
   className?: string;
+  recordings?: RecordingPlaybackPart[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -180,13 +189,15 @@ export function ScheduleRecordingPlayer({
   enabled = true,
   variant = "default",
   className,
+  recordings: providedRecordings,
 }: ScheduleRecordingPlayerProps) {
   const t = useTranslations();
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const recordings = useQuery(
+  const queriedRecordings = useQuery(
     api.recordings.getBySchedule,
-    enabled ? { scheduleId } : "skip",
+    enabled && providedRecordings === undefined ? { scheduleId } : "skip",
   );
+  const recordings = providedRecordings ?? queriedRecordings;
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -297,6 +308,7 @@ export function RecordingPlayerModal({
   open,
   onOpenChange,
   variant = "default",
+  recordings,
 }: RecordingPlayerProps) {
   const locale = useLocale();
   const isMobile = useIsMobile();
@@ -327,6 +339,7 @@ export function RecordingPlayerModal({
       scheduleId={scheduleId}
       enabled={open}
       variant={variant}
+      recordings={recordings}
       className={isMobile ? "px-4 pb-4" : "px-6"}
     />
   );

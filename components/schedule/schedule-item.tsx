@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
 import {
   CheckCircle2,
+  ExternalLink,
   MonitorPlay,
   Video,
   ArrowRight,
@@ -30,8 +31,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { TZDate } from "@date-fns/tz";
+import {
+  getExternalClassPlatform,
+  type ClassSessionType,
+} from "@/lib/class-session";
 
 const localeMap = {
   en: enUS,
@@ -48,7 +53,7 @@ interface ScheduleItemProps {
     start: number | Date;
     end: number | Date;
     roomName: string;
-    sessionType?: "live" | "ignitia" | "abeka";
+    sessionType?: ClassSessionType;
     isLive?: boolean;
     status?: "scheduled" | "active" | "cancelled" | "completed";
     className?: string;
@@ -76,6 +81,30 @@ interface ScheduleItemProps {
   onEventClick?: () => void;
 }
 
+type ExternalClassPlatform = NonNullable<
+  ReturnType<typeof getExternalClassPlatform>
+>;
+
+function renderSessionAccessLink({
+  classroomHref,
+  externalPlatform,
+  children,
+}: {
+  classroomHref: string;
+  externalPlatform: ExternalClassPlatform | null;
+  children: ReactNode;
+}) {
+  if (externalPlatform) {
+    return (
+      <a href={externalPlatform.url} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    );
+  }
+
+  return <Link href={classroomHref}>{children}</Link>;
+}
+
 export function ScheduleItem({
   schedule,
   classId,
@@ -92,6 +121,8 @@ export function ScheduleItem({
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const isIgnitia = schedule.sessionType === "ignitia";
   const isAbeka = schedule.sessionType === "abeka";
+  const externalPlatform = getExternalClassPlatform(schedule.sessionType);
+  const classroomHref = `/${orgSlug}/classroom/${schedule.roomName}`;
   const [recordingOpen, setRecordingOpen] = useState(false);
 
   // Convert to Date if needed
@@ -314,19 +345,28 @@ export function ScheduleItem({
           {!showRecordingAction && canOpenRoom && (
             <Button
               size="sm"
-              variant={schedule.isLive ? "destructive" : "default"}
+              variant={
+                schedule.isLive && !externalPlatform ? "destructive" : "default"
+              }
               asChild
             >
-              <Link href={`/${orgSlug}/classroom/${schedule.roomName}`}>
-                {schedule.isLive ? (
+              {renderSessionAccessLink({
+                classroomHref,
+                externalPlatform,
+                children: externalPlatform ? (
+                  <>
+                    {primarySessionActionLabel}
+                    <ExternalLink className="ml-2 size-4" aria-hidden="true" />
+                  </>
+                ) : schedule.isLive ? (
                   t("classroom.joinLive")
                 ) : (
                   <>
                     {primarySessionActionLabel}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </>
-                )}
-              </Link>
+                ),
+              })}
             </Button>
           )}
 
@@ -550,38 +590,37 @@ export function ScheduleItem({
             )}
 
             {/* Session Button */}
-            {schedule.isLive ? (
-              <Button
-                size="sm"
-                variant={isIgnitia ? "default" : "destructive"}
-                className={
-                  isIgnitia
-                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/90"
-                    : ""
-                }
-                asChild
-              >
-                <Link href={`/${orgSlug}/classroom/${schedule.roomName}`}>
-                  {isIgnitia ? "Open Class" : t("classroom.joinLive")}
-                </Link>
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" asChild>
-                <Link href={`/${orgSlug}/classroom/${schedule.roomName}`}>
-                  {isIgnitia ? (
-                    <>
-                      <MonitorPlay className="mr-2 h-4 w-4 text-secondary" />
-                      Open Ignitia
-                    </>
-                  ) : (
-                    <>
-                      {t("classroom.prepareRoom")}
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </>
-                  )}
-                </Link>
-              </Button>
-            )}
+            <Button
+              size="sm"
+              variant={
+                externalPlatform
+                  ? "outline"
+                  : schedule.isLive
+                    ? "destructive"
+                    : "outline"
+              }
+              asChild
+            >
+              {renderSessionAccessLink({
+                classroomHref,
+                externalPlatform,
+                children: externalPlatform ? (
+                  <>
+                    {t("schedule.openPlatform", {
+                      platform: externalPlatform.name,
+                    })}
+                    <ExternalLink className="ml-2 size-4" aria-hidden="true" />
+                  </>
+                ) : schedule.isLive ? (
+                  t("classroom.joinLive")
+                ) : (
+                  <>
+                    {t("classroom.prepareRoom")}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                ),
+              })}
+            </Button>
           </>
         )}
       </div>

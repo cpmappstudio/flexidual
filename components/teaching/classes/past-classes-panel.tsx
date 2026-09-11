@@ -1,19 +1,37 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { TZDate } from "@date-fns/tz";
 import { format } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
-import { PlayCircle, VideoOff } from "lucide-react";
+import { BookOpenCheck } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import type { Id } from "@/convex/_generated/dataModel";
-import { ScheduleRecordingPlayer } from "@/components/recording-player-modal";
+import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
 import { CalendarProviderMark } from "@/components/calendar/calendar-provider-mark";
 import { getCalendarProviderAppearanceClasses } from "@/components/calendar/calendar-tailwind-classes";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  getSessionRecordings,
+  SessionRecordView,
+  useSessionRecord,
+} from "@/components/classroom/session-record";
+import {
+  type CarouselApi,
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
@@ -23,18 +41,11 @@ import {
 
 export type PastClassItem = {
   scheduleId: Id<"classSchedule">;
-  recordedLessons: {
-    lessonId: Id<"lessons">;
-    title: string;
-    order: number;
-  }[];
-  notes: string | null;
   title: string | null;
   start: number;
   end: number;
   timeZone: string;
   sessionType: ClassSessionType;
-  hasRecording: boolean;
 };
 
 const dateLocales = { en: enUS, es, "pt-BR": ptBR } as const;
@@ -48,26 +59,16 @@ export function PastClassesPanel({
   const locale = useLocale();
   const [selectedScheduleId, setSelectedScheduleId] =
     useState<Id<"classSchedule"> | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [scrollEdges, setScrollEdges] = useState({
-    canScrollUp: false,
-    canScrollDown: false,
-  });
+  const [recordingOpen, setRecordingOpen] = useState(false);
+  const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const selectedSession =
     sessions?.find((session) => session.scheduleId === selectedScheduleId) ??
     sessions?.[0] ??
     null;
   const dateLocale = dateLocales[locale as keyof typeof dateLocales] ?? enUS;
 
-  const getSessionTitle = (session: PastClassItem) => {
-    if (session.recordedLessons.length === 1) {
-      return session.recordedLessons[0].title;
-    }
-    if (session.recordedLessons.length > 1) {
-      return `${session.recordedLessons[0].title} +${session.recordedLessons.length - 1}`;
-    }
-    return session.title ?? t("schedule.sessions");
-  };
+  const getSessionTitle = (session: PastClassItem) =>
+    session.title ?? t("schedule.sessions");
   const formatSessionDate = (session: PastClassItem) =>
     format(new TZDate(session.start, session.timeZone), "EEE, MMM d · h:mm a", {
       locale: dateLocale,
@@ -75,69 +76,132 @@ export function PastClassesPanel({
   const selectedSessionIsExternal = isExternalClassSession(
     selectedSession?.sessionType,
   );
+  const sessionRecord = useSessionRecord(
+    selectedSession?.scheduleId,
+    Boolean(selectedSession && !selectedSessionIsExternal),
+  );
+  const sessionRecordings = getSessionRecordings(sessionRecord);
+  const selectedSessionIndex = selectedSession
+    ? (sessions?.findIndex(
+        (session) => session.scheduleId === selectedSession.scheduleId,
+      ) ?? -1)
+    : -1;
 
   useEffect(() => {
-    const viewport = scrollContainerRef.current?.querySelector<HTMLElement>(
-      "[data-slot='scroll-area-viewport']",
-    );
-    if (!viewport) return;
+    setRecordingOpen(false);
+  }, [selectedSession?.scheduleId]);
 
-    const updateScrollEdges = () => {
-      const remainingScroll =
-        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      const nextEdges = {
-        canScrollUp: viewport.scrollTop > 2,
-        canScrollDown: remainingScroll > 2,
-      };
-      setScrollEdges((currentEdges) =>
-        currentEdges.canScrollUp === nextEdges.canScrollUp &&
-        currentEdges.canScrollDown === nextEdges.canScrollDown
-          ? currentEdges
-          : nextEdges,
-      );
+  useEffect(() => {
+    if (!carouselApi || selectedSessionIndex < 0) return;
+
+    const scrollToSelectedSession = () => {
+      carouselApi.scrollTo(selectedSessionIndex);
     };
-
-    const animationFrame = requestAnimationFrame(updateScrollEdges);
-    const resizeObserver = new ResizeObserver(updateScrollEdges);
-    resizeObserver.observe(viewport);
-    viewport.addEventListener("scroll", updateScrollEdges, { passive: true });
+    scrollToSelectedSession();
+    carouselApi.on("reInit", scrollToSelectedSession);
 
     return () => {
-      cancelAnimationFrame(animationFrame);
-      resizeObserver.disconnect();
-      viewport.removeEventListener("scroll", updateScrollEdges);
+      carouselApi.off("reInit", scrollToSelectedSession);
     };
-  }, [sessions]);
+  }, [carouselApi, selectedSessionIndex]);
 
   return (
-    <Card className="gap-4 overflow-hidden rounded-[2rem] border-0 py-5 shadow-md ring-1 ring-border/80">
-      <CardHeader className="px-5 sm:px-6">
-        <CardTitle className="text-xl font-bold">
-          {t("class.pastClasses")}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="px-5 sm:px-6">
-        {sessions === undefined ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <Skeleton className="aspect-video w-full rounded-2xl" />
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <Skeleton key={index} className="h-16 w-full rounded-2xl" />
-              ))}
+    <Card className="gap-0 overflow-hidden rounded-[2rem] border-0 py-5 shadow-md ring-1 ring-border/80">
+      <Carousel
+        opts={{ align: "start", containScroll: "trimSnaps" }}
+        setApi={setCarouselApi}
+        className="flex w-full touch-pan-y flex-col gap-4"
+        aria-label={t("class.pastClasses")}
+      >
+        <CardHeader className="px-5 sm:px-6">
+          <CardTitle className="text-xl font-bold">
+            {t("class.pastClasses")}
+          </CardTitle>
+          {sessions && sessions.length > 0 && (
+            <CardAction className="flex gap-2">
+              <CarouselPrevious
+                className="static size-10 translate-y-0"
+                aria-label={`${t("common.previous")}: ${t("class.pastClasses")}`}
+              />
+              <CarouselNext
+                className="static size-10 translate-y-0"
+                aria-label={`${t("common.next")}: ${t("class.pastClasses")}`}
+              />
+            </CardAction>
+          )}
+        </CardHeader>
+        <CardContent className="px-5 sm:px-6">
+          {sessions === undefined ? (
+            <div className="space-y-5">
+              <div className="flex gap-3 overflow-hidden">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <Skeleton
+                    key={index}
+                    className="h-16 min-w-[72%] rounded-2xl sm:min-w-[46%] md:min-w-[34%]"
+                  />
+                ))}
+              </div>
+              <Skeleton className="h-72 w-full rounded-2xl" />
             </div>
-          </div>
-        ) : sessions.length === 0 ? (
-          <div className="rounded-2xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
-            {t("class.noPastClasses")}
-          </div>
-        ) : (
-          <div className="grid gap-5 lg:relative lg:block lg:pr-[340px]">
-            <div className="min-w-0">
+          ) : sessions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
+              {t("class.noPastClasses")}
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <CarouselContent className="-ml-3">
+                {sessions.map((session, index) => {
+                  const isSelected =
+                    session.scheduleId === selectedSession?.scheduleId;
+                  return (
+                    <CarouselItem
+                      key={session.scheduleId}
+                      className="basis-[72%] pl-3 sm:basis-[46%] md:basis-[34%] 2xl:basis-1/4"
+                      aria-label={`${index + 1} / ${sessions.length}`}
+                    >
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() =>
+                          setSelectedScheduleId(session.scheduleId)
+                        }
+                        className={cn(
+                          "flex min-h-16 w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                          isSelected
+                            ? "border-secondary/60 bg-secondary/10 text-foreground shadow-[inset_3px_0_0_var(--secondary)] hover:bg-secondary/15"
+                            : "border-border bg-sidebar text-foreground hover:bg-muted",
+                        )}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-sm font-bold capitalize">
+                            {formatSessionDate(session)}
+                          </p>
+                        </div>
+                        {isExternalClassSession(session.sessionType) ? (
+                          <CalendarProviderMark
+                            sessionType={session.sessionType}
+                            isPast
+                            className="size-6"
+                          />
+                        ) : (
+                          <BookOpenCheck
+                            className="size-5 shrink-0 opacity-60"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </button>
+                    </CarouselItem>
+                  );
+                })}
+              </CarouselContent>
+
+              <Separator />
+
               {selectedSession &&
                 (selectedSessionIsExternal ? (
                   <div
                     className={cn(
-                      "flex aspect-video flex-col items-center justify-center gap-4 rounded-2xl border px-6 text-center",
+                      "flex min-h-52 flex-col items-center justify-center gap-4 rounded-2xl border px-6 text-center",
                       getCalendarProviderAppearanceClasses(
                         selectedSession.sessionType,
                       )?.event,
@@ -157,129 +221,44 @@ export function PastClassesPanel({
                     />
                   </div>
                 ) : (
-                  <ScheduleRecordingPlayer
-                    scheduleId={selectedSession.scheduleId}
-                    className="rounded-2xl"
-                  />
-                ))}
-              {selectedSession &&
-                !selectedSessionIsExternal &&
-                (selectedSession.recordedLessons.length > 0 ||
-                  selectedSession.notes) && (
-                  <div className="mt-3 rounded-2xl border bg-muted/40 px-4 py-3">
-                    {selectedSession.recordedLessons.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold text-foreground">
-                          {t("classroom.closeout.lessonsTitle")}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {selectedSession.recordedLessons.map((lesson) => (
-                            <Badge
-                              key={lesson.lessonId}
-                              variant="outline"
-                              className="rounded-full bg-background px-3 py-1 font-normal"
-                            >
-                              {lesson.order}. {lesson.title}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {selectedSession.notes && (
-                      <div
-                        className={cn(
-                          selectedSession.recordedLessons.length > 0 && "mt-3",
-                        )}
-                      >
-                        <p className="text-xs font-semibold text-foreground">
-                          {t("class.sessionNotes")}
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {selectedSession.notes}
-                        </p>
-                      </div>
-                    )}
+                  <div className="min-w-0">
+                    <div className="mb-4">
+                      <h3 className="text-base font-bold text-foreground">
+                        {getSessionTitle(selectedSession)}
+                      </h3>
+                      <p className="mt-1 text-sm capitalize text-muted-foreground">
+                        {formatSessionDate(selectedSession)}
+                      </p>
+                    </div>
+                    <SessionRecordView
+                      record={sessionRecord}
+                      onWatchRecording={() => setRecordingOpen(true)}
+                      variant="panel"
+                    />
                   </div>
-                )}
+                ))}
             </div>
-
-            <div
-              ref={scrollContainerRef}
-              className="relative h-72 min-h-0 overflow-hidden lg:absolute lg:inset-y-0 lg:right-0 lg:h-auto lg:w-80"
-            >
-              {scrollEdges.canScrollUp && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-card/75 via-card/25 to-transparent"
-                />
-              )}
-              {scrollEdges.canScrollDown && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-card/75 via-card/25 to-transparent"
-                />
-              )}
-              <ScrollArea className="h-full w-full">
-                <div className="space-y-2 pr-3">
-                  {sessions.map((session) => {
-                    const isSelected =
-                      session.scheduleId === selectedSession?.scheduleId;
-                    return (
-                      <button
-                        key={session.scheduleId}
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() =>
-                          setSelectedScheduleId(session.scheduleId)
-                        }
-                        className={cn(
-                          "flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors",
-                          isSelected
-                            ? "bg-secondary text-secondary-foreground"
-                            : "bg-sidebar text-foreground hover:bg-muted",
-                        )}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="line-clamp-1 text-sm font-bold">
-                            {getSessionTitle(session)}
-                          </p>
-                          <p
-                            className={cn(
-                              "mt-1 text-xs capitalize",
-                              isSelected
-                                ? "text-secondary-foreground/75"
-                                : "text-muted-foreground",
-                            )}
-                          >
-                            {formatSessionDate(session)}
-                          </p>
-                        </div>
-                        {isExternalClassSession(session.sessionType) ? (
-                          <CalendarProviderMark
-                            sessionType={session.sessionType}
-                            isPast
-                            className="size-6"
-                          />
-                        ) : session.hasRecording ? (
-                          <PlayCircle
-                            className="size-6 shrink-0"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <VideoOff
-                            className="size-5 shrink-0 opacity-55"
-                            aria-hidden="true"
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-            </div>
-          </div>
-        )}
-      </CardContent>
+          )}
+        </CardContent>
+      </Carousel>
+      {selectedSession && sessionRecordings.length > 0 && (
+        <RecordingPlayerModal
+          scheduleId={selectedSession.scheduleId}
+          title={getSessionTitle(selectedSession)}
+          scheduledStart={selectedSession.start}
+          scheduledEnd={selectedSession.end}
+          timeZone={selectedSession.timeZone}
+          open={recordingOpen}
+          onOpenChange={setRecordingOpen}
+          recordings={sessionRecordings}
+          variant={
+            sessionRecord?.state === "completed" &&
+            sessionRecord.staffDetails === null
+              ? "student"
+              : "default"
+          }
+        />
+      )}
     </Card>
   );
 }

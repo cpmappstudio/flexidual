@@ -117,6 +117,7 @@ import {
   ClassroomWhiteboardContent,
 } from "./classroom-stage";
 import { ClassroomPresenterContent } from "./classroom-presenter-content";
+import { ClassroomScene } from "./classroom-scene";
 import {
   ClassroomEnableAudioOverlay,
   ClassroomEndingSoonNotice,
@@ -1906,30 +1907,8 @@ export function ActiveClassroomUI({
           </>
         }
       >
-        {isWhiteboardActive ? (
-          <ClassroomWhiteboardContent
-            roomName={roomName}
-            followViewport={followViewport}
-          />
-        ) : isScreenSharingActive ? (
-          <ClassroomScreenShareContent
-            trackRef={activeScreenTrack}
-            zoom={zoom}
-            pan={pan}
-            isPhoneLandscape={isPhoneLandscape}
-            stageControlsVisible={stageControlsVisible}
-            onRevealControls={showStageControls}
-            onStartPan={startPanDrag}
-            onZoom={handleZoom}
-            loadingLabel={t("classroom.loadingShare")}
-            presenterDescription={t("classroom.presenterSharing", {
-              name:
-                activeScreenTrack.participant.name || t("classroom.presenter"),
-            })}
-          />
-        ) : (
-          <>
-            <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]" />
+        <ClassroomScene
+          presenter={
             <ClassroomPresenterContent
               participant={teacher}
               isVideoOn={isTeacherVideoOn}
@@ -1945,8 +1924,36 @@ export function ActiveClassroomUI({
               microphoneOffLabel={t("classroom.micOff")}
               waitingLabel={t("classroom.waitingForTeacher")}
             />
-          </>
-        )}
+          }
+          screenShare={
+            activeScreenTrack ? (
+              <ClassroomScreenShareContent
+                trackRef={activeScreenTrack}
+                zoom={zoom}
+                pan={pan}
+                isPhoneLandscape={isPhoneLandscape}
+                stageControlsVisible={stageControlsVisible}
+                onRevealControls={showStageControls}
+                onStartPan={startPanDrag}
+                onZoom={handleZoom}
+                loadingLabel={t("classroom.loadingShare")}
+                presenterDescription={t("classroom.presenterSharing", {
+                  name:
+                    activeScreenTrack.participant.name ||
+                    t("classroom.presenter"),
+                })}
+              />
+            ) : undefined
+          }
+          whiteboard={
+            isWhiteboardActive ? (
+              <ClassroomWhiteboardContent
+                roomName={roomName}
+                followViewport={followViewport}
+              />
+            ) : undefined
+          }
+        />
       </ClassroomStage>
 
       {/* 3. Meeting Controls (row 4 on mobile, row 3 on md+) — hidden in phone landscape */}

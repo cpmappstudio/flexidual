@@ -8,7 +8,9 @@ import {
   useState,
   type ReactNode,
   type RefObject,
+  type ComponentPropsWithoutRef,
 } from "react";
+import { cn } from "@/lib/utils";
 
 const PIP_WIDTH = 192;
 const PIP_HEIGHT = 144;
@@ -17,6 +19,21 @@ const PIP_MARGIN = 12;
 interface DraggableClassroomPipProps {
   children: ReactNode;
   containerRef: RefObject<HTMLDivElement | null>;
+}
+
+export function ClassroomPipSurface({
+  children,
+  className,
+  ...props
+}: ComponentPropsWithoutRef<"div">) {
+  return (
+    <div
+      className={cn("overflow-hidden rounded-md bg-muted shadow-xl", className)}
+      {...props}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function DraggableClassroomPip({
@@ -122,14 +139,14 @@ export function DraggableClassroomPip({
   if (!position) return null;
 
   return (
-    <div
+    <ClassroomPipSurface
       style={{
         left: position.x,
         top: position.y,
         width: PIP_WIDTH,
         height: PIP_HEIGHT,
       }}
-      className="absolute z-50 cursor-move select-none overflow-hidden rounded-md bg-muted shadow-xl"
+      className="absolute z-50 cursor-move select-none"
       onMouseDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -152,6 +169,6 @@ export function DraggableClassroomPip({
       <div className="absolute top-1 right-1 p-1 bg-background/50 rounded-full pointer-events-none">
         <Move className="w-3 h-3 text-foreground/70" />
       </div>
-    </div>
+    </ClassroomPipSurface>
   );
 }
