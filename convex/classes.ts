@@ -112,8 +112,10 @@ const classFields = {
   liveAccess: v.optional(liveAccessValidator),
   weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
   chatStudentsMuted: v.optional(v.boolean()),
+  chatStudentAttachmentsEnabled: v.optional(v.boolean()),
   chatDisabled: v.optional(v.boolean()),
   chatArchivedAt: v.optional(v.number()),
+  chatLastPinnedAt: v.optional(v.number()),
   chatNotificationsClearedThrough: v.optional(v.number()),
   isActive: v.boolean(),
   createdAt: v.number(),
@@ -537,6 +539,7 @@ export const getChatContext = query({
       chatSettings: v.object({
         studentsMuted: v.boolean(),
         disabled: v.boolean(),
+        studentAttachmentsEnabled: v.boolean(),
       }),
     }),
     v.null(),
@@ -610,6 +613,8 @@ export const getChatContext = query({
       chatSettings: {
         studentsMuted: classData.chatStudentsMuted ?? false,
         disabled: classData.chatDisabled ?? false,
+        studentAttachmentsEnabled:
+          classData.chatStudentAttachmentsEnabled ?? false,
       },
     };
   },
@@ -2494,9 +2499,13 @@ export const remove = mutation({
     await ctx.scheduler.runAfter(0, internal.courseChatMessages.removeByClass, {
       classId: args.id,
     });
-    await ctx.scheduler.runAfter(0, internal.courseChatNotifications.removeByClass, {
-      classId: args.id,
-    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.courseChatNotifications.removeByClass,
+      {
+        classId: args.id,
+      },
+    );
     return { deleted: true } as const;
   },
 });

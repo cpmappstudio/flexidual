@@ -82,6 +82,7 @@ interface CourseChatParticipantsProps {
   chatSettings: {
     studentsMuted: boolean;
     disabled: boolean;
+    studentAttachmentsEnabled?: boolean;
   };
 }
 
@@ -307,15 +308,16 @@ function ChatSettingsPanel({
   const id = useId();
   const muteStudentsId = `${id}-mute-students`;
   const disableChatId = `${id}-disable-chat`;
+  const attachmentsId = `${id}-student-attachments`;
   const [pendingSetting, setPendingSetting] = useState<
-    "studentsMuted" | "disabled"
+    "studentsMuted" | "disabled" | "studentAttachmentsEnabled"
   >();
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
 
   const updateSetting = async (
-    setting: "studentsMuted" | "disabled",
+    setting: "studentsMuted" | "disabled" | "studentAttachmentsEnabled",
     enabled: boolean,
   ) => {
     if (pendingSetting) return;
@@ -370,6 +372,20 @@ function ChatSettingsPanel({
               disabled={pendingSetting !== undefined}
               onCheckedChange={(checked) =>
                 void updateSetting("studentsMuted", checked)
+              }
+            />
+          </div>
+
+          <div className="flex items-start justify-between gap-4 py-4">
+            <Label htmlFor={attachmentsId} className="cursor-pointer text-sm">
+              {t("studentAttachmentsEnabled")}
+            </Label>
+            <Switch
+              id={attachmentsId}
+              checked={settings.studentAttachmentsEnabled ?? false}
+              disabled={pendingSetting !== undefined}
+              onCheckedChange={(checked) =>
+                void updateSetting("studentAttachmentsEnabled", checked)
               }
             />
           </div>

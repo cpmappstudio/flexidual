@@ -1,9 +1,25 @@
 import { httpRouter } from "convex/server";
+import * as chatFiles from "./courseChatAttachmentHttp";
 import { verifyWebhook, type WebhookEvent } from "@clerk/backend/webhooks";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 const http = httpRouter();
+http.route({
+  path: "/course-chat-files",
+  method: "POST",
+  handler: chatFiles.upload,
+});
+http.route({
+  path: "/course-chat-files",
+  method: "GET",
+  handler: chatFiles.download,
+});
+http.route({
+  path: "/course-chat-files",
+  method: "OPTIONS",
+  handler: chatFiles.options,
+});
 
 /**
  * Webhook endpoint for Clerk user events

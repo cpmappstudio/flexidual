@@ -1,8 +1,24 @@
 "use client";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { TeacherIcon } from "@/components/teaching/teacher-icon";
+import { CourseChatMessage } from "./course-chat-message";
+import { useDocumentActive } from "@/hooks/use-document-active";
+import {
+  CourseChatUploadProvider,
+  PendingChatMessage,
+  usePendingChatUpload,
+} from "./course-chat-pending";
+import {
+  ChatFilePreview,
+  useChatFileRequest,
+  optimizeChatImage,
+} from "./course-chat-attachments";
+import {
+  CHAT_FILE_TYPES,
+  MAX_CHAT_ATTACHMENTS,
+  MAX_CHAT_MESSAGE_BYTES,
+  containsChatLink,
+  isValidChatFile,
+} from "@/lib/chat-attachments";
 import {
   InputGroup,
   InputGroupAddon,
@@ -10,12 +26,13 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Marker, MarkerContent } from "@/components/ui/marker";
-import type { Id } from "@/convex/_generated/dataModel";
 import {
-  Message,
-  MessageAvatar,
-  MessageContent,
-} from "@/components/ui/message";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { Id } from "@/convex/_generated/dataModel";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -35,9 +52,22 @@ import {
   usePaginatedQuery,
   useQuery,
 } from "convex/react";
-import { ArrowDown, LoaderCircle, SendHorizontal } from "lucide-react";
+import {
+  ArrowDown,
+  LoaderCircle,
+  SendHorizontal,
+  Paperclip,
+  Plus,
+} from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { type FormEvent, Fragment, useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  Fragment,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
 import { toast } from "sonner";
 
 interface CourseChatProps {
@@ -49,19 +79,21 @@ const MAX_MESSAGE_GROUP_SIZE = 6;
 
 export function CourseChat({ courseId, className }: CourseChatProps) {
   return (
-    <div
-      data-course-chat-id={courseId}
-      className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden bg-card",
-        className,
-      )}
-    >
-      <CourseChatMessages courseId={courseId} />
-      <CourseChatComposer
-        courseId={courseId}
-        className="border-t border-primary/20"
-      />
-    </div>
+    <CourseChatUploadProvider key={courseId}>
+      <div
+        data-course-chat-id={courseId}
+        className={cn(
+          "flex h-full min-h-0 flex-col overflow-hidden bg-card",
+          className,
+        )}
+      >
+        <CourseChatMessages courseId={courseId} />
+        <CourseChatComposer
+          courseId={courseId}
+          className="border-t border-primary/20"
+        />
+      </div>
+    </CourseChatUploadProvider>
   );
 }
 
@@ -73,6 +105,10 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
   }, []);
   const { isAuthenticated } = useConvexAuth();
+  const chatStatus = useQuery(
+    api.courseChatMessages.getMyStatus,
+    isAuthenticated ? { classId: courseId } : "skip",
+  );
   const { results, status, loadMore } = usePaginatedQuery(
     api.courseChatMessages.list,
     isAuthenticated ? { classId: courseId } : "skip",
@@ -157,15 +193,6 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
                 </MessageScrollerItem>
               ) : null}
               {messages.map(({ message, day, startsDay, startsGroup }) => {
-                const isOwn = message.isOwn;
-                const isTeacher = message.authorRole === "teacher";
-                const variant =
-                  isOwn || isTeacher
-                    ? "default"
-                    : message.authorRole === "tutor"
-                      ? "tinted"
-                      : "secondary";
-
                 return (
                   <Fragment key={message._id}>
                     {startsDay && (
@@ -186,75 +213,22 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
                       messageId={message._id}
                       className={startsGroup && !startsDay ? "pt-3" : undefined}
                     >
-                      <Message align={isOwn ? "end" : "start"}>
-                        <MessageAvatar className="bg-transparent">
-                          {startsGroup && (
-                            <Avatar size="sm" className="shrink-0 shadow-sm">
-                              <AvatarImage
-                                src={message.authorImageUrl}
-                                alt={message.authorName}
-                              />
-                              <AvatarFallback
-                                className={cn(
-                                  message.authorRole === "teacher" &&
-                                    "bg-primary text-primary-foreground",
-                                  message.authorRole === "member" &&
-                                    "bg-secondary text-secondary-foreground",
-                                  isOwn && "bg-info text-info-foreground",
-                                )}
-                              >
-                                {message.authorName.charAt(0).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
-                        </MessageAvatar>
-                        <MessageContent className="gap-1">
-                          <Bubble variant={variant} className="max-w-[82%]">
-                            <BubbleContent
-                              className={cn(
-                                "flex flex-col gap-0.5 px-2.5 py-1.5 text-sm leading-snug shadow-sm sm:text-base",
-                                startsGroup &&
-                                  (isOwn ? "rounded-br-sm" : "rounded-bl-sm"),
-                              )}
-                            >
-                              {startsGroup && (
-                                <span className="text-xs font-bold sm:text-sm">
-                                  {message.authorName}
-                                  {isTeacher && (
-                                    <>
-                                      {" "}
-                                      <TeacherIcon label={t("teacher")} />
-                                    </>
-                                  )}
-                                </span>
-                              )}
-                              <div className="flex min-w-0 items-end gap-2">
-                                <p className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
-                                  {message.body}
-                                </p>
-                                <time
-                                  className="mb-0.5 shrink-0 whitespace-nowrap text-[10px] leading-none opacity-80 sm:text-xs"
-                                  dateTime={new Date(
-                                    message._creationTime,
-                                  ).toISOString()}
-                                  title={timeZone}
-                                >
-                                  {timeZone &&
-                                    format.dateTime(message._creationTime, {
-                                      timeZone,
-                                      hour: "numeric",
-                                      minute: "2-digit",
-                                    })}
-                                </time>
-                              </div>
-                            </BubbleContent>
-                          </Bubble>
-                        </MessageContent>
-                      </Message>
+                      <CourseChatMessage
+                        message={message}
+                        startsGroup={startsGroup}
+                        timeZone={timeZone}
+                        canPin={chatStatus?.canPin === true}
+                      />
                     </MessageScrollerItem>
                   </Fragment>
                 );
               })}
+              <PendingChatMessage
+                confirmedAttachmentIds={results.flatMap(
+                  (message) =>
+                    message.attachments?.map((file) => file.id) ?? [],
+                )}
+              />
             </MessageScrollerContent>
           </MessageScrollerViewport>
           <MessageScrollerButton>
@@ -274,23 +248,8 @@ function ChatReadReceipt({
 }) {
   const { visibleMessageIds } = useMessageScrollerVisibility();
   const markRead = useMutation(api.courseChatNotifications.markRead);
-  const [isFocused, setIsFocused] = useState(false);
+  const isFocused = useDocumentActive();
   const isVisible = Boolean(messageId && visibleMessageIds.includes(messageId));
-  useEffect(() => {
-    const update = () =>
-      setIsFocused(
-        document.visibilityState === "visible" && document.hasFocus(),
-      );
-    update();
-    document.addEventListener("visibilitychange", update);
-    window.addEventListener("focus", update);
-    window.addEventListener("blur", update);
-    return () => {
-      document.removeEventListener("visibilitychange", update);
-      window.removeEventListener("focus", update);
-      window.removeEventListener("blur", update);
-    };
-  }, []);
   useEffect(() => {
     if (messageId && isVisible && isFocused) {
       void markRead({ messageId }).catch((error) =>
@@ -308,10 +267,37 @@ export function CourseChatComposer({
   courseId: Id<"classes">;
   className?: string;
 }) {
+  return (
+    <ChatComposer key={courseId} courseId={courseId} className={className} />
+  );
+}
+
+function ChatComposer({
+  courseId,
+  className,
+}: {
+  courseId: Id<"classes">;
+  className?: string;
+}) {
   const t = useTranslations("classroom");
   const { isAuthenticated } = useConvexAuth();
   const [body, setBody] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [files, setFiles] = useState<
+    { file: File; id?: Id<"courseChatAttachments"> }[]
+  >([]);
+  const { setPending } = usePendingChatUpload();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const sendingRef = useRef(false);
+  const controllerRef = useRef<AbortController | null>(null);
+  const requestFile = useChatFileRequest();
+  useEffect(
+    () => () => {
+      controllerRef.current?.abort();
+      setPending(null);
+    },
+    [setPending],
+  );
   const sendMessage = useMutation(api.courseChatMessages.send);
   const chatStatus = useQuery(
     api.courseChatMessages.getMyStatus,
@@ -319,30 +305,125 @@ export function CourseChatComposer({
   );
   const isMuted = chatStatus?.isMuted ?? false;
   const isArchived = chatStatus?.archived ?? false;
+  const canAttach = chatStatus?.canAttach === true;
   const isComposerDisabled =
     !isAuthenticated || chatStatus === undefined || isMuted || isSending;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const message = body.trim();
-    if (!message || isComposerDisabled) return;
+    if ((!message && !files.length) || isComposerDisabled || sendingRef.current)
+      return;
+    if ((files.length || containsChatLink(message)) && !canAttach) {
+      toast.error(t("attachmentsDisabled"));
+      return;
+    }
 
+    sendingRef.current = true;
     setIsSending(true);
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    if (files.length)
+      setPending({
+        body: message,
+        files: files.map((entry) => entry.file),
+        attachmentIds: files.flatMap((entry) => (entry.id ? [entry.id] : [])),
+        cancel: () => controller.abort(),
+      });
     try {
-      await sendMessage({ classId: courseId, body: message });
+      const uploaded = [...files];
+      for (let index = 0; index < uploaded.length; index++) {
+        const entry = uploaded[index];
+        if (!entry.id) {
+          const file = await optimizeChatImage(entry.file);
+          if (controller.signal.aborted) return;
+          const response = await requestFile(
+            { classId: courseId },
+            {
+              method: "POST",
+              signal: controller.signal,
+              body: file,
+              headers: {
+                "Content-Type": file.type,
+                "X-File-Name": encodeURIComponent(file.name),
+                "X-File-Size": String(file.size),
+              },
+            },
+          );
+          const result: unknown = await response.json();
+          if (
+            !result ||
+            typeof result !== "object" ||
+            !("id" in result) ||
+            typeof result.id !== "string"
+          )
+            throw new Error("UPLOAD_FAILED");
+          uploaded[index] = {
+            file,
+            id: result.id as Id<"courseChatAttachments">,
+          };
+          setFiles([...uploaded]);
+          setPending(
+            (current) =>
+              current && {
+                ...current,
+                attachmentIds: uploaded.flatMap((item) =>
+                  item.id ? [item.id] : [],
+                ),
+              },
+          );
+        }
+      }
+      if (controller.signal.aborted) return;
+      setPending((current) => current && { ...current, cancel: null });
+      await sendMessage({
+        classId: courseId,
+        body: message,
+        ...(uploaded.length
+          ? { attachmentIds: uploaded.map((entry) => entry.id!) }
+          : {}),
+      });
       setBody("");
+      setFiles([]);
     } catch (error) {
+      if (controller.signal.aborted) return;
+      const code =
+        parseConvexError(error)?.code ??
+        (error instanceof Error ? error.message : "");
+      if (code === "INVALID_CHAT_ATTACHMENTS")
+        setFiles((current) => current.map(({ file }) => ({ file })));
       toast.error(
-        parseConvexError(error)?.code === "CHAT_MUTED"
-          ? t("chatMuted")
-          : parseConvexError(error)?.code === "CHAT_ARCHIVED"
-            ? t("archivedChat")
-            : t("chatSendError"),
+        code === "CHAT_ATTACHMENTS_DISABLED"
+          ? t("attachmentsDisabled")
+          : files.length
+            ? t("attachmentUploadError")
+            : code === "CHAT_MUTED"
+              ? t("chatMuted")
+              : parseConvexError(error)?.code === "CHAT_ARCHIVED"
+                ? t("archivedChat")
+                : t("chatSendError"),
       );
     } finally {
       setIsSending(false);
+      sendingRef.current = false;
+      setPending(null);
     }
   };
+
+  function selectFiles(selected: FileList | null) {
+    if (!selected || !canAttach || isComposerDisabled) return;
+    const next = [...files, ...Array.from(selected).map((file) => ({ file }))];
+    if (
+      next.length > MAX_CHAT_ATTACHMENTS ||
+      next.some(({ file }) => !isValidChatFile(file)) ||
+      next.reduce((sum, { file }) => sum + file.size, 0) >
+        MAX_CHAT_MESSAGE_BYTES
+    ) {
+      toast.error(t("attachmentLimits"));
+      return;
+    }
+    setFiles(next);
+  }
 
   return (
     <form
@@ -350,38 +431,88 @@ export function CourseChatComposer({
       className={cn("shrink-0 bg-card p-2.5", className)}
     >
       <div className="mx-auto w-full max-w-4xl">
-        <InputGroup className="h-11 overflow-hidden bg-background sm:h-12">
-          <InputGroupInput
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-            maxLength={2000}
-            disabled={isComposerDisabled}
-            placeholder={
-              isArchived
-                ? t("archivedChat")
-                : isMuted
-                  ? t("chatMuted")
-                  : t("chatPlaceholder")
-            }
-            className="text-sm sm:text-base"
-          />
-          <InputGroupAddon
-            align="inline-end"
-            className="h-full shrink-0 py-0 pr-0 has-[>button]:mr-0"
-          >
-            <InputGroupButton
-              variant="default"
-              size="icon-sm"
-              type="submit"
-              disabled={!body.trim() || isComposerDisabled}
-              aria-label={t("sendMessage")}
-              title={t("sendMessage")}
-              className="h-full w-11 rounded-none focus-visible:ring-inset sm:w-12"
+        {!isSending && files.length > 0 && (
+          <div className="mb-2 grid gap-2 sm:grid-cols-3">
+            {files.map((entry, index) => (
+              <ChatFilePreview
+                key={`${index}-${entry.file.name}`}
+                file={entry.file}
+                disabled={isSending}
+                onRemove={() =>
+                  setFiles((current) => current.filter((_, i) => i !== index))
+                }
+              />
+            ))}
+          </div>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept={CHAT_FILE_TYPES.join(",")}
+          hidden
+          disabled={!canAttach || isComposerDisabled}
+          onChange={(event) => {
+            selectFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        <div className="flex items-center gap-2">
+          {canAttach && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <InputGroupButton
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  className="size-11 shrink-0 sm:size-12"
+                  disabled={isComposerDisabled}
+                  aria-label={t("attachFiles")}
+                >
+                  <Plus />
+                </InputGroupButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top">
+                <DropdownMenuItem onSelect={() => inputRef.current?.click()}>
+                  <Paperclip />
+                  {t("addPhotosAndFiles")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <InputGroup className="h-11 min-w-0 flex-1 overflow-hidden bg-background sm:h-12">
+            <InputGroupInput
+              value={isSending && files.length ? "" : body}
+              onChange={(event) => setBody(event.target.value)}
+              maxLength={2000}
+              disabled={isComposerDisabled}
+              placeholder={
+                isArchived
+                  ? t("archivedChat")
+                  : isMuted
+                    ? t("chatMuted")
+                    : t("chatPlaceholder")
+              }
+              className="text-sm sm:text-base"
+            />
+            <InputGroupAddon
+              align="inline-end"
+              className="h-full shrink-0 py-0 pr-0 has-[>button]:mr-0"
             >
-              <SendHorizontal />
-            </InputGroupButton>
-          </InputGroupAddon>
-        </InputGroup>
+              <InputGroupButton
+                variant="default"
+                size="icon-sm"
+                type="submit"
+                disabled={(!body.trim() && !files.length) || isComposerDisabled}
+                aria-label={t("sendMessage")}
+                title={t("sendMessage")}
+                className="h-full w-11 rounded-none focus-visible:ring-inset sm:w-12"
+              >
+                <SendHorizontal />
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+        </div>
       </div>
     </form>
   );

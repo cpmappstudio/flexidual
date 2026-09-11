@@ -4,6 +4,7 @@ import { getFunctionName } from "convex/server";
 import { afterEach, expect, test, vi } from "vitest";
 import { CourseChatsNav } from "@/components/chat/course-chats-nav";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarWorkspace } from "@/components/sidebar-workspace";
 import type { Id } from "@/convex/_generated/dataModel";
 
 const state = vi.hoisted(() => ({
@@ -31,6 +32,10 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({ orgSlug: state.slug }),
 }));
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
+vi.mock("@/hooks/use-unread-course-chats", () => ({
+  useUnreadCourseChats: () => new Map(),
+}));
+vi.mock("@/components/nav-main", () => ({ NavMain: () => null }));
 vi.mock("@/hooks/use-org-base-path", () => ({
   useOrgBasePath: () => `/${state.slug}`,
 }));
@@ -47,8 +52,35 @@ vi.mock("@/components/teaching/curriculums/curriculum-icon", () => ({
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   state.slug = "campus";
   state.queries.mockClear();
+});
+
+test("chat sidebar uses the shared ScrollArea without a second native scroll container", () => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const { getByRole } = render(
+    <SidebarProvider>
+      <SidebarWorkspace />
+    </SidebarProvider>,
+  );
+  const panel = getByRole("tabpanel", { name: "chats" });
+  expect(panel.classList.contains("overflow-hidden")).toBe(true);
+  expect(panel.classList.contains("overflow-y-auto")).toBe(false);
+  const viewport = panel.querySelector('[data-slot="scroll-area-viewport"]');
+  expect(
+    viewport?.contains(getByRole("searchbox", { name: "searchChats" })),
+  ).toBe(true);
+  expect(
+    viewport?.contains(getByRole("link", { name: "Algebra I · Teacher" })),
+  ).toBe(true);
 });
 
 test("filters active and archived chat names locally, preserving links and unread indicators", () => {

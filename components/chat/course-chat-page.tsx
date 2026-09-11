@@ -5,6 +5,8 @@ import {
   CourseChatMessages,
 } from "@/components/chat/course-chat";
 import { CourseChatParticipants } from "@/components/chat/course-chat-participants";
+import { CourseChatPins } from "@/components/chat/course-chat-pins";
+import { CourseChatUploadProvider } from "@/components/chat/course-chat-pending";
 import { ClassroomHeader } from "@/components/classroom/classroom-header";
 import {
   ClassroomLayout,
@@ -87,124 +89,127 @@ export function CourseChatPage({ classId }: CourseChatPageProps) {
       data-classroom-layout
       className="h-full min-h-0 w-full overflow-hidden"
     >
-      <ClassroomLayout isSidebarOpen={isParticipantsOpen}>
-        <ClassroomHeader
-          title={context.course.name}
-          subtitle={context.course.curriculumTitle}
-          curriculumIconKey={context.course.curriculumIconKey}
-          isActive={false}
-          activeLabel={t("courseChat")}
-          waitingLabel={t("courseChat")}
-          isRecording={false}
-          isPhoneLandscape={false}
-          isPanelOpen={isParticipantsOpen}
-          openPanelLabel={t("openParticipantsPanel")}
-          closePanelLabel={t("closeParticipantsPanel")}
-          onPanelOpenChange={setIsParticipantsOpen}
-          action={
-            <div className="flex items-center gap-1.5">
-              {liveStandardClass ? (
+      <CourseChatUploadProvider key={classId}>
+        <ClassroomLayout isSidebarOpen={isParticipantsOpen}>
+          <ClassroomHeader
+            title={context.course.name}
+            subtitle={context.course.curriculumTitle}
+            curriculumIconKey={context.course.curriculumIconKey}
+            isActive={false}
+            activeLabel={t("courseChat")}
+            waitingLabel={t("courseChat")}
+            isRecording={false}
+            isPhoneLandscape={false}
+            isPanelOpen={isParticipantsOpen}
+            openPanelLabel={t("openParticipantsPanel")}
+            closePanelLabel={t("closeParticipantsPanel")}
+            onPanelOpenChange={setIsParticipantsOpen}
+            action={
+              <div className="flex items-center gap-1.5">
+                {liveStandardClass ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        asChild
+                        variant="ghost"
+                        size="icon"
+                        className="size-10 border-0 p-0 shadow-none hover:bg-transparent"
+                      >
+                        <Link
+                          href={`${basePath}/classroom/${liveStandardClass.roomName}`}
+                          aria-label={dashboardT("goToClassroom")}
+                        >
+                          <Image
+                            src="/rocket.svg"
+                            alt=""
+                            width={22}
+                            height={21}
+                            aria-hidden="true"
+                            className="h-[1.375rem] w-auto"
+                          />
+                        </Link>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {dashboardT("goToClassroom")}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className="inline-flex"
+                        tabIndex={0}
+                        aria-label={t("classroomUnavailable")}
+                      >
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          disabled
+                          tabIndex={-1}
+                          aria-hidden="true"
+                          className="size-10 border-0 p-0 shadow-none"
+                        >
+                          <Image
+                            src="/rocket.svg"
+                            alt=""
+                            width={22}
+                            height={21}
+                            aria-hidden="true"
+                            className="h-[1.375rem] w-auto grayscale"
+                          />
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {t("classroomUnavailable")}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       asChild
                       variant="ghost"
                       size="icon"
-                      className="size-10 border-0 p-0 shadow-none hover:bg-transparent"
+                      className="size-10 border-0 p-0 text-primary shadow-none hover:bg-transparent hover:text-primary"
                     >
                       <Link
-                        href={`${basePath}/classroom/${liveStandardClass.roomName}`}
-                        aria-label={dashboardT("goToClassroom")}
+                        href={`${basePath}/classes/${classId}`}
+                        aria-label={t("viewCourseDetails")}
                       >
-                        <Image
-                          src="/rocket.svg"
-                          alt=""
-                          width={22}
-                          height={21}
-                          aria-hidden="true"
-                          className="h-[1.375rem] w-auto"
-                        />
+                        <BookOpenText className="size-6" />
                       </Link>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    {dashboardT("goToClassroom")}
+                    {t("viewCourseDetails")}
                   </TooltipContent>
                 </Tooltip>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      className="inline-flex"
-                      tabIndex={0}
-                      aria-label={t("classroomUnavailable")}
-                    >
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        disabled
-                        tabIndex={-1}
-                        aria-hidden="true"
-                        className="size-10 border-0 p-0 shadow-none"
-                      >
-                        <Image
-                          src="/rocket.svg"
-                          alt=""
-                          width={22}
-                          height={21}
-                          aria-hidden="true"
-                          className="h-[1.375rem] w-auto grayscale"
-                        />
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {t("classroomUnavailable")}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="icon"
-                    className="size-10 border-0 p-0 text-primary shadow-none hover:bg-transparent hover:text-primary"
-                  >
-                    <Link
-                      href={`${basePath}/classes/${classId}`}
-                      aria-label={t("viewCourseDetails")}
-                    >
-                      <BookOpenText className="size-6" />
-                    </Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {t("viewCourseDetails")}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          }
-        />
+                <CourseChatPins courseId={classId} />
+              </div>
+            }
+          />
 
-        <ClassroomLayoutStage>
-          <CourseChatMessages courseId={classId} />
-        </ClassroomLayoutStage>
+          <ClassroomLayoutStage>
+            <CourseChatMessages courseId={classId} />
+          </ClassroomLayoutStage>
 
-        <ClassroomLayoutControls>
-          <CourseChatComposer courseId={classId} />
-        </ClassroomLayoutControls>
+          <ClassroomLayoutControls>
+            <CourseChatComposer courseId={classId} />
+          </ClassroomLayoutControls>
 
-        <CourseChatParticipants
-          classId={classId}
-          participants={context.participants}
-          isOpen={isParticipantsOpen}
-          canModerate={context.canModerate}
-          canDisableChat={context.canDisableChat}
-          chatSettings={context.chatSettings}
-        />
-      </ClassroomLayout>
+          <CourseChatParticipants
+            classId={classId}
+            participants={context.participants}
+            isOpen={isParticipantsOpen}
+            canModerate={context.canModerate}
+            canDisableChat={context.canDisableChat}
+            chatSettings={context.chatSettings}
+          />
+        </ClassroomLayout>
+      </CourseChatUploadProvider>
     </main>
   );
 }

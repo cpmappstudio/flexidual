@@ -12,6 +12,8 @@ import type * as academicSettings from "../academicSettings.js";
 import type * as calendar from "../calendar.js";
 import type * as campuses from "../campuses.js";
 import type * as classes from "../classes.js";
+import type * as courseChatAttachmentHttp from "../courseChatAttachmentHttp.js";
+import type * as courseChatAttachments from "../courseChatAttachments.js";
 import type * as courseChatMessages from "../courseChatMessages.js";
 import type * as courseChatNotifications from "../courseChatNotifications.js";
 import type * as crons from "../crons.js";
@@ -24,6 +26,8 @@ import type * as migration from "../migration.js";
 import type * as model_catalog from "../model/catalog.js";
 import type * as model_classCancellationEvents from "../model/classCancellationEvents.js";
 import type * as model_classType from "../model/classType.js";
+import type * as model_courseChatAccess from "../model/courseChatAccess.js";
+import type * as model_courseChatAttachments from "../model/courseChatAttachments.js";
 import type * as model_courseSchedule from "../model/courseSchedule.js";
 import type * as model_courseScheduleShares from "../model/courseScheduleShares.js";
 import type * as model_curriculumIcons from "../model/curriculumIcons.js";
@@ -67,6 +71,8 @@ declare const fullApi: ApiFromModules<{
   calendar: typeof calendar;
   campuses: typeof campuses;
   classes: typeof classes;
+  courseChatAttachmentHttp: typeof courseChatAttachmentHttp;
+  courseChatAttachments: typeof courseChatAttachments;
   courseChatMessages: typeof courseChatMessages;
   courseChatNotifications: typeof courseChatNotifications;
   crons: typeof crons;
@@ -79,6 +85,8 @@ declare const fullApi: ApiFromModules<{
   "model/catalog": typeof model_catalog;
   "model/classCancellationEvents": typeof model_classCancellationEvents;
   "model/classType": typeof model_classType;
+  "model/courseChatAccess": typeof model_courseChatAccess;
+  "model/courseChatAttachments": typeof model_courseChatAttachments;
   "model/courseSchedule": typeof model_courseSchedule;
   "model/courseScheduleShares": typeof model_courseScheduleShares;
   "model/curriculumIcons": typeof model_curriculumIcons;
@@ -138,4 +146,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+};

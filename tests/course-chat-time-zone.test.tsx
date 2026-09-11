@@ -26,6 +26,7 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("convex/react", () => ({
   useConvexAuth: () => ({ isAuthenticated: true }),
+  useQuery: () => ({ canPin: false }),
   useMutation: () => vi.fn().mockResolvedValue(null),
   usePaginatedQuery: () => ({
     status: "Exhausted",
@@ -235,6 +236,11 @@ test.each([false, true])(
         bubble.classList.contains(isOwn ? "rounded-bl-sm" : "rounded-br-sm"),
       ).toBe(false);
       expect(bubble.classList.contains("rounded-xl")).toBe(true);
+      const text = bubble.querySelector("p")!;
+      expect(text.classList.contains("text-left")).toBe(true);
+      expect(text.classList.contains("flex-1")).toBe(true);
+      expect(text.parentElement?.classList.contains("justify-end")).toBe(false);
+      expect(text.nextElementSibling?.tagName).toBe("TIME");
     }
     const messages = [...container.querySelectorAll('[data-slot="message"]')];
     expect(
