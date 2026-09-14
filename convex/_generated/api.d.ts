@@ -39,6 +39,7 @@ import type * as model_membership from "../model/membership.js";
 import type * as model_roles from "../model/roles.js";
 import type * as model_scheduleAccess from "../model/scheduleAccess.js";
 import type * as model_scheduleDeletion from "../model/scheduleDeletion.js";
+import type * as model_sessionContent from "../model/sessionContent.js";
 import type * as model_sessionLeadership from "../model/sessionLeadership.js";
 import type * as model_studentAttendance from "../model/studentAttendance.js";
 import type * as model_systemNotificationEvents from "../model/systemNotificationEvents.js";
@@ -98,6 +99,7 @@ declare const fullApi: ApiFromModules<{
   "model/roles": typeof model_roles;
   "model/scheduleAccess": typeof model_scheduleAccess;
   "model/scheduleDeletion": typeof model_scheduleDeletion;
+  "model/sessionContent": typeof model_sessionContent;
   "model/sessionLeadership": typeof model_sessionLeadership;
   "model/studentAttendance": typeof model_studentAttendance;
   "model/systemNotificationEvents": typeof model_systemNotificationEvents;

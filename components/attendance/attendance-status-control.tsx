@@ -18,8 +18,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { AttendanceStatus } from "./attendance-status";
 
-export type AttendanceStatus = "present" | "partial" | "absent" | "excused";
+export type { AttendanceStatus } from "./attendance-status";
 
 interface AttendanceStatusControlProps {
   status: AttendanceStatus;

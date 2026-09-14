@@ -41,6 +41,7 @@ import {
   isUpcomingClassSession,
 } from "@/lib/class-session";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
+import { StudentAttendanceSummary } from "@/components/dashboards/student-attendance-summary";
 
 const UserDialog = dynamic(() =>
   import("@/components/admin/users/user-dialog").then(
@@ -417,67 +418,22 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                   </div>
                 </div>
 
-                <div className="min-w-0 xl:border-l xl:border-border/60 xl:pl-5">
-                  <div
-                    className={cn(
-                      "mb-3 xl:mb-0",
-                      editableStudentOrgId && "xl:pr-28",
-                    )}
-                  >
-                    <h3 className="text-sm font-bold text-foreground xl:text-xl">
-                      {t("student.profile.classAttendance")}
-                    </h3>
-                    <p className="mt-1 hidden text-sm font-medium text-muted-foreground xl:block">
-                      {verifiedSessions > 0
-                        ? t("student.profile.attendanceVerifiedSummary", {
-                            verified: verifiedSessions,
-                          })
-                        : t("student.profile.noCompletedClassesYet")}
-                      {pendingVerification > 0 && (
-                        <span className="ml-1">
-                          {t("student.profile.pendingVerificationSummary", {
-                            count: pendingVerification,
-                          })}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 xl:mt-4 xl:gap-3">
-                    <div className="min-w-0 rounded-2xl bg-success/50 px-2 py-2 text-center text-success-foreground xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:bg-success/60 xl:py-3">
-                      <p className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
-                        {attendanceCounts.present}
-                      </p>
-                      <p className="mt-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
-                        {t("schedule.attendance.present")}
-                      </p>
-                    </div>
-                    <div className="min-w-0 rounded-2xl bg-warning/20 px-2 py-2 text-center text-warning xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:bg-warning/25 xl:py-3">
-                      <p className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
-                        {attendanceCounts.partial}
-                      </p>
-                      <p className="mt-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
-                        {t("schedule.attendance.partial")}
-                      </p>
-                    </div>
-                    <div className="min-w-0 rounded-2xl bg-destructive/25 px-2 py-2 text-center text-destructive xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:bg-destructive/30 xl:py-3">
-                      <p className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
-                        {attendanceCounts.absent}
-                      </p>
-                      <p className="mt-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
-                        {t("schedule.attendance.absent")}
-                      </p>
-                    </div>
-                    <div className="min-w-0 rounded-2xl bg-info/40 px-2 py-2 text-center text-info-foreground xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:bg-info/50 xl:py-3">
-                      <p className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
-                        {attendanceCounts.excused}
-                      </p>
-                      <p className="mt-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
-                        {t("schedule.attendance.excused")}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                <StudentAttendanceSummary
+                  counts={attendanceCounts}
+                  verifiedSessions={verifiedSessions}
+                  pendingVerification={pendingVerification}
+                  pendingSessions={
+                    dashboardData?.pendingAttendanceSessions ?? []
+                  }
+                  courses={classStats.map((classStat) => ({
+                    classId: classStat.classId,
+                    className: classStat.className,
+                  }))}
+                  studentId={studentId}
+                  studentName={displayName}
+                  orgSlug={orgSlug}
+                  hasProfileAction={Boolean(editableStudentOrgId)}
+                />
               </CardContent>
             </Card>
 

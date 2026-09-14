@@ -1178,13 +1178,17 @@ test("lesson history is scoped to the course and repeated lessons count once in 
     pastClasses.find(({ scheduleId }) => scheduleId === data.teacherScheduleId),
   ).toMatchObject({
     scheduleId: data.teacherScheduleId,
+    roomName: "teacher-led-room",
     sessionType: "live",
+    recordState: "completed",
   });
   expect(
     pastClasses.find(({ scheduleId }) => scheduleId === data.tutorScheduleId),
   ).toMatchObject({
     scheduleId: data.tutorScheduleId,
+    roomName: "tutor-room",
     sessionType: "live",
+    recordState: "completed",
   });
 
   const firstRecord = await teacher.query(api.sessionRecords.get, {
@@ -1662,6 +1666,16 @@ for (const hasStandardSessions of [true, false]) {
       upcomingClasses: hasStandardSessions ? 1 : 0,
       attendanceCounts: counts,
     });
+    expect(dashboard?.pendingAttendanceSessions).toEqual(
+      hasStandardSessions
+        ? [
+            expect.objectContaining({
+              classId: data.classId,
+              className: "Leadership Class",
+            }),
+          ]
+        : [],
+    );
     expect(
       dashboard?.upcomingLessons.map((lesson) => lesson.sessionType).sort(),
     ).toEqual(
@@ -1671,6 +1685,15 @@ for (const hasStandardSessions of [true, false]) {
       .withIdentity({ subject: "leader-student" })
       .query(api.student.getStudentDashboardStats, { now: NOW });
     expect(selfDashboard?.overall).toEqual(dashboard?.overall);
+    if (hasStandardSessions) {
+      expect(dashboard?.pendingAttendanceSessions[0]).toMatchObject({
+        roomName: expect.any(String),
+        canCompleteReport: true,
+      });
+      expect(selfDashboard?.pendingAttendanceSessions[0]).toMatchObject({
+        canCompleteReport: false,
+      });
+    }
     expect(
       await t.run((ctx) =>
         ctx.db
@@ -1723,6 +1746,150 @@ test("dashboards count final attendance states and keep pending verification sep
       excused: status === "excused" ? 1 : 0,
     });
   }
+});
+
+test("attendance history identifies each class and lets principals correct it", async () => {
+  const { t, data } = await setupLeadershipTest();
+  await t.run(async (ctx) => {
+    await ctx.db.insert("roleAssignments", {
+      userId: data.studentId,
+      orgId: data.campusId,
+      orgType: "campus",
+      role: "student",
+      schoolId: data.schoolId,
+      assignedAt: NOW,
+      assignedBy: data.adminId,
+    });
+    await ctx.db.insert("class_sessions", {
+      scheduleId: data.endGateScheduleId,
+      studentId: data.studentId,
+      joinedAt: NOW - 30_000,
+      leftAt: NOW,
+      durationSeconds: 30,
+      roomName: "end-gate-room",
+      sessionDate: "2026-08-26",
+    });
+  });
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "end-gate-room",
+    isLive: true,
+  });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "end-gate-room",
+    lessonIds: [data.lessonId],
+    attendance: buildAttendance(data, [
+      "absent",
+      "partial",
+      "excused",
+      "present",
+    ]),
+  });
+  await t.mutation(internal.schedule.endLiveSession, {
+    roomName: "end-gate-room",
+    endedAt: NOW + 60_000,
+    endedBy: data.teacherId,
+  });
+
+  const paginationOpts = { numItems: 20, cursor: null };
+  const principal = t.withIdentity({ subject: "leader-principal" });
+  const principalHistory = await principal.query(
+    api.student.listStudentAttendanceHistory,
+    {
+      studentId: data.studentId,
+      orgSlug: "leadership-campus",
+      status: "absent",
+      paginationOpts,
+    },
+  );
+  expect(principalHistory.page).toEqual([
+    expect.objectContaining({
+      scheduleId: data.endGateScheduleId,
+      studentId: data.studentId,
+      classId: data.classId,
+      className: "Leadership Class",
+      status: "absent",
+      attendedMinutes: 1,
+      canEditAttendance: true,
+      contentSummary: {
+        lessonPreview: { title: "Session leadership", order: 1 },
+        hasMoreLessons: false,
+        recordingCount: 0,
+      },
+    }),
+  ]);
+  const classHistory = await principal.query(
+    api.student.listStudentAttendanceHistory,
+    {
+      studentId: data.studentId,
+      orgSlug: "leadership-campus",
+      classId: data.classId,
+      status: "absent",
+      paginationOpts,
+    },
+  );
+  expect(classHistory.page).toEqual([
+    expect.objectContaining({
+      scheduleId: data.endGateScheduleId,
+      classId: data.classId,
+      status: "absent",
+    }),
+  ]);
+
+  const studentHistory = await t
+    .withIdentity({ subject: "leader-student" })
+    .query(api.student.listStudentAttendanceHistory, {
+      status: "absent",
+      paginationOpts,
+    });
+  expect(studentHistory.page[0]).toMatchObject({
+    scheduleId: data.endGateScheduleId,
+    status: "absent",
+    canEditAttendance: false,
+  });
+
+  const otherTeacherHistory = await t
+    .withIdentity({ subject: "leader-other-teacher" })
+    .query(api.student.listStudentAttendanceHistory, {
+      studentId: data.studentId,
+      orgSlug: "leadership-campus",
+      status: "absent",
+      paginationOpts,
+    });
+  expect(otherTeacherHistory.page[0]).toMatchObject({
+    scheduleId: data.endGateScheduleId,
+    canEditAttendance: false,
+  });
+
+  await principal.mutation(api.schedule.updateAttendance, {
+    scheduleId: data.endGateScheduleId,
+    studentId: data.studentId,
+    status: "excused",
+    excuseReason: "Medical appointment",
+  });
+  const correctedHistory = await principal.query(
+    api.student.listStudentAttendanceHistory,
+    {
+      studentId: data.studentId,
+      orgSlug: "leadership-campus",
+      status: "excused",
+      paginationOpts,
+    },
+  );
+  expect(correctedHistory.page[0]).toMatchObject({
+    status: "excused",
+    excuseReason: "Medical appointment",
+  });
+
+  await expect(
+    t
+      .withIdentity({ subject: "leader-out-of-scope-admin" })
+      .query(api.student.listStudentAttendanceHistory, {
+        studentId: data.studentId,
+        orgSlug: "leadership-campus",
+        paginationOpts,
+      }),
+  ).rejects.toThrow("PERMISSION_DENIED");
 });
 
 test("authorized corrections preserve confirmation and record the latest editor", async () => {

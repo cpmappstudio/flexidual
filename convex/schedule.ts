@@ -16,7 +16,6 @@ import {
   canCancelClassOccurrence,
   canCancelClassSeries,
   canManageClasses,
-  hasSystemRole,
 } from "./permissions";
 import {
   canStudentAccessLiveClass,
@@ -2048,7 +2047,7 @@ export const getAttendanceDetails = query({
       email: v.optional(v.string()),
       imageUrl: v.optional(v.string()),
       totalMinutes: v.number(),
-      status: v.string(),
+      status: studentAttendanceStatusValidator,
       suggestedStatus: v.union(
         v.literal("present"),
         v.literal("partial"),

@@ -22,6 +22,10 @@ const LAURA_RECORDING_DEMO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 const LAURA_CALENDAR_PROVIDER_DEMO_CODE_PREFIX = "LAURA-CALENDAR-PROVIDER-DEMO";
 const LAURA_CALENDAR_PROVIDER_DEMO_ROOM_PREFIX = "laura-calendar-provider-demo";
+const ALEJANDRA_ATTENDANCE_DEMO_NAME = "Alejandra Valentina Hernandez Alvarez";
+const ALEJANDRA_ATTENDANCE_DEMO_ROOM_PREFIX =
+  "alejandra-attendance-history-demo";
+const STUDENT_ATTENDANCE_DEMO_ROOM_PREFIX = "student-attendance-history-demo";
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
@@ -356,6 +360,40 @@ async function getUserCampus(
 
   if (!campusAssignment) return null;
   return await ctx.db.get(campusAssignment.orgId as Id<"campuses">);
+}
+
+async function getActiveStudentClasses(
+  ctx: MutationCtx,
+  studentId: Id<"users">,
+): Promise<Doc<"classes">[]> {
+  const enrollments = await ctx.db
+    .query("classEnrollments")
+    .withIndex("by_student", (query) => query.eq("studentId", studentId))
+    .collect();
+  const normalizedClasses = await Promise.all(
+    enrollments.map(({ classId }) => ctx.db.get(classId)),
+  );
+  const legacyClasses = (
+    await ctx.db
+      .query("classes")
+      .withIndex("by_active", (query) => query.eq("isActive", true))
+      .collect()
+  ).filter(
+    (classData) =>
+      !classData.enrollmentsMigratedAt &&
+      classData.students?.includes(studentId),
+  );
+
+  return [
+    ...new Map(
+      [...normalizedClasses, ...legacyClasses]
+        .filter(
+          (classData): classData is Doc<"classes"> =>
+            classData !== null && classData.isActive,
+        )
+        .map((classData) => [classData._id, classData]),
+    ).values(),
+  ];
 }
 
 async function getClassByName(
@@ -1305,32 +1343,14 @@ export const createLauraRecordingDemo = internalMutation({
       throw new Error(`Student ${LAURA_TODAY_DEMO_USERNAME} was not found.`);
     }
 
-    const classIds = new Set<Id<"classes">>();
-    const enrollments = await ctx.db
-      .query("classEnrollments")
-      .withIndex("by_student", (query) => query.eq("studentId", student._id))
-      .collect();
-    enrollments.forEach((enrollment) => classIds.add(enrollment.classId));
-
-    const legacyClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_active", (query) => query.eq("isActive", true))
-      .collect();
-    legacyClasses.forEach((classData) => {
-      if (
-        !classData.enrollmentsMigratedAt &&
-        classData.students?.includes(student._id)
-      ) {
-        classIds.add(classData._id);
-      }
-    });
+    const classes = await getActiveStudentClasses(ctx, student._id);
 
     const pastSchedules = (
       await Promise.all(
-        [...classIds].map((classId) =>
+        classes.map(({ _id }) =>
           ctx.db
             .query("classSchedule")
-            .withIndex("by_class", (query) => query.eq("classId", classId))
+            .withIndex("by_class", (query) => query.eq("classId", _id))
             .collect(),
         ),
       )
@@ -1401,6 +1421,282 @@ export const createLauraRecordingDemo = internalMutation({
       student: student.fullName,
       recordings,
     };
+  },
+});
+
+const attendanceHistoryDemoResultValidator = v.object({
+  message: v.string(),
+  student: v.string(),
+  classes: v.number(),
+  sessions: v.number(),
+  recordings: v.number(),
+  counts: v.object({
+    present: v.number(),
+    partial: v.number(),
+    absent: v.number(),
+    excused: v.number(),
+  }),
+});
+
+async function createAttendanceHistoryDemo(
+  ctx: MutationCtx,
+  student: Doc<"users">,
+  roomPrefix: string,
+) {
+  const campus = await getUserCampus(ctx, student._id);
+  if (!campus) throw new Error(`${student.fullName} has no campus assignment.`);
+
+  const enrolledClasses = (await getActiveStudentClasses(ctx, student._id))
+    .filter(
+      (classData) =>
+        classData.campusId === campus._id &&
+        classData.classType !== "ignitia" &&
+        classData.classType !== "abeka",
+    )
+    .sort((first, second) => first.name.localeCompare(second.name));
+  if (enrolledClasses.length === 0) {
+    throw new Error(`${student.fullName} has no active Standard classes.`);
+  }
+
+  const fallbackAuthor =
+    (await getUserByRole(ctx, "admin", campus._id)) ||
+    (await getUserByRole(ctx, "principal", campus._id));
+  if (!fallbackAuthor) {
+    throw new Error("No administrator or principal was found.");
+  }
+
+  const timeZone = campus.timeZone ?? "America/Tegucigalpa";
+  const localToday = todayInTimeZone(timeZone);
+  const statuses = [
+    "present",
+    "partial",
+    "absent",
+    "excused",
+    "present",
+    "partial",
+    "absent",
+    "excused",
+    "present",
+    "partial",
+    "absent",
+    "excused",
+  ] as const;
+  const counts = { present: 0, partial: 0, absent: 0, excused: 0 };
+  const classIds = new Set<Id<"classes">>();
+  let recordingCount = 0;
+
+  for (const [index, status] of statuses.entries()) {
+    const classData = enrolledClasses[index % enrolledClasses.length];
+    const author =
+      (classData.teacherId && (await ctx.db.get(classData.teacherId))) ||
+      fallbackAuthor;
+    const localDate = addCivilDays(localToday, -(index + 1));
+    const startHour = 8 + (index % 6);
+    const startMinute = index % 2 === 0 ? 0 : 20;
+    const scheduledStart = localDateTimeToUtc(
+      `${localDate}T${String(startHour).padStart(2, "0")}:${String(startMinute).padStart(2, "0")}`,
+      timeZone,
+    );
+    const scheduledEnd = scheduledStart + 40 * 60 * 1000;
+    const lesson = await ctx.db
+      .query("lessons")
+      .withIndex("by_curriculum_active", (query) =>
+        query.eq("curriculumId", classData.curriculumId).eq("isActive", true),
+      )
+      .first();
+    const roomName = `${roomPrefix}-${index + 1}`;
+    const scheduleData = {
+      classId: classData._id,
+      schoolId: classData.schoolId ?? campus.schoolId,
+      lessonIds: lesson ? [lesson._id] : [],
+      sessionType: "live" as const,
+      title: lesson?.title ?? `Guided class practice ${index + 1}`,
+      scheduledStart,
+      scheduledEnd,
+      roomName,
+      isLive: false,
+      isRecurring: false,
+      status: "completed" as const,
+      completedAt: scheduledEnd,
+      sessionEndedBy: author._id,
+      sessionClosureStatus: "completed" as const,
+      sessionClosedBy: author._id,
+      sessionClosedAt: scheduledEnd,
+      createdAt: scheduledStart,
+      createdBy: author._id,
+    };
+    const existingSchedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (query) => query.eq("roomName", roomName))
+      .unique();
+    const scheduleId = existingSchedule
+      ? existingSchedule._id
+      : await ctx.db.insert("classSchedule", scheduleData);
+    if (existingSchedule) {
+      await ctx.db.patch(existingSchedule._id, scheduleData);
+    }
+
+    const existingReport = await ctx.db
+      .query("classSessionReports")
+      .withIndex("by_schedule", (query) => query.eq("scheduleId", scheduleId))
+      .unique();
+    const reportData = {
+      scheduleId,
+      classId: classData._id,
+      closedBy: author._id,
+      closedAt: scheduledEnd,
+      notes: `Development attendance example: ${status}.`,
+    };
+    const reportId = existingReport
+      ? existingReport._id
+      : await ctx.db.insert("classSessionReports", reportData);
+    if (existingReport) await ctx.db.patch(existingReport._id, reportData);
+
+    const existingReportLessons = await ctx.db
+      .query("classSessionReportLessons")
+      .withIndex("by_report", (query) => query.eq("reportId", reportId))
+      .collect();
+    for (const reportLesson of existingReportLessons) {
+      await ctx.db.delete(reportLesson._id);
+    }
+    if (lesson) {
+      await ctx.db.insert("classSessionReportLessons", {
+        reportId,
+        scheduleId,
+        classId: classData._id,
+        lessonId: lesson._id,
+      });
+    }
+
+    const attendanceData = {
+      scheduleId,
+      studentId: student._id,
+      status,
+      excuseReason:
+        status === "excused"
+          ? "Family appointment documented by the principal."
+          : undefined,
+      confirmedBy: author._id,
+      confirmedAt: scheduledEnd,
+      lastUpdatedBy: author._id,
+      lastUpdatedAt: scheduledEnd,
+    };
+    const existingAttendance = await ctx.db
+      .query("studentAttendanceRecords")
+      .withIndex("by_schedule_and_student", (query) =>
+        query.eq("scheduleId", scheduleId).eq("studentId", student._id),
+      )
+      .unique();
+    if (existingAttendance) {
+      await ctx.db.patch(existingAttendance._id, attendanceData);
+    } else {
+      await ctx.db.insert("studentAttendanceRecords", attendanceData);
+    }
+
+    const existingConnections = await ctx.db
+      .query("class_sessions")
+      .withIndex("by_student_schedule", (query) =>
+        query.eq("studentId", student._id).eq("scheduleId", scheduleId),
+      )
+      .collect();
+    for (const connection of existingConnections) {
+      await ctx.db.delete(connection._id);
+    }
+    const attendedMinutes =
+      status === "present" ? 38 : status === "partial" ? 20 : 0;
+    if (attendedMinutes > 0) {
+      const joinedAt = scheduledStart + 60 * 1000;
+      const leftAt = joinedAt + attendedMinutes * 60 * 1000;
+      await ctx.db.insert("class_sessions", {
+        scheduleId,
+        studentId: student._id,
+        joinedAt,
+        leftAt,
+        durationSeconds: attendedMinutes * 60,
+        roomName,
+        sessionDate: localDate,
+      });
+    }
+
+    const partCount = index < 4 ? 2 : index < 8 ? 1 : 0;
+    for (let part = 0; part < partCount; part += 1) {
+      const egressId = `${roomPrefix}-${index + 1}-part-${part + 1}`;
+      const partDuration = Math.floor(
+        (scheduledEnd - scheduledStart) / partCount,
+      );
+      const startedAt = scheduledStart + partDuration * part;
+      const completedAt =
+        part === partCount - 1 ? scheduledEnd : startedAt + partDuration;
+      const recordingData = {
+        scheduleId,
+        roomName,
+        egressId,
+        status: "complete" as const,
+        fileKey: `dev/${egressId}.mp4`,
+        url: LAURA_RECORDING_DEMO_URL,
+        durationMs: completedAt - startedAt,
+        fileSize: 1_128_375 + part * 125_000,
+        startedAt,
+        completedAt,
+      };
+      const existingRecording = await ctx.db
+        .query("recordings")
+        .withIndex("by_egress_id", (query) => query.eq("egressId", egressId))
+        .unique();
+      if (existingRecording) {
+        await ctx.db.patch(existingRecording._id, recordingData);
+      } else {
+        await ctx.db.insert("recordings", recordingData);
+      }
+      recordingCount += 1;
+    }
+
+    counts[status] += 1;
+    classIds.add(classData._id);
+  }
+
+  return {
+    message: `${student.fullName} attendance history demo data is ready.`,
+    student: student.fullName,
+    classes: classIds.size,
+    sessions: statuses.length,
+    recordings: recordingCount,
+    counts,
+  };
+}
+
+export const createAlejandraAttendanceHistoryDemo = internalMutation({
+  args: {},
+  returns: attendanceHistoryDemoResultValidator,
+  handler: async (ctx) => {
+    const student = await findUserByName(ctx, ALEJANDRA_ATTENDANCE_DEMO_NAME);
+    if (!student || student.fullName !== ALEJANDRA_ATTENDANCE_DEMO_NAME) {
+      throw new Error(`${ALEJANDRA_ATTENDANCE_DEMO_NAME} was not found.`);
+    }
+
+    return await createAttendanceHistoryDemo(
+      ctx,
+      student,
+      ALEJANDRA_ATTENDANCE_DEMO_ROOM_PREFIX,
+    );
+  },
+});
+
+export const createStudentAttendanceHistoryDemo = internalMutation({
+  args: { username: v.string() },
+  returns: attendanceHistoryDemoResultValidator,
+  handler: async (ctx, args) => {
+    const users = await ctx.db.query("users").collect();
+    const student = users.find(
+      (user) => user.isActive && user.username === args.username,
+    );
+    if (!student) throw new Error(`Student ${args.username} was not found.`);
+
+    return await createAttendanceHistoryDemo(
+      ctx,
+      student,
+      `${STUDENT_ATTENDANCE_DEMO_ROOM_PREFIX}-${student._id}`,
+    );
   },
 });
 

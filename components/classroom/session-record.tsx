@@ -6,29 +6,29 @@ import type { FunctionReturnType } from "convex/server";
 import {
   BookOpenCheck,
   ClipboardClock,
-  ClockFading,
-  FilePenLine,
   MessageSquareText,
+  PencilLine,
   PlayCircle,
-  UserCheck,
   Users,
-  UserX,
   VideoOff,
-  type LucideIcon,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { AttendanceRecordEditor } from "@/components/attendance/attendance-record-editor";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import type { AttendanceStatus } from "@/components/attendance/attendance-status-control";
+import {
+  ATTENDANCE_STATUSES,
+  ATTENDANCE_STATUS_APPEARANCE,
+  AttendanceStatusBadge,
+} from "@/components/attendance/attendance-status";
 import {
   ClassSessionTabsList,
   ClassSessionTabsTrigger,
 } from "@/components/classroom/class-session-tabs";
-import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { cn } from "@/lib/utils";
 
 export type SessionRecordData = FunctionReturnType<
@@ -48,39 +48,22 @@ type SessionRecordViewProps = {
   onWatchRecording: (recordings: SessionRecording[]) => void;
   onCompleteReport?: () => void;
   variant?: "default" | "panel";
+  attendanceMode?: "auto" | "hidden";
+  showOwnAttendance?: boolean;
+  allowAttendanceEditing?: boolean;
   className?: string;
-};
-
-const attendanceAppearance: Record<
-  AttendanceStatus,
-  { icon: LucideIcon; className: string }
-> = {
-  present: {
-    icon: UserCheck,
-    className: "bg-success/10 text-success",
-  },
-  partial: {
-    icon: ClockFading,
-    className: "bg-warning/15 text-warning-foreground",
-  },
-  absent: {
-    icon: UserX,
-    className: "bg-destructive/10 text-destructive",
-  },
-  excused: {
-    icon: FilePenLine,
-    className: "bg-info/10 text-info",
-  },
 };
 
 export function useSessionRecord(
   scheduleId: Id<"classSchedule"> | undefined,
+  asOf: number | undefined,
   enabled = true,
 ) {
-  const now = useCurrentMinute();
   return useQuery(
     api.sessionRecords.get,
-    enabled && scheduleId ? { scheduleId, now } : "skip",
+    enabled && scheduleId && asOf !== undefined
+      ? { scheduleId, now: asOf }
+      : "skip",
   );
 }
 
@@ -216,19 +199,27 @@ function LessonsPanel({
 function AttendancePanel({
   record,
   compact = false,
+  allowEditing = false,
 }: {
   record: CompletedSessionRecord;
   compact?: boolean;
+  allowEditing?: boolean;
 }) {
   const t = useTranslations("sessionRecord");
   const attendanceT = useTranslations("attendance.status");
+  const [editingStudentId, setEditingStudentId] = useState<Id<"users">>();
+
+  useEffect(() => {
+    setEditingStudentId(undefined);
+  }, [record.scheduleId]);
+
   const attendance = record.staffDetails?.attendance;
   const students =
     attendance?.students ??
     (record.ownAttendance
       ? [
           {
-            studentId: "self",
+            studentId: null,
             fullName: t("yourAttendance"),
             ...record.ownAttendance,
           },
@@ -236,8 +227,6 @@ function AttendancePanel({
       : []);
 
   if (!attendance && record.ownAttendance === undefined) return null;
-
-  const statuses = ["present", "partial", "absent", "excused"] as const;
 
   return (
     <div className="space-y-4">
@@ -257,14 +246,15 @@ function AttendancePanel({
 
       {attendance && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {statuses.map((status) => {
-            const Icon = attendanceAppearance[status].icon;
+          {ATTENDANCE_STATUSES.map((status) => {
+            const appearance = ATTENDANCE_STATUS_APPEARANCE[status];
+            const Icon = appearance.icon;
             return (
               <div
                 key={status}
                 className={cn(
                   "flex items-center gap-2 rounded-xl px-3 py-2",
-                  attendanceAppearance[status].className,
+                  appearance.softClassName,
                 )}
               >
                 <Icon className="size-4 shrink-0" aria-hidden="true" />
@@ -285,14 +275,12 @@ function AttendancePanel({
       ) : (
         <div className="overflow-hidden rounded-2xl border">
           {students.map((student) => {
-            const appearance = attendanceAppearance[student.status];
-            const Icon = appearance.icon;
             return (
               <div
-                key={student.studentId}
-                className="flex flex-wrap items-center gap-3 border-b p-3 last:border-b-0"
+                key={student.studentId ?? "self"}
+                className="grid gap-3 border-b p-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
               >
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
                     {student.fullName}
                   </p>
@@ -302,15 +290,45 @@ function AttendancePanel({
                     </p>
                   )}
                 </div>
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-                    appearance.className,
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <AttendanceStatusBadge
+                    status={student.status}
+                    label={attendanceT(student.status)}
+                  />
+                  {allowEditing && student.studentId !== null && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 gap-1.5"
+                      aria-expanded={editingStudentId === student.studentId}
+                      onClick={() =>
+                        setEditingStudentId((current) =>
+                          current === student.studentId
+                            ? undefined
+                            : student.studentId,
+                        )
+                      }
+                    >
+                      <PencilLine className="size-3.5" aria-hidden="true" />
+                      {t("editAttendance")}
+                    </Button>
                   )}
-                >
-                  <Icon className="size-3.5" aria-hidden="true" />
-                  {attendanceT(student.status)}
-                </span>
+                </div>
+                {allowEditing &&
+                  student.studentId !== null &&
+                  editingStudentId === student.studentId && (
+                    <div className="rounded-xl border bg-muted/20 p-3 sm:col-span-2 sm:ml-auto sm:w-72">
+                      <AttendanceRecordEditor
+                        scheduleId={record.scheduleId}
+                        studentId={student.studentId}
+                        studentName={student.fullName}
+                        status={student.status}
+                        excuseReason={student.excuseReason}
+                        onSaved={() => setEditingStudentId(undefined)}
+                      />
+                    </div>
+                  )}
               </div>
             );
           })}
@@ -325,6 +343,9 @@ export function SessionRecordView({
   onWatchRecording,
   onCompleteReport,
   variant = "default",
+  attendanceMode = "auto",
+  showOwnAttendance = true,
+  allowAttendanceEditing = false,
   className,
 }: SessionRecordViewProps) {
   const t = useTranslations("sessionRecord");
@@ -385,7 +406,9 @@ export function SessionRecordView({
   }
 
   const canViewAttendance =
-    record.staffDetails !== null || record.ownAttendance !== undefined;
+    attendanceMode === "auto" &&
+    (record.staffDetails !== null ||
+      (showOwnAttendance && record.ownAttendance !== undefined));
 
   return (
     <section className={cn("space-y-4", className)}>
@@ -408,7 +431,13 @@ export function SessionRecordView({
             <LessonsPanel record={record} compact={isPanel} />
           </TabsContent>
           <TabsContent value="attendance" className="m-0 pt-4">
-            <AttendancePanel record={record} compact={isPanel} />
+            <AttendancePanel
+              record={record}
+              compact={isPanel}
+              allowEditing={
+                allowAttendanceEditing && record.staffDetails !== null
+              }
+            />
           </TabsContent>
         </Tabs>
       ) : (
