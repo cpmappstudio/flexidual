@@ -1,6 +1,6 @@
 import { ConvexError, v, type Infer } from "convex/values";
 
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import { query, type QueryCtx } from "./_generated/server";
 import { canAccessClass, canManageClasses } from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
@@ -8,12 +8,12 @@ import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
 import { isExternalClassSession } from "../lib/class-session";
 import { isStudentEnrolled } from "./model/enrollments";
+import { getPlayableRecordings } from "./model/sessionContent";
 
 const RECENT_SESSION_LIMIT = 8;
 const RECENT_SESSION_SCAN_LIMIT = 24;
 const SESSION_LESSON_LIMIT = 500;
 const SESSION_ATTENDANCE_LIMIT = 500;
-const RECORDING_PART_LIMIT = 10;
 
 const recentSessionValidator = v.object({
   scheduleId: v.id("classSchedule"),
@@ -21,10 +21,16 @@ const recentSessionValidator = v.object({
   start: v.number(),
   end: v.number(),
   timeZone: v.string(),
+  roomName: v.string(),
   sessionType: v.union(
     v.literal("live"),
     v.literal("ignitia"),
     v.literal("abeka"),
+  ),
+  recordState: v.union(
+    v.literal("completed"),
+    v.literal("pending"),
+    v.literal("notApplicable"),
   ),
 });
 
@@ -109,30 +115,6 @@ async function getClassSchoolId(ctx: QueryCtx, classData: Doc<"classes">) {
   return campus?.schoolId ?? curriculum?.schoolId;
 }
 
-async function getPlayableRecordings(
-  ctx: QueryCtx,
-  scheduleId: Id<"classSchedule">,
-) {
-  const recordings = await ctx.db
-    .query("recordings")
-    .withIndex("by_schedule", (q) =>
-      q.eq("scheduleId", scheduleId).eq("status", "complete"),
-    )
-    .take(RECORDING_PART_LIMIT);
-
-  return recordings
-    .filter((recording): recording is typeof recording & { url: string } =>
-      Boolean(recording.url),
-    )
-    .sort((first, second) => first.startedAt - second.startedAt)
-    .map((recording) => ({
-      _id: recording._id,
-      url: recording.url,
-      durationMs: recording.durationMs ?? null,
-      startedAt: recording.startedAt,
-    }));
-}
-
 export const listRecent = query({
   args: {
     classId: v.id("classes"),
@@ -166,14 +148,23 @@ export const listRecent = query({
       .slice(0, RECENT_SESSION_LIMIT);
     const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
 
-    return schedules.map((schedule) => ({
-      scheduleId: schedule._id,
-      title: schedule.title ?? null,
-      start: schedule.scheduledStart,
-      end: schedule.scheduledEnd,
-      timeZone,
-      sessionType: schedule.sessionType ?? ("live" as const),
-    }));
+    return schedules.map((schedule) => {
+      const sessionType = schedule.sessionType ?? ("live" as const);
+      return {
+        scheduleId: schedule._id,
+        title: schedule.title ?? null,
+        start: schedule.scheduledStart,
+        end: schedule.scheduledEnd,
+        timeZone,
+        roomName: schedule.roomName,
+        sessionType,
+        recordState: isExternalClassSession(sessionType)
+          ? ("notApplicable" as const)
+          : schedule.sessionClosureStatus === "completed"
+            ? ("completed" as const)
+            : ("pending" as const),
+      };
+    });
   },
 });
 

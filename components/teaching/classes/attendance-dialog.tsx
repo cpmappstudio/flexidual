@@ -1,15 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useQuery } from "convex/react";
 import { useFormatter, useTranslations } from "next-intl";
-import { toast } from "sonner";
 
-import {
-  AttendanceStatusControl,
-  type AttendanceStatus,
-} from "@/components/attendance/attendance-status-control";
+import { AttendanceRecordEditor } from "@/components/attendance/attendance-record-editor";
+import type { AttendanceStatus } from "@/components/attendance/attendance-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,11 +40,6 @@ interface AttendanceDialogProps {
   title?: string;
 }
 
-interface AttendanceDraft {
-  status: AttendanceStatus;
-  excuseReason: string;
-}
-
 export function AttendanceDialog({
   scheduleId,
   trigger,
@@ -57,12 +48,10 @@ export function AttendanceDialog({
   title,
 }: AttendanceDialogProps) {
   const t = useTranslations();
-  const attendanceT = useTranslations("attendance");
+  const attendanceT = useTranslations("attendance.status");
   const format = useFormatter();
   const now = useCurrentMinute();
   const [internalOpen, setInternalOpen] = useState(false);
-  const [drafts, setDrafts] = useState<Record<string, AttendanceDraft>>({});
-  const [savingStudentId, setSavingStudentId] = useState<Id<"users">>();
   const isControlled = open !== undefined;
   const isOpen = isControlled ? open : internalOpen;
   const statsResult = useQuery(
@@ -70,62 +59,12 @@ export function AttendanceDialog({
     isOpen ? { scheduleId, now } : "skip",
   );
   const stats = useRetainedQueryResult(statsResult, scheduleId);
-  const updateAttendance = useMutation(api.schedule.updateAttendance);
-
-  useEffect(() => {
-    if (!stats) return;
-    setDrafts(
-      Object.fromEntries(
-        stats.map((student) => [
-          student.studentId,
-          {
-            status: student.status,
-            excuseReason: student.excuseReason ?? "",
-          },
-        ]),
-      ),
-    );
-  }, [stats]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!isControlled) setInternalOpen(nextOpen);
     onOpenChange?.(nextOpen);
   };
 
-  const handleSave = async (studentId: Id<"users">) => {
-    const draft = drafts[studentId];
-    if (!draft || (draft.status === "excused" && !draft.excuseReason.trim())) {
-      return;
-    }
-    setSavingStudentId(studentId);
-    try {
-      await updateAttendance({
-        scheduleId,
-        studentId,
-        status: draft.status,
-        excuseReason:
-          draft.status === "excused" ? draft.excuseReason : undefined,
-      });
-      toast.success(t("schedule.attendance.updated"));
-    } catch {
-      toast.error(t("schedule.attendance.updateFailed"));
-    } finally {
-      setSavingStudentId(undefined);
-    }
-  };
-
-  const statusLabels = {
-    present: attendanceT("status.present"),
-    partial: attendanceT("status.partial"),
-    absent: attendanceT("status.absent"),
-    excused: attendanceT("status.excused"),
-  };
-  const statusDescriptions = {
-    present: attendanceT("description.present"),
-    partial: attendanceT("description.partial"),
-    absent: attendanceT("description.absent"),
-    excused: attendanceT("description.excused"),
-  };
   const statusStyles: Record<AttendanceStatus, string> = {
     present: "bg-success/10 text-success",
     partial: "bg-warning/10 text-warning",
@@ -170,15 +109,6 @@ export function AttendanceDialog({
                 </TableHeader>
                 <TableBody>
                   {stats.map((student) => {
-                    const draft = drafts[student.studentId];
-                    if (!draft) return null;
-                    const isReasonMissing =
-                      draft.status === "excused" && !draft.excuseReason.trim();
-                    const isUnchanged =
-                      draft.status === student.status &&
-                      (draft.status !== "excused" ||
-                        draft.excuseReason.trim() ===
-                          (student.excuseReason ?? ""));
                     return (
                       <TableRow key={student.studentId}>
                         <TableCell className="align-top">
@@ -204,7 +134,7 @@ export function AttendanceDialog({
                             variant="secondary"
                             className={statusStyles[student.status]}
                           >
-                            {statusLabels[student.status]}
+                            {attendanceT(student.status)}
                           </Badge>
                           {student.excuseReason && (
                             <p className="mt-2 max-w-52 text-xs text-muted-foreground">
@@ -213,53 +143,13 @@ export function AttendanceDialog({
                           )}
                         </TableCell>
                         <TableCell className="align-top">
-                          <AttendanceStatusControl
-                            status={draft.status}
-                            excuseReason={draft.excuseReason}
-                            labels={statusLabels}
-                            descriptions={statusDescriptions}
-                            ariaLabel={attendanceT("controlLabel", {
-                              name: student.fullName,
-                            })}
-                            reasonLabel={t("schedule.attendance.excuseReason")}
-                            reasonPlaceholder={t(
-                              "schedule.attendance.excuseReasonPlaceholder",
-                            )}
-                            onStatusChange={(status) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                [student.studentId]: {
-                                  ...current[student.studentId],
-                                  status,
-                                },
-                              }))
-                            }
-                            onExcuseReasonChange={(excuseReason) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                [student.studentId]: {
-                                  ...current[student.studentId],
-                                  excuseReason,
-                                },
-                              }))
-                            }
+                          <AttendanceRecordEditor
+                            scheduleId={scheduleId}
+                            studentId={student.studentId}
+                            studentName={student.fullName}
+                            status={student.status}
+                            excuseReason={student.excuseReason}
                           />
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="mt-2 w-full"
-                            disabled={
-                              isUnchanged ||
-                              isReasonMissing ||
-                              savingStudentId !== undefined
-                            }
-                            onClick={() => void handleSave(student.studentId)}
-                          >
-                            {savingStudentId === student.studentId && (
-                              <Loader2 className="size-4 animate-spin" />
-                            )}
-                            {t("common.save")}
-                          </Button>
                         </TableCell>
                       </TableRow>
                     );

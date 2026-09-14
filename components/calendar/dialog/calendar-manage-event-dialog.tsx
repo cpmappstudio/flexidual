@@ -100,6 +100,7 @@ export default function CalendarManageEventDialog({
   );
   const sessionRecord = useSessionRecord(
     selectedEvent?.scheduleId,
+    selectedEvent?.end.getTime(),
     shouldLoadSessionRecord,
   );
 
@@ -325,6 +326,8 @@ export default function CalendarManageEventDialog({
                 record={sessionRecord}
                 onWatchRecording={() => setRecordingOpen(true)}
                 onCompleteReport={() => setCloseoutOpen(true)}
+                showOwnAttendance={false}
+                allowAttendanceEditing
               />
             )}
 

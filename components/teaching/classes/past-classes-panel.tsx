@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { TZDate } from "@date-fns/tz";
 import { format } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
-import { BookOpenCheck } from "lucide-react";
+import { BookOpenCheck, CheckCircle2, ClipboardClock } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
+import { toast } from "sonner";
 import type { Id } from "@/convex/_generated/dataModel";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
@@ -16,6 +17,8 @@ import {
   SessionRecordView,
   useSessionRecord,
 } from "@/components/classroom/session-record";
+import { SessionCloseoutDialog } from "@/components/classroom/session-closeout-dialog";
+import { Badge } from "@/components/ui/badge";
 import {
   type CarouselApi,
   Carousel,
@@ -45,7 +48,9 @@ export type PastClassItem = {
   start: number;
   end: number;
   timeZone: string;
+  roomName: string;
   sessionType: ClassSessionType;
+  recordState: "completed" | "pending" | "notApplicable";
 };
 
 const dateLocales = { en: enUS, es, "pt-BR": ptBR } as const;
@@ -60,6 +65,7 @@ export function PastClassesPanel({
   const [selectedScheduleId, setSelectedScheduleId] =
     useState<Id<"classSchedule"> | null>(null);
   const [recordingOpen, setRecordingOpen] = useState(false);
+  const [closeoutOpen, setCloseoutOpen] = useState(false);
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const selectedSession =
     sessions?.find((session) => session.scheduleId === selectedScheduleId) ??
@@ -78,6 +84,7 @@ export function PastClassesPanel({
   );
   const sessionRecord = useSessionRecord(
     selectedSession?.scheduleId,
+    selectedSession?.end,
     Boolean(selectedSession && !selectedSessionIsExternal),
   );
   const sessionRecordings = getSessionRecordings(sessionRecord);
@@ -88,7 +95,21 @@ export function PastClassesPanel({
     : -1;
 
   useEffect(() => {
+    if (!sessions?.length) {
+      setSelectedScheduleId(null);
+      return;
+    }
+
+    setSelectedScheduleId((current) =>
+      current && sessions.some((session) => session.scheduleId === current)
+        ? current
+        : sessions[0].scheduleId,
+    );
+  }, [sessions]);
+
+  useEffect(() => {
     setRecordingOpen(false);
+    setCloseoutOpen(false);
   }, [selectedSession?.scheduleId]);
 
   useEffect(() => {
@@ -176,6 +197,34 @@ export function PastClassesPanel({
                           <p className="line-clamp-2 text-sm font-bold capitalize">
                             {formatSessionDate(session)}
                           </p>
+                          {session.recordState !== "notApplicable" && (
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                "mt-1.5 gap-1 rounded-full px-2 py-0.5 text-[10px]",
+                                session.recordState === "completed"
+                                  ? "bg-success/10 text-success"
+                                  : "bg-warning/15 text-warning-foreground",
+                              )}
+                            >
+                              {session.recordState === "completed" ? (
+                                <CheckCircle2
+                                  className="size-3"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <ClipboardClock
+                                  className="size-3"
+                                  aria-hidden="true"
+                                />
+                              )}
+                              {t(
+                                session.recordState === "completed"
+                                  ? "sessionRecord.completedLabel"
+                                  : "sessionRecord.pendingLabel",
+                              )}
+                            </Badge>
+                          )}
                         </div>
                         {isExternalClassSession(session.sessionType) ? (
                           <CalendarProviderMark
@@ -233,7 +282,10 @@ export function PastClassesPanel({
                     <SessionRecordView
                       record={sessionRecord}
                       onWatchRecording={() => setRecordingOpen(true)}
+                      onCompleteReport={() => setCloseoutOpen(true)}
                       variant="panel"
+                      showOwnAttendance={false}
+                      allowAttendanceEditing
                     />
                   </div>
                 ))}
@@ -257,6 +309,19 @@ export function PastClassesPanel({
               ? "student"
               : "default"
           }
+        />
+      )}
+      {selectedSession && !selectedSessionIsExternal && (
+        <SessionCloseoutDialog
+          open={closeoutOpen}
+          roomName={selectedSession.roomName}
+          sessionNow={selectedSession.end}
+          alreadyEnded
+          onOpenChange={setCloseoutOpen}
+          onComplete={() => {
+            setCloseoutOpen(false);
+            toast.success(t("classroom.closeout.recoverySaved"));
+          }}
         />
       )}
     </Card>

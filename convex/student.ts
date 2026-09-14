@@ -1,21 +1,35 @@
-import { query, mutation } from "./_generated/server";
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server";
+import { query, mutation, type QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserFromAuth } from "./users";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { getInstitutionGrades } from "./model/grades";
 import {
   getSoleStudentCampusId,
   getStudentGradeCode,
 } from "./model/membership";
 import { isStudentEnrolled } from "./model/enrollments";
-import { canManageCampusPeople, canViewStudentProfile } from "./permissions";
+import {
+  canManageCampusPeople,
+  canManageClasses,
+  canViewStudentProfile,
+} from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
 import { curriculumIconValidator } from "./model/curriculumIcons";
+import {
+  getConnectedSecondsWithinSchedule,
+  studentAttendanceStatusValidator,
+} from "./model/studentAttendance";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 import {
   isExternalClassSession,
   isLiveClassSession,
   isUpcomingClassSession,
 } from "../lib/class-session";
+import { getSessionContentSummary } from "./model/sessionContent";
 
 const dashboardScheduleValidator = v.object({
   scheduleId: v.id("classSchedule"),
@@ -42,11 +56,211 @@ const dashboardScheduleValidator = v.object({
   isStudentActive: v.literal(false),
 });
 
+const studentDashboardTargetValidator = v.object({
+  studentId: v.optional(v.string()),
+  orgSlug: v.optional(v.string()),
+});
+
+const attendanceHistoryItemValidator = v.object({
+  scheduleId: v.id("classSchedule"),
+  studentId: v.id("users"),
+  classId: v.id("classes"),
+  className: v.string(),
+  curriculumIconKey: curriculumIconValidator,
+  sessionTitle: v.union(v.string(), v.null()),
+  start: v.number(),
+  end: v.number(),
+  timeZone: v.string(),
+  status: studentAttendanceStatusValidator,
+  excuseReason: v.union(v.string(), v.null()),
+  attendedMinutes: v.number(),
+  scheduledMinutes: v.number(),
+  canEditAttendance: v.boolean(),
+  contentSummary: v.object({
+    lessonPreview: v.union(
+      v.null(),
+      v.object({ title: v.string(), order: v.number() }),
+    ),
+    hasMoreLessons: v.boolean(),
+    recordingCount: v.number(),
+  }),
+});
+
+const pendingAttendanceSessionValidator = v.object({
+  scheduleId: v.id("classSchedule"),
+  classId: v.id("classes"),
+  className: v.string(),
+  curriculumIconKey: curriculumIconValidator,
+  sessionTitle: v.union(v.string(), v.null()),
+  start: v.number(),
+  end: v.number(),
+  timeZone: v.string(),
+  roomName: v.string(),
+  canCompleteReport: v.boolean(),
+});
+
+async function resolveStudentDashboardAccess(
+  ctx: QueryCtx,
+  args: { studentId?: string; orgSlug?: string },
+) {
+  const viewer = await getCurrentUserFromAuth(ctx);
+  if (!viewer) return null;
+
+  const requestedStudentId = args.studentId
+    ? ctx.db.normalizeId("users", args.studentId)
+    : viewer._id;
+  if (!requestedStudentId) return null;
+
+  const student = await ctx.db.get("users", requestedStudentId);
+  if (!student) return null;
+
+  const viewingOwnProfile = student._id === viewer._id;
+  let campus =
+    args.studentId && args.orgSlug
+      ? await ctx.db
+          .query("campuses")
+          .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug!))
+          .first()
+      : null;
+  if (!args.studentId) {
+    const studentCampusId = await getSoleStudentCampusId(ctx, student._id);
+    campus = studentCampusId ? await ctx.db.get(studentCampusId) : null;
+  }
+  if (args.studentId && !campus) return null;
+
+  if (campus) {
+    const studentMembership = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user_org", (q) =>
+        q
+          .eq("userId", student._id)
+          .eq("orgId", campus._id)
+          .eq("orgType", "campus"),
+      )
+      .collect();
+    if (!studentMembership.some(({ role }) => role === "student")) return null;
+    if (
+      !viewingOwnProfile &&
+      !(await canViewStudentProfile(
+        ctx,
+        viewer._id,
+        campus._id,
+        campus.schoolId,
+      ))
+    ) {
+      return null;
+    }
+  }
+
+  return { viewer, student, campus };
+}
+
+async function listActiveStudentClasses(
+  ctx: QueryCtx,
+  studentId: Id<"users">,
+  campusId?: string,
+) {
+  const enrollmentRows = await ctx.db
+    .query("classEnrollments")
+    .withIndex("by_student", (q) => q.eq("studentId", studentId))
+    .collect();
+  const normalizedClasses = (
+    await Promise.all(
+      enrollmentRows.map(({ classId }) => ctx.db.get("classes", classId)),
+    )
+  ).filter((classData) => classData?.isActive);
+  const legacyClasses = (
+    await ctx.db
+      .query("classes")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .collect()
+  ).filter(
+    (classData) =>
+      !classData.enrollmentsMigratedAt &&
+      classData.students?.includes(studentId),
+  );
+
+  return [
+    ...new Map(
+      [...normalizedClasses, ...legacyClasses]
+        .filter((classData) => classData !== null)
+        .filter((classData) => !campusId || classData!.campusId === campusId)
+        .map((classData) => [classData!._id, classData!]),
+    ).values(),
+  ];
+}
+
+function isVerifiedStandardSession(schedule: {
+  status: "scheduled" | "active" | "completed" | "cancelled";
+  sessionClosureStatus?: "pending" | "completed";
+  sessionType?: "live" | "ignitia" | "abeka";
+}) {
+  return (
+    schedule.status === "completed" &&
+    schedule.sessionClosureStatus === "completed" &&
+    !isExternalClassSession(schedule.sessionType)
+  );
+}
+
+async function buildAttendanceHistoryItem(
+  ctx: QueryCtx,
+  viewerId: Id<"users">,
+  studentId: Id<"users">,
+  schedule: Doc<"classSchedule">,
+  attendance: Doc<"studentAttendanceRecords">,
+  classData: Doc<"classes">,
+) {
+  const [curriculum, sessions, timeZone, contentSummary] = await Promise.all([
+    ctx.db.get("curriculums", classData.curriculumId),
+    ctx.db
+      .query("class_sessions")
+      .withIndex("by_student_schedule", (q) =>
+        q.eq("studentId", studentId).eq("scheduleId", schedule._id),
+      )
+      .collect(),
+    getClassTimeZone(ctx, classData),
+    getSessionContentSummary(ctx, schedule._id),
+  ]);
+  const attendedSeconds = getConnectedSecondsWithinSchedule(
+    sessions,
+    schedule.scheduledStart,
+    schedule.scheduledEnd,
+    schedule.scheduledEnd,
+  );
+  const canEditAttendance =
+    classData.teacherId === viewerId ||
+    (await canManageClasses(
+      ctx,
+      viewerId,
+      classData.campusId,
+      classData.schoolId ?? curriculum?.schoolId,
+    ));
+
+  return {
+    scheduleId: schedule._id,
+    studentId,
+    classId: classData._id,
+    className: classData.name,
+    curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
+    sessionTitle: schedule.title ?? null,
+    start: schedule.scheduledStart,
+    end: schedule.scheduledEnd,
+    timeZone: timeZone ?? "UTC",
+    status: attendance.status,
+    excuseReason: attendance.excuseReason ?? null,
+    attendedMinutes: Math.round(attendedSeconds / 60),
+    scheduledMinutes: Math.round(
+      (schedule.scheduledEnd - schedule.scheduledStart) / 60_000,
+    ),
+    canEditAttendance,
+    contentSummary,
+  };
+}
+
 export const getStudentDashboardStats = query({
   args: {
     now: v.number(),
-    studentId: v.optional(v.string()),
-    orgSlug: v.optional(v.string()),
+    ...studentDashboardTargetValidator.fields,
   },
   returns: v.union(
     v.null(),
@@ -82,6 +296,7 @@ export const getStudentDashboardStats = query({
           excused: v.number(),
         }),
       }),
+      pendingAttendanceSessions: v.array(pendingAttendanceSessionValidator),
       classes: v.array(
         v.object({
           classId: v.id("classes"),
@@ -113,59 +328,10 @@ export const getStudentDashboardStats = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const viewer = await getCurrentUserFromAuth(ctx);
-    if (!viewer) return null;
-
-    const requestedStudentId = args.studentId
-      ? ctx.db.normalizeId("users", args.studentId)
-      : viewer._id;
-    if (!requestedStudentId) return null;
-
-    const user = await ctx.db.get(requestedStudentId);
-    if (!user) return null;
-
-    const viewingOwnProfile = user._id === viewer._id;
+    const access = await resolveStudentDashboardAccess(ctx, args);
+    if (!access) return null;
+    const { viewer, student: user, campus } = access;
     const includeUpcomingLessons = Boolean(args.studentId);
-    let campus =
-      args.studentId && args.orgSlug
-        ? await ctx.db
-            .query("campuses")
-            .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug!))
-            .first()
-        : null;
-    if (!args.studentId) {
-      const studentCampusId = await getSoleStudentCampusId(ctx, user._id);
-      campus = studentCampusId ? await ctx.db.get(studentCampusId) : null;
-    }
-    if (args.studentId && !campus) return null;
-
-    if (campus) {
-      const studentMembership = await ctx.db
-        .query("roleAssignments")
-        .withIndex("by_user_org", (q) =>
-          q
-            .eq("userId", user._id)
-            .eq("orgId", campus._id)
-            .eq("orgType", "campus"),
-        )
-        .collect();
-      if (
-        !studentMembership.some((assignment) => assignment.role === "student")
-      ) {
-        return null;
-      }
-      if (
-        !viewingOwnProfile &&
-        !(await canViewStudentProfile(
-          ctx,
-          viewer._id,
-          campus._id,
-          campus.schoolId,
-        ))
-      ) {
-        return null;
-      }
-    }
 
     const canEdit = campus
       ? await canManageCampusPeople(
@@ -176,31 +342,11 @@ export const getStudentDashboardStats = query({
         )
       : false;
 
-    const enrollmentRows = await ctx.db
-      .query("classEnrollments")
-      .withIndex("by_student", (q) => q.eq("studentId", user._id))
-      .collect();
-    const normalizedClasses = (
-      await Promise.all(enrollmentRows.map((row) => ctx.db.get(row.classId)))
-    ).filter((classData) => classData?.isActive);
-    const legacyClasses = (
-      await ctx.db
-        .query("classes")
-        .withIndex("by_active", (q) => q.eq("isActive", true))
-        .collect()
-    ).filter(
-      (classData) =>
-        !classData.enrollmentsMigratedAt &&
-        classData.students?.includes(user._id),
+    const myClasses = await listActiveStudentClasses(
+      ctx,
+      user._id,
+      campus?._id,
     );
-    const myClasses = [
-      ...new Map(
-        [...normalizedClasses, ...legacyClasses]
-          .filter((classData) => classData !== null)
-          .filter((classData) => !campus || classData!.campusId === campus._id)
-          .map((classData) => [classData!._id, classData!]),
-      ).values(),
-    ];
     let schoolId = campus?.schoolId;
     let gradeCampusId = campus?._id;
     if (!schoolId && myClasses.length > 0) {
@@ -257,6 +403,7 @@ export const getStudentDashboardStats = query({
           },
         },
         classes: [],
+        pendingAttendanceSessions: [],
         upcomingLessons: [],
       };
     }
@@ -286,9 +433,7 @@ export const getStudentDashboardStats = query({
               .query("classSchedule")
               .withIndex("by_class", (q) => q.eq("classId", classData._id))
               .collect(),
-            includeUpcomingLessons
-              ? getClassTimeZone(ctx, classData)
-              : Promise.resolve(undefined),
+            getClassTimeZone(ctx, classData),
           ]);
 
         const countableSchedules = schedules.filter(
@@ -320,6 +465,32 @@ export const getStudentDashboardStats = query({
           (total, count) => total + count,
           0,
         );
+        const pendingSchedules = completedSchedules.filter(
+          (schedule) =>
+            schedule.sessionClosureStatus !== "completed" ||
+            !attendanceBySchedule.has(schedule._id),
+        );
+        const canCompleteReport =
+          pendingSchedules.length > 0 &&
+          (classData.teacherId === viewer._id ||
+            (await canManageClasses(
+              ctx,
+              viewer._id,
+              classData.campusId,
+              classData.schoolId ?? curriculum?.schoolId,
+            )));
+        const pendingAttendanceSessions = pendingSchedules.map((schedule) => ({
+          scheduleId: schedule._id,
+          classId: classData._id,
+          className: classData.name,
+          curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
+          sessionTitle: schedule.title ?? null,
+          start: schedule.scheduledStart,
+          end: schedule.scheduledEnd,
+          timeZone: timeZone ?? "UTC",
+          roomName: schedule.roomName,
+          canCompleteReport,
+        }));
 
         return {
           stats: {
@@ -358,6 +529,7 @@ export const getStudentDashboardStats = query({
               .sort((a, b) => a.scheduledStart - b.scheduledStart)[0]
               ?.scheduledStart,
           },
+          pendingAttendanceSessions,
           upcomingLessons: includeUpcomingLessons
             ? schedules
                 .filter((schedule) =>
@@ -397,6 +569,9 @@ export const getStudentDashboardStats = query({
       .flatMap((item) => item.upcomingLessons)
       .sort((a, b) => a.start - b.start)
       .slice(0, 50);
+    const pendingAttendanceSessions = classDetails
+      .flatMap((item) => item.pendingAttendanceSessions)
+      .sort((first, second) => second.start - first.start);
 
     // --- Overall stats ---
     const totalCourses = classStats.length;
@@ -437,8 +612,107 @@ export const getStudentDashboardStats = query({
         upcomingSessions,
         attendanceCounts,
       },
+      pendingAttendanceSessions,
       classes: classStats,
       upcomingLessons,
+    };
+  },
+});
+
+export const listStudentAttendanceHistory = query({
+  args: {
+    status: v.optional(studentAttendanceStatusValidator),
+    classId: v.optional(v.id("classes")),
+    paginationOpts: paginationOptsValidator,
+    ...studentDashboardTargetValidator.fields,
+  },
+  returns: paginationResultValidator(attendanceHistoryItemValidator),
+  handler: async (ctx, args) => {
+    const access = await resolveStudentDashboardAccess(ctx, args);
+    if (!access) throw new ConvexError("PERMISSION_DENIED");
+    const { viewer, student, campus } = access;
+    const classes = await listActiveStudentClasses(
+      ctx,
+      student._id,
+      campus?._id,
+    );
+    const classesById = new Map(classes.map((item) => [item._id, item]));
+    if (args.classId) {
+      const result = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", args.classId!))
+        .order("desc")
+        .paginate(args.paginationOpts);
+      const classData = classesById.get(args.classId);
+      if (!classData) return { ...result, page: [] };
+
+      const page = await Promise.all(
+        result.page.map(async (schedule) => {
+          if (!isVerifiedStandardSession(schedule)) return null;
+          const attendance = await ctx.db
+            .query("studentAttendanceRecords")
+            .withIndex("by_schedule_and_student", (q) =>
+              q.eq("scheduleId", schedule._id).eq("studentId", student._id),
+            )
+            .unique();
+          if (
+            !attendance ||
+            (args.status && attendance.status !== args.status)
+          ) {
+            return null;
+          }
+          return await buildAttendanceHistoryItem(
+            ctx,
+            viewer._id,
+            student._id,
+            schedule,
+            attendance,
+            classData,
+          );
+        }),
+      );
+
+      return { ...result, page: page.filter((item) => item !== null) };
+    }
+
+    const attendanceQuery = args.status
+      ? ctx.db
+          .query("studentAttendanceRecords")
+          .withIndex("by_student_and_status_and_confirmed_at", (q) =>
+            q.eq("studentId", student._id).eq("status", args.status!),
+          )
+      : ctx.db
+          .query("studentAttendanceRecords")
+          .withIndex("by_student_and_confirmed_at", (q) =>
+            q.eq("studentId", student._id),
+          );
+    const result = await attendanceQuery
+      .order("desc")
+      .paginate(args.paginationOpts);
+    const page = await Promise.all(
+      result.page.map(async (attendance) => {
+        const schedule = await ctx.db.get(
+          "classSchedule",
+          attendance.scheduleId,
+        );
+        if (!schedule || !isVerifiedStandardSession(schedule)) return null;
+        const classData = classesById.get(schedule.classId);
+        if (!classData) return null;
+
+        return await buildAttendanceHistoryItem(
+          ctx,
+          viewer._id,
+          student._id,
+          schedule,
+          attendance,
+          classData,
+        );
+      }),
+    );
+
+    return {
+      ...result,
+      page: page.filter((item) => item !== null),
     };
   },
 });

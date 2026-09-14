@@ -489,7 +489,13 @@ export default defineSchema({
   })
     .index("by_schedule", ["scheduleId"])
     .index("by_schedule_and_student", ["scheduleId", "studentId"])
-    .index("by_student", ["studentId"]),
+    .index("by_student", ["studentId"])
+    .index("by_student_and_confirmed_at", ["studentId", "confirmedAt"])
+    .index("by_student_and_status_and_confirmed_at", [
+      "studentId",
+      "status",
+      "confirmedAt",
+    ]),
 
   /**
    * STUDENT CLASS PREFERENCES

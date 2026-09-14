@@ -1,17 +1,43 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   SessionRecordView,
   type SessionRecordData,
+  useSessionRecord,
 } from "@/components/classroom/session-record";
+
+const useQueryMock = vi.hoisted(() => vi.fn());
+
+vi.mock("convex/react", () => ({ useQuery: useQueryMock }));
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
+vi.mock("@/components/attendance/attendance-record-editor", () => ({
+  AttendanceRecordEditor: () => <div>inline-attendance-editor</div>,
+}));
 
 afterEach(cleanup);
+
+test("session detail uses the stable session boundary supplied by its owner", () => {
+  const scheduleId = "schedule-1" as Id<"classSchedule">;
+  const sessionEnd = Date.UTC(2026, 8, 11, 15);
+
+  renderHook(() => useSessionRecord(scheduleId, sessionEnd));
+
+  expect(useQueryMock).toHaveBeenCalledWith(expect.anything(), {
+    scheduleId,
+    now: sessionEnd,
+  });
+});
 
 const recording = {
   _id: "recording-1" as Id<"recordings">,
@@ -110,6 +136,22 @@ test("panel records omit headings already represented by their tabs", () => {
   expect(screen.queryByText("lessonsDescription")).toBeNull();
 });
 
+test("authorized session rosters reuse the inline attendance editor", () => {
+  render(
+    <SessionRecordView
+      record={staffRecord}
+      onWatchRecording={vi.fn()}
+      allowAttendanceEditing
+    />,
+  );
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "attendanceTab" }), {
+    button: 0,
+    ctrlKey: false,
+  });
+  fireEvent.click(screen.getAllByRole("button", { name: "editAttendance" })[0]);
+  expect(screen.getByText("inline-attendance-editor")).toBeTruthy();
+});
+
 test.each(["default", "panel"] as const)(
   "students see only their own attendance in the %s view",
   (variant) => {
@@ -145,6 +187,23 @@ test.each(["default", "panel"] as const)(
     expect(screen.queryByText("absent")).toBeNull();
   },
 );
+
+test("course history can hide a student's own attendance", () => {
+  render(
+    <SessionRecordView
+      record={{
+        ...staffRecord,
+        staffDetails: null,
+        ownAttendance: { status: "partial", excuseReason: null },
+      }}
+      onWatchRecording={vi.fn()}
+      showOwnAttendance={false}
+    />,
+  );
+  expect(screen.queryByRole("tab")).toBeNull();
+  expect(screen.getByText("Latitude and longitude")).toBeTruthy();
+  expect(screen.queryByText("partial")).toBeNull();
+});
 
 test("only authorized pending records expose the completion action", () => {
   const pendingRecord: SessionRecordData = {
