@@ -23,6 +23,7 @@ const notificationKindValidator = v.union(
   v.literal("course_assignment"),
   v.literal("class_starting_soon"),
   v.literal("class_cancelled"),
+  v.literal("calendar_closure"),
   v.literal("recording_available"),
   v.literal("role_changed"),
   v.literal("organization_membership_changed"),
@@ -47,6 +48,7 @@ const notificationPayloadFields = {
   scheduleId: v.optional(v.id("classSchedule")),
   recordingId: v.optional(v.id("recordings")),
   cancellationEventId: v.optional(v.id("classCancellationEvents")),
+  calendarClosureId: v.optional(v.id("calendarClosures")),
   organizationSlug: v.optional(v.string()),
   roomName: v.optional(v.string()),
   className: v.optional(v.string()),
@@ -332,6 +334,100 @@ export const publishClassCancellation = internalMutation({
         dedupeKey: `class_cancelled:${event._id}:${recipientId}`,
       });
       if (notificationId) published += 1;
+    }
+    return published;
+  },
+});
+
+export const publishCalendarClosureBatch = internalMutation({
+  args: {
+    closureId: v.id("calendarClosures"),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const closure = await ctx.db.get("calendarClosures", args.closureId);
+    if (!closure || closure.status !== "completed") return 0;
+
+    const occurrences = await ctx.db
+      .query("calendarClosureOccurrences")
+      .withIndex("by_closure", (query) =>
+        query.eq("closureId", closure._id).eq("status", "cancelled"),
+      )
+      .paginate(args.paginationOpts);
+    const scheduleIds = occurrences.page.map(
+      (occurrence) => occurrence.scheduleId,
+    );
+
+    await deleteStartingSoonNotifications(ctx, scheduleIds);
+    const [school, campus] = await Promise.all([
+      ctx.db.get("schools", closure.schoolId),
+      closure.campusId
+        ? ctx.db.get("campuses", closure.campusId)
+        : Promise.resolve(null),
+    ]);
+    const recipients = new Map<
+      SystemNotificationInput["recipientId"],
+      {
+        role: string;
+        campusId?: SystemNotificationInput["campusId"];
+        organizationSlug?: string;
+      }
+    >();
+    for (const scheduleId of scheduleIds) {
+      const schedule = await ctx.db.get("classSchedule", scheduleId);
+      if (!schedule) continue;
+      const classData = await ctx.db.get("classes", schedule.classId);
+      if (!classData) continue;
+      const classContext = await getClassNotificationContext(ctx, classData);
+      for (const [recipientId, role] of await listClassNotificationRecipients(
+        ctx,
+        classData,
+      )) {
+        if (recipientId !== closure.createdBy && !recipients.has(recipientId)) {
+          recipients.set(recipientId, {
+            role,
+            campusId: campus?._id ?? classContext.campusId,
+            organizationSlug:
+              campus?.slug ?? classContext.organizationSlug ?? school?.slug,
+          });
+        }
+      }
+    }
+
+    let published = 0;
+    for (const [recipientId, context] of recipients) {
+      const notificationId = await createSystemNotification(ctx, {
+        recipientId,
+        kind: "calendar_closure",
+        actorId: closure.createdBy,
+        schoolId: school?._id,
+        campusId: context.campusId,
+        calendarClosureId: closure._id,
+        organizationSlug: context.organizationSlug,
+        schoolName: school?.name,
+        campusName: campus?.name,
+        role: context.role,
+        reason: closure.reason,
+        scheduledStart: closure.startsAt,
+        scheduledEnd: closure.endsAt,
+        dedupeKey: `calendar_closure:${closure._id}:${recipientId}`,
+      });
+      if (notificationId) published += 1;
+    }
+
+    if (!occurrences.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.systemNotifications.publishCalendarClosureBatch,
+        {
+          closureId: closure._id,
+          paginationOpts: {
+            ...args.paginationOpts,
+            cursor: occurrences.continueCursor,
+          },
+        },
+      );
     }
     return published;
   },

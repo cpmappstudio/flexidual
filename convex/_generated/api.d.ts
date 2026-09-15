@@ -10,6 +10,7 @@
 
 import type * as academicSettings from "../academicSettings.js";
 import type * as calendar from "../calendar.js";
+import type * as calendarClosures from "../calendarClosures.js";
 import type * as campuses from "../campuses.js";
 import type * as classes from "../classes.js";
 import type * as courseChatAttachmentHttp from "../courseChatAttachmentHttp.js";
@@ -23,6 +24,7 @@ import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
 import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
+import type * as model_calendarClosures from "../model/calendarClosures.js";
 import type * as model_catalog from "../model/catalog.js";
 import type * as model_classCancellationEvents from "../model/classCancellationEvents.js";
 import type * as model_classType from "../model/classType.js";
@@ -38,6 +40,7 @@ import type * as model_liveAccess from "../model/liveAccess.js";
 import type * as model_membership from "../model/membership.js";
 import type * as model_roles from "../model/roles.js";
 import type * as model_scheduleAccess from "../model/scheduleAccess.js";
+import type * as model_scheduleCancellation from "../model/scheduleCancellation.js";
 import type * as model_scheduleDeletion from "../model/scheduleDeletion.js";
 import type * as model_sessionContent from "../model/sessionContent.js";
 import type * as model_sessionLeadership from "../model/sessionLeadership.js";
@@ -70,6 +73,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   academicSettings: typeof academicSettings;
   calendar: typeof calendar;
+  calendarClosures: typeof calendarClosures;
   campuses: typeof campuses;
   classes: typeof classes;
   courseChatAttachmentHttp: typeof courseChatAttachmentHttp;
@@ -83,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   lessons: typeof lessons;
   livekit: typeof livekit;
   migration: typeof migration;
+  "model/calendarClosures": typeof model_calendarClosures;
   "model/catalog": typeof model_catalog;
   "model/classCancellationEvents": typeof model_classCancellationEvents;
   "model/classType": typeof model_classType;
@@ -98,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   "model/membership": typeof model_membership;
   "model/roles": typeof model_roles;
   "model/scheduleAccess": typeof model_scheduleAccess;
+  "model/scheduleCancellation": typeof model_scheduleCancellation;
   "model/scheduleDeletion": typeof model_scheduleDeletion;
   "model/sessionContent": typeof model_sessionContent;
   "model/sessionLeadership": typeof model_sessionLeadership;

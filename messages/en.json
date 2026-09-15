@@ -1273,6 +1273,44 @@
     "campusTime": "Campus time: {time}",
     "timeZoneUnavailable": "Calendar time zone unavailable",
     "timeZoneUnavailableDescription": "Ask an administrator to configure the institution or campus time zone.",
+    "closures": {
+      "action": "Add no-class day",
+      "title": "Add a no-class day",
+      "description": "Mark an entire day without classes for {scope}.",
+      "noticesLabel": "Days without classes",
+      "dayWithoutClasses": "No-class day",
+      "date": "Date",
+      "required": "Required",
+      "duration": "Duration",
+      "allDay": "All day",
+      "timeRange": "Time range",
+      "start": "Start",
+      "end": "End",
+      "invalidTimeRange": "The end time must be after the start time.",
+      "reason": "Reason or event",
+      "reasonPlaceholder": "For example: public holiday, school trip, or institutional event",
+      "timeZone": "Scheduling time: {timeZone}",
+      "preview": "Scheduled classes",
+      "loadingPreview": "Checking the schedule...",
+      "selectedCount": "{count, plural, one {# class} other {# classes}}",
+      "fullyIncluded": "Included",
+      "partial": "Partial",
+      "includedTitle": "These classes will not take place",
+      "partialTitle": "Classes that partially overlap",
+      "partialDescription": "Choose whether to suspend each entire class. Classes are never shortened.",
+      "emptyPreview": "There are no eligible classes on this day.",
+      "tooManyClasses": "There are too many classes to preview safely. Narrow the scope.",
+      "cancel": "Cancel",
+      "review": "Continue",
+      "confirmTitle": "Confirm this no-class day?",
+      "confirmDescription": "{date} will be marked as a day without classes. {count, plural, one {# scheduled class will not take place} other {# scheduled classes will not take place}}.",
+      "confirmScope": "Applies to",
+      "confirmReason": "Reason or event",
+      "confirmNote": "The classes will remain visible in the calendar with this reason.",
+      "confirmBack": "Back",
+      "confirm": "Confirm no-class day",
+      "created": "The no-class day is being added."
+    },
     "modes": {
       "day": "Day",
       "week": "Week",
@@ -1374,7 +1412,12 @@
     "passwordUpdateFailed": "The password could not be updated. Please try again.",
     "passwordUpdateUnavailable": "This legacy user does not have a Clerk account whose password can be changed.",
     "curriculumCodeInUse": "That curriculum code is already in use in this institution.",
-    "invalidCurriculumTitle": "Enter a curriculum title between 1 and 150 characters."
+    "invalidCurriculumTitle": "Enter a curriculum title between 1 and 150 characters.",
+    "calendarClosureTooLarge": "This day includes too many scheduled classes. Narrow the scope.",
+    "invalidPartialSelection": "The class selection changed. Review the preview and try again.",
+    "noClassesToCancel": "There are no eligible scheduled classes for this day.",
+    "invalidDateRange": "Select a valid date and time range.",
+    "timeZoneRequired": "Configure the institution or campus time zone before continuing."
   },
   "table": {
     "columns": "Columns",
@@ -1428,6 +1471,10 @@
       "class_cancelled": {
         "title": "Class cancelled",
         "body": "A scheduled class for {className} was cancelled."
+      },
+      "calendar_closure": {
+        "title": "Day without classes",
+        "body": "A no-class day was added for {organizationName}."
       },
       "recording_available": {
         "title": "Recording available",

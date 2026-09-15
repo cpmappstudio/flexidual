@@ -11,21 +11,25 @@ export async function recordClassCancellationEvent(
     affectedScheduleIds: Id<"classSchedule">[];
     actorId: Id<"users">;
     scope: "occurrence" | "series";
-    source: "calendar" | "course_schedule";
+    source: "calendar" | "course_schedule" | "calendar_closure";
     reason: string;
     effectiveAt: number;
     occurredAt: number;
+    calendarClosureId?: Id<"calendarClosures">;
   },
+  options: { publishNotification?: boolean } = {},
 ) {
   if (event.affectedScheduleIds.length === 0) return null;
   const cancellationEventId = await ctx.db.insert(
     "classCancellationEvents",
     event,
   );
-  await ctx.scheduler.runAfter(
-    0,
-    internal.systemNotifications.publishClassCancellation,
-    { cancellationEventId },
-  );
+  if (options.publishNotification !== false) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.systemNotifications.publishClassCancellation,
+      { cancellationEventId },
+    );
+  }
   return cancellationEventId;
 }

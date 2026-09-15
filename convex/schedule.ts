@@ -32,6 +32,11 @@ import { isStudentEnrolled, listClassStudentIds } from "./model/enrollments";
 import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
 import { syncClassTypeFromSchedules } from "./model/classType";
 import { recordClassCancellationEvent } from "./model/classCancellationEvents";
+import {
+  buildScheduleCancellationFields,
+  cancelScheduleOccurrence,
+  isScheduleCancellable,
+} from "./model/scheduleCancellation";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import {
   civilDayNumber,
@@ -2337,11 +2342,7 @@ export const cancelSchedule = mutation({
     }
 
     const now = Date.now();
-    if (
-      schedule.status !== "scheduled" ||
-      schedule.scheduledStart <= now ||
-      schedule.isLive === true
-    ) {
+    if (!isScheduleCancellable(schedule, now)) {
       throw new ConvexError("SCHEDULE_CANNOT_BE_CANCELLED");
     }
 
@@ -2367,14 +2368,17 @@ export const cancelSchedule = mutation({
           item.isLive !== true,
       );
       for (const item of futureScheduledItems) {
-        await ctx.db.patch(item._id, {
-          status: "cancelled" as const,
-          cancellationReason: reason,
-          cancelledAt: now,
-          cancelledBy: user._id,
-          cancellationScope: "series" as const,
-          cancellationEffectiveAt: schedule.scheduledStart,
-        });
+        await ctx.db.patch(
+          "classSchedule",
+          item._id,
+          buildScheduleCancellationFields({
+            actorId: user._id,
+            reason,
+            scope: "series",
+            effectiveAt: schedule.scheduledStart,
+            occurredAt: now,
+          }),
+        );
       }
       if (futureScheduledItems.length > 0) {
         await recordClassCancellationEvent(ctx, {
@@ -2396,25 +2400,14 @@ export const cancelSchedule = mutation({
       };
     }
 
-    await ctx.db.patch(args.id, {
-      status: "cancelled" as const,
-      cancellationReason: reason,
-      cancelledAt: now,
-      cancelledBy: user._id,
-      cancellationScope: "occurrence" as const,
-      cancellationEffectiveAt: schedule.scheduledStart,
-    });
-    await recordClassCancellationEvent(ctx, {
-      classId: classData._id,
+    await cancelScheduleOccurrence(ctx, {
+      schedule,
+      classData,
       schoolId,
-      scheduleId: schedule._id,
-      affectedScheduleIds: [schedule._id],
       actorId: user._id,
-      scope: "occurrence",
-      source: "calendar",
       reason,
-      effectiveAt: schedule.scheduledStart,
       occurredAt: now,
+      source: "calendar",
     });
     return { cancelled: 1, type: "single" as const };
   },

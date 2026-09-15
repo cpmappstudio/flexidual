@@ -34,6 +34,7 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
         "PERMISSION_DENIED",
         "INVALID_STUDENT",
         "INVALID_STUDENTS",
+        "INVALID_GRADE",
         "STUDENT_ALREADY_ENROLLED",
         "CURRICULUM_CODE_IN_USE",
         "INVALID_CURRICULUM_TITLE",
@@ -41,6 +42,11 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
         "CANCELLATION_REASON_REQUIRED",
         "SCHEDULE_CANNOT_BE_CANCELLED",
         "SCHEDULE_IS_NOT_RECURRING",
+        "CALENDAR_CLOSURE_TOO_LARGE",
+        "INVALID_PARTIAL_SELECTION",
+        "NO_CLASSES_TO_CANCEL",
+        "INVALID_DATE_RANGE",
+        "TIME_ZONE_REQUIRED",
         "CHAT_MUTED",
         "CHAT_ARCHIVED",
         "CHAT_ATTACHMENTS_DISABLED",
@@ -128,6 +134,16 @@ export function getErrorMessage(
       return t("schedule.cannotCancelClass");
     case "SCHEDULE_IS_NOT_RECURRING":
       return t("schedule.cannotCancelSeries");
+    case "CALENDAR_CLOSURE_TOO_LARGE":
+      return t("errors.calendarClosureTooLarge");
+    case "INVALID_PARTIAL_SELECTION":
+      return t("errors.invalidPartialSelection");
+    case "NO_CLASSES_TO_CANCEL":
+      return t("errors.noClassesToCancel");
+    case "INVALID_DATE_RANGE":
+      return t("errors.invalidDateRange");
+    case "TIME_ZONE_REQUIRED":
+      return t("errors.timeZoneRequired");
     default:
       return t("errors.operationFailed");
   }

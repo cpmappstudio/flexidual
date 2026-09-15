@@ -1273,6 +1273,44 @@
     "campusTime": "Hora del campus: {time}",
     "timeZoneUnavailable": "La zona horaria del calendario no está disponible",
     "timeZoneUnavailableDescription": "Solicita a un administrador que configure la zona horaria de la institución o del campus.",
+    "closures": {
+      "action": "Añadir día sin clases",
+      "title": "Añadir un día sin clases",
+      "description": "Marca un día completo sin clases para {scope}.",
+      "noticesLabel": "Días sin clases",
+      "dayWithoutClasses": "Día sin clases",
+      "date": "Fecha",
+      "required": "Obligatorio",
+      "duration": "Duración",
+      "allDay": "Todo el día",
+      "timeRange": "Franja horaria",
+      "start": "Inicio",
+      "end": "Fin",
+      "invalidTimeRange": "La hora de fin debe ser posterior a la hora de inicio.",
+      "reason": "Motivo o evento",
+      "reasonPlaceholder": "Por ejemplo: día festivo, paseo escolar o evento institucional",
+      "timeZone": "Horario de programación: {timeZone}",
+      "preview": "Clases programadas",
+      "loadingPreview": "Revisando la programación...",
+      "selectedCount": "{count, plural, one {# clase} other {# clases}}",
+      "fullyIncluded": "Incluidas",
+      "partial": "Parciales",
+      "includedTitle": "Estas clases no se realizarán",
+      "partialTitle": "Clases que se solapan parcialmente",
+      "partialDescription": "Elige si deseas suspender cada clase completa. Las clases nunca se acortan.",
+      "emptyPreview": "No hay clases elegibles para este día.",
+      "tooManyClasses": "Hay demasiadas clases para una vista previa segura. Reduce el ámbito.",
+      "cancel": "Cancelar",
+      "review": "Continuar",
+      "confirmTitle": "¿Confirmar este día sin clases?",
+      "confirmDescription": "El {date} quedará registrado como día sin clases. {count, plural, one {No se realizará # clase programada} other {No se realizarán # clases programadas}}.",
+      "confirmScope": "Aplica para",
+      "confirmReason": "Motivo o evento",
+      "confirmNote": "Las clases seguirán visibles en el calendario junto con este motivo.",
+      "confirmBack": "Volver",
+      "confirm": "Confirmar día sin clases",
+      "created": "El día sin clases se está registrando."
+    },
     "modes": {
       "day": "Día",
       "week": "Semana",
@@ -1374,7 +1412,12 @@
     "passwordUpdateFailed": "No se pudo cambiar la contraseña. Inténtalo nuevamente.",
     "passwordUpdateUnavailable": "Este usuario heredado no tiene una cuenta de Clerk cuya contraseña pueda modificarse.",
     "curriculumCodeInUse": "Ese código de currículo ya está en uso en esta institución.",
-    "invalidCurriculumTitle": "Ingresa un título de currículo de entre 1 y 150 caracteres."
+    "invalidCurriculumTitle": "Ingresa un título de currículo de entre 1 y 150 caracteres.",
+    "calendarClosureTooLarge": "Este día incluye demasiadas clases programadas. Reduce el ámbito.",
+    "invalidPartialSelection": "La selección de clases cambió. Revisa la vista previa e inténtalo de nuevo.",
+    "noClassesToCancel": "No hay clases programadas elegibles para este día.",
+    "invalidDateRange": "Selecciona una fecha y una franja horaria válidas.",
+    "timeZoneRequired": "Configura la zona horaria de la institución o campus antes de continuar."
   },
   "table": {
     "columns": "Columnas",
@@ -1428,6 +1471,10 @@
       "class_cancelled": {
         "title": "Clase cancelada",
         "body": "Se canceló una clase programada de {className}."
+      },
+      "calendar_closure": {
+        "title": "Día sin clases",
+        "body": "Se registró un día sin clases para {organizationName}."
       },
       "recording_available": {
         "title": "Grabación disponible",

@@ -25,6 +25,13 @@ import {
   groupCalendarEventsByDay,
 } from "../../calendar-event-layout";
 import { CalendarAgendaEvent } from "../../calendar-agenda-event";
+import {
+  CalendarClosureBadge,
+  getCalendarClosuresForDate,
+  groupCalendarClosuresByDate,
+  hasAllDayCalendarClosure,
+} from "../../calendar-closure-marker";
+import type { CalendarClosureSummary } from "../../calendar-closure-types";
 
 const localeMap = {
   en: enUS,
@@ -32,7 +39,11 @@ const localeMap = {
   "pt-BR": ptBR,
 } as const;
 
-export default function CalendarBodyMonth() {
+export default function CalendarBodyMonth({
+  closures,
+}: {
+  closures: CalendarClosureSummary[];
+}) {
   const { date, events, setDate, setMode, displayTimeZone } =
     useCalendarContext();
   const locale = useLocale();
@@ -80,6 +91,10 @@ export default function CalendarBodyMonth() {
     () => groupCalendarEventsByDay(visibleEvents, displayTimeZone),
     [displayTimeZone, visibleEvents],
   );
+  const closuresByDate = useMemo(
+    () => groupCalendarClosuresByDate(closures, displayTimeZone),
+    [closures, displayTimeZone],
+  );
 
   const weekDays = calendarDays
     .slice(0, 7)
@@ -107,12 +122,18 @@ export default function CalendarBodyMonth() {
               const dayEvents =
                 eventsByDay.get(getCalendarEventDayKey(day, displayTimeZone)) ??
                 [];
+              const dayClosures = getCalendarClosuresForDate(
+                closuresByDate,
+                day,
+                displayTimeZone,
+              );
 
               return (
                 <MobileDayCell
                   key={day.toISOString()}
                   day={day}
                   dayEvents={dayEvents}
+                  closures={dayClosures}
                   isSelected={isSameDay(day, date, dateContext)}
                   isToday={isSameDay(day, today, dateContext)}
                   isCurrentMonth={isSameMonth(day, date, dateContext)}
@@ -128,6 +149,11 @@ export default function CalendarBodyMonth() {
         <MobileDayAgenda
           date={date}
           events={selectedDayEvents}
+          closures={getCalendarClosuresForDate(
+            closuresByDate,
+            date,
+            displayTimeZone,
+          )}
           dateLocale={dateLocale}
           displayTimeZone={displayTimeZone}
           emptyLabel={t("noEventsDay")}
@@ -154,6 +180,11 @@ export default function CalendarBodyMonth() {
             const dayEvents =
               eventsByDay.get(getCalendarEventDayKey(day, displayTimeZone)) ??
               [];
+            const dayClosures = getCalendarClosuresForDate(
+              closuresByDate,
+              day,
+              displayTimeZone,
+            );
             const isToday = isSameDay(day, today, dateContext);
             const isCurrentMonth = isSameMonth(day, date, dateContext);
 
@@ -162,6 +193,7 @@ export default function CalendarBodyMonth() {
                 key={day.toISOString()}
                 day={day}
                 dayEvents={dayEvents}
+                closures={dayClosures}
                 isToday={isToday}
                 isCurrentMonth={isCurrentMonth}
                 dateLocale={dateLocale}
@@ -183,6 +215,7 @@ export default function CalendarBodyMonth() {
 function MobileDayCell({
   day,
   dayEvents,
+  closures,
   isSelected,
   isToday,
   isCurrentMonth,
@@ -192,6 +225,7 @@ function MobileDayCell({
 }: {
   day: Date;
   dayEvents: CalendarEventType[];
+  closures: CalendarClosureSummary[];
   isSelected: boolean;
   isToday: boolean;
   isCurrentMonth: boolean;
@@ -211,11 +245,17 @@ function MobileDayCell({
           : "border-transparent bg-card text-foreground hover:bg-muted/70",
         !isCurrentMonth && "opacity-40",
         isToday && !isSelected && "border-primary/40 text-primary",
+        hasAllDayCalendarClosure(closures) &&
+          !isSelected &&
+          "border-warning/40 bg-warning/5",
       )}
-      aria-label={format(day, "EEEE, MMMM d, yyyy", {
-        locale: dateLocale,
-        ...dateContext,
-      })}
+      aria-label={[
+        format(day, "EEEE, MMMM d, yyyy", {
+          locale: dateLocale,
+          ...dateContext,
+        }),
+        ...closures.map((closure) => closure.reason),
+      ].join(", ")}
       aria-pressed={isSelected}
       onClick={onClick}
     >
@@ -253,6 +293,7 @@ function MobileDayCell({
 function MobileDayAgenda({
   date,
   events,
+  closures,
   dateLocale,
   displayTimeZone,
   emptyLabel,
@@ -260,6 +301,7 @@ function MobileDayAgenda({
 }: {
   date: Date;
   events: CalendarEventType[];
+  closures: CalendarClosureSummary[];
   dateLocale: Locale;
   displayTimeZone: string;
   emptyLabel: string;
@@ -270,7 +312,7 @@ function MobileDayAgenda({
   return (
     <section className="px-3 py-3">
       <div className="flex items-end justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-lg font-bold capitalize text-foreground">
             {format(date, "EEEE d", {
               locale: dateLocale,
@@ -283,6 +325,7 @@ function MobileDayAgenda({
               ...dateContext,
             })}
           </p>
+          <CalendarClosureBadge closures={closures} compact className="mt-1" />
         </div>
         <p className="shrink-0 text-xs font-medium text-muted-foreground">
           {events.length} {classesLabel}
@@ -321,6 +364,7 @@ function MobileDayAgenda({
 function DayCell({
   day,
   dayEvents,
+  closures,
   isToday,
   isCurrentMonth,
   dateLocale,
@@ -330,6 +374,7 @@ function DayCell({
 }: {
   day: Date;
   dayEvents: CalendarEventType[];
+  closures: CalendarClosureSummary[];
   isToday: boolean;
   isCurrentMonth: boolean;
   dateLocale: Locale;
@@ -345,7 +390,7 @@ function DayCell({
       if (!containerRef.current) return;
 
       const containerHeight = containerRef.current.clientHeight;
-      const headerHeight = 26; // Date number height (w-6 h-6)
+      const headerHeight = 26;
       const eventHeight = 22; // Event item height (px-1.5 py-0.5 + gap)
       const moreTextHeight = 18; // "+X more" text height
       const padding = 8; // mt-1 and gaps
@@ -376,22 +421,28 @@ function DayCell({
       className={cn(
         "relative flex min-h-16 cursor-pointer flex-col border-b p-1.5 last:border-b-0 md:min-h-0 md:border-r md:[&:nth-child(7n)]:border-r-0 md:[&:nth-last-child(-n+7)]:border-b-0",
         !isCurrentMonth && "bg-muted/50 hidden md:flex",
+        hasAllDayCalendarClosure(closures) &&
+          isCurrentMonth &&
+          "bg-warning/[0.04]",
       )}
       onClick={(e) => {
         e.stopPropagation();
         onDayClick();
       }}
     >
-      <div
-        className={cn(
-          "text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full",
-          isToday && "bg-primary text-primary-foreground",
-        )}
-      >
-        {format(day, "d", {
-          locale: dateLocale,
-          in: tz(displayTimeZone),
-        })}
+      <div className="flex min-w-0 items-center gap-1">
+        <div
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+            isToday && "bg-primary text-primary-foreground",
+          )}
+        >
+          {format(day, "d", {
+            locale: dateLocale,
+            in: tz(displayTimeZone),
+          })}
+        </div>
+        <CalendarClosureBadge closures={closures} compact />
       </div>
       <AnimatePresence mode="wait">
         <div className="flex flex-col gap-0.5 mt-1 overflow-hidden">

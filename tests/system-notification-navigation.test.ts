@@ -28,6 +28,13 @@ test("routes class notifications to their contextual destinations", () => {
   );
   assert.equal(
     getSystemNotificationHref({
+      kind: "calendar_closure",
+      organizationSlug: "main-campus",
+    }),
+    "/main-campus/calendar",
+  );
+  assert.equal(
+    getSystemNotificationHref({
       kind: "recording_available",
       organizationSlug: "main-campus",
       classId: "class-id" as never,
