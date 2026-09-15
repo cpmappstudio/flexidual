@@ -122,3 +122,29 @@ test("filters active and archived chat names locally, preserving links and unrea
   rerender(view());
   expect((search as HTMLInputElement).value).toBe("");
 });
+
+test("preserves reactive activity order while searching without sorting by name again", () => {
+  const original = state.chats;
+  try {
+    state.chats = [original[1], original[0], original[2]];
+    const view = () => (
+      <SidebarProvider>
+        <CourseChatsNav unreadChats={new Map()} />
+      </SidebarProvider>
+    );
+    const { getAllByRole, getByRole, rerender } = render(view());
+    const names = () =>
+      getAllByRole("link").map(
+        (link) => link.getAttribute("aria-label") ?? link.textContent,
+      );
+    expect(names()).toEqual(["Biology · Teacher", "Algebra I · Teacher"]);
+    fireEvent.change(getByRole("searchbox"), { target: { value: "Teacher" } });
+    expect(names()).toEqual(["Biology · Teacher", "Algebra I · Teacher"]);
+    state.chats = original;
+    rerender(view());
+    expect(names()).toEqual(["Algebra I · Teacher", "Biology · Teacher"]);
+    expect((getByRole("searchbox") as HTMLInputElement).value).toBe("Teacher");
+  } finally {
+    state.chats = original;
+  }
+});

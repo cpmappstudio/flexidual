@@ -101,6 +101,109 @@ async function setup(studentCount = 1, legacy = false) {
   return { t, ...data, student, teacher, admin, send, deliver, feed, unread };
 }
 
+test.each([false, true])(
+  "chat order follows messages for every role (legacy enrollment: %s)",
+  async (legacy) => {
+    const s = await setup(1, legacy);
+    const { recentId, emptyId } = await s.t.run(async (ctx) => {
+      const course = (await ctx.db.get("classes", s.classId))!;
+      const makeCourse = (name: string) =>
+        ctx.db.insert("classes", {
+          name,
+          schoolId: course.schoolId,
+          campusId: course.campusId,
+          curriculumId: course.curriculumId,
+          teacherId: s.teacherId,
+          students: s.students,
+          isActive: true,
+          createdAt: Date.now(),
+          createdBy: s.adminId,
+        });
+      await ctx.db.insert("roleAssignments", {
+        userId: s.tutorId,
+        orgType: "campus",
+        orgId: course.campusId!,
+        role: "principal",
+        assignedBy: s.adminId,
+        assignedAt: Date.now(),
+      });
+      return {
+        recentId: await makeCourse("Zebra"),
+        emptyId: await makeCourse("Aardvark"),
+      };
+    });
+    const first = await s.send("Older message");
+    vi.advanceTimersByTime(10);
+    await s.teacher.mutation(api.courseChatMessages.send, {
+      classId: recentId,
+      body: "Newest message",
+    });
+    const clients = [
+      s.student,
+      s.teacher,
+      s.admin,
+      s.t.withIdentity({ subject: "tutor" }),
+    ];
+    const list = (client = s.student) =>
+      client.query(api.classes.listChatOptions, {});
+    for (const client of clients) {
+      expect((await list(client)).map((chat) => chat._id)).toEqual([
+        recentId,
+        s.classId,
+        emptyId,
+      ]);
+    }
+    expect(
+      await s.t
+        .withIdentity({ subject: "outsider" })
+        .query(api.classes.listChatOptions, {}),
+    ).toEqual([]);
+
+    // Reading and pinning do not change message activity.
+    await s.student.mutation(api.courseChatNotifications.markRead, {
+      messageId: first,
+    });
+    await s.teacher.mutation(api.courseChatMessages.setPinned, {
+      messageId: first,
+      pinned: true,
+    });
+    expect((await list()).map((chat) => chat._id)).toEqual([
+      recentId,
+      s.classId,
+      emptyId,
+    ]);
+    await s.send("A reply moves this chat first, even for its sender");
+    for (const client of clients)
+      expect((await list(client))[0]._id).toBe(s.classId);
+
+    // Cleared history must stop affecting order even while deletion is pending.
+    await s.t.run(async (ctx) => {
+      const latest = await ctx.db
+        .query("courseChatMessages")
+        .withIndex("by_class", (q) => q.eq("classId", s.classId))
+        .order("desc")
+        .first();
+      await ctx.db.patch("classes", s.classId, {
+        chatNotificationsClearedThrough: latest!._creationTime,
+      });
+    });
+    expect((await list()).map((chat) => chat._id)).toEqual([
+      recentId,
+      emptyId,
+      s.classId,
+    ]);
+    await s.send("New message after clearing");
+    expect((await list())[0]._id).toBe(s.classId);
+    await s.admin.mutation(api.courseChatMessages.setArchived, {
+      classId: s.classId,
+      archived: true,
+    });
+    expect(
+      (await list()).find((chat) => chat._id === s.classId)?.archived,
+    ).toBe(true);
+  },
+);
+
 test("groups per course, moves the same notification first and shares read state", async () => {
   const s = await setup();
   const first = await s.send("one");

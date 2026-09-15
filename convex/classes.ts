@@ -516,16 +516,42 @@ export const listChatOptions = query({
         .map((curriculum) => [curriculum._id, curriculum.iconKey]),
     );
 
-    return classes
-      .map((classData) => ({
-        _id: classData._id,
-        name: classData.name,
-        curriculumIconKey:
-          curriculumIcons.get(classData.curriculumId) ??
-          DEFAULT_CURRICULUM_ICON,
-        archived: classData.chatArchivedAt !== undefined,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const chatOptions = await Promise.all(
+      classes.map(async (classData) => {
+        // One indexed message per chat; never scan history or use unread counts.
+        const latestMessage = await ctx.db
+          .query("courseChatMessages")
+          .withIndex("by_class", (q) =>
+            q
+              .eq("classId", classData._id)
+              .gt(
+                "_creationTime",
+                classData.chatNotificationsClearedThrough ?? 0,
+              ),
+          )
+          .order("desc")
+          .first();
+        return {
+          lastMessageAt: latestMessage?._creationTime ?? 0,
+          option: {
+            _id: classData._id,
+            name: classData.name,
+            curriculumIconKey:
+              curriculumIcons.get(classData.curriculumId) ??
+              DEFAULT_CURRICULUM_ICON,
+            archived: classData.chatArchivedAt !== undefined,
+          },
+        };
+      }),
+    );
+    return chatOptions
+      .sort(
+        (a, b) =>
+          b.lastMessageAt - a.lastMessageAt ||
+          a.option.name.localeCompare(b.option.name) ||
+          a.option._id.localeCompare(b.option._id),
+      )
+      .map(({ option }) => option);
   },
 });
 
