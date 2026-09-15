@@ -8,6 +8,7 @@ export type SystemNotificationKind =
   | "course_assignment"
   | "class_starting_soon"
   | "class_cancelled"
+  | "calendar_closure"
   | "recording_available"
   | "role_changed"
   | "organization_membership_changed"
@@ -27,6 +28,7 @@ export type SystemNotificationInput = {
   scheduleId?: Id<"classSchedule">;
   recordingId?: Id<"recordings">;
   cancellationEventId?: Id<"classCancellationEvents">;
+  calendarClosureId?: Id<"calendarClosures">;
   organizationSlug?: string;
   roomName?: string;
   className?: string;

@@ -10,10 +10,13 @@ import {
   CalendarTimeScale,
   getTimeScalePercent,
 } from "../../calendar-time-scale";
+import type { CalendarClosureSummary } from "../../calendar-closure-types";
+import { hasAllDayCalendarClosure } from "../../calendar-closure-marker";
 
 interface CalendarTimeGridDayProps {
   date: Date;
   children?: React.ReactNode;
+  closures?: CalendarClosureSummary[];
   onlyDayHeader?: boolean;
   startMinutes?: number;
   endMinutes?: number;
@@ -26,6 +29,7 @@ interface CalendarTimeGridDayProps {
 export function CalendarTimeGridDay({
   date,
   children,
+  closures = [],
   onlyDayHeader = false,
   startMinutes = 0,
   endMinutes = 24 * 60,
@@ -43,10 +47,16 @@ export function CalendarTimeGridDay({
   ).filter((minute) => minute > startMinutes && minute <= endMinutes);
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-sidebar">
+    <div
+      className={cn(
+        "flex min-w-0 flex-1 flex-col bg-sidebar",
+        hasAllDayCalendarClosure(closures) && "bg-warning/[0.04]",
+      )}
+    >
       {showHeader && (
         <CalendarBodyHeader
           date={date}
+          closures={closures}
           onlyDay={onlyDayHeader}
           displayTimeZone={displayTimeZone}
         />

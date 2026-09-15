@@ -9,8 +9,17 @@ import {
   getCalendarEventDayKey,
   groupCalendarEventsByDay,
 } from "../../calendar-event-layout";
+import {
+  getCalendarClosuresForDate,
+  groupCalendarClosuresByDate,
+} from "../../calendar-closure-marker";
+import type { CalendarClosureSummary } from "../../calendar-closure-types";
 
-export default function CalendarBodyDay() {
+export default function CalendarBodyDay({
+  closures,
+}: {
+  closures: CalendarClosureSummary[];
+}) {
   const {
     date,
     events,
@@ -25,6 +34,15 @@ export default function CalendarBodyDay() {
   );
   const dayEvents =
     eventsByDay.get(getCalendarEventDayKey(date, displayTimeZone)) ?? [];
+  const closuresByDate = useMemo(
+    () => groupCalendarClosuresByDate(closures, displayTimeZone),
+    [closures, displayTimeZone],
+  );
+  const dayClosures = getCalendarClosuresForDate(
+    closuresByDate,
+    date,
+    displayTimeZone,
+  );
   const timeScale = isStudent
     ? buildCompressedDayTimeScale({
         events: dayEvents,
@@ -46,6 +64,7 @@ export default function CalendarBodyDay() {
             <CalendarBodyDayContent
               date={date}
               events={dayEvents}
+              closures={dayClosures}
               timeScale={timeScale}
               responsiveCompactEvents
               hideResponsiveEventTime

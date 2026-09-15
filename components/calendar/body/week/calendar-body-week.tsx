@@ -17,6 +17,13 @@ import { useMemo } from "react";
 import CalendarBodyWeekSummary, {
   CalendarBodyWeekDaySummary,
 } from "./calendar-body-week-summary";
+import {
+  CalendarClosureBadge,
+  getCalendarClosuresForDate,
+  groupCalendarClosuresByDate,
+  hasAllDayCalendarClosure,
+} from "../../calendar-closure-marker";
+import type { CalendarClosureSummary } from "../../calendar-closure-types";
 
 const localeMap = {
   en: enUS,
@@ -26,7 +33,11 @@ const localeMap = {
 
 const MAX_READABLE_WEEK_CONCURRENCY = 3;
 
-export default function CalendarBodyWeek() {
+export default function CalendarBodyWeek({
+  closures,
+}: {
+  closures: CalendarClosureSummary[];
+}) {
   const {
     date,
     events,
@@ -49,8 +60,17 @@ export default function CalendarBodyWeek() {
   const eventsByDay = useMemo(() => {
     return groupCalendarEventsByDay(events, displayTimeZone);
   }, [displayTimeZone, events]);
+  const closuresByDate = useMemo(
+    () => groupCalendarClosuresByDate(closures, displayTimeZone),
+    [closures, displayTimeZone],
+  );
   const selectedDayEvents =
     eventsByDay.get(getCalendarEventDayKey(date, displayTimeZone)) ?? [];
+  const selectedDayClosures = getCalendarClosuresForDate(
+    closuresByDate,
+    date,
+    displayTimeZone,
+  );
   const useSummaryLayout = useMemo(
     () =>
       getMaxCalendarEventConcurrency(events) > MAX_READABLE_WEEK_CONCURRENCY,
@@ -68,7 +88,10 @@ export default function CalendarBodyWeek() {
     <div className="flex h-full divide-x overflow-hidden">
       {useSummaryLayout ? (
         <div className="hidden min-w-0 flex-1 lg:block">
-          <CalendarBodyWeekSummary eventsByDay={eventsByDay} />
+          <CalendarBodyWeekSummary
+            eventsByDay={eventsByDay}
+            closuresByDate={closuresByDate}
+          />
         </div>
       ) : (
         <CalendarWeekTimeGrid
@@ -84,6 +107,11 @@ export default function CalendarBodyWeek() {
                 eventsByDay.get(getCalendarEventDayKey(day, displayTimeZone)) ??
                 []
               }
+              closures={getCalendarClosuresForDate(
+                closuresByDate,
+                day,
+                displayTimeZone,
+              )}
               compactEvents
             />
           )}
@@ -103,17 +131,31 @@ export default function CalendarBodyWeek() {
               const dayEvents =
                 eventsByDay.get(getCalendarEventDayKey(day, displayTimeZone)) ??
                 [];
+              const dayClosures = getCalendarClosuresForDate(
+                closuresByDate,
+                day,
+                displayTimeZone,
+              );
 
               return (
                 <button
                   key={day.toISOString()}
                   type="button"
                   aria-pressed={isSelected}
+                  aria-label={[
+                    format(day, "EEEE d", {
+                      locale: dateLocale,
+                      ...dateContext,
+                    }),
+                    ...dayClosures.map((closure) => closure.reason),
+                  ].join(", ")}
                   className={cn(
-                    "flex min-w-0 flex-col items-center px-1 py-2 text-center transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                    "relative flex min-w-0 flex-col items-center px-1 py-2 text-center transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                     isSelected
                       ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted/60",
+                      : hasAllDayCalendarClosure(dayClosures)
+                        ? "bg-warning/10 text-warning-foreground hover:bg-warning/15"
+                        : "text-muted-foreground hover:bg-muted/60",
                   )}
                   onClick={() => setDate(day)}
                 >
@@ -152,6 +194,13 @@ export default function CalendarBodyWeek() {
               );
             })}
           </div>
+          {selectedDayClosures.length > 0 && (
+            <CalendarClosureBadge
+              closures={selectedDayClosures}
+              compact
+              className="mx-2 my-1"
+            />
+          )}
         </div>
 
         {useSummaryLayout ? (
@@ -171,6 +220,7 @@ export default function CalendarBodyWeek() {
               <CalendarBodyDayContent
                 date={date}
                 events={selectedDayEvents}
+                closures={selectedDayClosures}
                 timeScale={responsiveTimeScale}
                 surfaceClassName="pt-3"
                 compactEvents

@@ -7,6 +7,13 @@ import { CalendarAgendaEvent } from "../../calendar-agenda-event";
 import { useCalendarContext } from "../../calendar-context";
 import { getCalendarEventDayKey } from "../../calendar-event-layout";
 import type { CalendarEvent } from "../../calendar-types";
+import {
+  CalendarClosureBadge,
+  getCalendarClosuresForDate,
+  hasAllDayCalendarClosure,
+} from "../../calendar-closure-marker";
+import type { CalendarClosureSummary } from "../../calendar-closure-types";
+import { cn } from "@/lib/utils";
 
 const localeMap = {
   en: enUS,
@@ -38,8 +45,10 @@ export function CalendarBodyWeekDaySummary({
 
 export default function CalendarBodyWeekSummary({
   eventsByDay,
+  closuresByDate,
 }: {
   eventsByDay: Map<string, CalendarEvent[]>;
+  closuresByDate: Map<string, CalendarClosureSummary[]>;
 }) {
   const { date, displayTimeZone } = useCalendarContext();
   const locale = useLocale();
@@ -59,9 +68,20 @@ export default function CalendarBodyWeekSummary({
         {weekDays.map((day) => {
           const key = getCalendarEventDayKey(day, displayTimeZone);
           const dayEvents = eventsByDay.get(key) ?? [];
+          const dayClosures = getCalendarClosuresForDate(
+            closuresByDate,
+            day,
+            displayTimeZone,
+          );
 
           return (
-            <section key={key} className="min-w-0">
+            <section
+              key={key}
+              className={cn(
+                "min-w-0",
+                hasAllDayCalendarClosure(dayClosures) && "bg-warning/[0.04]",
+              )}
+            >
               <header className="sticky top-0 z-10 border-b bg-sidebar px-2 py-2 text-center">
                 <p className="text-xs font-semibold capitalize text-foreground">
                   {format(day, "EEE d", {
@@ -69,10 +89,16 @@ export default function CalendarBodyWeekSummary({
                     ...dateContext,
                   })}
                 </p>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  {dayEvents.length}{" "}
-                  {dayEvents.length === 1 ? t("event") : t("events")}
-                </p>
+                <div className="mt-0.5 flex h-5 items-center justify-center">
+                  {dayClosures.length > 0 ? (
+                    <CalendarClosureBadge closures={dayClosures} compact />
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground">
+                      {dayEvents.length}{" "}
+                      {dayEvents.length === 1 ? t("event") : t("events")}
+                    </p>
+                  )}
+                </div>
               </header>
               <CalendarBodyWeekDaySummary events={dayEvents} />
             </section>

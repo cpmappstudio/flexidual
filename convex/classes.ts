@@ -81,6 +81,12 @@ import {
 } from "../lib/course-schedule-change";
 import { recordClassCancellationEvent } from "./model/classCancellationEvents";
 import {
+  CALENDAR_CLOSURE_BATCH_SIZE,
+  findContainingCalendarClosure,
+  listApplicableCalendarClosures,
+} from "./model/calendarClosures";
+import { buildScheduleCancellationFields } from "./model/scheduleCancellation";
+import {
   listClassNotificationRecipients,
   publishCourseNotification,
 } from "./model/systemNotificationEvents";
@@ -1456,6 +1462,8 @@ async function insertCourseSchedule(
   {
     classId,
     schoolId,
+    campusId,
+    gradeCode,
     createdBy,
     createdAt,
     periodEnd,
@@ -1464,6 +1472,8 @@ async function insertCourseSchedule(
   }: {
     classId: Id<"classes">;
     schoolId: Id<"schools">;
+    campusId?: Id<"campuses">;
+    gradeCode?: string;
     createdBy: Id<"users">;
     createdAt: number;
     periodEnd: number;
@@ -1471,6 +1481,54 @@ async function insertCourseSchedule(
     metadataByOccurrence?: Map<string, FutureScheduleMetadata>;
   },
 ) {
+  const plannedOccurrences = occurrencesBySlot.flat();
+  const closures =
+    plannedOccurrences.length > 0
+      ? await listApplicableCalendarClosures(ctx, {
+          schoolId,
+          campusId,
+          gradeCode,
+          from: Math.min(...plannedOccurrences.map((item) => item.start)),
+          to: Math.max(...plannedOccurrences.map((item) => item.end)),
+        })
+      : [];
+  const notificationClosureIds = new Set<Id<"calendarClosures">>();
+
+  const recordClosureCancellation = async (
+    scheduleId: Id<"classSchedule">,
+    occurrence: PlannedCourseOccurrence,
+    closure: Doc<"calendarClosures">,
+  ) => {
+    await ctx.db.insert("calendarClosureOccurrences", {
+      closureId: closure._id,
+      scheduleId,
+      overlapKind: "contained",
+      status: "cancelled",
+      createdAt,
+      processedAt: createdAt,
+    });
+    await recordClassCancellationEvent(
+      ctx,
+      {
+        classId,
+        schoolId,
+        scheduleId,
+        affectedScheduleIds: [scheduleId],
+        actorId: closure.createdBy,
+        scope: "occurrence",
+        source: "calendar_closure",
+        reason: closure.reason,
+        effectiveAt: occurrence.start,
+        occurredAt: createdAt,
+        calendarClosureId: closure._id,
+      },
+      { publishNotification: false },
+    );
+    if (closure.status === "completed") {
+      notificationClosureIds.add(closure._id);
+    }
+  };
+
   let created = 0;
   for (let slotIndex = 0; slotIndex < occurrencesBySlot.length; slotIndex++) {
     const occurrences = occurrencesBySlot[slotIndex];
@@ -1480,6 +1538,10 @@ async function insertCourseSchedule(
     const first = occurrences[0];
     const firstMetadata = metadataByOccurrence.get(
       `${first.slotIndex}:${first.occurrenceIndex}`,
+    );
+    const firstClosure = findContainingCalendarClosure(
+      { scheduledStart: first.start, scheduledEnd: first.end },
+      closures,
     );
     const parentId = await ctx.db.insert("classSchedule", {
       classId,
@@ -1497,10 +1559,22 @@ async function insertCourseSchedule(
         daysOfWeek: [first.dayOfWeek],
         endDate: periodEnd,
       }),
-      status: "scheduled",
+      ...(firstClosure
+        ? buildScheduleCancellationFields({
+            actorId: firstClosure.createdBy,
+            reason: firstClosure.reason,
+            scope: "occurrence",
+            effectiveAt: first.start,
+            occurredAt: createdAt,
+            calendarClosureId: firstClosure._id,
+          })
+        : { status: "scheduled" as const }),
       createdAt,
       createdBy,
     });
+    if (firstClosure) {
+      await recordClosureCancellation(parentId, first, firstClosure);
+    }
     created++;
 
     for (let index = 1; index < occurrences.length; index++) {
@@ -1508,7 +1582,11 @@ async function insertCourseSchedule(
       const metadata = metadataByOccurrence.get(
         `${occurrence.slotIndex}:${occurrence.occurrenceIndex}`,
       );
-      await ctx.db.insert("classSchedule", {
+      const closure = findContainingCalendarClosure(
+        { scheduledStart: occurrence.start, scheduledEnd: occurrence.end },
+        closures,
+      );
+      const scheduleId = await ctx.db.insert("classSchedule", {
         classId,
         schoolId,
         title: metadata?.title,
@@ -1520,12 +1598,37 @@ async function insertCourseSchedule(
         isLive: false,
         isRecurring: true,
         recurrenceParentId: parentId,
-        status: "scheduled",
+        ...(closure
+          ? buildScheduleCancellationFields({
+              actorId: closure.createdBy,
+              reason: closure.reason,
+              scope: "occurrence",
+              effectiveAt: occurrence.start,
+              occurredAt: createdAt,
+              calendarClosureId: closure._id,
+            })
+          : { status: "scheduled" as const }),
         createdAt,
         createdBy,
       });
+      if (closure) {
+        await recordClosureCancellation(scheduleId, occurrence, closure);
+      }
       created++;
     }
+  }
+  for (const closureId of notificationClosureIds) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.systemNotifications.publishCalendarClosureBatch,
+      {
+        closureId,
+        paginationOpts: {
+          numItems: CALENDAR_CLOSURE_BATCH_SIZE,
+          cursor: null,
+        },
+      },
+    );
   }
   return created;
 }
@@ -1762,6 +1865,8 @@ async function replaceFutureCourseSchedule(
   await insertCourseSchedule(ctx, {
     classId: classData._id,
     schoolId: curriculum.schoolId,
+    campusId: classData.campusId,
+    gradeCode: gradeCode ?? classData.gradeCode,
     createdBy: updatedBy,
     createdAt: now,
     periodEnd,
@@ -1987,6 +2092,8 @@ export const createWithSchedule = mutation({
     const classesCreated = await insertCourseSchedule(ctx, {
       classId,
       schoolId: curriculum.schoolId,
+      campusId: args.campusId,
+      gradeCode: args.gradeCode,
       createdBy: user._id,
       createdAt: now,
       periodEnd: endDate,

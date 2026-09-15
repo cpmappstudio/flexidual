@@ -7,10 +7,12 @@ import { CalendarTimeScale } from "../../calendar-time-scale";
 import { tz } from "@date-fns/tz";
 import { useMemo } from "react";
 import { getCalendarEventColumnLayouts } from "../../calendar-event-layout";
+import type { CalendarClosureSummary } from "../../calendar-closure-types";
 
 export default function CalendarBodyDayContent({
   date,
   events: providedEvents,
+  closures = [],
   timeScale,
   compactEvents = false,
   floatingEventTime = false,
@@ -23,6 +25,7 @@ export default function CalendarBodyDayContent({
 }: {
   date: Date;
   events?: CalendarEventType[];
+  closures?: CalendarClosureSummary[];
   timeScale?: CalendarTimeScale;
   compactEvents?: boolean;
   floatingEventTime?: boolean;
@@ -51,6 +54,7 @@ export default function CalendarBodyDayContent({
   return (
     <CalendarTimeGridDay
       date={date}
+      closures={closures}
       startMinutes={scheduleStartMinutes}
       endMinutes={scheduleEndMinutes}
       timeScale={timeScale}

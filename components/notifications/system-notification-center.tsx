@@ -5,6 +5,7 @@ import {
   AlarmClock,
   BookOpen,
   Building2,
+  CalendarDays,
   CalendarX2,
   CheckCheck,
   CirclePlay,
@@ -38,7 +39,11 @@ const notificationToneClasses = {
 } as const;
 
 function getNotificationTone(notification: SystemNotification) {
-  if (notification.kind === "class_starting_soon") return "warning";
+  if (
+    notification.kind === "class_starting_soon" ||
+    notification.kind === "calendar_closure"
+  )
+    return "warning";
   if (notification.kind === "class_cancelled") return "destructive";
   if (notification.kind === "recording_available") return "success";
   if (notification.kind === "announcement") return "primary";
@@ -64,17 +69,19 @@ function NotificationIcon({ kind }: Pick<SystemNotification, "kind">) {
       ? AlarmClock
       : kind === "class_cancelled"
         ? CalendarX2
-        : kind === "recording_available"
-          ? CirclePlay
-          : kind === "course_enrollment"
-            ? GraduationCap
-            : kind === "course_assignment"
-              ? BookOpen
-              : kind === "role_changed"
-                ? Shield
-                : kind === "organization_membership_changed"
-                  ? Building2
-                  : Megaphone;
+        : kind === "calendar_closure"
+          ? CalendarDays
+          : kind === "recording_available"
+            ? CirclePlay
+            : kind === "course_enrollment"
+              ? GraduationCap
+              : kind === "course_assignment"
+                ? BookOpen
+                : kind === "role_changed"
+                  ? Shield
+                  : kind === "organization_membership_changed"
+                    ? Building2
+                    : Megaphone;
   return <Icon className="size-5" aria-hidden="true" />;
 }
 

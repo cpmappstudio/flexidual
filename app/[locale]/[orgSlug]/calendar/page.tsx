@@ -37,6 +37,9 @@ import { dateInTimeZone } from "@/lib/time-zone";
 const CalendarManageEventDialog = dynamic(
   () => import("@/components/calendar/dialog/calendar-manage-event-dialog"),
 );
+const CalendarClosureDialog = dynamic(
+  () => import("@/components/calendar/dialog/calendar-closure-dialog"),
+);
 
 const localeMap = {
   en: enUS,
@@ -203,6 +206,12 @@ function CalendarContent() {
     orgContext?.type === "campus"
       ? (orgContext._id as Id<"campuses">)
       : undefined;
+  const closureSchoolId =
+    orgContext?.type === "school"
+      ? (orgContext._id as Id<"schools">)
+      : orgContext?.type === "campus"
+        ? calendarSchoolId
+        : undefined;
   const scopeKey = orgContext
     ? `${orgContext.type}:${orgContext._id}`
     : undefined;
@@ -296,6 +305,17 @@ function CalendarContent() {
         }
       : "skip",
   );
+  const closureResult = useQuery(
+    api.calendarClosures.listForRange,
+    closureSchoolId && visibleRange
+      ? {
+          schoolId: closureSchoolId,
+          campusId: calendarCampusId,
+          from: visibleRange.from,
+          to: visibleRange.to,
+        }
+      : "skip",
+  );
   useEffect(() => {
     setSelectedCourseId(classIdParam);
     setSelectedTeacherId(null);
@@ -360,7 +380,23 @@ function CalendarContent() {
 
     return result;
   }, [allEvents, selectedCourseId, selectedGradeCode, selectedTeacherId]);
-
+  const visibleClosures = useMemo(() => {
+    if (!closureResult) return [];
+    if (selectedGradeCode) {
+      return closureResult.filter(
+        (closure) =>
+          !closure.gradeCode || closure.gradeCode === selectedGradeCode,
+      );
+    }
+    if (canViewAllCampusCourses) return closureResult;
+    const visibleGradeCodes = new Set(
+      allEvents.flatMap((event) => (event.gradeCode ? [event.gradeCode] : [])),
+    );
+    return closureResult.filter(
+      (closure) =>
+        !closure.gradeCode || visibleGradeCodes.has(closure.gradeCode),
+    );
+  }, [allEvents, canViewAllCampusCourses, closureResult, selectedGradeCode]);
   if (scheduleWindow === null || (scheduleWindow && !schedulingTimeZone)) {
     return (
       <div className="flex h-full min-h-64 items-center justify-center px-4 text-center">
@@ -414,6 +450,24 @@ function CalendarContent() {
           >
             <Calendar
               isStudent={isStudent}
+              closures={visibleClosures}
+              headerAction={
+                access?.canManageCampus &&
+                closureSchoolId &&
+                schedulingTimeZone &&
+                orgContext?.type !== "system" ? (
+                  <CalendarClosureDialog
+                    schoolId={closureSchoolId}
+                    campusId={calendarCampusId}
+                    scopeLabel={orgContext?.name ?? ""}
+                    schedulingTimeZone={schedulingTimeZone}
+                    selectedDate={dateInTimeZone(
+                      date.getTime(),
+                      schedulingTimeZone,
+                    )}
+                  />
+                ) : undefined
+              }
               filters={{
                 courses:
                   filterOptions?.courses.map((course) => ({

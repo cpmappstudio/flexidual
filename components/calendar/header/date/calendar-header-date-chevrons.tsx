@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useCalendarContext } from "../../calendar-context";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { useLocale, useTranslations } from "next-intl";
@@ -54,14 +54,17 @@ export default function CalendarHeaderDateChevrons() {
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1.5">
-      <ResponsivePageAction mobileVariant="label">
+      <ResponsivePageAction>
         <Button
           variant="outline"
           size="sm"
           className="h-9 bg-sidebar hover:bg-accent"
+          aria-label={tDashboard("today")}
+          title={tDashboard("today")}
           onClick={() => setDate(TZDate.tz(displayTimeZone))}
         >
-          {tDashboard("today")}
+          <CalendarClock className="md:hidden" />
+          <span className="hidden md:inline">{tDashboard("today")}</span>
         </Button>
       </ResponsivePageAction>
 

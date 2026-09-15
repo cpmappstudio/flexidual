@@ -8,8 +8,13 @@ import {
 import CalendarBodyDay from "./day/calendar-body-day";
 import CalendarBodyWeek from "./week/calendar-body-week";
 import CalendarBodyMonth from "./month/calendar-body-month";
+import type { CalendarClosureSummary } from "../calendar-closure-types";
 
-export default function CalendarBody() {
+export default function CalendarBody({
+  closures,
+}: {
+  closures: CalendarClosureSummary[];
+}) {
   const { mode, date, setDate } = useCalendarContext();
   const isMobile = useIsMobile();
 
@@ -32,9 +37,9 @@ export default function CalendarBody() {
       onDragEnd={handleDragEnd}
       style={{ touchAction: "pan-y pinch-zoom" }}
     >
-      {mode === "day" && <CalendarBodyDay />}
-      {mode === "week" && <CalendarBodyWeek />}
-      {mode === "month" && <CalendarBodyMonth />}
+      {mode === "day" && <CalendarBodyDay closures={closures} />}
+      {mode === "week" && <CalendarBodyWeek closures={closures} />}
+      {mode === "month" && <CalendarBodyMonth closures={closures} />}
     </motion.div>
   );
 }

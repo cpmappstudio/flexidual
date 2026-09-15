@@ -2,16 +2,10 @@ import type { Doc } from "@/convex/_generated/dataModel";
 
 type NavigableNotification = Pick<
   Doc<"systemNotifications">,
-  | "kind"
-  | "action"
-  | "organizationSlug"
-  | "classId"
-  | "roomName"
+  "kind" | "action" | "organizationSlug" | "classId" | "roomName"
 >;
 
-export function getSystemNotificationHref(
-  notification: NavigableNotification,
-) {
+export function getSystemNotificationHref(notification: NavigableNotification) {
   const orgSlug = notification.organizationSlug;
   if (!orgSlug) return null;
   if (notification.kind === "course_chat" && notification.classId) {
@@ -21,7 +15,10 @@ export function getSystemNotificationHref(
   if (notification.kind === "class_starting_soon" && notification.roomName) {
     return `/${orgSlug}/classroom/${encodeURIComponent(notification.roomName)}`;
   }
-  if (notification.kind === "class_cancelled") {
+  if (
+    notification.kind === "class_cancelled" ||
+    notification.kind === "calendar_closure"
+  ) {
     return `/${orgSlug}/calendar`;
   }
   if (

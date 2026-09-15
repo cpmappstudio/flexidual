@@ -82,9 +82,9 @@ export default function CalendarHeaderFilters({
       filters={visibleFilters}
       menuLabel={t("table.filters")}
       clearLabel={t("table.clearFilters")}
-      desktopClassName="hidden xl:flex"
-      mobileClassName="xl:hidden"
-      selectClassName="w-40 sm:w-48"
+      desktopClassName="grid w-full grid-cols-2 gap-2 [&>*:first-child]:col-span-2 sm:grid-cols-3 sm:[&>*:first-child]:col-span-1 xl:flex xl:flex-wrap"
+      mobileClassName="hidden"
+      selectClassName="w-full xl:w-56"
     />
   );
 }

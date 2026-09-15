@@ -315,6 +315,7 @@ export default defineSchema({
       v.union(v.literal("occurrence"), v.literal("series")),
     ),
     cancellationEffectiveAt: v.optional(v.number()),
+    calendarClosureId: v.optional(v.id("calendarClosures")),
 
     // Live lifecycle state. These fields are managed by the room reconciler.
     liveLeaderAbsentSince: v.optional(v.number()),
@@ -387,10 +388,15 @@ export default defineSchema({
     affectedScheduleIds: v.array(v.id("classSchedule")),
     actorId: v.id("users"),
     scope: v.union(v.literal("occurrence"), v.literal("series")),
-    source: v.union(v.literal("calendar"), v.literal("course_schedule")),
+    source: v.union(
+      v.literal("calendar"),
+      v.literal("course_schedule"),
+      v.literal("calendar_closure"),
+    ),
     reason: v.string(),
     effectiveAt: v.number(),
     occurredAt: v.number(),
+    calendarClosureId: v.optional(v.id("calendarClosures")),
   })
     .index("by_class_and_occurred_at", ["classId", "occurredAt"])
     .index("by_school_and_occurred_at", ["schoolId", "occurredAt"]),
@@ -402,6 +408,7 @@ export default defineSchema({
       v.literal("course_assignment"),
       v.literal("class_starting_soon"),
       v.literal("class_cancelled"),
+      v.literal("calendar_closure"),
       v.literal("recording_available"),
       v.literal("role_changed"),
       v.literal("organization_membership_changed"),
@@ -418,6 +425,7 @@ export default defineSchema({
     scheduleId: v.optional(v.id("classSchedule")),
     recordingId: v.optional(v.id("recordings")),
     cancellationEventId: v.optional(v.id("classCancellationEvents")),
+    calendarClosureId: v.optional(v.id("calendarClosures")),
     organizationSlug: v.optional(v.string()),
     roomName: v.optional(v.string()),
     className: v.optional(v.string()),
@@ -452,6 +460,42 @@ export default defineSchema({
     ])
     .index("by_class_and_kind", ["classId", "kind"])
     .index("by_schedule_and_kind", ["scheduleId", "kind"]),
+
+  calendarClosures: defineTable({
+    schoolId: v.id("schools"),
+    campusId: v.optional(v.id("campuses")),
+    gradeCode: v.optional(v.string()),
+    localDate: v.string(),
+    timeZone: v.string(),
+    startsAt: v.number(),
+    endsAt: v.number(),
+    isAllDay: v.boolean(),
+    reason: v.string(),
+    status: v.union(v.literal("processing"), v.literal("completed")),
+    selectedCount: v.number(),
+    cancelledCount: v.number(),
+    skippedCount: v.number(),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_school_and_starts_at", ["schoolId", "startsAt"])
+    .index("by_campus_and_starts_at", ["campusId", "startsAt"]),
+
+  calendarClosureOccurrences: defineTable({
+    closureId: v.id("calendarClosures"),
+    scheduleId: v.id("classSchedule"),
+    overlapKind: v.union(v.literal("contained"), v.literal("partial")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("cancelled"),
+      v.literal("skipped"),
+    ),
+    createdAt: v.number(),
+    processedAt: v.optional(v.number()),
+  })
+    .index("by_closure", ["closureId", "status"])
+    .index("by_closure_and_schedule", ["closureId", "scheduleId"]),
 
   /**
    * CLASS_SESSIONS
