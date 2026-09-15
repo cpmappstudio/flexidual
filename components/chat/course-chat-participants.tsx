@@ -49,7 +49,13 @@ import { api } from "@/convex/_generated/api";
 import { useOrgBasePath } from "@/hooks/use-org-base-path";
 import { useRouter } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  UserPresenceDot,
+  UserPresenceText,
+  type UserPresenceStatus,
+} from "@/components/presence/user-presence";
 import {
   Archive,
   ChevronRight,
@@ -71,6 +77,7 @@ export interface CourseChatParticipant {
   imageUrl?: string;
   role: "teacher" | "tutor" | "student";
   isMuted: boolean;
+  presence?: UserPresenceStatus;
 }
 
 interface CourseChatParticipantsProps {
@@ -98,12 +105,15 @@ function ParticipantRow({
 
   return (
     <>
-      <Avatar className="size-9 shrink-0">
-        <AvatarImage src={participant.imageUrl} alt={participant.fullName} />
-        <AvatarFallback>
-          {participant.fullName.charAt(0).toUpperCase()}
-        </AvatarFallback>
-      </Avatar>
+      <div className="relative size-9 shrink-0">
+        <Avatar className="size-full">
+          <AvatarImage src={participant.imageUrl} alt={participant.fullName} />
+          <AvatarFallback>
+            {participant.fullName.charAt(0).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <UserPresenceDot status={participant.presence} />
+      </div>
       <div className="min-w-0 flex-1">
         <p
           className={cn(
@@ -120,7 +130,7 @@ function ParticipantRow({
           )}
         </p>
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
-          <span>{t(participant.role)}</span>
+          <UserPresenceText status={participant.presence} />
           {participant.isMuted ? (
             <>
               <span aria-hidden="true">·</span>
@@ -241,24 +251,56 @@ function ParticipantList({
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="space-y-1 p-2">
-        {participants.map((participant) =>
-          canModerate && participant.role === "student" ? (
-            <ParticipantActionMenus
-              key={participant._id}
+        {Array.from(
+          { length: Math.ceil(participants.length / 100) },
+          (_, index) => (
+            <ParticipantBatch
+              key={index}
               classId={classId}
-              participant={participant}
+              participants={participants.slice(index * 100, (index + 1) * 100)}
+              canModerate={canModerate}
             />
-          ) : (
-            <div
-              key={participant._id}
-              className="flex min-w-0 items-start gap-3 rounded-lg px-2 py-2"
-            >
-              <ParticipantRow participant={participant} />
-            </div>
           ),
         )}
       </div>
     </ScrollArea>
+  );
+}
+
+function ParticipantBatch({
+  classId,
+  participants,
+  canModerate,
+}: {
+  classId: Id<"classes">;
+  participants: CourseChatParticipant[];
+  canModerate: boolean;
+}) {
+  const statuses = useQuery(api.presence.chatParticipants, {
+    classId,
+    userIds: participants.map((participant) => participant._id),
+  });
+  const byUser = new Map(statuses?.map((item) => [item.userId, item.status]));
+  return (
+    <>
+      {participants.map((item) => {
+        const participant = { ...item, presence: byUser.get(item._id) };
+        return canModerate && participant.role === "student" ? (
+          <ParticipantActionMenus
+            key={participant._id}
+            classId={classId}
+            participant={participant}
+          />
+        ) : (
+          <div
+            key={participant._id}
+            className="flex min-w-0 items-start gap-3 rounded-lg px-2 py-2"
+          >
+            <ParticipantRow participant={participant} />
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -556,6 +598,7 @@ export function CourseChatParticipants({
   chatSettings,
 }: CourseChatParticipantsProps) {
   const t = useTranslations("classroom");
+  const isMobile = useIsMobile();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const participantLabel = t("courseParticipantsCount", {
     count: participants.length,
@@ -584,13 +627,15 @@ export function CourseChatParticipants({
         </button>
 
         <div className="hidden min-h-0 flex-1 flex-col xl:flex">
-          <CourseChatPanelContent
-            classId={classId}
-            participants={participants}
-            canModerate={canModerate}
-            canDisableChat={canDisableChat}
-            chatSettings={chatSettings}
-          />
+          {isOpen && !isMobile && (
+            <CourseChatPanelContent
+              classId={classId}
+              participants={participants}
+              canModerate={canModerate}
+              canDisableChat={canDisableChat}
+              chatSettings={chatSettings}
+            />
+          )}
         </div>
       </ClassroomLayoutSidebar>
 

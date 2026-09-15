@@ -7,10 +7,12 @@ import { afterEach, expect, test, vi } from "vitest";
 import { CourseChatMessages } from "@/components/chat/course-chat";
 import { CourseChatParticipants } from "@/components/chat/course-chat-participants";
 import type { Id } from "@/convex/_generated/dataModel";
+import { getFunctionName } from "convex/server";
 
 vi.mock("@/i18n/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 
 const state = vi.hoisted(() => ({
   timestamp: 0,
@@ -26,7 +28,10 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("convex/react", () => ({
   useConvexAuth: () => ({ isAuthenticated: true }),
-  useQuery: () => ({ canPin: false }),
+  useQuery: (query: Parameters<typeof getFunctionName>[0]) =>
+    getFunctionName(query) === "presence:chatParticipants"
+      ? []
+      : { canPin: false },
   useMutation: () => vi.fn().mockResolvedValue(null),
   usePaginatedQuery: () => ({
     status: "Exhausted",
@@ -74,6 +79,11 @@ function Chat({ children }: PropsWithChildren) {
       locale="en"
       timeZone="UTC"
       messages={{
+        presence: {
+          online: "Online",
+          unknown: "No recent connection recorded",
+          lastSeen: "Last online: {date}",
+        },
         classroom: {
           classChatDescription: "Course chat",
           scrollToLatestMessages: "Latest messages",

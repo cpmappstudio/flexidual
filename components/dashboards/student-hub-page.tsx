@@ -42,6 +42,7 @@ import {
 } from "@/lib/class-session";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 import { StudentAttendanceSummary } from "@/components/dashboards/student-attendance-summary";
+import { UserPresenceText } from "@/components/presence/user-presence";
 
 const UserDialog = dynamic(() =>
   import("@/components/admin/users/user-dialog").then(
@@ -64,6 +65,10 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const basePath = useOrgBasePath();
   const router = useRouter();
   const { orgSlug } = useParams<{ orgSlug: string }>();
+  const presence = useQuery(
+    api.presence.studentProfile,
+    studentId ? { studentId, orgSlug } : {},
+  );
   const isViewingStudentProfile = Boolean(studentId);
   const { isLoaded: isClerkLoaded, user } = useUser();
   const currentDateLocale =
@@ -412,8 +417,14 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                         <Skeleton className="h-7 w-48" />
                       )}
                     </h3>
-                    <p className="mt-1 text-sm font-medium text-muted-foreground xl:mt-2">
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-muted-foreground xl:mt-2">
                       {gradeLabel}
+                      {presence !== undefined && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <UserPresenceText status={presence} />
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>

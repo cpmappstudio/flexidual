@@ -45,12 +45,14 @@ import type * as model_scheduleDeletion from "../model/scheduleDeletion.js";
 import type * as model_sessionContent from "../model/sessionContent.js";
 import type * as model_sessionLeadership from "../model/sessionLeadership.js";
 import type * as model_studentAttendance from "../model/studentAttendance.js";
+import type * as model_studentDashboardAccess from "../model/studentDashboardAccess.js";
 import type * as model_systemNotificationEvents from "../model/systemNotificationEvents.js";
 import type * as model_systemNotifications from "../model/systemNotifications.js";
 import type * as model_timeZone from "../model/timeZone.js";
 import type * as model_userImage from "../model/userImage.js";
 import type * as organizations from "../organizations.js";
 import type * as permissions from "../permissions.js";
+import type * as presence from "../presence.js";
 import type * as recordings from "../recordings.js";
 import type * as roleAssignments from "../roleAssignments.js";
 import type * as schedule from "../schedule.js";
@@ -108,12 +110,14 @@ declare const fullApi: ApiFromModules<{
   "model/sessionContent": typeof model_sessionContent;
   "model/sessionLeadership": typeof model_sessionLeadership;
   "model/studentAttendance": typeof model_studentAttendance;
+  "model/studentDashboardAccess": typeof model_studentDashboardAccess;
   "model/systemNotificationEvents": typeof model_systemNotificationEvents;
   "model/systemNotifications": typeof model_systemNotifications;
   "model/timeZone": typeof model_timeZone;
   "model/userImage": typeof model_userImage;
   organizations: typeof organizations;
   permissions: typeof permissions;
+  presence: typeof presence;
   recordings: typeof recordings;
   roleAssignments: typeof roleAssignments;
   schedule: typeof schedule;
@@ -156,4 +160,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+  presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
 };

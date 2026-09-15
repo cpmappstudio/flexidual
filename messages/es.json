@@ -1,4 +1,9 @@
 {
+  "presence": {
+    "online": "En línea",
+    "unknown": "Sin conexión reciente registrada",
+    "lastSeen": "Última conexión: {date}"
+  },
   "brand": {
     "roleView": {
       "superadmin": "Administración global",
