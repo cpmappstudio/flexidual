@@ -87,7 +87,15 @@ export function ClassroomStage({
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   return (
-    <ClassroomStageSurface stageRef={stageRef} className={className}>
+    <ClassroomStageSurface
+      stageRef={stageRef}
+      className={cn(
+        className,
+        isPhoneLandscape &&
+          stageControlsVisible &&
+          "[--classroom-notification-bottom:4.5rem]",
+      )}
+    >
       {children}
       <ClassroomDisplayControls
         zoom={zoom}

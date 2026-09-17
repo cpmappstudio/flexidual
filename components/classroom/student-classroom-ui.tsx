@@ -1045,6 +1045,8 @@ export function StudentClassroomUI({
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
         courseId={courseId}
+        notificationTargetRef={stageRef}
+        onOpenChange={setIsClassroomPanelOpen}
         heading={t("classroom.classmates")}
         compactHeading={t("classroom.classmatesAndChat")}
         compactOpenLabel={t("classroom.openPanelAction")}

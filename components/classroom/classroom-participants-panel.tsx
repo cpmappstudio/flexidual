@@ -33,6 +33,7 @@ import {
   cloneElement,
   isValidElement,
   type ReactNode,
+  type RefObject,
   useEffect,
   useRef,
   useState,
@@ -48,6 +49,8 @@ import { useUnreadCourseChats } from "@/hooks/use-unread-course-chats";
 import { useTranslations } from "next-intl";
 import { ClassroomLayoutSidebar } from "./classroom-layout";
 import { useClassroomParticipantPagination } from "./use-classroom-participant-pagination";
+import { ClassroomChatNotification } from "./classroom-chat-notification";
+import { useClassroomPresentation } from "./classroom-presentation";
 
 export type ClassroomPanelTab = "participants" | "chat";
 
@@ -77,6 +80,8 @@ interface ClassroomParticipantsPanelProps {
   onLowerHand?: (identity: string) => void;
   children: ReactNode;
   layoutMode?: "responsive" | "recording";
+  notificationTargetRef?: RefObject<HTMLDivElement | null>;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function ClassroomParticipantsPanel({
@@ -144,6 +149,8 @@ function ClassroomParticipantsPanelContent({
   layoutMode = "responsive",
   unreadCount,
   unreadLabel,
+  notificationTargetRef,
+  onOpenChange,
 }: ClassroomParticipantsPanelContentProps) {
   const chatTabLabel =
     unreadCount > 0 ? `${chatLabel}. ${unreadLabel}` : chatLabel;
@@ -169,6 +176,31 @@ function ClassroomParticipantsPanelContent({
     useState<string>();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<ClassroomPanelTab>("participants");
+  const presentation = useClassroomPresentation();
+  const ownerWindow = presentation?.ownerWindow;
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    if (!notificationTargetRef || layoutMode === "recording") return;
+    const query = (ownerWindow ?? window).matchMedia("(min-width: 1280px)");
+    const update = () => setIsDesktop(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, [ownerWindow, notificationTargetRef, layoutMode]);
+  const chatVisible =
+    presentation?.mode !== "compact" &&
+    (isDesktop
+      ? isOpen && activeTab === "chat"
+      : isMobileSheetOpen && mobileTab === "chat");
+  const openChat = () => {
+    if (presentation?.mode === "compact") presentation.returnToClassroom();
+    onOpenChange?.(true);
+    onTabChange("chat");
+    if (!window.matchMedia("(min-width: 1280px)").matches) {
+      setMobileTab("chat");
+      setIsMobileSheetOpen(true);
+    }
+  };
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const showNavigation = canShowPrevious || canShowNext;
   const hasRaisedHand = (participant: Participant) =>
@@ -287,6 +319,15 @@ function ClassroomParticipantsPanelContent({
 
   return (
     <>
+      {layoutMode === "responsive" && notificationTargetRef && (
+        <ClassroomChatNotification
+          key={courseId}
+          courseId={courseId}
+          chatVisible={chatVisible}
+          targetRef={notificationTargetRef}
+          onOpenChat={openChat}
+        />
+      )}
       <ClassroomLayoutSidebar
         id="classroom-interaction-panel"
         layoutMode={layoutMode}

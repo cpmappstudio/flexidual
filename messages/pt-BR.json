@@ -376,6 +376,7 @@
     "noResultsDescription": "Tente outro nome de aula ou ajuste os filtros."
   },
   "classroom": {
+    "openChat": "Abrir chat",
     "classroomInFloatingWindow": "A sala está aberta em uma janela flutuante.",
     "floatingWindow": "Abrir janela flutuante",
     "returnToClassroom": "Abrir sala completa",
