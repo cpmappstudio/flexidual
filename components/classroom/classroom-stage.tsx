@@ -1,15 +1,7 @@
 "use client";
 
 import { VideoTrack } from "@livekit/components-react";
-import {
-  Eye,
-  EyeOff,
-  Loader2,
-  Maximize2,
-  Minimize2,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
   type ComponentProps,
@@ -20,6 +12,8 @@ import {
 import { cn } from "@/lib/utils";
 import { ClassroomLayoutStage } from "./classroom-layout";
 import { SharedWhiteboard } from "./shared-whiteboard";
+import { ClassroomDisplayControls } from "./classroom-display-controls";
+import { useClassroomPresentation } from "./classroom-presentation";
 
 interface ClassroomStageSurfaceProps extends ComponentPropsWithoutRef<"div"> {
   stageRef?: RefObject<HTMLDivElement | null>;
@@ -36,7 +30,7 @@ export function ClassroomStageSurface({
       <div
         ref={stageRef}
         className={cn(
-          "group relative flex min-h-0 flex-1 items-center justify-center overflow-hidden",
+          "@container group relative flex min-h-0 flex-1 items-center justify-center overflow-hidden",
           className,
         )}
         {...props}
@@ -56,6 +50,7 @@ interface ClassroomStageProps {
   stageControlsVisible: boolean;
   onRevealControls: () => void;
   zoom: number;
+  onZoom: (delta: number) => void;
   contentActive: boolean;
   isWhiteboardActive: boolean;
   followViewport: boolean;
@@ -77,6 +72,7 @@ export function ClassroomStage({
   stageControlsVisible,
   onRevealControls,
   zoom,
+  onZoom,
   contentActive,
   isWhiteboardActive,
   followViewport,
@@ -92,46 +88,20 @@ export function ClassroomStage({
 
   return (
     <ClassroomStageSurface stageRef={stageRef} className={className}>
-      {(contentActive || (onToggleFullscreen && !isPhoneLandscape)) && (
-        <div className="pointer-events-none absolute right-2 top-2 z-30 flex flex-col items-end gap-1.5">
-          {isWhiteboardActive && (
-            <button
-              type="button"
-              onClick={onToggleFollowViewport}
-              className={cn(
-                "pointer-events-auto flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold shadow-lg transition-all",
-                followViewport
-                  ? "border-success/50 bg-success/90 text-success-foreground hover:bg-success/80"
-                  : "border-inverse-foreground/20 bg-inverse/60 text-inverse-foreground/80 hover:bg-inverse/80",
-              )}
-            >
-              {followViewport ? (
-                <Eye className="size-3" />
-              ) : (
-                <EyeOff className="size-3" />
-              )}
-              {followViewport ? followingLabel : unlockedLabel}
-            </button>
-          )}
-
-          {onToggleFullscreen && !isPhoneLandscape && (
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              title={isFullscreen ? exitFullscreenLabel : enterFullscreenLabel}
-              className="pointer-events-auto flex size-8 items-center justify-center rounded-full border border-inverse-foreground/20 bg-inverse/60 text-inverse-foreground shadow-lg transition-all hover:bg-inverse/80"
-            >
-              {isFullscreen ? (
-                <Minimize2 className="size-4" />
-              ) : (
-                <Maximize2 className="size-4" />
-              )}
-            </button>
-          )}
-        </div>
-      )}
-
       {children}
+      <ClassroomDisplayControls
+        zoom={zoom}
+        onZoom={contentActive && !isWhiteboardActive ? onZoom : undefined}
+        isWhiteboardActive={isWhiteboardActive}
+        followViewport={followViewport}
+        onToggleFollowViewport={onToggleFollowViewport}
+        followingLabel={followingLabel}
+        unlockedLabel={unlockedLabel}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={onToggleFullscreen}
+        enterFullscreenLabel={enterFullscreenLabel}
+        exitFullscreenLabel={exitFullscreenLabel}
+      />
 
       {isPhoneLandscape && (
         <>
@@ -198,8 +168,18 @@ export function ClassroomWhiteboardContent({
   onReady,
   previewContent,
 }: ClassroomWhiteboardContentProps) {
+  const presentation = useClassroomPresentation();
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div
+      className="relative h-full w-full overflow-hidden"
+      onPointerDownCapture={(event) => {
+        if (!presentation?.external) return;
+        // Excalidraw's drag listeners remain bound to the original window.
+        event.preventDefault();
+        event.stopPropagation();
+        presentation.returnToClassroom();
+      }}
+    >
       {previewContent ?? (
         <SharedWhiteboard
           roomName={roomName}
@@ -245,14 +225,10 @@ interface ClassroomScreenShareContentProps {
   previewContent?: ReactNode;
   zoom: number;
   pan: { x: number; y: number };
-  isPhoneLandscape: boolean;
-  stageControlsVisible: boolean;
   onRevealControls: () => void;
   onStartPan: (clientX: number, clientY: number) => void;
-  onZoom: (delta: number) => void;
   loadingLabel: string;
   presenterDescription?: string;
-  showControls?: boolean;
   onVideoReady?: () => void;
 }
 
@@ -261,14 +237,10 @@ export function ClassroomScreenShareContent({
   previewContent,
   zoom,
   pan,
-  isPhoneLandscape,
-  stageControlsVisible,
   onRevealControls,
   onStartPan,
-  onZoom,
   loadingLabel,
   presenterDescription,
-  showControls = true,
   onVideoReady,
 }: ClassroomScreenShareContentProps) {
   if (!trackRef && !previewContent) return null;
@@ -329,35 +301,6 @@ export function ClassroomScreenShareContent({
           </div>
         )}
       </div>
-
-      {showControls && (
-        <div
-          className={cn(
-            "absolute right-4 top-4 z-40 flex gap-2 rounded-lg border border-border/50 bg-background/60 p-1.5 text-foreground backdrop-blur-sm transition-all duration-300",
-            isPhoneLandscape && !stageControlsVisible
-              ? "pointer-events-none -translate-y-2 opacity-0"
-              : "translate-y-0 opacity-100",
-          )}
-        >
-          <button
-            type="button"
-            onClick={() => onZoom(-0.25)}
-            className="rounded p-2 hover:bg-foreground/20"
-          >
-            <ZoomOut className="size-4" />
-          </button>
-          <span className="min-w-[3ch] py-2 text-center font-mono text-xs">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button
-            type="button"
-            onClick={() => onZoom(0.25)}
-            className="rounded p-2 hover:bg-foreground/20"
-          >
-            <ZoomIn className="size-4" />
-          </button>
-        </div>
-      )}
     </>
   );
 }

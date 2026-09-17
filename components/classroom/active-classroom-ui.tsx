@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  useClassroomPresentation,
+  useRestoreClassroomForDialog,
+} from "./classroom-presentation";
+import { ClassroomVideoPipSource } from "./classroom-video-pip-source";
+
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -59,7 +65,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
-import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
 import {
   ClassroomUiPreview,
@@ -207,14 +212,18 @@ export function ActiveClassroomUI({
 }: ActiveClassroomUIProps) {
   const t = useTranslations();
   const pathname = usePathname();
+  const presentation = useClassroomPresentation();
+  const classroomPath = presentation?.classroomPath ?? pathname;
   const room = useRoomContext();
 
   const [companionUrl, setCompanionUrl] = useState("");
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setCompanionUrl(`${window.location.origin}${pathname}?companion=true`);
+      setCompanionUrl(
+        `${window.location.origin}${classroomPath}?companion=true`,
+      );
     }
-  }, [pathname]);
+  }, [classroomPath]);
   const markLive = useMutation(api.schedule.markLive);
   const confirmLiveExtension = useMutation(api.schedule.confirmLiveExtension);
   const claimSessionLeadership = useMutation(
@@ -378,12 +387,21 @@ export function ActiveClassroomUI({
       "recording-confirmation": showRecordConfirm,
       companion: showQR,
       "enable-audio": needsClick,
-      fullscreen: pendingFullscreen,
+      fullscreen:
+        pendingFullscreen &&
+        presentation?.mode !== "compact" &&
+        !presentation?.nativeVideoActive,
     },
     isExternalDialogOpen: isSessionActionDialogOpen || isCloseoutOpen,
     isPreviewActive: hasActivePreview,
     previewLayer: ACTIVE_PREVIEW_LAYERS[uiPreviewState] ?? null,
   });
+
+  useRestoreClassroomForDialog(
+    isSessionActionDialogOpen ||
+      (visibleLayer !== null && visibleLayer !== "fullscreen") ||
+      Boolean(sessionLeadership?.viewer.canAcceptTransfer),
+  );
 
   const playNotificationChime = useCallback(async () => {
     if (!amIAuthority) return;
@@ -1282,6 +1300,16 @@ export function ActiveClassroomUI({
 
   return (
     <ClassroomView ref={rootRef} isSidebarOpen={isClassroomPanelOpen}>
+      <ClassroomVideoPipSource
+        track={
+          (!isWhiteboardActive
+            ? activeScreenTrack?.publication.track
+            : undefined) ??
+          (isTeacherVideoOn
+            ? teacher?.getTrackPublication(Track.Source.Camera)?.track
+            : undefined)
+        }
+      />
       {uiPreviewEnabled && (
         <ClassroomUiPreview
           roleLabel={currentUserRole ?? "staff"}
@@ -1795,6 +1823,7 @@ export function ActiveClassroomUI({
         stageControlsVisible={stageControlsVisible}
         onRevealControls={showStageControls}
         zoom={zoom}
+        onZoom={handleZoom}
         contentActive={isWhiteboardActive || isScreenSharingActive}
         isWhiteboardActive={isWhiteboardActive}
         followViewport={followViewport}
@@ -1883,13 +1912,6 @@ export function ActiveClassroomUI({
               </button>
             )}
             <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
-            {onToggleFullscreen && (
-              <FullscreenButtonCompact
-                isFullscreen={isFullscreen}
-                onToggle={onToggleFullscreen}
-              />
-            )}
-            <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
             {isLocalSessionLeader && (sessionIsLive || hasStartedSession) && (
               <EndClassButton
                 onConfirm={handleEndSession}
@@ -1931,11 +1953,8 @@ export function ActiveClassroomUI({
                 trackRef={activeScreenTrack}
                 zoom={zoom}
                 pan={pan}
-                isPhoneLandscape={isPhoneLandscape}
-                stageControlsVisible={stageControlsVisible}
                 onRevealControls={showStageControls}
                 onStartPan={startPanDrag}
-                onZoom={handleZoom}
                 loadingLabel={t("classroom.loadingShare")}
                 presenterDescription={t("classroom.presenterSharing", {
                   name:

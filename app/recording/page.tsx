@@ -196,13 +196,9 @@ function RecordingLayout({ recordingToken }: { recordingToken: string }) {
               trackRef={activeScreenTrack}
               zoom={1}
               pan={{ x: 0, y: 0 }}
-              isPhoneLandscape={false}
-              stageControlsVisible
               onRevealControls={() => undefined}
               onStartPan={() => undefined}
-              onZoom={() => undefined}
               loadingLabel="Loading screen share"
-              showControls={false}
               onVideoReady={() => setIsScreenShareVideoReady(true)}
             />
           ) : undefined

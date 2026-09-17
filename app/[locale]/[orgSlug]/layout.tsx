@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { ConvexAuthBoundary } from "@/components/convex-auth-boundary";
+import { ClassroomSessionProvider } from "@/components/classroom/classroom-session-provider";
 
 export default async function OrgLayout({
   children,
@@ -37,15 +38,17 @@ export default async function OrgLayout({
         defaultOpen={sidebarDefaultOpen}
         className="flex-col [--header-height:4rem] has-[[data-classroom-layout]]:h-svh has-[[data-classroom-layout]]:overflow-hidden"
       >
-        <SiteHeader />
-        <div className="flex min-h-0 flex-1 has-[[data-classroom-layout]]:overflow-hidden">
-          <AppSidebar />
-          <SidebarInset className="min-h-0 has-[[data-classroom-layout]]:overflow-hidden">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4 has-[[data-classroom-layout]]:gap-0 has-[[data-classroom-layout]]:overflow-hidden has-[[data-classroom-layout]]:p-0">
-              {children}
-            </div>
-          </SidebarInset>
-        </div>
+        <ClassroomSessionProvider key={`${locale}:${orgSlug}`}>
+          <SiteHeader />
+          <div className="flex min-h-0 flex-1 has-[[data-classroom-layout]]:overflow-hidden">
+            <AppSidebar />
+            <SidebarInset className="min-h-0 has-[[data-classroom-layout]]:overflow-hidden">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4 has-[[data-classroom-layout]]:gap-0 has-[[data-classroom-layout]]:overflow-hidden has-[[data-classroom-layout]]:p-0">
+                {children}
+              </div>
+            </SidebarInset>
+          </div>
+        </ClassroomSessionProvider>
       </SidebarProvider>
     </ConvexAuthBoundary>
   );

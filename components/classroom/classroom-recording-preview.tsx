@@ -175,13 +175,9 @@ export function ClassroomRecordingPreview({
                   previewContent={<PreviewScreenShare />}
                   zoom={1}
                   pan={{ x: 0, y: 0 }}
-                  isPhoneLandscape={false}
-                  stageControlsVisible
                   onRevealControls={() => undefined}
                   onStartPan={() => undefined}
-                  onZoom={() => undefined}
                   loadingLabel="Loading screen share"
-                  showControls={false}
                 />
               ) : undefined
             }

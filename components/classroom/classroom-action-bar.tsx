@@ -9,6 +9,7 @@ import {
   type ReactNode,
   useSyncExternalStore,
 } from "react";
+import { useClassroomPresentation } from "./classroom-presentation";
 
 const COMPACT_CONTROLS_QUERY = "(max-width: 1023px)";
 
@@ -75,12 +76,23 @@ export const ClassroomActionButton = forwardRef<
   },
   ref,
 ) {
+  const compact = useClassroomPresentation()?.mode === "compact";
   const content = (
     <>
-      <span className="relative flex size-7 items-center justify-center">
+      <span
+        className={cn(
+          "relative flex items-center justify-center",
+          compact ? "size-6" : "size-7",
+        )}
+      >
         {icon}
       </span>
-      <span className="line-clamp-2 max-w-full whitespace-normal text-center text-[10px] font-medium leading-tight sm:text-xs">
+      <span
+        className={cn(
+          "line-clamp-2 max-w-full whitespace-normal text-center text-[10px] font-medium leading-tight",
+          compact ? "@max-[400px]:sr-only" : "sm:text-xs",
+        )}
+      >
         {label}
       </span>
       {statusLabel && <span className="sr-only">{statusLabel}</span>}
@@ -89,6 +101,8 @@ export const ClassroomActionButton = forwardRef<
   const controlClasses = cn(
     "relative h-16 w-full max-w-20 flex-col gap-0.5 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-foreground shadow-none hover:border-border hover:bg-muted/70 hover:text-foreground sm:max-w-24 sm:px-2 [&_svg]:size-5",
     pressedToneClasses[tone],
+    compact &&
+      "h-14 min-w-0 max-w-none px-0.5 sm:max-w-none sm:px-0.5 [&_svg]:size-4",
     className,
   );
   const accessibleLabel = statusLabel ? `${label}: ${statusLabel}` : label;
@@ -148,13 +162,14 @@ export function ClassroomActionBar({
   right,
   mobile,
 }: ClassroomActionBarProps) {
+  const compact = useClassroomPresentation()?.mode === "compact";
   const isCompact = useSyncExternalStore(
     subscribeToControlsLayout,
     getCompactControlsSnapshot,
     getServerControlsSnapshot,
   );
 
-  if (mobile && isCompact) {
+  if (mobile && isCompact && !compact) {
     return (
       <div className="grid min-h-20 w-full grid-cols-4 items-center justify-items-center bg-card px-1 py-1">
         {mobile}
@@ -163,7 +178,13 @@ export function ClassroomActionBar({
   }
 
   return (
-    <div className="grid min-h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center bg-card px-1.5 py-1 sm:px-2">
+    <div
+      className={cn(
+        "grid min-h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center bg-card px-1.5 py-1 sm:px-2",
+        compact &&
+          "@container !min-h-14 grid-cols-none grid-flow-col auto-cols-fr gap-0.5 [&>div]:contents [&>div>div]:min-w-0",
+      )}
+    >
       <div className="flex min-w-0 items-center justify-start gap-0.5 border-r border-border/70 pr-1 sm:gap-1 sm:pr-2">
         {left}
       </div>

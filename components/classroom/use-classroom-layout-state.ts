@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useClassroomPresentation } from "./classroom-presentation";
 
 export function usePhoneLandscapeStageControls() {
+  const presentation = useClassroomPresentation();
+  const ownerWindow = presentation?.ownerWindow;
   const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
   const [stageControlsVisible, setStageControlsVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -14,7 +17,7 @@ export function usePhoneLandscapeStageControls() {
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia(
+    const mediaQuery = (ownerWindow ?? window).matchMedia(
       "(orientation: landscape) and (max-height: 500px)",
     );
     const handleChange = () => setIsPhoneLandscape(mediaQuery.matches);
@@ -25,20 +28,22 @@ export function usePhoneLandscapeStageControls() {
       mediaQuery.removeEventListener("change", handleChange);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [ownerWindow]);
 
   useEffect(() => {
     if (isPhoneLandscape) showStageControls();
   }, [isPhoneLandscape, showStageControls]);
 
   return {
-    isPhoneLandscape,
+    isPhoneLandscape:
+      presentation?.mode === "compact" ? false : isPhoneLandscape,
     stageControlsVisible,
     showStageControls,
   };
 }
 
 export function useClassroomStageViewport() {
+  const ownerWindow = useClassroomPresentation()?.ownerWindow;
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
@@ -93,21 +98,26 @@ export function useClassroomStageViewport() {
       panDragRef.current.active = false;
     };
     const handleTouchMove = (event: TouchEvent) => {
+      if (!panDragRef.current.active) return;
       event.preventDefault();
       applyDrag(event.touches[0].clientX, event.touches[0].clientY);
     };
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", stopDragging);
-    document.addEventListener("touchmove", handleTouchMove, { passive: false });
-    document.addEventListener("touchend", stopDragging);
+    const ownerDocument = ownerWindow?.document ?? document;
+    ownerDocument.addEventListener("mousemove", handleMouseMove);
+    ownerDocument.addEventListener("mouseup", stopDragging);
+    ownerDocument.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    ownerDocument.addEventListener("touchend", stopDragging);
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", stopDragging);
-      document.removeEventListener("touchmove", handleTouchMove);
-      document.removeEventListener("touchend", stopDragging);
+      panDragRef.current.active = false;
+      ownerDocument.removeEventListener("mousemove", handleMouseMove);
+      ownerDocument.removeEventListener("mouseup", stopDragging);
+      ownerDocument.removeEventListener("touchmove", handleTouchMove);
+      ownerDocument.removeEventListener("touchend", stopDragging);
     };
-  }, [zoom]);
+  }, [zoom, ownerWindow]);
 
   return {
     zoom,
