@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DisconnectReason } from "livekit-client";
@@ -14,6 +15,7 @@ type LiveKitRoomTestProps = {
   token?: string;
   onDisconnected?: (reason?: number) => void | Promise<void>;
   onError?: (error: Error) => void;
+  onConnected?: () => void | Promise<void>;
 };
 
 const createSessionStatus = () => ({
@@ -63,8 +65,10 @@ const testState = vi.hoisted(() => ({
   getToken: vi.fn(),
   endSession: vi.fn(async () => null),
   logPresence: vi.fn(async () => null),
+  setSidebarOpen: vi.fn(),
   translate: vi.fn((key: string) => key),
   searchParams: { get: () => null },
+  pathname: "/es/school/classroom/room-1",
   fullscreen: {
     isFullscreen: false,
     isSupported: false,
@@ -101,14 +105,6 @@ vi.mock("convex/react", async () => {
     useQuery: (query: string, args: unknown) => {
       const isSessionStatus = query === "getSessionStatus";
 
-      if (!isSessionStatus) {
-        return args === "skip" ? undefined : testState.scheduleDetails;
-      }
-
-      if (!testState.queryLifecycle.simulateMinuteLoading) {
-        return testState.sessionStatus;
-      }
-
       const queryKey =
         args && typeof args === "object" && "now" in args
           ? String((args as { now: number }).now)
@@ -119,7 +115,12 @@ vi.mock("convex/react", async () => {
       const previousQueryKey = React.useRef(queryKey);
 
       React.useEffect(() => {
-        if (previousQueryKey.current === queryKey) return;
+        if (
+          !isSessionStatus ||
+          !testState.queryLifecycle.simulateMinuteLoading ||
+          previousQueryKey.current === queryKey
+        )
+          return;
 
         previousQueryKey.current = queryKey;
         testState.queryLifecycle.loadingTransitions += 1;
@@ -130,7 +131,12 @@ vi.mock("convex/react", async () => {
           25,
         );
         return () => window.clearTimeout(timer);
-      }, [queryKey]);
+      }, [queryKey, isSessionStatus]);
+
+      if (!isSessionStatus)
+        return args === "skip" ? undefined : testState.scheduleDetails;
+      if (!testState.queryLifecycle.simulateMinuteLoading)
+        return testState.sessionStatus;
 
       return result;
     },
@@ -143,10 +149,11 @@ vi.mock("@livekit/components-react", async () => {
   return {
     LiveKitRoom: (props: LiveKitRoomTestProps) => {
       testState.liveKitProps = props;
+      const initialToken = React.useRef(props.token);
 
       React.useEffect(() => {
         testState.roomLifecycle.mounts += 1;
-        testState.roomLifecycle.mountedTokens.push(props.token);
+        testState.roomLifecycle.mountedTokens.push(initialToken.current);
         return () => {
           testState.roomLifecycle.unmounts += 1;
         };
@@ -162,6 +169,7 @@ vi.mock("@livekit/components-react", async () => {
 });
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => testState.pathname,
   useParams: () => ({ locale: "es", orgSlug: "school" }),
   useRouter: () => testState.router,
   useSearchParams: () => testState.searchParams,
@@ -180,16 +188,27 @@ vi.mock("@/hooks/use-fullscreen", () => ({
 }));
 
 vi.mock("@/components/ui/sidebar", () => ({
-  useSidebar: () => ({ setOpen: vi.fn() }),
+  useSidebar: () => ({ setOpen: testState.setSidebarOpen }),
 }));
 
-vi.mock("@/components/classroom/active-classroom-ui", () => ({
-  ActiveClassroomUI: ({
-    onRequestCloseout,
-  }: {
-    onRequestCloseout: () => void;
-  }) => createElement("button", { onClick: onRequestCloseout }, "Open report"),
-}));
+vi.mock("@/components/classroom/active-classroom-ui", async () => {
+  const { ClassroomWindowControls } = await import(
+    "@/components/classroom/classroom-window-controls"
+  );
+  return {
+    ActiveClassroomUI: ({
+      onRequestCloseout,
+    }: {
+      onRequestCloseout: () => void;
+    }) =>
+      createElement(
+        "div",
+        null,
+        createElement("button", { onClick: onRequestCloseout }, "Open report"),
+        createElement(ClassroomWindowControls),
+      ),
+  };
+});
 
 vi.mock("@/components/classroom/session-closeout-dialog", async () => {
   const React = await import("react");
@@ -236,6 +255,37 @@ vi.mock("@/components/student/rocket-transition", () => ({
 }));
 
 import FlexiClassroom from "@/components/classroom/flexi-classroom";
+import {
+  ClassroomSessionProvider,
+  ClassroomSessionOutlet,
+} from "@/components/classroom/classroom-session-provider";
+
+vi.mock(
+  "@/components/classroom/flexi-classroom-client",
+  async () => import("@/components/classroom/flexi-classroom"),
+);
+
+function PersistentClassroom({
+  show = true,
+  roomName = "room-1",
+  isStudentView = true,
+}: {
+  show?: boolean;
+  roomName?: string;
+  isStudentView?: boolean;
+}) {
+  return createElement(
+    ClassroomSessionProvider,
+    null,
+    show
+      ? createElement(ClassroomSessionOutlet, {
+          roomName,
+          isStudentView,
+          classroomPath: `/es/school/classroom/${roomName}`,
+        })
+      : createElement("div", null, "Dashboard"),
+  );
+}
 
 async function flushPromises() {
   await act(async () => {
@@ -272,11 +322,213 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
       async ({ roomName }: { roomName: string }) => `token-${roomName}`,
     );
     testState.liveKitProps = null;
+    testState.pathname = "/es/school/classroom/room-1";
+    vi.spyOn(window, "focus").mockImplementation(() => {});
+    vi.stubGlobal("documentPictureInPicture", undefined);
   });
 
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves the same room, token and presence while navigating away and back", async () => {
+    const view = render(createElement(PersistentClassroom));
+    await flushPromises();
+    const originalRoom = screen.getByTestId("livekit-room");
+    await act(async () => {
+      await testState.liveKitProps?.onConnected?.();
+    });
+    testState.pathname = "/es/school";
+    view.rerender(createElement(PersistentClassroom, { show: false }));
+    expect(screen.getByTestId("livekit-room")).toBe(originalRoom);
+    expect(originalRoom.closest("[data-classroom-mini]")).not.toBeNull();
+    testState.pathname = "/es/school/classroom/room-1";
+    view.rerender(createElement(PersistentClassroom));
+    expect(screen.getByTestId("livekit-room")).toBe(originalRoom);
+    expect(originalRoom.closest("[data-classroom-mini]")).toBeNull();
+    expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
+    expect(testState.getToken).toHaveBeenCalledTimes(1);
+    expect(testState.logPresence).toHaveBeenCalledTimes(1);
+    expect(testState.logPresence).toHaveBeenLastCalledWith({
+      scheduleId: "schedule-1",
+      action: "join",
+    });
+  });
+
+  it("does not keep a waiting room subscribed after leaving its page", async () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      isLive: false,
+      roomAdmin: false,
+    };
+    const view = render(createElement(PersistentClassroom));
+    await flushPromises();
+    view.rerender(createElement(PersistentClassroom, { show: false }));
+    await flushPromises();
+    expect(screen.queryByTestId("livekit-room")).toBeNull();
+    expect(testState.getToken).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-classroom-mini]")).toBeNull();
+  });
+
+  it("does not collapse the sidebar again when restoring the full classroom", async () => {
+    const layoutListeners: Array<() => void> = [];
+    vi.mocked(window.matchMedia).mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(orientation: portrait)",
+          addEventListener: vi.fn((_event, listener) => {
+            layoutListeners.push(listener as () => void);
+          }),
+          removeEventListener: vi.fn(),
+        }) as unknown as MediaQueryList,
+    );
+    const view = render(
+      createElement(PersistentClassroom, { isStudentView: false }),
+    );
+    await flushPromises();
+    expect(testState.setSidebarOpen).toHaveBeenCalledTimes(1);
+    testState.pathname = "/es/school";
+    view.rerender(
+      createElement(PersistentClassroom, { show: false, isStudentView: false }),
+    );
+    act(() => layoutListeners.forEach((listener) => listener()));
+    expect(testState.setSidebarOpen).toHaveBeenCalledTimes(1);
+    testState.pathname = "/es/school/classroom/room-1";
+    view.rerender(createElement(PersistentClassroom, { isStudentView: false }));
+    expect(testState.setSidebarOpen).toHaveBeenCalledTimes(1);
+    expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
+  });
+
+  it("keeps floating controls enabled when the same room's view changes", async () => {
+    const view = render(createElement(PersistentClassroom));
+    await flushPromises();
+    const room = screen.getByTestId("livekit-room");
+    view.rerender(createElement(PersistentClassroom, { isStudentView: false }));
+    expect(screen.getByTestId("livekit-room")).toBe(room);
+    expect(
+      screen.getByRole("button", { name: "openClassroomWindow" }),
+    ).toBeTruthy();
+    expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
+  });
+
+  it("retains one persistent room when React replays effects in StrictMode", async () => {
+    const renderRoom = (show: boolean) =>
+      createElement(
+        StrictMode,
+        null,
+        createElement(PersistentClassroom, { show }),
+      );
+    const view = render(renderRoom(true));
+    await flushPromises();
+    const room = screen.getByTestId("livekit-room");
+    const lifecycle = { ...testState.roomLifecycle };
+    view.rerender(renderRoom(false));
+    view.rerender(renderRoom(true));
+    expect(screen.getByTestId("livekit-room")).toBe(room);
+    expect(testState.roomLifecycle).toEqual(lifecycle);
+    expect(testState.getToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the report draft and restores its classroom when opened from the mini room", async () => {
+    const view = render(
+      createElement(PersistentClassroom, { isStudentView: false }),
+    );
+    await flushPromises();
+    testState.pathname = "/es/school";
+    view.rerender(
+      createElement(PersistentClassroom, { show: false, isStudentView: false }),
+    );
+    fireEvent.click(screen.getByText("Open report"));
+    fireEvent.change(screen.getByLabelText("Report notes"), {
+      target: { value: "Saved draft" },
+    });
+    expect(testState.router.push).toHaveBeenCalledWith(
+      "/es/school/classroom/room-1",
+    );
+    testState.pathname = "/es/school/classroom/room-1";
+    view.rerender(createElement(PersistentClassroom, { isStudentView: false }));
+    expect(
+      (screen.getByLabelText("Report notes") as HTMLInputElement).value,
+    ).toBe("Saved draft");
+    expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
+  });
+
+  it("cleans up the persistent room after leaving or revoking authentication", async () => {
+    const view = render(createElement(PersistentClassroom));
+    await flushPromises();
+    testState.pathname = "/es/school";
+    view.rerender(createElement(PersistentClassroom, { show: false }));
+    testState.currentUser = {
+      user: null,
+      isLoading: false,
+      isAuthenticated: false,
+    };
+    view.rerender(createElement(PersistentClassroom, { show: false }));
+    await flushPromises();
+    expect(screen.queryByTestId("livekit-room")).toBeNull();
+    expect(document.querySelector("[data-classroom-mini]")).toBeNull();
+    expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 1 });
+  });
+
+  it("keeps the same live room in Document PiP while navigating and restores it on window close", async () => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    const external = frame.contentWindow!;
+    external.close = vi.fn();
+    const requestWindow = vi.fn(async () => external);
+    vi.stubGlobal("documentPictureInPicture", { requestWindow });
+    const view = render(
+      createElement(PersistentClassroom, { isStudentView: false }),
+    );
+    await flushPromises();
+    const originalRoom = screen.getByTestId("livekit-room");
+    fireEvent.click(screen.getByRole("button", { name: "floatingWindow" }));
+    await flushPromises();
+    expect(within(external.document.body).getByTestId("livekit-room")).toBe(
+      originalRoom,
+    );
+    testState.pathname = "/es/school";
+    view.rerender(
+      createElement(PersistentClassroom, { show: false, isStudentView: false }),
+    );
+    expect(external.document.body.contains(originalRoom)).toBe(true);
+    act(() => external.dispatchEvent(new Event("pagehide")));
+    expect(screen.getByTestId("livekit-room")).toBe(originalRoom);
+    expect(originalRoom.closest("[data-classroom-mini]")).not.toBeNull();
+    expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
+    expect(testState.getToken).toHaveBeenCalledTimes(1);
+    frame.remove();
+  });
+
+  it("restores the original classroom when its report is opened from Document PiP", async () => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    const external = frame.contentWindow!;
+    external.close = vi.fn();
+    vi.stubGlobal("documentPictureInPicture", {
+      requestWindow: async () => external,
+    });
+    const view = render(
+      createElement(PersistentClassroom, { isStudentView: false }),
+    );
+    await flushPromises();
+    fireEvent.click(screen.getByRole("button", { name: "floatingWindow" }));
+    await flushPromises();
+    testState.pathname = "/es/school";
+    view.rerender(
+      createElement(PersistentClassroom, { show: false, isStudentView: false }),
+    );
+    fireEvent.click(within(external.document.body).getByText("Open report"));
+    expect(screen.getByTestId("closeout")).toBeTruthy();
+    expect(external.close).toHaveBeenCalledTimes(1);
+    expect(testState.router.push).toHaveBeenCalledWith(
+      "/es/school/classroom/room-1",
+    );
+    expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
+    frame.remove();
   });
 
   it("keeps one LiveKit room mounted across two minute query refreshes", async () => {

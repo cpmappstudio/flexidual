@@ -83,7 +83,9 @@ export function useClassroomParticipantPagination(itemCount: number) {
     const element = gridRef.current;
     if (!element) return;
 
-    const style = window.getComputedStyle(element);
+    const style = (
+      element.ownerDocument.defaultView ?? window
+    ).getComputedStyle(element);
     setLayout(
       getClassroomParticipantLayout({
         width: element.clientWidth,

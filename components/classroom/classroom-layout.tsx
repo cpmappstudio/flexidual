@@ -6,6 +6,7 @@ import {
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
+import { useClassroomPresentation } from "./classroom-presentation";
 
 interface ClassroomLayoutProps extends ComponentPropsWithoutRef<"div"> {
   children: ReactNode;
@@ -24,6 +25,7 @@ export const ClassroomLayout = forwardRef<HTMLDivElement, ClassroomLayoutProps>(
     },
     ref,
   ) {
+    const compact = useClassroomPresentation()?.mode === "compact";
     return (
       <div
         ref={ref}
@@ -40,6 +42,15 @@ export const ClassroomLayout = forwardRef<HTMLDivElement, ClassroomLayoutProps>(
           className,
         )}
         {...props}
+        style={
+          compact
+            ? {
+                ...props.style,
+                gridTemplateColumns: "minmax(0,1fr)",
+                gridTemplateRows: "minmax(0,1fr) auto",
+              }
+            : props.style
+        }
       >
         {children}
       </div>
@@ -59,6 +70,7 @@ export function ClassroomLayoutHeader({
   layoutMode = "responsive",
   ...props
 }: ClassroomRegionProps) {
+  const compact = useClassroomPresentation()?.mode === "compact";
   return (
     <div
       className={cn(
@@ -69,6 +81,7 @@ export function ClassroomLayoutHeader({
         className,
       )}
       {...props}
+      style={compact ? { ...props.style, display: "none" } : props.style}
     >
       {children}
     </div>
@@ -80,6 +93,7 @@ export function ClassroomLayoutStage({
   className,
   ...props
 }: ComponentPropsWithoutRef<"div">) {
+  const compact = useClassroomPresentation()?.mode === "compact";
   return (
     <div
       className={cn(
@@ -87,6 +101,7 @@ export function ClassroomLayoutStage({
         className,
       )}
       {...props}
+      style={compact ? { ...props.style, gridRow: 1 } : props.style}
     >
       {children}
     </div>
@@ -99,7 +114,8 @@ export function ClassroomLayoutControls({
   isPhoneLandscape = false,
   ...props
 }: ClassroomRegionProps) {
-  if (isPhoneLandscape) return null;
+  const compact = useClassroomPresentation()?.mode === "compact";
+  if (isPhoneLandscape && !compact) return null;
 
   return (
     <div
@@ -108,6 +124,9 @@ export function ClassroomLayoutControls({
         className,
       )}
       {...props}
+      style={
+        compact ? { ...props.style, gridRow: 2, gridColumn: 1 } : props.style
+      }
     >
       {children}
     </div>
@@ -122,6 +141,7 @@ export function ClassroomLayoutSidebar({
 }: ComponentPropsWithoutRef<"div"> & {
   layoutMode?: "responsive" | "recording";
 }) {
+  const compact = useClassroomPresentation()?.mode === "compact";
   return (
     <div
       className={cn(
@@ -132,6 +152,7 @@ export function ClassroomLayoutSidebar({
         className,
       )}
       {...props}
+      style={compact ? { ...props.style, display: "none" } : props.style}
     >
       {children}
     </div>

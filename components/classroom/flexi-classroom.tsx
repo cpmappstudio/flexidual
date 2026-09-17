@@ -28,6 +28,7 @@ import { ClassroomRocketLoader } from "@/components/student/rocket-transition";
 import { useClassroomClock } from "./use-classroom-clock";
 import { useClassroomToken } from "@/hooks/use-classroom-token";
 import { SessionCloseoutDialog } from "./session-closeout-dialog";
+import { useClassroomPresentation } from "./classroom-presentation";
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -85,8 +86,10 @@ function ClassroomConnectionError({
   );
 }
 
-function SidebarAutoCollapser() {
+function SidebarAutoCollapser({ active = true }: { active?: boolean }) {
   const { setOpen } = useSidebar();
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   // 1. Keep a stable reference to the latest setOpen function
   const setOpenRef = useRef(setOpen);
@@ -100,6 +103,7 @@ function SidebarAutoCollapser() {
     const mqPortrait = window.matchMedia("(orientation: portrait)");
 
     const handleLayoutChange = () => {
+      if (!activeRef.current) return;
       // If we cross into tablet or portrait territory, collapse it automatically
       if (mqTablet.matches || mqPortrait.matches) {
         // 2. Call it via the ref so we don't trigger re-runs
@@ -133,9 +137,15 @@ export default function FlexiClassroom({
   const t = useTranslations();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const presentation = useClassroomPresentation();
+  const leaveSession = presentation?.leaveSession;
   const containerRef = useRef<HTMLDivElement>(null);
   const { isFullscreen, isSupported, toggleFullscreen } = useFullscreen();
   const handleToggleFullscreen = () => toggleFullscreen(containerRef.current);
+  const canFullscreen =
+    isSupported &&
+    presentation?.mode !== "compact" &&
+    !presentation?.nativeVideoActive;
 
   const now = useClassroomClock();
 
@@ -183,7 +193,7 @@ export default function FlexiClassroom({
   const resolvedIsStudentView = isStudentView || role === "student";
   const uiPreviewEnabled =
     process.env.NODE_ENV !== "production" &&
-    searchParams.get("uiPreview") === "1";
+    (presentation?.uiPreviewEnabled ?? searchParams.get("uiPreview") === "1");
   const canJoinEarly = sessionStatus?.roomAdmin === true;
   const isClassLive = sessionStatus?.isLive || false;
   const isSessionClosed =
@@ -213,6 +223,13 @@ export default function FlexiClassroom({
     scheduleDetails?.sessionClosureStatus === "pending";
   const isCloseoutOpen =
     !!convexUser && (closeoutScope === connectionScope || requiresCloseout);
+  const canPersist = Boolean(
+    convexUser && sessionStatus && scheduleDetails && token && !isSessionClosed,
+  );
+  const reportPersistence = presentation?.reportPersistence;
+  useEffect(() => {
+    reportPersistence?.({ canPersist, needsFullView: isCloseoutOpen });
+  }, [reportPersistence, canPersist, isCloseoutOpen]);
 
   useEffect(() => {
     if (requiresCloseout) setCloseoutScope(connectionScope);
@@ -295,12 +312,20 @@ export default function FlexiClassroom({
   ]);
 
   const exitClassroom = useCallback(() => {
+    leaveSession?.();
     if (resolvedIsStudentView && onLeave) {
       onLeave();
       return;
     }
     router.push(`/${params.locale}/${orgSlug}`);
-  }, [onLeave, orgSlug, params.locale, resolvedIsStudentView, router]);
+  }, [
+    onLeave,
+    orgSlug,
+    params.locale,
+    resolvedIsStudentView,
+    router,
+    leaveSession,
+  ]);
 
   const handleRoomError = useCallback(
     (roomError: Error) => {
@@ -352,6 +377,7 @@ export default function FlexiClassroom({
       clearToken();
       const nextRoom = nextRoomRef.current;
       if (nextRoom) {
+        leaveSession?.();
         nextRoomRef.current = null;
         router.push(`/${params.locale}/${orgSlug}/classroom/${nextRoom}`);
         return;
@@ -368,6 +394,7 @@ export default function FlexiClassroom({
       resolvedIsStudentView,
       router,
       roomName,
+      leaveSession,
       sessionStatus?.scheduleId,
       t,
     ],
@@ -630,7 +657,9 @@ export default function FlexiClassroom({
         ref={containerRef}
         className={`relative h-full w-full overflow-hidden ${className}`}
       >
-        {!resolvedIsStudentView && <SidebarAutoCollapser />}
+        {!resolvedIsStudentView && (
+          <SidebarAutoCollapser active={presentation?.mode !== "compact"} />
+        )}
         <LiveKitRoom
           key={connectionScope}
           video={false}
@@ -648,7 +677,7 @@ export default function FlexiClassroom({
               roomName={roomName}
               isFullscreen={isFullscreen}
               onToggleFullscreen={
-                isSupported ? handleToggleFullscreen : undefined
+                canFullscreen ? handleToggleFullscreen : undefined
               }
             />
           ) : resolvedIsStudentView ? (
@@ -661,7 +690,7 @@ export default function FlexiClassroom({
               onSwitchClassroom={handleSwitchClassroom}
               isFullscreen={isFullscreen}
               onToggleFullscreen={
-                isSupported ? handleToggleFullscreen : undefined
+                canFullscreen ? handleToggleFullscreen : undefined
               }
               uiPreviewEnabled={uiPreviewEnabled}
             />
@@ -680,7 +709,7 @@ export default function FlexiClassroom({
               onRequestCloseout={() => setCloseoutScope(connectionScope)}
               isFullscreen={isFullscreen}
               onToggleFullscreen={
-                isSupported ? handleToggleFullscreen : undefined
+                canFullscreen ? handleToggleFullscreen : undefined
               }
               uiPreviewEnabled={uiPreviewEnabled}
             />

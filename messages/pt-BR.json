@@ -376,6 +376,16 @@
     "noResultsDescription": "Tente outro nome de aula ou ajuste os filtros."
   },
   "classroom": {
+    "openChat": "Abrir chat",
+    "classroomInFloatingWindow": "A sala está aberta em uma janela flutuante.",
+    "floatingWindow": "Abrir janela flutuante",
+    "returnToClassroom": "Abrir sala completa",
+    "displayControls": "Visualização da sala",
+    "zoomControls": "Zoom da tela compartilhada",
+    "zoomIn": "Ampliar",
+    "zoomOut": "Reduzir",
+    "openClassroomWindow": "Abrir a sala em outra janela",
+    "floatingWindowUnavailable": "Não foi possível abrir a janela flutuante. Você pode abrir a sala em outra janela.",
     "prepareRoom": "Preparar Sala",
     "joinLive": "Entrar na Aula ao Vivo",
     "notActive": "A aula não está ativa no momento.",

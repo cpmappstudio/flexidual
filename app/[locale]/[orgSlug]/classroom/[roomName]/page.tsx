@@ -1,4 +1,4 @@
-import FlexiClassroom from "@/components/classroom/flexi-classroom-client";
+import { ClassroomSessionOutlet } from "@/components/classroom/classroom-session-provider";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ interface ClassroomPageProps {
     orgSlug: string;
     roomName: string;
   }>;
-  searchParams: Promise<{ companion?: string }>;
+  searchParams: Promise<{ companion?: string; uiPreview?: string }>;
 }
 
 async function getConvexToken() {
@@ -95,10 +95,12 @@ export default async function ClassroomPage(props: ClassroomPageProps) {
       data-classroom-layout
       className="h-full min-h-0 w-full overflow-hidden"
     >
-      <FlexiClassroom
+      <ClassroomSessionOutlet
         roomName={roomName}
         isStudentView={isStudent}
         isCompanion={isCompanion}
+        classroomPath={`/${params.locale}/${params.orgSlug}/classroom/${encodeURIComponent(roomName)}`}
+        uiPreviewEnabled={searchParams.uiPreview === "1"}
       />
     </main>
   );

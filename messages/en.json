@@ -376,6 +376,16 @@
     "noResultsDescription": "Try another class name or adjust the filters."
   },
   "classroom": {
+    "openChat": "Open chat",
+    "classroomInFloatingWindow": "The classroom is open in a floating window.",
+    "floatingWindow": "Open floating window",
+    "returnToClassroom": "Open full classroom",
+    "displayControls": "Classroom display",
+    "zoomControls": "Shared screen zoom",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "openClassroomWindow": "Open classroom in another window",
+    "floatingWindowUnavailable": "The floating window could not be opened. You can open the classroom in another window.",
     "prepareRoom": "Prepare Room",
     "joinLive": "Join Live Class",
     "notActive": "Class is not currently active.",

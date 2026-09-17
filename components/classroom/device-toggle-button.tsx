@@ -12,6 +12,7 @@ import {
   useClassroomMediaErrorHandler,
 } from "@/hooks/use-classroom-media-errors";
 import { ClassroomActionButton } from "./classroom-action-bar";
+import { useClassroomPresentation } from "./classroom-presentation";
 
 // ---------------------------------------------------------------------------
 // Variant — three visual contexts this component appears in
@@ -57,6 +58,7 @@ function useDropdownClose(
   setOpen: React.Dispatch<React.SetStateAction<boolean>>,
   ref: React.RefObject<HTMLDivElement | null>,
 ) {
+  const ownerWindow = useClassroomPresentation()?.ownerWindow;
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent | TouchEvent) => {
@@ -66,15 +68,16 @@ function useDropdownClose(
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("touchstart", close, { passive: true });
-    document.addEventListener("keydown", onKey);
+    const ownerDocument = ownerWindow?.document ?? document;
+    ownerDocument.addEventListener("mousedown", close);
+    ownerDocument.addEventListener("touchstart", close, { passive: true });
+    ownerDocument.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("touchstart", close);
-      document.removeEventListener("keydown", onKey);
+      ownerDocument.removeEventListener("mousedown", close);
+      ownerDocument.removeEventListener("touchstart", close);
+      ownerDocument.removeEventListener("keydown", onKey);
     };
-  }, [open, setOpen, ref]);
+  }, [open, setOpen, ref, ownerWindow]);
 }
 
 // ---------------------------------------------------------------------------
@@ -454,7 +457,11 @@ export function DeviceToggleButton({
     if (wrapperRef.current) {
       const rect = wrapperRef.current.getBoundingClientRect();
       setDropSide(
-        rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right",
+        rect.left + rect.width / 2 <
+          (wrapperRef.current.ownerDocument.defaultView ?? window).innerWidth /
+            2
+          ? "left"
+          : "right",
       );
     }
     setOpen((v) => !v);
@@ -598,7 +605,11 @@ export function SpeakerSelectButton({
     if (wrapperRef.current) {
       const rect = wrapperRef.current.getBoundingClientRect();
       setDropSide(
-        rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right",
+        rect.left + rect.width / 2 <
+          (wrapperRef.current.ownerDocument.defaultView ?? window).innerWidth /
+            2
+          ? "left"
+          : "right",
       );
     }
     setOpen((v) => !v);

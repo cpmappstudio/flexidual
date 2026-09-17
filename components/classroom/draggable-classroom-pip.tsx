@@ -11,6 +11,7 @@ import {
   type ComponentPropsWithoutRef,
 } from "react";
 import { cn } from "@/lib/utils";
+import { useClassroomPresentation } from "./classroom-presentation";
 
 const PIP_WIDTH = 192;
 const PIP_HEIGHT = 144;
@@ -40,6 +41,10 @@ export function DraggableClassroomPip({
   children,
   containerRef,
 }: DraggableClassroomPipProps) {
+  const presentation = useClassroomPresentation();
+  const ownerWindow = presentation?.ownerWindow;
+  const width = presentation?.mode === "compact" ? 96 : PIP_WIDTH;
+  const height = presentation?.mode === "compact" ? 72 : PIP_HEIGHT;
   const [position, setPosition] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -57,26 +62,30 @@ export function DraggableClassroomPip({
       return {
         x: Math.max(
           PIP_MARGIN,
-          Math.min(container.offsetWidth - PIP_WIDTH - PIP_MARGIN, x),
+          Math.min(container.offsetWidth - width - PIP_MARGIN, x),
         ),
         y: Math.max(
           PIP_MARGIN,
-          Math.min(container.offsetHeight - PIP_HEIGHT - PIP_MARGIN, y),
+          Math.min(container.offsetHeight - height - PIP_MARGIN, y),
         ),
       };
     },
-    [containerRef],
+    [containerRef, width, height],
   );
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    setPosition({
-      x: PIP_MARGIN,
-      y: container.offsetHeight - PIP_HEIGHT - PIP_MARGIN,
-    });
-  }, [containerRef]);
+    setPosition((current) =>
+      current
+        ? clampPosition(current.x, current.y)
+        : {
+            x: PIP_MARGIN,
+            y: container.offsetHeight - height - PIP_MARGIN,
+          },
+    );
+  }, [containerRef, height, clampPosition]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -124,17 +133,21 @@ export function DraggableClassroomPip({
       dragRef.current.active = false;
     };
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    document.addEventListener("touchmove", handleTouchMove, { passive: false });
-    document.addEventListener("touchend", handleTouchEnd);
+    const ownerDocument = ownerWindow?.document ?? document;
+    ownerDocument.addEventListener("mousemove", handleMouseMove);
+    ownerDocument.addEventListener("mouseup", handleMouseUp);
+    ownerDocument.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+    ownerDocument.addEventListener("touchend", handleTouchEnd);
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.removeEventListener("touchmove", handleTouchMove);
-      document.removeEventListener("touchend", handleTouchEnd);
+      dragRef.current.active = false;
+      ownerDocument.removeEventListener("mousemove", handleMouseMove);
+      ownerDocument.removeEventListener("mouseup", handleMouseUp);
+      ownerDocument.removeEventListener("touchmove", handleTouchMove);
+      ownerDocument.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [clampPosition]);
+  }, [clampPosition, ownerWindow]);
 
   if (!position) return null;
 
@@ -143,8 +156,8 @@ export function DraggableClassroomPip({
       style={{
         left: position.x,
         top: position.y,
-        width: PIP_WIDTH,
-        height: PIP_HEIGHT,
+        width,
+        height,
       }}
       className="absolute z-50 cursor-move select-none"
       onMouseDown={(event) => {

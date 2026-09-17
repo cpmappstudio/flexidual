@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  useClassroomPresentation,
+  useRestoreClassroomForDialog,
+} from "./classroom-presentation";
+import { ClassroomVideoPipSource } from "./classroom-video-pip-source";
+import { useNotificationChime } from "@/hooks/use-notification-chime";
+
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -59,7 +66,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
-import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
 import {
   ClassroomUiPreview,
@@ -207,14 +213,18 @@ export function ActiveClassroomUI({
 }: ActiveClassroomUIProps) {
   const t = useTranslations();
   const pathname = usePathname();
+  const presentation = useClassroomPresentation();
+  const classroomPath = presentation?.classroomPath ?? pathname;
   const room = useRoomContext();
 
   const [companionUrl, setCompanionUrl] = useState("");
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setCompanionUrl(`${window.location.origin}${pathname}?companion=true`);
+      setCompanionUrl(
+        `${window.location.origin}${classroomPath}?companion=true`,
+      );
     }
-  }, [pathname]);
+  }, [classroomPath]);
   const markLive = useMutation(api.schedule.markLive);
   const confirmLiveExtension = useMutation(api.schedule.confirmLiveExtension);
   const claimSessionLeadership = useMutation(
@@ -281,7 +291,6 @@ export function ActiveClassroomUI({
   const displayedTransferRequestAtRef = useRef<number | null>(null);
   const transferOutcomeInitializedRef = useRef(false);
   const lastTransferOutcomeIdRef = useRef<string | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
   const soundedDecisionRef = useRef<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const { zoom, pan, stageRef, handleZoom, startPanDrag } =
@@ -378,41 +387,23 @@ export function ActiveClassroomUI({
       "recording-confirmation": showRecordConfirm,
       companion: showQR,
       "enable-audio": needsClick,
-      fullscreen: pendingFullscreen,
+      fullscreen:
+        pendingFullscreen &&
+        presentation?.mode !== "compact" &&
+        !presentation?.nativeVideoActive,
     },
     isExternalDialogOpen: isSessionActionDialogOpen || isCloseoutOpen,
     isPreviewActive: hasActivePreview,
     previewLayer: ACTIVE_PREVIEW_LAYERS[uiPreviewState] ?? null,
   });
 
-  const playNotificationChime = useCallback(async () => {
-    if (!amIAuthority) return;
-    try {
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-      const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") await ctx.resume();
-      const t0 = ctx.currentTime;
-      [
-        [660, 0],
-        [880, 0.18],
-        [1100, 0.36],
-      ].forEach(([freq, delay]) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = "sine";
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, t0 + delay);
-        gain.gain.linearRampToValueAtTime(0.18, t0 + delay + 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.001, t0 + delay + 0.35);
-        osc.start(t0 + delay);
-        osc.stop(t0 + delay + 0.35);
-      });
-    } catch {
-      /* non-critical */
-    }
-  }, [amIAuthority]);
+  useRestoreClassroomForDialog(
+    isSessionActionDialogOpen ||
+      (visibleLayer !== null && visibleLayer !== "fullscreen") ||
+      Boolean(sessionLeadership?.viewer.canAcceptTransfer),
+  );
+
+  const playNotificationChime = useNotificationChime({ enabled: amIAuthority });
 
   useEffect(() => {
     const deadline = extensionContext?.decisionEndsAt;
@@ -434,26 +425,6 @@ export function ActiveClassroomUI({
     visibleLayer,
     playNotificationChime,
   ]);
-
-  useEffect(() => {
-    const unlockChime = () => {
-      if (!amIAuthority) return;
-      try {
-        if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-        void audioCtxRef.current.resume().catch(() => {});
-      } catch {
-        /* Audio is optional on unsupported browsers. */
-      }
-    };
-    window.addEventListener("pointerdown", unlockChime);
-    window.addEventListener("keydown", unlockChime);
-    return () => {
-      window.removeEventListener("pointerdown", unlockChime);
-      window.removeEventListener("keydown", unlockChime);
-      void audioCtxRef.current?.close().catch(() => {});
-      audioCtxRef.current = null;
-    };
-  }, [amIAuthority]);
 
   // --- ROLE & PARTICIPANT LOGIC ---
   const actualTeacher = participants.find((p) => {
@@ -1282,6 +1253,16 @@ export function ActiveClassroomUI({
 
   return (
     <ClassroomView ref={rootRef} isSidebarOpen={isClassroomPanelOpen}>
+      <ClassroomVideoPipSource
+        track={
+          (!isWhiteboardActive
+            ? activeScreenTrack?.publication.track
+            : undefined) ??
+          (isTeacherVideoOn
+            ? teacher?.getTrackPublication(Track.Source.Camera)?.track
+            : undefined)
+        }
+      />
       {uiPreviewEnabled && (
         <ClassroomUiPreview
           roleLabel={currentUserRole ?? "staff"}
@@ -1795,6 +1776,7 @@ export function ActiveClassroomUI({
         stageControlsVisible={stageControlsVisible}
         onRevealControls={showStageControls}
         zoom={zoom}
+        onZoom={handleZoom}
         contentActive={isWhiteboardActive || isScreenSharingActive}
         isWhiteboardActive={isWhiteboardActive}
         followViewport={followViewport}
@@ -1883,13 +1865,6 @@ export function ActiveClassroomUI({
               </button>
             )}
             <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
-            {onToggleFullscreen && (
-              <FullscreenButtonCompact
-                isFullscreen={isFullscreen}
-                onToggle={onToggleFullscreen}
-              />
-            )}
-            <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
             {isLocalSessionLeader && (sessionIsLive || hasStartedSession) && (
               <EndClassButton
                 onConfirm={handleEndSession}
@@ -1931,11 +1906,8 @@ export function ActiveClassroomUI({
                 trackRef={activeScreenTrack}
                 zoom={zoom}
                 pan={pan}
-                isPhoneLandscape={isPhoneLandscape}
-                stageControlsVisible={stageControlsVisible}
                 onRevealControls={showStageControls}
                 onStartPan={startPanDrag}
-                onZoom={handleZoom}
                 loadingLabel={t("classroom.loadingShare")}
                 presenterDescription={t("classroom.presenterSharing", {
                   name:
@@ -2280,6 +2252,8 @@ export function ActiveClassroomUI({
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
         courseId={courseId}
+        notificationTargetRef={stageRef}
+        onOpenChange={setIsClassroomPanelOpen}
         heading={t("classroom.classmates")}
         compactHeading={t("classroom.classmatesAndChat")}
         compactOpenLabel={t("classroom.openPanelAction")}

@@ -1,6 +1,12 @@
 "use client";
 
 import {
+  useClassroomPresentation,
+  useRestoreClassroomForDialog,
+} from "./classroom-presentation";
+import { ClassroomVideoPipSource } from "./classroom-video-pip-source";
+
+import {
   useLocalParticipant,
   useRoomContext,
   useParticipants,
@@ -21,7 +27,6 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { FullscreenButtonCompact } from "./fullscreen-button";
 import { DeviceToggleButton } from "./device-toggle-button";
 import {
   ClassroomUiPreview,
@@ -129,6 +134,7 @@ export function StudentClassroomUI({
 }: StudentClassroomUIProps) {
   const t = useTranslations();
   const room = useRoomContext();
+  const presentation = useClassroomPresentation();
   const [needsClick, setNeedsClick] = useState(false);
   const [shareState, setShareState] = useState<
     "idle" | "requesting" | "approved"
@@ -222,12 +228,20 @@ export function StudentClassroomUI({
     activeLayers: {
       "class-conflict": hasClassConflict,
       "enable-audio": needsClick,
-      fullscreen: pendingFullscreen,
+      fullscreen:
+        pendingFullscreen &&
+        presentation?.mode !== "compact" &&
+        !presentation?.nativeVideoActive,
     },
     isExternalDialogOpen: isSessionActionDialogOpen,
     isPreviewActive: hasActivePreview,
     previewLayer: STUDENT_PREVIEW_LAYERS[uiPreviewState] ?? null,
   });
+
+  useRestoreClassroomForDialog(
+    isSessionActionDialogOpen ||
+      (visibleLayer !== null && visibleLayer !== "fullscreen"),
+  );
 
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
@@ -631,6 +645,16 @@ export function StudentClassroomUI({
 
   return (
     <ClassroomView ref={rootRef} isSidebarOpen={isClassroomPanelOpen}>
+      <ClassroomVideoPipSource
+        track={
+          (!isWhiteboardActive
+            ? activeScreenTrack?.publication.track
+            : undefined) ??
+          (isTeacherVideoOn
+            ? teacher?.getTrackPublication(Track.Source.Camera)?.track
+            : undefined)
+        }
+      />
       {uiPreviewEnabled && (
         <ClassroomUiPreview
           roleLabel="student"
@@ -748,6 +772,7 @@ export function StudentClassroomUI({
         stageControlsVisible={stageControlsVisible}
         onRevealControls={showStageControls}
         zoom={zoom}
+        onZoom={handleZoom}
         contentActive={isWhiteboardActive || isScreenSharingActive}
         isWhiteboardActive={isWhiteboardActive}
         followViewport={followViewport}
@@ -800,13 +825,6 @@ export function StudentClassroomUI({
               <MonitorUp className="w-5 h-5" />
             </button>
             <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
-            {onToggleFullscreen && (
-              <FullscreenButtonCompact
-                isFullscreen={isFullscreen}
-                onToggle={onToggleFullscreen}
-              />
-            )}
-            <div className="w-px h-6 bg-inverse-foreground/30 mx-1" />
             <LeaveClassButton
               onConfirm={handleLeave}
               onOpenChange={setIsSessionActionDialogOpen}
@@ -836,11 +854,8 @@ export function StudentClassroomUI({
                 trackRef={activeScreenTrack}
                 zoom={zoom}
                 pan={pan}
-                isPhoneLandscape={isPhoneLandscape}
-                stageControlsVisible={stageControlsVisible}
                 onRevealControls={showStageControls}
                 onStartPan={startPanDrag}
-                onZoom={handleZoom}
                 loadingLabel={t("classroom.loadingShare")}
               />
             ) : undefined
@@ -1030,6 +1045,8 @@ export function StudentClassroomUI({
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
         courseId={courseId}
+        notificationTargetRef={stageRef}
+        onOpenChange={setIsClassroomPanelOpen}
         heading={t("classroom.classmates")}
         compactHeading={t("classroom.classmatesAndChat")}
         compactOpenLabel={t("classroom.openPanelAction")}

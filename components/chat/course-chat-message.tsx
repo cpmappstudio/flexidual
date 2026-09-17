@@ -18,13 +18,13 @@ import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
-import { ChevronDown, Pin, PinOff } from "lucide-react";
+import { ChevronDown, Paperclip, Pin, PinOff } from "lucide-react";
 import { useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { ChatAttachment, ChatMessageText } from "./course-chat-attachments";
 
-type ChatMessage = FunctionReturnType<
+export type ChatMessage = FunctionReturnType<
   typeof api.courseChatMessages.list
 >["page"][number];
 
@@ -33,11 +33,13 @@ export function CourseChatMessage({
   startsGroup = true,
   timeZone,
   canPin = false,
+  preview = false,
 }: {
   message: ChatMessage;
   startsGroup?: boolean;
   timeZone?: string;
   canPin?: boolean;
+  preview?: boolean;
 }) {
   const t = useTranslations("classroom");
   const format = useFormatter();
@@ -52,37 +54,48 @@ export function CourseChatMessage({
 
   return (
     <Message align={isOwn ? "end" : "start"}>
-      <MessageAvatar className="bg-transparent">
-        {startsGroup && (
-          <Avatar size="sm" className="shrink-0 shadow-sm">
-            <AvatarImage
-              src={message.authorImageUrl}
-              alt={message.authorName}
-            />
-            <AvatarFallback
-              className={cn(
-                message.authorRole === "teacher" &&
-                  "bg-primary text-primary-foreground",
-                message.authorRole === "member" &&
-                  "bg-secondary text-secondary-foreground",
-                isOwn && "bg-info text-info-foreground",
-              )}
-            >
-              {message.authorName.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-        )}
-      </MessageAvatar>
+      {!preview && (
+        <MessageAvatar className="bg-transparent">
+          {startsGroup && (
+            <Avatar size="sm" className="shrink-0 shadow-sm">
+              <AvatarImage
+                src={message.authorImageUrl}
+                alt={message.authorName}
+              />
+              <AvatarFallback
+                className={cn(
+                  message.authorRole === "teacher" &&
+                    "bg-primary text-primary-foreground",
+                  message.authorRole === "member" &&
+                    "bg-secondary text-secondary-foreground",
+                  isOwn && "bg-info text-info-foreground",
+                )}
+              >
+                {message.authorName.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          )}
+        </MessageAvatar>
+      )}
       <MessageContent className="gap-1">
-        <Bubble variant={variant} className="max-w-[82%]">
+        <Bubble
+          variant={variant}
+          className={preview ? "max-w-full" : "max-w-[82%]"}
+        >
           <BubbleContent
             className={cn(
               "flex flex-col gap-0.5 px-2.5 py-1.5 text-sm leading-snug shadow-sm sm:text-base",
               startsGroup && (isOwn ? "rounded-br-sm" : "rounded-bl-sm"),
+              preview && "px-3 py-2 shadow-lg",
             )}
           >
             {startsGroup && (
-              <span className="text-xs font-bold sm:text-sm">
+              <span
+                className={cn(
+                  "text-xs font-bold sm:text-sm",
+                  preview && "line-clamp-1 [overflow-wrap:anywhere]",
+                )}
+              >
                 {message.authorName}
                 {isTeacher && (
                   <>
@@ -92,14 +105,28 @@ export function CourseChatMessage({
                 )}
               </span>
             )}
-            {message.attachments?.map((file) => (
-              <ChatAttachment key={file.id} file={file} />
-            ))}
+            {preview && Boolean(message.attachments?.length) && (
+              <span className="flex min-w-0 items-center gap-1 text-xs">
+                <Paperclip className="size-3 shrink-0" aria-hidden="true" />
+                <span className="truncate">
+                  {message.attachments?.map((file) => file.name).join(", ")}
+                </span>
+              </span>
+            )}
+            {!preview &&
+              message.attachments?.map((file) => (
+                <ChatAttachment key={file.id} file={file} />
+              ))}
             <div className="flex min-w-0 items-end gap-2">
-              <p className="min-w-0 flex-1 text-left whitespace-pre-wrap [overflow-wrap:anywhere]">
+              <p
+                className={cn(
+                  "min-w-0 flex-1 text-left whitespace-pre-wrap [overflow-wrap:anywhere]",
+                  preview && "line-clamp-3",
+                )}
+              >
                 <ChatMessageText
                   body={message.body}
-                  enabled={message.linksEnabled === true}
+                  enabled={!preview && message.linksEnabled === true}
                 />
               </p>
               {message.pinnedAt !== undefined && (
@@ -108,20 +135,22 @@ export function CourseChatMessage({
                   aria-label={t("pinnedMessage")}
                 />
               )}
-              <time
-                className="mb-0.5 shrink-0 whitespace-nowrap text-[10px] leading-none opacity-80 sm:text-xs"
-                dateTime={new Date(message._creationTime).toISOString()}
-                title={timeZone}
-              >
-                {timeZone &&
-                  format.dateTime(message._creationTime, {
-                    timeZone,
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-              </time>
+              {!preview && (
+                <time
+                  className="mb-0.5 shrink-0 whitespace-nowrap text-[10px] leading-none opacity-80 sm:text-xs"
+                  dateTime={new Date(message._creationTime).toISOString()}
+                  title={timeZone}
+                >
+                  {timeZone &&
+                    format.dateTime(message._creationTime, {
+                      timeZone,
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                </time>
+              )}
             </div>
-            {canPin && <MessagePinMenu message={message} />}
+            {canPin && !preview && <MessagePinMenu message={message} />}
           </BubbleContent>
         </Bubble>
       </MessageContent>
