@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TZDate } from "@date-fns/tz";
 import { format } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
-import { BookOpenCheck, CheckCircle2, ClipboardClock } from "lucide-react";
+import { CheckCircle2, ClipboardClock, ExternalLink } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import type { Id } from "@/convex/_generated/dataModel";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
-import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
 import { CalendarProviderMark } from "@/components/calendar/calendar-provider-mark";
 import { getCalendarProviderAppearanceClasses } from "@/components/calendar/calendar-tailwind-classes";
 import {
@@ -19,6 +18,7 @@ import {
 } from "@/components/classroom/session-record";
 import { SessionCloseoutDialog } from "@/components/classroom/session-closeout-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   type CarouselApi,
   Carousel,
@@ -38,6 +38,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
+  getExternalClassPlatform,
   isExternalClassSession,
   type ClassSessionType,
 } from "@/lib/class-session";
@@ -67,9 +68,16 @@ export function PastClassesPanel({
   const [recordingOpen, setRecordingOpen] = useState(false);
   const [closeoutOpen, setCloseoutOpen] = useState(false);
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
+  const orderedSessions = useMemo(
+    () => [...(sessions ?? [])].sort((a, b) => a.start - b.start),
+    [sessions],
+  );
+  const mostRecentSession = orderedSessions.at(-1) ?? null;
   const selectedSession =
-    sessions?.find((session) => session.scheduleId === selectedScheduleId) ??
-    sessions?.[0] ??
+    orderedSessions.find(
+      (session) => session.scheduleId === selectedScheduleId,
+    ) ??
+    mostRecentSession ??
     null;
   const dateLocale = dateLocales[locale as keyof typeof dateLocales] ?? enUS;
 
@@ -82,6 +90,9 @@ export function PastClassesPanel({
   const selectedSessionIsExternal = isExternalClassSession(
     selectedSession?.sessionType,
   );
+  const selectedExternalPlatform = getExternalClassPlatform(
+    selectedSession?.sessionType,
+  );
   const sessionRecord = useSessionRecord(
     selectedSession?.scheduleId,
     selectedSession?.end,
@@ -89,23 +100,24 @@ export function PastClassesPanel({
   );
   const sessionRecordings = getSessionRecordings(sessionRecord);
   const selectedSessionIndex = selectedSession
-    ? (sessions?.findIndex(
+    ? orderedSessions.findIndex(
         (session) => session.scheduleId === selectedSession.scheduleId,
-      ) ?? -1)
+      )
     : -1;
 
   useEffect(() => {
-    if (!sessions?.length) {
+    if (!orderedSessions.length || !mostRecentSession) {
       setSelectedScheduleId(null);
       return;
     }
 
     setSelectedScheduleId((current) =>
-      current && sessions.some((session) => session.scheduleId === current)
+      current &&
+      orderedSessions.some((session) => session.scheduleId === current)
         ? current
-        : sessions[0].scheduleId,
+        : mostRecentSession.scheduleId,
     );
-  }, [sessions]);
+  }, [mostRecentSession, orderedSessions]);
 
   useEffect(() => {
     setRecordingOpen(false);
@@ -131,23 +143,35 @@ export function PastClassesPanel({
       <Carousel
         opts={{ align: "start", containScroll: "trimSnaps" }}
         setApi={setCarouselApi}
-        className="flex w-full touch-pan-y flex-col gap-4"
+        className="flex w-full touch-pan-y flex-col gap-2"
         aria-label={t("class.pastClasses")}
       >
-        <CardHeader className="px-5 sm:px-6">
+        <CardHeader className="items-center px-5 sm:px-6">
           <CardTitle className="text-xl font-bold">
             {t("class.pastClasses")}
           </CardTitle>
           {sessions && sessions.length > 0 && (
-            <CardAction className="flex gap-2">
-              <CarouselPrevious
-                className="static size-10 translate-y-0"
-                aria-label={`${t("common.previous")}: ${t("class.pastClasses")}`}
-              />
-              <CarouselNext
-                className="static size-10 translate-y-0"
-                aria-label={`${t("common.next")}: ${t("class.pastClasses")}`}
-              />
+            <CardAction className="flex items-center gap-2 self-center sm:gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="hidden text-[10px] leading-none text-muted-foreground sm:block">
+                  {t("class.olderClasses")}
+                </span>
+                <CarouselPrevious
+                  className="static size-10 translate-y-0"
+                  aria-label={t("class.olderClasses")}
+                  title={t("class.olderClasses")}
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <CarouselNext
+                  className="static size-10 translate-y-0"
+                  aria-label={t("class.newerClasses")}
+                  title={t("class.newerClasses")}
+                />
+                <span className="hidden text-[10px] leading-none text-muted-foreground sm:block">
+                  {t("class.newerClasses")}
+                </span>
+              </div>
             </CardAction>
           )}
         </CardHeader>
@@ -158,7 +182,7 @@ export function PastClassesPanel({
                 {Array.from({ length: 3 }).map((_, index) => (
                   <Skeleton
                     key={index}
-                    className="h-16 min-w-[72%] rounded-2xl sm:min-w-[46%] md:min-w-[34%]"
+                    className="h-24 min-w-[72%] rounded-2xl sm:min-w-[46%] md:min-w-[34%]"
                   />
                 ))}
               </div>
@@ -171,14 +195,14 @@ export function PastClassesPanel({
           ) : (
             <div className="space-y-5">
               <CarouselContent className="-ml-3">
-                {sessions.map((session, index) => {
+                {orderedSessions.map((session, index) => {
                   const isSelected =
                     session.scheduleId === selectedSession?.scheduleId;
                   return (
                     <CarouselItem
                       key={session.scheduleId}
                       className="basis-[72%] pl-3 sm:basis-[46%] md:basis-[34%] 2xl:basis-1/4"
-                      aria-label={`${index + 1} / ${sessions.length}`}
+                      aria-label={`${index + 1} / ${orderedSessions.length}`}
                     >
                       <button
                         type="button"
@@ -187,14 +211,14 @@ export function PastClassesPanel({
                           setSelectedScheduleId(session.scheduleId)
                         }
                         className={cn(
-                          "flex min-h-16 w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                          "flex h-24 w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                           isSelected
-                            ? "border-secondary/60 bg-secondary/10 text-foreground shadow-[inset_3px_0_0_var(--secondary)] hover:bg-secondary/15"
+                            ? "border-secondary/60 bg-sidebar text-foreground shadow-[inset_3px_0_0_var(--secondary)] hover:bg-muted/40"
                             : "border-border bg-sidebar text-foreground hover:bg-muted",
                         )}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="line-clamp-2 text-sm font-bold capitalize">
+                          <p className="truncate text-sm font-bold capitalize">
                             {formatSessionDate(session)}
                           </p>
                           {session.recordState !== "notApplicable" && (
@@ -226,18 +250,12 @@ export function PastClassesPanel({
                             </Badge>
                           )}
                         </div>
-                        {isExternalClassSession(session.sessionType) ? (
-                          <CalendarProviderMark
-                            sessionType={session.sessionType}
-                            isPast
-                            className="size-6"
-                          />
-                        ) : (
-                          <BookOpenCheck
-                            className="size-5 shrink-0 opacity-60"
-                            aria-hidden="true"
-                          />
-                        )}
+                        <CalendarProviderMark
+                          sessionType={session.sessionType}
+                          isPast={!isSelected}
+                          className="size-7"
+                          sizes="28px"
+                        />
                       </button>
                     </CarouselItem>
                   );
@@ -246,39 +264,59 @@ export function PastClassesPanel({
 
               <Separator />
 
-              {selectedSession &&
-                (selectedSessionIsExternal ? (
-                  <div
-                    className={cn(
-                      "flex min-h-52 flex-col items-center justify-center gap-4 rounded-2xl border px-6 text-center",
-                      getCalendarProviderAppearanceClasses(
-                        selectedSession.sessionType,
-                      )?.event,
-                    )}
-                  >
-                    <CalendarProviderMark
-                      sessionType={selectedSession.sessionType}
-                      isPast
-                      className="size-20 sm:size-24"
-                      sizes="(min-width: 640px) 96px, 80px"
-                    />
-                    <CalendarProviderBadge
-                      sessionType={selectedSession.sessionType}
-                      isPast
-                      className="h-7 rounded-full px-3 text-xs"
-                      markClassName="size-3.5"
-                    />
+              {selectedSession && (
+                <div className="min-w-0">
+                  <div className="mb-4">
+                    <h3 className="text-base font-bold text-foreground">
+                      {getSessionTitle(selectedSession)}
+                    </h3>
+                    <p className="mt-1 text-sm capitalize text-muted-foreground">
+                      {formatSessionDate(selectedSession)}
+                    </p>
                   </div>
-                ) : (
-                  <div className="min-w-0">
-                    <div className="mb-4">
-                      <h3 className="text-base font-bold text-foreground">
-                        {getSessionTitle(selectedSession)}
-                      </h3>
-                      <p className="mt-1 text-sm capitalize text-muted-foreground">
-                        {formatSessionDate(selectedSession)}
-                      </p>
+                  {selectedSessionIsExternal && selectedExternalPlatform ? (
+                    <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                      <div
+                        className={cn(
+                          "flex size-16 shrink-0 items-center justify-center rounded-xl border",
+                          getCalendarProviderAppearanceClasses(
+                            selectedSession.sessionType,
+                          )?.badge,
+                        )}
+                      >
+                        <CalendarProviderMark
+                          sessionType={selectedSession.sessionType}
+                          className="size-10"
+                          sizes="40px"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-base font-medium text-foreground">
+                          {t("class.externalClassManaged", {
+                            platform: selectedExternalPlatform.name,
+                          })}
+                        </p>
+                        <Button
+                          asChild
+                          className="mt-2 h-10 px-6 font-semibold shadow-sm"
+                        >
+                          <a
+                            href={selectedExternalPlatform.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {t("classroom.goToPlatform", {
+                              platform: selectedExternalPlatform.name,
+                            })}
+                            <ExternalLink
+                              className="size-4"
+                              aria-hidden="true"
+                            />
+                          </a>
+                        </Button>
+                      </div>
                     </div>
+                  ) : (
                     <SessionRecordView
                       record={sessionRecord}
                       onWatchRecording={() => setRecordingOpen(true)}
@@ -287,8 +325,9 @@ export function PastClassesPanel({
                       showOwnAttendance={false}
                       allowAttendanceEditing
                     />
-                  </div>
-                ))}
+                  )}
+                </div>
+              )}
             </div>
           )}
         </CardContent>
