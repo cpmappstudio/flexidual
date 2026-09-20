@@ -211,51 +211,51 @@ export function PastClassesPanel({
                           setSelectedScheduleId(session.scheduleId)
                         }
                         className={cn(
-                          "flex h-24 w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                          "flex h-24 w-full flex-col items-stretch justify-center rounded-2xl border px-4 py-3 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                           isSelected
                             ? "border-secondary/60 bg-sidebar text-foreground shadow-[inset_3px_0_0_var(--secondary)] hover:bg-muted/40"
                             : "border-border bg-sidebar text-foreground hover:bg-muted",
                         )}
                       >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold capitalize">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className="min-w-0 flex-1 truncate text-sm font-bold capitalize">
                             {formatSessionDate(session)}
                           </p>
-                          {session.recordState !== "notApplicable" && (
-                            <Badge
-                              variant="secondary"
-                              className={cn(
-                                "mt-1.5 gap-1 rounded-full px-2 py-0.5 text-[10px]",
-                                session.recordState === "completed"
-                                  ? "bg-success/10 text-success"
-                                  : "bg-warning/15 text-warning-foreground",
-                              )}
-                            >
-                              {session.recordState === "completed" ? (
-                                <CheckCircle2
-                                  className="size-3"
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <ClipboardClock
-                                  className="size-3"
-                                  aria-hidden="true"
-                                />
-                              )}
-                              {t(
-                                session.recordState === "completed"
-                                  ? "sessionRecord.completedLabel"
-                                  : "sessionRecord.pendingLabel",
-                              )}
-                            </Badge>
-                          )}
+                          <CalendarProviderMark
+                            sessionType={session.sessionType}
+                            isPast={!isSelected}
+                            className="size-6"
+                            sizes="24px"
+                          />
                         </div>
-                        <CalendarProviderMark
-                          sessionType={session.sessionType}
-                          isPast={!isSelected}
-                          className="size-7"
-                          sizes="28px"
-                        />
+                        {session.recordState !== "notApplicable" && (
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              "mt-1.5 w-fit max-w-full gap-1 rounded-full px-2 py-0.5 text-[10px]",
+                              session.recordState === "completed"
+                                ? "bg-success/10 text-success"
+                                : "bg-warning/15 text-warning-foreground",
+                            )}
+                          >
+                            {session.recordState === "completed" ? (
+                              <CheckCircle2
+                                className="size-3"
+                                aria-hidden="true"
+                              />
+                            ) : (
+                              <ClipboardClock
+                                className="size-3"
+                                aria-hidden="true"
+                              />
+                            )}
+                            {t(
+                              session.recordState === "completed"
+                                ? "sessionRecord.completedLabel"
+                                : "sessionRecord.pendingLabel",
+                            )}
+                          </Badge>
+                        )}
                       </button>
                     </CarouselItem>
                   );
@@ -278,7 +278,7 @@ export function PastClassesPanel({
                     <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                       <div
                         className={cn(
-                          "flex size-16 shrink-0 items-center justify-center rounded-xl border",
+                          "hidden sm:flex size-16 shrink-0 items-center justify-center rounded-xl border",
                           getCalendarProviderAppearanceClasses(
                             selectedSession.sessionType,
                           )?.badge,
