@@ -21,7 +21,7 @@ import {
   Hand,
 } from "lucide-react";
 import { LeaveClassButton } from "./leave-class-button";
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { useQuery } from "convex/react";
@@ -111,6 +111,7 @@ interface StudentClassroomUIProps {
   courseId: Id<"classes">;
   roomName: string;
   sessionNow: number;
+  countdown?: ReactNode;
   className?: string;
   lessonTitle?: string;
   curriculumIconKey?: string;
@@ -124,6 +125,7 @@ export function StudentClassroomUI({
   courseId,
   roomName,
   sessionNow,
+  countdown,
   className,
   lessonTitle,
   curriculumIconKey,
@@ -743,6 +745,7 @@ export function StudentClassroomUI({
 
       {/* 1. Header */}
       <ClassroomHeader
+        countdown={countdown}
         title={className || t("classroom.classroom")}
         subtitle={lessonTitle}
         curriculumIconKey={curriculumIconKey}
@@ -766,6 +769,7 @@ export function StudentClassroomUI({
 
       {/* 2. Stage */}
       <ClassroomStage
+        countdown={countdown}
         stageRef={stageRef}
         className="bg-muted"
         isPhoneLandscape={isPhoneLandscape}

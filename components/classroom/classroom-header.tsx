@@ -24,6 +24,7 @@ interface ClassroomHeaderProps {
   onPanelOpenChange: (open: boolean) => void;
   action?: ReactNode;
   sessionAction?: ReactNode;
+  countdown?: ReactNode;
   layoutMode?: "responsive" | "recording";
 }
 
@@ -44,6 +45,7 @@ export function ClassroomHeader({
   onPanelOpenChange,
   action,
   sessionAction,
+  countdown,
   layoutMode = "responsive",
 }: ClassroomHeaderProps) {
   const statusLabel = isActive ? activeLabel : waitingLabel;
@@ -78,6 +80,7 @@ export function ClassroomHeader({
               </span>
             )}
           </div>
+          {countdown}
           <RecordingStatusIndicator
             compact
             isRecording={isRecording}
@@ -111,9 +114,12 @@ export function ClassroomHeader({
                 />
               )}
               <div className="flex min-w-0 flex-col">
-                <h2 className="truncate text-base font-bold text-primary">
-                  {title}
-                </h2>
+                <div className="flex min-w-0 items-center gap-2">
+                  <h2 className="truncate text-base font-bold text-primary">
+                    {title}
+                  </h2>
+                  {countdown}
+                </div>
                 {subtitle && (
                   <p className="truncate text-xs text-muted-foreground">
                     {subtitle}

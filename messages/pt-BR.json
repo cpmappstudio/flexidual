@@ -376,6 +376,9 @@
     "noResultsDescription": "Tente outro nome de aula ou ajuste os filtros."
   },
   "classroom": {
+    "timeRemaining": "Tempo restante: {time}",
+    "extensionTimeRemaining": "Prorrogação · Tempo restante: {time}",
+    "scheduledTimeEnded": "O tempo da aula terminou",
     "openChat": "Abrir chat",
     "classroomInFloatingWindow": "A sala está aberta em uma janela flutuante.",
     "floatingWindow": "Abrir janela flutuante",

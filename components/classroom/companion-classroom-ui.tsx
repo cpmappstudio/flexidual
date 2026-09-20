@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRoomContext, useLocalParticipant } from "@livekit/components-react";
 import { ConnectionState, RoomEvent } from "livekit-client";
 import type { RemoteParticipant } from "livekit-client";
@@ -14,7 +14,17 @@ import { FullscreenButton } from "./fullscreen-button";
 /** localStorage key that survives companion page refreshes while the session is live. */
 const WB_PRESENTING_KEY = "wb_presenting_";
 
-export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleFullscreen }: { roomName: string; isFullscreen?: boolean; onToggleFullscreen?: () => void }) {
+export function CompanionClassroomUI({
+  roomName,
+  countdown,
+  isFullscreen = false,
+  onToggleFullscreen,
+}: {
+  roomName: string;
+  countdown?: ReactNode;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
+}) {
   const t = useTranslations();
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
@@ -195,6 +205,7 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
         )}
 
         <div className="flex items-center gap-2">
+          {countdown}
           <button
             onMouseDown={(e) => e.preventDefault()}
             onClick={toggleWhiteboard}
@@ -223,6 +234,11 @@ export function CompanionClassroomUI({ roomName, isFullscreen = false, onToggleF
 
       {/* Whiteboard — relative so the landscape floating pill can be positioned inside */}
       <div className="flex-1 relative">
+        {isPhoneLandscape && countdown && (
+          <div className="pointer-events-none absolute left-2 top-2 z-[35]">
+            {countdown}
+          </div>
+        )}
 
         {/* Phone landscape: compact icon-only controls pill in the top-right corner */}
         {isPhoneLandscape && (

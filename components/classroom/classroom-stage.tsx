@@ -46,6 +46,7 @@ interface ClassroomStageProps {
   className?: string;
   children: ReactNode;
   phoneControls: ReactNode;
+  countdown?: ReactNode;
   isPhoneLandscape: boolean;
   stageControlsVisible: boolean;
   onRevealControls: () => void;
@@ -68,6 +69,7 @@ export function ClassroomStage({
   className,
   children,
   phoneControls,
+  countdown,
   isPhoneLandscape,
   stageControlsVisible,
   onRevealControls,
@@ -84,6 +86,7 @@ export function ClassroomStage({
   enterFullscreenLabel,
   exitFullscreenLabel,
 }: ClassroomStageProps) {
+  const compact = useClassroomPresentation()?.mode === "compact";
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   return (
@@ -97,6 +100,11 @@ export function ClassroomStage({
       )}
     >
       {children}
+      {compact && countdown && (
+        <div className="pointer-events-none absolute left-2 top-2 z-20">
+          {countdown}
+        </div>
+      )}
       <ClassroomDisplayControls
         zoom={zoom}
         onZoom={contentActive && !isWhiteboardActive ? onZoom : undefined}
