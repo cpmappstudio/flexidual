@@ -8,6 +8,7 @@ import {
   todayInTimeZone,
 } from "../lib/time-zone";
 import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
+import { canManageClasses } from "./permissions";
 
 const UX_DEMO_CURRICULUM_CODE = "UX-DEMO-01";
 const UX_DEMO_CLASS_NAME = "UX Demo - Integrated Biology Studio";
@@ -1185,10 +1186,11 @@ export const createLauraTodaySchedule = internalMutation({
 });
 
 export const createLauraClassroomLayoutDemo = internalMutation({
-  args: {},
+  args: { minutesUntilEnd: v.optional(v.number()) },
   returns: v.object({
     message: v.string(),
     student: v.string(),
+    admin: v.string(),
     teacher: v.string(),
     campus: v.string(),
     timeZone: v.string(),
@@ -1196,102 +1198,100 @@ export const createLauraClassroomLayoutDemo = internalMutation({
       v.object({
         className: v.string(),
         roomName: v.string(),
+        classroomPath: v.string(),
         start: v.string(),
         end: v.string(),
       }),
     ),
   }),
-  handler: async (ctx) => {
-    const student = (await ctx.db.query("users").collect()).find(
-      (user) => user.username === LAURA_TODAY_DEMO_USERNAME,
-    );
-    if (!student) {
-      throw new Error(`Student ${LAURA_TODAY_DEMO_USERNAME} was not found.`);
+  handler: async (ctx, args) => {
+    const minutesUntilEnd = args.minutesUntilEnd ?? 4;
+    if (
+      !Number.isFinite(minutesUntilEnd) ||
+      minutesUntilEnd < 2 ||
+      minutesUntilEnd > 30
+    ) {
+      throw new Error("minutesUntilEnd must be between 2 and 30.");
     }
-
-    const teacher =
-      (await findUserByName(ctx, "betancourt")) ||
-      (await getUserByRole(ctx, "teacher"));
-    if (!teacher) throw new Error("No active teacher was found.");
-
-    const campus =
-      (await getUserCampus(ctx, student._id)) ||
-      (await getUserCampus(ctx, teacher._id)) ||
-      (await getDemoCampus(ctx));
-    if (!campus.timeZone) {
-      throw new Error(`Campus ${campus.name} has no time zone configured.`);
+    const student = await ctx.db
+      .query("users")
+      // eslint-disable-next-line @convex-dev/no-filter-in-query -- Seed-only lookup; usernames and names are not indexed.
+      .filter((q) => q.eq(q.field("username"), "student_lauu"))
+      .first();
+    if (!student?.isActive) {
+      throw new Error("Active student student_lauu was not found.");
     }
-
-    const admin =
-      (await findUserByName(ctx, "laura.horta@correounivalle.edu.co")) ||
-      (await getUserByRole(ctx, "admin", campus._id)) ||
-      (await getUserByRole(ctx, "admin")) ||
-      teacher;
-    const enrollments = await ctx.db
-      .query("classEnrollments")
-      .withIndex("by_student", (query) => query.eq("studentId", student._id))
-      .collect();
-    const enrolledClasses = (
-      await Promise.all(
-        enrollments.map((enrollment) => ctx.db.get(enrollment.classId)),
+    const admin = await ctx.db
+      .query("users")
+      // eslint-disable-next-line @convex-dev/no-filter-in-query -- Seed-only lookup; usernames and names are not indexed.
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("username"), "laura.horta"),
+          q.eq(q.field("email"), "laura.horta@correounivalle.edu.co"),
+          q.eq(q.field("fullName"), "Laura Betancourt"),
+        ),
       )
-    ).filter((classData): classData is Doc<"classes"> =>
-      Boolean(
-        classData?.isActive &&
-          classData.campusId === campus._id &&
-          classData.teacherId === teacher._id,
-      ),
-    );
-    const preferredNames = [
-      "Research Methods",
-      "Statistics and Data Lab",
-      "Media Arts Lab",
-      "Life Science Investigations",
-      "Study Skills Seminar",
-    ];
-    const classes = [...enrolledClasses].sort((first, second) => {
-      const firstIndex = preferredNames.indexOf(first.name);
-      const secondIndex = preferredNames.indexOf(second.name);
-      return (
-        (firstIndex === -1 ? 99 : firstIndex) -
-        (secondIndex === -1 ? 99 : secondIndex)
-      );
-    });
-
-    if (classes.length === 0) {
+      .first();
+    if (!admin?.isActive) {
       throw new Error(
-        "Laura has no active classes assigned to Profesora Betancourt in her campus.",
+        "Active administrator laura.horta (Laura Betancourt) was not found.",
       );
     }
+    const campus = await getUserCampus(ctx, student._id);
+    if (!campus?.timeZone) {
+      throw new Error("The student's campus must have a time zone configured.");
+    }
+    if (
+      !(await canManageClasses(ctx, admin._id, campus._id, campus.schoolId))
+    ) {
+      throw new Error(
+        "Laura Horta is not authorized to manage this campus's classes.",
+      );
+    }
+    const enrolledClasses = (
+      await getActiveStudentClasses(ctx, student._id)
+    ).filter(
+      (classData) =>
+        classData.campusId === campus._id &&
+        classData.teacherId !== undefined &&
+        classData.classType !== "ignitia" &&
+        classData.classType !== "abeka",
+    );
+    const preferredTeacher = await findUserByName(ctx, "profesora betancourt");
+    const firstClass =
+      enrolledClasses.find(
+        (classData) => classData.teacherId === preferredTeacher?._id,
+      ) ?? enrolledClasses[0];
+    const teacher = firstClass?.teacherId
+      ? await ctx.db.get(firstClass.teacherId)
+      : null;
+    if (!teacher?.isActive) {
+      throw new Error(
+        "student_lauu has no active live classes with an active teacher in the campus.",
+      );
+    }
+    const classes = enrolledClasses
+      .filter((classData) => classData.teacherId === teacher._id)
+      .sort((first, second) => first.name.localeCompare(second.name));
 
     const now = Date.now();
-    const baseStart = Math.floor(now / 60_000) * 60_000 - 5 * 60_000;
     const slots = [
-      [-5, 25],
-      [35, 65],
-      [75, 105],
-      [115, 145],
-      [155, 185],
+      [-1, minutesUntilEnd],
+      [minutesUntilEnd + 12, minutesUntilEnd + 16],
+      [minutesUntilEnd + 28, minutesUntilEnd + 32],
     ] as const;
     const schedules = [];
-
     for (const [index, [startOffset, endOffset]] of slots.entries()) {
       const classData = classes[index % classes.length];
-      const roomName = `${LAURA_CLASSROOM_DEMO_ROOM_PREFIX}-${index + 1}`;
-      const existingSchedule = await ctx.db
-        .query("classSchedule")
-        .withIndex("by_room", (query) => query.eq("roomName", roomName))
-        .first();
-      if (existingSchedule) {
-        await deleteScheduleWithDependencies(ctx, existingSchedule);
-      }
-
-      const start = baseStart + (startOffset + 5) * 60_000;
-      const end = baseStart + (endOffset + 5) * 60_000;
+      const roomName = `${LAURA_CLASSROOM_DEMO_ROOM_PREFIX}-clock-${now}-${index + 1}`;
+      const start = now + startOffset * 60_000;
+      const end = now + endOffset * 60_000;
       await ctx.db.insert("classSchedule", {
         classId: classData._id,
         lessonIds: [],
-        title: classData.name,
+        title: `Clock demo ${index + 1} · ${classData.name}`,
+        description:
+          "Short session for testing the shared countdown, reloads, floating view, and a ten-minute extension through the normal classroom flow.",
         scheduledStart: start,
         scheduledEnd: end,
         sessionType: "live",
@@ -1302,18 +1302,19 @@ export const createLauraClassroomLayoutDemo = internalMutation({
         createdAt: now + index,
         createdBy: admin._id,
       });
-
       schedules.push({
         className: classData.name,
         roomName,
+        classroomPath: `/en/${campus.slug}/classroom/${roomName}`,
         start: new Date(start).toISOString(),
         end: new Date(end).toISOString(),
       });
     }
-
     return {
-      message: "Laura classroom layout demo is ready.",
+      message:
+        "Clock demo ready. Start the first room as Laura Horta, join as student_lauu, and confirm the extension at zero. Each run creates fresh sessions and preserves previous sessions.",
       student: student.fullName,
+      admin: admin.fullName,
       teacher: teacher.fullName,
       campus: campus.name,
       timeZone: campus.timeZone,

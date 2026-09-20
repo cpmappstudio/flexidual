@@ -25,6 +25,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { CompanionClassroomUI } from "./companion-classroom-ui";
 import { useFullscreen } from "@/hooks/use-fullscreen";
 import { ClassroomRocketLoader } from "@/components/student/rocket-transition";
+import { ClassroomCountdown } from "./classroom-countdown";
 import { useClassroomClock } from "./use-classroom-clock";
 import { useClassroomToken } from "@/hooks/use-classroom-token";
 import { SessionCloseoutDialog } from "./session-closeout-dialog";
@@ -651,6 +652,14 @@ export default function FlexiClassroom({
       );
     }
 
+    const countdown = isClassLive ? (
+      <ClassroomCountdown
+        now={now}
+        end={sessionStatus.end}
+        extensionEndsAt={sessionStatus.liveExtensionEndsAt}
+      />
+    ) : null;
+
     // Active Classroom
     return (
       <div
@@ -674,6 +683,7 @@ export default function FlexiClassroom({
         >
           {isCompanion ? (
             <CompanionClassroomUI
+              countdown={countdown}
               roomName={roomName}
               isFullscreen={isFullscreen}
               onToggleFullscreen={
@@ -682,6 +692,7 @@ export default function FlexiClassroom({
             />
           ) : resolvedIsStudentView ? (
             <StudentClassroomUI
+              countdown={countdown}
               courseId={scheduleDetails.class._id}
               roomName={roomName}
               sessionNow={now}
@@ -696,6 +707,7 @@ export default function FlexiClassroom({
             />
           ) : (
             <ActiveClassroomUI
+              countdown={countdown}
               courseId={scheduleDetails.class._id}
               currentUserRole={role}
               canLeadSession={sessionStatus?.leadershipRole != null}

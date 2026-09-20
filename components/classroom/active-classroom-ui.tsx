@@ -41,7 +41,14 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import {
+  useEffect,
+  useState,
+  useMemo,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { LeaveClassButton } from "./leave-class-button";
 import { EndClassButton } from "./end-class-button";
 import { LIVE_DECISION_WINDOW_MS } from "@/lib/live-session-policy";
@@ -182,6 +189,7 @@ interface ActiveClassroomUIProps {
   canLeadSession?: boolean;
   roomName: string;
   sessionNow: number;
+  countdown?: ReactNode;
   className?: string;
   lessonTitle?: string;
   curriculumIconKey?: string;
@@ -200,6 +208,7 @@ export function ActiveClassroomUI({
   canLeadSession = false,
   roomName,
   sessionNow,
+  countdown,
   className,
   lessonTitle,
   curriculumIconKey,
@@ -1560,6 +1569,7 @@ export function ActiveClassroomUI({
 
       {/* 1. Header Row */}
       <ClassroomHeader
+        countdown={countdown}
         title={className || t("classroom.classroom")}
         subtitle={lessonTitle}
         curriculumIconKey={curriculumIconKey}
@@ -1770,6 +1780,7 @@ export function ActiveClassroomUI({
 
       {/* 2. Stage Row */}
       <ClassroomStage
+        countdown={countdown}
         stageRef={stageRef}
         className="bg-muted"
         isPhoneLandscape={isPhoneLandscape}

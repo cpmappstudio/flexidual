@@ -15,11 +15,18 @@ export function useClassroomClock() {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const timer = window.setInterval(
-      () => setNow(Date.now()),
-      CLASSROOM_CLOCK_INTERVAL_MS,
-    );
-    return () => window.clearInterval(timer);
+    const updateNow = () => setNow(Date.now());
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") updateNow();
+    };
+    const timer = window.setInterval(updateNow, CLASSROOM_CLOCK_INTERVAL_MS);
+    window.addEventListener("focus", updateNow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", updateNow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   return now;

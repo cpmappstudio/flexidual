@@ -376,6 +376,9 @@
     "noResultsDescription": "Try another class name or adjust the filters."
   },
   "classroom": {
+    "timeRemaining": "Time remaining: {time}",
+    "extensionTimeRemaining": "Extension · Time remaining: {time}",
+    "scheduledTimeEnded": "The class time has ended",
     "openChat": "Open chat",
     "classroomInFloatingWindow": "The classroom is open in a floating window.",
     "floatingWindow": "Open floating window",

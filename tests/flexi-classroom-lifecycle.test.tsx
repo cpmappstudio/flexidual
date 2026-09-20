@@ -26,6 +26,8 @@ const createSessionStatus = () => ({
   isLive: true,
   leadershipRole: "admin" as string | null,
   start: Date.UTC(2026, 8, 2, 17, 0),
+  end: Date.UTC(2026, 8, 2, 18, 30),
+  liveExtensionEndsAt: undefined as number | undefined,
   timeZone: "America/Bogota",
 });
 
@@ -198,7 +200,9 @@ vi.mock("@/components/classroom/active-classroom-ui", async () => {
   return {
     ActiveClassroomUI: ({
       onRequestCloseout,
+      countdown,
     }: {
+      countdown?: ReactNode;
       onRequestCloseout: () => void;
     }) =>
       createElement(
@@ -206,6 +210,7 @@ vi.mock("@/components/classroom/active-classroom-ui", async () => {
         null,
         createElement("button", { onClick: onRequestCloseout }, "Open report"),
         createElement(ClassroomWindowControls),
+        countdown,
       ),
   };
 });
@@ -243,11 +248,11 @@ vi.mock("@/components/classroom/session-closeout-dialog", async () => {
 });
 
 vi.mock("@/components/classroom/student-classroom-ui", () => ({
-  StudentClassroomUI: () => null,
+  StudentClassroomUI: ({ countdown }: { countdown?: ReactNode }) => countdown,
 }));
 
 vi.mock("@/components/classroom/companion-classroom-ui", () => ({
-  CompanionClassroomUI: () => null,
+  CompanionClassroomUI: ({ countdown }: { countdown?: ReactNode }) => countdown,
 }));
 
 vi.mock("@/components/student/rocket-transition", () => ({
@@ -531,6 +536,37 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     frame.remove();
   });
 
+  it.each(["student", "staff", "companion"])(
+    "updates the %s countdown without reconnecting the room",
+    async (viewType) => {
+      const props = {
+        roomName: "room-1",
+        isStudentView: viewType === "student",
+        isCompanion: viewType === "companion",
+      };
+      const view = render(createElement(FlexiClassroom, props));
+      await flushPromises();
+      expect(screen.getByRole("timer").textContent).toContain("30:00");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(screen.getByRole("timer").textContent).toContain("29:59");
+      vi.setSystemTime(new Date("2026-09-02T18:32:00.000Z"));
+      fireEvent.focus(window);
+      expect(screen.getByRole("timer").textContent).toContain("00:00");
+      expect(testState.endSession).not.toHaveBeenCalled();
+      testState.sessionStatus = {
+        ...createSessionStatus(),
+        liveExtensionEndsAt: Date.UTC(2026, 8, 2, 18, 40),
+      };
+      view.rerender(createElement(FlexiClassroom, props));
+      expect(screen.getByRole("timer").textContent).toContain("+08:00");
+      expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
+      expect(testState.getToken).toHaveBeenCalledTimes(1);
+      expect(testState.endSession).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps one LiveKit room mounted across two minute query refreshes", async () => {
     testState.queryLifecycle.simulateMinuteLoading = true;
     render(
@@ -550,6 +586,7 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     });
 
     expect(testState.queryLifecycle.loadingTransitions).toBe(1);
+    expect(screen.getByRole("timer").textContent).toContain("29:00");
     expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
 
     await act(async () => {
@@ -557,6 +594,7 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     });
 
     expect(testState.queryLifecycle.loadingTransitions).toBe(2);
+    expect(screen.getByRole("timer").textContent).toContain("28:00");
     expect(screen.getByTestId("livekit-room")).toBeTruthy();
     expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
     expect(testState.getToken).toHaveBeenCalledTimes(1);
