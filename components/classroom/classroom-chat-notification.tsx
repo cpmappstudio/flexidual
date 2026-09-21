@@ -12,11 +12,13 @@ import { useClassroomPresentation } from "./classroom-presentation";
 
 export function ClassroomChatNotification({
   courseId,
+  scheduleId,
   chatVisible,
   targetRef,
   onOpenChat,
 }: {
   courseId: Id<"classes">;
+  scheduleId?: Id<"classSchedule">;
   chatVisible: boolean;
   targetRef: RefObject<HTMLDivElement | null>;
   onOpenChat: () => void;
@@ -30,6 +32,7 @@ export function ClassroomChatNotification({
   });
   const { message, dismiss } = useClassroomChatNotification({
     courseId,
+    scheduleId,
     chatVisible,
     onNotify: play,
   });

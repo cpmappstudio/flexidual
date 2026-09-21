@@ -2,7 +2,7 @@ import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import {
   internalMutation,
   mutation,
@@ -26,6 +26,8 @@ import {
   isChatMutedForUser,
   canAttachToCourseChat,
   canManageCourseChatContent,
+  getActiveLiveChatSchedule,
+  getCourseChatAccess,
 } from "./model/courseChatAccess";
 import {
   attachmentSummary,
@@ -42,6 +44,7 @@ const messageValidator = v.object({
   _id: v.id("courseChatMessages"),
   _creationTime: v.number(),
   classId: v.id("classes"),
+  scheduleId: v.optional(v.id("classSchedule")),
   authorId: v.id("users"),
   body: v.string(),
   pinnedAt: v.optional(v.number()),
@@ -96,6 +99,7 @@ async function getChatClearThrough(ctx: MutationCtx, course: Doc<"classes">) {
 export const list = query({
   args: {
     classId: v.id("classes"),
+    scheduleId: v.optional(v.id("classSchedule")),
     paginationOpts: paginationOptsValidator,
   },
   returns: paginationResultValidator(messageValidator),
@@ -103,21 +107,42 @@ export const list = query({
     const currentUser = await getCurrentUserOrThrow(ctx);
     const classData = await ctx.db.get("classes", args.classId);
     if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
-    if (!(await canAccessClass(ctx, currentUser._id, classData))) {
+    const access = await getCourseChatAccess(
+      ctx,
+      classData,
+      currentUser._id,
+      args.scheduleId,
+    );
+    if (access.kind === "none" && args.scheduleId === undefined) {
       throw new ConvexError("PERMISSION_DENIED");
     }
-    const result = await ctx.db
-      .query("courseChatMessages")
-      .withIndex("by_class", (q) =>
-        classData.chatArchivedAt === undefined
-          ? q.eq("classId", args.classId)
-          : q.eq("classId", args.classId).lt("_creationTime", 0),
-      )
-      .order("desc")
-      .paginate(args.paginationOpts);
+    const result =
+      access.kind === "live_session"
+        ? await ctx.db
+            .query("courseChatMessages")
+            .withIndex("by_classId_and_scheduleId", (q) =>
+              q.eq("classId", args.classId).eq("scheduleId", access.scheduleId),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
+        : await ctx.db
+            .query("courseChatMessages")
+            .withIndex("by_class", (q) =>
+              access.kind === "course" && classData.chatArchivedAt === undefined
+                ? q.eq("classId", args.classId)
+                : q.eq("classId", args.classId).lt("_creationTime", 0),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts);
     return {
       ...result,
-      page: await hydrateMessages(ctx, result.page, classData, currentUser),
+      page: await hydrateMessages(
+        ctx,
+        result.page,
+        classData,
+        currentUser,
+        access.kind === "course",
+      ),
     };
   },
 });
@@ -127,7 +152,8 @@ async function hydrateMessages(
   messages: Doc<"courseChatMessages">[],
   classData: Doc<"classes">,
   currentUser: Doc<"users">,
-) {
+  includeCourseOnlyContent = true,
+): Promise<Infer<typeof messageValidator>[]> {
   const authorIds = [...new Set(messages.map(({ authorId }) => authorId))];
   const authors = new Map(
     (
@@ -154,19 +180,23 @@ async function hydrateMessages(
           ctx.db.get("courseChatAttachments", id),
         ),
       );
+      const attachments = files
+        .filter(
+          (file): file is NonNullable<typeof file> =>
+            file?.messageId === message._id,
+        )
+        .map((file) => ({
+          id: file._id,
+          name: file.name,
+          contentType: file.contentType,
+          size: file.size,
+        }));
+      const { attachmentIds, linksEnabled, ...readableMessage } = message;
+      void attachmentIds;
+      void linksEnabled;
       return {
-        ...message,
-        attachments: files
-          .filter(
-            (file): file is NonNullable<typeof file> =>
-              file?.messageId === message._id,
-          )
-          .map((file) => ({
-            id: file._id,
-            name: file.name,
-            contentType: file.contentType,
-            size: file.size,
-          })),
+        ...(includeCourseOnlyContent ? message : readableMessage),
+        attachments,
         authorName: author?.author.fullName ?? "Deleted user",
         authorImageUrl: author?.imageUrl,
         authorRole: getAuthorRole(classData, message.authorId),
@@ -305,6 +335,7 @@ export const markPinsSeen = mutation({
 export const send = mutation({
   args: {
     classId: v.id("classes"),
+    scheduleId: v.optional(v.id("classSchedule")),
     body: v.string(),
     attachmentIds: v.optional(v.array(v.id("courseChatAttachments"))),
   },
@@ -315,6 +346,12 @@ export const send = mutation({
     if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
     if (!(await canAccessClass(ctx, currentUser._id, classData))) {
       throw new ConvexError("PERMISSION_DENIED");
+    }
+    if (
+      args.scheduleId &&
+      !(await getActiveLiveChatSchedule(ctx, classData._id, args.scheduleId))
+    ) {
+      throw new ConvexError("CHAT_SESSION_NOT_LIVE");
     }
     assertChatActive(classData);
     if (await isChatMutedForUser(ctx, classData, currentUser._id)) {
@@ -344,6 +381,7 @@ export const send = mutation({
       const previous = await ctx.db.get("courseChatMessages", previousId);
       if (
         previous?.body === body &&
+        previous.scheduleId === args.scheduleId &&
         attachments.every((file) => file.messageId === previousId) &&
         previous.attachmentIds?.length === attachments.length
       )
@@ -353,6 +391,7 @@ export const send = mutation({
 
     const messageId = await ctx.db.insert("courseChatMessages", {
       classId: classData._id,
+      ...(args.scheduleId ? { scheduleId: args.scheduleId } : {}),
       authorId: currentUser._id,
       body,
       ...(containsChatLink(body) ? { linksEnabled: true } : {}),
@@ -373,22 +412,47 @@ export const send = mutation({
 });
 
 export const getMyStatus = query({
-  args: { classId: v.id("classes") },
+  args: {
+    classId: v.id("classes"),
+    scheduleId: v.optional(v.id("classSchedule")),
+  },
   returns: v.object({
     isMuted: v.boolean(),
     archived: v.boolean(),
     canAttach: v.boolean(),
     canPin: v.boolean(),
+    readOnly: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
     const classData = await ctx.db.get("classes", args.classId);
     if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
-    if (!(await canAccessClass(ctx, currentUser._id, classData))) {
+    const access = await getCourseChatAccess(
+      ctx,
+      classData,
+      currentUser._id,
+      args.scheduleId,
+    );
+    if (access.kind === "none" && args.scheduleId === undefined) {
       throw new ConvexError("PERMISSION_DENIED");
     }
+    if (access.kind !== "course") {
+      return {
+        isMuted: true,
+        archived: access.kind === "none",
+        canAttach: false,
+        canPin: false,
+        readOnly: true,
+      };
+    }
     if (classData.chatArchivedAt !== undefined) {
-      return { isMuted: true, archived: true, canAttach: false, canPin: false };
+      return {
+        isMuted: true,
+        archived: true,
+        canAttach: false,
+        canPin: false,
+        readOnly: false,
+      };
     }
 
     return {
@@ -396,6 +460,7 @@ export const getMyStatus = query({
       archived: false,
       canAttach: await canAttachToCourseChat(ctx, classData, currentUser._id),
       canPin: await canManageCourseChatContent(ctx, classData, currentUser._id),
+      readOnly: false,
     };
   },
 });

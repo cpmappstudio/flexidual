@@ -11,17 +11,21 @@ const SOUND_INTERVAL = 3_000;
 
 export function useClassroomChatNotification({
   courseId,
+  scheduleId,
   chatVisible,
   onNotify,
 }: {
   courseId: Id<"classes">;
+  scheduleId?: Id<"classSchedule">;
   chatVisible: boolean;
   onNotify: () => void;
 }) {
   const { isAuthenticated } = useConvexAuth();
   const { results, status } = usePaginatedQuery(
     api.courseChatMessages.list,
-    isAuthenticated ? { classId: courseId } : "skip",
+    isAuthenticated
+      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
+      : "skip",
     { initialNumItems: 10 },
   );
   const [message, setMessage] = useState<ChatMessage | null>(null);
@@ -43,9 +47,10 @@ export function useClassroomChatNotification({
     if (status === "LoadingFirstPage") return;
     const baseline = baselineRef.current;
     const latestTime = results[0]?._creationTime ?? 0;
-    if (!baseline || baseline.courseId !== courseId) {
+    const scope = `${courseId}:${scheduleId}`;
+    if (!baseline || baseline.courseId !== scope) {
       baselineRef.current = {
-        courseId,
+        courseId: scope,
         time: latestTime,
         ids: new Set(results.map((item) => item._id)),
       };
@@ -81,7 +86,16 @@ export function useClassroomChatNotification({
     } else if (message && !results.some((item) => item._id === message._id)) {
       setMessage(null);
     }
-  }, [courseId, isAuthenticated, results, status, chatVisible, onNotify, message]);
+  }, [
+    courseId,
+    scheduleId,
+    isAuthenticated,
+    results,
+    status,
+    chatVisible,
+    onNotify,
+    message,
+  ]);
 
   useEffect(() => {
     if (!message) return;

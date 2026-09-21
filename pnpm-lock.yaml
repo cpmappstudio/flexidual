@@ -16,7 +16,7 @@ importers:
         version: 3.23.0
       '@clerk/nextjs':
         specifier: ^6.12.6
-        version: 6.31.1(next@15.2.8(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+        version: 6.31.1(next@15.2.8(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@clerk/themes':
         specifier: ^2.4.12
         version: 2.4.12
@@ -163,10 +163,10 @@ importers:
         version: 0.540.0(react@19.1.1)
       next:
         specifier: 15.2.8
-        version: 15.2.8(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0)
+        version: 15.2.8(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0)
       next-intl:
         specifier: ^4.3.5
-        version: 4.3.5(next@15.2.8(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0))(react@19.1.1)(typescript@5.9.2)
+        version: 4.3.5(next@15.2.8(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0))(react@19.1.1)(typescript@5.9.2)
       qrcode.react:
         specifier: ^4.2.0
         version: 4.2.0(react@19.1.1)
@@ -198,6 +198,9 @@ importers:
         specifier: ^4.2.1
         version: 4.2.1
     devDependencies:
+      '@clerk/testing':
+        specifier: ^2.2.36
+        version: 2.2.36(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@convex-dev/eslint-plugin':
         specifier: ^2.0.0
         version: 2.0.0(convex@1.42.3(@clerk/clerk-react@5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react@19.1.1))(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2)
@@ -207,6 +210,9 @@ importers:
       '@eslint/eslintrc':
         specifier: ^3
         version: 3.3.1
+      '@playwright/test':
+        specifier: ^1.63.0
+        version: 1.63.0
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.1.12
@@ -351,6 +357,10 @@ packages:
     resolution: {integrity: sha512-zgKySfoOXySYOMEDc+S2vXLchCldwPVb85tyvP1NnmxvgyAm10yCA+xd4No4dNWm+lwkwHuNWX3rM9ro8khSmw==}
     engines: {node: '>=18.17.0'}
 
+  '@clerk/backend@3.18.1':
+    resolution: {integrity: sha512-JjaibgZ9OuYE/tcJUgU7w3c83KdCooHNkt9OBjKznbWUuTXI0lcZQQWyy4ZDw3kB1uszeDfs1WGbsOvVkZA/aQ==}
+    engines: {node: '>=20.9.0'}
+
   '@clerk/clerk-react@5.42.1':
     resolution: {integrity: sha512-6CuOY0QttPU2uimzTTVEEeH0mKo4xQVhaUN8Iqe+Z6nIwYLOTa2w4Lk8wAqEQHWbd1WBOAkP3b+7c/QToWTH7A==}
     engines: {node: '>=18.17.0'}
@@ -393,6 +403,30 @@ packages:
       react:
         optional: true
       react-dom:
+        optional: true
+
+  '@clerk/shared@4.33.0':
+    resolution: {integrity: sha512-7urfRaaXPHeIWJuEIqy70NvMoi2EmschcEQt36MtbEAswttvgYc9KzwkE5fm5RqSvfq1R057uz/FR9SaOmqoLA==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+      react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+
+  '@clerk/testing@2.2.36':
+    resolution: {integrity: sha512-vfFbSerP/uLpPx7d6oRjI3ikgK2XeCziwAEhYy6Heosx+74mCELD9tHDHGzDiKoaiCanCSUxNiYvd6IFmg7hAQ==}
+    engines: {node: '>=20.9.0'}
+    peerDependencies:
+      '@playwright/test': ^1
+      cypress: ^13 || ^14 || ^15
+    peerDependenciesMeta:
+      '@playwright/test':
+        optional: true
+      cypress:
         optional: true
 
   '@clerk/themes@2.4.12':
@@ -1235,6 +1269,11 @@ packages:
 
   '@oxc-project/types@0.143.0':
     resolution: {integrity: sha512-u6JZdLBTLotrNC9Vd6vPssINdzcCzleKAH6EJKImQb7GtYvX5keN2dxkoK44stCc4tffE6QQRtZTXVSzsLUlWA==}
+
+  '@playwright/test@1.63.0':
+    resolution: {integrity: sha512-oxMK4vllB9RK5NQ2l1pq1IfOf2AvnEuj/vYGDj0H2nMtmtZpKtCwt/l00GEO6xjGfpBNAvjovvYdCm50dRQkpQ==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   '@radix-ui/number@1.1.1':
     resolution: {integrity: sha512-MkKCwxlXTgz6CFoJx3pCwn07GKp36+aZyu/u2Ln2VrA5DcdyCZkASEDBTd8x5whTQQL5CiYf4prXKLcgQdv29g==}
@@ -2428,6 +2467,9 @@ packages:
   '@tailwindcss/postcss@4.1.12':
     resolution: {integrity: sha512-5PpLYhCAwf9SJEeIsSmCDLgyVfdBhdBpzX1OJ87anT9IVR0Z9pjM0FNixCAUAHGnMBGB8K99SwAheXrT0Kh6QQ==}
 
+  '@tanstack/query-core@5.103.1':
+    resolution: {integrity: sha512-rms8HqTGp6zA00dM+cUQ2eBcgzNJefuu5CAMB37i/6MiGT1zulPOytCFu2a0qjLqVR2n1jENPj9woqFQNuCzWA==}
+
   '@tanstack/react-table@8.21.3':
     resolution: {integrity: sha512-5nNMTSETP4ykGegmVkhjcS8tTLW6Vl4axfEGQN3v0zdHYbK4UfoqfPChclTrJ4EoK9QynqAu9oUf8VEmrpZ5Ww==}
     engines: {node: '>=12'}
@@ -3429,6 +3471,10 @@ packages:
   dompurify@3.4.1:
     resolution: {integrity: sha512-JahakDAIg1gyOm7dlgWSDjV4n7Ip2PKR55NIT6jrMfIgLFgWo81vdr1/QGqWtFNRqXP9UV71oVePtjqS2ebnPw==}
 
+  dotenv@17.2.2:
+    resolution: {integrity: sha512-Sf2LSQP+bOlhKWWyhFsn0UsfdK/kCWRv1iuA2gXAwt3dyNabr6QSj00I2V10pidqz69soatm9ZwZvpQMTIOd5Q==}
+    engines: {node: '>=12'}
+
   dotenv@17.2.4:
     resolution: {integrity: sha512-mudtfb4zRB4bVvdj0xRo+e6duH1csJRM8IukBqfTRvHotn9+LBXB8ynAidP9zHqoRC/fsllXgk4kCKlR21fIhw==}
     engines: {node: '>=12'}
@@ -4052,6 +4098,9 @@ packages:
     resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
     engines: {node: '>=14'}
 
+  js-cookie@3.0.8:
+    resolution: {integrity: sha512-yeJd4aNAdYZQjaon2bpD/Gb0B/omw7HQOsynXXcOiWVCacbBcPlgn8S/d1X6blFSaHao7ozqtW7NZW19xpCtIw==}
+
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
@@ -4607,6 +4656,16 @@ packages:
 
   pkg-types@1.3.1:
     resolution: {integrity: sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ==}
+
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.63.0:
+    resolution: {integrity: sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   png-chunk-text@1.0.0:
     resolution: {integrity: sha512-DEROKU3SkkLGWNMzru3xPVgxyd48UGuMSZvioErCure6yhOc/pRH2ZV+SEn7nmaf7WNf3NdIpH+UTrRdKyq9Lw==}
@@ -5575,6 +5634,15 @@ snapshots:
       - react
       - react-dom
 
+  '@clerk/backend@3.18.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
+    dependencies:
+      '@clerk/shared': 4.33.0(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+      standardwebhooks: 1.0.0
+      tslib: 2.8.1
+    transitivePeerDependencies:
+      - react
+      - react-dom
+
   '@clerk/clerk-react@5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
     dependencies:
       '@clerk/shared': 3.27.3(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -5587,13 +5655,13 @@ snapshots:
     dependencies:
       '@clerk/types': 4.81.0
 
-  '@clerk/nextjs@6.31.1(next@15.2.8(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
+  '@clerk/nextjs@6.31.1(next@15.2.8(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
     dependencies:
       '@clerk/backend': 2.17.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@clerk/clerk-react': 5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@clerk/shared': 3.21.0(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@clerk/types': 4.78.0
-      next: 15.2.8(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0)
+      next: 15.2.8(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0)
       react: 19.1.1
       react-dom: 19.1.1(react@19.1.1)
       server-only: 0.0.1
@@ -5622,6 +5690,27 @@ snapshots:
     optionalDependencies:
       react: 19.1.1
       react-dom: 19.1.1(react@19.1.1)
+
+  '@clerk/shared@4.33.0(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
+    dependencies:
+      '@tanstack/query-core': 5.103.1
+      dequal: 2.0.3
+      glob-to-regexp: 0.4.1
+      js-cookie: 3.0.8
+    optionalDependencies:
+      react: 19.1.1
+      react-dom: 19.1.1(react@19.1.1)
+
+  '@clerk/testing@2.2.36(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
+    dependencies:
+      '@clerk/backend': 3.18.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+      '@clerk/shared': 4.33.0(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+      dotenv: 17.2.2
+    optionalDependencies:
+      '@playwright/test': 1.63.0
+    transitivePeerDependencies:
+      - react
+      - react-dom
 
   '@clerk/themes@2.4.12':
     dependencies:
@@ -6274,6 +6363,10 @@ snapshots:
   '@nolyfill/is-core-module@1.0.39': {}
 
   '@oxc-project/types@0.143.0': {}
+
+  '@playwright/test@1.63.0':
+    dependencies:
+      playwright: 1.63.0
 
   '@radix-ui/number@1.1.1': {}
 
@@ -7441,6 +7534,8 @@ snapshots:
       postcss: 8.5.6
       tailwindcss: 4.1.12
 
+  '@tanstack/query-core@5.103.1': {}
+
   '@tanstack/react-table@8.21.3(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
     dependencies:
       '@tanstack/table-core': 8.21.3
@@ -8516,6 +8611,8 @@ snapshots:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
+  dotenv@17.2.2: {}
+
   dotenv@17.2.4: {}
 
   dunder-proto@1.0.1:
@@ -9304,6 +9401,8 @@ snapshots:
 
   js-cookie@3.0.5: {}
 
+  js-cookie@3.0.8: {}
+
   js-tokens@4.0.0: {}
 
   js-yaml@4.1.0:
@@ -9656,17 +9755,17 @@ snapshots:
 
   negotiator@1.0.0: {}
 
-  next-intl@4.3.5(next@15.2.8(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0))(react@19.1.1)(typescript@5.9.2):
+  next-intl@4.3.5(next@15.2.8(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0))(react@19.1.1)(typescript@5.9.2):
     dependencies:
       '@formatjs/intl-localematcher': 0.5.10
       negotiator: 1.0.0
-      next: 15.2.8(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0)
+      next: 15.2.8(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0)
       react: 19.1.1
       use-intl: 4.3.5(react@19.1.1)
     optionalDependencies:
       typescript: 5.9.2
 
-  next@15.2.8(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0):
+  next@15.2.8(@playwright/test@1.63.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass@1.51.0):
     dependencies:
       '@next/env': 15.2.8
       '@swc/counter': 0.1.3
@@ -9686,6 +9785,7 @@ snapshots:
       '@next/swc-linux-x64-musl': 15.2.5
       '@next/swc-win32-arm64-msvc': 15.2.5
       '@next/swc-win32-x64-msvc': 15.2.5
+      '@playwright/test': 1.63.0
       sass: 1.51.0
       sharp: 0.33.5
     transitivePeerDependencies:
@@ -9842,6 +9942,12 @@ snapshots:
       confbox: 0.1.8
       mlly: 1.8.2
       pathe: 2.0.3
+
+  playwright-core@1.63.0: {}
+
+  playwright@1.63.0:
+    dependencies:
+      playwright-core: 1.63.0
 
   png-chunk-text@1.0.0: {}
 

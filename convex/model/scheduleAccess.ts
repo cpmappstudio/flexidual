@@ -1,9 +1,15 @@
 import type { Doc, Id } from "../_generated/dataModel";
-import type { QueryCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { canAccessClass, hasSystemRole } from "../permissions";
 import { getCurrentUserFromAuth } from "../users";
-import { getSoleStudentCampusId } from "./membership";
+import {
+  getSoleStudentCampusId,
+  getStudentGradeCode,
+  getStudentSchoolIds,
+} from "./membership";
 import { hasOnlyInstructorStaffRoles } from "./roles";
+import { canStudentAccessLiveClass } from "./liveAccess";
+import { isStudentEnrolled } from "./enrollments";
 
 export type ScheduleClassScope = {
   schoolId?: Id<"schools">;
@@ -18,6 +24,45 @@ type AccessibleScheduleClasses = {
   classes: Doc<"classes">[];
   isStaffViewer: boolean;
 };
+
+type ScheduleAccessCtx = QueryCtx | MutationCtx;
+
+export async function canAccessInstitutionalSchedule(
+  ctx: ScheduleAccessCtx,
+  userId: Id<"users">,
+  schedule: Doc<"classSchedule">,
+  classData: Doc<"classes">,
+) {
+  const [curriculum, campus, studentSchoolIds, isEnrolled] = await Promise.all([
+    ctx.db.get(classData.curriculumId),
+    classData.campusId ? ctx.db.get(classData.campusId) : null,
+    getStudentSchoolIds(ctx, userId),
+    isStudentEnrolled(ctx, classData, userId),
+  ]);
+  const classSchoolId = campus?.schoolId ?? curriculum?.schoolId;
+  const studentGrade = classSchoolId
+    ? await getStudentGradeCode(ctx, userId, classSchoolId, classData.campusId)
+    : undefined;
+
+  return canStudentAccessLiveClass({
+    isEnrolled,
+    liveAccess: schedule.liveAccess,
+    studentGrade,
+    classSchoolId,
+    studentSchoolIds,
+  });
+}
+
+export async function canAccessSchedule(
+  ctx: ScheduleAccessCtx,
+  userId: Id<"users">,
+  schedule: Doc<"classSchedule">,
+) {
+  const classData = await ctx.db.get(schedule.classId);
+  if (!classData) return false;
+  if (await canAccessClass(ctx, userId, classData)) return true;
+  return await canAccessInstitutionalSchedule(ctx, userId, schedule, classData);
+}
 
 function matchesScope(
   classData: Doc<"classes">,

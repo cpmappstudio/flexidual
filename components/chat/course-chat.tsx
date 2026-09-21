@@ -72,14 +72,19 @@ import { toast } from "sonner";
 
 interface CourseChatProps {
   courseId: Id<"classes">;
+  scheduleId?: Id<"classSchedule">;
   className?: string;
 }
 
 const MAX_MESSAGE_GROUP_SIZE = 6;
 
-export function CourseChat({ courseId, className }: CourseChatProps) {
+export function CourseChat({
+  courseId,
+  scheduleId,
+  className,
+}: CourseChatProps) {
   return (
-    <CourseChatUploadProvider key={courseId}>
+    <CourseChatUploadProvider key={`${courseId}:${scheduleId ?? "course"}`}>
       <div
         data-course-chat-id={courseId}
         className={cn(
@@ -87,9 +92,10 @@ export function CourseChat({ courseId, className }: CourseChatProps) {
           className,
         )}
       >
-        <CourseChatMessages courseId={courseId} />
+        <CourseChatMessages courseId={courseId} scheduleId={scheduleId} />
         <CourseChatComposer
           courseId={courseId}
+          scheduleId={scheduleId}
           className="border-t border-primary/20"
         />
       </div>
@@ -97,7 +103,11 @@ export function CourseChat({ courseId, className }: CourseChatProps) {
   );
 }
 
-export function CourseChatMessages({ courseId, className }: CourseChatProps) {
+export function CourseChatMessages({
+  courseId,
+  scheduleId,
+  className,
+}: CourseChatProps) {
   const t = useTranslations("classroom");
   const format = useFormatter();
   const [timeZone, setTimeZone] = useState<string>();
@@ -107,11 +117,15 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
   const { isAuthenticated } = useConvexAuth();
   const chatStatus = useQuery(
     api.courseChatMessages.getMyStatus,
-    isAuthenticated ? { classId: courseId } : "skip",
+    isAuthenticated
+      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
+      : "skip",
   );
   const { results, status, loadMore } = usePaginatedQuery(
     api.courseChatMessages.list,
-    isAuthenticated ? { classId: courseId } : "skip",
+    isAuthenticated
+      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
+      : "skip",
     { initialNumItems: 40 },
   );
   const messages = useMemo(() => {
@@ -148,7 +162,10 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
       )}
     >
       <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-        <ChatReadReceipt messageId={results[0]?._id} />
+        <ChatReadReceipt
+          messageId={results[0]?._id}
+          enabled={chatStatus !== undefined && chatStatus.readOnly !== true}
+        />
         <MessageScroller className="min-h-0 flex-1">
           <MessageScrollerViewport>
             <MessageScrollerContent className="gap-1 px-3 py-4">
@@ -243,40 +260,51 @@ export function CourseChatMessages({ courseId, className }: CourseChatProps) {
 
 function ChatReadReceipt({
   messageId,
+  enabled,
 }: {
   messageId?: Id<"courseChatMessages">;
+  enabled: boolean;
 }) {
   const { visibleMessageIds } = useMessageScrollerVisibility();
   const markRead = useMutation(api.courseChatNotifications.markRead);
   const isFocused = useDocumentActive();
   const isVisible = Boolean(messageId && visibleMessageIds.includes(messageId));
   useEffect(() => {
-    if (messageId && isVisible && isFocused) {
+    if (enabled && messageId && isVisible && isFocused) {
       void markRead({ messageId }).catch((error) =>
         console.error("Chat read receipt failed", error),
       );
     }
-  }, [messageId, isVisible, isFocused, markRead]);
+  }, [enabled, messageId, isVisible, isFocused, markRead]);
   return null;
 }
 
 export function CourseChatComposer({
   courseId,
+  scheduleId,
   className,
 }: {
   courseId: Id<"classes">;
+  scheduleId?: Id<"classSchedule">;
   className?: string;
 }) {
   return (
-    <ChatComposer key={courseId} courseId={courseId} className={className} />
+    <ChatComposer
+      key={`${courseId}:${scheduleId ?? "course"}`}
+      courseId={courseId}
+      scheduleId={scheduleId}
+      className={className}
+    />
   );
 }
 
 function ChatComposer({
   courseId,
+  scheduleId,
   className,
 }: {
   courseId: Id<"classes">;
+  scheduleId?: Id<"classSchedule">;
   className?: string;
 }) {
   const t = useTranslations("classroom");
@@ -301,7 +329,9 @@ function ChatComposer({
   const sendMessage = useMutation(api.courseChatMessages.send);
   const chatStatus = useQuery(
     api.courseChatMessages.getMyStatus,
-    isAuthenticated ? { classId: courseId } : "skip",
+    isAuthenticated
+      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
+      : "skip",
   );
   const isMuted = chatStatus?.isMuted ?? false;
   const isArchived = chatStatus?.archived ?? false;
@@ -378,6 +408,7 @@ function ChatComposer({
       setPending((current) => current && { ...current, cancel: null });
       await sendMessage({
         classId: courseId,
+        ...(scheduleId ? { scheduleId } : {}),
         body: message,
         ...(uploaded.length
           ? { attachmentIds: uploaded.map((entry) => entry.id!) }
@@ -424,6 +455,8 @@ function ChatComposer({
     }
     setFiles(next);
   }
+
+  if (chatStatus?.readOnly === true) return null;
 
   return (
     <form

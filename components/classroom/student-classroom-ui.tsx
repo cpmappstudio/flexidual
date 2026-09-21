@@ -109,6 +109,7 @@ const STUDENT_PREVIEW_LAYERS: Partial<
 
 interface StudentClassroomUIProps {
   courseId: Id<"classes">;
+  scheduleId?: Id<"classSchedule">;
   roomName: string;
   sessionNow: number;
   countdown?: ReactNode;
@@ -123,6 +124,7 @@ interface StudentClassroomUIProps {
 
 export function StudentClassroomUI({
   courseId,
+  scheduleId,
   roomName,
   sessionNow,
   countdown,
@@ -1049,6 +1051,7 @@ export function StudentClassroomUI({
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
         courseId={courseId}
+        scheduleId={scheduleId}
         notificationTargetRef={stageRef}
         onOpenChange={setIsClassroomPanelOpen}
         heading={t("classroom.classmates")}

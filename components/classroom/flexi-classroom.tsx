@@ -694,6 +694,7 @@ export default function FlexiClassroom({
             <StudentClassroomUI
               countdown={countdown}
               courseId={scheduleDetails.class._id}
+              scheduleId={sessionStatus.scheduleId}
               roomName={roomName}
               sessionNow={now}
               className={scheduleDetails?.class?.name}
@@ -709,6 +710,7 @@ export default function FlexiClassroom({
             <ActiveClassroomUI
               countdown={countdown}
               courseId={scheduleDetails.class._id}
+              scheduleId={sessionStatus.scheduleId}
               currentUserRole={role}
               canLeadSession={sessionStatus?.leadershipRole != null}
               roomName={roomName}
