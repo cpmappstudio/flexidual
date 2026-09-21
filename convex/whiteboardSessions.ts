@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { canManageRoom } from "./permissions";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
-import { canAccessSchedule } from "./schedule";
+import { canAccessSchedule } from "./model/scheduleAccess";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 

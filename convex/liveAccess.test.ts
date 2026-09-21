@@ -919,6 +919,7 @@ test("course access is copied to the session and scoped to active students", asy
     archived: false,
     canAttach: false,
     canPin: false,
+    readOnly: false,
   });
   await expect(
     asStudent.mutation(api.courseChatMessages.send, {

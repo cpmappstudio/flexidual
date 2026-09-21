@@ -185,6 +185,7 @@ const ACTIVE_PREVIEW_LAYERS: Partial<
 
 interface ActiveClassroomUIProps {
   courseId: Id<"classes">;
+  scheduleId?: Id<"classSchedule">;
   currentUserRole?: string;
   canLeadSession?: boolean;
   roomName: string;
@@ -204,6 +205,7 @@ interface ActiveClassroomUIProps {
 
 export function ActiveClassroomUI({
   courseId,
+  scheduleId,
   currentUserRole,
   canLeadSession = false,
   roomName,
@@ -2263,6 +2265,7 @@ export function ActiveClassroomUI({
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
         courseId={courseId}
+        scheduleId={scheduleId}
         notificationTargetRef={stageRef}
         onOpenChange={setIsClassroomPanelOpen}
         heading={t("classroom.classmates")}

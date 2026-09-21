@@ -2,10 +2,12 @@ import { ConvexError, v } from "convex/values";
 import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
 import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
-import { requireChatAttachmentAccess } from "./model/courseChatAccess";
+import {
+  getCourseChatAccess,
+  requireChatAttachmentAccess,
+} from "./model/courseChatAccess";
 import { deleteChatAttachment } from "./model/courseChatAttachments";
 import { getCurrentUserOrThrow } from "./users";
-import { canAccessClass } from "./permissions";
 import { isValidChatFile } from "../lib/chat-attachments";
 
 const limiter = new RateLimiter(components.rateLimiter, {
@@ -113,13 +115,18 @@ export const read = internalMutation({
       ctx.db.get("classes", file.classId),
       ctx.db.get("courseChatMessages", file.messageId),
     ]);
+    const access =
+      course && message
+        ? await getCourseChatAccess(ctx, course, user._id, message.scheduleId)
+        : { kind: "none" as const };
     if (
       !course ||
       course.chatArchivedAt !== undefined ||
       !message ||
+      message.classId !== course._id ||
       !message.attachmentIds?.includes(id) ||
       message._creationTime <= (course.chatNotificationsClearedThrough ?? 0) ||
-      !(await canAccessClass(ctx, user._id, course))
+      access.kind === "none"
     )
       throw new ConvexError("PERMISSION_DENIED");
     await limiter.limit(ctx, "chatDownloadBytes", {

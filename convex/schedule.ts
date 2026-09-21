@@ -76,7 +76,10 @@ import {
   areCourseSchedulesShared,
   canCoursesShareSchedule,
 } from "./model/courseScheduleShares";
-import { listAccessibleScheduleClasses } from "./model/scheduleAccess";
+import {
+  canAccessSchedule,
+  listAccessibleScheduleClasses,
+} from "./model/scheduleAccess";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -370,33 +373,6 @@ async function validateScheduleOverlap(
       }
     }
   }
-}
-
-export async function canAccessSchedule(
-  ctx: Parameters<typeof getCurrentUserOrThrow>[0],
-  userId: Id<"users">,
-  schedule: Doc<"classSchedule">,
-) {
-  const classData = await ctx.db.get(schedule.classId);
-  if (!classData) return false;
-  if (await canAccessClass(ctx, userId, classData)) return true;
-
-  const [curriculum, campus, studentSchoolIds] = await Promise.all([
-    ctx.db.get(classData.curriculumId),
-    classData.campusId ? ctx.db.get(classData.campusId) : null,
-    getStudentSchoolIds(ctx, userId),
-  ]);
-  const classSchoolId = campus?.schoolId ?? curriculum?.schoolId;
-  const studentGrade = classSchoolId
-    ? await getStudentGradeCode(ctx, userId, classSchoolId, classData.campusId)
-    : undefined;
-  return canStudentAccessLiveClass({
-    isEnrolled: await isStudentEnrolled(ctx, classData, userId),
-    liveAccess: schedule.liveAccess,
-    studentGrade,
-    classSchoolId,
-    studentSchoolIds,
-  });
 }
 
 async function validateClassScheduleTime(

@@ -4,6 +4,48 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { canAccessClass, getCourseChatCapabilities } from "../permissions";
 import { getCurrentUserOrThrow } from "../users";
 import { isStudentEnrolled } from "./enrollments";
+import { canAccessInstitutionalSchedule } from "./scheduleAccess";
+
+export type CourseChatAccess =
+  | { kind: "course" }
+  | { kind: "live_session"; scheduleId: Id<"classSchedule"> }
+  | { kind: "none" };
+
+export async function getActiveLiveChatSchedule(
+  ctx: QueryCtx | MutationCtx,
+  classId: Id<"classes">,
+  scheduleId: Id<"classSchedule">,
+) {
+  const schedule = await ctx.db.get("classSchedule", scheduleId);
+  return schedule?.classId === classId &&
+    schedule.sessionType === "live" &&
+    schedule.status === "active" &&
+    schedule.isLive === true
+    ? schedule
+    : null;
+}
+
+export async function getCourseChatAccess(
+  ctx: QueryCtx | MutationCtx,
+  course: Doc<"classes">,
+  userId: Id<"users">,
+  scheduleId?: Id<"classSchedule">,
+): Promise<CourseChatAccess> {
+  if (await canAccessClass(ctx, userId, course)) return { kind: "course" };
+  if (!scheduleId || course.chatArchivedAt !== undefined) {
+    return { kind: "none" };
+  }
+
+  const schedule = await getActiveLiveChatSchedule(ctx, course._id, scheduleId);
+  if (
+    !schedule ||
+    !(await canAccessInstitutionalSchedule(ctx, userId, schedule, course))
+  ) {
+    return { kind: "none" };
+  }
+
+  return { kind: "live_session", scheduleId: schedule._id };
+}
 
 export function assertChatActive(course: Doc<"classes">) {
   if (course.chatArchivedAt !== undefined)

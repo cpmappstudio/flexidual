@@ -215,6 +215,7 @@ export default defineSchema({
 
   courseChatMessages: defineTable({
     classId: v.id("classes"),
+    scheduleId: v.optional(v.id("classSchedule")),
     authorId: v.id("users"),
     body: v.string(),
     linksEnabled: v.optional(v.boolean()),
@@ -222,6 +223,7 @@ export default defineSchema({
     pinnedAt: v.optional(v.number()),
   })
     .index("by_class", ["classId"])
+    .index("by_classId_and_scheduleId", ["classId", "scheduleId"])
     .index("by_classId_and_pinnedAt", ["classId", "pinnedAt"]),
 
   courseChatPinReads: defineTable({

@@ -59,6 +59,7 @@ const classroomPanelTabTriggerClassName =
 
 interface ClassroomParticipantsPanelProps {
   courseId: Id<"classes">;
+  scheduleId?: Id<"classSchedule">;
   heading: string;
   compactHeading: string;
   compactOpenLabel: string;
@@ -126,6 +127,7 @@ interface ClassroomParticipantsPanelContentProps
 
 function ClassroomParticipantsPanelContent({
   courseId,
+  scheduleId,
   heading,
   compactHeading,
   compactOpenLabel,
@@ -321,8 +323,9 @@ function ClassroomParticipantsPanelContent({
     <>
       {layoutMode === "responsive" && notificationTargetRef && (
         <ClassroomChatNotification
-          key={courseId}
+          key={`${courseId}:${scheduleId}`}
           courseId={courseId}
+          scheduleId={scheduleId}
           chatVisible={chatVisible}
           targetRef={notificationTargetRef}
           onOpenChat={openChat}
@@ -484,7 +487,7 @@ function ClassroomParticipantsPanelContent({
             value="chat"
             className="m-0 min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
           >
-            <CourseChat courseId={courseId} />
+            <CourseChat courseId={courseId} scheduleId={scheduleId} />
           </TabsContent>
         </Tabs>
       </ClassroomLayoutSidebar>
@@ -541,7 +544,7 @@ function ClassroomParticipantsPanelContent({
                 value="chat"
                 className="m-0 min-h-0 flex-1 overflow-hidden"
               >
-                <CourseChat courseId={courseId} />
+                <CourseChat courseId={courseId} scheduleId={scheduleId} />
               </TabsContent>
             </Tabs>
           </SheetContent>

@@ -21,7 +21,12 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { chatTextParts, isValidChatFile } from "@/lib/chat-attachments";
 
 const state = vi.hoisted(() => ({
-  status: { isMuted: false, archived: false, canAttach: true },
+  status: {
+    isMuted: false,
+    archived: false,
+    canAttach: true,
+    readOnly: false,
+  },
   send: vi.fn().mockResolvedValue("message"),
   getToken: vi.fn().mockResolvedValue("test-token"),
   error: vi.fn(),
@@ -52,7 +57,12 @@ function render(children: ReactNode) {
 }
 
 beforeEach(() => {
-  state.status = { isMuted: false, archived: false, canAttach: true };
+  state.status = {
+    isMuted: false,
+    archived: false,
+    canAttach: true,
+    readOnly: false,
+  };
   state.send.mockClear();
   state.getToken.mockClear();
   state.error.mockClear();
@@ -61,6 +71,18 @@ beforeEach(() => {
     "fetch",
     vi.fn().mockResolvedValue(Response.json({ id: "attachment" })),
   );
+});
+
+test("does not render writing controls for a read-only session guest", () => {
+  state.status.readOnly = true;
+  const { container } = render(
+    <CourseChatComposer
+      courseId={"course" as Id<"classes">}
+      scheduleId={"schedule" as Id<"classSchedule">}
+    />,
+  );
+  expect(container.querySelector("form")).toBeNull();
+  expect(screen.queryByRole("textbox")).toBeNull();
 });
 afterEach(() => {
   cleanup();
