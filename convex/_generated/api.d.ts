@@ -22,6 +22,7 @@ import type * as curriculums from "../curriculums.js";
 import type * as grades from "../grades.js";
 import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
+import type * as liveRoomLifecycle from "../liveRoomLifecycle.js";
 import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
 import type * as model_calendarClosures from "../model/calendarClosures.js";
@@ -37,6 +38,7 @@ import type * as model_enrollments from "../model/enrollments.js";
 import type * as model_grades from "../model/grades.js";
 import type * as model_lessons from "../model/lessons.js";
 import type * as model_liveAccess from "../model/liveAccess.js";
+import type * as model_liveActivation from "../model/liveActivation.js";
 import type * as model_membership from "../model/membership.js";
 import type * as model_roles from "../model/roles.js";
 import type * as model_scheduleAccess from "../model/scheduleAccess.js";
@@ -50,6 +52,7 @@ import type * as model_systemNotificationEvents from "../model/systemNotificatio
 import type * as model_systemNotifications from "../model/systemNotifications.js";
 import type * as model_timeZone from "../model/timeZone.js";
 import type * as model_userImage from "../model/userImage.js";
+import type * as model_whiteboardAccess from "../model/whiteboardAccess.js";
 import type * as organizations from "../organizations.js";
 import type * as permissions from "../permissions.js";
 import type * as presence from "../presence.js";
@@ -87,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   grades: typeof grades;
   http: typeof http;
   lessons: typeof lessons;
+  liveRoomLifecycle: typeof liveRoomLifecycle;
   livekit: typeof livekit;
   migration: typeof migration;
   "model/calendarClosures": typeof model_calendarClosures;
@@ -102,6 +106,7 @@ declare const fullApi: ApiFromModules<{
   "model/grades": typeof model_grades;
   "model/lessons": typeof model_lessons;
   "model/liveAccess": typeof model_liveAccess;
+  "model/liveActivation": typeof model_liveActivation;
   "model/membership": typeof model_membership;
   "model/roles": typeof model_roles;
   "model/scheduleAccess": typeof model_scheduleAccess;
@@ -115,6 +120,7 @@ declare const fullApi: ApiFromModules<{
   "model/systemNotifications": typeof model_systemNotifications;
   "model/timeZone": typeof model_timeZone;
   "model/userImage": typeof model_userImage;
+  "model/whiteboardAccess": typeof model_whiteboardAccess;
   organizations: typeof organizations;
   permissions: typeof permissions;
   presence: typeof presence;

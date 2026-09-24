@@ -2,16 +2,99 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   evaluateLiveSession,
+  canReopenLiveSession,
+  canStartLiveSession,
   getConfirmedExtensionEnd,
   getEffectiveLiveEnd,
+  getLiveSessionReopenUntil,
+  getLiveSessionStartAvailableAt,
   getLiveParticipantSnapshot,
   LIVE_DECISION_WINDOW_MS,
   LIVE_EXTENSION_BLOCK_MS,
   MAX_LIVE_OVERRUN_MS,
+  LIVE_SESSION_REOPEN_GRACE_MS,
   STUDENT_ONLY_GRACE_MS,
 } from "../lib/live-session-policy";
 
 const scheduledEnd = 1_000_000;
+
+test("opens initial start exactly one hour before the scheduled class", () => {
+  const scheduledStart = scheduledEnd - 60 * 60 * 1000;
+  const availability = {
+    scheduledStart,
+    scheduledEnd,
+    status: "scheduled" as const,
+    isLive: false,
+  };
+
+  assert.equal(
+    getLiveSessionStartAvailableAt(scheduledStart),
+    scheduledStart - 60 * 60 * 1000,
+  );
+  assert.equal(
+    canStartLiveSession({
+      ...availability,
+      now: getLiveSessionStartAvailableAt(scheduledStart) - 1,
+    }),
+    false,
+  );
+  assert.equal(
+    canStartLiveSession({
+      ...availability,
+      now: getLiveSessionStartAvailableAt(scheduledStart),
+    }),
+    true,
+  );
+  assert.equal(
+    canStartLiveSession({ ...availability, now: scheduledEnd }),
+    false,
+  );
+});
+
+test("reopens only a previously started completed class before its deadline", () => {
+  const scheduledStart = scheduledEnd - 60 * 60 * 1000;
+  const sessionReopenUntil = getLiveSessionReopenUntil(scheduledEnd);
+  const availability = {
+    scheduledStart,
+    scheduledEnd,
+    status: "completed" as const,
+    isLive: false,
+    sessionStartedAt: scheduledStart,
+    sessionReopenUntil,
+  };
+
+  assert.equal(sessionReopenUntil, scheduledEnd + LIVE_SESSION_REOPEN_GRACE_MS);
+  assert.equal(
+    canReopenLiveSession({
+      ...availability,
+      now: sessionReopenUntil - 1,
+    }),
+    true,
+  );
+  assert.equal(
+    canReopenLiveSession({ ...availability, now: sessionReopenUntil }),
+    false,
+  );
+  assert.equal(
+    canReopenLiveSession({
+      ...availability,
+      now: scheduledEnd,
+      sessionStartedAt: undefined,
+    }),
+    false,
+  );
+});
+
+test("uses the effective extension end without exceeding the hard limit", () => {
+  assert.equal(
+    getLiveSessionReopenUntil(scheduledEnd, scheduledEnd + 20 * 60 * 1000),
+    scheduledEnd + 30 * 60 * 1000,
+  );
+  assert.equal(
+    getLiveSessionReopenUntil(scheduledEnd, scheduledEnd + MAX_LIVE_OVERRUN_MS),
+    scheduledEnd + MAX_LIVE_OVERRUN_MS,
+  );
+});
 
 test("classifies responsible people and students from LiveKit metadata", () => {
   assert.deepEqual(

@@ -29,6 +29,15 @@ const createSessionStatus = () => ({
   end: Date.UTC(2026, 8, 2, 18, 30),
   liveExtensionEndsAt: undefined as number | undefined,
   timeZone: "America/Bogota",
+  activationStartedAt: Date.UTC(2026, 8, 2, 17, 55),
+  activationId: "activation-1",
+  canStart: false,
+  canReopen: false,
+  startAvailableAt: Date.UTC(2026, 8, 2, 16, 0),
+  reopenUntil: undefined as number | undefined,
+  endedAt: undefined as number | undefined,
+  endedByName: undefined as string | undefined,
+  endedAutomatically: false,
 });
 
 const createScheduleDetails = (roomName = "room-1") => ({
@@ -66,6 +75,8 @@ const testState = vi.hoisted(() => ({
   },
   getToken: vi.fn(),
   endSession: vi.fn(async () => null),
+  markLive: vi.fn(async () => null),
+  reopenLiveSession: vi.fn(async () => null),
   logPresence: vi.fn(async () => null),
   setSidebarOpen: vi.fn(),
   translate: vi.fn((key: string) => key),
@@ -93,6 +104,8 @@ vi.mock("@/convex/_generated/api", () => ({
       getSessionStatus: "getSessionStatus",
       getWithDetails: "getWithDetails",
       logStudentPresence: "logStudentPresence",
+      markLive: "markLive",
+      reopenLiveSession: "reopenLiveSession",
     },
   },
 }));
@@ -103,7 +116,12 @@ vi.mock("convex/react", async () => {
   return {
     useAction: (action: string) =>
       action === "endSession" ? testState.endSession : testState.getToken,
-    useMutation: () => testState.logPresence,
+    useMutation: (mutation: string) =>
+      mutation === "markLive"
+        ? testState.markLive
+        : mutation === "reopenLiveSession"
+          ? testState.reopenLiveSession
+          : testState.logPresence,
     useQuery: (query: string, args: unknown) => {
       const isSessionStatus = query === "getSessionStatus";
 
@@ -360,6 +378,8 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     expect(testState.logPresence).toHaveBeenLastCalledWith({
       scheduleId: "schedule-1",
       action: "join",
+      activationId: "activation-1",
+      connectionId: expect.any(String),
     });
   });
 
@@ -376,6 +396,63 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     expect(screen.queryByTestId("livekit-room")).toBeNull();
     expect(testState.getToken).not.toHaveBeenCalled();
     expect(document.querySelector("[data-classroom-mini]")).toBeNull();
+  });
+
+  it("blocks staff before the start window without requesting a room token", async () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      isLive: false,
+      canStart: false,
+      startAvailableAt: Date.UTC(2026, 8, 2, 19, 0),
+    };
+
+    render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+
+    expect(screen.getByText("classroom.hasntStarted")).toBeTruthy();
+    expect(screen.getByText("classroom.startAvailableAt")).toBeTruthy();
+    expect(screen.queryByText("classroom.startClass")).toBeNull();
+    expect(testState.getToken).not.toHaveBeenCalled();
+  });
+
+  it("starts an eligible class from the confirmation flow", async () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      isLive: false,
+      canStart: true,
+    };
+
+    render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+    fireEvent.click(screen.getByText("classroom.confirmStartClassAsLeader"));
+    await flushPromises();
+
+    expect(testState.markLive).toHaveBeenCalledWith({
+      roomName: "room-1",
+      isLive: true,
+    });
+    expect(testState.getToken).not.toHaveBeenCalled();
+  });
+
+  it("reopens an eligible completed class from its closed state", async () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "completed",
+      isLive: false,
+      canReopen: true,
+      endedAt: Date.UTC(2026, 8, 2, 17, 58),
+      endedByName: "Taylor Teacher",
+    };
+
+    render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    fireEvent.click(screen.getByText("classroom.reopenClass"));
+    fireEvent.click(screen.getByText("classroom.confirmReopenClass"));
+    await flushPromises();
+
+    expect(testState.reopenLiveSession).toHaveBeenCalledWith({
+      roomName: "room-1",
+    });
+    expect(screen.getByText("classroom.endedBy")).toBeTruthy();
   });
 
   it("does not collapse the sidebar again when restoring the full classroom", async () => {
@@ -672,10 +749,12 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     expect(testState.getToken).toHaveBeenNthCalledWith(1, {
       roomName: "room-1",
       isCompanion: false,
+      expectedActivationId: "activation-1",
     });
     expect(testState.getToken).toHaveBeenNthCalledWith(2, {
       roomName: "room-1",
       isCompanion: true,
+      expectedActivationId: "activation-1",
     });
     expect(testState.roomLifecycle).toMatchObject({ mounts: 2, unmounts: 1 });
   });
@@ -802,6 +881,41 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     expect(screen.queryByTestId("livekit-room")).toBeNull();
     expect(screen.getByText("classroom.classEnded")).toBeTruthy();
     expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 1 });
+  });
+
+  it("requests a fresh token when the same occurrence is reopened", async () => {
+    testState.getToken
+      .mockResolvedValueOnce("initial-token")
+      .mockResolvedValueOnce("reopened-token");
+    const view = render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+    expect(testState.roomLifecycle.mountedTokens).toEqual(["initial-token"]);
+
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "completed",
+      isLive: false,
+      canReopen: true,
+      endedAt: Date.UTC(2026, 8, 2, 17, 58),
+    };
+    view.rerender(createElement(FlexiClassroom, { roomName: "room-1" }));
+    expect(screen.queryByTestId("livekit-room")).toBeNull();
+
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "active",
+      isLive: true,
+      activationStartedAt: Date.UTC(2026, 8, 2, 18, 1),
+      activationId: "activation-2",
+    };
+    view.rerender(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+
+    expect(testState.getToken).toHaveBeenCalledTimes(2);
+    expect(testState.roomLifecycle.mountedTokens).toEqual([
+      "initial-token",
+      "reopened-token",
+    ]);
   });
 
   it("ignores a cleanup disconnect after a terminal state is confirmed", async () => {

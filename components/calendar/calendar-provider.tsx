@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarContext } from "./calendar-context";
 import { CalendarEvent, Mode } from "./calendar-types";
 import { Id } from "@/convex/_generated/dataModel";
@@ -48,6 +48,14 @@ export default function CalendarProvider({
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
     null,
   );
+  const selectedScheduleId = selectedEvent?.scheduleId;
+  useEffect(() => {
+    if (!selectedScheduleId) return;
+    const currentEvent = events.find(
+      (event) => event.scheduleId === selectedScheduleId,
+    );
+    if (currentEvent) setSelectedEvent(currentEvent);
+  }, [events, selectedScheduleId]);
   const visibleScheduleWindow = useMemo(() => {
     const eventStartMinutes = events.map(
       (event) => event.start.getHours() * 60 + event.start.getMinutes(),

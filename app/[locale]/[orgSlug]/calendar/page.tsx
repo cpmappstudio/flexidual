@@ -27,6 +27,7 @@ import { ScheduleItem } from "@/components/schedule/schedule-item";
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
+import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { getRoleForOrg } from "@/lib/rbac";
 import {
   getCalendarUtcRange,
@@ -48,7 +49,15 @@ const localeMap = {
 } as const;
 
 // Internal component to handle Agenda Logic using Context
-function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
+function AgendaView({
+  filteredEvents,
+  isStudent,
+  now,
+}: {
+  filteredEvents: CalendarEvent[];
+  isStudent: boolean;
+  now: number;
+}) {
   const { displayTimeZone, setSelectedEvent, setManageEventDialogOpen } =
     useCalendarContext();
 
@@ -144,10 +153,20 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
                     status: event.status,
                     className: event.className,
                     curriculumTitle: event.curriculumTitle,
+                    canLeadSession: event.canLeadSession,
+                    sessionStartedAt: event.sessionStartedAt,
+                    sessionReopenUntil: event.sessionReopenUntil,
+                    sessionEndedAt: event.sessionEndedAt,
+                    sessionEndedByName: event.sessionEndedByName,
+                    sessionClosing: event.sessionClosing,
+                    sessionCloseRetrying: event.sessionCloseRetrying,
+                    sessionEndedAutomatically: event.sessionEndedAutomatically,
                   }}
                   showDate={false}
                   showEdit={false}
                   showDescription={false}
+                  isStudent={Boolean(isStudent)}
+                  now={now}
                   onEventClick={() => {
                     setSelectedEvent(event);
                     setManageEventDialogOpen(true);
@@ -165,6 +184,7 @@ function AgendaView({ filteredEvents }: { filteredEvents: CalendarEvent[] }) {
 function CalendarContent() {
   const [selectedMode, setSelectedMode] = useState<Mode | null>(null);
   const [date, setDate] = useState<Date>(new Date());
+  const now = useCurrentMinute();
 
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
@@ -360,6 +380,14 @@ function CalendarContent() {
       cancellationReason: e.cancellationReason,
       teacherName: e.teacherName,
       teacherImageUrl: e.teacherImageUrl,
+      canLeadSession: e.canLeadSession,
+      sessionStartedAt: e.sessionStartedAt,
+      sessionReopenUntil: e.sessionReopenUntil,
+      sessionEndedAt: e.sessionEndedAt,
+      sessionEndedByName: e.sessionEndedByName,
+      sessionClosing: e.sessionClosing,
+      sessionCloseRetrying: e.sessionCloseRetrying,
+      sessionEndedAutomatically: e.sessionEndedAutomatically,
     }));
   }, [displayTimeZone, gradeNameByCode, scheduleData]);
 
@@ -496,7 +524,11 @@ function CalendarContent() {
             value="agenda"
             className="flex-1 min-h-0 overflow-y-auto m-0 p-4 data-[state=active]:block"
           >
-            <AgendaView filteredEvents={filteredEvents} />
+            <AgendaView
+              filteredEvents={filteredEvents}
+              isStudent={isStudent}
+              now={now}
+            />
           </TabsContent>
         </Tabs>
 

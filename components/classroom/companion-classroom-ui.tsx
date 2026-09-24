@@ -1,10 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRoomContext, useLocalParticipant } from "@livekit/components-react";
 import { ConnectionState, RoomEvent } from "livekit-client";
 import type { RemoteParticipant } from "livekit-client";
-import { LogOut, Maximize2, Minimize2, MonitorUp, StopCircle } from "lucide-react";
+import {
+  LogOut,
+  Maximize2,
+  Minimize2,
+  MonitorUp,
+  StopCircle,
+} from "lucide-react";
 import { SharedWhiteboard } from "./shared-whiteboard";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { toast } from "sonner";
@@ -39,19 +51,25 @@ export function CompanionClassroomUI({
 
   // Ref so ParticipantConnected listener always reads the current broadcasting state
   const isBroadcastingRef = useRef(false);
-  useEffect(() => { isBroadcastingRef.current = isBroadcasting; }, [isBroadcasting]);
+  useEffect(() => {
+    isBroadcastingRef.current = isBroadcasting;
+  }, [isBroadcasting]);
 
   // Persist presenting state — lets the button show the correct label after a refresh
   useEffect(() => {
-    localStorage.setItem(`${WB_PRESENTING_KEY}${roomName}`, isBroadcasting ? "true" : "false");
+    localStorage.setItem(
+      `${WB_PRESENTING_KEY}${roomName}`,
+      isBroadcasting ? "true" : "false",
+    );
   }, [isBroadcasting, roomName]);
 
   // Guard: fires only once per mount to avoid double re-announce
   const hasRestoredRef = useRef(false);
 
-  // Populated by SharedWhiteboard — call to re-broadcast images or clean up Convex storage
-  const broadcastRef = useRef<((destinationIdentities?: string[]) => Promise<void>) | null>(null);
-  const cleanupRef = useRef<(() => Promise<void>) | null>(null);
+  // Populated by SharedWhiteboard to re-announce the current presentation.
+  const broadcastRef = useRef<
+    ((destinationIdentities?: string[]) => Promise<void>) | null
+  >(null);
 
   /**
    * After a companion page refresh where the teacher was already presenting, re-announce
@@ -69,18 +87,23 @@ export function CompanionClassroomUI({
     const encoder = new TextEncoder();
     try {
       await localParticipant.publishData(
-        encoder.encode(JSON.stringify({
-          type: "WHITEBOARD_STATE",
-          active: true,
-          companionId: localParticipant.identity,
-        })),
+        encoder.encode(
+          JSON.stringify({
+            type: "WHITEBOARD_STATE",
+            active: true,
+            companionId: localParticipant.identity,
+          }),
+        ),
         { reliable: true },
       );
       // Scene is distributed via Convex reactive query — no DataChannel send needed.
     } catch (err) {
       // DataChannel was not ready — reset so the Reconnected event can trigger a retry
       hasRestoredRef.current = false;
-      console.error("[Companion] Failed to restore broadcast state after refresh:", err);
+      console.error(
+        "[Companion] Failed to restore broadcast state after refresh:",
+        err,
+      );
     }
   }, [room, localParticipant]);
 
@@ -104,7 +127,8 @@ export function CompanionClassroomUI({
 
   // screen.height/width is stable across virtual keyboard open/close
   useEffect(() => {
-    const check = () => setIsPortrait(window.screen.height > window.screen.width);
+    const check = () =>
+      setIsPortrait(window.screen.height > window.screen.width);
     check();
     window.addEventListener("orientationchange", check);
     return () => window.removeEventListener("orientationchange", check);
@@ -112,27 +136,33 @@ export function CompanionClassroomUI({
 
   // Phone landscape: same breakpoint used by the other classroom UIs
   useEffect(() => {
-    const mq = window.matchMedia('(orientation: landscape) and (max-height: 500px)');
+    const mq = window.matchMedia(
+      "(orientation: landscape) and (max-height: 500px)",
+    );
     const handle = () => setIsPhoneLandscape(mq.matches);
     handle();
-    mq.addEventListener('change', handle);
-    return () => mq.removeEventListener('change', handle);
+    mq.addEventListener("change", handle);
+    return () => mq.removeEventListener("change", handle);
   }, []);
 
   // Issue 3: Send current whiteboard state to participants who join late
   useEffect(() => {
     if (!room) return;
-    const handleParticipantConnected = async (participant: RemoteParticipant) => {
+    const handleParticipantConnected = async (
+      participant: RemoteParticipant,
+    ) => {
       if (!isBroadcastingRef.current) return;
       if (room.state !== ConnectionState.Connected) return;
       const encoder = new TextEncoder();
       try {
         await localParticipant.publishData(
-          encoder.encode(JSON.stringify({
-            type: "WHITEBOARD_STATE",
-            active: true,
-            companionId: localParticipant.identity,
-          })),
+          encoder.encode(
+            JSON.stringify({
+              type: "WHITEBOARD_STATE",
+              active: true,
+              companionId: localParticipant.identity,
+            }),
+          ),
           { reliable: true, destinationIdentities: [participant.identity] },
         );
         // Scene and file refs are delivered to the late joiner via Convex reactive query.
@@ -141,13 +171,18 @@ export function CompanionClassroomUI({
       }
     };
     room.on(RoomEvent.ParticipantConnected, handleParticipantConnected);
-    return () => { room.off(RoomEvent.ParticipantConnected, handleParticipantConnected); };
+    return () => {
+      room.off(RoomEvent.ParticipantConnected, handleParticipantConnected);
+    };
   }, [room, localParticipant]);
 
   // Issue 2: Guard against publishing when the WebRTC connection isn't ready
   const toggleWhiteboard = async () => {
     if (room.state !== ConnectionState.Connected) {
-      toast.error(t("classroom.connectionNotReady") || "Connection not ready — please try again.");
+      toast.error(
+        t("classroom.connectionNotReady") ||
+          "Connection not ready — please try again.",
+      );
       return;
     }
     const newState = !isBroadcasting;
@@ -155,23 +190,30 @@ export function CompanionClassroomUI({
     const encoder = new TextEncoder();
     try {
       await localParticipant.publishData(
-        encoder.encode(JSON.stringify({
-          type: "WHITEBOARD_STATE",
-          active: newState,
-          companionId: localParticipant.identity,
-        })),
+        encoder.encode(
+          JSON.stringify({
+            type: "WHITEBOARD_STATE",
+            active: newState,
+            companionId: localParticipant.identity,
+          }),
+        ),
         { reliable: true },
       );
       // When activating, immediately broadcast the full current scene so students
       // who are already in the room see existing content without drawing anything new
       // Scene is already in Convex — no DataChannel publish needed when activating.
       if (newState) {
-        toast.success(t("classroom.whiteboardStarted") || "Whiteboard is now visible");
+        toast.success(
+          t("classroom.whiteboardStarted") || "Whiteboard is now visible",
+        );
       }
     } catch (err) {
       console.error("[Companion] toggleWhiteboard failed:", err);
       setIsBroadcasting(!newState); // revert optimistic update
-      toast.error(t("classroom.broadcastFailed") || "Broadcast failed — please try again.");
+      toast.error(
+        t("classroom.broadcastFailed") ||
+          "Broadcast failed — please try again.",
+      );
     }
   };
 
@@ -181,55 +223,73 @@ export function CompanionClassroomUI({
     if (isBroadcasting && room.state === ConnectionState.Connected) {
       try {
         await localParticipant.publishData(
-          new TextEncoder().encode(JSON.stringify({ type: "WHITEBOARD_STATE", active: false })),
+          new TextEncoder().encode(
+            JSON.stringify({ type: "WHITEBOARD_STATE", active: false }),
+          ),
           { reliable: true },
         );
-      } catch { /* ignore — we're leaving anyway */ }
+      } catch {
+        /* ignore — we're leaving anyway */
+      }
     }
     // Clear the persisted presenting flag so a future reconnect starts clean
     localStorage.removeItem(`${WB_PRESENTING_KEY}${roomName}`);
-    // Delete all Convex storage objects uploaded this session and clear localStorage
-    await cleanupRef.current?.();
     await room.disconnect();
     // Navigation is handled by LiveKitRoom.onDisconnected → flexi-classroom.handleDisconnect
   };
 
   return (
-    <div className={`flex flex-col w-full h-full bg-background touch-none overscroll-none ${isPhoneLandscape ? '' : 'p-2'}`}>
+    <div
+      className={`flex flex-col w-full h-full bg-background touch-none overscroll-none ${isPhoneLandscape ? "" : "p-2"}`}
+    >
       {!isPhoneLandscape && (
-      <div className={`flex items-center bg-card rounded-xl border border-border mb-2 ${isPortrait ? "justify-center gap-2 p-2" : "justify-between p-3"}`}>
-        {!isPortrait && (
-          <div className="bg-primary/10 text-primary px-3 py-1 rounded-md text-sm font-bold uppercase tracking-wider">
-            {t("classroom.companionDeviceFor", { room: roomName }) || `Companion — "${roomName}"`}
-          </div>
-        )}
-
-        <div className="flex items-center gap-2">
-          {countdown}
-          <button
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={toggleWhiteboard}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${
-              isBroadcasting ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : "bg-primary hover:bg-primary/90 text-primary-foreground"
-            }`}
-          >
-            {isBroadcasting ? <StopCircle className="w-4 h-4" /> : <MonitorUp className="w-4 h-4" />}
-            {isBroadcasting ? (t("classroom.stopPresenting") || "Stop") : (t("classroom.presentBoard") || "Present")}
-          </button>
-
-          {onToggleFullscreen && (
-            <FullscreenButton isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
+        <div
+          className={`flex items-center bg-card rounded-xl border border-border mb-2 ${isPortrait ? "justify-center gap-2 p-2" : "justify-between p-3"}`}
+        >
+          {!isPortrait && (
+            <div className="bg-primary/10 text-primary px-3 py-1 rounded-md text-sm font-bold uppercase tracking-wider">
+              {t("classroom.companionDeviceFor", { room: roomName }) ||
+                `Companion — "${roomName}"`}
+            </div>
           )}
 
-          <button
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleLeave}
-            className="w-10 h-10 flex items-center justify-center rounded-lg bg-muted hover:bg-muted/80 text-destructive transition-colors"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {countdown}
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleWhiteboard}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${
+                isBroadcasting
+                  ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  : "bg-primary hover:bg-primary/90 text-primary-foreground"
+              }`}
+            >
+              {isBroadcasting ? (
+                <StopCircle className="w-4 h-4" />
+              ) : (
+                <MonitorUp className="w-4 h-4" />
+              )}
+              {isBroadcasting
+                ? t("classroom.stopPresenting") || "Stop"
+                : t("classroom.presentBoard") || "Present"}
+            </button>
+
+            {onToggleFullscreen && (
+              <FullscreenButton
+                isFullscreen={isFullscreen}
+                onToggle={onToggleFullscreen}
+              />
+            )}
+
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleLeave}
+              className="w-10 h-10 flex items-center justify-center rounded-lg bg-muted hover:bg-muted/80 text-destructive transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </div>
-      </div>
       )}
 
       {/* Whiteboard — relative so the landscape floating pill can be positioned inside */}
@@ -247,14 +307,22 @@ export function CompanionClassroomUI({
             <button
               onMouseDown={(e) => e.preventDefault()}
               onClick={toggleWhiteboard}
-              title={isBroadcasting ? (t("classroom.stopPresenting") || "Stop Presenting") : (t("classroom.presentBoard") || "Present")}
+              title={
+                isBroadcasting
+                  ? t("classroom.stopPresenting") || "Stop Presenting"
+                  : t("classroom.presentBoard") || "Present"
+              }
               className={`w-9 h-9 rounded-full flex items-center justify-center transition-all border-2 ${
                 isBroadcasting
-                  ? 'bg-destructive/80 text-destructive-foreground border-destructive/50'
-                  : 'bg-primary/80 text-primary-foreground border-primary/50'
+                  ? "bg-destructive/80 text-destructive-foreground border-destructive/50"
+                  : "bg-primary/80 text-primary-foreground border-primary/50"
               }`}
             >
-              {isBroadcasting ? <StopCircle className="w-4 h-4" /> : <MonitorUp className="w-4 h-4" />}
+              {isBroadcasting ? (
+                <StopCircle className="w-4 h-4" />
+              ) : (
+                <MonitorUp className="w-4 h-4" />
+              )}
             </button>
 
             {/* Fullscreen */}
@@ -264,7 +332,11 @@ export function CompanionClassroomUI({
                 title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
                 className="w-9 h-9 rounded-full flex items-center justify-center transition-all bg-inverse-foreground/20 text-inverse-foreground border-2 border-inverse-foreground/30 hover:bg-inverse-foreground/30"
               >
-                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                {isFullscreen ? (
+                  <Minimize2 className="w-4 h-4" />
+                ) : (
+                  <Maximize2 className="w-4 h-4" />
+                )}
               </button>
             )}
 
@@ -287,7 +359,6 @@ export function CompanionClassroomUI({
             roomName={roomName}
             isReadonly={false}
             broadcastRef={broadcastRef}
-            cleanupRef={cleanupRef}
             onApiReady={(api) => {
               whiteboardApiRef.current = api;
               // Excalidraw API + broadcastRef are now both ready; attempt state restore

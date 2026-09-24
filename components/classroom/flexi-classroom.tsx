@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { LiveKitRoom } from "@livekit/components-react";
 import { DisconnectReason } from "livekit-client";
@@ -13,6 +13,8 @@ import {
   School,
   LogOut,
   AlertCircle,
+  PlayCircle,
+  RotateCcw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { TZDate } from "@date-fns/tz";
@@ -30,6 +32,18 @@ import { useClassroomClock } from "./use-classroom-clock";
 import { useClassroomToken } from "@/hooks/use-classroom-token";
 import { SessionCloseoutDialog } from "./session-closeout-dialog";
 import { useClassroomPresentation } from "./classroom-presentation";
+import { toast } from "sonner";
+import { SessionClosureProgress } from "./session-closure-progress";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -165,8 +179,14 @@ export default function FlexiClassroom({
   const convexUser = useRetainedQueryResult(currentUserQueryResult, roomName);
 
   const logPresence = useMutation(api.schedule.logStudentPresence);
+  const markLive = useMutation(api.schedule.markLive);
+  const reopenLiveSession = useMutation(api.schedule.reopenLiveSession);
   const endSession = useAction(api.livekit.endSession);
   const [closeoutScope, setCloseoutScope] = useState<string | null>(null);
+  const [activationDialogMode, setActivationDialogMode] = useState<
+    "start" | "reopen" | null
+  >(null);
+  const [isActivating, setIsActivating] = useState(false);
 
   const sessionStatusResult = useQuery(api.schedule.getSessionStatus, {
     sessionId: roomName,
@@ -195,13 +215,11 @@ export default function FlexiClassroom({
   const uiPreviewEnabled =
     process.env.NODE_ENV !== "production" &&
     (presentation?.uiPreviewEnabled ?? searchParams.get("uiPreview") === "1");
-  const canJoinEarly = sessionStatus?.roomAdmin === true;
   const isClassLive = sessionStatus?.isLive || false;
   const isSessionClosed =
     sessionStatus?.status === "completed" ||
     sessionStatus?.status === "cancelled";
-  const shouldConnect =
-    !isSessionClosed && (isClassLive || canJoinEarly) && !!convexUser;
+  const shouldConnect = !isSessionClosed && isClassLive && !!convexUser;
 
   const {
     token,
@@ -213,15 +231,24 @@ export default function FlexiClassroom({
     userId: convexUser?._id,
     isCompanion,
     shouldRequest: shouldConnect,
+    activationStartedAt: sessionStatus?.activationStartedAt,
+    activationId: sessionStatus?.activationId,
   });
-  const connectionScope = `${roomName}:${convexUser?._id ?? "anonymous"}:${isCompanion ? "companion" : "primary"}`;
+  const connectionScope = `${roomName}:${convexUser?._id ?? "anonymous"}:${isCompanion ? "companion" : "primary"}:${sessionStatus?.activationId ?? sessionStatus?.activationStartedAt ?? "inactive"}`;
+  const currentConnectionScopeRef = useRef(connectionScope);
+  currentConnectionScopeRef.current = connectionScope;
+  const presenceConnection = useMemo(
+    () => ({ id: crypto.randomUUID(), scope: connectionScope }),
+    [connectionScope],
+  );
   const requiresCloseout =
     !isCompanion &&
     !resolvedIsStudentView &&
     !!convexUser &&
     scheduleDetails?.sessionLeaderId === convexUser._id &&
     sessionStatus?.status === "completed" &&
-    scheduleDetails?.sessionClosureStatus === "pending";
+    scheduleDetails?.sessionClosureStatus === "pending" &&
+    !sessionStatus.canReopen;
   const isCloseoutOpen =
     !!convexUser && (closeoutScope === connectionScope || requiresCloseout);
   const canPersist = Boolean(
@@ -275,11 +302,47 @@ export default function FlexiClassroom({
   currentRoomRef.current = roomName;
   sessionClosedRef.current = isSessionClosed;
 
+  useEffect(() => {
+    loggedScheduleRef.current = null;
+  }, [connectionScope]);
+
+  useEffect(() => {
+    if (!isCompanion && !resolvedIsStudentView && sessionStatus?.canStart) {
+      setActivationDialogMode("start");
+    }
+  }, [isCompanion, resolvedIsStudentView, roomName, sessionStatus?.canStart]);
+
   const handleCompleteSession = async () => {
-    if (!sessionClosedRef.current) await endSession({ roomName });
+    if (!sessionClosedRef.current)
+      await endSession({
+        roomName,
+        expectedActivationId: sessionStatus?.activationId,
+      });
     setCloseoutScope((current) =>
       current === connectionScope ? null : current,
     );
+  };
+
+  const handleActivateSession = async (mode: "start" | "reopen") => {
+    if (isActivating) return;
+    setIsActivating(true);
+    try {
+      if (mode === "reopen") await reopenLiveSession({ roomName });
+      else await markLive({ roomName, isLive: true });
+      clearToken();
+      setActivationDialogMode(null);
+    } catch (activationError) {
+      console.error(`Failed to ${mode} class:`, activationError);
+      toast.error(
+        t(
+          mode === "reopen"
+            ? "classroom.reopenClassError"
+            : "classroom.startClassError",
+        ),
+      );
+    } finally {
+      setIsActivating(false);
+    }
   };
 
   const handleConnected = useCallback(async () => {
@@ -290,19 +353,24 @@ export default function FlexiClassroom({
     if (
       !resolvedIsStudentView ||
       !sessionStatus?.scheduleId ||
-      loggedScheduleRef.current === sessionStatus.scheduleId
+      !sessionStatus.activationId ||
+      currentConnectionScopeRef.current !== connectionScope ||
+      loggedScheduleRef.current === connectionScope
     ) {
       return;
     }
 
-    loggedScheduleRef.current = sessionStatus.scheduleId;
+    loggedScheduleRef.current = connectionScope;
     try {
       await logPresence({
         scheduleId: sessionStatus.scheduleId,
         action: "join",
+        activationId: sessionStatus.activationId,
+        connectionId: presenceConnection.id,
       });
     } catch (err) {
-      loggedScheduleRef.current = null;
+      if (currentConnectionScopeRef.current === connectionScope)
+        loggedScheduleRef.current = null;
       console.error("Failed to log presence:", err);
     }
   }, [
@@ -310,6 +378,8 @@ export default function FlexiClassroom({
     logPresence,
     resolvedIsStudentView,
     sessionStatus?.scheduleId,
+    sessionStatus?.activationId,
+    presenceConnection,
   ]);
 
   const exitClassroom = useCallback(() => {
@@ -341,7 +411,11 @@ export default function FlexiClassroom({
 
   const handleDisconnect = useCallback(
     async (reason?: DisconnectReason) => {
-      if (currentRoomRef.current !== roomName || sessionClosedRef.current) {
+      if (
+        currentRoomRef.current !== roomName ||
+        sessionClosedRef.current ||
+        currentConnectionScopeRef.current !== connectionScope
+      ) {
         return;
       }
 
@@ -359,12 +433,15 @@ export default function FlexiClassroom({
       if (
         resolvedIsStudentView &&
         sessionStatus?.scheduleId &&
-        loggedScheduleRef.current === sessionStatus.scheduleId
+        sessionStatus.activationId &&
+        loggedScheduleRef.current === connectionScope
       ) {
         try {
           await logPresence({
             scheduleId: sessionStatus.scheduleId,
             action: "leave",
+            activationId: sessionStatus.activationId,
+            connectionId: presenceConnection.id,
           });
         } catch (e) {
           console.error("Error logging leave:", e);
@@ -397,6 +474,8 @@ export default function FlexiClassroom({
       roomName,
       leaveSession,
       sessionStatus?.scheduleId,
+      sessionStatus?.activationId,
+      presenceConnection,
       t,
     ],
   );
@@ -484,6 +563,12 @@ export default function FlexiClassroom({
     }
 
     if (isSessionClosed) {
+      const endedTime = sessionStatus.endedAt
+        ? format(
+            new TZDate(sessionStatus.endedAt, sessionStatus.timeZone),
+            "h:mm a",
+          )
+        : null;
       return (
         <div
           className={`flex h-full w-full items-center justify-center rounded-lg bg-muted/30 ${className}`}
@@ -495,9 +580,77 @@ export default function FlexiClassroom({
                 ? t("classroom.classEnded")
                 : t("classroom.notActive")}
             </h3>
-            <Button variant="outline" className="mt-6" onClick={exitClassroom}>
-              {t("common.back")}
-            </Button>
+            {!resolvedIsStudentView && endedTime && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {sessionStatus.endedByName
+                  ? t("classroom.endedBy", {
+                      name: sessionStatus.endedByName,
+                      time: endedTime,
+                    })
+                  : t("classroom.automaticClosure", { time: endedTime })}
+              </p>
+            )}
+            {!resolvedIsStudentView && (
+              <SessionClosureProgress
+                closing={sessionStatus.sessionClosing}
+                retrying={sessionStatus.sessionCloseRetrying}
+              />
+            )}
+            <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+              {!isCompanion &&
+                !resolvedIsStudentView &&
+                sessionStatus.canReopen && (
+                  <Button onClick={() => setActivationDialogMode("reopen")}>
+                    <RotateCcw className="mr-2 size-4" />
+                    {t("classroom.reopenClass")}
+                  </Button>
+                )}
+              <Button variant="outline" onClick={exitClassroom}>
+                {t("common.back")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (!resolvedIsStudentView && !isClassLive) {
+      const canLeadSession = sessionStatus.leadershipRole !== null;
+      const startTime = format(
+        new TZDate(sessionStatus.startAvailableAt, sessionStatus.timeZone),
+        "h:mm a",
+      );
+      const isTooEarly = now < sessionStatus.startAvailableAt;
+      return (
+        <div
+          className={`flex h-full w-full items-center justify-center rounded-lg bg-muted/30 ${className}`}
+        >
+          <div className="max-w-md p-8 text-center">
+            <CalendarClock className="mx-auto mb-4 size-16 text-muted-foreground/40" />
+            <h3 className="text-xl font-bold text-foreground">
+              {sessionStatus.canStart
+                ? t("classroom.readyToStart")
+                : t("classroom.hasntStarted")}
+            </h3>
+            {canLeadSession && isTooEarly && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {t("classroom.startAvailableAt", {
+                  time: startTime,
+                  timeZone: sessionStatus.timeZone,
+                })}
+              </p>
+            )}
+            <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+              {!isCompanion && sessionStatus.canStart && (
+                <Button onClick={() => setActivationDialogMode("start")}>
+                  <PlayCircle className="mr-2 size-4" />
+                  {t("classroom.startClass")}
+                </Button>
+              )}
+              <Button variant="outline" onClick={exitClassroom}>
+                {t("common.back")}
+              </Button>
+            </div>
           </div>
         </div>
       );
@@ -712,6 +865,7 @@ export default function FlexiClassroom({
               courseId={scheduleDetails.class._id}
               scheduleId={sessionStatus.scheduleId}
               currentUserRole={role}
+              activationId={sessionStatus.activationId}
               canLeadSession={sessionStatus?.leadershipRole != null}
               roomName={roomName}
               sessionNow={now}
@@ -758,6 +912,64 @@ export default function FlexiClassroom({
         }}
         onComplete={handleCompleteSession}
       />
+      <AlertDialog
+        open={activationDialogMode !== null}
+        onOpenChange={(open) => {
+          if (!open && !isActivating) setActivationDialogMode(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {activationDialogMode === "reopen"
+                ? t("classroom.reopenClassTitle")
+                : t(
+                    sessionStatus?.isPrimaryTeacher
+                      ? "classroom.startClassTitle"
+                      : "classroom.startClassAsLeaderTitle",
+                  )}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {activationDialogMode === "reopen"
+                ? t("classroom.reopenClassDescription")
+                : t(
+                    sessionStatus?.isPrimaryTeacher
+                      ? "classroom.startClassDescription"
+                      : "classroom.startClassAsLeaderDescription",
+                  )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {activationDialogMode === "start" &&
+            !sessionStatus?.isPrimaryTeacher && (
+              <p className="border-t pt-3 text-xs leading-relaxed text-muted-foreground">
+                {t("classroom.startClassAsLeaderDisclosure")}
+              </p>
+            )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isActivating}>
+              {t("common.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!activationDialogMode || isActivating}
+              onClick={(event) => {
+                event.preventDefault();
+                if (activationDialogMode) {
+                  void handleActivateSession(activationDialogMode);
+                }
+              }}
+            >
+              {isActivating && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {t(
+                activationDialogMode === "reopen"
+                  ? "classroom.confirmReopenClass"
+                  : sessionStatus?.isPrimaryTeacher
+                    ? "classroom.confirmStartClass"
+                    : "classroom.confirmStartClassAsLeader",
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

@@ -49,10 +49,12 @@ function isTrackEnabled(participant: Participant, source: Track.Source) {
 
 function RecordingLayout({ recordingToken }: { recordingToken: string }) {
   const room = useRoomContext();
+  const searchParams = useSearchParams();
+  const classroom = searchParams.get("classroom") ?? room.name;
   const participants = useRemoteParticipants();
   const recordingContext = useQuery(
     api.whiteboardSessions.getRecordingContext,
-    { roomName: room.name, recordingToken },
+    { roomName: classroom, recordingToken },
   );
   const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
   const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
@@ -206,7 +208,7 @@ function RecordingLayout({ recordingToken }: { recordingToken: string }) {
         whiteboard={
           isWhiteboardActive ? (
             <ClassroomWhiteboardContent
-              roomName={room.name}
+              roomName={classroom}
               followViewport
               recordingToken={recordingToken}
               presentationMode

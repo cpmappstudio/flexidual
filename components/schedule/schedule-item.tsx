@@ -1,4 +1,5 @@
 "use client";
+import { SessionClosureProgress } from "@/components/classroom/session-closure-progress";
 
 import { format } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
@@ -37,6 +38,7 @@ import {
   getExternalClassPlatform,
   type ClassSessionType,
 } from "@/lib/class-session";
+import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 
 const localeMap = {
   en: enUS,
@@ -71,6 +73,14 @@ interface ScheduleItemProps {
     recurrenceParentId?: Id<"classSchedule">;
     hasRecording?: boolean;
     timeZone: string;
+    canLeadSession?: boolean;
+    sessionStartedAt?: number;
+    sessionReopenUntil?: number;
+    sessionEndedAt?: number;
+    sessionEndedByName?: string;
+    sessionEndedAutomatically?: boolean;
+    sessionClosing?: boolean;
+    sessionCloseRetrying?: boolean;
   };
   classId?: Id<"classes">;
   isPast?: boolean;
@@ -79,6 +89,8 @@ interface ScheduleItemProps {
   showDescription?: boolean;
   variant?: "default" | "classSession";
   onEventClick?: () => void;
+  isStudent?: boolean;
+  now?: number;
 }
 
 type ExternalClassPlatform = NonNullable<
@@ -114,6 +126,8 @@ export function ScheduleItem({
   showDescription = true,
   variant = "default",
   onEventClick,
+  isStudent = false,
+  now = Date.now(),
 }: ScheduleItemProps) {
   const t = useTranslations();
   const locale = useLocale();
@@ -149,8 +163,28 @@ export function ScheduleItem({
       : t("schedule.platformLive");
   const classSessionTitle = schedule.title;
   const shouldShowDescription = showDescription && !!schedule.description;
-  const canOpenRoom = !isPast && schedule.status !== "cancelled";
-  const canEditSchedule = classId && showEdit && canOpenRoom;
+  const primaryAction = getCalendarEventPrimaryAction({
+    isStudent,
+    now,
+    start: startDate.getTime(),
+    end: endDate.getTime(),
+    status: schedule.status ?? "scheduled",
+    isLive: schedule.isLive === true,
+    hasRecording: schedule.hasRecording,
+    roomName: schedule.roomName,
+    sessionType: schedule.sessionType,
+    canLeadSession: schedule.canLeadSession,
+    sessionStartedAt: schedule.sessionStartedAt,
+    sessionReopenUntil: schedule.sessionReopenUntil,
+  });
+  const canOpenRoom =
+    primaryAction === "start-live" ||
+    primaryAction === "reopen-live" ||
+    primaryAction === "enter-live" ||
+    primaryAction === "go-to-classroom" ||
+    primaryAction === "open-external";
+  const canEditSchedule =
+    classId && showEdit && schedule.status === "scheduled" && !isPast;
   const showRecordingAction = isPast && !!schedule.hasRecording;
   const canManageAttendance =
     classId &&
@@ -159,9 +193,40 @@ export function ScheduleItem({
     Boolean(schedule.attendanceSummary?.verifiedTotal);
   const primarySessionActionLabel = schedule.isLive
     ? t("classroom.joinLive")
-    : isIgnitia || isAbeka
-      ? t("schedule.openPlatform", { platform: platformLabel })
-      : t("classroom.prepareRoom");
+    : primaryAction === "reopen-live"
+      ? t("classroom.reopenClass")
+      : primaryAction === "start-live"
+        ? t("classroom.startClass")
+        : isIgnitia || isAbeka
+          ? t("schedule.openPlatform", { platform: platformLabel })
+          : t("dashboard.goToClassroom");
+  const closureSummary =
+    !isStudent && schedule.status === "completed" && schedule.sessionEndedAt ? (
+      <div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {schedule.sessionEndedByName
+            ? t("classroom.endedBy", {
+                name: schedule.sessionEndedByName,
+                time: format(
+                  new TZDate(schedule.sessionEndedAt, schedule.timeZone),
+                  "h:mm a",
+                  { locale: dateLocale },
+                ),
+              })
+            : t("classroom.automaticClosure", {
+                time: format(
+                  new TZDate(schedule.sessionEndedAt, schedule.timeZone),
+                  "h:mm a",
+                  { locale: dateLocale },
+                ),
+              })}
+        </p>
+        <SessionClosureProgress
+          closing={schedule.sessionClosing}
+          retrying={schedule.sessionCloseRetrying}
+        />
+      </div>
+    ) : null;
 
   const renderAttendanceSummaryContent = () => {
     if (!schedule.attendanceSummary) return null;
@@ -285,6 +350,8 @@ export function ScheduleItem({
               </p>
             )}
 
+            {closureSummary}
+
             {isPast && schedule.attendanceSummary && (
               <div className="mt-3" onClick={(e) => e.stopPropagation()}>
                 {canManageAttendance ? (
@@ -342,7 +409,7 @@ export function ScheduleItem({
             </>
           )}
 
-          {!showRecordingAction && canOpenRoom && (
+          {canOpenRoom && (
             <Button
               size="sm"
               variant={
@@ -512,6 +579,7 @@ export function ScheduleItem({
             {format(startDate, "h:mm a", { locale: dateLocale })} -{" "}
             {format(endDate, "h:mm a", { locale: dateLocale })}
           </p>
+          {closureSummary}
         </div>
       </div>
 
@@ -565,7 +633,7 @@ export function ScheduleItem({
           />
         )}
 
-        {!isPast && schedule.status !== "cancelled" && (
+        {canOpenRoom && (
           <>
             {/* Edit Button */}
             {classId && showEdit && (
@@ -615,7 +683,7 @@ export function ScheduleItem({
                   t("classroom.joinLive")
                 ) : (
                   <>
-                    {t("classroom.prepareRoom")}
+                    {primarySessionActionLabel}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </>
                 ),

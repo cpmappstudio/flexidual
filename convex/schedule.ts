@@ -8,11 +8,17 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import {
+  ensureLiveActivation,
+  getLiveActivationId,
+  getLiveRoomName,
+  liveDecisionSnapshotValidator,
+  type LiveDecisionSnapshot,
+} from "./model/liveActivation";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Doc, Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
 import {
-  canAccessClass,
   canCancelClassOccurrence,
   canCancelClassSeries,
   canManageClasses,
@@ -54,8 +60,11 @@ import {
   getConfirmedExtensionEnd,
   getEffectiveLiveEnd,
   getLiveSessionHardEnd,
+  getLiveSessionReopenUntil,
+  getLiveSessionStartAvailableAt,
+  canReopenLiveSession,
+  canStartLiveSession,
   LIVE_EXTENSION_PROMPT_LEAD_MS,
-  MAX_LIVE_OVERRUN_MS,
   STUDENT_ONLY_GRACE_MS,
 } from "../lib/live-session-policy";
 import { isExternalClassSession } from "../lib/class-session";
@@ -63,6 +72,7 @@ import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 import {
   sessionClosureStatusValidator,
   sessionLeaderRoleValidator,
+  getSessionLeaderRoleFromAssignments,
   type SessionLeaderRole,
 } from "./model/sessionLeadership";
 import {
@@ -125,7 +135,14 @@ const scheduleFields = {
   sessionLeaderSince: v.optional(v.number()),
   sessionStartedBy: v.optional(v.id("users")),
   sessionStartedAt: v.optional(v.number()),
+  sessionReopenedBy: v.optional(v.id("users")),
+  sessionReopenedAt: v.optional(v.number()),
+  sessionReopenUntil: v.optional(v.number()),
   sessionEndedBy: v.optional(v.id("users")),
+  liveActivationId: v.optional(v.string()),
+  liveRoomName: v.optional(v.string()),
+  liveEndClaimId: v.optional(v.string()),
+  liveCleanupRetrying: v.optional(v.boolean()),
   sessionClosureStatus: v.optional(sessionClosureStatusValidator),
   sessionClosedBy: v.optional(v.id("users")),
   sessionClosedAt: v.optional(v.number()),
@@ -168,6 +185,12 @@ const sessionStatusFields = {
   liveExtensionEndsAt: v.optional(v.number()),
   liveDecisionEndsAt: v.optional(v.number()),
   liveHardEndsAt: v.number(),
+  activationStartedAt: v.optional(v.number()),
+  activationId: v.string(),
+  liveRoomName: v.string(),
+  hasReopened: v.boolean(),
+  sessionClosing: v.boolean(),
+  sessionCloseRetrying: v.boolean(),
 };
 const sessionStatusValidator = v.object(sessionStatusFields);
 const viewerSessionStatusValidator = v.object({
@@ -176,6 +199,13 @@ const viewerSessionStatusValidator = v.object({
   isPrimaryTeacher: v.boolean(),
   isSessionLeader: v.boolean(),
   leadershipRole: v.union(sessionLeaderRoleValidator, v.null()),
+  canStart: v.boolean(),
+  canReopen: v.boolean(),
+  startAvailableAt: v.number(),
+  reopenUntil: v.optional(v.number()),
+  endedAt: v.optional(v.number()),
+  endedByName: v.optional(v.string()),
+  endedAutomatically: v.boolean(),
 });
 const scheduleEventValidator = v.object({
   scheduleId: v.id("classSchedule"),
@@ -228,6 +258,14 @@ const scheduleEventValidator = v.object({
     }),
   ),
   hasRecording: v.boolean(),
+  canLeadSession: v.boolean(),
+  sessionStartedAt: v.optional(v.number()),
+  sessionReopenUntil: v.optional(v.number()),
+  sessionEndedAt: v.optional(v.number()),
+  sessionEndedByName: v.optional(v.string()),
+  sessionEndedAutomatically: v.boolean(),
+  sessionClosing: v.optional(v.boolean()),
+  sessionCloseRetrying: v.optional(v.boolean()),
 });
 
 // ============================================================================
@@ -238,16 +276,18 @@ async function scheduleLiveReconciliation(
   ctx: MutationCtx,
   roomName: string,
   scheduledEnd: number,
+  activationId: string,
+  firstCheckAt = scheduledEnd,
 ) {
   await ctx.scheduler.runAt(
-    Math.max(Date.now(), scheduledEnd),
+    Math.max(Date.now(), firstCheckAt),
     internal.livekit.reconcileLiveSession,
-    { roomName },
+    { roomName, expectedActivationId: activationId },
   );
   await ctx.scheduler.runAt(
     Math.max(Date.now(), getLiveSessionHardEnd(scheduledEnd)),
     internal.livekit.reconcileLiveSession,
-    { roomName },
+    { roomName, expectedActivationId: activationId },
   );
 }
 
@@ -515,6 +555,7 @@ function getSessionStatusData(
   now: number,
 ) {
   const liveHardEndsAt = getLiveSessionHardEnd(schedule.scheduledEnd);
+  const runtimeExtensionEndsAt = getLiveRuntimeExtensionEndsAt(schedule);
   const isTimeWindowActive =
     now >= schedule.scheduledStart - 10 * 60 * 1000 &&
     now <= schedule.scheduledEnd + 5 * 60 * 1000;
@@ -530,10 +571,32 @@ function getSessionStatusData(
     timeZone,
     roomName: schedule.roomName,
     canJoin: schedule.status === "active" || schedule.status === "scheduled",
-    liveExtensionEndsAt: schedule.liveExtensionEndsAt,
+    liveExtensionEndsAt: runtimeExtensionEndsAt,
     liveDecisionEndsAt: schedule.liveDecisionEndsAt,
     liveHardEndsAt,
+    activationStartedAt:
+      schedule.sessionReopenedAt ?? schedule.sessionStartedAt,
+    activationId: getLiveActivationId(schedule),
+    liveRoomName: getLiveRoomName(schedule),
+    hasReopened: schedule.sessionReopenedAt !== undefined,
+    sessionClosing: schedule.liveEndClaimId !== undefined,
+    sessionCloseRetrying: schedule.liveCleanupRetrying === true,
   };
+}
+
+function getLiveRuntimeExtensionEndsAt(schedule: Doc<"classSchedule">) {
+  const persistedEffectiveEnd = getEffectiveLiveEnd(
+    schedule.scheduledEnd,
+    schedule.liveExtensionEndsAt,
+  );
+  const isUsingRecoveryWindow =
+    schedule.status === "active" &&
+    schedule.sessionReopenedAt !== undefined &&
+    schedule.sessionReopenUntil !== undefined &&
+    schedule.sessionReopenedAt >= persistedEffectiveEnd;
+  return isUsingRecoveryWindow
+    ? schedule.sessionReopenUntil
+    : schedule.liveExtensionEndsAt;
 }
 
 async function getEligibleSessionLeaderRole(
@@ -542,54 +605,16 @@ async function getEligibleSessionLeaderRole(
   classData: Doc<"classes">,
   schoolId?: Id<"schools">,
 ): Promise<SessionLeaderRole | null> {
-  if (classData.teacherId === userId) return "teacher";
-
   const assignments = await ctx.db
     .query("roleAssignments")
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .collect();
-  if (
-    assignments.some(
-      (assignment) =>
-        assignment.role === "superadmin" && assignment.orgType === "system",
-    )
-  ) {
-    return "superadmin";
-  }
-  if (
-    schoolId &&
-    assignments.some(
-      (assignment) =>
-        assignment.role === "admin" &&
-        assignment.orgType === "school" &&
-        assignment.orgId === schoolId,
-    )
-  ) {
-    return "admin";
-  }
-  if (
-    classData.campusId &&
-    assignments.some(
-      (assignment) =>
-        assignment.role === "admin" &&
-        assignment.orgType === "campus" &&
-        assignment.orgId === classData.campusId,
-    )
-  ) {
-    return "admin";
-  }
-  if (
-    classData.campusId &&
-    assignments.some(
-      (assignment) =>
-        assignment.role === "principal" &&
-        assignment.orgType === "campus" &&
-        assignment.orgId === classData.campusId,
-    )
-  ) {
-    return "principal";
-  }
-  return null;
+  return getSessionLeaderRoleFromAssignments(
+    userId,
+    classData,
+    schoolId,
+    assignments,
+  );
 }
 
 async function getScheduleLeadershipContext(
@@ -613,6 +638,7 @@ async function recordSessionLeadershipEvent(
     scheduleId: Id<"classSchedule">;
     eventType:
       | "started"
+      | "reopened"
       | "claimed"
       | "transferred"
       | "transfer_rejected"
@@ -627,7 +653,7 @@ async function recordSessionLeadershipEvent(
     createdAt: number;
   },
 ) {
-  await ctx.db.insert("classSessionLeadershipEvents", args);
+  return await ctx.db.insert("classSessionLeadershipEvents", args);
 }
 
 async function assignSessionLeader(
@@ -637,7 +663,13 @@ async function assignSessionLeader(
     actorId: Id<"users">;
     leaderId: Id<"users">;
     leaderRole: SessionLeaderRole;
-    eventType: "started" | "claimed" | "transferred" | "recovered" | "takeover";
+    eventType:
+      | "started"
+      | "reopened"
+      | "claimed"
+      | "transferred"
+      | "recovered"
+      | "takeover";
     transferRequestedBy?: Id<"users">;
     transferTargetId?: Id<"users">;
     now: number;
@@ -653,7 +685,7 @@ async function assignSessionLeader(
     sessionTransferRequestedAt: undefined,
     liveLeaderAbsentSince: undefined,
   });
-  await recordSessionLeadershipEvent(ctx, {
+  return await recordSessionLeadershipEvent(ctx, {
     scheduleId: schedule._id,
     eventType: args.eventType,
     actorId: args.actorId,
@@ -864,25 +896,57 @@ export const getMySchedule = query({
     );
 
     const uniqueCurriculumIds = new Set(myClasses.map((c) => c.curriculumId));
-    const uniqueTeacherIds = new Set(
-      myClasses.map((c) => c.teacherId).filter(Boolean),
+    const uniqueUserIds = new Set(
+      [
+        ...myClasses.map((c) => c.teacherId),
+        ...flatSchedule.map((schedule) => schedule.sessionEndedBy),
+      ].filter((id): id is Id<"users"> => id !== undefined),
     );
-    const [curriculums, teachers] = await Promise.all([
+    const uniqueCampusIds = new Set(
+      myClasses
+        .map((classData) => classData.campusId)
+        .filter((id): id is Id<"campuses"> => id !== undefined),
+    );
+    const [curriculums, users, campuses, roleAssignments] = await Promise.all([
       Promise.all(
         Array.from(uniqueCurriculumIds).map((id) =>
           ctx.db.get(id as Id<"curriculums">),
         ),
       ),
-      Promise.all(
-        Array.from(uniqueTeacherIds).map((id) => ctx.db.get(id as Id<"users">)),
-      ),
+      Promise.all(Array.from(uniqueUserIds).map((id) => ctx.db.get(id))),
+      Promise.all(Array.from(uniqueCampusIds).map((id) => ctx.db.get(id))),
+      ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect(),
     ]);
 
     const curriculumMap = new Map(
       curriculums.filter(Boolean).map((c) => [c!._id, c!]),
     );
-    const teacherMap = new Map(
-      teachers.filter(Boolean).map((t) => [t!._id, t!]),
+    const userMap = new Map(
+      users
+        .filter((value) => value !== null)
+        .map((value) => [value._id, value]),
+    );
+    const campusMap = new Map(
+      campuses
+        .filter((value) => value !== null)
+        .map((value) => [value._id, value]),
+    );
+    const canLeadByClass = new Map(
+      myClasses.map((classData) => [
+        classData._id,
+        getSessionLeaderRoleFromAssignments(
+          user._id,
+          classData,
+          classData.schoolId ??
+            (classData.campusId
+              ? campusMap.get(classData.campusId)?.schoolId
+              : curriculumMap.get(classData.curriculumId)?.schoolId),
+          roleAssignments,
+        ) !== null,
+      ]),
     );
 
     const schedulesNeedingPresence = includeAttendance
@@ -1016,7 +1080,10 @@ export const getMySchedule = query({
 
       const curriculum = curriculumMap.get(classData.curriculumId);
       const teacher = classData.teacherId
-        ? teacherMap.get(classData.teacherId)
+        ? userMap.get(classData.teacherId)
+        : undefined;
+      const sessionEndedBy = item.sessionEndedBy
+        ? userMap.get(item.sessionEndedBy)
         : undefined;
       // ponytail: UTC only protects legacy rows until their institution confirms a zone.
       const timeZone = timeZoneByClass.get(classData._id) ?? "UTC";
@@ -1115,6 +1182,7 @@ export const getMySchedule = query({
 
       const effectiveIsLive = item.isLive === true && item.status === "active";
       const effectiveStatus = item.status;
+      const canLeadSession = canLeadByClass.get(classData._id) === true;
 
       let teacherAttendanceStatus = "upcoming";
       let teacherTimeInClass = 0;
@@ -1197,6 +1265,22 @@ export const getMySchedule = query({
             : undefined
           : undefined,
         hasRecording: scheduleIdsWithRecordings.has(item._id),
+        canLeadSession,
+        sessionStartedAt: canLeadSession ? item.sessionStartedAt : undefined,
+        sessionReopenUntil: canLeadSession
+          ? item.sessionReopenUntil
+          : undefined,
+        sessionEndedAt: canLeadSession ? item.completedAt : undefined,
+        sessionClosing: canLeadSession && item.liveEndClaimId !== undefined,
+        sessionCloseRetrying:
+          canLeadSession && item.liveCleanupRetrying === true,
+        sessionEndedByName: canLeadSession
+          ? sessionEndedBy?.fullName
+          : undefined,
+        sessionEndedAutomatically:
+          canLeadSession &&
+          item.status === "completed" &&
+          item.sessionEndedBy === undefined,
       };
     });
 
@@ -1420,12 +1504,48 @@ export const getSessionStatus = query({
       throw new ConvexError("PERMISSION_DENIED");
     }
 
+    const canLeadSession = access.leadershipRole !== null;
+    const endedBy =
+      canLeadSession && schedule.sessionEndedBy
+        ? await ctx.db.get(schedule.sessionEndedBy)
+        : null;
+
     return {
       ...access.session,
       roomAdmin: access.roomAdmin,
       isPrimaryTeacher: access.isPrimaryTeacher,
       isSessionLeader: access.isSessionLeader,
       leadershipRole: access.leadershipRole,
+      canStart:
+        canLeadSession &&
+        canStartLiveSession({
+          now: args.now,
+          scheduledStart: schedule.scheduledStart,
+          scheduledEnd: schedule.scheduledEnd,
+          status: schedule.status,
+          isLive: schedule.isLive === true,
+          sessionStartedAt: schedule.sessionStartedAt,
+          sessionReopenUntil: schedule.sessionReopenUntil,
+        }),
+      canReopen:
+        canLeadSession &&
+        canReopenLiveSession({
+          now: args.now,
+          scheduledStart: schedule.scheduledStart,
+          scheduledEnd: schedule.scheduledEnd,
+          status: schedule.status,
+          isLive: schedule.isLive === true,
+          sessionStartedAt: schedule.sessionStartedAt,
+          sessionReopenUntil: schedule.sessionReopenUntil,
+        }),
+      startAvailableAt: getLiveSessionStartAvailableAt(schedule.scheduledStart),
+      reopenUntil: canLeadSession ? schedule.sessionReopenUntil : undefined,
+      endedAt: canLeadSession ? schedule.completedAt : undefined,
+      endedByName: endedBy?.fullName,
+      endedAutomatically:
+        canLeadSession &&
+        schedule.status === "completed" &&
+        schedule.sessionEndedBy === undefined,
     };
   },
 });
@@ -1798,9 +1918,10 @@ export const getLiveExtensionContext = query({
     );
     if (!access?.authorized || !access.isSessionLeader) return null;
 
+    const runtimeExtensionEndsAt = getLiveRuntimeExtensionEndsAt(schedule);
     const effectiveEnd = getEffectiveLiveEnd(
       schedule.scheduledEnd,
-      schedule.liveExtensionEndsAt,
+      runtimeExtensionEndsAt,
     );
     const hardEndsAt = getLiveSessionHardEnd(schedule.scheduledEnd);
     const proposedEnd = getConfirmedExtensionEnd(
@@ -1867,18 +1988,16 @@ export const getStudentExtensionContext = query({
     );
     if (!access?.authorized || access.roomAdmin) return null;
 
+    const runtimeExtensionEndsAt = getLiveRuntimeExtensionEndsAt(schedule);
     const effectiveEnd = getEffectiveLiveEnd(
       schedule.scheduledEnd,
-      schedule.liveExtensionEndsAt,
+      runtimeExtensionEndsAt,
     );
-    if (
-      !schedule.liveExtensionEndsAt ||
-      schedule.liveExtensionEndsAt <= args.now
-    ) {
+    if (!runtimeExtensionEndsAt || runtimeExtensionEndsAt <= args.now) {
       return {
         effectiveEnd,
         warningStartsAt: effectiveEnd - LIVE_EXTENSION_PROMPT_LEAD_MS,
-        extensionEndsAt: schedule.liveExtensionEndsAt,
+        extensionEndsAt: runtimeExtensionEndsAt,
       };
     }
 
@@ -1886,7 +2005,7 @@ export const getStudentExtensionContext = query({
       await listSchedulesStartingBetween(
         ctx,
         schedule.scheduledEnd,
-        schedule.liveExtensionEndsAt,
+        runtimeExtensionEndsAt,
       )
     )
       .filter(
@@ -1920,7 +2039,7 @@ export const getStudentExtensionContext = query({
     return {
       effectiveEnd,
       warningStartsAt: effectiveEnd - LIVE_EXTENSION_PROMPT_LEAD_MS,
-      extensionEndsAt: schedule.liveExtensionEndsAt,
+      extensionEndsAt: runtimeExtensionEndsAt,
       nextClass,
     };
   },
@@ -2254,7 +2373,12 @@ export const updateSchedule = mutation({
           item.isLive === true &&
           (metadataUpdates.status ?? item.status) === "active"
         ) {
-          await scheduleLiveReconciliation(ctx, item.roomName, itemNewEnd);
+          await scheduleLiveReconciliation(
+            ctx,
+            item.roomName,
+            itemNewEnd,
+            getLiveActivationId(item),
+          );
         }
       }
       if (args.sessionType !== undefined) {
@@ -2276,7 +2400,12 @@ export const updateSchedule = mutation({
         schedule.isLive === true &&
         (metadataUpdates.status ?? schedule.status) === "active"
       ) {
-        await scheduleLiveReconciliation(ctx, schedule.roomName, newEnd);
+        await scheduleLiveReconciliation(
+          ctx,
+          schedule.roomName,
+          newEnd,
+          getLiveActivationId(schedule),
+        );
       }
       return { updated: 1, type: "single" as const };
     }
@@ -2815,13 +2944,20 @@ export const markLive = mutation({
     }
     const now = Date.now();
     if (
-      schedule.status === "completed" ||
-      now > schedule.scheduledEnd + MAX_LIVE_OVERRUN_MS
+      !canStartLiveSession({
+        now,
+        scheduledStart: schedule.scheduledStart,
+        scheduledEnd: schedule.scheduledEnd,
+        status: schedule.status,
+        isLive: false,
+        sessionStartedAt: schedule.sessionStartedAt,
+        sessionReopenUntil: schedule.sessionReopenUntil,
+      })
     ) {
-      throw new ConvexError("Completed sessions cannot be started");
+      throw new ConvexError("SESSION_START_NOT_AVAILABLE");
     }
     const liveAccess = normalizeLiveAccess(classData.liveAccess);
-    await assignSessionLeader(ctx, schedule, {
+    const activationId = await assignSessionLeader(ctx, schedule, {
       actorId: user._id,
       leaderId: user._id,
       leaderRole,
@@ -2836,7 +2972,13 @@ export const markLive = mutation({
       completedAt: undefined,
       sessionStartedBy: user._id,
       sessionStartedAt: now,
+      sessionReopenedBy: undefined,
+      sessionReopenedAt: undefined,
+      sessionReopenUntil: undefined,
       sessionEndedBy: undefined,
+      liveActivationId: activationId,
+      liveRoomName: `class-${schedule._id}-live-${activationId}`,
+      liveEndClaimId: undefined,
       sessionClosureStatus: "pending",
       sessionClosedBy: undefined,
       sessionClosedAt: undefined,
@@ -2849,17 +2991,15 @@ export const markLive = mutation({
       ctx,
       schedule.roomName,
       schedule.scheduledEnd,
+      activationId,
     );
     return null;
   },
 });
 
-export const confirmLiveExtension = mutation({
+export const reopenLiveSession = mutation({
   args: { roomName: v.string() },
-  returns: v.object({
-    extensionEndsAt: v.number(),
-    hardEndsAt: v.number(),
-  }),
+  returns: v.null(),
   handler: async (ctx, { roomName }) => {
     const user = await getCurrentUserFromAuth(ctx);
     if (!user) throw new ConvexError("User not authenticated");
@@ -2870,12 +3010,108 @@ export const confirmLiveExtension = mutation({
       .first();
     if (!schedule) throw new ConvexError("Schedule not found");
 
+    const { classData, schoolId } = await getScheduleLeadershipContext(
+      ctx,
+      schedule,
+    );
+    const leaderRole = await getEligibleSessionLeaderRole(
+      ctx,
+      user._id,
+      classData,
+      schoolId,
+    );
+    if (!leaderRole) throw new ConvexError("PERMISSION_DENIED");
+
+    const now = Date.now();
+    if (
+      !canReopenLiveSession({
+        now,
+        scheduledStart: schedule.scheduledStart,
+        scheduledEnd: schedule.scheduledEnd,
+        status: schedule.status,
+        isLive: schedule.isLive === true,
+        sessionStartedAt: schedule.sessionStartedAt,
+        sessionReopenUntil: schedule.sessionReopenUntil,
+      })
+    ) {
+      throw new ConvexError("SESSION_REOPEN_NOT_AVAILABLE");
+    }
+
+    const activationId = await assignSessionLeader(ctx, schedule, {
+      actorId: user._id,
+      leaderId: user._id,
+      leaderRole,
+      eventType: "reopened",
+      now,
+    });
+    const previousEffectiveEnd =
+      schedule.liveExtensionEndsAt ?? schedule.scheduledEnd;
+    const resumedEffectiveEnd =
+      now >= previousEffectiveEnd
+        ? schedule.sessionReopenUntil
+        : previousEffectiveEnd;
+    await ctx.db.patch(schedule._id, {
+      isLive: true,
+      schoolId,
+      liveAccess: normalizeLiveAccess(classData.liveAccess),
+      status: "active",
+      completedAt: undefined,
+      sessionReopenedBy: user._id,
+      sessionReopenedAt: now,
+      liveActivationId: activationId,
+      liveRoomName: `class-${schedule._id}-live-${activationId}`,
+      liveEndClaimId: undefined,
+      sessionClosureStatus: "pending",
+      sessionClosedBy: undefined,
+      sessionClosedAt: undefined,
+      liveLeaderAbsentSince: undefined,
+      liveDecisionEndsAt: undefined,
+      liveLastReconciledAt: undefined,
+    });
+    await scheduleLiveReconciliation(
+      ctx,
+      roomName,
+      schedule.scheduledEnd,
+      activationId,
+      resumedEffectiveEnd,
+    );
+    return null;
+  },
+});
+
+export const confirmLiveExtension = mutation({
+  args: { roomName: v.string(), expectedActivationId: v.optional(v.string()) },
+  returns: v.object({
+    extensionEndsAt: v.number(),
+    hardEndsAt: v.number(),
+  }),
+  handler: async (ctx, { roomName, expectedActivationId }) => {
+    const user = await getCurrentUserFromAuth(ctx);
+    if (!user) throw new ConvexError("User not authenticated");
+
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", roomName))
+      .first();
+    if (!schedule) throw new ConvexError("Schedule not found");
+
+    if (
+      (expectedActivationId &&
+        getLiveActivationId(schedule) !== expectedActivationId) ||
+      (!expectedActivationId && schedule.sessionReopenedAt !== undefined)
+    ) {
+      throw new ConvexError("STALE_LIVE_ACTIVATION");
+    }
+
     if (schedule.sessionLeaderId !== user._id) {
       throw new ConvexError("Only the session leader can extend this class");
     }
 
     const now = Date.now();
-    const currentEnd = schedule.liveExtensionEndsAt ?? schedule.scheduledEnd;
+    const currentEnd = getEffectiveLiveEnd(
+      schedule.scheduledEnd,
+      getLiveRuntimeExtensionEndsAt(schedule),
+    );
     if (
       schedule.status !== "active" ||
       !schedule.isLive ||
@@ -2904,18 +3140,189 @@ export const confirmLiveExtension = mutation({
     await ctx.scheduler.runAt(
       extensionEndsAt,
       internal.livekit.reconcileLiveSession,
-      { roomName },
+      {
+        roomName,
+        expectedActivationId: getLiveActivationId(schedule),
+      },
     );
 
     return { extensionEndsAt, hardEndsAt };
   },
 });
 
-export const endLiveSession = internalMutation({
+async function claimLiveSessionEndState(
+  ctx: MutationCtx,
+  schedule: Doc<"classSchedule">,
+  args: {
+    expectedActivationId: string;
+    claimId: string;
+    endedAt: number;
+    endedBy?: Id<"users">;
+    expectedState?: LiveDecisionSnapshot;
+  },
+) {
+  if (
+    schedule.status !== "active" ||
+    schedule.isLive !== true ||
+    schedule.liveEndClaimId !== undefined ||
+    getLiveActivationId(schedule) !== args.expectedActivationId
+  ) {
+    return false;
+  }
+
+  const expected = args.expectedState;
+  if (
+    expected &&
+    (schedule.scheduledEnd !== expected.scheduledEnd ||
+      schedule.sessionLeaderId !== expected.sessionLeaderId ||
+      schedule.liveLeaderAbsentSince !== expected.liveLeaderAbsentSince ||
+      getLiveRuntimeExtensionEndsAt(schedule) !==
+        expected.liveExtensionEndsAt ||
+      schedule.liveDecisionEndsAt !== expected.liveDecisionEndsAt)
+  )
+    return false;
+  if (
+    args.endedBy &&
+    (schedule.sessionLeaderId !== args.endedBy ||
+      schedule.sessionClosureStatus !== "completed" ||
+      !(await ctx.db.get("users", args.endedBy))?.isActive)
+  )
+    return false;
+
+  const activation = await ensureLiveActivation(ctx, schedule);
+  const cleanupJobId = await ctx.scheduler.runAfter(
+    0,
+    internal.livekit.cleanupActivation,
+    { activationId: args.expectedActivationId },
+  );
+  await ctx.db.patch("liveRoomActivations", activation._id, {
+    status: "closing",
+    claimId: args.claimId,
+    cleanupJobId,
+    nextCleanupAt: args.endedAt + 60_000,
+  });
+
+  await ctx.db.patch(schedule._id, {
+    isLive: false,
+    status: "completed",
+    completedAt: args.endedAt,
+    sessionEndedBy: args.endedBy,
+    sessionReopenUntil: undefined,
+    liveEndClaimId: args.claimId,
+    liveCleanupRetrying: undefined,
+    liveLeaderAbsentSince: undefined,
+    liveDecisionEndsAt: undefined,
+    liveLastReconciledAt: args.endedAt,
+  });
+
+  const openSessions = await ctx.db
+    .query("class_sessions")
+    .withIndex("by_schedule", (q) =>
+      q.eq("scheduleId", schedule._id).eq("leftAt", undefined),
+    )
+    .collect();
+  await Promise.all(
+    openSessions.map((session) => {
+      const leftAt = Math.max(args.endedAt, session.joinedAt);
+      return ctx.db.patch(session._id, {
+        leftAt,
+        durationSeconds: (leftAt - session.joinedAt) / 1000,
+      });
+    }),
+  );
+
+  const whiteboard = await ctx.db
+    .query("whiteboardSessions")
+    .withIndex("by_roomName", (q) => q.eq("roomName", schedule.roomName))
+    .unique();
+  if (whiteboard?.recordingToken) {
+    await ctx.db.patch(whiteboard._id, { recordingToken: undefined });
+  }
+  const reopenUntil = getLiveSessionReopenUntil(
+    schedule.scheduledEnd,
+    schedule.liveExtensionEndsAt,
+  );
+  await ctx.scheduler.runAt(
+    Math.max(args.endedAt, reopenUntil),
+    internal.schedule.cleanupExpiredWhiteboardSession,
+    { roomName: schedule.roomName, expectedReopenUntil: reopenUntil },
+  );
+  return true;
+}
+
+async function completeLiveSessionEndState(
+  ctx: MutationCtx,
+  schedule: Doc<"classSchedule">,
+  expectedActivationId: string,
+  claimId: string,
+) {
+  if (
+    schedule.status !== "completed" ||
+    schedule.isLive === true ||
+    schedule.liveEndClaimId !== claimId ||
+    getLiveActivationId(schedule) !== expectedActivationId
+  ) {
+    return false;
+  }
+
+  const reopenUntil = getLiveSessionReopenUntil(
+    schedule.scheduledEnd,
+    schedule.liveExtensionEndsAt,
+  );
+  await ctx.db.patch(schedule._id, {
+    sessionReopenUntil: reopenUntil,
+    liveEndClaimId: undefined,
+    liveCleanupRetrying: undefined,
+  });
+  return true;
+}
+
+export const claimLiveSessionEnd = internalMutation({
   args: {
     roomName: v.string(),
+    expectedActivationId: v.string(),
+    claimId: v.string(),
     endedAt: v.number(),
     endedBy: v.optional(v.id("users")),
+    expectedState: v.optional(liveDecisionSnapshotValidator),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (!schedule) return false;
+    return await claimLiveSessionEndState(ctx, schedule, args);
+  },
+});
+
+export const completeLiveSessionEnd = internalMutation({
+  args: {
+    roomName: v.string(),
+    expectedActivationId: v.string(),
+    claimId: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .first();
+    if (!schedule) return false;
+    return await completeLiveSessionEndState(
+      ctx,
+      schedule,
+      args.expectedActivationId,
+      args.claimId,
+    );
+  },
+});
+
+export const cleanupExpiredWhiteboardSession = internalMutation({
+  args: {
+    roomName: v.string(),
+    expectedReopenUntil: v.number(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -2923,40 +3330,21 @@ export const endLiveSession = internalMutation({
       .query("classSchedule")
       .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
       .first();
-    if (!schedule) return null;
-    if (schedule.status === "completed" && schedule.isLive !== true) {
+    if (
+      !schedule ||
+      schedule.isLive ||
+      schedule.status !== "completed" ||
+      (schedule.sessionReopenUntil ??
+        getLiveSessionReopenUntil(
+          schedule.scheduledEnd,
+          schedule.liveExtensionEndsAt,
+        )) !== args.expectedReopenUntil ||
+      Date.now() < args.expectedReopenUntil
+    ) {
       return null;
     }
 
-    await ctx.db.patch(schedule._id, {
-      isLive: false,
-      status: "completed",
-      completedAt: schedule.completedAt ?? args.endedAt,
-      sessionEndedBy: args.endedBy ?? schedule.sessionEndedBy,
-      liveLeaderAbsentSince: undefined,
-      liveExtensionEndsAt: undefined,
-      liveDecisionEndsAt: undefined,
-      liveLastReconciledAt: args.endedAt,
-    });
-
-    const openSessions = await ctx.db
-      .query("class_sessions")
-      .withIndex("by_schedule", (q) =>
-        q.eq("scheduleId", schedule._id).eq("leftAt", undefined),
-      )
-      .collect();
-    await Promise.all(
-      openSessions.map((session) => {
-        const leftAt = Math.max(args.endedAt, session.joinedAt);
-        return ctx.db.patch(session._id, {
-          leftAt,
-          durationSeconds: (leftAt - session.joinedAt) / 1000,
-        });
-      }),
-    );
-
     await deleteWhiteboardSession(ctx, args.roomName);
-
     return null;
   },
 });
@@ -2964,6 +3352,8 @@ export const endLiveSession = internalMutation({
 export const logStudentPresence = mutation({
   args: {
     scheduleId: v.id("classSchedule"),
+    activationId: v.string(),
+    connectionId: v.string(),
     action: v.union(v.literal("join"), v.literal("leave")),
   },
   returns: v.null(),
@@ -2972,6 +3362,9 @@ export const logStudentPresence = mutation({
     const now = Date.now();
     const schedule = await ctx.db.get(args.scheduleId);
     if (!schedule) throw new Error("Schedule not found");
+    if (getLiveActivationId(schedule) !== args.activationId) return null;
+    if (!args.connectionId || args.connectionId.length > 128)
+      throw new ConvexError("INVALID_CONNECTION");
 
     const classData = await ctx.db.get(schedule.classId);
     if (!classData) throw new Error("Class not found");
@@ -2996,11 +3389,20 @@ export const logStudentPresence = mutation({
             .eq("leftAt", undefined),
         )
         .first();
-      if (activeSession) return null;
+      if (activeSession) {
+        // One academic attendance interval per student; a replacement connection owns its exit.
+        await ctx.db.patch("class_sessions", activeSession._id, {
+          activationId: args.activationId,
+          connectionId: args.connectionId,
+        });
+        return null;
+      }
 
       await ctx.db.insert("class_sessions", {
         scheduleId: args.scheduleId,
         studentId: user._id,
+        activationId: args.activationId,
+        connectionId: args.connectionId,
         joinedAt: now,
         roomName: schedule.roomName,
         sessionDate: utcToLocalDateTime(now, timeZone).slice(0, 10),
@@ -3017,12 +3419,21 @@ export const logStudentPresence = mutation({
         .collect();
 
       await Promise.all(
-        activeSessions.map((activeSession) =>
-          ctx.db.patch(activeSession._id, {
-            leftAt: now,
-            durationSeconds: Math.max(0, (now - activeSession.joinedAt) / 1000),
-          }),
-        ),
+        activeSessions
+          .filter(
+            (session) =>
+              session.activationId === args.activationId &&
+              session.connectionId === args.connectionId,
+          )
+          .map((activeSession) =>
+            ctx.db.patch(activeSession._id, {
+              leftAt: now,
+              durationSeconds: Math.max(
+                0,
+                (now - activeSession.joinedAt) / 1000,
+              ),
+            }),
+          ),
       );
     }
   },
@@ -3103,6 +3514,9 @@ export const getLiveLifecycleState = internalQuery({
       liveDecisionEndsAt: v.optional(v.number()),
       sessionLeaderId: v.optional(v.id("users")),
       sessionClosureStatus: v.optional(sessionClosureStatusValidator),
+      activationId: v.string(),
+      liveRoomName: v.string(),
+      hasReopened: v.boolean(),
     }),
   ),
   handler: async (ctx, { roomName }) => {
@@ -3118,10 +3532,13 @@ export const getLiveLifecycleState = internalQuery({
       isLive: schedule.isLive === true,
       status: schedule.status,
       liveLeaderAbsentSince: schedule.liveLeaderAbsentSince,
-      liveExtensionEndsAt: schedule.liveExtensionEndsAt,
+      liveExtensionEndsAt: getLiveRuntimeExtensionEndsAt(schedule),
       liveDecisionEndsAt: schedule.liveDecisionEndsAt,
       sessionLeaderId: schedule.sessionLeaderId,
       sessionClosureStatus: schedule.sessionClosureStatus,
+      activationId: getLiveActivationId(schedule),
+      liveRoomName: getLiveRoomName(schedule),
+      hasReopened: schedule.sessionReopenedAt !== undefined,
     };
   },
 });
@@ -3129,6 +3546,7 @@ export const getLiveLifecycleState = internalQuery({
 export const updateLiveLifecycleState = internalMutation({
   args: {
     roomName: v.string(),
+    expectedActivationId: v.string(),
     reconciledAt: v.number(),
     expectedLeaderAbsentSince: v.union(v.number(), v.null()),
     expectedExtensionEndsAt: v.union(v.number(), v.null()),
@@ -3144,13 +3562,19 @@ export const updateLiveLifecycleState = internalMutation({
       .query("classSchedule")
       .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
       .first();
-    if (!schedule || schedule.status !== "active" || !schedule.isLive) {
+    if (
+      !schedule ||
+      schedule.status !== "active" ||
+      !schedule.isLive ||
+      getLiveActivationId(schedule) !== args.expectedActivationId
+    ) {
       return false;
     }
+    const runtimeExtensionEndsAt = getLiveRuntimeExtensionEndsAt(schedule);
     if (
       (schedule.liveLeaderAbsentSince ?? null) !==
         args.expectedLeaderAbsentSince ||
-      (schedule.liveExtensionEndsAt ?? null) !== args.expectedExtensionEndsAt ||
+      (runtimeExtensionEndsAt ?? null) !== args.expectedExtensionEndsAt ||
       (schedule.liveDecisionEndsAt ?? null) !== args.expectedDecisionEndsAt
     ) {
       return false;
@@ -3160,13 +3584,18 @@ export const updateLiveLifecycleState = internalMutation({
       (args.leaderAbsentSince !== null &&
         args.leaderAbsentSince !== schedule.liveLeaderAbsentSince) ||
       (args.extensionEndsAt !== null &&
-        args.extensionEndsAt !== schedule.liveExtensionEndsAt) ||
+        args.extensionEndsAt !== runtimeExtensionEndsAt) ||
       (args.decisionEndsAt !== null &&
         args.decisionEndsAt !== schedule.liveDecisionEndsAt);
 
+    const extensionEndsAtToPersist =
+      runtimeExtensionEndsAt !== schedule.liveExtensionEndsAt &&
+      args.extensionEndsAt === runtimeExtensionEndsAt
+        ? schedule.liveExtensionEndsAt
+        : (args.extensionEndsAt ?? undefined);
     await ctx.db.patch(schedule._id, {
       liveLeaderAbsentSince: args.leaderAbsentSince ?? undefined,
-      liveExtensionEndsAt: args.extensionEndsAt ?? undefined,
+      liveExtensionEndsAt: extensionEndsAtToPersist,
       liveDecisionEndsAt: args.decisionEndsAt ?? undefined,
       liveLastReconciledAt: args.reconciledAt,
     });
@@ -3177,7 +3606,10 @@ export const updateLiveLifecycleState = internalMutation({
       await ctx.scheduler.runAt(
         Math.max(args.reconciledAt, args.nextCheckAt),
         internal.livekit.reconcileLiveSession,
-        { roomName: args.roomName },
+        {
+          roomName: args.roomName,
+          expectedActivationId: args.expectedActivationId,
+        },
       );
     }
     return true;
@@ -3190,6 +3622,7 @@ export const listActiveLiveSessions = internalQuery({
     v.object({
       roomName: v.string(),
       scheduledEnd: v.number(),
+      activationId: v.string(),
     }),
   ),
   handler: async (ctx, { limit }) => {
@@ -3203,6 +3636,7 @@ export const listActiveLiveSessions = internalQuery({
     return activeSchedules.map((schedule) => ({
       roomName: schedule.roomName,
       scheduledEnd: schedule.scheduledEnd,
+      activationId: getLiveActivationId(schedule),
     }));
   },
 });

@@ -68,7 +68,7 @@ const testState = vi.hoisted(() => {
 
   return {
     administrativeParticipant,
-    backendCall: vi.fn(async (_args?: unknown): Promise<unknown> => null),
+    backendCall: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null),
     extensionContext: null as {
       affectedStudentCount: number;
       effectiveEnd: number;
@@ -79,6 +79,7 @@ const testState = vi.hoisted(() => {
     } | null,
     isExtensionLoading: false,
     isLeadershipLoading: false,
+    recordingOperation: null as { pending: boolean; failed: boolean } | null,
     leadership: leadership as typeof leadership | null,
     initialLeadership: leadership,
     localParticipant: administrativeParticipant,
@@ -98,6 +99,7 @@ const testState = vi.hoisted(() => {
 
 vi.mock("@/convex/_generated/api", () => ({
   api: {
+    liveRoomLifecycle: { getRecordingOperation: "getRecordingOperation" },
     livekit: {
       endSession: "endSession",
       notifyRoomAdministratorLeft: "notifyRoomAdministratorLeft",
@@ -126,6 +128,7 @@ vi.mock("convex/react", () => ({
   useAction: () => testState.backendCall,
   useMutation: () => testState.backendCall,
   useQuery: (query: string) => {
+    if (query === "getRecordingOperation") return testState.recordingOperation;
     if (query === "getSessionLeadership") {
       return testState.isLeadershipLoading ? undefined : testState.leadership;
     }
@@ -343,6 +346,7 @@ describe("classroom session stability", () => {
     testState.extensionContext = null;
     testState.isExtensionLoading = false;
     testState.isLeadershipLoading = false;
+    testState.recordingOperation = null;
     testState.leadership = testState.initialLeadership;
     testState.localParticipant = testState.administrativeParticipant;
     testState.room.isRecording = false;
@@ -354,6 +358,23 @@ describe("classroom session stability", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps recording start disabled while the durable operation is pending", () => {
+    testState.recordingOperation = { pending: true, failed: false };
+    renderActiveClassroom();
+    expect(
+      (screen.getAllByTitle("classroom.startRecording")[0] as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("surfaces a failed recording operation without a polling timer", () => {
+    testState.recordingOperation = { pending: false, failed: true };
+    renderActiveClassroom();
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      "classroom.recordingError",
+    );
   });
 
   it("sounds one chime per extension decision, not on countdown updates", async () => {

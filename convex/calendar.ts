@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { query } from "./_generated/server";
 import { listAccessibleScheduleClasses } from "./model/scheduleAccess";
 import { getClassTimeZone } from "./model/timeZone";
+import { getSessionLeaderRoleFromAssignments } from "./model/sessionLeadership";
 
 const MAX_CALENDAR_RANGE_MS = 62 * 24 * 60 * 60 * 1_000;
 
@@ -39,6 +40,14 @@ const calendarEventValidator = v.object({
   cancellationReason: v.optional(v.string()),
   teacherName: v.optional(v.string()),
   teacherImageUrl: v.optional(v.string()),
+  canLeadSession: v.boolean(),
+  sessionStartedAt: v.optional(v.number()),
+  sessionReopenUntil: v.optional(v.number()),
+  sessionEndedAt: v.optional(v.number()),
+  sessionEndedByName: v.optional(v.string()),
+  sessionEndedAutomatically: v.boolean(),
+  sessionClosing: v.optional(v.boolean()),
+  sessionCloseRetrying: v.optional(v.boolean()),
 });
 
 export const listEvents = query({
@@ -60,7 +69,7 @@ export const listEvents = query({
     const accessContext = await listAccessibleScheduleClasses(ctx, args);
     if (!accessContext || accessContext.classes.length === 0) return [];
 
-    const classes = accessContext.classes;
+    const { classes, user } = accessContext;
     const classById = new Map(
       classes.map((classData) => [classData._id, classData]),
     );
@@ -83,10 +92,18 @@ export const listEvents = query({
     const curriculumIds = [
       ...new Set(classes.map((classData) => classData.curriculumId)),
     ];
-    const teacherIds = [
+    const userIds = [
+      ...new Set(
+        [
+          ...classes.map((classData) => classData.teacherId),
+          ...schedules.map((schedule) => schedule.sessionEndedBy),
+        ].filter((id) => id !== undefined),
+      ),
+    ];
+    const campusIds = [
       ...new Set(
         classes.flatMap((classData) =>
-          classData.teacherId ? [classData.teacherId] : [],
+          classData.campusId ? [classData.campusId] : [],
         ),
       ),
     ];
@@ -102,37 +119,51 @@ export const listEvents = query({
         ),
       ),
     ];
-    const [curriculums, teachers, classTimeZones, recurrenceParents] =
-      await Promise.all([
-        Promise.all(curriculumIds.map((id) => ctx.db.get(id))),
-        Promise.all(teacherIds.map((id) => ctx.db.get(id))),
-        Promise.all(
-          scheduledClassIds.flatMap((classId) => {
-            const classData = classById.get(classId);
-            return classData
-              ? [
-                  getClassTimeZone(ctx, classData).then(
-                    (timeZone) => [classId, timeZone ?? "UTC"] as const,
-                  ),
-                ]
-              : [];
-          }),
+    const [
+      curriculums,
+      users,
+      campuses,
+      roleAssignments,
+      classTimeZones,
+      recurrenceParents,
+    ] = await Promise.all([
+      Promise.all(curriculumIds.map((id) => ctx.db.get(id))),
+      Promise.all(userIds.map((id) => ctx.db.get(id))),
+      Promise.all(campusIds.map((id) => ctx.db.get(id))),
+      ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect(),
+      Promise.all(
+        scheduledClassIds.flatMap((classId) => {
+          const classData = classById.get(classId);
+          return classData
+            ? [
+                getClassTimeZone(ctx, classData).then(
+                  (timeZone) => [classId, timeZone ?? "UTC"] as const,
+                ),
+              ]
+            : [];
+        }),
+      ),
+      Promise.all(
+        recurrenceParentIds.map(
+          async (id) => [id, await ctx.db.get(id)] as const,
         ),
-        Promise.all(
-          recurrenceParentIds.map(
-            async (id) => [id, await ctx.db.get(id)] as const,
-          ),
-        ),
-      ]);
+      ),
+    ]);
 
     const curriculumById = new Map(
       curriculums.flatMap((curriculum) =>
         curriculum ? [[curriculum._id, curriculum] as const] : [],
       ),
     );
-    const teacherById = new Map(
-      teachers.flatMap((teacher) =>
-        teacher ? [[teacher._id, teacher] as const] : [],
+    const userById = new Map(
+      users.flatMap((value) => (value ? [[value._id, value] as const] : [])),
+    );
+    const campusById = new Map(
+      campuses.flatMap((campus) =>
+        campus ? [[campus._id, campus] as const] : [],
       ),
     );
     const timeZoneByClassId = new Map(classTimeZones);
@@ -144,8 +175,23 @@ export const listEvents = query({
         if (!classData) return [];
         const curriculum = curriculumById.get(classData.curriculumId);
         const teacher = classData.teacherId
-          ? teacherById.get(classData.teacherId)
+          ? userById.get(classData.teacherId)
           : undefined;
+        const sessionEndedBy = schedule.sessionEndedBy
+          ? userById.get(schedule.sessionEndedBy)
+          : undefined;
+        const schoolId =
+          classData.schoolId ??
+          (classData.campusId
+            ? campusById.get(classData.campusId)?.schoolId
+            : curriculum?.schoolId);
+        const canLeadSession =
+          getSessionLeaderRoleFromAssignments(
+            user._id,
+            classData,
+            schoolId,
+            roleAssignments,
+          ) !== null;
         const recurrenceRule =
           schedule.recurrenceRule ??
           (schedule.recurrenceParentId
@@ -178,6 +224,25 @@ export const listEvents = query({
             cancellationReason: schedule.cancellationReason,
             teacherName: teacher?.fullName,
             teacherImageUrl: teacher?.imageUrl,
+            canLeadSession,
+            sessionStartedAt: canLeadSession
+              ? schedule.sessionStartedAt
+              : undefined,
+            sessionReopenUntil: canLeadSession
+              ? schedule.sessionReopenUntil
+              : undefined,
+            sessionEndedAt: canLeadSession ? schedule.completedAt : undefined,
+            sessionClosing:
+              canLeadSession && schedule.liveEndClaimId !== undefined,
+            sessionCloseRetrying:
+              canLeadSession && schedule.liveCleanupRetrying === true,
+            sessionEndedByName: canLeadSession
+              ? sessionEndedBy?.fullName
+              : undefined,
+            sessionEndedAutomatically:
+              canLeadSession &&
+              schedule.status === "completed" &&
+              schedule.sessionEndedBy === undefined,
           },
         ];
       })

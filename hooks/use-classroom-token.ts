@@ -11,6 +11,8 @@ interface UseClassroomTokenOptions {
   userId: string | undefined;
   isCompanion: boolean;
   shouldRequest: boolean;
+  activationStartedAt?: number;
+  activationId?: string;
 }
 
 interface ClassroomTokenState {
@@ -24,9 +26,11 @@ export function useClassroomToken({
   userId,
   isCompanion,
   shouldRequest,
+  activationStartedAt,
+  activationId,
 }: UseClassroomTokenOptions) {
   const getToken = useAction(api.livekit.getToken);
-  const scopeKey = `${roomName}:${userId ?? "anonymous"}:${isCompanion ? "companion" : "primary"}`;
+  const scopeKey = `${roomName}:${userId ?? "anonymous"}:${isCompanion ? "companion" : "primary"}:${activationId ?? activationStartedAt ?? "inactive"}`;
   const [state, setState] = useState<ClassroomTokenState>({
     scopeKey,
     token: "",
@@ -44,12 +48,22 @@ export function useClassroomToken({
   currentRequestRef.current = requestKey;
 
   useEffect(() => {
+    if (shouldRequest) return;
+    setState((current) =>
+      current.token || current.error
+        ? { scopeKey, token: "", error: null }
+        : current,
+    );
+    lastStartedRequestRef.current = null;
+  }, [scopeKey, shouldRequest]);
+
+  useEffect(() => {
     if (!requestKey || lastStartedRequestRef.current === requestKey) return;
 
     lastStartedRequestRef.current = requestKey;
     setState({ scopeKey, token: "", error: null });
 
-    void getToken({ roomName, isCompanion })
+    void getToken({ roomName, isCompanion, expectedActivationId: activationId })
       .then((jwt) => {
         if (currentRequestRef.current !== requestKey) return;
         setState({ scopeKey, token: jwt, error: null });
@@ -65,7 +79,7 @@ export function useClassroomToken({
           error: message.includes("not started") ? "not-started" : "connection",
         });
       });
-  }, [getToken, isCompanion, requestKey, roomName, scopeKey]);
+  }, [activationId, getToken, isCompanion, requestKey, roomName, scopeKey]);
 
   const clear = useCallback(() => {
     setState((current) =>

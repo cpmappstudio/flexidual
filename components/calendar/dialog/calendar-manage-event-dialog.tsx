@@ -1,4 +1,5 @@
 "use client";
+import { SessionClosureProgress } from "@/components/classroom/session-closure-progress";
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
@@ -168,6 +169,9 @@ export default function CalendarManageEventDialog({
     hasRecording: false,
     roomName: selectedEvent.roomName,
     sessionType: selectedEvent.sessionType,
+    canLeadSession: selectedEvent.canLeadSession,
+    sessionStartedAt: selectedEvent.sessionStartedAt,
+    sessionReopenUntil: selectedEvent.sessionReopenUntil,
   });
   const classroomHref = `/${orgSlug}/classroom/${selectedEvent.roomName}`;
   const externalPlatform = getExternalClassPlatform(selectedEvent.sessionType);
@@ -239,13 +243,19 @@ export default function CalendarManageEventDialog({
           <CalendarProviderBadge sessionType={selectedEvent.sessionType} />
         </div>
       )}
-      {(selectedEvent.isLive || selectedEvent.status === "cancelled") && (
+      {(selectedEvent.isLive ||
+        selectedEvent.status === "cancelled" ||
+        selectedEvent.status === "completed") && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge
             variant="destructive"
             className={selectedEvent.isLive ? "animate-pulse" : undefined}
           >
-            {selectedEvent.isLive ? t("common.live") : t("calendar.cancelled")}
+            {selectedEvent.isLive
+              ? t("common.live")
+              : selectedEvent.status === "cancelled"
+                ? t("calendar.cancelled")
+                : t("classroom.classEnded")}
           </Badge>
         </div>
       )}
@@ -321,6 +331,36 @@ export default function CalendarManageEventDialog({
                 </div>
               )}
 
+            {!isStudent &&
+              selectedEvent.status === "completed" &&
+              selectedEvent.sessionEndedAt && (
+                <p className="text-sm text-muted-foreground">
+                  {selectedEvent.sessionEndedByName
+                    ? t("classroom.endedBy", {
+                        name: selectedEvent.sessionEndedByName,
+                        time: new Intl.DateTimeFormat(locale, {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          timeZone: displayTimeZone,
+                        }).format(selectedEvent.sessionEndedAt),
+                      })
+                    : t("classroom.automaticClosure", {
+                        time: new Intl.DateTimeFormat(locale, {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          timeZone: displayTimeZone,
+                        }).format(selectedEvent.sessionEndedAt),
+                      })}
+                </p>
+              )}
+
+            {!isStudent && (
+              <SessionClosureProgress
+                closing={selectedEvent.sessionClosing}
+                retrying={selectedEvent.sessionCloseRetrying}
+              />
+            )}
+
             {shouldLoadSessionRecord && (
               <SessionRecordView
                 record={sessionRecord}
@@ -388,13 +428,18 @@ export default function CalendarManageEventDialog({
                     <MoveRight className="size-4" />
                   </Link>
                 </Button>
-              ) : primaryAction === "prepare-room" ? (
+              ) : primaryAction === "start-live" ||
+                primaryAction === "reopen-live" ? (
                 <Button
                   className="h-11 w-full gap-2 sm:w-auto sm:min-w-44"
                   asChild
                 >
                   <Link href={classroomHref}>
-                    {t("classroom.prepareRoom")}
+                    {t(
+                      primaryAction === "reopen-live"
+                        ? "classroom.reopenClass"
+                        : "classroom.startClass",
+                    )}
                     <MoveRight className="size-4" />
                   </Link>
                 </Button>

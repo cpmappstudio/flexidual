@@ -58,14 +58,19 @@ test.each([
 test("standard schedule actions keep internal navigation", () => {
   render(
     <ScheduleItem
-      schedule={{ ...baseSchedule, sessionType: "live" }}
+      schedule={{
+        ...baseSchedule,
+        sessionType: "live",
+        canLeadSession: true,
+      }}
       showDate={false}
       showEdit={false}
       variant="classSession"
+      now={baseSchedule.start - 60 * 60 * 1000}
     />,
   );
 
-  const link = screen.getByRole("link", { name: "classroom.prepareRoom" });
+  const link = screen.getByRole("link", { name: "classroom.startClass" });
   expect(link.getAttribute("href")).toBe("/campus/classroom/geography-room");
   expect(link.getAttribute("target")).toBeNull();
 });

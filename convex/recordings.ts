@@ -14,6 +14,8 @@ const recordingValidator = v.object({
   _creationTime: v.number(),
   scheduleId: v.id("classSchedule"),
   roomName: v.string(),
+  activationId: v.optional(v.string()),
+  recordingToken: v.optional(v.string()),
   egressId: v.string(),
   status: v.union(
     v.literal("starting"),
@@ -45,6 +47,8 @@ export const createRecording = internalMutation({
   args: {
     scheduleId: v.id("classSchedule"),
     roomName: v.string(),
+    activationId: v.optional(v.string()),
+    recordingToken: v.optional(v.string()),
     egressId: v.string(),
     startedAt: v.number(),
   },
@@ -53,6 +57,8 @@ export const createRecording = internalMutation({
     return await ctx.db.insert("recordings", {
       scheduleId: args.scheduleId,
       roomName: args.roomName,
+      activationId: args.activationId,
+      recordingToken: args.recordingToken,
       egressId: args.egressId,
       status: "starting",
       startedAt: args.startedAt,
@@ -96,6 +102,30 @@ export const updateFromWebhook = internalMutation({
       );
       return null;
     }
+
+    if (
+      args.status === "complete" ||
+      args.status === "failed" ||
+      args.status === "aborted"
+    ) {
+      const whiteboard = await ctx.db
+        .query("whiteboardSessions")
+        .withIndex("by_roomName", (q) => q.eq("roomName", recording.roomName))
+        .unique();
+      if (
+        recording.recordingToken &&
+        whiteboard?.recordingToken === recording.recordingToken
+      ) {
+        await ctx.db.patch("whiteboardSessions", whiteboard._id, {
+          recordingToken: undefined,
+        });
+      }
+    }
+    if (
+      ["complete", "failed", "aborted"].includes(recording.status) &&
+      ["starting", "active"].includes(args.status)
+    )
+      return recording._id;
 
     await ctx.db.patch("recordings", recording._id, {
       status: args.status,
