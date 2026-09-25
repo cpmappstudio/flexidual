@@ -1465,6 +1465,10 @@
     "fallbackOrganizationName": "sua organização",
     "reason": "Motivo: {reason}",
     "items": {
+      "survey_invitation": {
+        "title": "Sua experiência com Flexidual",
+        "body": "Sua opinião nos ajuda a melhorar. Abra sua pesquisa pendente quando tiver um momento."
+      },
       "courseEnrollmentAdded": {
         "title": "Matrícula em curso",
         "body": "Você foi matriculado em {className}."

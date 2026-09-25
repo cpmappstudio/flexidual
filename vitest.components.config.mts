@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  css: { postcss: { plugins: [] } },
   define: {
     "process.env.NODE_ENV": JSON.stringify("test"),
   },

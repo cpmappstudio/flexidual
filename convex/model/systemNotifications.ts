@@ -2,6 +2,7 @@ import type { PaginationOptions } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { canAccessClass } from "../permissions";
+import { getSurveyStaffRole } from "./surveyAccess";
 
 export type SystemNotificationKind =
   | "course_enrollment"
@@ -13,6 +14,7 @@ export type SystemNotificationKind =
   | "role_changed"
   | "organization_membership_changed"
   | "course_chat"
+  | "survey_invitation"
   | "announcement";
 
 export type SystemNotificationAction = "added" | "removed" | "changed";
@@ -44,6 +46,7 @@ export type SystemNotificationInput = {
   announcementBody?: string;
   announcementUrl?: string;
   dedupeKey: string;
+  surveyId?: string;
   createdAt?: number;
   chatMessageCount?: number;
   chatReadThrough?: number;
@@ -54,6 +57,31 @@ export async function isNotificationVisible(
   ctx: QueryCtx | MutationCtx,
   notification: Doc<"systemNotifications">,
 ) {
+  if (notification.kind === "survey_invitation") {
+    const campaign = await ctx.db
+      .query("surveyCampaigns")
+      .withIndex("by_survey_id", (q) =>
+        q.eq("surveyId", notification.surveyId ?? ""),
+      )
+      .unique();
+    if (!campaign?.enabled || !campaign.remoteActive) return false;
+    const participation = await ctx.db
+      .query("surveyParticipation")
+      .withIndex("by_campaign_and_user", (q) =>
+        q.eq("campaignId", campaign._id).eq("userId", notification.recipientId),
+      )
+      .unique();
+    return Boolean(
+      participation &&
+        participation.deliveryAllowed !== false &&
+        participation.completedAt === undefined &&
+        (await getSurveyStaffRole(
+          ctx,
+          participation.userId,
+          participation.organizationSlug,
+        )),
+    );
+  }
   if (notification.kind !== "course_chat") return true;
   if (!notification.classId || !notification.chatMessageCount) return false;
   const course = await ctx.db.get("classes", notification.classId);

@@ -1,0 +1,115 @@
+.panel {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 60;
+  width: min(350px, calc(100vw - 2rem));
+  border-radius: 12px;
+  background: white;
+  color: #1f2937;
+  box-shadow: 0 4px 20px #0003;
+}
+.panel[hidden],
+.panel [hidden] {
+  display: none;
+}
+.panel[data-minimized="true"] {
+  width: 52px;
+  border-radius: 50%;
+}
+.close {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.25rem;
+  min-width: 36px;
+  min-height: 36px;
+  font-size: 1.5rem;
+  display: grid;
+  place-items: center;
+}
+.launcher {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #197bb0;
+  color: white;
+  font-weight: 600;
+}
+.form {
+  padding: 2.25rem 1rem 1rem;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.form :global(.ph-survey) {
+  position: static !important;
+}
+.form :global(.survey-question) {
+  display: block;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+.form textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.6rem;
+  margin-bottom: 0.75rem;
+  resize: vertical;
+}
+.form :global(.rating-options-emoji),
+.form :global(.rating-options-number),
+.form :global(.rating-text) {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+.form :global(.ratings-emoji) {
+  min-width: 40px;
+  min-height: 44px;
+}
+.form :global(.ratings-emoji) svg {
+  width: 40px;
+  height: 40px;
+}
+.form :global(.rating-active) {
+  background: #e0f2fe;
+  border-radius: 6px;
+}
+.form :global(.rating-text) {
+  font-size: 0.75rem;
+  margin: 0.5rem 0 1rem;
+  color: #64748b;
+}
+.form :global(.form-submit),
+.form :global(.form-back) {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  background: #197bb0;
+  color: white;
+  font-size: 1rem;
+}
+.form :global(.bottom-section),
+.form :global(.form-buttons) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.form :global(.form-back) {
+  color: #197bb0;
+  background: #eef6fb;
+}
+.form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.panel button:focus-visible,
+.form textarea:focus-visible {
+  outline: 2px solid #197bb0;
+  outline-offset: 3px;
+}

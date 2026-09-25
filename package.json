@@ -72,6 +72,7 @@
     "lucide-react": "^0.540.0",
     "next": "15.2.8",
     "next-intl": "^4.3.5",
+    "posthog-js": "^1.434.12",
     "qrcode.react": "^4.2.0",
     "radix-ui": "^1.4.3",
     "react": "^19.0.0",

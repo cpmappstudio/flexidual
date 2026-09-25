@@ -1465,6 +1465,10 @@
     "fallbackOrganizationName": "tu organización",
     "reason": "Motivo: {reason}",
     "items": {
+      "survey_invitation": {
+        "title": "Tu experiencia con Flexidual",
+        "body": "Tu opinión nos ayuda a mejorar. Abre tu encuesta pendiente cuando tengas un momento."
+      },
       "courseEnrollmentAdded": {
         "title": "Inscripción a curso",
         "body": "Fuiste inscrito en {className}."

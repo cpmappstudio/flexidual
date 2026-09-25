@@ -22,6 +22,14 @@ import {
 } from "./model/sessionLeadership";
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
 
+export const surveyCampaignValidator = v.object({
+  surveyId: v.string(),
+  projectToken: v.string(),
+  enabled: v.boolean(),
+  remoteActive: v.boolean(),
+  origin: v.string(),
+});
+
 export default defineSchema({
   /**
    * USERS
@@ -403,6 +411,27 @@ export default defineSchema({
     .index("by_class_and_occurred_at", ["classId", "occurredAt"])
     .index("by_school_and_occurred_at", ["schoolId", "occurredAt"]),
 
+  // Answers remain in PostHog. These tables only coordinate invitations/completion.
+  surveyCampaigns: defineTable(surveyCampaignValidator).index("by_survey_id", [
+    "surveyId",
+  ]),
+
+  surveyParticipation: defineTable({
+    campaignId: v.id("surveyCampaigns"),
+    userId: v.id("users"),
+    organizationSlug: v.string(),
+    notificationId: v.optional(v.id("systemNotifications")),
+    remindersSent: v.number(),
+    deliveryAllowed: v.optional(v.boolean()),
+    nextReminderAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_campaign_and_user", ["campaignId", "userId"])
+    .index("by_campaign_and_next_reminder_at", [
+      "campaignId",
+      "nextReminderAt",
+    ]),
+
   systemNotifications: defineTable({
     recipientId: v.id("users"),
     kind: v.union(
@@ -416,6 +445,7 @@ export default defineSchema({
       v.literal("organization_membership_changed"),
       v.literal("announcement"),
       v.literal("course_chat"),
+      v.literal("survey_invitation"),
     ),
     action: v.optional(
       v.union(v.literal("added"), v.literal("removed"), v.literal("changed")),
@@ -443,6 +473,7 @@ export default defineSchema({
     announcementBody: v.optional(v.string()),
     announcementUrl: v.optional(v.string()),
     dedupeKey: v.string(),
+    surveyId: v.optional(v.string()),
     chatMessageCount: v.optional(v.number()),
     chatReadThrough: v.optional(v.number()),
     createdAt: v.number(),
