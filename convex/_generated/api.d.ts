@@ -8,6 +8,12 @@
  * @module
  */
 
+import type * as abeka from "../abeka.js";
+import type * as abekaActions from "../abekaActions.js";
+import type * as abekaCatalog from "../abekaCatalog.js";
+import type * as abekaHttp from "../abekaHttp.js";
+import type * as abekaSync from "../abekaSync.js";
+import type * as abekaWorkflow from "../abekaWorkflow.js";
 import type * as academicSettings from "../academicSettings.js";
 import type * as calendar from "../calendar.js";
 import type * as calendarClosures from "../calendarClosures.js";
@@ -24,12 +30,18 @@ import type * as http from "../http.js";
 import type * as lessons from "../lessons.js";
 import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
+import type * as model_abekaAccess from "../model/abekaAccess.js";
+import type * as model_abekaScheduling from "../model/abekaScheduling.js";
+import type * as model_abekaStudentProgress from "../model/abekaStudentProgress.js";
+import type * as model_abekaTransport from "../model/abekaTransport.js";
+import type * as model_abekaValidators from "../model/abekaValidators.js";
 import type * as model_calendarClosures from "../model/calendarClosures.js";
 import type * as model_catalog from "../model/catalog.js";
 import type * as model_classCancellationEvents from "../model/classCancellationEvents.js";
 import type * as model_classType from "../model/classType.js";
 import type * as model_courseChatAccess from "../model/courseChatAccess.js";
 import type * as model_courseChatAttachments from "../model/courseChatAttachments.js";
+import type * as model_courseProgress from "../model/courseProgress.js";
 import type * as model_courseSchedule from "../model/courseSchedule.js";
 import type * as model_courseScheduleShares from "../model/courseScheduleShares.js";
 import type * as model_curriculumIcons from "../model/curriculumIcons.js";
@@ -75,6 +87,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  abeka: typeof abeka;
+  abekaActions: typeof abekaActions;
+  abekaCatalog: typeof abekaCatalog;
+  abekaHttp: typeof abekaHttp;
+  abekaSync: typeof abekaSync;
+  abekaWorkflow: typeof abekaWorkflow;
   academicSettings: typeof academicSettings;
   calendar: typeof calendar;
   calendarClosures: typeof calendarClosures;
@@ -91,12 +109,18 @@ declare const fullApi: ApiFromModules<{
   lessons: typeof lessons;
   livekit: typeof livekit;
   migration: typeof migration;
+  "model/abekaAccess": typeof model_abekaAccess;
+  "model/abekaScheduling": typeof model_abekaScheduling;
+  "model/abekaStudentProgress": typeof model_abekaStudentProgress;
+  "model/abekaTransport": typeof model_abekaTransport;
+  "model/abekaValidators": typeof model_abekaValidators;
   "model/calendarClosures": typeof model_calendarClosures;
   "model/catalog": typeof model_catalog;
   "model/classCancellationEvents": typeof model_classCancellationEvents;
   "model/classType": typeof model_classType;
   "model/courseChatAccess": typeof model_courseChatAccess;
   "model/courseChatAttachments": typeof model_courseChatAttachments;
+  "model/courseProgress": typeof model_courseProgress;
   "model/courseSchedule": typeof model_courseSchedule;
   "model/courseScheduleShares": typeof model_courseScheduleShares;
   "model/curriculumIcons": typeof model_curriculumIcons;
@@ -165,4 +189,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
   presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
+  workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
 };

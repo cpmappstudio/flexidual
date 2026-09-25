@@ -99,6 +99,153 @@
     }
   },
   "settings": {
+    "integrations": {
+      "courses": {
+        "title": "Cursos de Abeka",
+        "search": "Buscar por curso o ID de Abeka…",
+        "refresh": "Actualizar cursos",
+        "running": "Actualizando catálogo de cursos…",
+        "empty": "Aún no hay cursos importados. Usa Actualizar cursos para cargar el catálogo.",
+        "choose": "Selecciona un curso",
+        "flexidual": "Curso de Flexidual",
+        "lessons": "{count} lecciones",
+        "lastSync": "Catálogo actualizado: {date}",
+        "refreshError": "No se pudo actualizar el catálogo. Se conservaron los cursos y vínculos anteriores.",
+        "linkError": "No se pudo guardar el vínculo. Verifica que el curso pertenezca al campus y no esté vinculado a otra materia de Abeka."
+      },
+      "detail": {
+        "open": "Abrir integración de Abeka",
+        "title": "Acerca de esta integración",
+        "scope": {
+          "title": "Progreso de videos",
+          "description": "Muestra la visualización y finalización de lecciones informadas por Abeka, no calificaciones, asistencia ni dominio de la materia."
+        },
+        "schedule": {
+          "title": "Programada o bajo demanda",
+          "description": "La sincronización se ejecuta en Convex, incluso con el navegador cerrado. Una sesión vencida tiene un intento de renovación automática por sincronización; si falla el acceso, debe intervenir un administrador."
+        },
+        "matching": {
+          "title": "Institución y campus",
+          "description": "La conexión abarca la institución. Vincula los alumnos con Flexidual manualmente; la pertenencia al campus procede de Flexidual."
+        },
+        "retention": {
+          "title": "Actualización y desconexión",
+          "description": "Cada sincronización actualiza los estudiantes existentes y el último progreso por materia sin duplicarlos. Desconectar elimina las credenciales y detiene la sincronización, pero conserva los reportes y vínculos."
+        }
+      },
+      "credentials": {
+        "saved": "Credenciales guardadas cifradas. Las sesiones vencidas pueden renovarse automáticamente; un acceso fallido requiere intervención del administrador.",
+        "errors": {
+          "SCHOOL_MISMATCH": "Estas credenciales pertenecen a otra institución de Abeka. No se cambió la conexión actual.",
+          "CONNECTION_CHANGED": "La conexión cambió mientras se verificaba el acceso. Revisa su estado antes de reintentar.",
+          "NOT_CONFIGURED": "Falta configurar la clave de cifrado en este entorno de Convex."
+        },
+        "description": "Usa una cuenta administradora autorizada de la institución. Tras verificar el acceso, las credenciales y la sesión se guardan cifradas en Convex para renovar las sesiones vencidas. No es una integración oficial de Abeka.",
+        "submit": "Conectar y guardar credenciales",
+        "replace": "Configurar o cambiar credenciales",
+        "manual": "Usar una sesión manualmente (elimina las credenciales guardadas)",
+        "error": "No se pudo guardar la conexión. Verifica tus permisos, la institución y las credenciales, o espera antes de reintentar."
+      },
+      "loginProbe": {
+        "title": "Probar inicio de sesión (desarrollo)",
+        "description": "Convex intentará acceder al reporte con estas credenciales una sola vez. Esta prueba no guarda la contraseña ni la sesión y no modifica tu conexión actual. No es una integración oficial de Abeka.",
+        "username": "Correo o usuario de Abeka",
+        "password": "Contraseña de Abeka",
+        "submit": "Comprobar sin guardar",
+        "busy": "Comprobando…",
+        "success": "Acceso al reporte de {school} verificado desde Convex. Esta prueba no guardó credenciales ni sesión ni cambió la conexión existente.",
+        "error": "No se pudo completar la prueba. Verifica tus permisos y espera antes de volver a intentarlo. La conexión actual no cambió.",
+        "errors": {
+          "NOT_ENABLED": "La prueba de inicio de sesión no está habilitada en este backend.",
+          "SIGN_IN_REJECTED": "Abeka no aceptó el inicio de sesión. Comprueba las credenciales directamente en Abeka antes de repetir la prueba.",
+          "INTERACTION_REQUIRED": "La prueba no pudo reconocer la respuesta de Abeka. Esto no confirma una verificación adicional ni una contraseña incorrecta. Comparte el código de diagnóstico antes de volver a intentarlo.",
+          "LOGIN_FLOW_CHANGED": "El flujo de acceso de Abeka no coincide con el esperado. Hay que revisarlo antes de continuar.",
+          "PROVIDER_UNAVAILABLE": "No se pudo completar la comunicación con Abeka. No se reintentó el inicio de sesión."
+        }
+      },
+      "title": "Integraciones",
+      "adminOnly": "Solo los administradores de la institución pueden gestionar integraciones.",
+      "description": "Importa el progreso de videos de Abeka con un horario o bajo demanda. No modifica Abeka ni las matrículas de Flexidual.",
+      "confirmSchool": "Comprueba que esta es la cuenta Abeka de tu institución antes de importar sus estudiantes.",
+      "confirm": "Confirmar institución",
+      "lastSync": "Última sincronización completa",
+      "nextSync": "Próxima sincronización",
+      "schedule": {
+        "manual": "Manual",
+        "weekdays": "Lunes a viernes",
+        "weekly": "Semanal",
+        "day": "Día de la semana",
+        "time": "Hora de sincronización",
+        "stopAtPeriodEnd": "Detener al finalizar el período académico",
+        "next": "Programada para {date} · {timeZone}",
+        "manualNote": "La sincronización automática está desactivada. Usa Actualizar datos para sincronizar manualmente.",
+        "noTimeZone": "Configura la zona horaria institucional en General para programar la sincronización.",
+        "noPeriod": "No hay un período académico disponible. La sincronización automática está pausada; configúralo en Calendario académico.",
+        "paused": "Sin sincronización programada.",
+        "period": "Fin del período: {date} · {name}"
+      },
+      "never": "—",
+      "running": "Sincronizando",
+      "syncProgress": "Alumnos sincronizados: {count}",
+      "connect": "Conectar Abeka",
+      "reconnect": "Renovar sesión",
+      "syncNow": "Sincronizar ahora",
+      "updateData": "Actualizar datos",
+      "disconnect": "Desconectar",
+      "disconnectExplanation": "Se eliminarán las credenciales y la sesión guardadas y se cancelará la sincronización automática. Los reportes ya importados y las vinculaciones se conservarán.",
+      "sessionExplanation": "Conexión mediante una sesión autorizada de Abeka. No es una integración oficial ni un inicio de sesión automático. Si la sesión caduca tendrás que renovarla.",
+      "sessionStep1": "En Safari, abre el reporte de Abeka con la cuenta administradora. En el inspector → Red, selecciona StreamingDetails.aspx.",
+      "sessionStep2": "En los encabezados de la petición, copia únicamente el valor de Cookie y pégalo aquí. No pegues contraseñas ni un comando cURL.",
+      "sessionLabel": "Sesión de Abeka (valor de Cookie)",
+      "sessionWarning": "Equivale a una contraseña. Se guardará cifrada en el backend; no la compartas en chats. Después de pegarla, sustituye el contenido del portapapeles.",
+      "saveSession": "Guardar y comprobar",
+      "notConfigured": "Falta configurar la clave de cifrado en este entorno de Convex.",
+      "connectionError": "No se pudo guardar la sesión. Revisa el valor y tus permisos, o espera unos minutos antes de reintentar.",
+      "actionError": "No se pudo completar la operación. Espera antes de reintentar y revisa el estado de la conexión.",
+      "syncActionError": "No se pudo iniciar la sincronización. Deja al menos 15 minutos entre inicios y revisa el estado de la conexión.",
+      "students": "Estudiantes de Abeka",
+      "searchStudents": "Buscar por nombre, ID de Abeka o campus…",
+      "mappingExplanation": "Vincula cada estudiante con su cuenta de Flexidual. No se hacen coincidencias automáticas por nombre. El campus procede de Flexidual, no de Abeka.",
+      "campus": "Campus",
+      "actions": "Acciones",
+      "inactive": "No disponible en el último reporte",
+      "notLinked": "Sin vincular",
+      "link": "Vincular",
+      "report": "Ver progreso",
+      "loading": "Cargando…",
+      "noStudents": "Todavía no hay estudiantes importados. Confirma la institución y espera a que termine la sincronización.",
+      "unavailableStudents": "Abeka muestra {count} cuentas activas sin un enlace de reporte; no se pueden sincronizar.",
+      "loadMore": "Cargar más",
+      "videoOnly": "Este reporte refleja visualización de videos, no calificaciones, asistencia ni dominio de la materia.",
+      "institutionStudents": "Estudiantes asignados a la institución",
+      "flexidualStudent": "Estudiante en Flexidual",
+      "chooseStudent": "Selecciona un estudiante",
+      "chooseCampus": "Selecciona un campus",
+      "verifyIdentity": "Verifica la identidad antes de confirmar. Una cuenta de Flexidual solo puede vincularse con un estudiante de Abeka en esta institución.",
+      "confirmLink": "Confirmar vínculo",
+      "unlink": "Quitar vínculo",
+      "linkError": "No se pudo vincular. Revisa si el alumno ya está vinculado o si hay una sincronización en curso.",
+      "noReports": "Aún no hay reportes. Con Abeka conectado, el progreso se descarga automáticamente al vincular al estudiante. Espera a que termine la actualización o revisa el estado de la conexión.",
+      "completed": "{count} de {total} completas",
+      "lesson": "Lección",
+      "progress": "Visualizado",
+      "lastViewed": "Última visualización",
+      "status": {
+        "connecting": "Comprobando sesión",
+        "needs_confirmation": "Por confirmar",
+        "connected": "Conectado",
+        "needs_reconnect": "Renueva la sesión",
+        "error": "Error de sincronización",
+        "disconnected": "Desconectado"
+      },
+      "errors": {
+        "NEEDS_RECONNECT": "Abeka no aceptó la sesión. Renuévala para continuar.",
+        "SCHOOL_MISMATCH": "La sesión pertenece a otra institución de Abeka. No se importaron sus datos.",
+        "REPORT_FORMAT_CHANGED": "El formato del reporte cambió o no es compatible. Se conservaron los reportes anteriores.",
+        "PROVIDER_UNAVAILABLE": "Abeka no respondió correctamente. Puedes reintentar la sincronización.",
+        "SYNC_FAILED": "La sincronización no terminó. Se conservaron los reportes importados; revisa la configuración o reintenta."
+      }
+    },
     "title": "Configuración",
     "selectSection": "Selecciona una sección de configuración",
     "fallbackUser": "Usuario",
@@ -929,6 +1076,8 @@
     "notFound": "Curso no encontrado"
   },
   "student": {
+    "abekaProgress": "Progreso de videos de Abeka: {percentage}% · {completed} de {total} lecciones completadas",
+    "abekaLastSync": "Última sincronización: {date}",
     "gradeChangeEnrollmentNotice": "Cambiar el grado retira las matrículas de cursos vigentes de otros grados. Los cursos finalizados y el historial académico se conservan; las matrículas en nuevos cursos se revisan por separado.",
     "name": "Nombre del estudiante",
     "firstName": "Nombre",

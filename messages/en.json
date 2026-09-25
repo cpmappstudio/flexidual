@@ -99,6 +99,153 @@
     }
   },
   "settings": {
+    "integrations": {
+      "courses": {
+        "title": "Abeka courses",
+        "search": "Search by course or Abeka ID…",
+        "refresh": "Update courses",
+        "running": "Updating course catalog…",
+        "empty": "No courses imported yet. Use Update courses to load the catalog.",
+        "choose": "Select a course",
+        "flexidual": "Flexidual course",
+        "lessons": "{count} lessons",
+        "lastSync": "Catalog updated: {date}",
+        "refreshError": "The course catalog could not be updated. Previous courses and links were kept.",
+        "linkError": "Could not save the link. Check that the course belongs to this campus and is not linked to another Abeka subject."
+      },
+      "detail": {
+        "open": "Open Abeka integration",
+        "title": "About this integration",
+        "scope": {
+          "title": "Video progress",
+          "description": "Shows lesson viewing and completion reported by Abeka, not grades, attendance or subject mastery."
+        },
+        "schedule": {
+          "title": "Scheduled or on demand",
+          "description": "Sync runs in Convex, even with the browser closed. Expired sessions get one automatic renewal attempt per sync; failed sign-ins require an administrator."
+        },
+        "matching": {
+          "title": "Institution and campuses",
+          "description": "The connection covers the institution. Link students to Flexidual manually; campus membership comes from Flexidual."
+        },
+        "retention": {
+          "title": "Data updates and disconnection",
+          "description": "Each sync updates existing students and the latest progress per subject without duplicating them. Disconnecting removes credentials and stops sync but keeps imported reports and links."
+        }
+      },
+      "credentials": {
+        "saved": "Credentials saved encrypted. Expired sessions can be renewed automatically; failed sign-ins require administrator action.",
+        "errors": {
+          "SCHOOL_MISMATCH": "These credentials belong to another Abeka institution. Your current connection was not changed.",
+          "CONNECTION_CHANGED": "The connection changed while verifying access. Review its current state before trying again.",
+          "NOT_CONFIGURED": "The encryption key is not configured in this Convex environment."
+        },
+        "description": "Use an authorized institution administrator account. After verifying access, credentials and session are stored encrypted in Convex to renew expired sessions. This is not an official Abeka integration.",
+        "submit": "Connect and save credentials",
+        "replace": "Set or change credentials",
+        "manual": "Use a session manually instead (removes saved credentials)",
+        "error": "Could not save the connection. Check your permissions, the institution and credentials, or wait before retrying."
+      },
+      "loginProbe": {
+        "title": "Test sign-in (development)",
+        "description": "Convex will attempt to access the report with these credentials once. This test does not save the password or session and does not change your current connection. This is not an official Abeka integration.",
+        "username": "Abeka email or username",
+        "password": "Abeka password",
+        "submit": "Check without saving",
+        "busy": "Checking…",
+        "success": "Report access for {school} verified from Convex. This test did not save credentials or a session or change the existing connection.",
+        "error": "The test could not complete. Check your permissions and wait before trying again. Your current connection has not changed.",
+        "errors": {
+          "NOT_ENABLED": "The sign-in test is not enabled on this backend.",
+          "SIGN_IN_REJECTED": "Abeka did not accept the sign-in. Check the credentials directly in Abeka before repeating the test.",
+          "INTERACTION_REQUIRED": "The test could not recognize Abeka's response. This does not confirm an additional verification step or an incorrect password. Share the diagnostic code before trying again.",
+          "LOGIN_FLOW_CHANGED": "Abeka's sign-in flow differs from the expected flow. It must be reviewed before continuing.",
+          "PROVIDER_UNAVAILABLE": "Communication with Abeka could not complete. Sign-in was not retried."
+        }
+      },
+      "title": "Integrations",
+      "adminOnly": "Only institution administrators can manage integrations.",
+      "description": "Import Abeka video progress on a schedule or on demand. This does not modify Abeka or Flexidual enrollments.",
+      "confirmSchool": "Check that this is your institution's Abeka account before importing students.",
+      "confirm": "Confirm institution",
+      "lastSync": "Last complete sync",
+      "nextSync": "Next sync",
+      "schedule": {
+        "manual": "Manual",
+        "weekdays": "Monday–Friday",
+        "weekly": "Weekly",
+        "day": "Day of the week",
+        "time": "Sync time",
+        "stopAtPeriodEnd": "Stop at the end of the academic period",
+        "next": "Scheduled for {date} · {timeZone}",
+        "manualNote": "Automatic sync is off. Use Update data to sync manually.",
+        "noTimeZone": "Set the institution time zone in General to schedule sync.",
+        "noPeriod": "No academic period available. Automatic sync is paused; configure it in Academic calendar.",
+        "paused": "No sync scheduled.",
+        "period": "Period ends {date} · {name}"
+      },
+      "never": "—",
+      "running": "Syncing",
+      "syncProgress": "Students synced: {count}",
+      "connect": "Connect Abeka",
+      "reconnect": "Renew session",
+      "syncNow": "Sync now",
+      "updateData": "Update data",
+      "disconnect": "Disconnect",
+      "disconnectExplanation": "Saved credentials and session will be deleted and automatic sync canceled. Imported reports and student links will be kept.",
+      "sessionExplanation": "Connect using an authorized Abeka session. This is not an official integration or automatic sign-in. You will need to renew the session when it expires.",
+      "sessionStep1": "In Safari, open the Abeka report with the administrator account. In Inspector → Network, select StreamingDetails.aspx.",
+      "sessionStep2": "Copy only the Cookie value from the request headers and paste it here. Do not paste passwords or a cURL command.",
+      "sessionLabel": "Abeka session (Cookie value)",
+      "sessionWarning": "Treat this like a password. It will be encrypted in the backend; do not share it in chats. Replace your clipboard contents after pasting.",
+      "saveSession": "Save and check",
+      "notConfigured": "The encryption key has not been configured in this Convex environment.",
+      "connectionError": "Could not save the session. Check the value and your permissions, or wait a few minutes before retrying.",
+      "actionError": "Could not complete the operation. Wait before retrying and check the connection status.",
+      "syncActionError": "Could not start the sync. Allow at least 15 minutes between sync starts and check the connection status.",
+      "students": "Abeka students",
+      "searchStudents": "Search by name, Abeka ID or campus…",
+      "mappingExplanation": "Link each student to their Flexidual account. Names are not matched automatically. Campus membership comes from Flexidual, not Abeka.",
+      "campus": "Campus",
+      "actions": "Actions",
+      "inactive": "Unavailable in latest report",
+      "notLinked": "Not linked",
+      "link": "Link",
+      "report": "View progress",
+      "loading": "Loading…",
+      "noStudents": "No students imported yet. Confirm the institution and wait for the sync to finish.",
+      "unavailableStudents": "Abeka shows {count} active accounts without a report link; they cannot be synced.",
+      "loadMore": "Load more",
+      "videoOnly": "This report tracks video viewing, not grades, attendance, or subject mastery.",
+      "institutionStudents": "Students assigned to the institution",
+      "flexidualStudent": "Flexidual student",
+      "chooseStudent": "Select a student",
+      "chooseCampus": "Select a campus",
+      "verifyIdentity": "Verify the student's identity before confirming. A Flexidual account can only be linked to one Abeka student in this institution.",
+      "confirmLink": "Confirm link",
+      "unlink": "Remove link",
+      "linkError": "Could not link. Check whether the student is already linked or a sync is running.",
+      "noReports": "No reports yet. With Abeka connected, linking a student downloads their progress automatically. Wait for the update to finish or check the connection status.",
+      "completed": "{count} of {total} completed",
+      "lesson": "Lesson",
+      "progress": "Watched",
+      "lastViewed": "Last viewed",
+      "status": {
+        "connecting": "Checking session",
+        "needs_confirmation": "Awaiting confirmation",
+        "connected": "Connected",
+        "needs_reconnect": "Renew session",
+        "error": "Sync error",
+        "disconnected": "Disconnected"
+      },
+      "errors": {
+        "NEEDS_RECONNECT": "Abeka did not accept the session. Renew it to continue.",
+        "SCHOOL_MISMATCH": "This session belongs to another Abeka institution. Its data was not imported.",
+        "REPORT_FORMAT_CHANGED": "The report format changed or is not supported. Previous reports were kept.",
+        "PROVIDER_UNAVAILABLE": "Abeka did not respond correctly. You can retry the sync.",
+        "SYNC_FAILED": "The sync did not finish. Imported reports were kept; check configuration or retry."
+      }
+    },
     "title": "Settings",
     "selectSection": "Select a settings section",
     "fallbackUser": "User",
@@ -929,6 +1076,8 @@
     "notFound": "Course not found"
   },
   "student": {
+    "abekaProgress": "Abeka video progress: {percentage}% · {completed} of {total} lessons completed",
+    "abekaLastSync": "Last synced: {date}",
     "gradeChangeEnrollmentNotice": "Changing the grade removes enrollment in ongoing courses of other grades. Completed courses and academic records are kept; enrollment in new courses is reviewed separately.",
     "name": "Student Name",
     "firstName": "First Name",

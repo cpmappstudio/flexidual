@@ -11,6 +11,7 @@
  */
 
 import { defineSchema, defineTable } from "convex/server";
+import { abekaConnectionFields, abekaStudentFields, abekaRunFields, abekaProgressFields, abekaCourseFields, encryptedSession } from "./model/abekaValidators";
 import { v } from "convex/values";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { liveAccessValidator } from "./model/liveAccess";
@@ -31,6 +32,22 @@ export const surveyCampaignValidator = v.object({
 });
 
 export default defineSchema({
+  // Only provider backoff metadata. Existing connections and reports are unchanged.
+  abekaProviderBackoff: defineTable({ until: v.number() }),
+  abekaCourses: defineTable(abekaCourseFields).index("by_connectionId_and_subjectId", ["connectionId", "subjectId"]),
+  abekaCourseLinks: defineTable({ connectionId: v.id("abekaConnections"), courseId: v.id("abekaCourses"), classId: v.id("classes") })
+    .index("by_connectionId_and_classId", ["connectionId", "classId"])
+    .index("by_courseId_and_classId", ["courseId", "classId"]),
+  abekaConnections: defineTable(abekaConnectionFields)
+    .index("by_school", ["schoolId"])
+    .index("by_next_sync", ["nextSyncAt"]),
+  abekaSecrets: defineTable({ connectionId: v.id("abekaConnections"), encrypted: v.optional(encryptedSession), credentials: v.optional(encryptedSession) })
+    .index("by_connection", ["connectionId"]),
+  abekaStudents: defineTable(abekaStudentFields)
+    .index("by_connection_login", ["connectionId", "loginId"])
+    .index("by_connection_user", ["connectionId", "userId"]),
+  abekaSyncRuns: defineTable(abekaRunFields).index("by_connection", ["connectionId"]),
+  abekaProgress: defineTable(abekaProgressFields).index("by_student_subject", ["studentId", "subjectId"]),
   /**
    * USERS
    * All system users (students, teachers, tutors, admins)
@@ -695,6 +712,7 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_role", ["role", "schoolId"])
     .index("by_org", ["orgId", "orgType"])
+    .index("by_org_role", ["orgId", "orgType", "role"])
     .index("by_user_org", ["userId", "orgId", "orgType"])
     .index("by_school_role_grade", ["schoolId", "role", "gradeCode"]),
 

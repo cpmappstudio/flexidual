@@ -189,30 +189,37 @@ export function DataTable<TData>({
             />
           </InputGroup>
         ) : null}
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          {customFilter}
+        {(customFilter ||
+          !!filterConfigs?.length ||
+          onExport ||
+          createAction) && (
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {customFilter}
 
-          {filterConfigs && filterConfigs.length > 0 && (
-            <DataTableFilters
-              table={table}
-              filterConfigs={filterConfigs}
-              allLabel={filterAllLabel}
-              filtersMenuLabel={filtersMenuLabel ?? t("table.filters")}
-              clearFiltersLabel={t("table.clearFilters")}
-            />
-          )}
+            {filterConfigs && filterConfigs.length > 0 && (
+              <DataTableFilters
+                table={table}
+                filterConfigs={filterConfigs}
+                allLabel={filterAllLabel}
+                filtersMenuLabel={filtersMenuLabel ?? t("table.filters")}
+                clearFiltersLabel={t("table.clearFilters")}
+              />
+            )}
 
-          {onExport && (
-            <Button variant="outline" onClick={exportRows}>
-              <Download className="size-3.5" />
-              <span className="hidden md:block mr-1">{exportButtonLabel}</span>
-            </Button>
-          )}
+            {onExport && (
+              <Button variant="outline" onClick={exportRows}>
+                <Download className="size-3.5" />
+                <span className="hidden md:block mr-1">
+                  {exportButtonLabel}
+                </span>
+              </Button>
+            )}
 
-          {createAction && (
-            <ResponsivePageAction>{createAction}</ResponsivePageAction>
-          )}
-        </div>
+            {createAction && (
+              <ResponsivePageAction>{createAction}</ResponsivePageAction>
+            )}
+          </div>
+        )}
       </div>
 
       {resolvedResultsCountLabel && (

@@ -9,6 +9,7 @@ import {
   canViewInstitutionSettings,
 } from "./permissions";
 import { getCurrentUserOrThrow } from "./users";
+import { rescheduleAbekaForSchool } from "./model/abekaScheduling";
 import {
   DEFAULT_SCHEDULE_END_MINUTES,
   DEFAULT_SCHEDULE_START_MINUTES,
@@ -94,12 +95,7 @@ export const get = query({
     }
 
     const canRead = campus
-      ? await canViewCampusOperations(
-          ctx,
-          user._id,
-          campus._id,
-          args.schoolId,
-        )
+      ? await canViewCampusOperations(ctx, user._id, campus._id, args.schoolId)
       : await canViewInstitutionSettings(ctx, user._id, args.schoolId);
     if (!canRead) {
       throw new ConvexError("PERMISSION_DENIED");
@@ -154,7 +150,7 @@ export const createPeriod = mutation({
       throw new ConvexError("ACADEMIC_PERIOD_OVERLAP");
     }
 
-    return await ctx.db.insert("academicPeriods", {
+    const periodId = await ctx.db.insert("academicPeriods", {
       schoolId: args.schoolId,
       name,
       startDate: args.startDate,
@@ -162,6 +158,8 @@ export const createPeriod = mutation({
       createdAt: Date.now(),
       createdBy: user._id,
     });
+    await rescheduleAbekaForSchool(ctx, args.schoolId);
+    return periodId;
   },
 });
 
@@ -212,6 +210,7 @@ export const updatePeriod = mutation({
       startDate: args.startDate,
       endDate: args.endDate,
     });
+    if (datesChanged) await rescheduleAbekaForSchool(ctx, period.schoolId);
     return null;
   },
 });
@@ -236,6 +235,7 @@ export const removePeriod = mutation({
     if (classUsingPeriod) return { deleted: false };
 
     await ctx.db.delete(period._id);
+    await rescheduleAbekaForSchool(ctx, period.schoolId);
     return { deleted: true };
   },
 });

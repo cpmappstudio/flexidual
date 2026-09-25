@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { getCurrentUserOrThrow } from "./users";
 import { canAccessSchool, hasOrgRole, hasSystemRole } from "./permissions";
 import { isValidTimeZone } from "../lib/time-zone";
+import { rescheduleAbekaForSchool } from "./model/abekaScheduling";
 import { DEFAULT_INSTITUTION_GRADES } from "../lib/grades";
 import type { Doc } from "./_generated/dataModel";
 
@@ -37,7 +38,8 @@ function normalizeSchoolSlug(value: string) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     throw new ConvexError({
       code: "INVALID_SLUG",
-      message: "Institution URL identifier must use lowercase letters, numbers, and single hyphens.",
+      message:
+        "Institution URL identifier must use lowercase letters, numbers, and single hyphens.",
     });
   }
   return slug;
@@ -90,7 +92,7 @@ export const create = mutation({
   returns: v.id("schools"),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
-    
+
     // Only Superadmins create schools
     if (!(await hasSystemRole(ctx, user._id, ["superadmin"]))) {
       throw new Error("Only superadmins can create schools.");
@@ -102,7 +104,7 @@ export const create = mutation({
       .query("schools")
       .withIndex("by_slug", (q) => q.eq("slug", slug))
       .first();
-    
+
     if (existing) throw new Error("A school with this slug already exists.");
     if (!isValidTimeZone(args.timeZone)) {
       throw new ConvexError("INVALID_TIME_ZONE");
@@ -180,13 +182,19 @@ export const update = mutation({
     };
 
     await ctx.db.patch(id, cleanUpdates);
+    if (args.timeZone !== undefined || args.isActive !== undefined)
+      await rescheduleAbekaForSchool(ctx, id);
 
     // When the slug changes, all users' Clerk metadata must be rebuilt with the new key
     if (slug && slug !== school.slug) {
-      await ctx.scheduler.runAfter(0, internal.roleAssignments.syncOrgUsersToClerk, {
-        orgId: id,
-        orgType: "school",
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.roleAssignments.syncOrgUsersToClerk,
+        {
+          orgId: id,
+          orgType: "school",
+        },
+      );
     }
     return null;
   },
@@ -224,6 +232,8 @@ export const updateInstitutionSettings = mutation({
 
     if (name !== school.name || args.timeZone !== school.timeZone) {
       await ctx.db.patch(args.id, { name, timeZone: args.timeZone });
+      if (args.timeZone !== school.timeZone)
+        await rescheduleAbekaForSchool(ctx, args.id);
     }
 
     return null;

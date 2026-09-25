@@ -2089,3 +2089,52 @@ test("ending is blocked before closeout and finalization records the responsible
     ]),
   );
 });
+
+test("student profile course progress matches the course page without an Abeka connection", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  const student = t.withIdentity({ subject: "leader-student" });
+  const extraLessons = await t.run(async (ctx) => {
+    await ctx.db.insert("roleAssignments", {
+      userId: data.studentId, orgId: data.campusId, orgType: "campus",
+      role: "student", schoolId: data.schoolId, assignedAt: NOW, assignedBy: data.adminId,
+    });
+    return await Promise.all([2, 3].map((order) => ctx.db.insert("lessons", {
+      curriculumId: data.curriculumId, title: `Lesson ${order}`, order,
+      isActive: true, createdAt: NOW, createdBy: data.adminId,
+    })));
+  });
+  const readProfile = async () => {
+    const dashboard = await student.query(api.student.getStudentDashboardStats, { now: NOW });
+    return dashboard?.classes.find((course) => course.classId === data.classId);
+  };
+  expect((await readProfile())?.courseProgress).toEqual({
+    totalLessons: 3, taughtLessons: 0, pendingLessons: 3, percentage: 0,
+  });
+  await teacher.mutation(api.schedule.markLive, { roomName: "teacher-led-room", isLive: true });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "teacher-led-room", lessonIds: [data.lessonId, extraLessons[0]],
+    attendance: buildAttendance(data),
+  });
+  // Repeating a lesson must not inflate either ring.
+  await teacher.mutation(api.schedule.markLive, { roomName: "tutor-room", isLive: true });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "tutor-room", lessonIds: [data.lessonId], attendance: buildAttendance(data),
+  });
+  const profile = await readProfile();
+  expect(profile?.abekaProgress).toBeNull();
+  expect(profile?.courseProgress).toEqual({
+    totalLessons: 3, taughtLessons: 2, pendingLessons: 1, percentage: 67,
+  });
+  const coursePage = await teacher.query(api.lessons.getClassCurriculumProgress, { classId: data.classId });
+  expect(coursePage).toMatchObject(profile!.courseProgress);
+  // No curriculum lessons still yields a defined 0% ring, not NaN or null.
+  await t.run(async (ctx) => {
+    for (const id of [data.lessonId, ...extraLessons]) {
+      await ctx.db.patch("lessons", id, { isActive: false });
+    }
+  });
+  expect((await readProfile())?.courseProgress).toEqual({
+    totalLessons: 0, taughtLessons: 0, pendingLessons: 0, percentage: 0,
+  });
+});
