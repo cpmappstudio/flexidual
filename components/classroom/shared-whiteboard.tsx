@@ -254,11 +254,6 @@ export interface SharedWhiteboardProps {
     ((destinationIdentities?: string[]) => Promise<void>) | null
   >;
   /**
-   * Populated by SharedWhiteboard. Call on session end to delete all Convex
-   * storage objects uploaded during this session and clear localStorage.
-   */
-  cleanupRef?: MutableRefObject<(() => Promise<void>) | null>;
-  /**
    * When true (default), this viewer's whiteboard viewport (scroll/zoom) automatically
    * follows the broadcaster. Set to false to let the viewer pan/zoom independently.
    */
@@ -273,7 +268,6 @@ export function SharedWhiteboard({
   isReadonly = false,
   onApiReady,
   broadcastRef,
-  cleanupRef,
   followViewport = true,
   recordingToken,
   presentationMode = false,
@@ -281,12 +275,8 @@ export function SharedWhiteboard({
 }: SharedWhiteboardProps) {
   const room = useRoomContext();
   const generateUploadUrl = useMutation(api.whiteboardFiles.generateUploadUrl);
-  const deleteSessionFiles = useMutation(
-    api.whiteboardFiles.deleteSessionFiles,
-  );
   const upsertScene = useMutation(api.whiteboardSessions.upsertScene);
   const addFileRefMutation = useMutation(api.whiteboardSessions.addFileRef);
-  const clearSessionMutation = useMutation(api.whiteboardSessions.clearSession);
   // Readers subscribe to Convex scene changes reactively.
   // Writers (isReadonly=false) skip the query — they write, not read.
   const sceneData = useQuery(
@@ -467,6 +457,7 @@ export function SharedWhiteboard({
         };
         const fileRef = await addFileRefMutation({
           roomName,
+          expectedLiveRoomName: room.name,
           fileId: file.id,
           storageId,
           created: file.created,
@@ -480,7 +471,7 @@ export function SharedWhiteboard({
         sentFileIdsRef.current.delete(file.id);
       }
     },
-    [generateUploadUrl, persistFileRefs, addFileRefMutation, roomName],
+    [generateUploadUrl, persistFileRefs, addFileRefMutation, roomName, room],
   );
 
   /**
@@ -492,28 +483,13 @@ export function SharedWhiteboard({
     // Intentionally empty — Convex handles distribution.
   }, []);
 
-  /** Delete all Convex storage objects and the session document; wipe localStorage. */
-  const cleanupSession = useCallback(async () => {
-    try {
-      await deleteSessionFiles({ roomName });
-      await clearSessionMutation({ roomName });
-    } catch (err) {
-      console.error("[Whiteboard] Failed to delete session files:", err);
-    }
-    localStorage.removeItem(`${WB_STORAGE_PREFIX}${roomName}`);
-    fileRefsRef.current = {};
-    sentFileIdsRef.current.clear();
-  }, [deleteSessionFiles, clearSessionMutation, roomName]);
-
-  // Wire broadcastRef / cleanupRef so the parent (CompanionClassroomUI) can call them
+  // Wire broadcastRef so the parent can re-announce presentation state.
   useEffect(() => {
     if (broadcastRef) broadcastRef.current = broadcastAllFiles;
-    if (cleanupRef) cleanupRef.current = cleanupSession;
     return () => {
       if (broadcastRef) broadcastRef.current = null;
-      if (cleanupRef) cleanupRef.current = null;
     };
-  }, [broadcastRef, cleanupRef, broadcastAllFiles, cleanupSession]);
+  }, [broadcastRef, broadcastAllFiles]);
 
   // ---------------------------------------------------------------------------
   // READER — apply scene from Convex when it changes (reactive subscription)
@@ -627,7 +603,13 @@ export function SharedWhiteboard({
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         const els = apiRef.current?.getSceneElements() ?? [];
-        void upsertScene({ roomName, elements: [...els] });
+        void upsertScene({
+          roomName,
+          expectedLiveRoomName: room.name,
+          elements: [...els],
+        }).catch((error) => {
+          console.error("[Whiteboard] Scene sync failed:", error);
+        });
         timerRef.current = null;
       }, 80);
 

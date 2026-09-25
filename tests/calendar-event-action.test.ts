@@ -10,6 +10,7 @@ const baseEvent = {
   status: "scheduled" as const,
   isLive: false,
   roomName: "class-room",
+  canLeadSession: false,
 };
 
 test("past classes show a recording only when one is playable", () => {
@@ -37,7 +38,7 @@ test("past classes show a recording only when one is playable", () => {
   );
 });
 
-test("students only enter an immediate, active, or live class", () => {
+test("students enter only while the class is live", () => {
   assert.equal(
     getCalendarEventPrimaryAction({ ...baseEvent, isStudent: true }),
     null,
@@ -48,14 +49,32 @@ test("students only enter an immediate, active, or live class", () => {
       isStudent: true,
       start: now + 5 * 60 * 1000,
     }),
+    null,
+  );
+  assert.equal(
+    getCalendarEventPrimaryAction({
+      ...baseEvent,
+      isStudent: true,
+      isLive: true,
+      status: "active",
+    }),
     "go-to-classroom",
   );
 });
 
-test("staff prepare future classes and enter live classes", () => {
+test("staff start only inside the one-hour window and enter live classes", () => {
   assert.equal(
     getCalendarEventPrimaryAction({ ...baseEvent, isStudent: false }),
-    "prepare-room",
+    null,
+  );
+  assert.equal(
+    getCalendarEventPrimaryAction({
+      ...baseEvent,
+      isStudent: false,
+      canLeadSession: true,
+      start: now + 60 * 60 * 1000,
+    }),
+    "start-live",
   );
   assert.equal(
     getCalendarEventPrimaryAction({
@@ -64,6 +83,35 @@ test("staff prepare future classes and enter live classes", () => {
       isLive: true,
     }),
     "enter-live",
+  );
+});
+
+test("staff reopen a previously started class before the recovery deadline", () => {
+  assert.equal(
+    getCalendarEventPrimaryAction({
+      ...baseEvent,
+      isStudent: false,
+      canLeadSession: true,
+      start: now - 60 * 60 * 1000,
+      end: now - 5 * 60 * 1000,
+      status: "completed",
+      sessionStartedAt: now - 60 * 60 * 1000,
+      sessionReopenUntil: now + 5 * 60 * 1000,
+    }),
+    "reopen-live",
+  );
+  assert.equal(
+    getCalendarEventPrimaryAction({
+      ...baseEvent,
+      isStudent: false,
+      canLeadSession: true,
+      start: now - 60 * 60 * 1000,
+      end: now - 10 * 60 * 1000,
+      status: "completed",
+      sessionStartedAt: now - 60 * 60 * 1000,
+      sessionReopenUntil: now,
+    }),
+    null,
   );
 });
 

@@ -11,6 +11,7 @@
  */
 
 import { defineSchema, defineTable } from "convex/server";
+import { liveRoomActivationFields } from "./model/liveActivation";
 import { v } from "convex/values";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { liveAccessValidator } from "./model/liveAccess";
@@ -301,7 +302,14 @@ export default defineSchema({
     sessionLeaderSince: v.optional(v.number()),
     sessionStartedBy: v.optional(v.id("users")),
     sessionStartedAt: v.optional(v.number()),
+    sessionReopenedBy: v.optional(v.id("users")),
+    sessionReopenedAt: v.optional(v.number()),
+    sessionReopenUntil: v.optional(v.number()),
     sessionEndedBy: v.optional(v.id("users")),
+    liveActivationId: v.optional(v.string()),
+    liveRoomName: v.optional(v.string()),
+    liveEndClaimId: v.optional(v.string()),
+    liveCleanupRetrying: v.optional(v.boolean()),
     sessionClosureStatus: v.optional(sessionClosureStatusValidator),
     sessionClosedBy: v.optional(v.id("users")),
     sessionClosedAt: v.optional(v.number()),
@@ -340,6 +348,11 @@ export default defineSchema({
     ])
     .index("by_class_recurrence_parent", ["classId", "recurrenceParentId"])
     .index("by_room", ["roomName"])
+    .index("by_live_room_name", ["liveRoomName"])
+    .index("by_live_room_name_and_live_end_claim_id", [
+      "liveRoomName",
+      "liveEndClaimId",
+    ])
     .index("by_status", ["status", "scheduledStart"])
     .index("by_school_and_status_and_scheduled_start", [
       "schoolId",
@@ -348,6 +361,11 @@ export default defineSchema({
     ])
     .index("by_status_and_is_live", ["status", "isLive"])
     .index("by_recurrence_parent", ["recurrenceParentId"]),
+
+  // Transport lifecycles only. Every activation belongs to the same academic occurrence.
+  liveRoomActivations: defineTable(liveRoomActivationFields)
+    .index("by_activation_id", ["activationId"])
+    .index("by_status_and_next_cleanup_at", ["status", "nextCleanupAt"]),
 
   classSessionLeadershipEvents: defineTable({
     scheduleId: v.id("classSchedule"),
@@ -507,6 +525,8 @@ export default defineSchema({
   class_sessions: defineTable({
     scheduleId: v.id("classSchedule"),
     studentId: v.id("users"),
+    activationId: v.optional(v.string()),
+    connectionId: v.optional(v.string()),
 
     // Timing
     joinedAt: v.number(),
@@ -675,6 +695,8 @@ export default defineSchema({
   recordings: defineTable({
     scheduleId: v.id("classSchedule"),
     roomName: v.string(),
+    activationId: v.optional(v.string()),
+    recordingToken: v.optional(v.string()),
     egressId: v.string(),
     status: v.union(
       v.literal("starting"),

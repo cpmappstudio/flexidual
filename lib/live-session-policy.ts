@@ -3,6 +3,68 @@ export const LIVE_EXTENSION_BLOCK_MS = 10 * 60 * 1000;
 export const LIVE_EXTENSION_PROMPT_LEAD_MS = 2 * 60 * 1000;
 export const LIVE_DECISION_WINDOW_MS = 5 * 60 * 1000;
 export const MAX_LIVE_OVERRUN_MS = 60 * 60 * 1000;
+export const LIVE_SESSION_EARLY_START_MS = 60 * 60 * 1000;
+export const LIVE_SESSION_REOPEN_GRACE_MS = 10 * 60 * 1000;
+
+type LiveSessionAvailability = {
+  now: number;
+  scheduledStart: number;
+  scheduledEnd: number;
+  status: "scheduled" | "active" | "completed" | "cancelled";
+  isLive: boolean;
+  sessionStartedAt?: number;
+  sessionReopenUntil?: number;
+};
+
+export function getLiveSessionStartAvailableAt(scheduledStart: number) {
+  return scheduledStart - LIVE_SESSION_EARLY_START_MS;
+}
+
+export function getLiveSessionReopenUntil(
+  scheduledEnd: number,
+  extensionEndsAt?: number,
+) {
+  return Math.min(
+    getEffectiveLiveEnd(scheduledEnd, extensionEndsAt) +
+      LIVE_SESSION_REOPEN_GRACE_MS,
+    getLiveSessionHardEnd(scheduledEnd),
+  );
+}
+
+export function canStartLiveSession({
+  now,
+  scheduledStart,
+  scheduledEnd,
+  status,
+  isLive,
+  sessionStartedAt,
+}: LiveSessionAvailability) {
+  return (
+    status === "scheduled" &&
+    !isLive &&
+    sessionStartedAt === undefined &&
+    now >= getLiveSessionStartAvailableAt(scheduledStart) &&
+    now < scheduledEnd
+  );
+}
+
+export function canReopenLiveSession({
+  now,
+  scheduledStart,
+  status,
+  isLive,
+  sessionStartedAt,
+  sessionReopenUntil,
+}: LiveSessionAvailability) {
+  return (
+    status === "completed" &&
+    !isLive &&
+    sessionStartedAt !== undefined &&
+    sessionReopenUntil !== undefined &&
+    now >= getLiveSessionStartAvailableAt(scheduledStart) &&
+    now < sessionReopenUntil
+  );
+}
 
 export type LiveParticipantSnapshot = {
   responsibleCount: number;

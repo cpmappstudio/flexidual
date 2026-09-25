@@ -55,6 +55,7 @@ import { PastClassesPanel } from "@/components/teaching/classes/past-classes-pan
 import { toast } from "sonner";
 import type { CurriculumLessonProgress } from "@/lib/course-progress";
 import { getExternalClassPlatform } from "@/lib/class-session";
+import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -131,13 +132,22 @@ export default function ClassDetailPage() {
 
   const availableSchedules =
     classSchedule?.filter(
-      (schedule) => schedule.end > queryNow && schedule.status !== "cancelled",
+      (schedule) =>
+        schedule.status !== "cancelled" &&
+        (schedule.end > queryNow ||
+          schedule.isLive ||
+          (schedule.status === "completed" &&
+            schedule.sessionStartedAt !== undefined &&
+            (schedule.sessionReopenUntil ?? 0) > queryNow)),
     ) ?? [];
   const nextSchedule =
     availableSchedules.find(
       (schedule) =>
         schedule.status === "active" ||
         schedule.isLive ||
+        (schedule.status === "completed" &&
+          schedule.sessionStartedAt !== undefined &&
+          (schedule.sessionReopenUntil ?? 0) > queryNow) ||
         (queryNow >= schedule.start && queryNow <= schedule.end),
     ) ??
     availableSchedules[0] ??
@@ -145,6 +155,21 @@ export default function ClassDetailPage() {
   const nextScheduleExternalPlatform = getExternalClassPlatform(
     nextSchedule?.sessionType,
   );
+  const nextScheduleAction = nextSchedule
+    ? getCalendarEventPrimaryAction({
+        isStudent: false,
+        now: queryNow,
+        start: nextSchedule.start,
+        end: nextSchedule.end,
+        status: nextSchedule.status,
+        isLive: nextSchedule.isLive,
+        roomName: nextSchedule.roomName,
+        sessionType: nextSchedule.sessionType,
+        canLeadSession: nextSchedule.canLeadSession,
+        sessionStartedAt: nextSchedule.sessionStartedAt,
+        sessionReopenUntil: nextSchedule.sessionReopenUntil,
+      })
+    : null;
   const laterSchedules = nextSchedule
     ? availableSchedules
         .filter((schedule) => schedule.scheduleId !== nextSchedule.scheduleId)
@@ -365,7 +390,7 @@ export default function ClassDetailPage() {
                         <ExternalLink className="size-4" aria-hidden="true" />
                       </a>
                     </Button>
-                  ) : nextSchedule ? (
+                  ) : nextSchedule && nextScheduleAction ? (
                     <Button
                       type="button"
                       onClick={() => {
@@ -377,7 +402,13 @@ export default function ClassDetailPage() {
                       className="group relative mt-4 h-10 overflow-hidden rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
                     >
                       <RocketLaunchButtonContent
-                        label={t("dashboard.goToClassroom")}
+                        label={t(
+                          nextScheduleAction === "reopen-live"
+                            ? "classroom.reopenClass"
+                            : nextScheduleAction === "start-live"
+                              ? "classroom.startClass"
+                              : "dashboard.enterLive",
+                        )}
                         isLaunching={isLaunchingClassroom}
                         onComplete={handleClassroomLaunchComplete}
                       />

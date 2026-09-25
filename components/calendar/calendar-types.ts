@@ -61,6 +61,14 @@ export type CalendarEvent = {
   cancellationReason?: string;
   teacherName?: string;
   teacherImageUrl?: string;
+  canLeadSession: boolean;
+  sessionStartedAt?: number;
+  sessionReopenUntil?: number;
+  sessionEndedAt?: number;
+  sessionEndedByName?: string;
+  sessionEndedAutomatically: boolean;
+  sessionClosing?: boolean;
+  sessionCloseRetrying?: boolean;
 
   // Recordings
   hasRecording?: boolean;

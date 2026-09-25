@@ -1,10 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
-import { canManageRoom } from "./permissions";
-import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
+import { getCurrentUserFromAuth } from "./users";
 import { canAccessSchedule } from "./model/scheduleAccess";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
+import { requireLiveWhiteboardManager } from "./model/whiteboardAccess";
+import { getLiveActivationId, getLiveRoomName } from "./model/liveActivation";
 
 const fileRefValidator = v.object({
   url: v.string(),
@@ -24,18 +25,6 @@ function hasRecordingAccess(
   );
 }
 
-async function requireRoomManager(
-  ctx: Parameters<typeof getCurrentUserOrThrow>[0],
-  roomName: string,
-) {
-  const user = await getCurrentUserOrThrow(ctx);
-  if (!(await canManageRoom(ctx, user._id, roomName))) {
-    throw new ConvexError(
-      "You do not have permission to manage this whiteboard",
-    );
-  }
-}
-
 /**
  * Upsert the full element list for a room's whiteboard session.
  * Called by the companion device (writer) on every debounced canvas change.
@@ -43,11 +32,17 @@ async function requireRoomManager(
 export const upsertScene = mutation({
   args: {
     roomName: v.string(),
+    expectedLiveRoomName: v.optional(v.string()),
     elements: v.array(v.any()),
   },
   returns: v.null(),
-  handler: async (ctx, { roomName, elements }) => {
-    await requireRoomManager(ctx, roomName);
+  handler: async (ctx, { roomName, elements, expectedLiveRoomName }) => {
+    const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
+    if (
+      expectedLiveRoomName !== undefined &&
+      getLiveRoomName(schedule) !== expectedLiveRoomName
+    )
+      return null;
     const existing = await ctx.db
       .query("whiteboardSessions")
       .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
@@ -73,13 +68,22 @@ export const upsertScene = mutation({
 export const addFileRef = mutation({
   args: {
     roomName: v.string(),
+    expectedLiveRoomName: v.optional(v.string()),
     fileId: v.string(),
     storageId: v.id("_storage"),
     created: v.number(),
   },
   returns: fileRefValidator,
-  handler: async (ctx, { roomName, fileId, storageId, created }) => {
-    await requireRoomManager(ctx, roomName);
+  handler: async (
+    ctx,
+    { roomName, fileId, storageId, created, expectedLiveRoomName },
+  ) => {
+    const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
+    if (
+      expectedLiveRoomName !== undefined &&
+      getLiveRoomName(schedule) !== expectedLiveRoomName
+    )
+      throw new ConvexError("STALE_LIVE_ACTIVATION");
     const metadata = await ctx.db.system.get(storageId);
     if (!metadata) throw new ConvexError("WHITEBOARD_FILE_NOT_FOUND");
     if (
@@ -158,7 +162,12 @@ export const getScene = query({
         .query("classSchedule")
         .withIndex("by_room", (q) => q.eq("roomName", roomName))
         .first();
-      if (!schedule || !(await canAccessSchedule(ctx, user._id, schedule))) {
+      if (
+        !schedule ||
+        schedule.status !== "active" ||
+        !schedule.isLive ||
+        !(await canAccessSchedule(ctx, user._id, schedule))
+      ) {
         throw new ConvexError("PERMISSION_DENIED");
       }
     } else if (!hasRecordingAccess(recordingToken, session.recordingToken)) {
@@ -226,13 +235,44 @@ export const setRecordingToken = internalMutation({
   args: {
     roomName: v.string(),
     recordingToken: v.optional(v.string()),
+    expectedActivationId: v.optional(v.string()),
+    expectedToken: v.optional(v.string()),
   },
-  returns: v.null(),
-  handler: async (ctx, { roomName, recordingToken }) => {
+  returns: v.boolean(),
+  handler: async (
+    ctx,
+    { roomName, recordingToken, expectedActivationId, expectedToken },
+  ) => {
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", roomName))
+      .unique();
+    if (
+      !schedule ||
+      (expectedActivationId &&
+        getLiveActivationId(schedule) !== expectedActivationId) ||
+      (recordingToken && (!schedule.isLive || schedule.status !== "active"))
+    )
+      return false;
+    if (recordingToken && expectedActivationId) {
+      const activation = await ctx.db
+        .query("liveRoomActivations")
+        .withIndex("by_activation_id", (q) =>
+          q.eq("activationId", expectedActivationId),
+        )
+        .unique();
+      if (
+        activation?.recordingToken !== recordingToken ||
+        activation.status !== "active"
+      )
+        return false;
+    }
     const existing = await ctx.db
       .query("whiteboardSessions")
       .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
       .unique();
+    if (expectedToken && existing?.recordingToken !== expectedToken)
+      return false;
     if (existing) {
       await ctx.db.patch(existing._id, { recordingToken });
     } else if (recordingToken) {
@@ -243,26 +283,6 @@ export const setRecordingToken = internalMutation({
         updatedAt: Date.now(),
       });
     }
-    return null;
-  },
-});
-
-/**
- * Delete the session document for a room.
- * Called alongside deleteSessionFiles when a session ends.
- */
-export const clearSession = mutation({
-  args: { roomName: v.string() },
-  returns: v.null(),
-  handler: async (ctx, { roomName }) => {
-    await requireRoomManager(ctx, roomName);
-    const existing = await ctx.db
-      .query("whiteboardSessions")
-      .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
-      .unique();
-    if (existing) {
-      await ctx.db.delete(existing._id);
-    }
-    return null;
+    return true;
   },
 });

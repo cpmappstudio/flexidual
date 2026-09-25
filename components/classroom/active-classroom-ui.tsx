@@ -188,6 +188,7 @@ interface ActiveClassroomUIProps {
   scheduleId?: Id<"classSchedule">;
   currentUserRole?: string;
   canLeadSession?: boolean;
+  activationId?: string;
   roomName: string;
   sessionNow: number;
   countdown?: ReactNode;
@@ -208,6 +209,7 @@ export function ActiveClassroomUI({
   scheduleId,
   currentUserRole,
   canLeadSession = false,
+  activationId,
   roomName,
   sessionNow,
   countdown,
@@ -376,11 +378,22 @@ export function ActiveClassroomUI({
     : (extensionContext?.affectedStudentCount ?? 0);
   const isStoppingRecordingForDisplay =
     !hasActivePreview && isStoppingRecording;
+  const recordingOperation = useQuery(
+    api.liveRoomLifecycle.getRecordingOperation,
+    activationId && sessionIsLive && amIAuthority
+      ? { roomName, activationId }
+      : "skip",
+  );
+  useEffect(() => {
+    if (recordingOperation?.failed) toast.error(t("classroom.recordingError"));
+  }, [recordingOperation?.failed, t]);
   const isRecordingForDisplay = hasActivePreview
     ? isPreviewing("recording-active")
     : isRecording && !isStoppingRecordingForDisplay;
   const isRecordingActionPending =
-    isTogglingRecord || isStoppingRecordingForDisplay;
+    isTogglingRecord ||
+    isStoppingRecordingForDisplay ||
+    recordingOperation?.pending === true;
   const recordingActionTitle = isStoppingRecordingForDisplay
     ? t("classroom.recordingStopping")
     : isRecordingForDisplay
@@ -706,6 +719,7 @@ export function ActiveClassroomUI({
       try {
         await setScreenSharePermission({
           roomName,
+          expectedActivationId: activationId,
           participantIdentity: pendingRequest.participantId,
           allow: true,
         });
@@ -740,6 +754,7 @@ export function ActiveClassroomUI({
       }
       void setScreenSharePermission({
         roomName,
+        expectedActivationId: activationId,
         participantIdentity: participant.identity,
         allow: false,
       }).catch((error) => {
@@ -751,7 +766,7 @@ export function ActiveClassroomUI({
     return () => {
       room.off(RoomEvent.TrackUnpublished, handleTrackUnpublished);
     };
-  }, [amIAuthority, room, roomName, setScreenSharePermission]);
+  }, [activationId, amIAuthority, room, roomName, setScreenSharePermission]);
 
   const forceLowerHand = async (participantId: string) => {
     const encoder = new TextEncoder();
@@ -1022,7 +1037,10 @@ export function ActiveClassroomUI({
 
   const handleLeaveClick = async () => {
     try {
-      await notifyRoomAdministratorLeft({ roomName });
+      await notifyRoomAdministratorLeft({
+        roomName,
+        expectedActivationId: activationId,
+      });
     } catch (error) {
       console.error("Failed to notify room administrator departure:", error);
     } finally {
@@ -1038,7 +1056,10 @@ export function ActiveClassroomUI({
     if (isConfirmingExtension) return;
     setIsConfirmingExtension(true);
     try {
-      await confirmLiveExtension({ roomName });
+      await confirmLiveExtension({
+        roomName,
+        expectedActivationId: activationId,
+      });
       toast.success(t("classroom.extensionConfirmed"));
     } catch (error) {
       console.error("Failed to extend class:", error);
@@ -1055,6 +1076,7 @@ export function ActiveClassroomUI({
       // Store the result of the mutation
       const result = await toggleRecording({
         roomName,
+        expectedActivationId: activationId,
         start,
       });
 
@@ -1065,7 +1087,7 @@ export function ActiveClassroomUI({
       }
 
       if (start) {
-        toast.success(t("classroom.recordingStarted"));
+        toast.info(t("classroom.recordingRequested"));
       } else {
         setIsStoppingRecording(true);
         toast.info(t("classroom.recordingStopping"));

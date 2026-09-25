@@ -3,6 +3,48 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
+import type { Id } from "./_generated/dataModel";
+import { getLiveActivationId } from "./model/liveActivation";
+
+// These report/leadership tests simulate the external cleanup boundary; SDK failures
+// and the real scheduled executor are exercised in liveSessionReopening.audit.test.ts.
+async function closeTestSession(
+  t: ReturnType<typeof convexTest<typeof schema.tables>>,
+  args: { roomName: string; endedAt: number; endedBy?: Id<"users"> },
+) {
+  const schedule = await t.run(async (ctx) => {
+    const row = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
+      .unique();
+    if (!row || row.status === "completed") return null;
+    await ctx.db.patch("classSchedule", row._id, {
+      status: "active",
+      isLive: true,
+      ...(args.endedBy
+        ? {
+            sessionLeaderId: args.endedBy,
+            sessionClosureStatus: "completed" as const,
+          }
+        : {}),
+    });
+    return row;
+  });
+  if (!schedule) return null;
+  const expectedActivationId = getLiveActivationId(schedule);
+  const claimId = `test:${expectedActivationId}`;
+  await t.mutation(internal.schedule.claimLiveSessionEnd, {
+    ...args,
+    expectedActivationId,
+    claimId,
+  });
+  await t.mutation(internal.schedule.completeLiveSessionEnd, {
+    roomName: args.roomName,
+    expectedActivationId,
+    claimId,
+  });
+  return null;
+}
 import {
   getLiveSessionHardEnd,
   STUDENT_ONLY_GRACE_MS,
@@ -353,6 +395,212 @@ test("starting a class assigns one persistent session leader", async () => {
   ).rejects.toThrow("assigned teacher or an authorized administrator");
 });
 
+test("starting a class is rejected before the one-hour window", async () => {
+  const { t, data } = await setupLeadershipTest();
+  await t.run((ctx) =>
+    ctx.db.patch(data.teacherScheduleId, {
+      scheduledStart: NOW + 60 * 60_000 + 1,
+      scheduledEnd: NOW + 2 * 60 * 60_000,
+    }),
+  );
+
+  await expect(
+    t
+      .withIdentity({ subject: "leader-teacher" })
+      .mutation(api.schedule.markLive, {
+        roomName: "teacher-led-room",
+        isLive: true,
+      }),
+  ).rejects.toThrow("SESSION_START_NOT_AVAILABLE");
+});
+
+test("reopening preserves the occurrence, report, attendance, and whiteboard", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "teacher-led-room",
+    lessonIds: [data.lessonId],
+    notes: "Initial report",
+    attendance: buildAttendance(data),
+  });
+  const whiteboardId = await t.run((ctx) =>
+    ctx.db.insert("whiteboardSessions", {
+      roomName: "teacher-led-room",
+      elements: [{ id: "shape-1" }],
+      updatedAt: NOW,
+    }),
+  );
+  await closeTestSession(t, {
+    roomName: "teacher-led-room",
+    endedAt: NOW + 1_000,
+    endedBy: data.teacherId,
+  });
+
+  vi.setSystemTime(NOW + 2_000);
+  await teacher.mutation(api.schedule.reopenLiveSession, {
+    roomName: "teacher-led-room",
+  });
+
+  const state = await t.run(async (ctx) => ({
+    schedule: await ctx.db.get(data.teacherScheduleId),
+    report: await ctx.db
+      .query("classSessionReports")
+      .withIndex("by_schedule", (q) =>
+        q.eq("scheduleId", data.teacherScheduleId),
+      )
+      .unique(),
+    attendance: await ctx.db
+      .query("studentAttendanceRecords")
+      .withIndex("by_schedule", (q) =>
+        q.eq("scheduleId", data.teacherScheduleId),
+      )
+      .collect(),
+    whiteboard: await ctx.db.get(whiteboardId),
+    events: await ctx.db
+      .query("classSessionLeadershipEvents")
+      .withIndex("by_schedule", (q) =>
+        q.eq("scheduleId", data.teacherScheduleId),
+      )
+      .collect(),
+  }));
+
+  expect(state.schedule).toMatchObject({
+    status: "active",
+    isLive: true,
+    sessionStartedAt: NOW,
+    sessionReopenedBy: data.teacherId,
+    sessionReopenedAt: NOW + 2_000,
+    sessionClosureStatus: "pending",
+  });
+  expect(state.schedule?.sessionClosedBy).toBeUndefined();
+  expect(state.report).toMatchObject({ notes: "Initial report" });
+  expect(state.attendance).toHaveLength(4);
+  expect(state.whiteboard?.elements).toEqual([{ id: "shape-1" }]);
+  expect(state.events.map((event) => event.eventType)).toContain("reopened");
+});
+
+test("reopening is rejected after the recovery deadline", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  await closeTestSession(t, {
+    roomName: "teacher-led-room",
+    endedAt: NOW + 1_000,
+  });
+  const schedule = await t.run((ctx) => ctx.db.get(data.teacherScheduleId));
+  expect(schedule?.sessionReopenUntil).toBe(NOW + 70 * 60_000);
+
+  vi.setSystemTime(NOW + 70 * 60_000);
+  await expect(
+    teacher.mutation(api.schedule.reopenLiveSession, {
+      roomName: "teacher-led-room",
+    }),
+  ).rejects.toThrow("SESSION_REOPEN_NOT_AVAILABLE");
+});
+
+test("reopening preserves an active extension and uses only the remaining recovery time", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  const extensionEndsAt = NOW + 70 * 60_000;
+  await t.run((ctx) =>
+    ctx.db.patch(data.teacherScheduleId, {
+      liveExtensionEndsAt: extensionEndsAt,
+    }),
+  );
+  await closeTestSession(t, {
+    roomName: "teacher-led-room",
+    endedAt: NOW + 65 * 60_000,
+  });
+
+  vi.setSystemTime(NOW + 66 * 60_000);
+  await teacher.mutation(api.schedule.reopenLiveSession, {
+    roomName: "teacher-led-room",
+  });
+  expect(
+    (await t.run((ctx) => ctx.db.get(data.teacherScheduleId)))
+      ?.liveExtensionEndsAt,
+  ).toBe(extensionEndsAt);
+
+  await closeTestSession(t, {
+    roomName: "teacher-led-room",
+    endedAt: NOW + 71 * 60_000,
+  });
+  vi.setSystemTime(NOW + 72 * 60_000);
+  await teacher.mutation(api.schedule.reopenLiveSession, {
+    roomName: "teacher-led-room",
+  });
+  const reopened = await t.run((ctx) => ctx.db.get(data.teacherScheduleId));
+  const lifecycle = await t.query(internal.schedule.getLiveLifecycleState, {
+    roomName: "teacher-led-room",
+  });
+  const pendingReconciliations = await t.run(async (ctx) =>
+    (await ctx.db.system.query("_scheduled_functions").collect())
+      .filter(
+        (job) =>
+          job.name === "livekit:reconcileLiveSession" &&
+          job.state.kind === "pending",
+      )
+      .map((job) => job.scheduledTime),
+  );
+  expect(reopened?.sessionReopenUntil).toBe(NOW + 80 * 60_000);
+  expect(reopened?.liveExtensionEndsAt).toBe(extensionEndsAt);
+  expect(lifecycle?.liveExtensionEndsAt).toBe(NOW + 80 * 60_000);
+  expect(pendingReconciliations).toContain(NOW + 80 * 60_000);
+
+  await closeTestSession(t, {
+    roomName: "teacher-led-room",
+    endedAt: NOW + 75 * 60_000,
+  });
+  expect(
+    (await t.run((ctx) => ctx.db.get(data.teacherScheduleId)))
+      ?.sessionReopenUntil,
+  ).toBe(NOW + 80 * 60_000);
+});
+
+test("whiteboards are removed only after the recovery window expires", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  const whiteboardId = await t.run((ctx) =>
+    ctx.db.insert("whiteboardSessions", {
+      roomName: "teacher-led-room",
+      elements: [{ id: "kept-until-deadline" }],
+      updatedAt: NOW,
+    }),
+  );
+  await closeTestSession(t, {
+    roomName: "teacher-led-room",
+    endedAt: NOW + 1_000,
+  });
+  const closedSchedule = await t.run((ctx) =>
+    ctx.db.get(data.teacherScheduleId),
+  );
+  const reopenUntil = closedSchedule?.sessionReopenUntil;
+  expect(reopenUntil).toBeDefined();
+  expect(await t.run((ctx) => ctx.db.get(whiteboardId))).not.toBeNull();
+
+  vi.setSystemTime(reopenUntil!);
+  await t.mutation(internal.schedule.cleanupExpiredWhiteboardSession, {
+    roomName: "teacher-led-room",
+    expectedReopenUntil: reopenUntil!,
+  });
+  expect(await t.run((ctx) => ctx.db.get(whiteboardId))).toBeNull();
+});
+
 test("starting a class atomically schedules its end and hard-limit checks", async () => {
   const { t } = await setupLeadershipTest();
   const teacher = t.withIdentity({ subject: "leader-teacher" });
@@ -392,11 +640,15 @@ test("a lifecycle deadline is scheduled once when duplicate reconcilers agree", 
     roomName: "teacher-led-room",
     isLive: true,
   });
+  const activationId = (await t.query(internal.schedule.getLiveLifecycleState, {
+    roomName: "teacher-led-room",
+  }))!.activationId;
 
   const graceEndsAt = NOW + STUDENT_ONLY_GRACE_MS;
   expect(
     await t.mutation(internal.schedule.updateLiveLifecycleState, {
       roomName: "teacher-led-room",
+      expectedActivationId: activationId,
       reconciledAt: NOW,
       expectedLeaderAbsentSince: null,
       expectedExtensionEndsAt: null,
@@ -410,6 +662,7 @@ test("a lifecycle deadline is scheduled once when duplicate reconcilers agree", 
   expect(
     await t.mutation(internal.schedule.updateLiveLifecycleState, {
       roomName: "teacher-led-room",
+      expectedActivationId: activationId,
       reconciledAt: NOW + 1_000,
       expectedLeaderAbsentSince: NOW,
       expectedExtensionEndsAt: null,
@@ -446,6 +699,7 @@ test("the backstop includes live sessions before their scheduled end", async () 
   ).toContainEqual({
     roomName: "teacher-led-room",
     scheduledEnd: NOW + 60 * 60_000,
+    activationId: expect.any(String),
   });
 });
 
@@ -500,11 +754,11 @@ test("ending a live session twice preserves the first closure", async () => {
     }),
   );
 
-  await t.mutation(internal.schedule.endLiveSession, {
+  await closeTestSession(t, {
     roomName: "teacher-led-room",
     endedAt: NOW + 30_000,
   });
-  await t.mutation(internal.schedule.endLiveSession, {
+  await closeTestSession(t, {
     roomName: "teacher-led-room",
     endedAt: NOW + 60_000,
   });
@@ -522,6 +776,114 @@ test("ending a live session twice preserves the first closure", async () => {
   expect(state.connection).toMatchObject({
     leftAt: NOW + 30_000,
     durationSeconds: 30,
+  });
+});
+
+test("only one closer can claim an activation", async () => {
+  const { t } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  const activationId = (await t.query(internal.schedule.getLiveLifecycleState, {
+    roomName: "teacher-led-room",
+  }))!.activationId;
+
+  expect(
+    await t.mutation(internal.schedule.claimLiveSessionEnd, {
+      roomName: "teacher-led-room",
+      expectedActivationId: activationId,
+      claimId: "first-claim",
+      endedAt: NOW + 30_000,
+    }),
+  ).toBe(true);
+  expect(
+    await t.mutation(internal.schedule.claimLiveSessionEnd, {
+      roomName: "teacher-led-room",
+      expectedActivationId: activationId,
+      claimId: "second-claim",
+      endedAt: NOW + 31_000,
+    }),
+  ).toBe(false);
+  await expect(
+    teacher.mutation(api.schedule.reopenLiveSession, {
+      roomName: "teacher-led-room",
+    }),
+  ).rejects.toThrow("SESSION_REOPEN_NOT_AVAILABLE");
+  expect(
+    await t.mutation(internal.schedule.completeLiveSessionEnd, {
+      roomName: "teacher-led-room",
+      expectedActivationId: activationId,
+      claimId: "second-claim",
+    }),
+  ).toBe(false);
+  expect(
+    await t.mutation(internal.schedule.completeLiveSessionEnd, {
+      roomName: "teacher-led-room",
+      expectedActivationId: activationId,
+      claimId: "first-claim",
+    }),
+  ).toBe(true);
+});
+
+test("a stale closer cannot end a reopened activation", async () => {
+  const { t } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  const firstActivationId = (await t.query(
+    internal.schedule.getLiveLifecycleState,
+    {
+      roomName: "teacher-led-room",
+    },
+  ))!.activationId;
+  await closeTestSession(t, {
+    roomName: "teacher-led-room",
+    endedAt: NOW + 30_000,
+  });
+
+  vi.setSystemTime(NOW + 31_000);
+  await teacher.mutation(api.schedule.reopenLiveSession, {
+    roomName: "teacher-led-room",
+  });
+  const reopened = await t.query(internal.schedule.getLiveLifecycleState, {
+    roomName: "teacher-led-room",
+  });
+  expect(reopened?.activationId).not.toBe(firstActivationId);
+
+  expect(
+    await t.mutation(internal.schedule.claimLiveSessionEnd, {
+      roomName: "teacher-led-room",
+      expectedActivationId: firstActivationId,
+      claimId: "stale-claim",
+      endedAt: NOW + 32_000,
+    }),
+  ).toBe(false);
+  expect(
+    await t.mutation(internal.schedule.updateLiveLifecycleState, {
+      roomName: "teacher-led-room",
+      expectedActivationId: firstActivationId,
+      reconciledAt: NOW + 32_000,
+      expectedLeaderAbsentSince: null,
+      expectedExtensionEndsAt: null,
+      expectedDecisionEndsAt: null,
+      leaderAbsentSince: NOW + 32_000,
+      extensionEndsAt: null,
+      decisionEndsAt: null,
+      nextCheckAt: NOW + 33_000,
+    }),
+  ).toBe(false);
+  expect(
+    await t.query(internal.schedule.getLiveLifecycleState, {
+      roomName: "teacher-led-room",
+    }),
+  ).toMatchObject({
+    status: "active",
+    isLive: true,
+    activationId: reopened?.activationId,
   });
 });
 
@@ -1717,12 +2079,12 @@ test("dashboards count final attendance states and keep pending verification sep
     lessonIds: [data.lessonId],
     attendance: buildAttendance(data),
   });
-  await t.mutation(internal.schedule.endLiveSession, {
+  await closeTestSession(t, {
     roomName: "end-gate-room",
     endedAt: NOW + 60_000,
     endedBy: data.teacherId,
   });
-  await t.mutation(internal.schedule.endLiveSession, {
+  await closeTestSession(t, {
     roomName: "tutor-room",
     endedAt: NOW + 60_000,
   });
@@ -1785,7 +2147,7 @@ test("attendance history identifies each class and lets principals correct it", 
       "present",
     ]),
   });
-  await t.mutation(internal.schedule.endLiveSession, {
+  await closeTestSession(t, {
     roomName: "end-gate-room",
     endedAt: NOW + 60_000,
     endedBy: data.teacherId,
@@ -1906,7 +2268,7 @@ test("authorized corrections preserve confirmation and record the latest editor"
     lessonIds: [data.lessonId],
     attendance: buildAttendance(data),
   });
-  await t.mutation(internal.schedule.endLiveSession, {
+  await closeTestSession(t, {
     roomName: "end-gate-room",
     endedAt: NOW + 60_000,
     endedBy: data.teacherId,
@@ -1981,7 +2343,7 @@ test("authorized leaders can recover a pending closeout after the room ended", a
       roomName: recoveryCase.roomName,
       isLive: true,
     });
-    await t.mutation(internal.schedule.endLiveSession, {
+    await closeTestSession(t, {
       roomName: recoveryCase.roomName,
       endedAt: NOW + 1_000,
     });
@@ -2059,7 +2421,7 @@ test("ending is blocked before closeout and finalization records the responsible
       sessionDate: "2026-08-26",
     }),
   );
-  await t.mutation(internal.schedule.endLiveSession, {
+  await closeTestSession(t, {
     roomName: "teacher-led-room",
     endedAt: NOW + 60_000,
     endedBy: data.teacherId,

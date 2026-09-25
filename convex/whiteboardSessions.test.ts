@@ -113,3 +113,29 @@ test("reflects a leadership transfer in the recording context", async () => {
     leaderParticipantIdentity: "recording-leader-two",
   });
 });
+
+test("interactive whiteboard access is limited to an active live session", async () => {
+  const { t, scheduleId } = await setupRecordingContext();
+  const teacher = t.withIdentity({ subject: "recording-leader-one" });
+
+  await expect(
+    teacher.query(api.whiteboardSessions.getScene, {
+      roomName: "recording-room",
+    }),
+  ).resolves.toMatchObject({ roomName: "recording-room" });
+
+  await t.run((ctx) =>
+    ctx.db.patch(scheduleId, { status: "completed", isLive: false }),
+  );
+  await expect(
+    teacher.query(api.whiteboardSessions.getScene, {
+      roomName: "recording-room",
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    teacher.mutation(api.whiteboardSessions.upsertScene, {
+      roomName: "recording-room",
+      elements: [],
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+});

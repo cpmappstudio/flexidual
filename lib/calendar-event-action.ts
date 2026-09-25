@@ -1,7 +1,9 @@
 import type { ClassSessionType } from "./class-session";
 import { isExternalClassSession } from "./class-session";
-
-const STUDENT_JOIN_WINDOW_MS = 5 * 60 * 1000;
+import {
+  canReopenLiveSession,
+  canStartLiveSession,
+} from "./live-session-policy";
 
 type CalendarEventActionInput = {
   isStudent: boolean;
@@ -13,13 +15,17 @@ type CalendarEventActionInput = {
   hasRecording?: boolean;
   roomName?: string;
   sessionType?: ClassSessionType;
+  canLeadSession?: boolean;
+  sessionStartedAt?: number;
+  sessionReopenUntil?: number;
 };
 
 export type CalendarEventPrimaryAction =
   | "watch-recording"
   | "go-to-classroom"
   | "enter-live"
-  | "prepare-room"
+  | "start-live"
+  | "reopen-live"
   | "open-external"
   | null;
 
@@ -33,18 +39,46 @@ export function getCalendarEventPrimaryAction({
   hasRecording,
   roomName,
   sessionType,
+  canLeadSession = false,
+  sessionStartedAt,
+  sessionReopenUntil,
 }: CalendarEventActionInput): CalendarEventPrimaryAction {
   if (status === "cancelled") return null;
   if (isExternalClassSession(sessionType)) return "open-external";
   if (!roomName) return null;
   if (isLive) return isStudent ? "go-to-classroom" : "enter-live";
-  if (end <= now) return hasRecording ? "watch-recording" : null;
-
-  if (isStudent) {
-    const canEnter =
-      isLive || status === "active" || now >= start - STUDENT_JOIN_WINDOW_MS;
-    return canEnter ? "go-to-classroom" : null;
+  if (
+    !isStudent &&
+    canLeadSession &&
+    canReopenLiveSession({
+      now,
+      scheduledStart: start,
+      scheduledEnd: end,
+      status,
+      isLive,
+      sessionStartedAt,
+      sessionReopenUntil,
+    })
+  ) {
+    return "reopen-live";
   }
-
-  return "prepare-room";
+  if (end <= now || status === "completed") {
+    return hasRecording ? "watch-recording" : null;
+  }
+  if (
+    !isStudent &&
+    canLeadSession &&
+    canStartLiveSession({
+      now,
+      scheduledStart: start,
+      scheduledEnd: end,
+      status,
+      isLive,
+      sessionStartedAt,
+      sessionReopenUntil,
+    })
+  ) {
+    return "start-live";
+  }
+  return null;
 }
