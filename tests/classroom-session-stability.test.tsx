@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,6 +41,10 @@ const testState = vi.hoisted(() => {
   };
   const remoteAdministrativeParticipant = {
     ...administrativeParticipant,
+    isLocal: false,
+  };
+  const remoteStudentParticipant = {
+    ...studentParticipant,
     isLocal: false,
   };
   const leadership = {
@@ -85,6 +90,7 @@ const testState = vi.hoisted(() => {
     localParticipant: administrativeParticipant,
     participants: [administrativeParticipant],
     remoteAdministrativeParticipant,
+    remoteStudentParticipant,
     studentParticipant,
     room: {
       isRecording: false,
@@ -275,9 +281,31 @@ vi.mock("@/components/classroom/classroom-overlays", () => ({
 vi.mock("@/components/classroom/classroom-participant-tile", () => ({
   ClassroomParticipantTile: ({
     participant,
+    isPinned,
+    onPinnedChange,
+    pinLabel,
+    unpinLabel,
   }: {
     participant: { name?: string };
-  }) => createElement("div", null, participant.name),
+    isPinned?: boolean;
+    onPinnedChange?: (isPinned: boolean) => void;
+    pinLabel?: string;
+    unpinLabel?: string;
+  }) =>
+    createElement(
+      "div",
+      null,
+      participant.name,
+      onPinnedChange &&
+        createElement(
+          "button",
+          {
+            "aria-label": isPinned ? unpinLabel : pinLabel,
+            onClick: () => onPinnedChange(!isPinned),
+          },
+          isPinned ? "unpin" : "pin",
+        ),
+    ),
 }));
 vi.mock("@/components/classroom/device-toggle-button", () => ({
   DeviceToggleButton: () => null,
@@ -480,6 +508,27 @@ describe("classroom session stability", () => {
     expect(
       testState.localParticipant.setMicrophoneEnabled,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets staff pin a student to the main stage and unpin them", () => {
+    testState.participants = [
+      testState.administrativeParticipant,
+      testState.remoteStudentParticipant,
+    ];
+    renderActiveClassroom();
+
+    const stage = screen.getByRole("main");
+    expect(within(stage).getByText("Administrative leader")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "classroom.pinParticipant" }),
+    );
+    expect(within(stage).getByText("Student")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "classroom.unpinParticipant" }),
+    );
+    expect(within(stage).getByText("Administrative leader")).toBeTruthy();
   });
 
   it("keeps the administrative leader visible to students during the same transition", () => {

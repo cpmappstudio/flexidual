@@ -470,6 +470,8 @@
     "youAreLive": "Você está ao Vivo!",
     "cameraOff": "Sua câmera está desligada",
     "cameraOffLabel": "Câmera Desligada",
+    "pinParticipant": "Fixar {name} na visualização principal",
+    "unpinParticipant": "Desafixar {name} da visualização principal",
     "teacher": "Professor",
     "audioOnly": "Somente Áudio",
     "micOff": "Microfone Desligado",
