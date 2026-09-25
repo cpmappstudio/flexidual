@@ -1,7 +1,7 @@
 "use client";
 
 import { VideoTrack, useIsSpeaking } from "@livekit/components-react";
-import { Hand, MicOff } from "lucide-react";
+import { Hand, MicOff, Pin, PinOff } from "lucide-react";
 import { Participant, Track, TrackPublication } from "livekit-client";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,10 @@ interface ClassroomParticipantTileProps {
   audioMuted?: boolean;
   videoContent?: ReactNode;
   onVideoReady?: () => void;
+  isPinned?: boolean;
+  onPinnedChange?: (isPinned: boolean) => void;
+  pinLabel?: string;
+  unpinLabel?: string;
 }
 
 export function ClassroomParticipantTile({
@@ -37,6 +41,10 @@ export function ClassroomParticipantTile({
   audioMuted = false,
   videoContent,
   onVideoReady,
+  isPinned = false,
+  onPinnedChange,
+  pinLabel = "Pin participant",
+  unpinLabel = "Unpin participant",
 }: ClassroomParticipantTileProps) {
   const cameraTrack = participant.getTrackPublication(Track.Source.Camera);
   const isSpeaking = useIsSpeaking(participant);
@@ -65,9 +73,10 @@ export function ClassroomParticipantTile({
   return (
     <div
       className={cn(
-        "relative isolate overflow-hidden bg-muted transition-all duration-300",
+        "group relative isolate overflow-hidden bg-muted transition-all duration-300",
         variant === "grid" &&
           "rounded-none border border-primary/20 bg-card shadow-sm hover:border-primary/35 hover:shadow-md",
+        isPinned && variant === "grid" && "border-primary/70",
         raisedHand &&
           variant === "grid" &&
           "border-warning/70 bg-warning/5 shadow-[0_0_0_1px] shadow-warning/20",
@@ -153,22 +162,47 @@ export function ClassroomParticipantTile({
         </div>
       ) : null}
 
-      {raisedHand &&
-        (onLowerHand ? (
-          <button
-            type="button"
-            onClick={onLowerHand}
-            aria-label={lowerHandLabel}
-            title={lowerHandLabel}
-            className="absolute right-1.5 top-1.5 rounded-full border border-inverse-foreground/10 bg-inverse/85 p-1 text-inverse-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-inverse"
-          >
-            <Hand className="size-3.5" />
-          </button>
-        ) : (
-          <div className="pointer-events-none absolute right-1.5 top-1.5 rounded-full border border-inverse-foreground/10 bg-inverse/85 p-1 text-inverse-foreground shadow-sm backdrop-blur-sm">
-            <Hand className="size-3.5" />
-          </div>
-        ))}
+      {(onPinnedChange || raisedHand) && (
+        <div className="absolute right-1.5 top-1.5 z-40 flex items-center gap-1">
+          {onPinnedChange && (
+            <button
+              type="button"
+              onClick={() => onPinnedChange(!isPinned)}
+              aria-label={isPinned ? unpinLabel : pinLabel}
+              aria-pressed={isPinned}
+              title={isPinned ? unpinLabel : pinLabel}
+              className={cn(
+                "rounded-full border p-1 shadow-sm backdrop-blur-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                isPinned
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-inverse-foreground/10 bg-inverse/85 text-inverse-foreground hover:bg-inverse md:pointer-events-none md:opacity-0 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100 md:group-hover:pointer-events-auto md:group-hover:opacity-100",
+              )}
+            >
+              {isPinned ? (
+                <PinOff className="size-3.5" />
+              ) : (
+                <Pin className="size-3.5" />
+              )}
+            </button>
+          )}
+          {raisedHand &&
+            (onLowerHand ? (
+              <button
+                type="button"
+                onClick={onLowerHand}
+                aria-label={lowerHandLabel}
+                title={lowerHandLabel}
+                className="rounded-full border border-inverse-foreground/10 bg-inverse/85 p-1 text-inverse-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-inverse"
+              >
+                <Hand className="size-3.5" />
+              </button>
+            ) : (
+              <div className="pointer-events-none rounded-full border border-inverse-foreground/10 bg-inverse/85 p-1 text-inverse-foreground shadow-sm backdrop-blur-sm">
+                <Hand className="size-3.5" />
+              </div>
+            ))}
+        </div>
+      )}
 
       {audioMuted && (
         <div

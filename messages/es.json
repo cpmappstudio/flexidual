@@ -470,6 +470,8 @@
     "youAreLive": "¡Estás en Vivo!",
     "cameraOff": "Tu cámara está apagada",
     "cameraOffLabel": "Cámara Apagada",
+    "pinParticipant": "Fijar a {name} en la vista principal",
+    "unpinParticipant": "Desfijar a {name} de la vista principal",
     "teacher": "Profesor",
     "audioOnly": "Solo Audio",
     "micOff": "Micrófono Apagado",

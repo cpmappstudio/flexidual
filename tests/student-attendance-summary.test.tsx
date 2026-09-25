@@ -220,6 +220,18 @@ test("content stays supplementary while inline editing remains permission-bound"
   ).toBeTruthy();
 });
 
+test("moves course navigation to the course title", () => {
+  render(<StudentAttendanceSummary {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: /absent/i }));
+
+  const courseLink = screen.getByRole("link", { name: "Geography 9" });
+  expect(courseLink.getAttribute("href")).toBe(
+    "/leadership-campus/classes/class-1",
+  );
+  expect(courseLink.className).toContain("group/course-link");
+  expect(screen.queryByText("student.attendanceHistory.viewCourse")).toBeNull();
+});
+
 test("pending verification identifies the exact class and session", () => {
   render(
     <StudentAttendanceSummary

@@ -7,6 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import { format } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
 import {
+  ArrowUpRight,
   BookOpenCheck,
   CalendarDays,
   ChevronRight,
@@ -160,6 +161,34 @@ function SessionDate({
   );
 }
 
+function CourseTitleLink({
+  classId,
+  className,
+  orgSlug,
+}: {
+  classId: Id<"classes">;
+  className: string;
+  orgSlug: string;
+}) {
+  const t = useTranslations("classroom");
+
+  return (
+    <Link
+      href={`/${orgSlug}/classes/${classId}`}
+      title={t("viewCourseDetails")}
+      className="group/course-link inline-flex max-w-full cursor-pointer items-start gap-1.5 rounded-sm transition-colors hover:text-primary focus-visible:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+    >
+      <span className="min-w-0 decoration-primary decoration-2 underline-offset-4 group-hover/course-link:underline group-focus-visible/course-link:underline">
+        {className}
+      </span>
+      <ArrowUpRight
+        className="mt-0.5 size-4 shrink-0 -translate-x-1 opacity-0 transition-all group-hover/course-link:translate-x-0 group-hover/course-link:opacity-100 group-focus-visible/course-link:translate-x-0 group-focus-visible/course-link:opacity-100"
+        aria-hidden="true"
+      />
+    </Link>
+  );
+}
+
 function AttendanceHistoryRow({
   item,
   isEditing,
@@ -185,6 +214,7 @@ function AttendanceHistoryRow({
     lessonPreview &&
     lessonPreview.title.trim().toLocaleLowerCase() !==
       item.sessionTitle?.trim().toLocaleLowerCase();
+  const showSupplementaryContent = showLessonPreview || recordingCount > 0;
 
   return (
     <article className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border bg-card p-4 shadow-sm">
@@ -196,7 +226,11 @@ function AttendanceHistoryRow({
         />
         <div className="min-w-0">
           <h3 className="font-semibold leading-snug text-foreground">
-            {item.className}
+            <CourseTitleLink
+              classId={item.classId}
+              className={item.className}
+              orgSlug={orgSlug}
+            />
           </h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {item.sessionTitle || t("sessionFallback")}
@@ -255,49 +289,45 @@ function AttendanceHistoryRow({
         </div>
       </div>
 
-      <div className="mt-4 flex min-w-0 max-w-full flex-wrap items-center gap-2 border-t pt-3">
-        {showLessonPreview && (
-          <div className="mr-2 flex min-w-0 items-center gap-2 text-sm">
-            <BookOpenCheck
-              className="size-4 shrink-0 text-primary"
-              aria-hidden="true"
-            />
-            <span className="truncate font-medium">
-              {lessonPreview.order}. {lessonPreview.title}
-            </span>
-            {hasMoreLessons && (
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {t("moreLessons")}
-              </span>
-            )}
-          </div>
-        )}
-        {recordingCount > 0 && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={isLoadingRecording}
-            onClick={onWatchRecording}
-          >
-            {isLoadingRecording ? (
-              <LoaderCircle
-                className="size-4 animate-spin"
+      {showSupplementaryContent && (
+        <div className="mt-4 flex min-w-0 max-w-full flex-wrap items-center gap-2 border-t pt-3">
+          {showLessonPreview && (
+            <div className="mr-2 flex min-w-0 items-center gap-2 text-sm">
+              <BookOpenCheck
+                className="size-4 shrink-0 text-primary"
                 aria-hidden="true"
               />
-            ) : (
-              <PlayCircle className="size-4" aria-hidden="true" />
-            )}
-            {sessionT("watchRecording")}
-          </Button>
-        )}
-        <Button asChild size="sm" variant="ghost" className="ml-auto">
-          <Link href={`/${orgSlug}/classes/${item.classId}`}>
-            {t("viewCourse")}
-            <ChevronRight className="size-4" aria-hidden="true" />
-          </Link>
-        </Button>
-      </div>
+              <span className="truncate font-medium">
+                {lessonPreview.order}. {lessonPreview.title}
+              </span>
+              {hasMoreLessons && (
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {t("moreLessons")}
+                </span>
+              )}
+            </div>
+          )}
+          {recordingCount > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isLoadingRecording}
+              onClick={onWatchRecording}
+            >
+              {isLoadingRecording ? (
+                <LoaderCircle
+                  className="size-4 animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <PlayCircle className="size-4" aria-hidden="true" />
+              )}
+              {sessionT("watchRecording")}
+            </Button>
+          )}
+        </div>
+      )}
     </article>
   );
 }
@@ -323,7 +353,11 @@ function PendingAttendanceRow({
         />
         <div className="min-w-0">
           <h3 className="font-semibold leading-snug text-foreground">
-            {item.className}
+            <CourseTitleLink
+              classId={item.classId}
+              className={item.className}
+              orgSlug={orgSlug}
+            />
           </h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {item.sessionTitle || t("sessionFallback")}
@@ -356,14 +390,6 @@ function PendingAttendanceRow({
             {t("pendingDescription")}
           </p>
         </div>
-      </div>
-      <div className="mt-4 flex justify-end border-t pt-3">
-        <Button asChild size="sm" variant="ghost">
-          <Link href={`/${orgSlug}/classes/${item.classId}`}>
-            {t("viewCourse")}
-            <ChevronRight className="size-4" aria-hidden="true" />
-          </Link>
-        </Button>
       </div>
     </article>
   );

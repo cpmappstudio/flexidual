@@ -299,6 +299,7 @@ export function ActiveClassroomUI({
   const [isClassroomPanelOpen, setIsClassroomPanelOpen] = useState(true);
   const [classroomPanelTab, setClassroomPanelTab] =
     useState<ClassroomPanelTab>("participants");
+  const [pinnedStudentIdentity, setPinnedStudentIdentity] = useState<string>();
   const leadershipChangeInFlightRef = useRef(false);
   const handledTransferRequestAtRef = useRef<number | null>(null);
   const displayedTransferRequestAtRef = useRef<number | null>(null);
@@ -535,6 +536,10 @@ export function ActiveClassroomUI({
       uiPreviewEnabled,
     ],
   );
+  const pinnedStudent = displayedStudents.find(
+    (participant) => participant.identity === pinnedStudentIdentity,
+  );
+  const stageParticipant = pinnedStudent ?? teacher;
   const {
     screenTracks,
     activeScreenTrack,
@@ -542,7 +547,28 @@ export function ActiveClassroomUI({
     isTeacherVideoOn,
     isTeacherAudioOn,
   } = useClassroomMediaTracks(teacher);
+  const pinnedStudentCamera = pinnedStudent?.getTrackPublication(
+    Track.Source.Camera,
+  );
+  const pinnedStudentMicrophone = pinnedStudent?.getTrackPublication(
+    Track.Source.Microphone,
+  );
+  const isStageVideoOn = pinnedStudent
+    ? Boolean(pinnedStudentCamera?.isSubscribed && !pinnedStudentCamera.isMuted)
+    : isTeacherVideoOn;
+  const isStageAudioOn = pinnedStudent
+    ? Boolean(
+        pinnedStudentMicrophone?.isSubscribed &&
+          !pinnedStudentMicrophone.isMuted,
+      )
+    : isTeacherAudioOn;
   const isSharingLocally = localParticipant?.isScreenShareEnabled;
+
+  useEffect(() => {
+    if (pinnedStudentIdentity && !pinnedStudent) {
+      setPinnedStudentIdentity(undefined);
+    }
+  }, [pinnedStudent, pinnedStudentIdentity]);
 
   useEffect(() => {
     const decoder = new TextDecoder();
@@ -1291,8 +1317,8 @@ export function ActiveClassroomUI({
           (!isWhiteboardActive
             ? activeScreenTrack?.publication.track
             : undefined) ??
-          (isTeacherVideoOn
-            ? teacher?.getTrackPublication(Track.Source.Camera)?.track
+          (isStageVideoOn
+            ? stageParticipant?.getTrackPublication(Track.Source.Camera)?.track
             : undefined)
         }
       />
@@ -1920,12 +1946,14 @@ export function ActiveClassroomUI({
         <ClassroomScene
           presenter={
             <ClassroomPresenterContent
-              participant={teacher}
-              isVideoOn={isTeacherVideoOn}
-              isAudioOn={isTeacherAudioOn}
-              isLocalLeader={isLocalSessionLeader}
+              participant={stageParticipant}
+              isVideoOn={isStageVideoOn}
+              isAudioOn={isStageAudioOn}
+              isLocalLeader={isLocalSessionLeader && !pinnedStudent}
               className={className || t("classroom.class")}
-              roleBadge={t("classroom.teacher")}
+              roleBadge={
+                pinnedStudent ? t("classroom.student") : t("classroom.teacher")
+              }
               youLabel={t("classroom.youShort")}
               youAreLiveLabel={t("classroom.youAreLive")}
               cameraOffLabel={t("classroom.cameraOffLabel")}
@@ -2329,6 +2357,19 @@ export function ActiveClassroomUI({
             }
             lowerHandLabel={t("classroom.lowerHand")}
             youLabel={t("classroom.youShort")}
+            isPinned={pinnedStudentIdentity === p.identity}
+            onPinnedChange={
+              amIAuthority
+                ? (isPinned) =>
+                    setPinnedStudentIdentity(isPinned ? p.identity : undefined)
+                : undefined
+            }
+            pinLabel={t("classroom.pinParticipant", {
+              name: p.name || p.identity,
+            })}
+            unpinLabel={t("classroom.unpinParticipant", {
+              name: p.name || p.identity,
+            })}
           />
         ))}
       </ClassroomParticipantsPanel>

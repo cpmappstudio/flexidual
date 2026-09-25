@@ -470,6 +470,8 @@
     "youAreLive": "You are Live!",
     "cameraOff": "Your camera is off",
     "cameraOffLabel": "Camera Off",
+    "pinParticipant": "Pin {name} to the main view",
+    "unpinParticipant": "Unpin {name} from the main view",
     "teacher": "Teacher",
     "audioOnly": "Audio Only",
     "micOff": "Mic Off",
