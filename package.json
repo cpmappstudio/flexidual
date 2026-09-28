@@ -19,12 +19,14 @@
     "sync-clerk-role": "tsx scripts/sync-clerk-role.ts"
   },
   "dependencies": {
+    "@base-ui/react": "^1.8.0",
     "@clerk/backend": "^2.17.2",
     "@clerk/localizations": "^3.23.0",
     "@clerk/nextjs": "^6.12.6",
     "@clerk/themes": "^2.4.12",
     "@convex-dev/presence": "0.4.0",
     "@convex-dev/rate-limiter": "^0.3.2",
+    "@convex-dev/workflow": "0.4.8",
     "@date-fns/tz": "^1.4.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",
@@ -72,6 +74,8 @@
     "lucide-react": "^0.540.0",
     "next": "15.2.8",
     "next-intl": "^4.3.5",
+    "node-html-parser": "9.0.4",
+    "posthog-js": "^1.434.12",
     "qrcode.react": "^4.2.0",
     "radix-ui": "^1.4.3",
     "react": "^19.0.0",
@@ -81,6 +85,7 @@
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
+    "tough-cookie": "6.0.2",
     "zod": "^4.2.1"
   },
   "devDependencies": {

@@ -93,6 +93,7 @@ const testState = vi.hoisted(() => {
     remoteStudentParticipant,
     studentParticipant,
     room: {
+      name: "physical-room-activation-1",
       isRecording: false,
       localParticipant: administrativeParticipant,
       disconnect: vi.fn(async () => undefined),
@@ -237,7 +238,11 @@ vi.mock("@/components/classroom/classroom-stage", () => ({
   ClassroomScreenShareContent: () => null,
   ClassroomStage: ({ children }: { children: ReactNode }) =>
     createElement("main", null, children),
-  ClassroomWhiteboardContent: () => null,
+  ClassroomWhiteboardContent: ({ roomName }: { roomName: string }) =>
+    createElement("div", {
+      "data-testid": "classroom-whiteboard",
+      "data-room-name": roomName,
+    }),
 }));
 vi.mock("@/components/classroom/classroom-presenter-content", () => ({
   ClassroomPresenterContent: ({
@@ -548,6 +553,26 @@ describe("classroom session stability", () => {
     });
 
     expect(screen.queryByText("classroom.waitingForTeacher")).toBeNull();
+  });
+
+  it("uses the academic room name for the student whiteboard", () => {
+    renderStudentClassroom();
+    const dataHandler = testState.room.on.mock.calls.find(
+      ([event]) => event === "dataReceived",
+    )?.[1];
+
+    act(() => {
+      dataHandler?.(
+        new TextEncoder().encode(
+          JSON.stringify({ type: "WHITEBOARD_STATE", active: true }),
+        ),
+        testState.remoteAdministrativeParticipant,
+      );
+    });
+
+    expect(
+      screen.getByTestId("classroom-whiteboard").getAttribute("data-room-name"),
+    ).toBe("room-1");
   });
 
   it("treats a confirmed null leadership result as authoritative", () => {

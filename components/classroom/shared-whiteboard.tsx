@@ -109,8 +109,7 @@ export function ClassroomWhiteboardPreview() {
 
 // ---------------------------------------------------------------------------
 // Wire protocol — only ephemeral real-time events (pointer + viewport).
-// Scene elements and file refs are synced via Convex reactive queries, which
-// have no size limit and are immune to WebRTC DataChannel constraints.
+// Scene elements and file refs use Convex, independently of DataChannel limits.
 // ---------------------------------------------------------------------------
 
 type WhiteboardPointerMsg = {
@@ -290,6 +289,16 @@ export function SharedWhiteboard({
   const [isCanvasReady, setIsCanvasReady] = useState(false);
   const suppressRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSceneSaveRef = useRef<(() => void) | null>(null);
+  const lastSceneRevisionRef = useRef<string | null>(null);
+  useEffect(() => {
+    lastSceneRevisionRef.current = null;
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      pendingSceneSaveRef.current?.();
+      pendingSceneSaveRef.current = null;
+    };
+  }, [roomName, isReadonly]);
   // Throttle: stores the timestamp of the last pointer message sent
   const lastPointerSentRef = useRef(0);
   // Viewport sync — tracks last-broadcast viewport to avoid redundant sends
@@ -589,6 +598,7 @@ export function SharedWhiteboard({
       if (isReadonly || suppressRef.current) return;
 
       // Keep currentFilesRef current
+      const filesChanged = currentFilesRef.current !== files;
       currentFilesRef.current = files;
 
       // Upload any new image files; check both sentFileIdsRef and cached fileRefs
@@ -599,19 +609,53 @@ export function SharedWhiteboard({
         }
       }
 
-      // Debounced element sync via Convex — no DataChannel, no size limit
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
-        const els = apiRef.current?.getSceneElements() ?? [];
-        void upsertScene({
-          roomName,
-          expectedLiveRoomName: room.name,
-          elements: [...els],
-        }).catch((error) => {
-          console.error("[Whiteboard] Scene sync failed:", error);
-        });
-        timerRef.current = null;
-      }, 80);
+      // Track ordered element revisions, not appState (selection, zoom, cursors).
+      // Include IDs and nonces: summing versions alone can miss different scenes.
+      const revision = JSON.stringify(
+        elements.map((element) => [
+          element.id,
+          element.version,
+          element.versionNonce,
+          element.isDeleted,
+        ]),
+      );
+      const persistScene = () => {
+        try {
+          const scene: PersistedScene = {
+            elements,
+            files: currentFilesRef.current,
+            fileRefs: fileRefsRef.current,
+          };
+          localStorage.setItem(
+            `${WB_STORAGE_PREFIX}${roomName}`,
+            JSON.stringify(scene),
+          );
+        } catch {
+          /* ignore QuotaExceededError */
+        }
+      };
+      if (revision !== lastSceneRevisionRef.current) {
+        lastSceneRevisionRef.current = revision;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        const save = () => {
+          pendingSceneSaveRef.current = null;
+          timerRef.current = null;
+          void upsertScene({
+            roomName,
+            expectedLiveRoomName: room.name,
+            elements: elements.filter((element) => !element.isDeleted),
+          }).catch((error) => {
+            if (lastSceneRevisionRef.current === revision)
+              lastSceneRevisionRef.current = null;
+            console.error("[Whiteboard] Scene save failed:", error);
+          });
+          persistScene();
+        };
+        pendingSceneSaveRef.current = save;
+        timerRef.current = setTimeout(save, 80);
+      } else if (filesChanged) {
+        persistScene();
+      }
 
       // Viewport sync — throttled at 30 fps, sent unreliably (ephemeral, like pointer)
       const { scrollX, scrollY, zoom: zoomState } = appState;
@@ -642,21 +686,6 @@ export function SharedWhiteboard({
         } catch {
           /* ephemeral — next change will retry */
         }
-      }
-
-      // Persist to session-scoped localStorage (fileRefs included for refresh recovery)
-      try {
-        const scene: PersistedScene = {
-          elements,
-          files,
-          fileRefs: fileRefsRef.current,
-        };
-        localStorage.setItem(
-          `${WB_STORAGE_PREFIX}${roomName}`,
-          JSON.stringify(scene),
-        );
-      } catch {
-        /* ignore QuotaExceededError */
       }
     },
     [room, isReadonly, roomName, uploadAndBroadcastFile, upsertScene],

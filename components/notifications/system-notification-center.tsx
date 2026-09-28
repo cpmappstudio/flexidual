@@ -8,6 +8,7 @@ import {
   CalendarDays,
   CalendarX2,
   CheckCheck,
+  ClipboardList,
   CirclePlay,
   GraduationCap,
   LoaderCircle,
@@ -25,6 +26,8 @@ import { ResponsiveFeedPanel } from "@/components/ui/responsive-feed-panel";
 import { useUnreadNotificationCount } from "@/hooks/use-unread-notification-count";
 import { useRouter } from "@/i18n/navigation";
 import { getSystemNotificationHref } from "@/lib/system-notification-navigation";
+import { isNotificationInFeed } from "@/lib/notification-retention";
+import { requestSurveyOpen } from "@/lib/survey-navigation";
 import { cn } from "@/lib/utils";
 import { UnreadIndicator } from "./unread-indicator";
 
@@ -65,23 +68,25 @@ function NotificationIcon({ kind }: Pick<SystemNotification, "kind">) {
       />
     );
   const Icon =
-    kind === "class_starting_soon"
-      ? AlarmClock
-      : kind === "class_cancelled"
-        ? CalendarX2
-        : kind === "calendar_closure"
-          ? CalendarDays
-          : kind === "recording_available"
-            ? CirclePlay
-            : kind === "course_enrollment"
-              ? GraduationCap
-              : kind === "course_assignment"
-                ? BookOpen
-                : kind === "role_changed"
-                  ? Shield
-                  : kind === "organization_membership_changed"
-                    ? Building2
-                    : Megaphone;
+    kind === "survey_invitation"
+      ? ClipboardList
+      : kind === "class_starting_soon"
+        ? AlarmClock
+        : kind === "class_cancelled"
+          ? CalendarX2
+          : kind === "calendar_closure"
+            ? CalendarDays
+            : kind === "recording_available"
+              ? CirclePlay
+              : kind === "course_enrollment"
+                ? GraduationCap
+                : kind === "course_assignment"
+                  ? BookOpen
+                  : kind === "role_changed"
+                    ? Shield
+                    : kind === "organization_membership_changed"
+                      ? Building2
+                      : Megaphone;
   return <Icon className="size-5" aria-hidden="true" />;
 }
 
@@ -212,9 +217,13 @@ function NotificationFeed({ onClose }: { onClose: () => void }) {
   );
   const markRead = useMutation(api.systemNotifications.markRead);
   const markAllRead = useMutation(api.systemNotifications.markAllRead);
+  const now = useNow({ updateInterval: 60_000 });
+  const visibleResults = results.filter((item) =>
+    isNotificationInFeed(item, now.getTime()),
+  );
   useEffect(() => {
-    if (results.length === 0 && status === "CanLoadMore") loadMore(20);
-  }, [results.length, status, loadMore]);
+    if (visibleResults.length === 0 && status === "CanLoadMore") loadMore(20);
+  }, [visibleResults.length, status, loadMore]);
 
   const handleSelect = async (notification: SystemNotification) => {
     if (notification.readAt === undefined) {
@@ -223,6 +232,9 @@ function NotificationFeed({ onClose }: { onClose: () => void }) {
     const href = getSystemNotificationHref(notification);
     if (!href) return;
     onClose();
+    if (notification.kind === "survey_invitation" && notification.surveyId) {
+      requestSurveyOpen(notification.surveyId);
+    }
     router.push(href);
   };
 
@@ -230,7 +242,9 @@ function NotificationFeed({ onClose }: { onClose: () => void }) {
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
         <h2 className="font-semibold text-foreground">{t("title")}</h2>
-        {results.some((notification) => notification.readAt === undefined) && (
+        {visibleResults.some(
+          (notification) => notification.readAt === undefined,
+        ) && (
           <Button
             type="button"
             variant="ghost"
@@ -248,7 +262,7 @@ function NotificationFeed({ onClose }: { onClose: () => void }) {
             <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
             {t("loading")}
           </div>
-        ) : results.length === 0 ? (
+        ) : visibleResults.length === 0 ? (
           <div className="flex min-h-64 flex-col items-center justify-center gap-3 px-6 text-center">
             <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
               <CheckCheck className="size-6" aria-hidden="true" />
@@ -262,7 +276,7 @@ function NotificationFeed({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <>
-            {results.map((notification) => (
+            {visibleResults.map((notification) => (
               <NotificationItem
                 key={notification._id}
                 notification={notification}

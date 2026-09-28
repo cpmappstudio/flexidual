@@ -25,6 +25,7 @@ export function InstitutionSettings() {
   const [name, setName] = React.useState("");
   const [timeZone, setTimeZone] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
+  const formId = React.useId();
 
   React.useEffect(() => {
     if (!context?.institution) return;
@@ -73,8 +74,20 @@ export function InstitutionSettings() {
 
   return (
     <section className="grid gap-3">
-      <h2 className="border-b pb-3 text-xl font-semibold">{t("title")}</h2>
-      <form className="grid w-full gap-5" onSubmit={handleSubmit}>
+      <div className="flex items-center justify-between gap-4 border-b pb-3">
+        <h2 className="min-w-0 text-xl font-semibold">{t("title")}</h2>
+        {!readOnly && (
+          <Button
+            type="submit"
+            form={formId}
+            disabled={!hasChanges || isSaving}
+          >
+            {isSaving && <Loader2 className="animate-spin" />}
+            {t("save")}
+          </Button>
+        )}
+      </div>
+      <form id={formId} className="grid w-full gap-5" onSubmit={handleSubmit}>
         <div className="grid gap-2">
           <Label htmlFor="institution-name">{t("name")}</Label>
           <Input
@@ -111,16 +124,6 @@ export function InstitutionSettings() {
             {institution.isActive ? t("active") : t("inactive")}
           </Badge>
         </div>
-        {!readOnly && (
-          <Button
-            type="submit"
-            className="ml-auto w-fit"
-            disabled={!hasChanges || isSaving}
-          >
-            {isSaving && <Loader2 className="animate-spin" />}
-            {t("save")}
-          </Button>
-        )}
       </form>
     </section>
   );

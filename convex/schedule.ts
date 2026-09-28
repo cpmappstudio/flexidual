@@ -12,9 +12,12 @@ import {
   ensureLiveActivation,
   getLiveActivationId,
   getLiveRoomName,
-  liveDecisionSnapshotValidator,
-  type LiveDecisionSnapshot,
 } from "./model/liveActivation";
+import {
+  getLiveLifecycleSnapshot,
+  liveLifecycleSnapshotValidator,
+  matchesLiveLifecycleSnapshot,
+} from "./model/liveLifecycle";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Doc, Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
@@ -3158,7 +3161,7 @@ async function claimLiveSessionEndState(
     claimId: string;
     endedAt: number;
     endedBy?: Id<"users">;
-    expectedState?: LiveDecisionSnapshot;
+    expectedState?: ReturnType<typeof getLiveLifecycleSnapshot>;
   },
 ) {
   if (
@@ -3170,15 +3173,15 @@ async function claimLiveSessionEndState(
     return false;
   }
 
-  const expected = args.expectedState;
   if (
-    expected &&
-    (schedule.scheduledEnd !== expected.scheduledEnd ||
-      schedule.sessionLeaderId !== expected.sessionLeaderId ||
-      schedule.liveLeaderAbsentSince !== expected.liveLeaderAbsentSince ||
-      getLiveRuntimeExtensionEndsAt(schedule) !==
-        expected.liveExtensionEndsAt ||
-      schedule.liveDecisionEndsAt !== expected.liveDecisionEndsAt)
+    args.expectedState &&
+    !matchesLiveLifecycleSnapshot(
+      {
+        ...schedule,
+        liveExtensionEndsAt: getLiveRuntimeExtensionEndsAt(schedule),
+      },
+      args.expectedState,
+    )
   )
     return false;
   if (
@@ -3284,7 +3287,7 @@ export const claimLiveSessionEnd = internalMutation({
     claimId: v.string(),
     endedAt: v.number(),
     endedBy: v.optional(v.id("users")),
-    expectedState: v.optional(liveDecisionSnapshotValidator),
+    expectedState: v.optional(liveLifecycleSnapshotValidator),
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
@@ -3517,6 +3520,8 @@ export const getLiveLifecycleState = internalQuery({
       activationId: v.string(),
       liveRoomName: v.string(),
       hasReopened: v.boolean(),
+      sessionStartedAt: v.optional(v.number()),
+      sessionLeaderSince: v.optional(v.number()),
     }),
   ),
   handler: async (ctx, { roomName }) => {
@@ -3539,6 +3544,8 @@ export const getLiveLifecycleState = internalQuery({
       activationId: getLiveActivationId(schedule),
       liveRoomName: getLiveRoomName(schedule),
       hasReopened: schedule.sessionReopenedAt !== undefined,
+      sessionStartedAt: schedule.sessionStartedAt,
+      sessionLeaderSince: schedule.sessionLeaderSince,
     };
   },
 });
@@ -3547,6 +3554,7 @@ export const updateLiveLifecycleState = internalMutation({
   args: {
     roomName: v.string(),
     expectedActivationId: v.string(),
+    expectedState: v.optional(liveLifecycleSnapshotValidator),
     reconciledAt: v.number(),
     expectedLeaderAbsentSince: v.union(v.number(), v.null()),
     expectedExtensionEndsAt: v.union(v.number(), v.null()),
@@ -3572,12 +3580,30 @@ export const updateLiveLifecycleState = internalMutation({
     }
     const runtimeExtensionEndsAt = getLiveRuntimeExtensionEndsAt(schedule);
     if (
+      args.expectedState &&
+      !matchesLiveLifecycleSnapshot(
+        { ...schedule, liveExtensionEndsAt: runtimeExtensionEndsAt },
+        args.expectedState,
+      )
+    ) {
+      return false;
+    }
+    if (
       (schedule.liveLeaderAbsentSince ?? null) !==
         args.expectedLeaderAbsentSince ||
       (runtimeExtensionEndsAt ?? null) !== args.expectedExtensionEndsAt ||
       (schedule.liveDecisionEndsAt ?? null) !== args.expectedDecisionEndsAt
     ) {
       return false;
+    }
+
+    // Keep the shared schedule unchanged when reconciliation is a no-op.
+    if (
+      (schedule.liveLeaderAbsentSince ?? null) === args.leaderAbsentSince &&
+      (runtimeExtensionEndsAt ?? null) === args.extensionEndsAt &&
+      (schedule.liveDecisionEndsAt ?? null) === args.decisionEndsAt
+    ) {
+      return true;
     }
 
     const introducesDeadline =

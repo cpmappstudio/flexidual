@@ -130,6 +130,7 @@ vi.mock("next-intl", () => ({
 import { StudentAttendanceSummary } from "@/components/dashboards/student-attendance-summary";
 
 beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
   state.canEditAttendance = false;
   state.isMobile = false;
   vi.stubGlobal(

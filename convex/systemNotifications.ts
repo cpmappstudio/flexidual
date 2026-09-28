@@ -29,6 +29,7 @@ const notificationKindValidator = v.union(
   v.literal("organization_membership_changed"),
   v.literal("announcement"),
   v.literal("course_chat"),
+  v.literal("survey_invitation"),
 );
 
 const notificationActionValidator = v.union(
@@ -64,6 +65,7 @@ const notificationPayloadFields = {
   announcementBody: v.optional(v.string()),
   announcementUrl: v.optional(v.string()),
   dedupeKey: v.string(),
+  surveyId: v.optional(v.string()),
   chatMessageCount: v.optional(v.number()),
   chatReadThrough: v.optional(v.number()),
 };

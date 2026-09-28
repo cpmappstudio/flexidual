@@ -103,6 +103,36 @@ export const updateFromWebhook = internalMutation({
       return null;
     }
 
+    const isTerminal =
+      recording.status !== "starting" && recording.status !== "active";
+    if (
+      (isTerminal && args.status !== recording.status) ||
+      (recording.status === "active" && args.status === "starting")
+    ) {
+      return recording._id;
+    }
+
+    const updates = {
+      status: args.status,
+      ...(args.fileKey !== undefined && { fileKey: args.fileKey }),
+      ...(args.url !== undefined && { url: args.url }),
+      ...(args.durationMs !== undefined && { durationMs: args.durationMs }),
+      ...(args.fileSize !== undefined && { fileSize: args.fileSize }),
+      ...(args.completedAt !== undefined && {
+        completedAt: recording.completedAt ?? args.completedAt,
+      }),
+      ...(args.error !== undefined && { error: args.error }),
+      ...(args.errorCode !== undefined && { errorCode: args.errorCode }),
+      ...(args.details !== undefined && { details: args.details }),
+    };
+    if (
+      Object.entries(updates).every(
+        ([key, value]) => recording[key as keyof typeof updates] === value,
+      )
+    ) {
+      return recording._id;
+    }
+
     if (
       args.status === "complete" ||
       args.status === "failed" ||
@@ -121,27 +151,11 @@ export const updateFromWebhook = internalMutation({
         });
       }
     }
-    if (
-      ["complete", "failed", "aborted"].includes(recording.status) &&
-      ["starting", "active"].includes(args.status)
-    )
-      return recording._id;
-
-    await ctx.db.patch("recordings", recording._id, {
-      status: args.status,
-      ...(args.fileKey !== undefined && { fileKey: args.fileKey }),
-      ...(args.url !== undefined && { url: args.url }),
-      ...(args.durationMs !== undefined && { durationMs: args.durationMs }),
-      ...(args.fileSize !== undefined && { fileSize: args.fileSize }),
-      ...(args.completedAt !== undefined && { completedAt: args.completedAt }),
-      ...(args.error !== undefined && { error: args.error }),
-      ...(args.errorCode !== undefined && { errorCode: args.errorCode }),
-      ...(args.details !== undefined && { details: args.details }),
-    });
+    await ctx.db.patch("recordings", recording._id, updates);
 
     const becamePlayable =
       args.status === "complete" &&
-      Boolean(args.url) &&
+      Boolean(updates.url ?? recording.url) &&
       !(recording.status === "complete" && recording.url);
     if (becamePlayable) {
       const schedule = await ctx.db.get("classSchedule", recording.scheduleId);

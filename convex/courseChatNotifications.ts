@@ -14,7 +14,9 @@ import {
   notificationPaginationOptions,
 } from "./model/systemNotifications";
 
-const BATCH_SIZE = 50;
+const CLEANUP_BATCH_SIZE = 50;
+// Smaller delivery transactions limit how many recipients a concurrent read retries.
+const DELIVERY_BATCH_SIZE = 10;
 const notificationKey = (classId: Id<"classes">, userId: Id<"users">) =>
   `course_chat:${classId}:${userId}`;
 
@@ -42,14 +44,21 @@ export const publish = internalMutation({
       ? await ctx.db
           .query("classEnrollments")
           .withIndex("by_class", (q) => q.eq("classId", course._id))
-          .paginate({ cursor: args.cursor, numItems: BATCH_SIZE })
+          .paginate({
+            cursor: args.cursor,
+            numItems: DELIVERY_BATCH_SIZE,
+            maximumRowsRead: DELIVERY_BATCH_SIZE,
+          })
       : null;
     const legacyStudents = course.students ?? [];
     const students = page
       ? page.page
           .filter((entry) => entry.enrolledAt <= message._creationTime)
           .map((entry) => entry.studentId)
-      : legacyStudents.slice(args.legacyOffset, args.legacyOffset + BATCH_SIZE);
+      : legacyStudents.slice(
+          args.legacyOffset,
+          args.legacyOffset + DELIVERY_BATCH_SIZE,
+        );
     const staff = [course.teacherId, course.tutorId].filter(
       (id): id is Id<"users"> => id !== undefined,
     );
@@ -91,7 +100,7 @@ export const publish = internalMutation({
     }
     const hasMore = page
       ? !page.isDone
-      : args.legacyOffset + BATCH_SIZE < legacyStudents.length;
+      : args.legacyOffset + DELIVERY_BATCH_SIZE < legacyStudents.length;
     if (hasMore)
       await ctx.scheduler.runAfter(
         0,
@@ -99,7 +108,7 @@ export const publish = internalMutation({
         {
           messageId: args.messageId,
           cursor: page?.continueCursor ?? null,
-          legacyOffset: args.legacyOffset + BATCH_SIZE,
+          legacyOffset: args.legacyOffset + DELIVERY_BATCH_SIZE,
         },
       );
     return null;
@@ -204,9 +213,9 @@ export const removeByClass = internalMutation({
       .withIndex("by_class_and_kind", (q) =>
         q.eq("classId", args.classId).eq("kind", "course_chat"),
       )
-      .take(BATCH_SIZE);
+      .take(CLEANUP_BATCH_SIZE);
     for (const row of rows) await ctx.db.delete("systemNotifications", row._id);
-    if (rows.length === BATCH_SIZE)
+    if (rows.length === CLEANUP_BATCH_SIZE)
       await ctx.scheduler.runAfter(
         0,
         internal.courseChatNotifications.removeByClass,

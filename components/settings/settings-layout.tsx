@@ -89,10 +89,12 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
       exact: false,
     },
   ];
-  const activeItem =
-    items.find((item) =>
-      item.exact ? pathname === item.href : pathname.startsWith(item.href),
-    ) ?? items[0];
+  const isItemActive = (item: { href: string; exact: boolean }) =>
+    item.exact
+      ? pathname === item.href ||
+        pathname.startsWith(`${item.href}/integrations/`)
+      : pathname.startsWith(item.href);
+  const activeItem = items.find(isItemActive) ?? items[0];
   const isProfileRoute = pathname.startsWith(profilePath);
 
   useEffect(() => {
@@ -153,11 +155,7 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
                       <SidebarMenuSubItem key={item.href}>
                         <SidebarMenuSubButton
                           asChild
-                          isActive={
-                            item.exact
-                              ? pathname === item.href
-                              : pathname.startsWith(item.href)
-                          }
+                          isActive={isItemActive(item)}
                         >
                           <Link href={item.href}>{item.label}</Link>
                         </SidebarMenuSubButton>

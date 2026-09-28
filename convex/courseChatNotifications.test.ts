@@ -322,6 +322,7 @@ test("keeps separate courses independent and counts out-of-order deliveries", as
   const s = await setup();
   const otherCourse = await s.t.run(async (ctx) => {
     const course = await ctx.db.get("classes", s.classId);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- New fixtures must omit Convex system fields.
     const { _id, _creationTime, ...fields } = course!;
     const classId = await ctx.db.insert("classes", {
       ...fields,
@@ -382,6 +383,7 @@ test("bounds notification pages without losing unread chats behind hidden rows",
   const s = await setup();
   const visibleId = await s.t.run(async (ctx) => {
     const course = await ctx.db.get("classes", s.classId);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- New fixtures must omit Convex system fields.
     const { _id, _creationTime, ...fields } = course!;
     const visibleId = await ctx.db.insert("systemNotifications", {
       recipientId: s.students[0],
@@ -477,5 +479,46 @@ test.each([false, true])(
         [s.teacherId, s.adminId, s.outsiderId].includes(row.recipientId),
       ),
     ).toBe(false);
+  },
+);
+
+test.each([false, true])(
+  "delivery bounds its transaction and preserves reads before later batches (legacy: %s)",
+  async (legacy) => {
+    const s = await setup(25, legacy);
+    // Insert directly to drive exactly one batch, without a second scheduled delivery.
+    const messageId = await s.t.run((ctx) =>
+      ctx.db.insert("courseChatMessages", {
+        classId: s.classId,
+        authorId: s.teacherId,
+        body: "bounded delivery",
+      }),
+    );
+    await s.t.run(async (ctx) => {
+      await ctx.runMutation(internal.courseChatNotifications.publish, {
+        messageId,
+        cursor: null,
+        legacyOffset: 0,
+      });
+      expect(
+        (await ctx.meta.getTransactionMetrics()).documentsWritten.used,
+      ).toBeLessThanOrEqual(12);
+    });
+    const firstBatch = await s.t.run((ctx) =>
+      ctx.db.query("systemNotifications").collect(),
+    );
+    expect(firstBatch).toHaveLength(11); // Ten students plus the tutor; not the author.
+    await s.t
+      .withIdentity({ subject: "student-24" })
+      .mutation(api.courseChatNotifications.markRead, { messageId });
+    await s.deliver();
+    const rows = await s.t.run((ctx) =>
+      ctx.db.query("systemNotifications").collect(),
+    );
+    expect(rows).toHaveLength(26);
+    expect(rows.filter((row) => row.chatMessageCount === 1)).toHaveLength(25);
+    expect(
+      rows.find((row) => row.recipientId === s.students[24]),
+    ).toMatchObject({ chatMessageCount: 0 });
   },
 );

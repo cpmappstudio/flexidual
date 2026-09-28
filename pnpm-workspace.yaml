@@ -4,3 +4,7 @@ allowBuilds:
   esbuild: true
   sharp: true
   unrs-resolver: true
+patchedDependencies:
+  # Recovery fix for https://github.com/get-convex/presence/issues/54.
+  # Remove when upgrading to an upstream release with equivalent recovery tests.
+  '@convex-dev/presence@0.4.0': patches/@convex-dev__presence@0.4.0.patch

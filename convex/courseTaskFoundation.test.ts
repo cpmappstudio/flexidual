@@ -6,8 +6,8 @@ import { modules } from "./test.setup";
 import {
   canSubmitCourseTask,
   getCourseTaskAccess,
-} from "./model/course-task-access";
-import { ensureCourseTaskRecipient } from "./model/course-task-recipients";
+} from "./model/courseTaskAccess";
+import { ensureCourseTaskRecipient } from "./model/courseTaskRecipients";
 import { getUtcDayRange } from "../lib/time-zone";
 
 const NOW = Date.UTC(2026, 8, 28, 12);

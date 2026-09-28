@@ -4,7 +4,7 @@ import { ConvexError, v } from "convex/values";
 import { action, internalAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { LiveDecisionSnapshot } from "./model/liveActivation";
+import { getLiveLifecycleSnapshot } from "./model/liveLifecycle";
 import { randomUUID } from "node:crypto";
 import {
   evaluateLiveSession,
@@ -137,7 +137,7 @@ async function finalizeLiveSession(
   expectedActivationId: string,
   endedAt: number,
   endedBy?: Id<"users">,
-  expectedState?: LiveDecisionSnapshot,
+  expectedState?: ReturnType<typeof getLiveLifecycleSnapshot>,
 ) {
   const claimId = randomUUID();
   const claimed = await ctx.runMutation(internal.schedule.claimLiveSessionEnd, {
@@ -211,7 +211,14 @@ async function reconcileRoom(
   const hardEndsAt = getLiveSessionHardEnd(session.scheduledEnd);
   if (!clients) {
     if (now >= hardEndsAt) {
-      await finalizeLiveSession(ctx, roomName, session.activationId, now);
+      await finalizeLiveSession(
+        ctx,
+        roomName,
+        session.activationId,
+        now,
+        undefined,
+        getLiveLifecycleSnapshot(session),
+      );
     } else {
       console.warn(
         `[LiveKit Lifecycle] Credentials unavailable; skipped participant reconciliation for ${roomName}.`,
@@ -244,13 +251,7 @@ async function reconcileRoom(
       session.activationId,
       now,
       undefined,
-      {
-        scheduledEnd: session.scheduledEnd,
-        sessionLeaderId: session.sessionLeaderId,
-        liveLeaderAbsentSince: session.liveLeaderAbsentSince,
-        liveExtensionEndsAt: session.liveExtensionEndsAt,
-        liveDecisionEndsAt: session.liveDecisionEndsAt,
-      },
+      getLiveLifecycleSnapshot(session),
     );
     return;
   }
@@ -260,6 +261,7 @@ async function reconcileRoom(
     {
       roomName,
       expectedActivationId: session.activationId,
+      expectedState: getLiveLifecycleSnapshot(session),
       reconciledAt: now,
       expectedLeaderAbsentSince: session.liveLeaderAbsentSince ?? null,
       expectedExtensionEndsAt: session.liveExtensionEndsAt ?? null,
