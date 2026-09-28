@@ -214,6 +214,54 @@ export default defineSchema({
     .index("by_class", ["classId", "studentId"])
     .index("by_student", ["studentId", "classId"]),
 
+  courseTasks: defineTable({
+    classId: v.id("classes"),
+    createdBy: v.id("users"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    availableAt: v.optional(v.number()),
+    releasedAt: v.optional(v.number()),
+    dueAt: v.optional(v.number()),
+    allowLateSubmissions: v.boolean(),
+    manuallyClosedAt: v.optional(v.number()),
+    manuallyClosedBy: v.optional(v.id("users")),
+    updatedAt: v.number(),
+  }).index("by_classId_and_releasedAt", ["classId", "releasedAt"]),
+
+  courseTaskRecipients: defineTable({
+    taskId: v.id("courseTasks"),
+    studentId: v.id("users"),
+    assignedAt: v.number(),
+    submittedAt: v.optional(v.number()),
+    submissionRevision: v.number(),
+    feedback: v.optional(
+      v.object({
+        text: v.string(),
+        authorId: v.id("users"),
+        createdAt: v.number(),
+        updatedAt: v.number(),
+        forRevision: v.number(),
+      }),
+    ),
+  })
+    .index("by_taskId_and_studentId", ["taskId", "studentId"])
+    .index("by_studentId_and_taskId", ["studentId", "taskId"]),
+
+  courseTaskFiles: defineTable({
+    taskId: v.id("courseTasks"),
+    recipientId: v.optional(v.id("courseTaskRecipients")),
+    kind: v.union(v.literal("material"), v.literal("submission")),
+    uploadedBy: v.id("users"),
+    name: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    storageId: v.optional(v.id("_storage")),
+    state: v.union(v.literal("staged"), v.literal("active")),
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_taskId_and_kind_and_state", ["taskId", "kind", "state"])
+    .index("by_recipientId_and_state", ["recipientId", "state"]),
+
   courseChatMessages: defineTable({
     classId: v.id("classes"),
     scheduleId: v.optional(v.id("classSchedule")),

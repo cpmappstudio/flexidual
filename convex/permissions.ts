@@ -249,6 +249,23 @@ export async function canManageClasses(
   return canAssignmentsManageClass(assignments, campusId, schoolId);
 }
 
+export async function canManageClass(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+  classData: Doc<"classes">,
+): Promise<boolean> {
+  const [campus, curriculum] = await Promise.all([
+    classData.campusId ? ctx.db.get(classData.campusId) : null,
+    ctx.db.get(classData.curriculumId),
+  ]);
+  return await canManageClasses(
+    ctx,
+    userId,
+    classData.campusId,
+    campus?.schoolId ?? curriculum?.schoolId,
+  );
+}
+
 export async function canCancelClassOccurrence(
   ctx: QueryCtx | MutationCtx,
   userId: Id<"users">,
@@ -292,20 +309,10 @@ export async function canAccessClass(
     return true;
   }
 
-  const [campus, curriculum] = await Promise.all([
-    classData.campusId ? ctx.db.get(classData.campusId) : null,
-    ctx.db.get(classData.curriculumId),
-  ]);
-
   // Campus membership alone does not grant access to every course. Teachers
   // and tutors pass only through the direct assignments above; principals and
   // institution admins pass through canManageClasses.
-  return await canManageClasses(
-    ctx,
-    userId,
-    classData.campusId,
-    campus?.schoolId ?? curriculum?.schoolId,
-  );
+  return await canManageClass(ctx, userId, classData);
 }
 
 export async function canModerateCourseChat(
