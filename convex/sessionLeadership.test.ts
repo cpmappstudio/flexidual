@@ -3,6 +3,8 @@ import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
+import { getLiveLifecycleSnapshot } from "./model/liveLifecycle";
+import { EgressClient, Room, RoomServiceClient } from "livekit-server-sdk";
 import {
   getLiveSessionHardEnd,
   STUDENT_ONLY_GRACE_MS,
@@ -11,6 +13,7 @@ import {
 const NOW = Date.UTC(2026, 7, 26, 15, 0, 0);
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllEnvs();
 });
@@ -433,6 +436,69 @@ test("a lifecycle deadline is scheduled once when duplicate reconcilers agree", 
   ).toHaveLength(1);
 });
 
+test("unchanged lifecycle reconciliation writes nothing and still rejects stale state", async () => {
+  const { t, data } = await setupLeadershipTest();
+  await t
+    .withIdentity({ subject: "leader-teacher" })
+    .mutation(api.schedule.markLive, {
+      roomName: "teacher-led-room",
+      isLive: true,
+    });
+  const args = {
+    roomName: "teacher-led-room",
+    reconciledAt: NOW,
+    expectedLeaderAbsentSince: null,
+    expectedExtensionEndsAt: null,
+    expectedDecisionEndsAt: null,
+    leaderAbsentSince: null,
+    extensionEndsAt: null,
+    decisionEndsAt: null,
+    nextCheckAt: NOW + 60 * 60_000,
+  };
+  await t.run(async (ctx) => {
+    expect(
+      await ctx.runMutation(internal.schedule.updateLiveLifecycleState, args),
+    ).toBe(true);
+    expect((await ctx.meta.getTransactionMetrics()).documentsWritten.used).toBe(
+      0,
+    );
+  });
+
+  await t.mutation(internal.schedule.updateLiveLifecycleState, {
+    ...args,
+    leaderAbsentSince: NOW,
+    nextCheckAt: NOW + STUDENT_ONLY_GRACE_MS,
+  });
+  await t.run(async (ctx) => {
+    expect(
+      await ctx.runMutation(internal.schedule.updateLiveLifecycleState, args),
+    ).toBe(false);
+    expect(
+      await ctx.runMutation(internal.schedule.updateLiveLifecycleState, {
+        ...args,
+        reconciledAt: NOW + 1_000,
+        expectedLeaderAbsentSince: NOW,
+        leaderAbsentSince: NOW,
+      }),
+    ).toBe(true);
+    expect((await ctx.meta.getTransactionMetrics()).documentsWritten.used).toBe(
+      0,
+    );
+  });
+
+  // Clearing a deadline is a real state change, not a no-op.
+  await t.mutation(internal.schedule.updateLiveLifecycleState, {
+    ...args,
+    expectedLeaderAbsentSince: NOW,
+    reconciledAt: NOW + 2_000,
+  });
+  const schedule = await t.run((ctx) =>
+    ctx.db.get("classSchedule", data.teacherScheduleId),
+  );
+  expect(schedule?.liveLeaderAbsentSince).toBeUndefined();
+  expect(schedule?.liveLastReconciledAt).toBe(NOW + 2_000);
+});
+
 test("the backstop includes live sessions before their scheduled end", async () => {
   const { t } = await setupLeadershipTest();
   const teacher = t.withIdentity({ subject: "leader-teacher" });
@@ -481,6 +547,239 @@ test("missing LiveKit credentials avoid tight retries and still enforce the hard
         .unique(),
     ),
   ).toMatchObject({ isLive: false, status: "completed" });
+});
+
+test("an extension invalidates an in-flight automatic close before LiveKit cleanup", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  await t.run((ctx) =>
+    ctx.db.patch("classSchedule", data.teacherScheduleId, {
+      scheduledEnd: NOW,
+      liveDecisionEndsAt: NOW + 5 * 60_000,
+    }),
+  );
+  vi.stubEnv("LIVEKIT_URL", "https://livekit.example");
+  vi.stubEnv("LIVEKIT_API_KEY", "test-key");
+  vi.stubEnv("LIVEKIT_API_SECRET", "test-secret");
+  const deleteRoom = vi
+    .spyOn(RoomServiceClient.prototype, "deleteRoom")
+    .mockResolvedValue();
+  const listEgress = vi
+    .spyOn(EgressClient.prototype, "listEgress")
+    .mockResolvedValue([]);
+  vi.spyOn(RoomServiceClient.prototype, "listRooms").mockImplementationOnce(
+    async () => {
+      // Confirm while the action is awaiting LiveKit's participant snapshot.
+      await teacher.mutation(api.schedule.confirmLiveExtension, {
+        roomName: "teacher-led-room",
+      });
+      return [];
+    },
+  );
+  await t.action(internal.livekit.reconcileLiveSession, {
+    roomName: "teacher-led-room",
+  });
+  expect(deleteRoom).not.toHaveBeenCalled();
+  expect(listEgress).not.toHaveBeenCalled();
+  const schedule = await t.run((ctx) =>
+    ctx.db.get("classSchedule", data.teacherScheduleId),
+  );
+  expect(schedule).toMatchObject({
+    isLive: true,
+    status: "active",
+    liveExtensionEndsAt: NOW + 10 * 60_000,
+  });
+  const jobs = await t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect(),
+  );
+  expect(
+    jobs.filter((job) => job.name === "livekit:cleanupEndedSession"),
+  ).toHaveLength(0);
+});
+
+test.each([
+  "scheduledEnd",
+  "sessionStartedAt",
+  "sessionLeaderSince",
+  "liveLeaderAbsentSince",
+  "liveExtensionEndsAt",
+  "liveDecisionEndsAt",
+] as const)(
+  "stale %s cannot close or reconcile the current session",
+  async (field) => {
+    const { t, data } = await setupLeadershipTest();
+    await t
+      .withIdentity({ subject: "leader-teacher" })
+      .mutation(api.schedule.markLive, {
+        roomName: "teacher-led-room",
+        isLive: true,
+      });
+    const session = await t.query(internal.schedule.getLiveLifecycleState, {
+      roomName: "teacher-led-room",
+    });
+    const expectedState = getLiveLifecycleSnapshot(session!);
+    await t.run((ctx) =>
+      ctx.db.patch("classSchedule", data.teacherScheduleId, {
+        [field]: (session![field] ?? NOW) + 1_000,
+      }),
+    );
+    await t.run(async (ctx) => {
+      expect(
+        await ctx.runMutation(internal.schedule.endLiveSession, {
+          roomName: "teacher-led-room",
+          endedAt: NOW,
+          expectedState,
+        }),
+      ).toBe(false);
+      expect(
+        await ctx.runMutation(internal.schedule.updateLiveLifecycleState, {
+          roomName: "teacher-led-room",
+          expectedState,
+          reconciledAt: NOW,
+          expectedLeaderAbsentSince: null,
+          expectedExtensionEndsAt: null,
+          expectedDecisionEndsAt: null,
+          leaderAbsentSince: null,
+          extensionEndsAt: null,
+          decisionEndsAt: null,
+          nextCheckAt: NOW + 60_000,
+        }),
+      ).toBe(false);
+      const metrics = await ctx.meta.getTransactionMetrics();
+      expect(metrics.documentsWritten.used).toBe(0);
+      expect(metrics.functionsScheduled.used).toBe(0);
+    });
+  },
+);
+
+test("closure commits before cleanup, blocks extensions, and schedules cleanup once", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  await teacher.mutation(api.schedule.markLive, {
+    roomName: "teacher-led-room",
+    isLive: true,
+  });
+  const session = await t.query(internal.schedule.getLiveLifecycleState, {
+    roomName: "teacher-led-room",
+  });
+  const args = {
+    roomName: "teacher-led-room",
+    endedAt: NOW,
+    expectedState: getLiveLifecycleSnapshot(session!),
+  };
+  expect(await t.mutation(internal.schedule.endLiveSession, args)).toBe(true);
+  expect(await t.mutation(internal.schedule.endLiveSession, args)).toBe(false);
+  expect(
+    await t.run((ctx) => ctx.db.get("classSchedule", data.teacherScheduleId)),
+  ).toMatchObject({ isLive: false, status: "completed" });
+  await expect(
+    teacher.mutation(api.schedule.confirmLiveExtension, {
+      roomName: "teacher-led-room",
+    }),
+  ).rejects.toThrow("cannot be extended");
+  const jobs = await t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect(),
+  );
+  expect(
+    jobs.filter((job) => job.name === "livekit:cleanupEndedSession"),
+  ).toHaveLength(1);
+});
+
+test("a transferred leader invalidates automatic and manual in-flight closure", async () => {
+  const { t, data } = await setupLeadershipTest();
+  await t
+    .withIdentity({ subject: "leader-teacher" })
+    .mutation(api.schedule.markLive, {
+      roomName: "teacher-led-room",
+      isLive: true,
+    });
+  const session = await t.query(internal.schedule.getLiveLifecycleState, {
+    roomName: "teacher-led-room",
+  });
+  await t.run((ctx) =>
+    ctx.db.patch("classSchedule", data.teacherScheduleId, {
+      sessionLeaderId: data.adminId,
+    }),
+  );
+  expect(
+    await t.mutation(internal.schedule.endLiveSession, {
+      roomName: "teacher-led-room",
+      endedAt: NOW,
+      expectedState: getLiveLifecycleSnapshot(session!),
+    }),
+  ).toBe(false);
+  await expect(
+    t.mutation(internal.schedule.endLiveSession, {
+      roomName: "teacher-led-room",
+      endedAt: NOW,
+      endedBy: data.teacherId,
+    }),
+  ).rejects.toThrow("Only the session leader");
+});
+
+test("room cleanup skips live rooms and retries failures without changing the closure", async () => {
+  const { t, data } = await setupLeadershipTest();
+  await t
+    .withIdentity({ subject: "leader-teacher" })
+    .mutation(api.schedule.markLive, {
+      roomName: "teacher-led-room",
+      isLive: true,
+    });
+  vi.stubEnv("LIVEKIT_URL", "https://livekit.example");
+  vi.stubEnv("LIVEKIT_API_KEY", "test-key");
+  vi.stubEnv("LIVEKIT_API_SECRET", "test-secret");
+  const listEgress = vi
+    .spyOn(EgressClient.prototype, "listEgress")
+    .mockResolvedValue([]);
+  vi.spyOn(RoomServiceClient.prototype, "listRooms").mockResolvedValue([
+    new Room({ name: "teacher-led-room" }),
+  ]);
+  const deleteRoom = vi
+    .spyOn(RoomServiceClient.prototype, "deleteRoom")
+    .mockRejectedValue(new Error("LiveKit temporarily unavailable"));
+  await t.action(internal.livekit.cleanupEndedSession, {
+    roomName: "teacher-led-room",
+  });
+  expect(listEgress).not.toHaveBeenCalled();
+  expect(deleteRoom).not.toHaveBeenCalled();
+  await t.mutation(internal.schedule.endLiveSession, {
+    roomName: "teacher-led-room",
+    endedAt: NOW,
+  });
+  const ended = await t.run((ctx) =>
+    ctx.db.get("classSchedule", data.teacherScheduleId),
+  );
+  await t.action(internal.livekit.cleanupEndedSession, {
+    roomName: "teacher-led-room",
+  });
+  expect(deleteRoom).toHaveBeenCalledTimes(1);
+  const jobs = await t.run((ctx) =>
+    ctx.db.system.query("_scheduled_functions").collect(),
+  );
+  expect(
+    jobs.filter(
+      (job) =>
+        job.name === "livekit:cleanupEndedSession" && job.args[0].attempt === 1,
+    ),
+  ).toHaveLength(1);
+  await expect(
+    t.action(internal.livekit.cleanupEndedSession, {
+      roomName: "teacher-led-room",
+      attempt: 3,
+    }),
+  ).rejects.toThrow("LiveKit temporarily unavailable");
+  deleteRoom.mockResolvedValue();
+  await t.action(internal.livekit.cleanupEndedSession, {
+    roomName: "teacher-led-room",
+    attempt: 1,
+  });
+  expect(
+    await t.run((ctx) => ctx.db.get("classSchedule", data.teacherScheduleId)),
+  ).toEqual(ended);
 });
 
 test("ending a live session twice preserves the first closure", async () => {
@@ -1515,6 +1814,55 @@ test("all attendance states persist and a completed report cannot be duplicated"
   expect(reports).toHaveLength(1);
 });
 
+test("student profile course progress matches the course page without an Abeka connection", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  const student = t.withIdentity({ subject: "leader-student" });
+  const extraLessons = await t.run(async (ctx) => {
+    await ctx.db.insert("roleAssignments", {
+      userId: data.studentId, orgId: data.campusId, orgType: "campus",
+      role: "student", schoolId: data.schoolId, assignedAt: NOW, assignedBy: data.adminId,
+    });
+    return await Promise.all([2, 3].map((order) => ctx.db.insert("lessons", {
+      curriculumId: data.curriculumId, title: `Lesson ${order}`, order,
+      isActive: true, createdAt: NOW, createdBy: data.adminId,
+    })));
+  });
+  const readProfile = async () => {
+    const dashboard = await student.query(api.student.getStudentDashboardStats, { now: NOW });
+    return dashboard?.classes.find((course) => course.classId === data.classId);
+  };
+  expect((await readProfile())?.courseProgress).toEqual({
+    totalLessons: 3, taughtLessons: 0, pendingLessons: 3, percentage: 0,
+  });
+  await teacher.mutation(api.schedule.markLive, { roomName: "teacher-led-room", isLive: true });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "teacher-led-room", lessonIds: [data.lessonId, extraLessons[0]],
+    attendance: buildAttendance(data),
+  });
+  // Repeating a lesson must not inflate either ring.
+  await teacher.mutation(api.schedule.markLive, { roomName: "tutor-room", isLive: true });
+  await teacher.mutation(api.schedule.submitSessionClosure, {
+    roomName: "tutor-room", lessonIds: [data.lessonId], attendance: buildAttendance(data),
+  });
+  const profile = await readProfile();
+  expect(profile?.abekaProgress).toBeNull();
+  expect(profile?.courseProgress).toEqual({
+    totalLessons: 3, taughtLessons: 2, pendingLessons: 1, percentage: 67,
+  });
+  const coursePage = await teacher.query(api.lessons.getClassCurriculumProgress, { classId: data.classId });
+  expect(coursePage).toMatchObject(profile!.courseProgress);
+  // No curriculum lessons still yields a defined 0% ring, not NaN or null.
+  await t.run(async (ctx) => {
+    for (const id of [data.lessonId, ...extraLessons]) {
+      await ctx.db.patch("lessons", id, { isActive: false });
+    }
+  });
+  expect((await readProfile())?.courseProgress).toEqual({
+    totalLessons: 0, taughtLessons: 0, pendingLessons: 0, percentage: 0,
+  });
+});
+
 test("student profiles exclude early closures and retain genuine live extensions", async () => {
   const { t, data } = await setupLeadershipTest();
   await t.run(async (ctx) => {
@@ -2088,53 +2436,4 @@ test("ending is blocked before closeout and finalization records the responsible
       }),
     ]),
   );
-});
-
-test("student profile course progress matches the course page without an Abeka connection", async () => {
-  const { t, data } = await setupLeadershipTest();
-  const teacher = t.withIdentity({ subject: "leader-teacher" });
-  const student = t.withIdentity({ subject: "leader-student" });
-  const extraLessons = await t.run(async (ctx) => {
-    await ctx.db.insert("roleAssignments", {
-      userId: data.studentId, orgId: data.campusId, orgType: "campus",
-      role: "student", schoolId: data.schoolId, assignedAt: NOW, assignedBy: data.adminId,
-    });
-    return await Promise.all([2, 3].map((order) => ctx.db.insert("lessons", {
-      curriculumId: data.curriculumId, title: `Lesson ${order}`, order,
-      isActive: true, createdAt: NOW, createdBy: data.adminId,
-    })));
-  });
-  const readProfile = async () => {
-    const dashboard = await student.query(api.student.getStudentDashboardStats, { now: NOW });
-    return dashboard?.classes.find((course) => course.classId === data.classId);
-  };
-  expect((await readProfile())?.courseProgress).toEqual({
-    totalLessons: 3, taughtLessons: 0, pendingLessons: 3, percentage: 0,
-  });
-  await teacher.mutation(api.schedule.markLive, { roomName: "teacher-led-room", isLive: true });
-  await teacher.mutation(api.schedule.submitSessionClosure, {
-    roomName: "teacher-led-room", lessonIds: [data.lessonId, extraLessons[0]],
-    attendance: buildAttendance(data),
-  });
-  // Repeating a lesson must not inflate either ring.
-  await teacher.mutation(api.schedule.markLive, { roomName: "tutor-room", isLive: true });
-  await teacher.mutation(api.schedule.submitSessionClosure, {
-    roomName: "tutor-room", lessonIds: [data.lessonId], attendance: buildAttendance(data),
-  });
-  const profile = await readProfile();
-  expect(profile?.abekaProgress).toBeNull();
-  expect(profile?.courseProgress).toEqual({
-    totalLessons: 3, taughtLessons: 2, pendingLessons: 1, percentage: 67,
-  });
-  const coursePage = await teacher.query(api.lessons.getClassCurriculumProgress, { classId: data.classId });
-  expect(coursePage).toMatchObject(profile!.courseProgress);
-  // No curriculum lessons still yields a defined 0% ring, not NaN or null.
-  await t.run(async (ctx) => {
-    for (const id of [data.lessonId, ...extraLessons]) {
-      await ctx.db.patch("lessons", id, { isActive: false });
-    }
-  });
-  expect((await readProfile())?.courseProgress).toEqual({
-    totalLessons: 0, taughtLessons: 0, pendingLessons: 0, percentage: 0,
-  });
 });

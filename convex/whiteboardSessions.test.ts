@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
 
@@ -112,4 +112,49 @@ test("reflects a leadership transfer in the recording context", async () => {
     curriculumIconKey: "books",
     leaderParticipantIdentity: "recording-leader-two",
   });
+});
+
+test("identical scenes and recording tokens do not write, but edits and clears do", async () => {
+  const { t } = await setupRecordingContext();
+  const writer = t.withIdentity({ subject: "recording-leader-one" });
+  await writer.mutation(api.whiteboardSessions.upsertScene, {
+    roomName: "recording-room",
+    elements: [{ id: "shape", x: 10, version: 1 }],
+  });
+  await writer.run(async (ctx) => {
+    await ctx.runMutation(api.whiteboardSessions.upsertScene, {
+      roomName: "recording-room",
+      elements: [{ version: 1, x: 10, id: "shape" }],
+    });
+    await ctx.runMutation(internal.whiteboardSessions.setRecordingToken, {
+      roomName: "recording-room",
+      recordingToken: "valid-recording-token",
+    });
+    expect((await ctx.meta.getTransactionMetrics()).documentsWritten.used).toBe(
+      0,
+    );
+  });
+  await writer.mutation(api.whiteboardSessions.upsertScene, {
+    roomName: "recording-room",
+    elements: [{ id: "shape", x: 20, version: 1 }],
+  });
+  const getScene = () =>
+    t.query(api.whiteboardSessions.getScene, {
+      roomName: "recording-room",
+      recordingToken: "valid-recording-token",
+    });
+  expect((await getScene())?.elements[0].x).toBe(20);
+  await writer.mutation(api.whiteboardSessions.upsertScene, {
+    roomName: "recording-room",
+    elements: [],
+  });
+  expect((await getScene())?.elements).toEqual([]);
+  await expect(
+    t
+      .withIdentity({ subject: "recording-leader-two" })
+      .mutation(api.whiteboardSessions.upsertScene, {
+        roomName: "recording-room",
+        elements: [],
+      }),
+  ).rejects.toThrow("permission");
 });

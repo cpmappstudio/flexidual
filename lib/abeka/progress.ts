@@ -74,11 +74,9 @@ export function parseProgress(payload: unknown) {
     const rows = envelope.d
       .map(parseLesson)
       .sort((a, b) => a.lessonNumber - b.lessonNumber);
-    if (
-      new Set(rows.map((row) => row.lessonNumber)).size !== rows.length ||
-      new Set(rows.map((row) => row.subjectName)).size !== 1
-    )
-      throw new ProbeError("Lecciones duplicadas o materias mezcladas.");
+    // SessionName can label an optional lesson; the requested subjectId owns the report.
+    if (new Set(rows.map((row) => row.lessonNumber)).size !== rows.length)
+      throw new ProbeError("Lecciones duplicadas.");
     return rows;
   } catch {
     // Do not expose response bodies or student data in diagnostic logs.

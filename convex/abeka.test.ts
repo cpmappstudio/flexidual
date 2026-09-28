@@ -1598,6 +1598,35 @@ test("update data can recover a missing session using stored credentials", async
   ).toBe("connected");
 });
 
+test("link sync groups optional lesson labels under the requested course without extra requests", async () => {
+  vi.useFakeTimers();
+  const { t, adminClient, schoolId, runId, studentId, student } = await renewalSetup();
+  await t.run((ctx) => ctx.db.patch(runId, { status: "completed" }));
+  const request = vi.fn(async (url: string) => {
+    const response = reportResponse(url);
+    if (!url.includes("GetVideoLessonDetails")) return response;
+    const { d } = await response.json();
+    const lesson = JSON.parse(d[0]);
+    return Response.json({ d: [
+      JSON.stringify({ ...lesson, SessionName: "Optional Lesson 001", PercentDisplay: "54%", Completed: "No" }),
+      JSON.stringify({ ...lesson, LessonDisplayName: "Lesson 2" }),
+    ] });
+  });
+  vi.stubGlobal("fetch", request);
+  await adminClient.mutation(api.abeka.linkStudent, { studentId, userId: student });
+  await finishCurrentSync(t);
+  expect(request).toHaveBeenCalledTimes(2);
+  expect((await adminClient.query(api.abeka.status, { schoolId })).run?.status).toBe("completed");
+  const reports = await adminClient.query(api.abeka.progress, { studentId });
+  expect(reports).toHaveLength(1);
+  expect(reports[0]).toMatchObject({ subjectId: "117", subjectName: "Math" });
+  expect(reports[0].lessons).toMatchObject([
+    { subjectName: "Optional Lesson 001", lessonNumber: 1, percentage: 54, completed: false },
+    { subjectName: "Math", lessonNumber: 2, percentage: 100, completed: true },
+  ]);
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({ userId: student });
+});
+
 test("link downloads only that student's progress, preserves the weekly schedule and reuses data when correcting the account", async () => {
   vi.useFakeTimers();
   const {

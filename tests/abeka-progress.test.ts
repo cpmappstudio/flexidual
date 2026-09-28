@@ -30,9 +30,21 @@ test("handles the extra JSON quoting in copied samples", () => {
   assert.deepEqual(parseSavedProgress(JSON.stringify(JSON.stringify(payload(lesson)))), parseProgress(payload(lesson)));
 });
 
-test("rejects empty, malformed, duplicate and mixed-subject responses", () => {
+test("preserves optional lesson names within the requested subject", () => {
+  const rows = parseProgress(payload(
+    { ...lesson, LessonDisplayName: "Lesson 20", SessionName: "Optional Lesson 020", PercentDisplay: "54%" },
+    lesson,
+  ));
+  assert.deepEqual(rows.map(({ subjectName, lessonNumber, percentage }) => ({ subjectName, lessonNumber, percentage })), [
+    { subjectName: "Test subject", lessonNumber: 1, percentage: 95 },
+    { subjectName: "Optional Lesson 020", lessonNumber: 20, percentage: 54 },
+  ]);
+});
+
+test("rejects empty, malformed and duplicate responses", () => {
   for (const invalid of [null, {}, { d: [] }, { d: ["broken"] }, { d: [lesson] },
-    payload(lesson, lesson), payload(lesson, { ...lesson, LessonDisplayName: "Lesson 2", SessionName: "Other" }),
+    payload(lesson, lesson),
+    payload(lesson, { ...lesson, SessionName: "Optional Lesson 001" }),
     payload({ ...lesson, PercentDisplay: "101%" }), payload({ ...lesson, LastViewed: "02/30/2026" }),
     payload({ ...lesson, Completed: "perhaps" }), payload({ ...lesson, LessonLengthDisplay: "unknown" })])
     assert.throws(() => parseProgress(invalid), /vacía o incompatible/);

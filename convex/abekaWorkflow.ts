@@ -88,6 +88,8 @@ export const sync = defineWorkflow(components.workflow, {
               runId,
               studentId,
               subjectId,
+              // Older workflow journals contain only ids; keep them replayable.
+              subjectName: subjects.names?.[subjectId],
             },
             requestOptions,
           ))

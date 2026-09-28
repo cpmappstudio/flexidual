@@ -8,11 +8,14 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import {
+  liveLifecycleSnapshotValidator,
+  matchesLiveLifecycleSnapshot,
+} from "./model/liveLifecycle";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Doc, Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
 import {
-  canAccessClass,
   canCancelClassOccurrence,
   canCancelClassSeries,
   canManageClasses,
@@ -2916,16 +2919,35 @@ export const endLiveSession = internalMutation({
     roomName: v.string(),
     endedAt: v.number(),
     endedBy: v.optional(v.id("users")),
+    expectedState: v.optional(liveLifecycleSnapshotValidator),
   },
-  returns: v.null(),
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const schedule = await ctx.db
       .query("classSchedule")
       .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
       .first();
-    if (!schedule) return null;
+    if (!schedule) return false;
     if (schedule.status === "completed" && schedule.isLive !== true) {
-      return null;
+      return false;
+    }
+    if (
+      args.expectedState &&
+      (schedule.status !== "active" ||
+        !schedule.isLive ||
+        !matchesLiveLifecycleSnapshot(schedule, args.expectedState))
+    ) {
+      return false;
+    }
+    if (args.endedBy) {
+      if (schedule.sessionLeaderId !== args.endedBy) {
+        throw new ConvexError("Only the session leader can end this class");
+      }
+      if (schedule.sessionClosureStatus !== "completed") {
+        throw new ConvexError(
+          "Complete the lesson and attendance report before ending the class",
+        );
+      }
     }
 
     await ctx.db.patch(schedule._id, {
@@ -2957,7 +2979,11 @@ export const endLiveSession = internalMutation({
 
     await deleteWhiteboardSession(ctx, args.roomName);
 
-    return null;
+    // Commit the closure and its external cleanup job together.
+    await ctx.scheduler.runAfter(0, internal.livekit.cleanupEndedSession, {
+      roomName: args.roomName,
+    });
+    return true;
   },
 });
 
@@ -3103,6 +3129,8 @@ export const getLiveLifecycleState = internalQuery({
       liveDecisionEndsAt: v.optional(v.number()),
       sessionLeaderId: v.optional(v.id("users")),
       sessionClosureStatus: v.optional(sessionClosureStatusValidator),
+      sessionStartedAt: v.optional(v.number()),
+      sessionLeaderSince: v.optional(v.number()),
     }),
   ),
   handler: async (ctx, { roomName }) => {
@@ -3122,6 +3150,8 @@ export const getLiveLifecycleState = internalQuery({
       liveDecisionEndsAt: schedule.liveDecisionEndsAt,
       sessionLeaderId: schedule.sessionLeaderId,
       sessionClosureStatus: schedule.sessionClosureStatus,
+      sessionStartedAt: schedule.sessionStartedAt,
+      sessionLeaderSince: schedule.sessionLeaderSince,
     };
   },
 });
@@ -3129,6 +3159,7 @@ export const getLiveLifecycleState = internalQuery({
 export const updateLiveLifecycleState = internalMutation({
   args: {
     roomName: v.string(),
+    expectedState: v.optional(liveLifecycleSnapshotValidator),
     reconciledAt: v.number(),
     expectedLeaderAbsentSince: v.union(v.number(), v.null()),
     expectedExtensionEndsAt: v.union(v.number(), v.null()),
@@ -3148,12 +3179,27 @@ export const updateLiveLifecycleState = internalMutation({
       return false;
     }
     if (
+      args.expectedState &&
+      !matchesLiveLifecycleSnapshot(schedule, args.expectedState)
+    ) {
+      return false;
+    }
+    if (
       (schedule.liveLeaderAbsentSince ?? null) !==
         args.expectedLeaderAbsentSince ||
       (schedule.liveExtensionEndsAt ?? null) !== args.expectedExtensionEndsAt ||
       (schedule.liveDecisionEndsAt ?? null) !== args.expectedDecisionEndsAt
     ) {
       return false;
+    }
+
+    // Keep the shared schedule unchanged when reconciliation is a no-op.
+    if (
+      (schedule.liveLeaderAbsentSince ?? null) === args.leaderAbsentSince &&
+      (schedule.liveExtensionEndsAt ?? null) === args.extensionEndsAt &&
+      (schedule.liveDecisionEndsAt ?? null) === args.decisionEndsAt
+    ) {
+      return true;
     }
 
     const introducesDeadline =

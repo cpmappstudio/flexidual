@@ -49,6 +49,7 @@ import type * as model_enrollments from "../model/enrollments.js";
 import type * as model_grades from "../model/grades.js";
 import type * as model_lessons from "../model/lessons.js";
 import type * as model_liveAccess from "../model/liveAccess.js";
+import type * as model_liveLifecycle from "../model/liveLifecycle.js";
 import type * as model_membership from "../model/membership.js";
 import type * as model_roles from "../model/roles.js";
 import type * as model_scheduleAccess from "../model/scheduleAccess.js";
@@ -128,6 +129,7 @@ declare const fullApi: ApiFromModules<{
   "model/grades": typeof model_grades;
   "model/lessons": typeof model_lessons;
   "model/liveAccess": typeof model_liveAccess;
+  "model/liveLifecycle": typeof model_liveLifecycle;
   "model/membership": typeof model_membership;
   "model/roles": typeof model_roles;
   "model/scheduleAccess": typeof model_scheduleAccess;

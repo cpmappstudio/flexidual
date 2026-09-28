@@ -189,12 +189,20 @@ export const subjects = internalAction({
   args: { ...runArgs, studentId: v.id("abekaStudents") },
   returns: v.union(
     v.null(),
-    v.object({ skip: v.boolean(), ids: v.array(v.string()) }),
+    v.object({
+      skip: v.boolean(),
+      ids: v.array(v.string()),
+      names: v.optional(v.record(v.string(), v.string())),
+    }),
   ),
   handler: async (
     ctx,
     args,
-  ): Promise<{ skip: boolean; ids: string[] } | null> => {
+  ): Promise<{
+    skip: boolean;
+    ids: string[];
+    names?: Record<string, string>;
+  } | null> => {
     try {
       const student = await ctx.runQuery(
         internal.abekaSync.studentContext,
@@ -204,7 +212,11 @@ export const subjects = internalAction({
       const subjects = await withSession(ctx, args.runId, (c) =>
         c.subjects(student.loginId),
       );
-      return { skip: false, ids: subjects.map((s) => s.id) };
+      return {
+        skip: false,
+        ids: subjects.map((s) => s.id),
+        names: Object.fromEntries(subjects.map((s) => [s.id, s.name])),
+      };
     } catch (error) {
       await recordFailure(ctx, args.runId, error);
       return null;
@@ -213,7 +225,12 @@ export const subjects = internalAction({
 });
 
 export const progress = internalAction({
-  args: { ...runArgs, studentId: v.id("abekaStudents"), subjectId: v.string() },
+  args: {
+    ...runArgs,
+    studentId: v.id("abekaStudents"),
+    subjectId: v.string(),
+    subjectName: v.optional(v.string()),
+  },
   returns: v.boolean(),
   handler: async (ctx, args): Promise<boolean> => {
     try {

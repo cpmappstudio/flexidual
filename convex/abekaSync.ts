@@ -330,6 +330,7 @@ export const saveProgress = internalMutation({
     ...runArgs,
     studentId: v.id("abekaStudents"),
     subjectId: v.string(),
+    subjectName: v.optional(v.string()),
     lessons: v.array(lessonProgress),
   },
   returns: v.boolean(),
@@ -352,7 +353,8 @@ export const saveProgress = internalMutation({
       .unique();
     const fields = {
       ...args,
-      subjectName: args.lessons[0].subjectName,
+      subjectName:
+        args.subjectName ?? existing?.subjectName ?? args.lessons[0].subjectName,
       syncedAt: Date.now(),
     };
     if (existing) await ctx.db.patch(existing._id, fields);

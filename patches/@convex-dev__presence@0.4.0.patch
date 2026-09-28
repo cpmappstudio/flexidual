@@ -1,0 +1,122 @@
+diff --git a/dist/react/index.js b/dist/react/index.js
+index 39ade9a16a901f06fa78f212389a328c029e5e18..467bd3d5149fc8c11e4cb6300d93d4f165dff87d 100644
+--- a/dist/react/index.js
++++ b/dist/react/index.js
+@@ -50,13 +50,19 @@ export default function usePresence(presence, roomId, userId, interval = 10000,
+         };
+         // Periodic heartbeats.
+         const sendHeartbeat = async () => {
+-            const result = await heartbeat({ roomId, userId, sessionId, interval });
+-            if (canceled) {
+-                disconnectIfOrphaned(result.sessionToken);
+-                return;
++            try {
++                const result = await heartbeat({ roomId, userId, sessionId, interval });
++                if (canceled) {
++                    disconnectIfOrphaned(result.sessionToken);
++                    return;
++                }
++                setRoomToken(result.roomToken);
++                setSessionToken(result.sessionToken);
++            }
++            catch (error) {
++                // Keep the current tokens; the next regular heartbeat can recover.
++                console.error("Presence heartbeat failed", error);
+             }
+-            setRoomToken(result.roomToken);
+-            setSessionToken(result.sessionToken);
+         };
+         // Send initial heartbeat
+         void sendHeartbeat();
+diff --git a/dist/react/useSingleFlight.js b/dist/react/useSingleFlight.js
+index 31f1d454ebe4ecefc09b185916866e616b27f801..f208acb67baf1c1c63fabdcc5d35f8dc181b81bf 100644
+--- a/dist/react/useSingleFlight.js
++++ b/dist/react/useSingleFlight.js
+@@ -33,22 +33,21 @@ export default function useSingleFlight(fn) {
+                 flightStatus.current.upNext = { fn, resolve, reject, args };
+             });
+         }
+-        flightStatus.current.inFlight = true;
+         const firstReq = fn(...args);
++        flightStatus.current.inFlight = true;
+         void (async () => {
+             try {
+                 await firstReq;
+             }
+-            finally {
++            catch {
+                 // If it failed, we naively just move on to the next request.
+             }
+             while (flightStatus.current.upNext) {
+                 const cur = flightStatus.current.upNext;
+                 flightStatus.current.upNext = null;
+-                await cur
+-                    .fn(...cur.args)
+-                    .then(cur.resolve)
+-                    .catch(cur.reject);
++                await Promise.resolve()
++                    .then(() => cur.fn(...cur.args))
++                    .then(cur.resolve, cur.reject);
+             }
+             flightStatus.current.inFlight = false;
+         })();
+diff --git a/src/react/index.ts b/src/react/index.ts
+index e9d0b887637314b467fa2e648b585ef8fa0382a2..b7295b56770c04c1533389717375964952b9f565 100644
+--- a/src/react/index.ts
++++ b/src/react/index.ts
+@@ -124,13 +124,18 @@ export default function usePresence(
+ 
+     // Periodic heartbeats.
+     const sendHeartbeat = async () => {
+-      const result = await heartbeat({ roomId, userId, sessionId, interval });
+-      if (canceled) {
+-        disconnectIfOrphaned(result.sessionToken);
+-        return;
++      try {
++        const result = await heartbeat({ roomId, userId, sessionId, interval });
++        if (canceled) {
++          disconnectIfOrphaned(result.sessionToken);
++          return;
++        }
++        setRoomToken(result.roomToken);
++        setSessionToken(result.sessionToken);
++      } catch (error) {
++        // Keep the current tokens; the next regular heartbeat can recover.
++        console.error("Presence heartbeat failed", error);
+       }
+-      setRoomToken(result.roomToken);
+-      setSessionToken(result.sessionToken);
+     };
+ 
+     // Send initial heartbeat
+diff --git a/src/react/useSingleFlight.ts b/src/react/useSingleFlight.ts
+index 86e34bba728e2f65149a54a42838080575da991b..b165c22846b81f04db38bda9c5bfcecf500ea755 100644
+--- a/src/react/useSingleFlight.ts
++++ b/src/react/useSingleFlight.ts
+@@ -44,21 +44,20 @@ export default function useSingleFlight<
+           flightStatus.current.upNext = { fn, resolve, reject, args };
+         }) as ReturnType<F>;
+       }
+-      flightStatus.current.inFlight = true;
+       const firstReq = fn(...args) as ReturnType<F>;
++      flightStatus.current.inFlight = true;
+       void (async () => {
+         try {
+           await firstReq;
+-        } finally {
++        } catch {
+           // If it failed, we naively just move on to the next request.
+         }
+         while (flightStatus.current.upNext) {
+           const cur = flightStatus.current.upNext;
+           flightStatus.current.upNext = null;
+-          await cur
+-            .fn(...cur.args)
+-            .then(cur.resolve)
+-            .catch(cur.reject);
++          await Promise.resolve()
++            .then(() => cur.fn(...cur.args))
++            .then(cur.resolve, cur.reject);
+         }
+         flightStatus.current.inFlight = false;
+       })();

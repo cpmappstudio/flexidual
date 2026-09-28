@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@convex-dev/presence@0.4.0': 56068b7e175035a8f423fa4d82ce75925547e17bc253aee94ee50f19993c122c
+
 importers:
 
   .:
@@ -25,7 +28,7 @@ importers:
         version: 2.4.12
       '@convex-dev/presence':
         specifier: 0.4.0
-        version: 0.4.0(convex@1.42.3(@clerk/clerk-react@5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react@19.1.1))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+        version: 0.4.0(patch_hash=56068b7e175035a8f423fa4d82ce75925547e17bc253aee94ee50f19993c122c)(convex@1.42.3(@clerk/clerk-react@5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react@19.1.1))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@convex-dev/rate-limiter':
         specifier: ^0.3.2
         version: 0.3.2(convex@1.42.3(@clerk/clerk-react@5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react@19.1.1))(react@19.1.1)
@@ -5961,7 +5964,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@convex-dev/presence@0.4.0(convex@1.42.3(@clerk/clerk-react@5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react@19.1.1))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
+  '@convex-dev/presence@0.4.0(patch_hash=56068b7e175035a8f423fa4d82ce75925547e17bc253aee94ee50f19993c122c)(convex@1.42.3(@clerk/clerk-react@5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react@19.1.1))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
     dependencies:
       '@convex-dev/batch-worker': 0.2.2(convex@1.42.3(@clerk/clerk-react@5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react@19.1.1))(react@19.1.1)
       convex: 1.42.3(@clerk/clerk-react@5.42.1(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(react@19.1.1)

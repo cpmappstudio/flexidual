@@ -140,6 +140,26 @@ test("the timeout worker marks abandoned connections offline without client poll
   expect(await f.status()).toMatchObject({ online: false });
 });
 
+test("renewed sessions survive old deadlines and expire after their last heartbeat", async () => {
+  const f = await setup();
+  const tokens = await f.beat("renewed");
+  const online = await f.status();
+
+  for (let i = 0; i < 6; i++) {
+    vi.advanceTimersByTime(30_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(await f.beat("renewed")).toEqual(tokens);
+    expect(await f.status()).toEqual(online);
+  }
+
+  vi.advanceTimersByTime(60_000);
+  await f.t.finishInProgressScheduledFunctions();
+  expect(await f.status()).toEqual(online);
+
+  await f.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(30_000));
+  expect(await f.status()).toMatchObject({ online: false });
+});
+
 test("identity cannot be forged and presence cannot expose unrelated users", async () => {
   const f = await setup();
   const tokens = await f.beat("private");

@@ -438,11 +438,23 @@ test("publishes a recording only after it has a playable URL", async () => {
     url: "https://recordings.example/media-lab.mp4",
     completedAt: now,
   });
-  await t.mutation(internal.recordings.updateFromWebhook, {
-    egressId: "recording-notification-egress",
-    status: "complete",
-    url: "https://recordings.example/media-lab.mp4",
-    completedAt: now,
+  await t.run(async (ctx) => {
+    await ctx.runMutation(internal.recordings.updateFromWebhook, {
+      egressId: "recording-notification-egress",
+      status: "complete",
+      url: "https://recordings.example/media-lab.mp4",
+      completedAt: now + 1_000, // A retry's receipt time is not a new completion.
+    });
+    for (const status of ["starting", "active", "failed", "aborted"] as const) {
+      await ctx.runMutation(internal.recordings.updateFromWebhook, {
+        egressId: "recording-notification-egress",
+        status,
+        details: "stale event",
+      });
+    }
+    expect((await ctx.meta.getTransactionMetrics()).documentsWritten.used).toBe(
+      0,
+    );
   });
 
   const notifications = await t.run((ctx) =>
@@ -456,6 +468,26 @@ test("publishes a recording only after it has a playable URL", async () => {
     kind: "recording_available",
     className: "Media Lab",
   });
+
+  // Completion can arrive after the URL, without repeating it in the payload.
+  await t.run((ctx) =>
+    ctx.db.insert("recordings", {
+      scheduleId: data.scheduleId,
+      roomName: "media-lab-room",
+      egressId: "recording-with-existing-url",
+      status: "active",
+      url: "https://recordings.example/existing.mp4",
+      startedAt: now,
+    }),
+  );
+  await t.mutation(internal.recordings.updateFromWebhook, {
+    egressId: "recording-with-existing-url",
+    status: "complete",
+    completedAt: now,
+  });
+  expect(
+    await t.run((ctx) => ctx.db.query("systemNotifications").collect()),
+  ).toHaveLength(4);
 
   await t.run((ctx) =>
     ctx.db.insert("recordings", {
@@ -488,4 +520,31 @@ test("publishes a recording only after it has a playable URL", async () => {
     errorCode: 400,
     details: "End reason: StopEgress API",
   });
+  for (const status of ["starting", "active", "failed", "aborted"] as const) {
+    const recordingId = await t.run((ctx) =>
+      ctx.db.insert("recordings", {
+        scheduleId: data.scheduleId,
+        roomName: "media-lab-room",
+        egressId: `transition-${status}`,
+        status,
+        startedAt: now,
+      }),
+    );
+    await t.mutation(internal.recordings.updateFromWebhook, {
+      egressId: `transition-${status}`,
+      status: "starting",
+    });
+    expect(
+      (await t.run((ctx) => ctx.db.get("recordings", recordingId)))?.status,
+    ).toBe(status);
+    // Same-state events can still add missing metadata.
+    await t.mutation(internal.recordings.updateFromWebhook, {
+      egressId: `transition-${status}`,
+      status,
+      details: "additional metadata",
+    });
+    expect(
+      (await t.run((ctx) => ctx.db.get("recordings", recordingId)))?.details,
+    ).toBe("additional metadata");
+  }
 });

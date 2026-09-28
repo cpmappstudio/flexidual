@@ -1,4 +1,4 @@
-import { ConvexError, v } from "convex/values";
+import { compareValues, ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { canManageRoom } from "./permissions";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
@@ -54,7 +54,11 @@ export const upsertScene = mutation({
       .unique();
     const now = Date.now();
     if (existing) {
-      await ctx.db.patch(existing._id, { elements, updatedAt: now });
+      if (compareValues(existing.elements, elements) === 0) return null;
+      await ctx.db.patch("whiteboardSessions", existing._id, {
+        elements,
+        updatedAt: now,
+      });
     } else {
       await ctx.db.insert("whiteboardSessions", {
         roomName,
@@ -233,9 +237,9 @@ export const setRecordingToken = internalMutation({
       .query("whiteboardSessions")
       .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
       .unique();
-    if (existing) {
+    if (existing && existing.recordingToken !== recordingToken) {
       await ctx.db.patch(existing._id, { recordingToken });
-    } else if (recordingToken) {
+    } else if (!existing && recordingToken) {
       await ctx.db.insert("whiteboardSessions", {
         roomName,
         elements: [],

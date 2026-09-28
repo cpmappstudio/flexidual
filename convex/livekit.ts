@@ -4,6 +4,7 @@ import { ConvexError, v } from "convex/values";
 import { action, internalAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { getLiveLifecycleSnapshot } from "./model/liveLifecycle";
 import { randomUUID } from "node:crypto";
 import {
   evaluateLiveSession,
@@ -80,7 +81,7 @@ async function stopActiveRoomEgresses(
       egress.status === EgressStatus.EGRESS_STARTING ||
       egress.status === EgressStatus.EGRESS_ACTIVE,
   );
-  await Promise.allSettled(
+  await Promise.all(
     activeEgresses.map((egress) => egressClient.stopEgress(egress.egressId)),
   );
 }
@@ -122,34 +123,65 @@ async function finalizeLiveSession(
   ctx: ActionCtx,
   roomName: string,
   endedAt: number,
-  clients?: LiveKitClients,
+  expectedState?: ReturnType<typeof getLiveLifecycleSnapshot>,
   endedBy?: Id<"users">,
 ) {
-  if (clients) {
+  const ended = await ctx.runMutation(internal.schedule.endLiveSession, {
+    roomName,
+    endedAt,
+    endedBy,
+    expectedState,
+  });
+  if (!ended && expectedState) {
+    await ctx.scheduler.runAfter(0, internal.livekit.reconcileLiveSession, {
+      roomName,
+    });
+  }
+}
+
+export const cleanupEndedSession = internalAction({
+  args: { roomName: v.string(), attempt: v.optional(v.number()) },
+  returns: v.null(),
+  handler: async (ctx, { roomName, attempt = 0 }): Promise<null> => {
+    const session = await ctx.runQuery(
+      internal.schedule.getLiveLifecycleState,
+      {
+        roomName,
+      },
+    );
+    if (!session || session.status !== "completed" || session.isLive)
+      return null;
+    const config = getLiveKitConfig();
+    if (!config) {
+      console.warn(
+        "[LiveKit Lifecycle] Credentials unavailable for room cleanup.",
+      );
+      return null;
+    }
+    const clients = createLiveKitClients(config);
+    // Request recording shutdown before removing the room, even when retrying.
+    let failure: { error: unknown } | undefined;
     try {
       await stopActiveRoomEgresses(clients.egressClient, roomName);
     } catch (error) {
-      console.error(
-        `[LiveKit Lifecycle] Failed to stop egress for ${roomName}:`,
-        error,
-      );
+      failure = { error };
     }
     try {
       await deleteRoomIfPresent(clients.roomClient, roomName);
     } catch (error) {
-      console.error(
-        `[LiveKit Lifecycle] Failed to delete room ${roomName}:`,
-        error,
+      failure = { error };
+    }
+    if (failure) {
+      if (attempt >= 3) throw failure.error;
+      await ctx.scheduler.runAfter(
+        1_000 * 2 ** attempt,
+        internal.livekit.cleanupEndedSession,
+        { roomName, attempt: attempt + 1 },
       );
     }
-  }
-
-  await ctx.runMutation(internal.schedule.endLiveSession, {
-    roomName,
-    endedAt,
-    endedBy,
-  });
-}
+    return null;
+  },
+});
 
 async function reconcileRoom(
   ctx: ActionCtx,
@@ -165,7 +197,12 @@ async function reconcileRoom(
   const hardEndsAt = getLiveSessionHardEnd(session.scheduledEnd);
   if (!clients) {
     if (now >= hardEndsAt) {
-      await finalizeLiveSession(ctx, roomName, now);
+      await finalizeLiveSession(
+        ctx,
+        roomName,
+        now,
+        getLiveLifecycleSnapshot(session),
+      );
     } else {
       console.warn(
         `[LiveKit Lifecycle] Credentials unavailable; skipped participant reconciliation for ${roomName}.`,
@@ -190,7 +227,12 @@ async function reconcileRoom(
   });
 
   if (decision.action === "end") {
-    await finalizeLiveSession(ctx, roomName, now, clients);
+    await finalizeLiveSession(
+      ctx,
+      roomName,
+      now,
+      getLiveLifecycleSnapshot(session),
+    );
     return;
   }
 
@@ -198,6 +240,7 @@ async function reconcileRoom(
     internal.schedule.updateLiveLifecycleState,
     {
       roomName,
+      expectedState: getLiveLifecycleSnapshot(session),
       reconciledAt: now,
       expectedLeaderAbsentSince: session.liveLeaderAbsentSince ?? null,
       expectedExtensionEndsAt: session.liveExtensionEndsAt ?? null,
@@ -551,7 +594,7 @@ export const endSession = action({
       ctx,
       args.roomName,
       Date.now(),
-      createLiveKitClients(config),
+      undefined,
       user._id,
     );
 
