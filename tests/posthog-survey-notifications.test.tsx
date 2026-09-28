@@ -8,8 +8,13 @@ const mocks = vi.hoisted(() => ({
   acknowledge: vi.fn(),
   callbacks: {} as { onEligible?: () => void; onComplete?: () => void },
 }));
-vi.mock("next/navigation", () => ({ useParams: () => ({ orgSlug: "campus" }) }));
-vi.mock("convex/react", () => ({ useQuery: () => mocks.state, useMutation: () => mocks.acknowledge }));
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ orgSlug: "campus" }),
+}));
+vi.mock("convex/react", () => ({
+  useQuery: () => mocks.state,
+  useMutation: () => mocks.acknowledge,
+}));
 vi.mock("@/components/posthog-survey-panel", () => ({
   PostHogSurveyPanel: (props: typeof mocks.callbacks) => {
     mocks.callbacks = props;
@@ -23,8 +28,16 @@ beforeEach(() => {
   mocks.callbacks = {};
   localStorage.clear();
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
-const props = { client: {} as PostHog, surveyId: "test", userId: "teacher", locale: "es" };
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+const props = {
+  client: {} as PostHog,
+  surveyId: "test",
+  userId: "teacher",
+  locale: "es",
+};
 
 test("waits for server completion before showing and never invites already-completed users", () => {
   mocks.state = undefined;
@@ -41,9 +54,17 @@ test("enrolls once on SDK eligibility and preserves thank-you after own completi
   expect(mocks.acknowledge).not.toHaveBeenCalled();
   await act(async () => mocks.callbacks.onEligible?.());
   await act(async () => mocks.callbacks.onEligible?.());
-  expect(mocks.acknowledge).toHaveBeenCalledExactlyOnceWith({ surveyId: "test", organizationSlug: "campus", completed: false });
+  expect(mocks.acknowledge).toHaveBeenCalledExactlyOnceWith({
+    surveyId: "test",
+    organizationSlug: "campus",
+    completed: false,
+  });
   await act(async () => mocks.callbacks.onComplete?.());
-  expect(mocks.acknowledge).toHaveBeenLastCalledWith({ surveyId: "test", organizationSlug: "campus", completed: true });
+  expect(mocks.acknowledge).toHaveBeenLastCalledWith({
+    surveyId: "test",
+    organizationSlug: "campus",
+    completed: true,
+  });
   mocks.state = { enabled: true, completed: true };
   view.rerender(<PostHogSurveyNotifications {...props} />);
   expect(view.queryByTestId("survey-panel")).not.toBeNull();
@@ -52,7 +73,13 @@ test("enrolls once on SDK eligibility and preserves thank-you after own completi
 test("reconciles older browser completion without another invitation", async () => {
   localStorage.setItem("flexidual:survey-panel:teacher:test", "complete");
   render(<PostHogSurveyNotifications {...props} />);
-  await waitFor(() => expect(mocks.acknowledge).toHaveBeenCalledExactlyOnceWith({ surveyId: "test", organizationSlug: "campus", completed: true }));
+  await waitFor(() =>
+    expect(mocks.acknowledge).toHaveBeenCalledExactlyOnceWith({
+      surveyId: "test",
+      organizationSlug: "campus",
+      completed: true,
+    }),
+  );
 });
 
 test("retry completes an acknowledgement that failed offline", async () => {
@@ -60,14 +87,30 @@ test("retry completes an acknowledgement that failed offline", async () => {
   mocks.acknowledge.mockRejectedValueOnce(new Error("offline"));
   render(<PostHogSurveyNotifications {...props} />);
   await act(async () => mocks.callbacks.onComplete?.());
-  await act(async () => { vi.advanceTimersByTime(30_000); });
+  await act(async () => {
+    vi.advanceTimersByTime(30_000);
+  });
   expect(mocks.acknowledge).toHaveBeenCalledTimes(2);
-  expect(mocks.acknowledge).toHaveBeenLastCalledWith(expect.objectContaining({ completed: true }));
+  expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+    expect.objectContaining({ completed: true }),
+  );
 });
 
 test("a disabled campaign neither enrolls nor acknowledges", async () => {
   mocks.state = { enabled: false, completed: false };
-  render(<PostHogSurveyNotifications {...props} />);
-  await act(async () => { mocks.callbacks.onEligible?.(); mocks.callbacks.onComplete?.(); });
+  const view = render(<PostHogSurveyNotifications {...props} />);
+  expect(view.queryByTestId("survey-panel")).toBeNull();
+  await act(async () => {
+    mocks.callbacks.onEligible?.();
+    mocks.callbacks.onComplete?.();
+  });
   expect(mocks.acknowledge).not.toHaveBeenCalled();
+});
+
+test("disabling a live campaign unmounts the form immediately", () => {
+  const view = render(<PostHogSurveyNotifications {...props} />);
+  expect(view.queryByTestId("survey-panel")).not.toBeNull();
+  mocks.state = { enabled: false, completed: false };
+  view.rerender(<PostHogSurveyNotifications {...props} />);
+  expect(view.queryByTestId("survey-panel")).toBeNull();
 });

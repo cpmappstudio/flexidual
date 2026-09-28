@@ -11,11 +11,13 @@ import {
 let ended = false;
 let audience = true;
 let unavailable = false;
+let origin = "http://localhost:3000";
 beforeEach(() => {
   vi.useFakeTimers();
   ended = false;
   audience = true;
   unavailable = false;
+  origin = "http://localhost:3000";
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string | URL) => {
@@ -35,7 +37,7 @@ beforeEach(() => {
                     end_date: ended ? "2026-01-01" : null,
                     targeting_flag_key: "audience",
                     conditions: {
-                      url: "http://localhost:3000/",
+                      url: `${origin}/`,
                       urlMatchType: "icontains",
                     },
                   },
@@ -94,7 +96,7 @@ async function setup() {
     surveyId: "test",
     projectToken: "phc_fake",
     enabled: true,
-    origin: "http://localhost:3000",
+    origin,
   });
   const teacher = t.withIdentity({ subject: "teacher" });
   const acknowledge = (completed = false) =>
@@ -251,3 +253,65 @@ test("destination rules fail closed and respect language paths", () => {
     ),
   ).toBe(false);
 });
+
+test("HTTPS production campaign delivers and reconfiguration preserves completion", async () => {
+  origin = "https://app.example.com";
+  const s = await setup();
+  await s.acknowledge();
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect((await s.list()).page[0].kind).toBe("survey_invitation");
+  await s.acknowledge(true);
+  const id = await s.t.mutation(internal.surveyNotifications.configure, {
+    surveyId: "test",
+    projectToken: "phc_fake",
+    enabled: true,
+    origin: `${origin}/`,
+  });
+  expect(id).toBe(s.campaignId);
+  await s.refresh();
+  expect(
+    await s.teacher.query(api.surveyNotifications.getState, {
+      surveyId: "test",
+    }),
+  ).toEqual({ enabled: true, completed: true });
+  expect((await s.list()).page).toHaveLength(0);
+});
+
+test.each([
+  "http://app.example.com",
+  "https://app.example.com/path",
+  "https://app.example.com?x=1",
+  "https://app.example.com#x",
+  "https://user:pass@app.example.com",
+  "invalid",
+  "javascript:alert(1)",
+])(
+  "configuration rejects unsafe or non-origin destination %s",
+  async (origin) => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.surveyNotifications.configure, {
+        surveyId: "test",
+        projectToken: "phc_fake",
+        enabled: true,
+        origin,
+      }),
+    ).rejects.toThrow("Use an HTTPS app origin");
+  },
+);
+
+test.each(["surveyId", "projectToken"])(
+  "configuration requires %s",
+  async (field) => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.surveyNotifications.configure, {
+        surveyId: "test",
+        projectToken: "phc_fake",
+        enabled: true,
+        origin: "https://app.example.com",
+        [field]: " ",
+      }),
+    ).rejects.toThrow("Survey ID and project token are required");
+  },
+);

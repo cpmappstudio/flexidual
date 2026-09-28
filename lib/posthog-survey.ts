@@ -1,15 +1,27 @@
 import type { PostHog, Survey } from "posthog-js";
+import { surveyOrigin } from "./survey-origin";
 
-export function getLocalSurveyId(role: string | undefined, pathname: string) {
+export function getSurveyId(role: string | undefined, pathname: string) {
   if (
-    process.env.NODE_ENV === "production" ||
     typeof window === "undefined" ||
-    window.location.hostname !== "localhost" ||
     (role !== "teacher" && role !== "principal") ||
     pathname.split("/").includes("classroom")
   )
     return undefined;
-  return process.env.NEXT_PUBLIC_POSTHOG_TEST_SURVEY_ID || undefined;
+  if (process.env.NODE_ENV !== "production") {
+    return window.location.hostname === "localhost"
+      ? process.env.NEXT_PUBLIC_POSTHOG_TEST_SURVEY_ID || undefined
+      : undefined;
+  }
+  // Production includes preview builds: only the explicit live origin may show it.
+  const origin = surveyOrigin(process.env.NEXT_PUBLIC_APP_URL);
+  if (
+    !origin?.startsWith("https://") ||
+    window.location.origin !== origin ||
+    process.env.NEXT_PUBLIC_POSTHOG_NOTIFICATIONS_ENABLED !== "true"
+  )
+    return undefined;
+  return process.env.NEXT_PUBLIC_POSTHOG_SURVEY_ID || undefined;
 }
 
 export type SurveyPanelState = "hidden" | "open" | "minimized" | "complete";

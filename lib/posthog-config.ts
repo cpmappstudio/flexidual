@@ -43,7 +43,7 @@ export const posthogConfig: Partial<PostHogConfig> = {
   ip: false,
   save_referrer: false,
   save_campaign_params: false,
-  // Identification only unless a specific local survey is explicitly enabled.
+  // Identification only unless a specific survey is explicitly enabled.
   // Rebuild properties to exclude URLs, referrers and automatic person metadata.
   before_send: (event) => {
     if (!event || event.event !== "$identify") return null;
@@ -113,7 +113,10 @@ export function getPosthogSurveyConfig(
           token: event.properties.token,
           distinct_id: event.properties.distinct_id,
           $process_person_profile: event.properties.$process_person_profile,
-          environment: "development",
+          environment:
+            process.env.NODE_ENV === "production"
+              ? "production"
+              : "development",
         },
       };
     },

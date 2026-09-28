@@ -17,6 +17,7 @@ import { surveyCampaignValidator } from "./schema";
 import { getCurrentUserOrThrow } from "./users";
 import { createSystemNotification } from "./model/systemNotifications";
 import { getSurveyStaffRole as staffRole } from "./model/surveyAccess";
+import { surveyOrigin } from "../lib/survey-origin";
 
 export const SURVEY_REMINDER_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 export const MAX_SURVEY_REMINDERS = 3;
@@ -43,9 +44,13 @@ export const configure = internalMutation({
   },
   returns: v.id("surveyCampaigns"),
   handler: async (ctx, args) => {
-    const origin = new URL(args.origin).origin;
-    if (origin !== "http://localhost:3000")
-      throw new Error("Only local survey testing is enabled");
+    const origin = surveyOrigin(args.origin);
+    if (!origin)
+      throw new Error(
+        "Use an HTTPS app origin or http://localhost:3000, without a path",
+      );
+    if (!args.surveyId.trim() || !args.projectToken.trim())
+      throw new Error("Survey ID and project token are required");
     const existing = await campaignFor(ctx, args.surveyId);
     const fields = { ...args, origin, remoteActive: false };
     if (existing) {

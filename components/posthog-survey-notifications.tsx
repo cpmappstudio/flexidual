@@ -61,7 +61,8 @@ export function PostHogSurveyNotifications(
 
   // Wait for account-scoped completion before mounting. Preserve the thank-you
   // screen in the tab that submitted; other tabs/devices remove the invitation.
-  if (!state || (state.completed && !locallyCompleted.current)) return null;
+  if (!state?.enabled || (state.completed && !locallyCompleted.current))
+    return null;
   return (
     <PostHogSurveyPanel
       {...props}

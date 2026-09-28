@@ -7,7 +7,7 @@ import { useAuth } from "@clerk/nextjs";
 import type { PostHog } from "posthog-js";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { getPosthogSurveyConfig, posthogConfig } from "@/lib/posthog-config";
-import { getLocalSurveyId } from "@/lib/posthog-survey";
+import { getSurveyId } from "@/lib/posthog-survey";
 import { PostHogSurveyPanel } from "@/components/posthog-survey-panel";
 import { PostHogSurveyNotifications } from "@/components/posthog-survey-notifications";
 
@@ -18,7 +18,7 @@ export function PostHogBootstrap() {
   const pathname = usePathname();
   const locale = useLocale();
   const role = access?.role;
-  const surveyId = getLocalSurveyId(role, pathname);
+  const surveyId = getSurveyId(role, pathname);
   const [session, setSession] = useState<{
     client: PostHog;
     userId: string;

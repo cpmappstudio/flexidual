@@ -2,12 +2,15 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { PostHog, Survey } from "posthog-js";
 import {
   compactSurvey,
-  getLocalSurveyId,
+  getSurveyId,
   observePosthogSurvey,
 } from "@/lib/posthog-survey";
 import { getPosthogSurveyConfig } from "@/lib/posthog-config";
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 test("compact presentation preserves server metadata and doesn't guess branched navigation", () => {
   const survey = {
@@ -50,19 +53,56 @@ test("compact presentation preserves server metadata and doesn't guess branched 
 test("local survey access fails closed for production, missing config and other roles", () => {
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_TEST_SURVEY_ID", "survey-test");
   for (const role of ["teacher", "principal"]) {
-    expect(getLocalSurveyId(role, "/en/cpca-main/catalog")).toBe("survey-test");
-    expect(
-      getLocalSurveyId(role, "/en/cpca-main/classroom/live"),
-    ).toBeUndefined();
+    expect(getSurveyId(role, "/en/cpca-main/catalog")).toBe("survey-test");
+    expect(getSurveyId(role, "/en/cpca-main/classroom/live")).toBeUndefined();
   }
   for (const role of ["student", "admin", "superadmin", "tutor", undefined]) {
-    expect(getLocalSurveyId(role, "/en/cpca-main/catalog")).toBeUndefined();
+    expect(getSurveyId(role, "/en/cpca-main/catalog")).toBeUndefined();
   }
   vi.stubEnv("NODE_ENV", "production");
-  expect(getLocalSurveyId("teacher", "/en/cpca-main/catalog")).toBeUndefined();
+  expect(getSurveyId("teacher", "/en/cpca-main/catalog")).toBeUndefined();
   vi.stubEnv("NODE_ENV", "test");
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_TEST_SURVEY_ID", "");
-  expect(getLocalSurveyId("teacher", "/en/cpca-main/catalog")).toBeUndefined();
+  expect(getSurveyId("teacher", "/en/cpca-main/catalog")).toBeUndefined();
+});
+
+test("production requires its own ID, canonical HTTPS origin and completion bridge", () => {
+  vi.stubEnv("NODE_ENV", "production");
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_TEST_SURVEY_ID", "dev-only");
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_SURVEY_ID", "live-survey");
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_NOTIFICATIONS_ENABLED", "true");
+  vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.example.com/");
+  vi.stubGlobal("window", {
+    location: new URL("https://app.example.com/en/campus/catalog"),
+  });
+  expect(getSurveyId("teacher", "/en/campus/catalog")).toBe("live-survey");
+  expect(getSurveyId("principal", "/es/campus/catalog")).toBe("live-survey");
+  for (const role of ["student", "tutor", "admin", "superadmin", undefined]) {
+    expect(getSurveyId(role, "/en/campus/catalog")).toBeUndefined();
+  }
+  expect(getSurveyId("teacher", "/en/campus/classroom/live")).toBeUndefined();
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_SURVEY_ID", "");
+  expect(getSurveyId("teacher", "/en/campus/catalog")).toBeUndefined();
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_SURVEY_ID", "live-survey");
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_NOTIFICATIONS_ENABLED", "false");
+  expect(getSurveyId("teacher", "/en/campus/catalog")).toBeUndefined();
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_NOTIFICATIONS_ENABLED", "true");
+  for (const origin of [
+    "",
+    "invalid",
+    "http://app.example.com",
+    "https://preview.example.com",
+    "https://app.example.com/private",
+    "https://user:pass@app.example.com",
+  ]) {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", origin);
+    expect(getSurveyId("teacher", "/en/campus/catalog")).toBeUndefined();
+  }
+  vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.example.com");
+  vi.stubGlobal("window", { location: new URL("https://preview.example.com") });
+  expect(getSurveyId("teacher", "/en/campus/catalog")).toBeUndefined();
+  vi.stubGlobal("window", undefined);
+  expect(getSurveyId("teacher", "/en/campus/catalog")).toBeUndefined();
 });
 
 test("shows only the selected survey through SDK conditions and ignores stale callbacks", () => {
@@ -161,4 +201,9 @@ test("survey filter preserves answers, completion and transport but strips priva
     }),
   ).toBeNull();
   expect(filter({ ...event, event: "$pageview" })).toBeNull();
+  vi.stubEnv("NODE_ENV", "production");
+  expect(getPosthogSurveyConfig("survey-test").before_send).toBeTypeOf(
+    "function",
+  );
+  expect(filter(event)?.properties.environment).toBe("production");
 });
