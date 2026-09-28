@@ -12,6 +12,14 @@
 
 import { defineSchema, defineTable } from "convex/server";
 import { liveRoomActivationFields } from "./model/liveActivation";
+import {
+  abekaConnectionFields,
+  abekaCourseFields,
+  abekaProgressFields,
+  abekaRunFields,
+  abekaStudentFields,
+  encryptedSession,
+} from "./model/abekaValidators";
 import { v } from "convex/values";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { liveAccessValidator } from "./model/liveAccess";
@@ -23,7 +31,46 @@ import {
 } from "./model/sessionLeadership";
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
 
+export const surveyCampaignValidator = v.object({
+  surveyId: v.string(),
+  projectToken: v.string(),
+  enabled: v.boolean(),
+  remoteActive: v.boolean(),
+  origin: v.string(),
+});
+
 export default defineSchema({
+  // Only provider backoff metadata. Existing connections and reports are unchanged.
+  abekaProviderBackoff: defineTable({ until: v.number() }),
+  abekaCourses: defineTable(abekaCourseFields).index(
+    "by_connectionId_and_subjectId",
+    ["connectionId", "subjectId"],
+  ),
+  abekaCourseLinks: defineTable({
+    connectionId: v.id("abekaConnections"),
+    courseId: v.id("abekaCourses"),
+    classId: v.id("classes"),
+  })
+    .index("by_connectionId_and_classId", ["connectionId", "classId"])
+    .index("by_courseId_and_classId", ["courseId", "classId"]),
+  abekaConnections: defineTable(abekaConnectionFields)
+    .index("by_school", ["schoolId"])
+    .index("by_next_sync", ["nextSyncAt"]),
+  abekaSecrets: defineTable({
+    connectionId: v.id("abekaConnections"),
+    encrypted: v.optional(encryptedSession),
+    credentials: v.optional(encryptedSession),
+  }).index("by_connection", ["connectionId"]),
+  abekaStudents: defineTable(abekaStudentFields)
+    .index("by_connection_login", ["connectionId", "loginId"])
+    .index("by_connection_user", ["connectionId", "userId"]),
+  abekaSyncRuns: defineTable(abekaRunFields).index("by_connection", [
+    "connectionId",
+  ]),
+  abekaProgress: defineTable(abekaProgressFields).index("by_student_subject", [
+    "studentId",
+    "subjectId",
+  ]),
   /**
    * USERS
    * All system users (students, teachers, tutors, admins)
@@ -213,6 +260,54 @@ export default defineSchema({
   })
     .index("by_class", ["classId", "studentId"])
     .index("by_student", ["studentId", "classId"]),
+
+  courseTasks: defineTable({
+    classId: v.id("classes"),
+    createdBy: v.id("users"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    availableAt: v.optional(v.number()),
+    releasedAt: v.optional(v.number()),
+    dueAt: v.optional(v.number()),
+    allowLateSubmissions: v.boolean(),
+    manuallyClosedAt: v.optional(v.number()),
+    manuallyClosedBy: v.optional(v.id("users")),
+    updatedAt: v.number(),
+  }).index("by_classId_and_releasedAt", ["classId", "releasedAt"]),
+
+  courseTaskRecipients: defineTable({
+    taskId: v.id("courseTasks"),
+    studentId: v.id("users"),
+    assignedAt: v.number(),
+    submittedAt: v.optional(v.number()),
+    submissionRevision: v.number(),
+    feedback: v.optional(
+      v.object({
+        text: v.string(),
+        authorId: v.id("users"),
+        createdAt: v.number(),
+        updatedAt: v.number(),
+        forRevision: v.number(),
+      }),
+    ),
+  })
+    .index("by_taskId_and_studentId", ["taskId", "studentId"])
+    .index("by_studentId_and_taskId", ["studentId", "taskId"]),
+
+  courseTaskFiles: defineTable({
+    taskId: v.id("courseTasks"),
+    recipientId: v.optional(v.id("courseTaskRecipients")),
+    kind: v.union(v.literal("material"), v.literal("submission")),
+    uploadedBy: v.id("users"),
+    name: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    storageId: v.optional(v.id("_storage")),
+    state: v.union(v.literal("staged"), v.literal("active")),
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_taskId_and_kind_and_state", ["taskId", "kind", "state"])
+    .index("by_recipientId_and_state", ["recipientId", "state"]),
 
   courseChatMessages: defineTable({
     classId: v.id("classes"),
@@ -421,6 +516,27 @@ export default defineSchema({
     .index("by_class_and_occurred_at", ["classId", "occurredAt"])
     .index("by_school_and_occurred_at", ["schoolId", "occurredAt"]),
 
+  // Answers remain in PostHog. These tables only coordinate invitations/completion.
+  surveyCampaigns: defineTable(surveyCampaignValidator).index("by_survey_id", [
+    "surveyId",
+  ]),
+
+  surveyParticipation: defineTable({
+    campaignId: v.id("surveyCampaigns"),
+    userId: v.id("users"),
+    organizationSlug: v.string(),
+    notificationId: v.optional(v.id("systemNotifications")),
+    remindersSent: v.number(),
+    deliveryAllowed: v.optional(v.boolean()),
+    nextReminderAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_campaign_and_user", ["campaignId", "userId"])
+    .index("by_campaign_and_next_reminder_at", [
+      "campaignId",
+      "nextReminderAt",
+    ]),
+
   systemNotifications: defineTable({
     recipientId: v.id("users"),
     kind: v.union(
@@ -434,6 +550,7 @@ export default defineSchema({
       v.literal("organization_membership_changed"),
       v.literal("announcement"),
       v.literal("course_chat"),
+      v.literal("survey_invitation"),
     ),
     action: v.optional(
       v.union(v.literal("added"), v.literal("removed"), v.literal("changed")),
@@ -461,6 +578,7 @@ export default defineSchema({
     announcementBody: v.optional(v.string()),
     announcementUrl: v.optional(v.string()),
     dedupeKey: v.string(),
+    surveyId: v.optional(v.string()),
     chatMessageCount: v.optional(v.number()),
     chatReadThrough: v.optional(v.number()),
     createdAt: v.number(),
@@ -684,6 +802,7 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_role", ["role", "schoolId"])
     .index("by_org", ["orgId", "orgType"])
+    .index("by_org_role", ["orgId", "orgType", "role"])
     .index("by_user_org", ["userId", "orgId", "orgType"])
     .index("by_school_role_grade", ["schoolId", "role", "gradeCode"]),
 

@@ -1,10 +1,17 @@
 import { httpRouter } from "convex/server";
+import * as abekaHttp from "./abekaHttp";
 import * as chatFiles from "./courseChatAttachmentHttp";
 import { verifyWebhook, type WebhookEvent } from "@clerk/backend/webhooks";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 const http = httpRouter();
+http.route({ path: "/abeka-credentials", method: "POST", handler: abekaHttp.connectCredentials });
+http.route({ path: "/abeka-credentials", method: "OPTIONS", handler: abekaHttp.options });
+http.route({ path: "/abeka-session", method: "POST", handler: abekaHttp.connect });
+http.route({ path: "/abeka-session", method: "OPTIONS", handler: abekaHttp.options });
+http.route({ path: "/abeka-login-probe", method: "POST", handler: abekaHttp.loginProbe });
+http.route({ path: "/abeka-login-probe", method: "OPTIONS", handler: abekaHttp.options });
 http.route({
   path: "/course-chat-files",
   method: "POST",

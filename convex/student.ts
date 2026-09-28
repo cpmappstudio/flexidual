@@ -10,10 +10,7 @@ import { getInstitutionGrades } from "./model/grades";
 import { getStudentGradeCode } from "./model/membership";
 import { resolveStudentDashboardAccess } from "./model/studentDashboardAccess";
 import { isStudentEnrolled } from "./model/enrollments";
-import {
-  canManageCampusPeople,
-  canManageClasses,
-} from "./permissions";
+import { canManageCampusPeople, canManageClasses } from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import {
@@ -27,6 +24,15 @@ import {
   isUpcomingClassSession,
 } from "../lib/class-session";
 import { getSessionContentSummary } from "./model/sessionContent";
+import {
+  getAbekaStudentCourseProgress,
+  getAbekaStudentCourseReports,
+} from "./model/abekaStudentProgress";
+import { lessonProgress } from "./model/abekaValidators";
+import {
+  courseProgressFields,
+  getClassCurriculumProgress,
+} from "./model/courseProgress";
 
 const dashboardScheduleValidator = v.object({
   scheduleId: v.id("classSchedule"),
@@ -56,6 +62,56 @@ const dashboardScheduleValidator = v.object({
 const studentDashboardTargetValidator = v.object({
   studentId: v.optional(v.string()),
   orgSlug: v.optional(v.string()),
+});
+
+export const getAbekaCourseReport = query({
+  args: { ...studentDashboardTargetValidator.fields, classId: v.id("classes") },
+  returns: v.union(
+    v.null(),
+    v.object({
+      subjectName: v.string(),
+      syncedAt: v.number(),
+      lessons: v.array(
+        lessonProgress.pick(
+          "lessonNumber",
+          "percentage",
+          "completed",
+          "lastViewed",
+        ),
+      ),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const access = await resolveStudentDashboardAccess(ctx, args);
+    if (!access) return null;
+    const course = await ctx.db.get("classes", args.classId);
+    if (
+      !course?.isActive ||
+      (access.campus && course.campusId !== access.campus._id) ||
+      !(await isStudentEnrolled(ctx, course, access.student._id))
+    )
+      return null;
+    const reports = await getAbekaStudentCourseReports(
+      ctx,
+      access.student._id,
+      [course],
+    );
+    const report = reports.get(course._id);
+    if (!report) return null;
+    // Return only the requested course's display data, not integration identifiers.
+    return {
+      subjectName: report.subjectName,
+      syncedAt: report.syncedAt,
+      lessons: report.lessons.map(
+        ({ lessonNumber, percentage, completed, lastViewed }) => ({
+          lessonNumber,
+          percentage,
+          completed,
+          lastViewed,
+        }),
+      ),
+    };
+  },
 });
 
 const attendanceHistoryItemValidator = v.object({
@@ -242,6 +298,17 @@ export const getStudentDashboardStats = query({
         v.object({
           classId: v.id("classes"),
           className: v.string(),
+          abekaProgress: v.union(
+            v.null(),
+            v.object({
+              completed: v.number(),
+              total: v.number(),
+              percentage: v.number(),
+              syncedAt: v.number(),
+            }),
+          ),
+          courseProgress: v.object(courseProgressFields),
+          timeZone: v.string(),
           curriculumTitle: v.string(),
           curriculumIconKey: curriculumIconValidator,
           description: v.optional(v.string()),
@@ -358,24 +425,36 @@ export const getStudentDashboardStats = query({
     );
 
     // --- Per-class stats ---
+    const abekaProgress = await getAbekaStudentCourseProgress(
+      ctx,
+      user._id,
+      myClasses,
+    );
     const classDetails = await Promise.all(
       myClasses.map(async (classData) => {
-        const [teacher, curriculum, userPreference, schedules, timeZone] =
-          await Promise.all([
-            classData.teacherId ? ctx.db.get(classData.teacherId) : null,
-            ctx.db.get(classData.curriculumId),
-            ctx.db
-              .query("studentClassPreferences")
-              .withIndex("by_student_class", (q) =>
-                q.eq("studentId", user._id).eq("classId", classData._id),
-              )
-              .unique(),
-            ctx.db
-              .query("classSchedule")
-              .withIndex("by_class", (q) => q.eq("classId", classData._id))
-              .collect(),
-            getClassTimeZone(ctx, classData),
-          ]);
+        const [
+          teacher,
+          curriculum,
+          userPreference,
+          schedules,
+          timeZone,
+          curriculumProgress,
+        ] = await Promise.all([
+          classData.teacherId ? ctx.db.get(classData.teacherId) : null,
+          ctx.db.get(classData.curriculumId),
+          ctx.db
+            .query("studentClassPreferences")
+            .withIndex("by_student_class", (q) =>
+              q.eq("studentId", user._id).eq("classId", classData._id),
+            )
+            .unique(),
+          ctx.db
+            .query("classSchedule")
+            .withIndex("by_class", (q) => q.eq("classId", classData._id))
+            .collect(),
+          getClassTimeZone(ctx, classData),
+          getClassCurriculumProgress(ctx, classData),
+        ]);
 
         const countableSchedules = schedules.filter(
           (schedule) =>
@@ -437,6 +516,14 @@ export const getStudentDashboardStats = query({
           stats: {
             classId: classData._id,
             className: classData.name,
+            abekaProgress: abekaProgress.get(classData._id) ?? null,
+            courseProgress: {
+              totalLessons: curriculumProgress.totalLessons,
+              taughtLessons: curriculumProgress.taughtLessons,
+              pendingLessons: curriculumProgress.pendingLessons,
+              percentage: curriculumProgress.percentage,
+            },
+            timeZone: timeZone ?? "UTC",
             curriculumTitle:
               curriculum?.title ??
               (classData.classType === "abeka"

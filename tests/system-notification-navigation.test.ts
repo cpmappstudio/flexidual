@@ -2,6 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getSystemNotificationHref } from "../lib/system-notification-navigation";
 
+test("survey invitations open the catalog with the selected survey", () => {
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "survey_invitation",
+      organizationSlug: "campus",
+      surveyId: "test-id",
+    }),
+    "/campus/catalog?survey=test-id",
+  );
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "survey_invitation",
+      surveyId: "test-id",
+    }),
+    null,
+  );
+});
+
 test("routes class notifications to their contextual destinations", () => {
   assert.equal(
     getSystemNotificationHref({

@@ -4,6 +4,13 @@ import { internal } from "./_generated/api";
 const crons = cronJobs();
 
 crons.interval(
+  "Refresh survey invitations",
+  { hours: 1 },
+  internal.surveyNotifications.refresh,
+  {},
+);
+
+crons.interval(
   "Reconcile active LiveKit sessions",
   { minutes: 5 },
   internal.livekit.reconcileActiveSessions,

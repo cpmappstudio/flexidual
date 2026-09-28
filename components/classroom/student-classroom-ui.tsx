@@ -869,7 +869,7 @@ export function StudentClassroomUI({
           whiteboard={
             isWhiteboardActive ? (
               <ClassroomWhiteboardContent
-                roomName={room.name}
+                roomName={roomName}
                 followViewport={followViewport}
               />
             ) : undefined

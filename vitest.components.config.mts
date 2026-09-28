@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  css: { postcss: { plugins: [] } },
   define: {
     "process.env.NODE_ENV": JSON.stringify("test"),
   },
@@ -15,5 +16,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["tests/**/*.test.tsx"],
+    // Exercise the real presence hook with mocked Convex transport.
+    server: { deps: { inline: ["@convex-dev/presence"] } },
   },
 });

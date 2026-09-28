@@ -2,6 +2,12 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
+import { RadialChart } from "@/components/ui/radial-chart";
+import { AbekaCourseReport } from "@/components/abeka/abeka-course-report";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
@@ -21,7 +27,7 @@ import {
   GraduationCap,
   Pencil,
 } from "lucide-react";
-import { useTranslations, useLocale } from "next-intl";
+import { useTranslations, useLocale, useFormatter } from "next-intl";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { format, isSameDay } from "date-fns";
 import { StudentScheduleEvent } from "@/lib/types/student";
@@ -62,9 +68,25 @@ const COURSE_CARD_ACCENTS = [
 export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const t = useTranslations();
   const locale = useLocale();
+  const formatter = useFormatter();
   const basePath = useOrgBasePath();
   const router = useRouter();
   const { orgSlug } = useParams<{ orgSlug: string }>();
+  const [abekaCourse, setAbekaCourse] = useState<{
+    classId: Id<"classes">;
+    className: string;
+    timeZone: string;
+  } | null>(null);
+  const abekaTrigger = useRef<HTMLElement | null>(null);
+  const abekaReport = useQuery(
+    api.student.getAbekaCourseReport,
+    abekaCourse
+      ? {
+          classId: abekaCourse.classId,
+          ...(studentId ? { studentId, orgSlug } : {}),
+        }
+      : "skip",
+  );
   const presence = useQuery(
     api.presence.studentProfile,
     studentId ? { studentId, orgSlug } : {},
@@ -468,35 +490,165 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                   </div>
                 ) : (
                   classStats.map((classItem, index) => (
-                    <Link
+                    <div
                       key={classItem.classId}
-                      href={`/${orgSlug}/classes/${classItem.classId}`}
-                      aria-label={classItem.className}
                       className={cn(
                         "relative min-h-[76px] scroll-ml-1 snap-start overflow-hidden rounded-2xl border px-4 py-3 pl-5 shadow-sm transition-colors before:absolute before:inset-y-3 before:left-0 before:w-1 before:rounded-r-full hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         COURSE_CARD_ACCENTS[index % COURSE_CARD_ACCENTS.length],
                       )}
                     >
-                      <div className="flex items-center gap-3">
-                        <CurriculumIcon
-                          iconKey={classItem.curriculumIconKey}
-                          className="size-11"
-                          size={44}
-                        />
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground">
-                            {classItem.className}
-                          </p>
-                          <p className="line-clamp-1 text-xs text-muted-foreground">
-                            {classItem.teacher.fullName}
-                          </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <Link
+                          href={`/${orgSlug}/classes/${classItem.classId}`}
+                          aria-label={classItem.className}
+                          className="flex min-w-[min(100%,16rem)] flex-1 items-center gap-3 after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring"
+                        >
+                          <CurriculumIcon
+                            iconKey={classItem.curriculumIconKey}
+                            className="size-11 shrink-0"
+                            size={44}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="break-words text-sm font-semibold text-foreground">
+                              {classItem.className}
+                            </p>
+                            <p className="break-words text-xs text-muted-foreground">
+                              {classItem.teacher.fullName}
+                            </p>
+                          </div>
+                        </Link>
+                        <div className="relative z-10 ml-auto flex shrink-0 items-center gap-0">
+                          {classItem.abekaProgress && (
+                            <RadialChart
+                              value={classItem.abekaProgress.percentage}
+                              label="Abeka"
+                              onClick={(event) => {
+                                abekaTrigger.current = event.currentTarget;
+                                setAbekaCourse({
+                                  classId: classItem.classId,
+                                  className: classItem.className,
+                                  timeZone: classItem.timeZone,
+                                });
+                              }}
+                              ariaLabel={`${t("settings.integrations.report")} · ${t(
+                                "student.abekaProgress",
+                                classItem.abekaProgress,
+                              )}`}
+                              fill="#86338a"
+                              config={{
+                                progress: {
+                                  label: "Abeka",
+                                  color: "#86338a",
+                                },
+                              }}
+                              className="size-11 shrink-0"
+                              tooltip={
+                                <div className="grid gap-1.5">
+                                  <span className="font-medium">
+                                    Abeka ·{" "}
+                                    {formatter.number(
+                                      classItem.abekaProgress.percentage / 100,
+                                      {
+                                        style: "percent",
+                                        maximumFractionDigits: 2,
+                                      },
+                                    )}
+                                  </span>
+                                  <span className="text-muted-foreground">
+                                    {t("student.abekaLastSync", {
+                                      date: formatter.dateTime(
+                                        classItem.abekaProgress.syncedAt,
+                                        {
+                                          dateStyle: "medium",
+                                          timeStyle: "short",
+                                          timeZone: classItem.timeZone,
+                                        },
+                                      ),
+                                    })}
+                                  </span>
+                                </div>
+                              }
+                              center={
+                                <Image
+                                  src="/providers/abeka-logo.svg"
+                                  alt=""
+                                  width={24}
+                                  height={16}
+                                  className="h-4 w-6 object-contain"
+                                />
+                              }
+                            />
+                          )}
+                          <RadialChart
+                            value={classItem.courseProgress.percentage}
+                            label="Flexidual"
+                            ariaLabel={`Flexidual · ${t("class.courseProgress")}: ${classItem.courseProgress.percentage}%`}
+                            fill="var(--secondary)"
+                            config={{
+                              progress: {
+                                label: "Flexidual",
+                                color: "var(--secondary)",
+                              },
+                            }}
+                            className="size-11 shrink-0"
+                            tooltip={
+                              <span className="font-medium">
+                                Flexidual ·{" "}
+                                {formatter.number(
+                                  classItem.courseProgress.percentage / 100,
+                                  { style: "percent" },
+                                )}
+                              </span>
+                            }
+                            center={
+                              <Image
+                                src="/logo-flexidual.svg"
+                                alt=""
+                                width={28}
+                                height={14}
+                                className="h-auto w-7 object-contain"
+                              />
+                            }
+                          />
                         </div>
                       </div>
-                    </Link>
+                    </div>
                   ))
                 )}
               </div>
             </section>
+            <Dialog
+              open={abekaCourse !== null}
+              onOpenChange={(open) => !open && setAbekaCourse(null)}
+            >
+              <DialogContent
+                className="sm:max-w-2xl"
+                aria-describedby={undefined}
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  abekaTrigger.current?.focus();
+                }}
+              >
+                <DialogTitle className="sr-only">
+                  Abeka ·{" "}
+                  {abekaReport?.subjectName ??
+                    t("settings.integrations.report")}
+                </DialogTitle>
+                {abekaReport === undefined ? (
+                  <Spinner aria-label={t("settings.integrations.loading")} />
+                ) : abekaReport ? (
+                  <AbekaCourseReport
+                    report={abekaReport}
+                    collapsible={false}
+                    timeZone={abekaCourse?.timeZone}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {t("settings.integrations.noReports")}
+                  </p>
+                )}
+              </DialogContent>
+            </Dialog>
           </div>
 
           <aside className="order-2 grid xl:order-none xl:min-h-0">

@@ -8,6 +8,12 @@
  * @module
  */
 
+import type * as abeka from "../abeka.js";
+import type * as abekaActions from "../abekaActions.js";
+import type * as abekaCatalog from "../abekaCatalog.js";
+import type * as abekaHttp from "../abekaHttp.js";
+import type * as abekaSync from "../abekaSync.js";
+import type * as abekaWorkflow from "../abekaWorkflow.js";
 import type * as academicSettings from "../academicSettings.js";
 import type * as calendar from "../calendar.js";
 import type * as calendarClosures from "../calendarClosures.js";
@@ -25,20 +31,29 @@ import type * as lessons from "../lessons.js";
 import type * as liveRoomLifecycle from "../liveRoomLifecycle.js";
 import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
+import type * as model_abekaAccess from "../model/abekaAccess.js";
+import type * as model_abekaScheduling from "../model/abekaScheduling.js";
+import type * as model_abekaStudentProgress from "../model/abekaStudentProgress.js";
+import type * as model_abekaTransport from "../model/abekaTransport.js";
+import type * as model_abekaValidators from "../model/abekaValidators.js";
 import type * as model_calendarClosures from "../model/calendarClosures.js";
 import type * as model_catalog from "../model/catalog.js";
 import type * as model_classCancellationEvents from "../model/classCancellationEvents.js";
 import type * as model_classType from "../model/classType.js";
 import type * as model_courseChatAccess from "../model/courseChatAccess.js";
 import type * as model_courseChatAttachments from "../model/courseChatAttachments.js";
+import type * as model_courseProgress from "../model/courseProgress.js";
 import type * as model_courseSchedule from "../model/courseSchedule.js";
 import type * as model_courseScheduleShares from "../model/courseScheduleShares.js";
+import type * as model_courseTaskAccess from "../model/courseTaskAccess.js";
+import type * as model_courseTaskRecipients from "../model/courseTaskRecipients.js";
 import type * as model_curriculumIcons from "../model/curriculumIcons.js";
 import type * as model_enrollments from "../model/enrollments.js";
 import type * as model_grades from "../model/grades.js";
 import type * as model_lessons from "../model/lessons.js";
 import type * as model_liveAccess from "../model/liveAccess.js";
 import type * as model_liveActivation from "../model/liveActivation.js";
+import type * as model_liveLifecycle from "../model/liveLifecycle.js";
 import type * as model_membership from "../model/membership.js";
 import type * as model_roles from "../model/roles.js";
 import type * as model_scheduleAccess from "../model/scheduleAccess.js";
@@ -48,6 +63,7 @@ import type * as model_sessionContent from "../model/sessionContent.js";
 import type * as model_sessionLeadership from "../model/sessionLeadership.js";
 import type * as model_studentAttendance from "../model/studentAttendance.js";
 import type * as model_studentDashboardAccess from "../model/studentDashboardAccess.js";
+import type * as model_surveyAccess from "../model/surveyAccess.js";
 import type * as model_systemNotificationEvents from "../model/systemNotificationEvents.js";
 import type * as model_systemNotifications from "../model/systemNotifications.js";
 import type * as model_timeZone from "../model/timeZone.js";
@@ -63,6 +79,7 @@ import type * as schools from "../schools.js";
 import type * as seed from "../seed.js";
 import type * as sessionRecords from "../sessionRecords.js";
 import type * as student from "../student.js";
+import type * as surveyNotifications from "../surveyNotifications.js";
 import type * as systemNotifications from "../systemNotifications.js";
 import type * as types from "../types.js";
 import type * as users from "../users.js";
@@ -76,6 +93,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  abeka: typeof abeka;
+  abekaActions: typeof abekaActions;
+  abekaCatalog: typeof abekaCatalog;
+  abekaHttp: typeof abekaHttp;
+  abekaSync: typeof abekaSync;
+  abekaWorkflow: typeof abekaWorkflow;
   academicSettings: typeof academicSettings;
   calendar: typeof calendar;
   calendarClosures: typeof calendarClosures;
@@ -93,20 +116,29 @@ declare const fullApi: ApiFromModules<{
   liveRoomLifecycle: typeof liveRoomLifecycle;
   livekit: typeof livekit;
   migration: typeof migration;
+  "model/abekaAccess": typeof model_abekaAccess;
+  "model/abekaScheduling": typeof model_abekaScheduling;
+  "model/abekaStudentProgress": typeof model_abekaStudentProgress;
+  "model/abekaTransport": typeof model_abekaTransport;
+  "model/abekaValidators": typeof model_abekaValidators;
   "model/calendarClosures": typeof model_calendarClosures;
   "model/catalog": typeof model_catalog;
   "model/classCancellationEvents": typeof model_classCancellationEvents;
   "model/classType": typeof model_classType;
   "model/courseChatAccess": typeof model_courseChatAccess;
   "model/courseChatAttachments": typeof model_courseChatAttachments;
+  "model/courseProgress": typeof model_courseProgress;
   "model/courseSchedule": typeof model_courseSchedule;
   "model/courseScheduleShares": typeof model_courseScheduleShares;
+  "model/courseTaskAccess": typeof model_courseTaskAccess;
+  "model/courseTaskRecipients": typeof model_courseTaskRecipients;
   "model/curriculumIcons": typeof model_curriculumIcons;
   "model/enrollments": typeof model_enrollments;
   "model/grades": typeof model_grades;
   "model/lessons": typeof model_lessons;
   "model/liveAccess": typeof model_liveAccess;
   "model/liveActivation": typeof model_liveActivation;
+  "model/liveLifecycle": typeof model_liveLifecycle;
   "model/membership": typeof model_membership;
   "model/roles": typeof model_roles;
   "model/scheduleAccess": typeof model_scheduleAccess;
@@ -116,6 +148,7 @@ declare const fullApi: ApiFromModules<{
   "model/sessionLeadership": typeof model_sessionLeadership;
   "model/studentAttendance": typeof model_studentAttendance;
   "model/studentDashboardAccess": typeof model_studentDashboardAccess;
+  "model/surveyAccess": typeof model_surveyAccess;
   "model/systemNotificationEvents": typeof model_systemNotificationEvents;
   "model/systemNotifications": typeof model_systemNotifications;
   "model/timeZone": typeof model_timeZone;
@@ -131,6 +164,7 @@ declare const fullApi: ApiFromModules<{
   seed: typeof seed;
   sessionRecords: typeof sessionRecords;
   student: typeof student;
+  surveyNotifications: typeof surveyNotifications;
   systemNotifications: typeof systemNotifications;
   types: typeof types;
   users: typeof users;
@@ -167,4 +201,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
   presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
+  workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
 };

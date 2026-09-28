@@ -2,12 +2,15 @@ import type { Doc } from "@/convex/_generated/dataModel";
 
 type NavigableNotification = Pick<
   Doc<"systemNotifications">,
-  "kind" | "action" | "organizationSlug" | "classId" | "roomName"
+  "kind" | "action" | "organizationSlug" | "classId" | "roomName" | "surveyId"
 >;
 
 export function getSystemNotificationHref(notification: NavigableNotification) {
   const orgSlug = notification.organizationSlug;
   if (!orgSlug) return null;
+  if (notification.kind === "survey_invitation" && notification.surveyId) {
+    return `/${orgSlug}/catalog?survey=${encodeURIComponent(notification.surveyId)}`;
+  }
   if (notification.kind === "course_chat" && notification.classId) {
     return `/${orgSlug}/chats/${notification.classId}`;
   }

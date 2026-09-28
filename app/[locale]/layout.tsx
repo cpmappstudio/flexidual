@@ -9,6 +9,7 @@ import { hasLocale } from 'next-intl';
 import { routing } from '@/i18n/routing';
 import { enUS, esES, ptBR } from '@clerk/localizations';
 import { AlertProvider } from "@/components/providers/alert-provider";
+import { PostHogBootstrap } from "@/components/posthog-bootstrap";
 
 export default async function LocaleLayout({
     children,
@@ -43,7 +44,8 @@ export default async function LocaleLayout({
             afterSignOutUrl={`/${locale}/sign-in`}
         >
             <ConvexClientProvider>
-                <NextIntlClientProvider messages={messages}>
+                <NextIntlClientProvider locale={locale} messages={messages}>
+                    <PostHogBootstrap />
                     <AlertProvider>
                         {children}
                     </AlertProvider>
