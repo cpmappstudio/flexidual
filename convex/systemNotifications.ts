@@ -29,6 +29,8 @@ const notificationKindValidator = v.union(
   v.literal("organization_membership_changed"),
   v.literal("announcement"),
   v.literal("course_chat"),
+  v.literal("course_task"),
+  v.literal("course_task_reminder"),
   v.literal("survey_invitation"),
 );
 
@@ -46,6 +48,8 @@ const notificationPayloadFields = {
   schoolId: v.optional(v.id("schools")),
   campusId: v.optional(v.id("campuses")),
   classId: v.optional(v.id("classes")),
+  taskId: v.optional(v.id("courseTasks")),
+  taskTitle: v.optional(v.string()),
   scheduleId: v.optional(v.id("classSchedule")),
   recordingId: v.optional(v.id("recordings")),
   cancellationEventId: v.optional(v.id("classCancellationEvents")),
@@ -80,6 +84,8 @@ const notificationValidator = v.object({
   _id: v.id("systemNotifications"),
   _creationTime: v.number(),
   ...notificationFields,
+  taskDueAt: v.optional(v.number()),
+  taskTimeZone: v.optional(v.string()),
 });
 
 const publishArgs = {
@@ -106,7 +112,7 @@ export const list = query({
       .paginate(notificationPaginationOptions(args.paginationOpts));
     return {
       ...result,
-      page: await filterVisibleNotifications(ctx, result.page),
+      page: await filterVisibleNotifications(ctx, result.page, true),
     };
   },
 });

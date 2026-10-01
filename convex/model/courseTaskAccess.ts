@@ -10,7 +10,7 @@ import { isStudentEnrolled } from "./enrollments";
 import { getClassTimeZone } from "./timeZone";
 import { canManageClass } from "../permissions";
 
-async function getCourseEndAt(
+export async function getCourseEndAt(
   ctx: QueryCtx | MutationCtx,
   course: Doc<"classes">,
 ) {

@@ -31,15 +31,16 @@ import {
   ExternalLink,
   LoaderCircle,
   Pencil,
+  ClipboardList,
   Users,
 } from "lucide-react";
 
 import { StudentManager } from "@/components/teaching/classes/student-manager";
 import { Button } from "@/components/ui/button";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
@@ -56,6 +57,7 @@ import { toast } from "sonner";
 import type { CurriculumLessonProgress } from "@/lib/course-progress";
 import { getExternalClassPlatform } from "@/lib/class-session";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
+import { CourseTasksTab } from "@/components/teaching/classes/course-tasks-tab";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -67,8 +69,10 @@ export default function ClassDetailPage() {
   const locale = useLocale();
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const classId = params.classId as Id<"classes">;
   const [activeTab, setActiveTab] = useState("schedule");
+  const [linkedTaskId, setLinkedTaskId] = useState<Id<"courseTasks">>();
   const [isLaunchingClassroom, setIsLaunchingClassroom] = useState(false);
   const [isRestoringChat, setIsRestoringChat] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -82,6 +86,7 @@ export default function ClassDetailPage() {
   const [roadmapPage, setRoadmapPage] = useState(1);
 
   const classData = useQuery(api.classes.get, { id: classId });
+  const currentUser = useQuery(api.users.getCurrentUser);
   const setArchived = useMutation(api.courseChatMessages.setArchived);
 
   const curriculumProgress = useQuery(api.lessons.getClassCurriculumProgress, {
@@ -108,6 +113,25 @@ export default function ClassDetailPage() {
     [allScheduleItems, classId],
   );
   const lessons = curriculumProgress?.lessons ?? [];
+
+  useEffect(() => {
+    const taskId = searchParams.get("task");
+    if (taskId) {
+      setLinkedTaskId(taskId as Id<"courseTasks">);
+      setActiveTab("tasks");
+    }
+  }, [searchParams]);
+
+  function handleTabChange(value: string) {
+    setActiveTab(value);
+    if (value !== "tasks") return;
+
+    setLinkedTaskId(undefined);
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("task")) return;
+    url.searchParams.delete("task");
+    window.history.replaceState(null, "", url);
+  }
 
   if (
     classData === undefined ||
@@ -325,7 +349,7 @@ export default function ClassDetailPage() {
         <div ref={tabsRef} className="w-full min-w-0">
           <Tabs
             value={activeTab}
-            onValueChange={setActiveTab}
+            onValueChange={handleTabChange}
             className="w-full"
           >
             <div className="mb-2 overflow-x-auto">
@@ -336,6 +360,10 @@ export default function ClassDetailPage() {
                 >
                   <CalendarIcon className="size-4" aria-hidden="true" />
                   {t("schedule.sessions")} ({classSchedule?.length || 0})
+                </TabsTrigger>
+                <TabsTrigger value="tasks" className={classTabTriggerClassName}>
+                  <ClipboardList className="size-4" aria-hidden="true" />
+                  {t("courseTasks.tab")}
                 </TabsTrigger>
                 <TabsTrigger
                   value="curriculum"
@@ -453,6 +481,21 @@ export default function ClassDetailPage() {
             </TabsContent>
 
             {/* --- STUDENTS TAB --- */}
+            <TabsContent value="tasks" className="mt-0">
+              <CourseTasksTab
+                classId={classId}
+                canManage={
+                  canManageClass || classData.teacherId === currentUser?._id
+                }
+                timeZone={
+                  classData.timeZone ??
+                  Intl.DateTimeFormat().resolvedOptions().timeZone ??
+                  "UTC"
+                }
+                initialTaskId={linkedTaskId}
+              />
+            </TabsContent>
+
             <TabsContent value="students" className="mt-0">
               <StudentManager
                 classId={classId}

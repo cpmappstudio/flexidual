@@ -1,8 +1,11 @@
 import type { PaginationOptions } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { isValidTimeZone } from "../../lib/time-zone";
 import { canAccessClass } from "../permissions";
+import { getCourseTaskAccess } from "./courseTaskAccess";
 import { getSurveyStaffRole } from "./surveyAccess";
+import { getClassTimeZone } from "./timeZone";
 
 export type SystemNotificationKind =
   | "course_enrollment"
@@ -14,6 +17,8 @@ export type SystemNotificationKind =
   | "role_changed"
   | "organization_membership_changed"
   | "course_chat"
+  | "course_task"
+  | "course_task_reminder"
   | "survey_invitation"
   | "announcement";
 
@@ -27,6 +32,8 @@ export type SystemNotificationInput = {
   schoolId?: Id<"schools">;
   campusId?: Id<"campuses">;
   classId?: Id<"classes">;
+  taskId?: Id<"courseTasks">;
+  taskTitle?: string;
   scheduleId?: Id<"classSchedule">;
   recordingId?: Id<"recordings">;
   cancellationEventId?: Id<"classCancellationEvents">;
@@ -52,11 +59,17 @@ export type SystemNotificationInput = {
   chatReadThrough?: number;
 };
 
+type VisibleNotification = Doc<"systemNotifications"> & {
+  taskDueAt?: number;
+  taskTimeZone?: string;
+};
+
 // Re-check course access on reads as enrollment/assignments can change independently.
-export async function isNotificationVisible(
-  ctx: QueryCtx | MutationCtx,
+async function getVisibleNotification(
+  ctx: QueryCtx,
   notification: Doc<"systemNotifications">,
-) {
+  includeTaskDetails: boolean,
+): Promise<VisibleNotification | null> {
   if (notification.kind === "survey_invitation") {
     const campaign = await ctx.db
       .query("surveyCampaigns")
@@ -64,33 +77,62 @@ export async function isNotificationVisible(
         q.eq("surveyId", notification.surveyId ?? ""),
       )
       .unique();
-    if (!campaign?.enabled || !campaign.remoteActive) return false;
+    if (!campaign?.enabled || !campaign.remoteActive) return null;
     const participation = await ctx.db
       .query("surveyParticipation")
       .withIndex("by_campaign_and_user", (q) =>
         q.eq("campaignId", campaign._id).eq("userId", notification.recipientId),
       )
       .unique();
-    return Boolean(
-      participation &&
-        participation.deliveryAllowed !== false &&
-        participation.completedAt === undefined &&
-        (await getSurveyStaffRole(
-          ctx,
-          participation.userId,
-          participation.organizationSlug,
-        )),
-    );
+    return participation &&
+      participation.deliveryAllowed !== false &&
+      participation.completedAt === undefined &&
+      (await getSurveyStaffRole(
+        ctx,
+        participation.userId,
+        participation.organizationSlug,
+      ))
+      ? notification
+      : null;
   }
-  if (notification.kind !== "course_chat") return true;
-  if (!notification.classId || !notification.chatMessageCount) return false;
+  if (
+    notification.kind === "course_task" ||
+    notification.kind === "course_task_reminder"
+  ) {
+    const task = notification.taskId
+      ? await ctx.db.get("courseTasks", notification.taskId)
+      : null;
+    if (!task) return null;
+    const access = await getCourseTaskAccess(
+      ctx,
+      task,
+      notification.recipientId,
+    );
+    if (access.kind !== "student") return null;
+    if (!includeTaskDetails) return notification;
+    const timeZone =
+      task.dueAt === undefined
+        ? undefined
+        : await getClassTimeZone(ctx, access.course);
+    return {
+      ...notification,
+      taskTitle: task.title,
+      className: access.course.name,
+      ...(task.dueAt === undefined ? {} : { taskDueAt: task.dueAt }),
+      ...(timeZone && isValidTimeZone(timeZone)
+        ? { taskTimeZone: timeZone }
+        : {}),
+    };
+  }
+  if (notification.kind !== "course_chat") return notification;
+  if (!notification.classId || !notification.chatMessageCount) return null;
   const course = await ctx.db.get("classes", notification.classId);
-  return Boolean(
-    course &&
-      course.chatArchivedAt === undefined &&
-      notification.createdAt > (course.chatNotificationsClearedThrough ?? 0) &&
-      (await canAccessClass(ctx, notification.recipientId, course)),
-  );
+  return course &&
+    course.chatArchivedAt === undefined &&
+    notification.createdAt > (course.chatNotificationsClearedThrough ?? 0) &&
+    (await canAccessClass(ctx, notification.recipientId, course))
+    ? notification
+    : null;
 }
 
 export function notificationPaginationOptions(options: PaginationOptions) {
@@ -107,11 +149,14 @@ export function notificationPaginationOptions(options: PaginationOptions) {
 export async function filterVisibleNotifications(
   ctx: QueryCtx,
   notifications: Doc<"systemNotifications">[],
+  includeTaskDetails = false,
 ) {
   const visible = await Promise.all(
-    notifications.map((item) => isNotificationVisible(ctx, item)),
+    notifications.map((item) =>
+      getVisibleNotification(ctx, item, includeTaskDetails),
+    ),
   );
-  return notifications.filter((_, index) => visible[index]);
+  return visible.filter((item): item is VisibleNotification => item !== null);
 }
 
 export async function createSystemNotification(

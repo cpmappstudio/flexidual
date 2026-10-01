@@ -2,10 +2,9 @@ import { ConvexError } from "convex/values";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { MAX_CHAT_FILE_BYTES } from "../lib/chat-attachments";
-import { readVerifiedUploadBody } from "./model/fileUploadBody";
+import { MAX_TASK_FILE_BYTES } from "../lib/course-task-files";
+import { readCourseTaskUploadBody } from "./model/courseTaskUploadBody";
 
-// Bearer authentication, not cookies. Never return a public storage URL.
 const headers = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -22,33 +21,41 @@ export const options = httpAction(
 export const upload = httpAction(async (ctx, request) => {
   let storageId: Id<"_storage"> | undefined;
   try {
-    const classId = new URL(request.url).searchParams.get("classId");
-    if (!classId)
-      return new Response("INVALID_CHAT_FILE", { status: 400, headers });
+    const params = new URL(request.url).searchParams;
+    const taskId = params.get("taskId");
+    const kind = params.get("kind");
+    if (!taskId)
+      return Response.json(
+        { error: "INVALID_TASK_FILE" },
+        { status: 400, headers },
+      );
     const size = Number(request.headers.get("X-File-Size"));
     const contentType = request.headers.get("Content-Type") ?? "";
     const name = decodeURIComponent(request.headers.get("X-File-Name") ?? "");
-    const id: Id<"courseChatAttachments"> = await ctx.runMutation(
-      internal.courseChatAttachments.reserve,
-      { classId: classId as Id<"classes">, name, size, contentType },
+    const id: Id<"courseTaskFiles"> = await ctx.runMutation(
+      internal.courseTaskFiles.reserve,
+      {
+        taskId: taskId as Id<"courseTasks">,
+        ...(kind === "material" ? { kind } : {}),
+        name,
+        size,
+        contentType,
+      },
     );
-    const blob = await readVerifiedUploadBody(
+    const blob = await readCourseTaskUploadBody(
       request,
       size,
-      MAX_CHAT_FILE_BYTES,
+      MAX_TASK_FILE_BYTES,
       contentType,
     );
-    if (!blob) throw new ConvexError("INVALID_CHAT_FILE");
+    if (!blob) throw new ConvexError("INVALID_TASK_FILE");
     storageId = await ctx.storage.store(blob);
-    await ctx.runMutation(internal.courseChatAttachments.complete, {
-      id,
-      storageId,
-    });
+    await ctx.runMutation(internal.courseTaskFiles.complete, { id, storageId });
     storageId = undefined;
     return Response.json({ id }, { headers });
   } catch (error) {
     if (!(error instanceof ConvexError))
-      console.error("Chat attachment upload failed", error);
+      console.error("Task file upload failed", error);
     if (storageId) await ctx.storage.delete(storageId);
     const code = error instanceof ConvexError ? error.data : "UPLOAD_FAILED";
     return Response.json({ error: code }, { status: 400, headers });
@@ -59,8 +66,8 @@ export const download = httpAction(async (ctx, request) => {
   try {
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return new Response(null, { status: 400, headers });
-    const file = await ctx.runMutation(internal.courseChatAttachments.read, {
-      id: id as Id<"courseChatAttachments">,
+    const file = await ctx.runMutation(internal.courseTaskFiles.read, {
+      id: id as Id<"courseTaskFiles">,
     });
     const blob = await ctx.storage.get(file.storageId);
     if (!blob) return new Response(null, { status: 404, headers });

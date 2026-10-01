@@ -51,6 +51,7 @@ export function DataTable<TData>({
   initialSorting,
   initialColumnFilters,
   pageSize,
+  paginate = true,
   customFilter,
   createAction,
   onExport,
@@ -86,7 +87,7 @@ export function DataTable<TData>({
     },
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    getPaginationRowModel: paginate ? getPaginationRowModel() : undefined,
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
@@ -116,13 +117,14 @@ export function DataTable<TData>({
   );
 
   React.useEffect(() => {
+    if (!paginate) return;
     const lastPageIndex = Math.max(0, table.getPageCount() - 1);
     setPagination((current) =>
       current.pageIndex > lastPageIndex
         ? { ...current, pageIndex: lastPageIndex }
         : current,
     );
-  }, [filteredRowsCount, table]);
+  }, [filteredRowsCount, paginate, table]);
 
   React.useEffect(() => {
     onFilteredRowCountChange?.(filteredRowsCount);
@@ -309,43 +311,45 @@ export function DataTable<TData>({
         </Table>
       </div>
 
-      <div className="flex items-center justify-end space-x-2 py-4">
-        <div className="flex-1 text-muted-foreground text-sm font-medium">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {renderResultsCount(true)}
-            <span>
-              {t("table.pageInfo", {
-                current: table.getState().pagination.pageIndex + 1,
-                total: table.getPageCount(),
-              })}
-            </span>
+      {paginate && (
+        <div className="flex items-center justify-end space-x-2 py-4">
+          <div className="flex-1 text-muted-foreground text-sm font-medium">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {renderResultsCount(true)}
+              <span>
+                {t("table.pageInfo", {
+                  current: table.getState().pagination.pageIndex + 1,
+                  total: table.getPageCount(),
+                })}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-x-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="bg-sidebar"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              <span className="sr-only">Go to previous page</span>
+              <ChevronLeft />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="bg-sidebar"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              <span className="sr-only">Go to next page</span>
+              <ChevronRight />
+            </Button>
           </div>
         </div>
-
-        <div className="space-x-2">
-          <Button
-            variant="outline"
-            size="icon"
-            className="bg-sidebar"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            <span className="sr-only">Go to previous page</span>
-            <ChevronLeft />
-          </Button>
-
-          <Button
-            variant="outline"
-            size="icon"
-            className="bg-sidebar"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            <span className="sr-only">Go to next page</span>
-            <ChevronRight />
-          </Button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -220,6 +220,63 @@ export const migrateAcademicPeriodDates = internalMutation({
   },
 });
 
+export const backfillCourseTaskAvailabilitySortAt = internalMutation({
+  args: { cursor: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("courseTasks")
+      .paginate({ numItems: 100, cursor: args.cursor ?? null });
+
+    for (const task of result.page) {
+      if (task.isDraft || task.availabilitySortAt !== undefined) continue;
+      await ctx.db.patch("courseTasks", task._id, {
+        availabilitySortAt:
+          task.releasedAt ?? task.availableAt ?? task._creationTime,
+      });
+    }
+
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.migration.backfillCourseTaskAvailabilitySortAt,
+        { cursor: result.continueCursor },
+      );
+    }
+    return null;
+  },
+});
+
+export const backfillCourseTaskRecipientOrdering = internalMutation({
+  args: { cursor: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("courseTaskRecipients")
+      .paginate({ numItems: 100, cursor: args.cursor ?? null });
+
+    for (const recipient of result.page) {
+      if (recipient.classId !== undefined && recipient.releasedAt !== undefined)
+        continue;
+      const task = await ctx.db.get("courseTasks", recipient.taskId);
+      if (!task || task.releasedAt === undefined) continue;
+      await ctx.db.patch("courseTaskRecipients", recipient._id, {
+        classId: task.classId,
+        releasedAt: task.releasedAt,
+      });
+    }
+
+    if (!result.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.migration.backfillCourseTaskRecipientOrdering,
+        { cursor: result.continueCursor },
+      );
+    }
+    return null;
+  },
+});
+
 export const initializeInstitutionGrades = internalMutation({
   args: { cursor: v.optional(v.string()) },
   returns: v.null(),

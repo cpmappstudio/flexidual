@@ -45,7 +45,7 @@ export function ClassOverviewSidebar({
   const hasMoreDesktopLessons = lessons.length > DESKTOP_LESSON_PREVIEW_COUNT;
 
   return (
-    <aside className="xl:sticky xl:top-[calc(var(--header-height)+1rem)] xl:h-[calc(100svh-var(--header-height)-2rem)] xl:self-start">
+    <aside className="hidden lg:block xl:sticky xl:top-[calc(var(--header-height)+1rem)] xl:h-[calc(100svh-var(--header-height)-2rem)] xl:self-start">
       <Card className={overviewCardClassName}>
         <div className="shrink-0 space-y-4 py-5">
           <CardHeader className="px-5">
