@@ -354,11 +354,15 @@ export const saveProgress = internalMutation({
     const fields = {
       ...args,
       subjectName:
-        args.subjectName ?? existing?.subjectName ?? args.lessons[0].subjectName,
+        args.subjectName ??
+        existing?.subjectName ??
+        args.lessons[0].subjectName,
       syncedAt: Date.now(),
     };
     if (existing) await ctx.db.patch(existing._id, fields);
     else await ctx.db.insert("abekaProgress", fields);
+    if (student.hasProgress !== true)
+      await ctx.db.patch(student._id, { hasProgress: true });
     return true;
   },
 });
@@ -399,6 +403,8 @@ export const studentComplete = internalMutation({
     await ctx.db.patch(student._id, {
       lastSyncedAt: Date.now(),
       syncedRunId: args.runId,
+      syncPending: undefined,
+      hasProgress: args.subjectIds.length > 0,
     });
     await ctx.db.patch(state.run._id, {
       studentsSynced: state.run.studentsSynced + 1,

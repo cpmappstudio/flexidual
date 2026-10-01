@@ -48,6 +48,8 @@ const studentDoc = v.object({
   _id: v.id("abekaStudents"),
   _creationTime: v.number(),
   ...abekaStudentFields,
+  syncPending: v.boolean(),
+  hasProgress: v.boolean(),
   linkedName: v.union(v.string(), v.null()),
   campusName: v.union(v.string(), v.null()),
   campusId: v.union(v.id("campuses"), v.null()),
@@ -265,6 +267,7 @@ export const saveSession = internalMutation({
         ? await selectAbekaPeriod(ctx, schoolId, school.timeZone, Date.now())
         : null;
       const id = await ctx.db.insert("abekaConnections", {
+        curriculumLinksMigratedAt: Date.now(),
         schoolId,
         revision: 1,
         status: "connecting",
@@ -430,8 +433,25 @@ export const students = query({
           const linked = student.userId
             ? await activeStudent(ctx, args.schoolId, student.userId)
             : null;
+          // Older rows have no availability flag. Use one indexed read until
+          // their next sync; never send lesson arrays to the table.
+          const report =
+            student.userId && student.hasProgress === undefined
+              ? await ctx.db
+                  .query("abekaProgress")
+                  .withIndex("by_student_subject", (q) =>
+                    q.eq("studentId", student._id),
+                  )
+                  .first()
+              : null;
           return {
             ...student,
+            syncPending:
+              !!student.userId &&
+              (student.syncPending ?? student.lastSyncedAt === undefined),
+            hasProgress:
+              !!student.userId &&
+              (student.hasProgress ?? !!report?.lessons.length),
             linkedName: linked?.user.fullName ?? null,
             campusName: linked?.campusName ?? null,
             campusId: linked?.campusId ?? null,
@@ -473,16 +493,13 @@ export const linkStudent = mutation({
       if (existing && existing._id !== student._id)
         throw new ConvexError("ALREADY_LINKED");
     }
-    await ctx.db.patch(student._id, { userId: args.userId ?? undefined });
-    // ponytail: reuse the serialized workflow, scoped to this student; no second queue.
-    if (
-      args.userId &&
-      args.userId !== student.userId &&
-      student.lastSyncedAt === undefined &&
-      connection.confirmed &&
-      ["connected", "error"].includes(connection.status)
-    )
-      await startAbekaSync(ctx, connection, { studentId: student._id });
+    if (args.userId === (student.userId ?? null)) return null;
+    // Linking changes only the local association. Existing provider snapshots
+    // remain valid; Update data or the scheduled sync refreshes them later.
+    await ctx.db.patch(student._id, {
+      userId: args.userId ?? undefined,
+      syncPending: args.userId ? true : undefined,
+    });
     return null;
   },
 });

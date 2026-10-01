@@ -8,26 +8,20 @@ import {
   mutation,
   internalMutation,
   internalQuery,
-  type QueryCtx,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { currentRun, runArgs } from "./abekaSync";
 import { startAbekaSync } from "./abeka";
-import { requireAbekaAdmin } from "./model/abekaAccess";
+import {
+  getManagedAbekaConnection,
+  requireAbekaAdmin,
+} from "./model/abekaAccess";
 import { abekaCourseFields, catalogSubject } from "./model/abekaValidators";
 import {
   MAX_CATALOG_SUBJECTS,
   mergeCatalogSubjects,
 } from "../lib/abeka/catalog";
 import { ABEKA_MANUAL_SYNC_INTERVAL_MS } from "../lib/abeka/request-policy";
-
-async function connectionForSchool(ctx: QueryCtx, schoolId: Id<"schools">) {
-  await requireAbekaAdmin(ctx, schoolId);
-  return await ctx.db
-    .query("abekaConnections")
-    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-    .unique();
-}
 
 export const expectedSchool = internalQuery({
   args: runArgs,
@@ -44,7 +38,7 @@ export const refresh = mutation({
   args: { schoolId: v.id("schools") },
   returns: v.null(),
   handler: async (ctx, { schoolId }) => {
-    const connection = await connectionForSchool(ctx, schoolId);
+    const connection = await getManagedAbekaConnection(ctx, schoolId);
     if (
       !connection?.confirmed ||
       !["connected", "error"].includes(connection.status)
@@ -153,7 +147,7 @@ export const courses = query({
     }),
   ),
   handler: async (ctx, { schoolId, paginationOpts }) => {
-    const connection = await connectionForSchool(ctx, schoolId);
+    const connection = await getManagedAbekaConnection(ctx, schoolId);
     if (!connection?.confirmed)
       return { page: [], isDone: true, continueCursor: "" };
     const page = await ctx.db
@@ -255,6 +249,12 @@ export const linkCourse = mutation({
     const connection = course ? await ctx.db.get(course.connectionId) : null;
     if (!course || !connection?.confirmed) throw new ConvexError("NOT_FOUND");
     await requireAbekaAdmin(ctx, connection.schoolId);
+    // Fence old browser tabs once migration starts. Never resurrect legacy links.
+    if (
+      connection.curriculumLinksMigratedAt !== undefined ||
+      connection.curriculumLinksMigrationCursor !== undefined
+    )
+      throw new ConvexError("CURRICULUM_LINKS_REQUIRED");
     const existing = await ctx.db
       .query("abekaCourseLinks")
       .withIndex("by_connectionId_and_classId", (q) =>

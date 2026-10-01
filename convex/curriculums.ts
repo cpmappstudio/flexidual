@@ -476,6 +476,12 @@ export const remove = mutation({
       } as const;
     }
 
+    const abekaLink = await ctx.db
+      .query("abekaCurriculumLinks")
+      .withIndex("by_curriculumId", (q) => q.eq("curriculumId", args.id))
+      .first();
+    if (abekaLink) throw new ConvexError("CURRICULUM_LINKED_TO_ABEKA");
+
     await ctx.db.delete(args.id);
 
     // Cascade delete lessons

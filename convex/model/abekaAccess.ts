@@ -36,3 +36,42 @@ export async function activeStudent(
   }
   return { user, campusId: null, campusName: null };
 }
+
+export async function getManagedAbekaConnection(
+  ctx: QueryCtx,
+  schoolId: Id<"schools">,
+) {
+  await requireAbekaAdmin(ctx, schoolId);
+  return ctx.db
+    .query("abekaConnections")
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .unique();
+}
+
+// Call inside the class mutation, after authorization and before any writes.
+// Reading the connection makes the first/last batch participate in Convex OCC;
+// the saved cursor protects already copied rows between batch transactions.
+export async function assertAbekaClassLinkNotMigrating(
+  ctx: QueryCtx,
+  classId: Id<"classes">,
+  schoolId: Id<"schools"> | undefined,
+) {
+  if (!schoolId) return;
+  const connection = await ctx.db
+    .query("abekaConnections")
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .unique();
+  if (
+    !connection ||
+    connection.curriculumLinksMigratedAt !== undefined ||
+    connection.curriculumLinksMigrationCursor === undefined
+  )
+    return;
+  const link = await ctx.db
+    .query("abekaCourseLinks")
+    .withIndex("by_connectionId_and_classId", (q) =>
+      q.eq("connectionId", connection._id).eq("classId", classId),
+    )
+    .unique();
+  if (link) throw new ConvexError("ABEKA_CURRICULUM_MIGRATION_IN_PROGRESS");
+}

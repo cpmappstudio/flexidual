@@ -42,6 +42,9 @@ export const lessonProgress = v.object({
   subscriptionNumber: v.union(v.string(), v.null()),
 });
 export const abekaConnectionFields = {
+  // Legacy class links remain authoritative until the last migration batch commits.
+  curriculumLinksMigratedAt: v.optional(v.number()),
+  curriculumLinksMigrationCursor: v.optional(v.string()),
   catalogSyncedAt: v.optional(v.number()),
   catalogAttemptAt: v.optional(v.number()),
   catalogError: v.optional(abekaError),
@@ -71,6 +74,10 @@ export const abekaStudentFields = {
   name: v.string(),
   rosterRunId: v.id("abekaSyncRuns"),
   userId: v.optional(v.id("users")),
+  // Optional for existing rows; association edits never discard provider data.
+  syncPending: v.optional(v.boolean()),
+  // Maintained atomically with report writes/deletions to keep roster reads small.
+  hasProgress: v.optional(v.boolean()),
   lastSyncedAt: v.optional(v.number()),
   syncedRunId: v.optional(v.id("abekaSyncRuns")),
 };

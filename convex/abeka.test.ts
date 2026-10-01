@@ -19,6 +19,7 @@ import {
   selectAbekaPeriod,
 } from "./model/abekaScheduling";
 import type { AbekaSchedule } from "../lib/abeka/schedule";
+import { startAbekaSync } from "./abeka";
 
 async function finishCurrentSync(t: Awaited<ReturnType<typeof setup>>["t"]) {
   let advanced = 0;
@@ -697,284 +698,868 @@ test("manual renewal uses saved credentials and completes the existing sync work
   );
 });
 
-test("student profiles expose only connected, linked course progress and react to replacement snapshots", async () => {
-  const {
-    t,
-    adminClient,
-    admin,
-    schoolId,
-    otherSchool,
-    campusId,
-    student,
-    studentId,
-    secondId,
-    connectionId,
-    runId,
-  } = await setup();
-  const fixture = await t.run(async (ctx) => {
-    const curriculumId = await ctx.db.insert("curriculums", {
-      title: "Math",
+test.each(["legacy", "curriculum"])(
+  "student profiles expose only connected, linked course progress and react to replacement snapshots (%s)",
+  async (mapping) => {
+    const {
+      t,
+      adminClient,
+      admin,
       schoolId,
-      isActive: true,
-      createdAt: 1,
-      createdBy: admin,
-    });
-    const classId = await ctx.db.insert("classes", {
-      name: "Math A",
+      otherSchool,
       campusId,
-      curriculumId,
-      students: [student],
-      isActive: true,
-      createdAt: 1,
-      createdBy: admin,
+      student,
+      studentId,
+      secondId,
+      connectionId,
+      runId,
+    } = await setup();
+    const fixture = await t.run(async (ctx) => {
+      const curriculumId = await ctx.db.insert("curriculums", {
+        title: "Math",
+        schoolId,
+        isActive: true,
+        createdAt: 1,
+        createdBy: admin,
+      });
+      const classId = await ctx.db.insert("classes", {
+        name: "Math A",
+        campusId,
+        curriculumId,
+        students: [student],
+        isActive: true,
+        createdAt: 1,
+        createdBy: admin,
+      });
+      const unlinkedCurriculumId = await ctx.db.insert("curriculums", {
+        title: "Unlinked",
+        schoolId,
+        isActive: true,
+        createdAt: 1,
+        createdBy: admin,
+      });
+      const unlinkedClass = await ctx.db.insert("classes", {
+        name: "Math B",
+        campusId,
+        curriculumId: unlinkedCurriculumId,
+        students: [student],
+        isActive: true,
+        createdAt: 1,
+        createdBy: admin,
+      });
+      const courseId = await ctx.db.insert("abekaCourses", {
+        connectionId,
+        subjectId: "117",
+        name: "Math",
+        totalLessons: 170,
+        available: true,
+      });
+      const linkId =
+        mapping === "curriculum"
+          ? await ctx.db.insert("abekaCurriculumLinks", {
+              connectionId,
+              courseId,
+              curriculumId,
+            })
+          : await ctx.db.insert("abekaCourseLinks", {
+              connectionId,
+              courseId,
+              classId,
+            });
+      if (mapping === "curriculum")
+        await ctx.db.patch(connectionId, { curriculumLinksMigratedAt: 1 });
+      await ctx.db.patch(studentId, { userId: student });
+      const progressId = await ctx.db.insert("abekaProgress", {
+        studentId,
+        subjectId: "117",
+        subjectName: "Math",
+        runId,
+        syncedAt: 1,
+        lessons: [
+          { ...lessonSnapshot, completed: true },
+          {
+            ...lessonSnapshot,
+            lessonNumber: 2,
+            completed: false,
+            percentage: 0,
+          },
+        ],
+      });
+      // Another student's snapshot must never affect the linked student's percentage.
+      await ctx.db.insert("abekaProgress", {
+        studentId: secondId,
+        subjectId: "117",
+        subjectName: "Math",
+        runId,
+        syncedAt: 1,
+        lessons: [{ ...lessonSnapshot, completed: true }],
+      });
+      return { classId, unlinkedClass, courseId, linkId, progressId };
     });
-    const unlinkedClass = await ctx.db.insert("classes", {
-      name: "Math B",
-      campusId,
-      curriculumId,
-      students: [student],
+    const args = { now: Date.now(), studentId: student, orgSlug: "north" };
+    const read = () =>
+      adminClient.query(api.student.getStudentDashboardStats, args);
+    const ring = async () =>
+      (await read())?.classes.find((c) => c.classId === fixture.classId)
+        ?.abekaProgress;
+    const detailArgs = {
+      studentId: student,
+      orgSlug: "north",
+      classId: fixture.classId,
+    };
+    const detail = () =>
+      adminClient.query(api.student.getAbekaCourseReport, detailArgs);
+    const expectedReport = {
+      subjectName: "Math",
+      syncedAt: 1,
+      lessons: [
+        { ...lessonSnapshot, completed: true },
+        { ...lessonSnapshot, lessonNumber: 2, completed: false, percentage: 0 },
+      ].map(({ lessonNumber, percentage, completed, lastViewed }) => ({
+        lessonNumber,
+        percentage,
+        completed,
+        lastViewed,
+      })),
+    };
+    expect(await detail()).toEqual(expectedReport);
+    expect(
+      await t
+        .withIdentity({ subject: "student" })
+        .query(api.student.getAbekaCourseReport, { classId: fixture.classId }),
+    ).toEqual(expectedReport);
+    expect(
+      await t
+        .withIdentity({ subject: "principal" })
+        .query(api.student.getAbekaCourseReport, detailArgs),
+    ).toEqual(expectedReport);
+    const teacherRole = await t.run(async (ctx) => {
+      const teacher = await ctx.db.insert("users", {
+        clerkId: "teacher",
+        firstName: "Teacher",
+        lastName: "Test",
+        fullName: "Teacher Test",
+        isActive: true,
+        createdAt: 1,
+      });
+      return ctx.db.insert("roleAssignments", {
+        userId: teacher,
+        orgId: campusId,
+        orgType: "campus",
+        role: "teacher",
+        assignedAt: 1,
+      });
+    });
+    expect(
+      await t
+        .withIdentity({ subject: "teacher" })
+        .query(api.student.getAbekaCourseReport, detailArgs),
+    ).toEqual(expectedReport);
+    await t.run((ctx) => ctx.db.delete(teacherRole));
+    expect(
+      await t
+        .withIdentity({ subject: "teacher" })
+        .query(api.student.getAbekaCourseReport, detailArgs),
+    ).toBeNull();
+    for (const subject of ["outsider", "other-admin"]) {
+      expect(
+        await t
+          .withIdentity({ subject })
+          .query(api.student.getAbekaCourseReport, detailArgs),
+      ).toBeNull();
+    }
+    expect(
+      await t.query(api.student.getAbekaCourseReport, detailArgs),
+    ).toBeNull();
+    expect(
+      await adminClient.query(api.student.getAbekaCourseReport, {
+        ...detailArgs,
+        classId: fixture.unlinkedClass,
+      }),
+    ).toBeNull();
+    await t.run((ctx) => ctx.db.patch(fixture.classId, { students: [] }));
+    expect(await detail()).toBeNull();
+    await t.run((ctx) =>
+      ctx.db.patch(fixture.classId, { students: [student] }),
+    );
+    expect(await ring()).toEqual({
+      completed: 1,
+      total: 2,
+      percentage: 50,
+      syncedAt: 1,
+    });
+    expect(
+      (await read())?.classes.find((c) => c.classId === fixture.unlinkedClass)
+        ?.abekaProgress,
+    ).toBeNull();
+    expect(
+      (
+        await t
+          .withIdentity({ subject: "student" })
+          .query(api.student.getStudentDashboardStats, { now: args.now })
+      )?.classes[0].abekaProgress,
+    ).toEqual({ completed: 1, total: 2, percentage: 50, syncedAt: 1 });
+    expect(
+      await t.query(api.student.getStudentDashboardStats, args),
+    ).toBeNull();
+    expect(
+      await t
+        .withIdentity({ subject: "outsider" })
+        .query(api.student.getStudentDashboardStats, args),
+    ).toBeNull();
+    expect(
+      await t
+        .withIdentity({ subject: "other-admin" })
+        .query(api.student.getStudentDashboardStats, args),
+    ).toBeNull();
+
+    await t.run((ctx) =>
+      ctx.db.patch(fixture.progressId, {
+        lessons: [{ ...lessonSnapshot, completed: false, percentage: 0 }],
+        syncedAt: 2,
+      }),
+    );
+    expect(await ring()).toEqual({
+      completed: 0,
+      total: 1,
+      percentage: 0,
+      syncedAt: 2,
+    });
+    expect(await detail()).toMatchObject({
+      syncedAt: 2,
+      lessons: [{ percentage: 0 }],
+    });
+    await t.run((ctx) =>
+      ctx.db.patch(fixture.progressId, {
+        lessons: [{ ...lessonSnapshot, completed: true }],
+      }),
+    );
+    expect(await ring()).toEqual({
+      completed: 1,
+      total: 1,
+      percentage: 100,
+      syncedAt: 2,
+    });
+    for (const { percentages, expected } of [
+      {
+        percentages: Array.from({ length: 170 }, (_, i) => (i === 8 ? 54 : 0)),
+        expected: 0.32,
+      },
+      { percentages: [100, 54, 0], expected: 51.33 },
+      { percentages: [12.5, 37.5], expected: 25 },
+      { percentages: [0, 0], expected: 0 },
+      { percentages: [100, 100], expected: 100 },
+    ]) {
+      await t.run((ctx) =>
+        ctx.db.patch(fixture.progressId, {
+          lessons: percentages.map((percentage, i) => ({
+            ...lessonSnapshot,
+            lessonNumber: i + 1,
+            percentage,
+            completed: percentage === 100,
+          })),
+        }),
+      );
+      expect(await ring()).toEqual({
+        completed: percentages.filter((p) => p === 100).length,
+        total: percentages.length,
+        percentage: expected,
+        syncedAt: 2,
+      });
+    }
+    for (const status of [
+      "disconnected",
+      "needs_reconnect",
+      "error",
+      "needs_confirmation",
+      "connecting",
+    ] as const) {
+      await t.run((ctx) => ctx.db.patch(connectionId, { status }));
+      expect(await ring()).toBeNull();
+      expect(await detail()).toBeNull();
+    }
+    await t.run((ctx) =>
+      ctx.db.patch(connectionId, { status: "connected", confirmed: false }),
+    );
+    expect(await ring()).toBeNull();
+    await t.run((ctx) => ctx.db.patch(connectionId, { confirmed: true }));
+    expect(await ring()).not.toBeNull();
+    await t.run((ctx) => ctx.db.patch(studentId, { userId: undefined }));
+    expect(await ring()).toBeNull();
+    expect(await detail()).toBeNull();
+    await t.run((ctx) => ctx.db.patch(studentId, { userId: student }));
+    await t.run((ctx) => ctx.db.patch(fixture.courseId, { available: false }));
+    expect(await ring()).toBeNull();
+    expect(await detail()).toBeNull();
+    await t.run((ctx) =>
+      ctx.db.patch(fixture.courseId, { available: true, subjectId: "missing" }),
+    );
+    expect(await ring()).toBeNull();
+    await t.run((ctx) => ctx.db.patch(fixture.courseId, { subjectId: "117" }));
+    await t.run((ctx) =>
+      ctx.db.patch(fixture.classId, { schoolId: otherSchool }),
+    );
+    expect(await ring()).toBeNull();
+    await t.run((ctx) => ctx.db.patch(fixture.classId, { schoolId: schoolId }));
+    await t.run((ctx) => ctx.db.delete(fixture.linkId));
+    expect(await ring()).toBeNull();
+  },
+);
+
+async function curriculumLinkFixture(classCount = 2) {
+  const base = await setup();
+  const ids = await base.t.run(async (ctx) => {
+    const curriculumId = await ctx.db.insert("curriculums", {
+      title: "Shared Math",
+      schoolId: base.schoolId,
       isActive: true,
       createdAt: 1,
-      createdBy: admin,
+      createdBy: base.admin,
     });
     const courseId = await ctx.db.insert("abekaCourses", {
-      connectionId,
+      connectionId: base.connectionId,
       subjectId: "117",
       name: "Math",
       totalLessons: 170,
       available: true,
     });
-    const linkId = await ctx.db.insert("abekaCourseLinks", {
-      connectionId,
-      courseId,
-      classId,
-    });
-    await ctx.db.patch(studentId, { userId: student });
+    const classIds = [];
+    for (let i = 0; i < classCount; i++) {
+      const classId = await ctx.db.insert("classes", {
+        name: `Math ${i}`,
+        curriculumId,
+        campusId: base.campusId,
+        students: [base.student],
+        isActive: true,
+        createdAt: 1,
+        createdBy: base.admin,
+      });
+      classIds.push(classId);
+      await ctx.db.insert("abekaCourseLinks", {
+        connectionId: base.connectionId,
+        courseId,
+        classId,
+      });
+    }
+    await ctx.db.patch(base.studentId, { userId: base.student });
     const progressId = await ctx.db.insert("abekaProgress", {
-      studentId,
+      studentId: base.studentId,
       subjectId: "117",
       subjectName: "Math",
-      runId,
-      syncedAt: 1,
+      runId: base.runId,
+      syncedAt: 123,
       lessons: [
-        { ...lessonSnapshot, completed: true },
+        { ...lessonSnapshot, completed: false, percentage: 54 },
         { ...lessonSnapshot, lessonNumber: 2, completed: false, percentage: 0 },
       ],
     });
-    // Another student's snapshot must never affect the linked student's percentage.
-    await ctx.db.insert("abekaProgress", {
-      studentId: secondId,
-      subjectId: "117",
-      subjectName: "Math",
-      runId,
-      syncedAt: 1,
-      lessons: [{ ...lessonSnapshot, completed: true }],
-    });
-    return { classId, unlinkedClass, courseId, linkId, progressId };
+    return { curriculumId, courseId, classIds, progressId };
   });
-  const args = { now: Date.now(), studentId: student, orgSlug: "north" };
-  const read = () =>
-    adminClient.query(api.student.getStudentDashboardStats, args);
-  const ring = async () =>
-    (await read())?.classes.find((c) => c.classId === fixture.classId)
-      ?.abekaProgress;
-  const detailArgs = {
-    studentId: student,
+  return { ...base, ...ids };
+}
+
+test("curriculum migration deduplicates class links, preserves snapshots and both profile rings, and never resurrects removed links", async () => {
+  const f = await curriculumLinkFixture();
+  const request = vi.fn();
+  vi.stubGlobal("fetch", request);
+  const snapshot = () =>
+    f.t.run(async (ctx) => ({
+      progress: await ctx.db.query("abekaProgress").collect(),
+      students: await ctx.db.query("abekaStudents").collect(),
+      legacy: await ctx.db.query("abekaCourseLinks").collect(),
+      secrets: await ctx.db.query("abekaSecrets").collect(),
+    }));
+  const before = await snapshot();
+  const dashboardArgs = { studentId: f.student, orgSlug: "north", now: 1 };
+  const beforeDashboard = await f.adminClient.query(
+    api.student.getStudentDashboardStats,
+    dashboardArgs,
+  );
+  const reportArgs = {
+    studentId: f.student,
     orgSlug: "north",
-    classId: fixture.classId,
+    classId: f.classIds[0],
   };
-  const detail = () =>
-    adminClient.query(api.student.getAbekaCourseReport, detailArgs);
-  const expectedReport = {
-    subjectName: "Math",
-    syncedAt: 1,
-    lessons: [
-      { ...lessonSnapshot, completed: true },
-      { ...lessonSnapshot, lessonNumber: 2, completed: false, percentage: 0 },
-    ].map(({ lessonNumber, percentage, completed, lastViewed }) => ({
-      lessonNumber,
-      percentage,
-      completed,
-      lastViewed,
-    })),
-  };
-  expect(await detail()).toEqual(expectedReport);
+  const beforeReport = await f.adminClient.query(
+    api.student.getAbekaCourseReport,
+    reportArgs,
+  );
+  const preview = await f.t.query(
+    internal.abekaCurriculumLinks.previewMigration,
+    {
+      connectionId: f.connectionId,
+      paginationOpts: { cursor: null, numItems: 50 },
+    },
+  );
+  expect(preview.page.map((r) => r.curriculumId)).toEqual([
+    f.curriculumId,
+    f.curriculumId,
+  ]);
+  expect(await snapshot()).toEqual(before);
   expect(
-    await t
-      .withIdentity({ subject: "student" })
-      .query(api.student.getAbekaCourseReport, { classId: fixture.classId }),
-  ).toEqual(expectedReport);
+    await f.t.mutation(internal.abekaCurriculumLinks.migrateBatch, {
+      connectionId: f.connectionId,
+    }),
+  ).toEqual({ done: true, processed: 2 });
+  expect(await snapshot()).toEqual(before);
   expect(
-    await t
-      .withIdentity({ subject: "principal" })
-      .query(api.student.getAbekaCourseReport, detailArgs),
-  ).toEqual(expectedReport);
-  const teacherRole = await t.run(async (ctx) => {
-    const teacher = await ctx.db.insert("users", {
-      clerkId: "teacher",
-      firstName: "Teacher",
-      lastName: "Test",
-      fullName: "Teacher Test",
-      isActive: true,
-      createdAt: 1,
-    });
-    return ctx.db.insert("roleAssignments", {
-      userId: teacher,
-      orgId: campusId,
-      orgType: "campus",
-      role: "teacher",
-      assignedAt: 1,
-    });
-  });
+    await f.adminClient.query(
+      api.student.getStudentDashboardStats,
+      dashboardArgs,
+    ),
+  ).toEqual(beforeDashboard);
   expect(
-    await t
-      .withIdentity({ subject: "teacher" })
-      .query(api.student.getAbekaCourseReport, detailArgs),
-  ).toEqual(expectedReport);
-  await t.run((ctx) => ctx.db.delete(teacherRole));
-  expect(
-    await t
-      .withIdentity({ subject: "teacher" })
-      .query(api.student.getAbekaCourseReport, detailArgs),
-  ).toBeNull();
+    await f.adminClient.query(api.student.getAbekaCourseReport, reportArgs),
+  ).toEqual(beforeReport);
+  for (const subject of ["student", "principal"]) {
+    expect(
+      await f.t
+        .withIdentity({ subject })
+        .query(api.student.getAbekaCourseReport, reportArgs),
+    ).toEqual(beforeReport);
+  }
   for (const subject of ["outsider", "other-admin"]) {
     expect(
-      await t
+      await f.t
         .withIdentity({ subject })
-        .query(api.student.getAbekaCourseReport, detailArgs),
+        .query(api.student.getAbekaCourseReport, reportArgs),
     ).toBeNull();
   }
-  expect(
-    await t.query(api.student.getAbekaCourseReport, detailArgs),
-  ).toBeNull();
-  expect(
-    await adminClient.query(api.student.getAbekaCourseReport, {
-      ...detailArgs,
-      classId: fixture.unlinkedClass,
-    }),
-  ).toBeNull();
-  await t.run((ctx) => ctx.db.patch(fixture.classId, { students: [] }));
-  expect(await detail()).toBeNull();
-  await t.run((ctx) => ctx.db.patch(fixture.classId, { students: [student] }));
-  expect(await ring()).toEqual({
-    completed: 1,
-    total: 2,
-    percentage: 50,
-    syncedAt: 1,
+  const catalog = await f.adminClient.query(api.abekaCurriculumLinks.courses, {
+    schoolId: f.schoolId,
+    paginationOpts: { cursor: null, numItems: 25 },
   });
-  expect(
-    (await read())?.classes.find((c) => c.classId === fixture.unlinkedClass)
-      ?.abekaProgress,
-  ).toBeNull();
-  expect(
-    (
-      await t
-        .withIdentity({ subject: "student" })
-        .query(api.student.getStudentDashboardStats, { now: args.now })
-    )?.classes[0].abekaProgress,
-  ).toEqual({ completed: 1, total: 2, percentage: 50, syncedAt: 1 });
-  expect(await t.query(api.student.getStudentDashboardStats, args)).toBeNull();
-  expect(
-    await t
-      .withIdentity({ subject: "outsider" })
-      .query(api.student.getStudentDashboardStats, args),
-  ).toBeNull();
-  expect(
-    await t
-      .withIdentity({ subject: "other-admin" })
-      .query(api.student.getStudentDashboardStats, args),
-  ).toBeNull();
-
-  await t.run((ctx) =>
-    ctx.db.patch(fixture.progressId, {
-      lessons: [{ ...lessonSnapshot, completed: false, percentage: 0 }],
-      syncedAt: 2,
-    }),
-  );
-  expect(await ring()).toEqual({
-    completed: 0,
-    total: 1,
-    percentage: 0,
-    syncedAt: 2,
-  });
-  expect(await detail()).toMatchObject({
-    syncedAt: 2,
-    lessons: [{ percentage: 0 }],
-  });
-  await t.run((ctx) =>
-    ctx.db.patch(fixture.progressId, {
-      lessons: [{ ...lessonSnapshot, completed: true }],
-    }),
-  );
-  expect(await ring()).toEqual({
-    completed: 1,
-    total: 1,
-    percentage: 100,
-    syncedAt: 2,
-  });
-  for (const { percentages, expected } of [
-    {
-      percentages: Array.from({ length: 170 }, (_, i) => (i === 8 ? 54 : 0)),
-      expected: 0.32,
-    },
-    { percentages: [100, 54, 0], expected: 51.33 },
-    { percentages: [12.5, 37.5], expected: 25 },
-    { percentages: [0, 0], expected: 0 },
-    { percentages: [100, 100], expected: 100 },
-  ]) {
-    await t.run((ctx) =>
-      ctx.db.patch(fixture.progressId, {
-        lessons: percentages.map((percentage, i) => ({
-          ...lessonSnapshot,
-          lessonNumber: i + 1,
-          percentage,
-          completed: percentage === 100,
-        })),
-      }),
-    );
-    expect(await ring()).toEqual({
-      completed: percentages.filter((p) => p === 100).length,
-      total: percentages.length,
-      percentage: expected,
-      syncedAt: 2,
+  expect(catalog.page[0].links).toEqual([
+    { curriculumId: f.curriculumId, name: "Shared Math", active: true },
+  ]);
+  // New campus/period classes inherit the mapping, but the report remains personal.
+  const newClass = await f.t.run(async (ctx) => {
+    const campusId = await ctx.db.insert("campuses", {
+      name: "South",
+      slug: "south",
+      schoolId: f.schoolId,
+      isActive: true,
+      createdAt: 1,
+      createdBy: f.admin,
     });
+    await ctx.db.insert("roleAssignments", {
+      userId: f.student,
+      orgId: campusId,
+      orgType: "campus",
+      role: "student",
+      assignedAt: 1,
+    });
+    return ctx.db.insert("classes", {
+      name: "New period",
+      curriculumId: f.curriculumId,
+      campusId,
+      students: [f.student],
+      isActive: true,
+      createdAt: 1,
+      createdBy: f.admin,
+    });
+  });
+  expect(
+    await f.adminClient.query(api.student.getAbekaCourseReport, {
+      ...reportArgs,
+      orgSlug: "south",
+      classId: newClass,
+    }),
+  ).toEqual(beforeReport);
+  const newDashboard = await f.adminClient.query(
+    api.student.getStudentDashboardStats,
+    { ...dashboardArgs, orgSlug: "south" },
+  );
+  expect(newDashboard?.classes[0].abekaProgress).toEqual({
+    completed: 0,
+    total: 2,
+    percentage: 27,
+    syncedAt: 123,
+  });
+  await f.adminClient.mutation(api.abekaCurriculumLinks.link, {
+    courseId: f.courseId,
+    curriculumId: f.curriculumId,
+    remove: true,
+  });
+  expect(
+    await f.adminClient.query(api.student.getAbekaCourseReport, reportArgs),
+  ).toBeNull();
+  expect(
+    await f.t.mutation(internal.abekaCurriculumLinks.migrateBatch, {
+      connectionId: f.connectionId,
+    }),
+  ).toEqual({ done: true, processed: 0 });
+  expect(
+    await f.adminClient.query(api.student.getAbekaCourseReport, reportArgs),
+  ).toBeNull();
+  await expect(
+    f.adminClient.mutation(api.abekaCatalog.linkCourse, {
+      courseId: f.courseId,
+      classId: f.classIds[0],
+      campusId: f.campusId,
+    }),
+  ).rejects.toThrow("CURRICULUM_LINKS_REQUIRED");
+  expect(await snapshot()).toEqual(before);
+  expect(request).not.toHaveBeenCalled();
+});
+
+test("curriculum migration resumes bounded batches without exposing partial mappings", async () => {
+  const f = await curriculumLinkFixture(51);
+  expect(
+    await f.t.mutation(internal.abekaCurriculumLinks.migrateBatch, {
+      connectionId: f.connectionId,
+    }),
+  ).toEqual({ done: false, processed: 50 });
+  expect(
+    (await f.t.run((ctx) => ctx.db.get(f.connectionId)))
+      ?.curriculumLinksMigratedAt,
+  ).toBeUndefined();
+  await expect(
+    f.adminClient.mutation(api.abekaCatalog.linkCourse, {
+      courseId: f.courseId,
+      classId: f.classIds[0],
+      remove: true,
+    }),
+  ).rejects.toThrow("CURRICULUM_LINKS_REQUIRED");
+  await expect(
+    f.adminClient.mutation(api.abekaCurriculumLinks.link, {
+      courseId: f.courseId,
+      curriculumId: f.curriculumId,
+    }),
+  ).rejects.toThrow("MIGRATION_REQUIRED");
+  expect(
+    await f.adminClient.query(api.student.getAbekaCourseReport, {
+      studentId: f.student,
+      orgSlug: "north",
+      classId: f.classIds[50],
+    }),
+  ).not.toBeNull();
+  expect(
+    await f.t.mutation(internal.abekaCurriculumLinks.migrateBatch, {
+      connectionId: f.connectionId,
+    }),
+  ).toEqual({ done: true, processed: 1 });
+  expect(
+    (await f.t.run((ctx) => ctx.db.query("abekaCurriculumLinks").collect()))
+      .length,
+  ).toBe(1);
+});
+
+test.each(["admin", "principal"])(
+  "curriculum migration fences linked class changes between batches for %s and releases them at completion",
+  async (role) => {
+    const f = await curriculumLinkFixture(51);
+    const client = f.t.withIdentity({ subject: role });
+    const {
+      processedClassId,
+      pendingClassId,
+      otherCurriculumId,
+      unlinkedClassId,
+    } = await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.schoolId, { timeZone: "America/Bogota" });
+      const academicPeriodId = await ctx.db.insert("academicPeriods", {
+        schoolId: f.schoolId,
+        name: "Test period",
+        startDate: "2027-01-01",
+        endDate: "2027-12-31",
+        createdAt: 1,
+        createdBy: f.admin,
+      });
+      const otherCurriculumId = await ctx.db.insert("curriculums", {
+        schoolId: f.schoolId,
+        title: "Other curriculum",
+        isActive: true,
+        createdAt: 1,
+        createdBy: f.admin,
+      });
+      const links = await ctx.db
+        .query("abekaCourseLinks")
+        .withIndex("by_connectionId_and_classId", (q) =>
+          q.eq("connectionId", f.connectionId),
+        )
+        .collect();
+      const processedClassId = links[0].classId;
+      const pendingClassId = links[50].classId;
+      for (const classId of [processedClassId, pendingClassId]) {
+        await ctx.db.patch(classId, { academicPeriodId, students: [] });
+      }
+      // Keep the legacy catalog within its 50-links-per-subject limit.
+      const otherCourseId = await ctx.db.insert("abekaCourses", {
+        connectionId: f.connectionId,
+        subjectId: "118",
+        name: "Other subject",
+        totalLessons: 170,
+        available: true,
+      });
+      await ctx.db.patch(links[50]._id, { courseId: otherCourseId });
+      await ctx.db.patch(pendingClassId, { curriculumId: otherCurriculumId });
+      const unlinkedClassId = await ctx.db.insert("classes", {
+        name: "Unlinked course",
+        curriculumId: f.curriculumId,
+        campusId: f.campusId,
+        academicPeriodId,
+        students: [],
+        isActive: true,
+        createdAt: 1,
+        createdBy: f.admin,
+      });
+      return {
+        processedClassId,
+        pendingClassId,
+        otherCurriculumId,
+        unlinkedClassId,
+      };
+    });
+    const snapshot = () =>
+      f.t.run(async (ctx) => ({
+        classes: await ctx.db.query("classes").collect(),
+        progress: await ctx.db.get(f.progressId),
+        legacyLinks: await ctx.db.query("abekaCourseLinks").collect(),
+        links: await ctx.db.query("abekaCurriculumLinks").collect(),
+        jobs: await ctx.db.system.query("_scheduled_functions").collect(),
+      }));
+    // A pending (not yet started) migration must not block normal edits.
+    await client.mutation(api.classes.update, {
+      classId: processedClassId,
+      curriculumId: otherCurriculumId,
+    });
+    await client.mutation(api.classes.update, {
+      classId: processedClassId,
+      curriculumId: f.curriculumId,
+    });
+    expect(
+      await f.t.mutation(internal.abekaCurriculumLinks.migrateBatch, {
+        connectionId: f.connectionId,
+      }),
+    ).toEqual({ done: false, processed: 50 });
+    const before = await snapshot();
+    // Both copied and not-yet-copied rows stay stable, even if disconnected.
+    for (const status of ["connected", "disconnected"] as const) {
+      await f.t.run((ctx) => ctx.db.patch(f.connectionId, { status }));
+      for (const classId of [processedClassId, pendingClassId]) {
+        await expect(
+          client.mutation(api.classes.update, {
+            classId,
+            curriculumId:
+              classId === processedClassId ? otherCurriculumId : f.curriculumId,
+          }),
+        ).rejects.toThrow("ABEKA_CURRICULUM_MIGRATION_IN_PROGRESS");
+        await expect(
+          client.mutation(api.classes.remove, {
+            id: classId,
+          }),
+        ).rejects.toThrow("ABEKA_CURRICULUM_MIGRATION_IN_PROGRESS");
+      }
+    }
+    expect(await snapshot()).toEqual(before);
+    await client.mutation(api.classes.update, {
+      classId: processedClassId,
+      name: "Renamed safely",
+      curriculumId: f.curriculumId,
+    });
+    await client.mutation(api.classes.update, {
+      classId: unlinkedClassId,
+      curriculumId: otherCurriculumId,
+    });
+    await client.mutation(api.classes.remove, { id: unlinkedClassId });
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.connectionId, { status: "connected" }),
+    );
+    expect(
+      await f.t.mutation(internal.abekaCurriculumLinks.migrateBatch, {
+        connectionId: f.connectionId,
+      }),
+    ).toEqual({ done: true, processed: 1 });
+    expect(
+      await f.adminClient.query(api.student.getAbekaCourseReport, {
+        studentId: f.student,
+        orgSlug: "north",
+        classId: f.classIds.find(
+          (id) => id !== processedClassId && id !== pendingClassId,
+        )!,
+      }),
+    ).not.toBeNull();
+    await client.mutation(api.classes.update, {
+      classId: processedClassId,
+      curriculumId: otherCurriculumId,
+    });
+    await client.mutation(api.classes.remove, { id: pendingClassId });
+    expect(await f.t.run((ctx) => ctx.db.get(f.progressId))).toEqual(
+      before.progress,
+    );
+    expect(
+      (await f.t.run((ctx) => ctx.db.get(f.connectionId)))
+        ?.curriculumLinksMigrationCursor,
+    ).toBeUndefined();
+  },
+);
+
+test("curriculum migration refuses conflicting or unowned mappings atomically", async () => {
+  const f = await curriculumLinkFixture();
+  await f.t.run(async (ctx) => {
+    const otherCourse = await ctx.db.insert("abekaCourses", {
+      connectionId: f.connectionId,
+      subjectId: "118",
+      name: "Other",
+      totalLessons: 170,
+      available: true,
+    });
+    const link = await ctx.db
+      .query("abekaCourseLinks")
+      .withIndex("by_connectionId_and_classId", (q) =>
+        q.eq("connectionId", f.connectionId).eq("classId", f.classIds[1]),
+      )
+      .unique();
+    await ctx.db.patch(link!._id, { courseId: otherCourse });
+  });
+  await expect(
+    f.t.mutation(internal.abekaCurriculumLinks.migrateBatch, {
+      connectionId: f.connectionId,
+    }),
+  ).rejects.toThrow("CONFLICTING_CURRICULUM_LINKS");
+  expect(
+    await f.t.run((ctx) => ctx.db.query("abekaCurriculumLinks").collect()),
+  ).toEqual([]);
+  expect(
+    (await f.t.run((ctx) => ctx.db.get(f.connectionId)))
+      ?.curriculumLinksMigratedAt,
+  ).toBeUndefined();
+  await f.t.run((ctx) => ctx.db.patch(f.curriculumId, { schoolId: undefined }));
+  const preview = await f.t.query(
+    internal.abekaCurriculumLinks.previewMigration,
+    {
+      connectionId: f.connectionId,
+      paginationOpts: { cursor: null, numItems: 50 },
+    },
+  );
+  expect(preview.page.every((r) => r.curriculumId === null)).toBe(true);
+  await expect(
+    f.t.mutation(internal.abekaCurriculumLinks.migrateBatch, {
+      connectionId: f.connectionId,
+    }),
+  ).rejects.toThrow("INVALID_LEGACY_LINK");
+});
+
+test("curriculum links are admin-only, institution-scoped, idempotent and survive disconnect", async () => {
+  const f = await curriculumLinkFixture();
+  await f.t.mutation(internal.abekaCurriculumLinks.migrateBatch, {
+    connectionId: f.connectionId,
+  });
+  const ids = await f.t.run(async (ctx) => {
+    const base = {
+      title: "Another",
+      isActive: true,
+      createdAt: 1,
+      createdBy: f.admin,
+    };
+    return {
+      own: await ctx.db.insert("curriculums", {
+        ...base,
+        schoolId: f.schoolId,
+      }),
+      foreign: await ctx.db.insert("curriculums", {
+        ...base,
+        schoolId: f.otherSchool,
+      }),
+      legacy: await ctx.db.insert("curriculums", base),
+      inactive: await ctx.db.insert("curriculums", {
+        ...base,
+        schoolId: f.schoolId,
+        isActive: false,
+      }),
+      otherCourse: await ctx.db.insert("abekaCourses", {
+        connectionId: f.connectionId,
+        subjectId: "118",
+        name: "Other",
+        totalLessons: 170,
+        available: true,
+      }),
+    };
+  });
+  const args = { courseId: f.courseId, curriculumId: ids.own };
+  await f.adminClient.mutation(api.abekaCurriculumLinks.link, args);
+  await f.adminClient.mutation(api.abekaCurriculumLinks.link, args);
+  await expect(
+    f.adminClient.mutation(api.abekaCurriculumLinks.link, {
+      ...args,
+      courseId: ids.otherCourse,
+    }),
+  ).rejects.toThrow("ALREADY_LINKED");
+  for (const curriculumId of [ids.foreign, ids.legacy, ids.inactive]) {
+    await expect(
+      f.adminClient.mutation(api.abekaCurriculumLinks.link, {
+        ...args,
+        curriculumId,
+      }),
+    ).rejects.toThrow("INVALID_CURRICULUM");
   }
-  for (const status of [
-    "disconnected",
-    "needs_reconnect",
-    "error",
-    "needs_confirmation",
-    "connecting",
-  ] as const) {
-    await t.run((ctx) => ctx.db.patch(connectionId, { status }));
-    expect(await ring()).toBeNull();
-    expect(await detail()).toBeNull();
+  for (const subject of ["student", "principal", "other-admin"]) {
+    await expect(
+      f.t
+        .withIdentity({ subject })
+        .mutation(api.abekaCurriculumLinks.link, args),
+    ).rejects.toThrow("FORBIDDEN");
+    await expect(
+      f.t.withIdentity({ subject }).query(api.abekaCurriculumLinks.candidates, {
+        schoolId: f.schoolId,
+        paginationOpts: { cursor: null, numItems: 25 },
+      }),
+    ).rejects.toThrow("FORBIDDEN");
   }
-  await t.run((ctx) =>
-    ctx.db.patch(connectionId, { status: "connected", confirmed: false }),
+  const candidates = await f.adminClient.query(
+    api.abekaCurriculumLinks.candidates,
+    { schoolId: f.schoolId, paginationOpts: { cursor: null, numItems: 25 } },
   );
-  expect(await ring()).toBeNull();
-  await t.run((ctx) => ctx.db.patch(connectionId, { confirmed: true }));
-  expect(await ring()).not.toBeNull();
-  await t.run((ctx) => ctx.db.patch(studentId, { userId: undefined }));
-  expect(await ring()).toBeNull();
-  expect(await detail()).toBeNull();
-  await t.run((ctx) => ctx.db.patch(studentId, { userId: student }));
-  await t.run((ctx) => ctx.db.patch(fixture.courseId, { available: false }));
-  expect(await ring()).toBeNull();
-  expect(await detail()).toBeNull();
-  await t.run((ctx) =>
-    ctx.db.patch(fixture.courseId, { available: true, subjectId: "missing" }),
+  expect(new Set(candidates.page.map((c) => c.id))).toEqual(
+    new Set([f.curriculumId, ids.own]),
   );
-  expect(await ring()).toBeNull();
-  await t.run((ctx) => ctx.db.patch(fixture.courseId, { subjectId: "117" }));
-  await t.run((ctx) =>
-    ctx.db.patch(fixture.classId, { schoolId: otherSchool }),
+  await expect(
+    f.adminClient.mutation(api.curriculums.remove, { id: ids.own }),
+  ).rejects.toThrow("CURRICULUM_LINKED_TO_ABEKA");
+  const links = await f.t.run((ctx) =>
+    ctx.db.query("abekaCurriculumLinks").collect(),
   );
-  expect(await ring()).toBeNull();
-  await t.run((ctx) => ctx.db.patch(fixture.classId, { schoolId: schoolId }));
-  await t.run((ctx) => ctx.db.delete(fixture.linkId));
-  expect(await ring()).toBeNull();
+  await f.t.run((ctx) =>
+    ctx.db.patch(f.runId, { status: "running", catalog: true }),
+  );
+  await f.t.mutation(internal.abekaCatalog.commit, {
+    runId: f.runId,
+    subjects: [{ subjectId: "118", name: "Other", totalLessons: 170 }],
+  });
+  expect(
+    await f.t.run((ctx) => ctx.db.query("abekaCurriculumLinks").collect()),
+  ).toEqual(links);
+  await f.t.mutation(internal.abekaCatalog.commit, {
+    runId: f.runId,
+    subjects: [{ subjectId: "117", name: "Math", totalLessons: 170 }],
+  });
+  await f.t.run((ctx) =>
+    ctx.db.patch(f.runId, { status: "completed", catalog: undefined }),
+  );
+  expect(
+    await f.t.run((ctx) => ctx.db.query("abekaCurriculumLinks").collect()),
+  ).toEqual(links);
+  await f.adminClient.mutation(api.abeka.disconnect, { schoolId: f.schoolId });
+  expect(
+    await f.t.run((ctx) => ctx.db.query("abekaCurriculumLinks").collect()),
+  ).toEqual(links);
+  await f.t.run((ctx) => ctx.db.patch(f.connectionId, { status: "connected" }));
+  expect(
+    await f.adminClient.query(api.student.getAbekaCourseReport, {
+      studentId: f.student,
+      orgSlug: "north",
+      classId: f.classIds[0],
+    }),
+  ).not.toBeNull();
+  await f.t.run((ctx) => ctx.db.patch(ids.own, { isActive: false }));
+  await f.adminClient.mutation(api.abekaCurriculumLinks.link, {
+    ...args,
+    remove: true,
+  });
+  expect(
+    (await f.t.run((ctx) => ctx.db.query("abekaCurriculumLinks").collect()))
+      .length,
+  ).toBe(1);
 });
 
 async function setup() {
@@ -1598,36 +2183,337 @@ test("update data can recover a missing session using stored credentials", async
   ).toBe("connected");
 });
 
-test("link sync groups optional lesson labels under the requested course without extra requests", async () => {
+test("manual sync after linking groups optional lesson labels under the requested course", async () => {
   vi.useFakeTimers();
-  const { t, adminClient, schoolId, runId, studentId, student } = await renewalSetup();
+  const { t, adminClient, schoolId, runId, studentId, student } =
+    await renewalSetup();
   await t.run((ctx) => ctx.db.patch(runId, { status: "completed" }));
   const request = vi.fn(async (url: string) => {
     const response = reportResponse(url);
     if (!url.includes("GetVideoLessonDetails")) return response;
     const { d } = await response.json();
     const lesson = JSON.parse(d[0]);
-    return Response.json({ d: [
-      JSON.stringify({ ...lesson, SessionName: "Optional Lesson 001", PercentDisplay: "54%", Completed: "No" }),
-      JSON.stringify({ ...lesson, LessonDisplayName: "Lesson 2" }),
-    ] });
+    return Response.json({
+      d: [
+        JSON.stringify({
+          ...lesson,
+          SessionName: "Optional Lesson 001",
+          PercentDisplay: "54%",
+          Completed: "No",
+        }),
+        JSON.stringify({ ...lesson, LessonDisplayName: "Lesson 2" }),
+      ],
+    });
   });
   vi.stubGlobal("fetch", request);
-  await adminClient.mutation(api.abeka.linkStudent, { studentId, userId: student });
+  await adminClient.mutation(api.abeka.linkStudent, {
+    studentId,
+    userId: student,
+  });
+  expect(request).not.toHaveBeenCalled();
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
   await finishCurrentSync(t);
-  expect(request).toHaveBeenCalledTimes(2);
-  expect((await adminClient.query(api.abeka.status, { schoolId })).run?.status).toBe("completed");
+  expect(request).toHaveBeenCalledTimes(3);
+  expect(
+    (await adminClient.query(api.abeka.status, { schoolId })).run?.status,
+  ).toBe("completed");
   const reports = await adminClient.query(api.abeka.progress, { studentId });
   expect(reports).toHaveLength(1);
   expect(reports[0]).toMatchObject({ subjectId: "117", subjectName: "Math" });
   expect(reports[0].lessons).toMatchObject([
-    { subjectName: "Optional Lesson 001", lessonNumber: 1, percentage: 54, completed: false },
+    {
+      subjectName: "Optional Lesson 001",
+      lessonNumber: 1,
+      percentage: 54,
+      completed: false,
+    },
     { subjectName: "Math", lessonNumber: 2, percentage: 100, completed: true },
   ]);
-  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({ userId: student });
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
+    userId: student,
+  });
 });
 
-test("link downloads only that student's progress, preserves the weekly schedule and reuses data when correcting the account", async () => {
+test.each([false, true])(
+  "links are saved without downloads; bulk sync clears only completed students (failure=%s)",
+  async (failSecond) => {
+    vi.useFakeTimers();
+    const {
+      t,
+      adminClient,
+      schoolId,
+      connectionId,
+      runId,
+      studentId,
+      secondId,
+      student,
+    } = await renewalSetup();
+    const secondUser = await t.run(async (ctx) => {
+      await ctx.db.patch(runId, { status: "completed" });
+      const userId = await ctx.db.insert("users", {
+        clerkId: "second-student",
+        firstName: "Second",
+        lastName: "Student",
+        fullName: "Second Student",
+        isActive: true,
+        createdAt: 1,
+      });
+      await ctx.db.insert("roleAssignments", {
+        userId,
+        orgType: "school",
+        orgId: schoolId,
+        role: "student",
+        assignedAt: 1,
+      });
+      await ctx.db.patch(connectionId, {
+        syncSchedule: { ...dailySchedule, mode: "manual" },
+      });
+      return userId;
+    });
+    const initialConnection = await t.run((ctx) => ctx.db.get(connectionId));
+    const request = vi.fn(async (url: string) => {
+      if (url.endsWith("StreamingDetails.aspx")) {
+        const secondRow = rosterHtml
+          .match(/<tr>.*<\/tr>/)![0]
+          .replace('value="42"', 'value="43"');
+        return new Response(
+          rosterHtml.replace("</table>", `${secondRow}</table>`),
+        );
+      }
+      if (url.includes("loginId=43")) {
+        if (failSecond) return new Response("Unavailable", { status: 503 });
+        return new Response(
+          (await reportResponse(url).text()).replace(
+            'value="42"',
+            'value="43"',
+          ),
+        );
+      }
+      return reportResponse(url);
+    });
+    vi.stubGlobal("fetch", request);
+    const read = async () =>
+      (
+        await adminClient.query(api.abeka.students, {
+          schoolId,
+          paginationOpts: { numItems: 25, cursor: null },
+        })
+      ).page;
+    await adminClient.mutation(api.abeka.linkStudent, {
+      studentId,
+      userId: student,
+    });
+    await adminClient.mutation(api.abeka.linkStudent, {
+      studentId: secondId,
+      userId: secondUser,
+    });
+    await adminClient.mutation(api.abeka.linkStudent, {
+      studentId,
+      userId: student,
+    });
+    expect(request).not.toHaveBeenCalled();
+    expect(await t.run((ctx) => ctx.db.get(connectionId))).toEqual(
+      initialConnection,
+    );
+    expect((await read()).map((s) => [s.syncPending, s.hasProgress])).toEqual([
+      [true, false],
+      [true, false],
+    ]);
+
+    await adminClient.mutation(api.abeka.syncNow, { schoolId });
+    await expect(
+      adminClient.mutation(api.abeka.linkStudent, { studentId, userId: null }),
+    ).rejects.toThrow("SYNC_RUNNING");
+    await finishCurrentSync(t);
+    const rows = await read();
+    expect(rows[0]).toMatchObject({
+      userId: student,
+      syncPending: false,
+      hasProgress: true,
+    });
+    expect(rows[1]).toMatchObject({
+      userId: secondUser,
+      syncPending: failSecond,
+      hasProgress: !failSecond,
+    });
+    expect(
+      (await adminClient.query(api.abeka.status, { schoolId })).run?.status,
+    ).toBe(failSecond ? "failed" : "completed");
+    const reports = await adminClient.query(api.abeka.progress, { studentId });
+    expect(reports).toHaveLength(1);
+
+    // A repeat save is idempotent. Unlinking hides, but never destroys reports.
+    await adminClient.mutation(api.abeka.linkStudent, {
+      studentId,
+      userId: student,
+    });
+    expect((await read())[0].syncPending).toBe(false);
+    await adminClient.mutation(api.abeka.linkStudent, {
+      studentId,
+      userId: null,
+    });
+    expect((await read())[0]).toMatchObject({
+      syncPending: false,
+      hasProgress: false,
+    });
+    expect(await adminClient.query(api.abeka.progress, { studentId })).toEqual(
+      reports,
+    );
+    await adminClient.mutation(api.abeka.linkStudent, {
+      studentId,
+      userId: student,
+    });
+    expect((await read())[0]).toMatchObject({
+      syncPending: true,
+      hasProgress: true,
+    });
+    expect(await adminClient.query(api.abeka.progress, { studentId })).toEqual(
+      reports,
+    );
+
+    if (!failSecond) {
+      // Update data still refreshes *all* links, including already-synced rows.
+      request.mockClear();
+      vi.advanceTimersByTime(ABEKA_MANUAL_SYNC_INTERVAL_MS);
+      await adminClient.mutation(api.abeka.syncNow, { schoolId });
+      await finishCurrentSync(t);
+      expect(request).toHaveBeenCalledTimes(5);
+      expect((await read()).every((s) => !s.syncPending && s.hasProgress)).toBe(
+        true,
+      );
+    }
+  },
+);
+
+test("legacy links derive pending/report availability and zero-percent reports remain viewable", async () => {
+  const { t, adminClient, schoolId, runId, studentId, student } = await setup();
+  const read = async () =>
+    (
+      await adminClient.query(api.abeka.students, {
+        schoolId,
+        paginationOpts: { numItems: 25, cursor: null },
+      })
+    ).page[0];
+  await t.run((ctx) => ctx.db.patch(studentId, { userId: student }));
+  expect(await read()).toMatchObject({ syncPending: true, hasProgress: false });
+  await t.run(async (ctx) => {
+    await ctx.db.patch(runId, { status: "running" });
+  });
+  await t.mutation(internal.abekaSync.saveProgress, {
+    runId,
+    studentId,
+    subjectId: "117",
+    lessons: [
+      {
+        subjectName: "Math",
+        lessonNumber: 1,
+        percentage: 0,
+        completed: false,
+        lengthSeconds: 1200,
+        watchedSeconds: 0,
+        lastViewed: null,
+        segmentId: null,
+        subscriptionItem: null,
+        subscriptionNumber: null,
+      },
+    ],
+  });
+  expect(await read()).toMatchObject({ syncPending: true, hasProgress: true });
+  await t.mutation(internal.abekaSync.studentComplete, {
+    runId,
+    studentId,
+    subjectIds: ["117", "missing"],
+  });
+  expect((await read()).syncPending).toBe(true);
+  await t.mutation(internal.abekaSync.studentComplete, {
+    runId,
+    studentId,
+    subjectIds: ["117"],
+  });
+  expect(await read()).toMatchObject({ syncPending: false, hasProgress: true });
+  await t.run((ctx) => ctx.db.patch(studentId, { hasProgress: undefined }));
+  expect(await read()).toMatchObject({ syncPending: false, hasProgress: true });
+  // Existing successful links without the new optional field require no backfill.
+  expect(
+    (await t.run((ctx) => ctx.db.get(studentId)))?.syncPending,
+  ).toBeUndefined();
+});
+
+test("a successful empty subject list clears report availability and pending state", async () => {
+  const { t, adminClient, schoolId, runId, studentId, student } = await setup();
+  await adminClient.mutation(api.abeka.linkStudent, {
+    studentId,
+    userId: student,
+  });
+  await t.run((ctx) => ctx.db.patch(runId, { status: "running" }));
+  await t.mutation(internal.abekaSync.saveProgress, {
+    runId,
+    studentId,
+    subjectId: "117",
+    lessons: [
+      {
+        subjectName: "Math",
+        lessonNumber: 1,
+        percentage: 0,
+        completed: false,
+        lengthSeconds: 1200,
+        watchedSeconds: 0,
+        lastViewed: null,
+        segmentId: null,
+        subscriptionItem: null,
+        subscriptionNumber: null,
+      },
+    ],
+  });
+  await t.mutation(internal.abekaSync.studentComplete, {
+    runId,
+    studentId,
+    subjectIds: [],
+  });
+  const { page } = await adminClient.query(api.abeka.students, {
+    schoolId,
+    paginationOpts: { numItems: 25, cursor: null },
+  });
+  expect(page[0]).toMatchObject({
+    userId: student,
+    hasProgress: false,
+    syncPending: false,
+  });
+  expect(await adminClient.query(api.abeka.progress, { studentId })).toEqual(
+    [],
+  );
+});
+
+test("scheduled sync downloads saved pending links without changing the linking flow", async () => {
+  vi.useFakeTimers();
+  const { t, adminClient, schoolId, connectionId, runId, studentId, student } =
+    await renewalSetup();
+  await t.run(async (ctx) => {
+    await ctx.db.patch(runId, { status: "completed" });
+    await setAbekaNextSync(ctx, connectionId, Date.now());
+  });
+  const request = vi.fn(async (url: string) => reportResponse(url));
+  vi.stubGlobal("fetch", request);
+  await adminClient.mutation(api.abeka.linkStudent, {
+    studentId,
+    userId: student,
+  });
+  expect(request).not.toHaveBeenCalled();
+  const connection = (await t.run((ctx) => ctx.db.get(connectionId)))!;
+  await t.mutation(internal.abekaSync.runScheduled, {
+    connectionId,
+    generation: connection.syncScheduleGeneration!,
+  });
+  await finishCurrentSync(t);
+  expect(request).toHaveBeenCalledTimes(3);
+  const rows = await adminClient.query(api.abeka.students, {
+    schoolId,
+    paginationOpts: { numItems: 25, cursor: null },
+  });
+  expect(rows.page[0]).toMatchObject({ syncPending: false, hasProgress: true });
+});
+
+test("legacy targeted workflows remain replayable and corrections preserve provider snapshots", async () => {
   vi.useFakeTimers();
   const {
     t,
@@ -1655,6 +2541,10 @@ test("link downloads only that student's progress, preserves the weekly schedule
     studentId,
     userId: student,
   });
+  // Simulate a targeted workflow started by the previous deployment.
+  await t.run(async (ctx) =>
+    startAbekaSync(ctx, (await ctx.db.get(connectionId))!, { studentId }),
+  );
   const started = await adminClient.query(api.abeka.status, { schoolId });
   expect(started.run?.studentId).toBe(studentId);
   // Another student cannot be read or written through this targeted run.
@@ -1712,7 +2602,7 @@ test("link downloads only that student's progress, preserves the weekly schedule
   ).toBe(started.run?._id);
 });
 
-test("failed initial student download preserves the link and weekly date without retrying on repeated saves", async () => {
+test("failed legacy student download preserves the link and weekly date without retrying on repeated saves", async () => {
   vi.useFakeTimers();
   const { t, adminClient, schoolId, connectionId, runId, studentId, student } =
     await renewalSetup();
@@ -1729,6 +2619,9 @@ test("failed initial student download preserves the link and weekly date without
     studentId,
     userId: student,
   });
+  await t.run(async (ctx) =>
+    startAbekaSync(ctx, (await ctx.db.get(connectionId))!, { studentId }),
+  );
   await finishCurrentSync(t);
   const state = await adminClient.query(api.abeka.status, { schoolId });
   expect(state.run?.status).toBe("failed");
@@ -2254,6 +3147,9 @@ test("a weekly deadline during a student download waits for it, then runs one fu
     studentId,
     userId: student,
   });
+  await t.run(async (ctx) =>
+    startAbekaSync(ctx, (await ctx.db.get(connectionId))!, { studentId }),
+  );
   const during = (await t.run((ctx) => ctx.db.get(connectionId)))!;
   const args = { connectionId, generation: during.syncScheduleGeneration! };
   await t.mutation(internal.abekaSync.runScheduled, args);

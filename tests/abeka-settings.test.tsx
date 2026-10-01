@@ -574,18 +574,25 @@ test("student table uses shared pagination and searches the complete imported ro
   expect(mocks.mutate).not.toHaveBeenCalled();
 });
 
-test("course tab reuses the searchable table, requires a campus, saves locally and refreshes only on demand", async () => {
+test("course tab selects institutional curriculums without a campus and refreshes only on demand", async () => {
   const t = messages.settings.integrations;
   mocks.query.mockImplementation((name) =>
     name === "abeka:status"
-      ? { connection: { status: "connected", confirmed: true }, run: null }
+      ? {
+          connection: {
+            status: "connected",
+            confirmed: true,
+            curriculumLinksMigratedAt: 1,
+          },
+          run: null,
+        }
       : name === "campuses:listForInstitutionSettings"
         ? [{ _id: "north", name: "North", isActive: true }]
         : undefined,
   );
   mocks.paginated.mockImplementation((name) => ({
     results:
-      name === "abekaCatalog:courses"
+      name === "abekaCurriculumLinks:courses"
         ? [
             {
               _id: "english",
@@ -596,8 +603,8 @@ test("course tab reuses the searchable table, requires a campus, saves locally a
               links: [],
             },
           ]
-        : name === "abekaCatalog:courseCandidates"
-          ? [{ id: "class", name: "English A", period: "2026" }]
+        : name === "abekaCurriculumLinks:candidates"
+          ? [{ id: "curriculum", name: "English A", code: "ENG" }]
           : [],
     status: "Exhausted",
   }));
@@ -605,7 +612,7 @@ test("course tab reuses the searchable table, requires a campus, saves locally a
   renderSettings();
   expect(
     mocks.paginated.mock.calls.some(
-      ([name]) => name === "abekaCatalog:courses",
+      ([name]) => name === "abekaCurriculumLinks:courses",
     ),
   ).toBe(false);
   fireEvent.mouseDown(screen.getByRole("tab", { name: t.courses.title }), {
@@ -615,15 +622,14 @@ test("course tab reuses the searchable table, requires a campus, saves locally a
   const course = await screen.findByRole("combobox", {
     name: `${t.courses.flexidual} · English 12`,
   });
-  expect((course as HTMLInputElement).disabled).toBe(true);
+  expect((course as HTMLInputElement).disabled).toBe(false);
   expect(
     screen.getByRole("tab", { name: `${t.courses.title}(1)` }),
   ).toBeTruthy();
   expect(mocks.mutate).not.toHaveBeenCalled();
-  fireEvent.click(
-    screen.getByRole("combobox", { name: `${t.campus} · English 12` }),
-  );
-  fireEvent.click(await screen.findByRole("option", { name: "North" }));
+  expect(
+    screen.queryByRole("combobox", { name: `${t.campus} · English 12` }),
+  ).toBeNull();
   expect((course as HTMLInputElement).disabled).toBe(false);
   fireEvent.focus(course);
   fireEvent.keyDown(course, { key: "ArrowDown" });
@@ -632,8 +638,7 @@ test("course tab reuses the searchable table, requires a campus, saves locally a
   await waitFor(() =>
     expect(mocks.mutate).toHaveBeenCalledWith({
       courseId: "english",
-      campusId: "north",
-      classId: "class",
+      curriculumId: "curriculum",
     }),
   );
   const search = screen.getByPlaceholderText(t.courses.search);
@@ -654,18 +659,66 @@ test("course tab reuses the searchable table, requires a campus, saves locally a
   expect(mocks.fetch).not.toHaveBeenCalled();
 });
 
-test("course chips preserve links across campuses and remove only the chosen association", async () => {
+test("curriculum selection stays locked until migration completes without triggering provider calls", async () => {
+  const t = messages.settings.integrations;
+  mocks.query.mockReturnValue({
+    connection: { status: "connected", confirmed: true },
+    run: null,
+  });
+  mocks.paginated.mockImplementation((name) => ({
+    results:
+      name === "abekaCurriculumLinks:courses"
+        ? [
+            {
+              _id: "english",
+              subjectId: "5298",
+              name: "English 12",
+              available: true,
+              totalLessons: 170,
+              links: [],
+            },
+          ]
+        : [],
+    status: "Exhausted",
+  }));
+  renderSettings();
+  fireEvent.mouseDown(screen.getByRole("tab", { name: t.courses.title }), {
+    button: 0,
+    ctrlKey: false,
+  });
+  expect(await screen.findByText(t.courses.migrationPending)).toBeTruthy();
+  const input = screen.getByRole("combobox", {
+    name: `${t.courses.flexidual} · English 12`,
+  });
+  expect((input as HTMLInputElement).disabled).toBe(true);
+  expect(
+    mocks.paginated.mock.calls.some(
+      ([name]) => name === "abekaCurriculumLinks:candidates",
+    ),
+  ).toBe(false);
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  expect(mocks.fetch).not.toHaveBeenCalled();
+});
+
+test("curriculum chips preserve multiple links and remove only the chosen association", async () => {
   const t = messages.settings.integrations;
   mocks.query.mockImplementation((name) =>
     name === "abeka:status"
-      ? { connection: { status: "connected", confirmed: true }, run: null }
+      ? {
+          connection: {
+            status: "connected",
+            confirmed: true,
+            curriculumLinksMigratedAt: 1,
+          },
+          run: null,
+        }
       : name === "campuses:listForInstitutionSettings"
         ? [{ _id: "north", name: "North", isActive: true }]
         : undefined,
   );
   mocks.paginated.mockImplementation((name) => ({
     results:
-      name === "abekaCatalog:courses"
+      name === "abekaCurriculumLinks:courses"
         ? [
             {
               _id: "english",
@@ -675,22 +728,20 @@ test("course chips preserve links across campuses and remove only the chosen ass
               totalLessons: 170,
               links: [
                 {
-                  classId: "north-class",
+                  curriculumId: "north-curriculum",
                   name: "English North",
-                  campusName: "North",
                   active: true,
                 },
                 {
-                  classId: "south-class",
+                  curriculumId: "south-curriculum",
                   name: "English South",
-                  campusName: "South",
                   active: false,
                 },
               ],
             },
           ]
-        : name === "abekaCatalog:courseCandidates"
-          ? [{ id: "new-class", name: "English B", period: "2026" }]
+        : name === "abekaCurriculumLinks:candidates"
+          ? [{ id: "new-curriculum", name: "English B", code: null }]
           : [],
     status: "Exhausted",
   }));
@@ -702,17 +753,13 @@ test("course chips preserve links across campuses and remove only the chosen ass
   const input = await screen.findByRole("combobox", {
     name: `${t.courses.flexidual} · English 12`,
   });
-  expect((input as HTMLInputElement).disabled).toBe(true);
+  expect((input as HTMLInputElement).disabled).toBe(false);
   const chips = input.closest('[data-slot="combobox-chips"]')!;
-  expect(
-    within(chips as HTMLElement).getByText("English North · North"),
-  ).toBeTruthy();
-  expect(
-    within(chips as HTMLElement).getByText("English South · South"),
-  ).toBeTruthy();
+  expect(within(chips as HTMLElement).getByText("English North")).toBeTruthy();
+  expect(within(chips as HTMLElement).getByText("English South")).toBeTruthy();
   expect(mocks.mutate).not.toHaveBeenCalled();
 
-  // Existing links can still be removed without choosing a campus first.
+  // Existing inactive links remain removable.
   mocks.mutate.mockRejectedValueOnce(new Error("save failed"));
   fireEvent.click(
     screen.getByRole("button", { name: `${t.unlink} · English South` }),
@@ -722,18 +769,14 @@ test("course chips preserve links across campuses and remove only the chosen ass
   );
   expect(mocks.mutate).toHaveBeenCalledExactlyOnceWith({
     courseId: "english",
-    classId: "south-class",
+    curriculumId: "south-curriculum",
     remove: true,
   });
-  expect(screen.getByText("English North · North")).toBeTruthy();
-  expect(screen.getByText("English South · South")).toBeTruthy();
+  expect(screen.getByText("English North")).toBeTruthy();
+  expect(screen.getByText("English South")).toBeTruthy();
 
-  // Adding a course in one campus must not remove the other campus's links.
+  // Adding a curriculum must not remove existing links.
   mocks.mutate.mockReset().mockResolvedValue(null);
-  fireEvent.click(
-    screen.getByRole("combobox", { name: `${t.campus} · English 12` }),
-  );
-  fireEvent.click(await screen.findByRole("option", { name: "North" }));
   fireEvent.focus(input);
   fireEvent.keyDown(input, { key: "ArrowDown" });
   fireEvent.change(input, { target: { value: "English B" } });
@@ -741,17 +784,16 @@ test("course chips preserve links across campuses and remove only the chosen ass
   await waitFor(() =>
     expect(mocks.mutate).toHaveBeenCalledExactlyOnceWith({
       courseId: "english",
-      campusId: "north",
-      classId: "new-class",
+      curriculumId: "new-curriculum",
     }),
   );
-  expect(screen.getByText("English North · North")).toBeTruthy();
-  expect(screen.getByText("English South · South")).toBeTruthy();
+  expect(screen.getByText("English North")).toBeTruthy();
+  expect(screen.getByText("English South")).toBeTruthy();
   expect(mocks.fetch).not.toHaveBeenCalled();
   view.unmount();
 });
 
-test("inline selectors require a campus and preserve automatic linking, progress and sync locks", async () => {
+test("inline selectors save links and disable empty reports while preserving sync locks", async () => {
   const t = messages.settings.integrations;
   mocks.query.mockImplementation((name) =>
     name === "abeka:status"
@@ -820,10 +862,11 @@ test("inline selectors require a campus and preserve automatic linking, progress
     studentId: "abeka-student",
     userId: "flexidual-student",
   });
-  fireEvent.click(screen.getByRole("button", { name: t.report }));
   expect(
-    within(screen.getByRole("dialog")).getByText(t.noReports),
-  ).toBeTruthy();
+    (screen.getByRole("button", { name: t.report }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(screen.queryByRole("dialog")).toBeNull();
   cleanup();
   mocks.query.mockImplementation((name) =>
     name === "abeka:status"
@@ -838,7 +881,96 @@ test("inline selectors require a campus and preserve automatic linking, progress
   expect(
     (screen.getByRole("button", { name: t.report }) as HTMLButtonElement)
       .disabled,
+  ).toBe(true);
+});
+
+test("pending links highlight selectors and Update data until synchronization completes", async () => {
+  const t = messages.settings.integrations;
+  mocks.query.mockImplementation((name) =>
+    name === "abeka:status"
+      ? { connection: { confirmed: true, status: "connected" }, run: null }
+      : name === "campuses:listForInstitutionSettings"
+        ? [{ _id: "campus", name: "North", isActive: true }]
+        : [],
+  );
+  const student = {
+    _id: "abeka-student",
+    name: "Provider Student",
+    loginId: "42",
+    userId: "user",
+    linkedName: "Linked Student",
+    campusId: "campus",
+    campusName: "North",
+    available: true,
+    syncPending: true,
+    hasProgress: false,
+  };
+  mocks.paginated.mockImplementation((name) => ({
+    results: name === "abeka:students" ? [student] : [],
+    status: "Exhausted",
+  }));
+  renderSettings();
+  const update = screen.getByRole("button", { name: t.updateData });
+  expect(update.className).toContain("bg-amber-50");
+  expect(
+    screen.getByRole("combobox", {
+      name: `${t.flexidualStudent} · ${student.name}`,
+    }).className,
+  ).toContain("bg-amber-50");
+  expect(
+    screen.getByRole("combobox", { name: `${t.campus} · ${student.name}` })
+      .className,
+  ).toContain("bg-amber-50");
+  expect(
+    (screen.getByRole("button", { name: t.report }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  fireEvent.focus(
+    screen.getByRole("combobox", {
+      name: `${t.flexidualStudent} · ${student.name}`,
+    }),
+  );
+  expect((await screen.findByRole("tooltip")).textContent).toBe(t.pendingSync);
+  fireEvent.click(update);
+  await waitFor(() =>
+    expect(mocks.mutate).toHaveBeenCalledWith({ schoolId: "school" }),
+  );
+  // Remount simulates navigation/reload; the query remains the source of truth.
+  cleanup();
+  renderSettings();
+  expect(
+    screen.getByRole("button", { name: t.updateData }).className,
+  ).toContain("bg-amber-50");
+  cleanup();
+  student.hasProgress = true;
+  renderSettings();
+  expect(
+    (screen.getByRole("button", { name: t.report }) as HTMLButtonElement)
+      .disabled,
   ).toBe(false);
+  expect(
+    screen.getByRole("button", { name: t.updateData }).className,
+  ).toContain("bg-amber-50");
+  cleanup();
+  student.syncPending = false;
+  renderSettings();
+  expect(
+    screen.getByRole("button", { name: t.updateData }).className,
+  ).not.toContain("bg-amber-50");
+  expect(
+    screen.getByRole("combobox", {
+      name: `${t.flexidualStudent} · ${student.name}`,
+    }).className,
+  ).not.toContain("bg-amber-50");
+  fireEvent.click(screen.getByRole("button", { name: t.report }));
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  cleanup();
+  student.userId = "";
+  renderSettings();
+  expect(
+    (screen.getByRole("button", { name: t.report }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
 });
 
 test("campus edits preserve saved links on failure and explicit unlink remains available", async () => {

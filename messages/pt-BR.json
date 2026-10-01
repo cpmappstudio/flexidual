@@ -100,6 +100,20 @@
   },
   "settings": {
     "integrations": {
+      "courses": {
+        "title": "Cursos da Abeka",
+        "search": "Buscar por curso ou ID da Abeka…",
+        "refresh": "Atualizar cursos",
+        "running": "Atualizando catálogo de cursos…",
+        "empty": "Nenhum curso importado. Use Atualizar cursos para carregar o catálogo.",
+        "choose": "Selecione um currículo",
+        "flexidual": "Currículos do Flexidual",
+        "migrationPending": "A vinculação por currículo aguarda migração. O progresso existente dos alunos continua disponível.",
+        "lessons": "{count} aulas",
+        "lastSync": "Catálogo atualizado: {date}",
+        "refreshError": "Não foi possível atualizar o catálogo. Os cursos e vínculos anteriores foram mantidos.",
+        "linkError": "Não foi possível salvar o vínculo. Verifique se o currículo está ativo, pertence à instituição e não está vinculado a outra matéria da Abeka."
+      },
       "detail": {
         "open": "Abrir integração Abeka",
         "back": "Voltar para Geral",
@@ -165,6 +179,7 @@
       "reconnect": "Renovar sessão",
       "syncNow": "Sincronizar agora",
       "updateData": "Atualizar dados",
+      "pendingSync": "Vínculo salvo. Use Atualizar dados para baixar o progresso pendente ou aguarde a sincronização programada.",
       "disconnect": "Desconectar",
       "disconnectExplanation": "As credenciais e a sessão salvas serão excluídas e a sincronização automática será cancelada. Os relatórios importados e os vínculos serão mantidos.",
       "sessionExplanation": "Conecte usando uma sessão autorizada da Abeka. Esta não é uma integração oficial nem um login automático. Renove a sessão quando ela expirar.",
@@ -198,7 +213,7 @@
       "confirmLink": "Confirmar vínculo",
       "unlink": "Remover vínculo",
       "linkError": "Não foi possível vincular. Verifique se o aluno já está vinculado ou se há uma sincronização em andamento.",
-      "noReports": "Ainda não há relatórios. Com a Abeka conectada, o progresso é baixado automaticamente ao vincular o aluno. Aguarde a atualização terminar ou verifique o estado da conexão.",
+      "noReports": "Ainda não há relatórios. Vincule o aluno e use Atualizar dados ou aguarde a sincronização programada. Vincular não baixa o progresso.",
       "completed": "{count} de {total} concluídas",
       "lesson": "Lição",
       "progress": "Assistido",
@@ -1568,6 +1583,8 @@
     "passwordUpdateFailed": "Não foi possível alterar a senha. Tente novamente.",
     "passwordUpdateUnavailable": "Este usuário legado não possui uma conta do Clerk cuja senha possa ser alterada.",
     "curriculumCodeInUse": "Esse código de currículo já está em uso nesta instituição.",
+    "curriculumLinkedToAbeka": "Desvincule este currículo da Abeka antes de excluí-lo.",
+    "abekaCurriculumMigrationInProgress": "Os vínculos da Abeka estão sendo migrados para currículos. Tente alterar o currículo ou excluir este curso quando a migração terminar.",
     "invalidCurriculumTitle": "Informe um título de currículo entre 1 e 150 caracteres.",
     "calendarClosureTooLarge": "Este dia inclui aulas agendadas demais. Reduza o escopo.",
     "invalidPartialSelection": "A seleção de aulas mudou. Revise a prévia e tente novamente.",

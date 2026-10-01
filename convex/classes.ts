@@ -30,6 +30,7 @@ import {
   utcToLocalDateTime,
 } from "../lib/time-zone";
 import { getClassTimeZone } from "./model/timeZone";
+import { assertAbekaClassLinkNotMigrating } from "./model/abekaAccess";
 import { getInstitutionGrades, validateGradeCodes } from "./model/grades";
 import {
   getStudentMembership,
@@ -2214,6 +2215,17 @@ export const update = mutation({
       );
     }
 
+    if (
+      args.curriculumId !== undefined &&
+      args.curriculumId !== classData.curriculumId
+    ) {
+      await assertAbekaClassLinkNotMigrating(
+        ctx,
+        classData._id,
+        curriculum?.schoolId,
+      );
+    }
+
     const targetCurriculum = args.curriculumId
       ? await ctx.db.get(args.curriculumId)
       : curriculum;
@@ -2574,6 +2586,12 @@ export const remove = mutation({
     ) {
       throw new ConvexError("PERMISSION_DENIED");
     }
+
+    await assertAbekaClassLinkNotMigrating(
+      ctx,
+      classData._id,
+      curriculum?.schoolId,
+    );
 
     const [
       schedules,

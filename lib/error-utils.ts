@@ -37,6 +37,8 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
         "INVALID_GRADE",
         "STUDENT_ALREADY_ENROLLED",
         "CURRICULUM_CODE_IN_USE",
+        "CURRICULUM_LINKED_TO_ABEKA",
+        "ABEKA_CURRICULUM_MIGRATION_IN_PROGRESS",
         "INVALID_CURRICULUM_TITLE",
         "COURSE_CLASS_OVERLAP",
         "CANCELLATION_REASON_REQUIRED",
@@ -126,6 +128,10 @@ export function getErrorMessage(
       });
     case "CURRICULUM_CODE_IN_USE":
       return t("errors.curriculumCodeInUse");
+    case "CURRICULUM_LINKED_TO_ABEKA":
+      return t("errors.curriculumLinkedToAbeka");
+    case "ABEKA_CURRICULUM_MIGRATION_IN_PROGRESS":
+      return t("errors.abekaCurriculumMigrationInProgress");
     case "INVALID_CURRICULUM_TITLE":
       return t("errors.invalidCurriculumTitle");
     case "CANCELLATION_REASON_REQUIRED":

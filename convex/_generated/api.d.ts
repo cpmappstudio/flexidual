@@ -11,6 +11,7 @@
 import type * as abeka from "../abeka.js";
 import type * as abekaActions from "../abekaActions.js";
 import type * as abekaCatalog from "../abekaCatalog.js";
+import type * as abekaCurriculumLinks from "../abekaCurriculumLinks.js";
 import type * as abekaHttp from "../abekaHttp.js";
 import type * as abekaSync from "../abekaSync.js";
 import type * as abekaWorkflow from "../abekaWorkflow.js";
@@ -96,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   abeka: typeof abeka;
   abekaActions: typeof abekaActions;
   abekaCatalog: typeof abekaCatalog;
+  abekaCurriculumLinks: typeof abekaCurriculumLinks;
   abekaHttp: typeof abekaHttp;
   abekaSync: typeof abekaSync;
   abekaWorkflow: typeof abekaWorkflow;

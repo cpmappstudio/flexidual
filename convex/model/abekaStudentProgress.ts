@@ -32,6 +32,43 @@ export async function getAbekaStudentCourseReports(
         )
         .unique();
       if (!student || student.rosterRunId !== connection.rosterRunId) return;
+      const byCurriculum = connection.curriculumLinksMigratedAt !== undefined;
+      const reportCache = new Map<
+        string,
+        Promise<Doc<"abekaProgress"> | null>
+      >();
+      async function readReport(c: Doc<"classes">) {
+        const link = byCurriculum
+          ? await ctx.db
+              .query("abekaCurriculumLinks")
+              .withIndex("by_connectionId_and_curriculumId", (q) =>
+                q
+                  .eq("connectionId", connection!._id)
+                  .eq("curriculumId", c.curriculumId),
+              )
+              .unique()
+          : await ctx.db
+              .query("abekaCourseLinks")
+              .withIndex("by_connectionId_and_classId", (q) =>
+                q.eq("connectionId", connection!._id).eq("classId", c._id),
+              )
+              .unique();
+        if (!link) return null;
+        if (byCurriculum) {
+          const curriculum = await ctx.db.get("curriculums", c.curriculumId);
+          if (curriculum?.schoolId !== schoolId) return null;
+        }
+        const course = await ctx.db.get("abekaCourses", link.courseId);
+        if (!course?.available || course.connectionId !== connection!._id)
+          return null;
+        const progress = await ctx.db
+          .query("abekaProgress")
+          .withIndex("by_student_subject", (q) =>
+            q.eq("studentId", student!._id).eq("subjectId", course.subjectId),
+          )
+          .unique();
+        return progress?.lessons.length ? progress : null;
+      }
       await Promise.all(
         classes
           .filter(
@@ -42,26 +79,10 @@ export async function getAbekaStudentCourseReports(
               (!c.schoolId || c.schoolId === schoolId),
           )
           .map(async (c) => {
-            const link = await ctx.db
-              .query("abekaCourseLinks")
-              .withIndex("by_connectionId_and_classId", (q) =>
-                q.eq("connectionId", connection._id).eq("classId", c._id),
-              )
-              .unique();
-            if (!link) return;
-            const course = await ctx.db.get("abekaCourses", link.courseId);
-            if (!course?.available || course.connectionId !== connection._id)
-              return;
-            const progress = await ctx.db
-              .query("abekaProgress")
-              .withIndex("by_student_subject", (q) =>
-                q
-                  .eq("studentId", student._id)
-                  .eq("subjectId", course.subjectId),
-              )
-              .unique();
-            if (!progress?.lessons.length) return;
-            result.set(c._id, progress);
+            const key = byCurriculum ? c.curriculumId : c._id;
+            if (!reportCache.has(key)) reportCache.set(key, readReport(c));
+            const progress = await reportCache.get(key)!;
+            if (progress) result.set(c._id, progress);
           }),
       );
     }),

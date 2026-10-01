@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { ConvexError } from "convex/values";
 import { api } from "@/convex/_generated/api";
+import { cn } from "@/lib/utils";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,9 @@ import { AbekaSyncSchedule } from "./abeka-sync-schedule";
 import { AbekaCourses } from "./abeka-courses";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+const pendingSyncClassName =
+  "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200";
+
 export function AbekaIntegrationSettings() {
   const t = useTranslations("settings.integrations");
   const { context, isLoading } = useSettingsContext();
@@ -92,6 +96,19 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
   const common = useTranslations("common");
   const format = useFormatter();
   const state = useQuery(api.abeka.status, { schoolId });
+  // Share the paginated roster between the header indicator and the table.
+  const {
+    results: students,
+    status: studentsStatus,
+    loadMore,
+  } = usePaginatedQuery(
+    api.abeka.students,
+    state?.connection?.confirmed ? { schoolId } : "skip",
+    { initialNumItems: 25 },
+  );
+  useEffect(() => {
+    if (studentsStatus === "CanLoadMore") loadMore(25);
+  }, [studentsStatus, loadMore]);
   const sync = useMutation(api.abeka.syncNow);
   const disconnect = useMutation(api.abeka.disconnect);
   const confirm = useMutation(api.abeka.confirm);
@@ -109,6 +126,9 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
     connection?.status === "needs_reconnect" && !state.hasCredentials;
   const connectLabel =
     disconnected || needsCredentials ? t("connect") : t("updateData");
+  const hasPendingStudents = students.some(
+    (student) => student.available && student.linkedName && student.syncPending,
+  );
   const date = (value?: number) =>
     value
       ? format.dateTime(value, { dateStyle: "medium", timeStyle: "short" })
@@ -154,6 +174,16 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
             >
               <AbekaIconAction
                 label={connectLabel}
+                tooltip={
+                  hasPendingStudents && !disconnected && !needsCredentials
+                    ? t("pendingSync")
+                    : undefined
+                }
+                className={
+                  hasPendingStudents && !disconnected && !needsCredentials
+                    ? pendingSyncClassName
+                    : undefined
+                }
                 icon={disconnected ? Plug : RefreshCw}
                 loading={pendingAction === "sync" || running}
                 disabled={
@@ -319,6 +349,8 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
         {connection?.confirmed && (
           <AbekaStudents
             schoolId={schoolId}
+            students={students}
+            loaded={studentsStatus === "Exhausted"}
             running={running}
             connection={connection}
           />
@@ -337,11 +369,13 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
 
 function AbekaIconAction({
   label,
+  tooltip,
   icon: Icon,
   loading = false,
   ...buttonProps
 }: {
   label: string;
+  tooltip?: string;
   icon: LucideIcon;
   loading?: boolean;
 } & ComponentProps<typeof Button>) {
@@ -365,7 +399,9 @@ function AbekaIconAction({
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent side="bottom">{label}</TooltipContent>
+      <TooltipContent side="bottom" className="max-w-xs">
+        {tooltip ?? label}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -480,10 +516,14 @@ const StudentLinkContext = createContext<{
 
 function AbekaStudents({
   schoolId,
+  students: results,
+  loaded,
   running,
   connection,
 }: {
   schoolId: Id<"schools">;
+  students: AbekaStudent[];
+  loaded: boolean;
   running: boolean;
   connection: Doc<"abekaConnections">;
 }) {
@@ -491,11 +531,6 @@ function AbekaStudents({
   const common = useTranslations("common");
   const [visibleCount, setVisibleCount] = useState<number | null>(null);
   const [courseCount, setCourseCount] = useState<number | null>(null);
-  const { results, status, loadMore } = usePaginatedQuery(
-    api.abeka.students,
-    { schoolId },
-    { initialNumItems: 25 },
-  );
   const campuses = useQuery(api.campuses.listForInstitutionSettings, {
     schoolId,
   });
@@ -529,10 +564,6 @@ function AbekaStudents({
     id: Id<"abekaStudents">;
     name: string;
   } | null>(null);
-  // ponytail: use the shared table's local search; load roster metadata in bounded pages, not progress.
-  useEffect(() => {
-    if (status === "CanLoadMore") loadMore(25);
-  }, [status, loadMore]);
 
   const columns: ColumnDef<AbekaStudent>[] = [
     createSearchColumn<AbekaStudent>([
@@ -572,6 +603,7 @@ function AbekaStudents({
           <Button
             size="sm"
             variant="ghost"
+            disabled={!student.userId || !student.hasProgress}
             onClick={() => setReport({ id: student._id, name: student.name })}
           >
             {t("report")}
@@ -586,9 +618,7 @@ function AbekaStudents({
         <TabsList className="h-auto max-w-full flex-wrap">
           <TabsTrigger value="students">
             {t("students")}
-            <TableResultCount
-              count={status === "Exhausted" ? visibleCount : null}
-            />
+            <TableResultCount count={loaded ? visibleCount : null} />
           </TabsTrigger>
           <TabsTrigger value="courses">
             {t("courses.title")}
@@ -597,7 +627,7 @@ function AbekaStudents({
         </TabsList>
       </div>
       <TabsContent value="students" className="min-w-0">
-        {status !== "Exhausted" ? (
+        {!loaded ? (
           <AbekaLoading />
         ) : (
           <StudentLinkContext.Provider
@@ -672,7 +702,14 @@ function StudentCampusCell({ row }: CellContext<AbekaStudent, unknown>) {
       searchPlaceholder={common("search")}
       emptyText={common("noResults")}
       deselectOnReselect={false}
-      className="w-48"
+      className={cn(
+        "w-48",
+        student.userId &&
+          student.syncPending &&
+          (campusDrafts[student._id] ?? student.campusId ?? "") ===
+            (student.campusId ?? "") &&
+          pendingSyncClassName,
+      )}
     />
   );
 }
@@ -710,29 +747,40 @@ function StudentLinkCell({ row }: CellContext<AbekaStudent, unknown>) {
       label: student.linkedName ?? t("notLinked"),
     });
   if (student.userId) options.push({ value: "unlink", label: t("unlink") });
+  const pending = !!userId && student.syncPending;
   return (
-    <div className="flex items-center gap-2">
-      <Combobox
-        options={options}
-        value={userId}
-        onValueChange={(value) =>
-          void save(student, value === "unlink" ? null : (value as Id<"users">))
-        }
-        onOpenChange={setOpen}
-        disabled={
-          disabled || !campus || (!student.available && !student.userId)
-        }
-        ariaLabel={`${t("flexidualStudent")} · ${student.name}`}
-        placeholder={t("chooseStudent")}
-        searchPlaceholder={common("search")}
-        emptyText={common("noResults")}
-        loading={canQuery && status !== "Exhausted"}
-        loadingText={t("loading")}
-        deselectOnReselect={false}
-        className="w-64"
-      />
-      {savingId === student._id && <Spinner aria-label={t("loading")} />}
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-2">
+          <Combobox
+            options={options}
+            value={userId}
+            onValueChange={(value) =>
+              void save(
+                student,
+                value === "unlink" ? null : (value as Id<"users">),
+              )
+            }
+            onOpenChange={setOpen}
+            disabled={
+              disabled || !campus || (!student.available && !student.userId)
+            }
+            ariaLabel={`${t("flexidualStudent")} · ${student.name}`}
+            placeholder={t("chooseStudent")}
+            searchPlaceholder={common("search")}
+            emptyText={common("noResults")}
+            loading={canQuery && status !== "Exhausted"}
+            loadingText={t("loading")}
+            deselectOnReselect={false}
+            className={cn("w-64", pending && pendingSyncClassName)}
+          />
+          {savingId === student._id && <Spinner aria-label={t("loading")} />}
+        </div>
+      </TooltipTrigger>
+      {pending && (
+        <TooltipContent className="max-w-xs">{t("pendingSync")}</TooltipContent>
+      )}
+    </Tooltip>
   );
 }
 

@@ -53,6 +53,14 @@ export default defineSchema({
   })
     .index("by_connectionId_and_classId", ["connectionId", "classId"])
     .index("by_courseId_and_classId", ["courseId", "classId"]),
+  abekaCurriculumLinks: defineTable({
+    connectionId: v.id("abekaConnections"),
+    courseId: v.id("abekaCourses"),
+    curriculumId: v.id("curriculums"),
+  })
+    .index("by_connectionId_and_curriculumId", ["connectionId", "curriculumId"])
+    .index("by_courseId_and_curriculumId", ["courseId", "curriculumId"])
+    .index("by_curriculumId", ["curriculumId"]),
   abekaConnections: defineTable(abekaConnectionFields)
     .index("by_school", ["schoolId"])
     .index("by_next_sync", ["nextSyncAt"]),
