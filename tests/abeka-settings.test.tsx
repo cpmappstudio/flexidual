@@ -33,9 +33,11 @@ const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   paginated: vi.fn(),
   error: vi.fn(),
+  router: { push: vi.fn(), replace: vi.fn() },
 }));
 vi.mock("sonner", () => ({ toast: { error: mocks.error } }));
 vi.mock("@/i18n/navigation", () => ({
+  useRouter: () => mocks.router,
   Link: ({ children, ...props }: ComponentProps<"a">) => (
     <a {...props}>{children}</a>
   ),
@@ -69,6 +71,8 @@ vi.mock("convex/react", () => ({
 
 beforeEach(() => {
   mocks.admin = true;
+  mocks.router.push.mockReset();
+  mocks.router.replace.mockReset();
   mocks.query.mockReset().mockReturnValue({ connection: null, run: null });
   mocks.mutate.mockReset();
   mocks.error.mockReset();
@@ -338,7 +342,7 @@ test("read-only institution settings do not expose the save action", () => {
   ).toBeNull();
 });
 
-test("General uses a muted outlined item with a navigation arrow, not connection actions", () => {
+test("General offers a circular connect action instead of navigation when disconnected", () => {
   renderSettings(<IntegrationSettings />);
   const logo = screen.getByRole("img", { name: "Abeka" });
   const item = logo.closest('[data-slot="item"]');
@@ -346,12 +350,11 @@ test("General uses a muted outlined item with a navigation arrow, not connection
   expect(logo.closest('[data-slot="item-media"]')).not.toBeNull();
   expect(logo.classList.contains("grayscale")).toBe(true);
   expect(logo.classList.contains("opacity-40")).toBe(true);
-  const connect = screen.getByRole("link", {
-    name: messages.settings.integrations.detail.open,
+  const connect = screen.getByRole("button", {
+    name: messages.settings.integrations.connect,
   });
-  expect(connect.getAttribute("href")).toBe(
-    "/school/settings/integrations/abeka",
-  );
+  expect(connect.classList.contains("rounded-full")).toBe(true);
+  expect(screen.queryByRole("link")).toBeNull();
   expect(connect.closest('[data-slot="item-actions"]')).not.toBeNull();
   expect(connect.textContent).toBe("");
   expect(screen.queryByRole("button", { name: "Desconectar" })).toBeNull();
@@ -377,7 +380,69 @@ test("General remains a summary when connected and never loads the student table
     }),
   ).toBeNull();
   expect(mocks.paginated).not.toHaveBeenCalled();
+  expect(mocks.router.push).not.toHaveBeenCalled();
 });
+
+test.each([null, { status: "disconnected", confirmed: true }])(
+  "direct integration access redirects to General without subscribing to tables: %j",
+  (connection) => {
+    mocks.query.mockReturnValue({ connection, run: null });
+    renderSettings();
+    expect(mocks.router.replace).toHaveBeenCalledWith("/school/settings");
+    expect(screen.queryByRole("heading", { name: "Abeka" })).toBeNull();
+    expect(mocks.paginated).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  },
+);
+
+test("route waits for status and reacts to disconnection from another tab", () => {
+  mocks.query.mockReturnValue(undefined);
+  const view = renderSettings();
+  expect(mocks.router.replace).not.toHaveBeenCalled();
+  mocks.query.mockReturnValue({
+    connection: { status: "connected", confirmed: false },
+    run: null,
+  });
+  const page = (
+    <NextIntlClientProvider
+      locale="es"
+      messages={messages}
+      timeZone="America/Bogota"
+    >
+      <AbekaIntegrationPage />
+    </NextIntlClientProvider>
+  );
+  view.rerender(page);
+  expect(screen.getByRole("heading", { name: "Abeka" })).toBeTruthy();
+  mocks.query.mockReturnValue({
+    connection: { status: "disconnected", confirmed: true },
+    run: null,
+  });
+  view.rerender(
+    <NextIntlClientProvider
+      locale="es"
+      messages={messages}
+      timeZone="America/Bogota"
+    >
+      <AbekaIntegrationPage />
+    </NextIntlClientProvider>,
+  );
+  expect(mocks.router.replace).toHaveBeenCalledWith("/school/settings");
+  expect(screen.queryByRole("heading", { name: "Abeka" })).toBeNull();
+});
+
+test.each(["connecting", "needs_confirmation", "needs_reconnect", "error"])(
+  "setup and recovery remain accessible: %s",
+  (status) => {
+    mocks.query.mockReturnValue({
+      connection: { status, confirmed: false },
+      run: null,
+    });
+    renderSettings();
+    expect(screen.getByRole("heading", { name: "Abeka" })).toBeTruthy();
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+  },
+);
 
 test("Abeka page has a General backlink, detailed information and existing management actions", () => {
   mocks.query.mockReturnValue({
@@ -1139,7 +1204,7 @@ test("a disconnected saved connection offers connect again, not session renewal"
     connection: { status: "disconnected", confirmed: true },
     run: null,
   });
-  renderSettings();
+  renderSettings(<IntegrationSettings />);
   expect(screen.getByRole("button", { name: "Conectar Abeka" })).toBeTruthy();
   expect(
     screen.getByRole("img", { name: "Abeka" }).classList.contains("grayscale"),
@@ -1166,7 +1231,7 @@ test("a connected integration restores the logo color and preserves manual synch
 });
 
 test("session entry is masked, cleared immediately and sent only to the authenticated Convex endpoint", async () => {
-  renderSettings();
+  renderSettings(<IntegrationSettings />);
   fireEvent.click(screen.getByRole("button", { name: "Conectar Abeka" }));
   const field = screen.getByLabelText(
     "Sesión de Abeka (valor de Cookie)",
@@ -1267,7 +1332,7 @@ test("connect saves credentials through HTTP once, clears inputs and closes only
   mocks.fetch.mockResolvedValue(
     Response.json({ accepted: true }, { status: 202 }),
   );
-  renderSettings();
+  const view = renderSettings(<IntegrationSettings />);
   fireEvent.click(screen.getByRole("button", { name: t.connect }));
   const username = screen.getByLabelText(
     t.loginProbe.username,
@@ -1297,6 +1362,50 @@ test("connect saves credentials through HTTP once, clears inputs and closes only
     }),
   );
   expect(mocks.mutate).not.toHaveBeenCalled();
+  expect(mocks.router.push).not.toHaveBeenCalled();
+  expect(
+    (screen.getByRole("button", { name: t.connect }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  mocks.query.mockReturnValue({
+    connection: { status: "connecting", confirmed: false },
+    run: { status: "running" },
+  });
+  view.rerender(
+    <NextIntlClientProvider
+      locale="es"
+      messages={messages}
+      timeZone="America/Bogota"
+    >
+      <IntegrationSettings />
+    </NextIntlClientProvider>,
+  );
+  await waitFor(() =>
+    expect(mocks.router.push).toHaveBeenCalledExactlyOnceWith(
+      "/school/settings/integrations/abeka",
+    ),
+  );
+  expect(screen.getByRole("link", { name: t.detail.open })).toBeTruthy();
+});
+
+test("failed connection from General keeps the dialog open and does not navigate", async () => {
+  const t = messages.settings.integrations;
+  mocks.fetch.mockResolvedValue(
+    Response.json({ error: "SIGN_IN_REJECTED" }, { status: 400 }),
+  );
+  renderSettings(<IntegrationSettings />);
+  fireEvent.click(screen.getByRole("button", { name: t.connect }));
+  const username = screen.getByLabelText(t.loginProbe.username);
+  const password = screen.getByLabelText(t.loginProbe.password);
+  fireEvent.change(username, { target: { value: "test-account" } });
+  fireEvent.change(password, { target: { value: "not-real" } });
+  fireEvent.submit(password.closest("form")!);
+  expect(
+    await screen.findByText(t.loginProbe.errors.SIGN_IN_REJECTED),
+  ).toBeTruthy();
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  expect(mocks.router.push).not.toHaveBeenCalled();
+  expect(screen.queryByRole("link", { name: t.detail.open })).toBeNull();
 });
 
 test("update with stored credentials does not open or submit a password form", async () => {

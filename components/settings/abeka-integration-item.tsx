@@ -1,6 +1,13 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ReactNode, ComponentProps } from "react";
+import type { LucideIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import type { Doc } from "@/convex/_generated/dataModel";
@@ -30,6 +37,49 @@ export function AbekaLoading() {
 }
 
 type AbekaStatus = Doc<"abekaConnections">["status"];
+
+export function isAbekaDisconnected(status?: AbekaStatus) {
+  return !status || status === "disconnected";
+}
+
+export function AbekaIconAction({
+  label,
+  tooltip,
+  icon: Icon,
+  loading = false,
+  ...buttonProps
+}: {
+  label: string;
+  tooltip?: string;
+  icon: LucideIcon;
+  loading?: boolean;
+} & ComponentProps<typeof Button>) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            aria-label={label}
+            aria-busy={loading}
+            {...buttonProps}
+          >
+            {loading ? (
+              <Spinner aria-hidden="true" />
+            ) : (
+              <Icon aria-hidden="true" />
+            )}
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs">
+        {tooltip ?? label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function AbekaLogo({ status }: { status?: AbekaStatus }) {
   return (

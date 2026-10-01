@@ -1,27 +1,12 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useRef,
-  useEffect,
-  type FormEvent,
-  type ComponentProps,
-} from "react";
+import { createContext, useContext, useState, useRef, useEffect } from "react";
 import type { CellContext, ColumnDef } from "@tanstack/react-table";
 import type { FunctionReturnType } from "convex/server";
-import { useAuth } from "@clerk/nextjs";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useFormatter, useTranslations } from "next-intl";
 import { AbekaCourseReport } from "@/components/abeka/abeka-course-report";
-import {
-  RefreshCw,
-  Unplug,
-  KeyRound,
-  Plug,
-  type LucideIcon,
-} from "lucide-react";
+import { RefreshCw, Unplug, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { ConvexError } from "convex/values";
 import { api } from "@/convex/_generated/api";
@@ -41,8 +26,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Combobox } from "@/components/ui/combobox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Tooltip,
   TooltipTrigger,
@@ -59,6 +42,8 @@ import {
   AbekaLogo,
   AbekaStatusBadge,
   AbekaLoading,
+  AbekaIconAction,
+  isAbekaDisconnected,
 } from "./abeka-integration-item";
 import {
   Dialog,
@@ -67,7 +52,8 @@ import {
   DialogDescription,
   DialogHeader,
 } from "@/components/ui/dialog";
-import { AbekaSignInForm } from "./abeka-login-probe";
+import { AbekaConnectDialog } from "./abeka-connect-dialog";
+import { useRouter } from "@/i18n/navigation";
 import { AbekaSyncSchedule } from "./abeka-sync-schedule";
 import { AbekaCourses } from "./abeka-courses";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -77,7 +63,7 @@ const pendingSyncClassName =
 
 export function AbekaIntegrationSettings() {
   const t = useTranslations("settings.integrations");
-  const { context, isLoading } = useSettingsContext();
+  const { context, isLoading, basePath } = useSettingsContext();
   if (isLoading) return <AbekaLoading />;
   if (!context?.canManageInstitution)
     return <p className="text-sm text-muted-foreground">{t("adminOnly")}</p>;
@@ -86,16 +72,31 @@ export function AbekaIntegrationSettings() {
       className="grid min-w-0 grid-cols-1 gap-6"
       aria-labelledby="abeka-title"
     >
-      <AbekaIntegration schoolId={context.institution._id} />
+      <AbekaIntegration
+        key={context.institution._id}
+        schoolId={context.institution._id}
+        basePath={basePath}
+      />
     </section>
   );
 }
 
-function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
+function AbekaIntegration({
+  schoolId,
+  basePath,
+}: {
+  schoolId: Id<"schools">;
+  basePath: string;
+}) {
   const t = useTranslations("settings.integrations");
   const common = useTranslations("common");
   const format = useFormatter();
   const state = useQuery(api.abeka.status, { schoolId });
+  const router = useRouter();
+  const disconnected = isAbekaDisconnected(state?.connection?.status);
+  useEffect(() => {
+    if (state && disconnected) router.replace(basePath);
+  }, [state, disconnected, router, basePath]);
   // Share the paginated roster between the header indicator and the table.
   const {
     results: students,
@@ -103,7 +104,7 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
     loadMore,
   } = usePaginatedQuery(
     api.abeka.students,
-    state?.connection?.confirmed ? { schoolId } : "skip",
+    !disconnected && state?.connection?.confirmed ? { schoolId } : "skip",
     { initialNumItems: 25 },
   );
   useEffect(() => {
@@ -118,14 +119,12 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
     "sync" | "confirm" | "disconnect" | null
   >(null);
   const busy = pendingAction !== null;
-  if (!state) return <AbekaLoading />;
+  if (!state || disconnected) return <AbekaLoading />;
   const { connection, run } = state;
   const running = run?.status === "running";
-  const disconnected = !connection || connection.status === "disconnected";
   const needsCredentials =
     connection?.status === "needs_reconnect" && !state.hasCredentials;
-  const connectLabel =
-    disconnected || needsCredentials ? t("connect") : t("updateData");
+  const connectLabel = needsCredentials ? t("connect") : t("updateData");
   const hasPendingStudents = students.some(
     (student) => student.available && student.linkedName && student.syncPending,
   );
@@ -175,22 +174,22 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
               <AbekaIconAction
                 label={connectLabel}
                 tooltip={
-                  hasPendingStudents && !disconnected && !needsCredentials
+                  hasPendingStudents && !needsCredentials
                     ? t("pendingSync")
                     : undefined
                 }
                 className={
-                  hasPendingStudents && !disconnected && !needsCredentials
+                  hasPendingStudents && !needsCredentials
                     ? pendingSyncClassName
                     : undefined
                 }
-                icon={disconnected ? Plug : RefreshCw}
+                icon={RefreshCw}
                 loading={pendingAction === "sync" || running}
                 disabled={
                   busy || running || connection?.status === "needs_confirmation"
                 }
                 onClick={() => {
-                  if (!disconnected && !needsCredentials)
+                  if (!needsCredentials)
                     void perform("sync", () => sync({ schoolId }));
                   else setConnecting(true);
                 }}
@@ -200,7 +199,7 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
                   label={t("disconnect")}
                   icon={Unplug}
                   loading={pendingAction === "disconnect"}
-                  disabled={busy || disconnected}
+                  disabled={busy}
                 />
               </AlertDialogTrigger>
               <AbekaIconAction
@@ -229,7 +228,7 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
                   timeZone={state.scheduleTimeZone}
                   period={state.schedulePeriod}
                   nextSyncAt={connection.nextSyncAt}
-                  disabled={busy || running || disconnected}
+                  disabled={busy || running}
                 />
               </dl>
             )}
@@ -277,7 +276,7 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
               </Button>
             </div>
           )}
-          {connection?.errorCode && !disconnected && (
+          {connection?.errorCode && (
             <p role="alert" className="text-sm text-destructive">
               {t(`errors.${connection.errorCode}`)}
             </p>
@@ -294,29 +293,11 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
             </p>
           )}
         </header>
-        <Dialog open={connecting} onOpenChange={setConnecting}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("connect")}</DialogTitle>
-              <DialogDescription>
-                {t("credentials.description")}
-              </DialogDescription>
-            </DialogHeader>
-            <AbekaSignInForm
-              schoolId={schoolId}
-              onAccepted={() => setConnecting(false)}
-            />
-            <details>
-              <summary className="cursor-pointer text-sm text-muted-foreground">
-                {t("credentials.manual")}
-              </summary>
-              <SessionForm
-                schoolId={schoolId}
-                onAccepted={() => setConnecting(false)}
-              />
-            </details>
-          </DialogContent>
-        </Dialog>
+        <AbekaConnectDialog
+          schoolId={schoolId}
+          open={connecting}
+          onOpenChange={setConnecting}
+        />
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("disconnect")}</AlertDialogTitle>
@@ -364,137 +345,6 @@ function AbekaIntegration({ schoolId }: { schoolId: Id<"schools"> }) {
         )}
       </div>
     </AlertDialog>
-  );
-}
-
-function AbekaIconAction({
-  label,
-  tooltip,
-  icon: Icon,
-  loading = false,
-  ...buttonProps
-}: {
-  label: string;
-  tooltip?: string;
-  icon: LucideIcon;
-  loading?: boolean;
-} & ComponentProps<typeof Button>) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="outline"
-            aria-label={label}
-            aria-busy={loading}
-            {...buttonProps}
-          >
-            {loading ? (
-              <Spinner aria-hidden="true" />
-            ) : (
-              <Icon aria-hidden="true" />
-            )}
-          </Button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-xs">
-        {tooltip ?? label}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function SessionForm({
-  schoolId,
-  onAccepted,
-}: {
-  schoolId: Id<"schools">;
-  onAccepted: () => void;
-}) {
-  const t = useTranslations("settings.integrations");
-  const { getToken } = useAuth();
-  const input = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!input.current || busy) return;
-    let cookie = input.current.value;
-    input.current.value = "";
-    setBusy(true);
-    setError(null);
-    try {
-      const token = await getToken({ template: "convex" });
-      const site =
-        process.env.NEXT_PUBLIC_CONVEX_SITE_URL ??
-        process.env.NEXT_PUBLIC_CONVEX_URL?.replace(
-          ".convex.cloud",
-          ".convex.site",
-        );
-      if (!token || !site) throw new Error();
-      const response = await fetch(
-        `${site}/abeka-session?schoolId=${encodeURIComponent(schoolId)}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "text/plain",
-          },
-          body: cookie,
-        },
-      );
-      cookie = "";
-      if (response.status === 503) {
-        setError(t("notConfigured"));
-        return;
-      }
-      if (!response.ok) throw new Error();
-      onAccepted();
-    } catch {
-      setError(t("connectionError"));
-    } finally {
-      cookie = "";
-      setBusy(false);
-    }
-  }
-  return (
-    <form
-      onSubmit={submit}
-      className="space-y-4 ph-no-capture ph-mask"
-      data-ph-no-capture
-    >
-      <ol className="list-decimal pl-5 text-sm space-y-2">
-        <li>{t("sessionStep1")}</li>
-        <li>{t("sessionStep2")}</li>
-      </ol>
-      <div className="space-y-2">
-        <Label htmlFor="abeka-cookie">{t("sessionLabel")}</Label>
-        <Input
-          ref={input}
-          id="abeka-cookie"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={16384}
-          required
-          disabled={busy}
-          data-1p-ignore
-          data-lpignore="true"
-        />
-        <p className="text-xs text-muted-foreground">{t("sessionWarning")}</p>
-      </div>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Button type="submit" disabled={busy}>
-        {busy && <Spinner aria-label={t("loading")} />}
-        {t("saveSession")}
-      </Button>
-    </form>
   );
 }
 
