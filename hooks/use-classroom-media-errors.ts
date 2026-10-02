@@ -48,7 +48,6 @@ export function useClassroomMediaErrorHandler() {
       toast.error(message, {
         id: `classroom-media-${failure ?? MediaDeviceFailure.Other}`,
       });
-      console.error("Classroom media device error:", error);
     },
     [t],
   );

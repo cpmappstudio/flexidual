@@ -55,6 +55,10 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  Object.defineProperty(document, "fullscreenElement", {
+    configurable: true,
+    value: null,
+  });
   vi.unstubAllGlobals();
 });
 
@@ -78,6 +82,7 @@ it("keeps a required draft across stream closure and blocks dismissing it", asyn
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   expect(onOpenChange).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "cancel" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
 
   view.rerender(
     createElement(SessionCloseoutDialog, {
@@ -99,6 +104,46 @@ it("keeps a required draft across stream closure and blocks dismissing it", asyn
     lessonIds: [],
     attendance: [],
   });
+});
+
+it("offers reopening without dismissing a required closeout", () => {
+  const onReopen = vi.fn();
+  const onOpenChange = vi.fn();
+  const view = render(
+    createElement(SessionCloseoutDialog, {
+      open: true,
+      roomName: "room-1",
+      sessionNow: Date.now(),
+      required: true,
+      alreadyEnded: true,
+      onOpenChange,
+      onComplete: vi.fn(),
+      onReopen,
+    }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "reopenClass" }));
+  expect(onReopen).toHaveBeenCalledOnce();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+
+  view.rerender(
+    createElement(SessionCloseoutDialog, {
+      open: true,
+      roomName: "room-1",
+      sessionNow: Date.now(),
+      required: true,
+      alreadyEnded: true,
+      isReopening: true,
+      onOpenChange,
+      onComplete: vi.fn(),
+      onReopen,
+    }),
+  );
+  expect(
+    (screen.getByRole("button", { name: "reopenClass" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
 });
 
 it("keeps errors retryable and does not save the report twice when ending fails", async () => {
@@ -140,5 +185,31 @@ it("keeps the existing calendar recovery dialog dismissible", () => {
     }),
   );
   fireEvent.click(screen.getByRole("button", { name: "cancel" }));
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+it("allows a manually opened live closeout to be dismissed from any step", () => {
+  const fullscreenRoot = document.createElement("div");
+  document.body.append(fullscreenRoot);
+  Object.defineProperty(document, "fullscreenElement", {
+    configurable: true,
+    value: fullscreenRoot,
+  });
+  const onOpenChange = vi.fn();
+  render(
+    createElement(SessionCloseoutDialog, {
+      open: true,
+      roomName: "room-1",
+      sessionNow: Date.now(),
+      onOpenChange,
+      onComplete: vi.fn(),
+    }),
+    { container: fullscreenRoot },
+  );
+
+  expect(fullscreenRoot.contains(screen.getByRole("dialog"))).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "continueToAttendance" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
   expect(onOpenChange).toHaveBeenCalledWith(false);
 });

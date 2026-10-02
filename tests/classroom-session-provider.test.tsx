@@ -1,5 +1,11 @@
 import { useEffect } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ClassroomSessionOutlet,
@@ -27,11 +33,18 @@ vi.mock("@/components/classroom/flexi-classroom-client", () => ({
     useEffect(() => {
       state.mounts();
       report({ canPersist: true, needsFullView: false });
-      return () => { state.unmounts(); };
+      return () => {
+        state.unmounts();
+      };
     }, [report]);
     return (
       <>
         <input aria-label="Whiteboard state" defaultValue="" />
+        <button
+          onClick={() => report({ canPersist: true, needsFullView: true })}
+        >
+          Open full-view report
+        </button>
         <span data-testid="presentation-mode">{presentation.mode}</span>
         <ClassroomWindowControls compact={presentation.mode === "compact"} />
       </>
@@ -56,17 +69,23 @@ describe("classroom miniview", () => {
   beforeEach(() => {
     state.pathname = "/es/school/classroom/room-1";
     vi.clearAllMocks();
-    Object.defineProperty(HTMLVideoElement.prototype, "webkitSetPresentationMode", {
-      configurable: true,
-      value: vi.fn(),
-    });
+    Object.defineProperty(
+      HTMLVideoElement.prototype,
+      "webkitSetPresentationMode",
+      {
+        configurable: true,
+        value: vi.fn(),
+      },
+    );
     vi.stubGlobal("documentPictureInPicture", undefined);
   });
   afterEach(() => {
     cleanup();
-    delete (HTMLVideoElement.prototype as HTMLVideoElement & {
-      webkitSetPresentationMode?: unknown;
-    }).webkitSetPresentationMode;
+    delete (
+      HTMLVideoElement.prototype as HTMLVideoElement & {
+        webkitSetPresentationMode?: unknown;
+      }
+    ).webkitSetPresentationMode;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -98,7 +117,9 @@ describe("classroom miniview", () => {
     fireEvent.change(board, { target: { value: "Keep drawing" } });
     state.pathname = "/es/school/calendar";
     view.rerender(<View classroom={false} />);
-    expect(document.querySelector("[data-classroom-mini]")?.contains(board)).toBe(true);
+    expect(
+      document.querySelector("[data-classroom-mini]")?.contains(board),
+    ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "returnToClassroom" }));
     expect(state.push).toHaveBeenCalledWith("/es/school/classroom/room-1");
     state.pathname = "/es/school/classroom/room-1";
@@ -108,6 +129,21 @@ describe("classroom miniview", () => {
     expect(screen.getByTestId("presentation-mode").textContent).toBe("full");
     expect(state.mounts).toHaveBeenCalledTimes(1);
     expect(state.unmounts).not.toHaveBeenCalled();
+  });
+
+  it("does not move an already restored classroom when a full-view dialog opens", () => {
+    render(<View />);
+    const board = screen.getByLabelText("Whiteboard state");
+    const host = board.parentElement!;
+    const outlet = host.parentElement!;
+    const append = vi.spyOn(outlet, "append");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open full-view report" }),
+    );
+
+    expect(append).not.toHaveBeenCalled();
+    expect(host.parentElement).toBe(outlet);
   });
 
   it("restores Chrome's closed Document PiP into a miniview with only the restore action", async () => {
@@ -128,9 +164,13 @@ describe("classroom miniview", () => {
     state.pathname = "/es/school/calendar";
     view.rerender(<View classroom={false} />);
     act(() => external.dispatchEvent(new Event("pagehide")));
-    expect(document.querySelector("[data-classroom-mini]")?.contains(board)).toBe(true);
+    expect(
+      document.querySelector("[data-classroom-mini]")?.contains(board),
+    ).toBe(true);
     expect(screen.getByTestId("presentation-mode").textContent).toBe("compact");
-    expect(screen.getAllByRole("button", { name: "returnToClassroom" })).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: "returnToClassroom" }),
+    ).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "floatingWindow" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "returnToClassroom" }));
     expect(state.push).toHaveBeenCalledWith("/es/school/classroom/room-1");

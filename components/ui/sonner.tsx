@@ -1,9 +1,26 @@
-"use client"
+"use client";
 
-import { Toaster as Sonner, ToasterProps } from "sonner"
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { Toaster as Sonner, ToasterProps } from "sonner";
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  return (
+  const [fullscreenContainer, setFullscreenContainer] =
+    useState<Element | null>(null);
+
+  useEffect(() => {
+    const updateContainer = () => {
+      setFullscreenContainer(document.fullscreenElement);
+    };
+
+    updateContainer();
+    document.addEventListener("fullscreenchange", updateContainer);
+    return () => {
+      document.removeEventListener("fullscreenchange", updateContainer);
+    };
+  }, []);
+
+  const toaster = (
     <Sonner
       theme="light"
       className="toaster group"
@@ -21,7 +38,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       {...props}
     />
-  )
-}
+  );
 
-export { Toaster }
+  return fullscreenContainer
+    ? createPortal(toaster, fullscreenContainer)
+    : toaster;
+};
+
+export { Toaster };

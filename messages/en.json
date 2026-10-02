@@ -700,6 +700,8 @@
     "reopenClass": "Reopen class",
     "reopenClassTitle": "Reopen and lead this class?",
     "reopenClassDescription": "Participants will be able to join again and the session will continue as the same class.",
+    "reopenClassDelayed": "The class was reopened, but entry is taking longer than expected. You can keep waiting or close this message and enter from the calendar once it updates.",
+    "reopenClassWaiting": "Waiting to enter...",
     "confirmReopenClass": "Reopen and lead",
     "reopenClassError": "The class could not be reopened.",
     "endedBy": "Ended by {name} · {time}",

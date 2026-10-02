@@ -4,6 +4,7 @@ import * as React from "react"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 
 import { cn } from "@/lib/utils"
+import { getFullscreenPortalContainer } from "@/lib/fullscreen-portal"
 
 function TooltipProvider({
   delayDuration = 0,
@@ -41,7 +42,9 @@ function TooltipContent({
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content>) {
   return (
-    <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Portal
+      container={getFullscreenPortalContainer()}
+    >
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}

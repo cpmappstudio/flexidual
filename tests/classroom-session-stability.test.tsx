@@ -74,6 +74,7 @@ const testState = vi.hoisted(() => {
   return {
     administrativeParticipant,
     backendCall: vi.fn<(args?: unknown) => Promise<unknown>>(async () => null),
+    compactControls: false,
     extensionContext: null as {
       affectedStudentCount: number;
       effectiveEnd: number;
@@ -220,10 +221,12 @@ vi.mock("@/components/classroom/classroom-header", () => ({
     action,
     isFinalizingRecording,
     isRecording,
+    sessionAction,
   }: {
     action?: ReactNode;
     isFinalizingRecording?: boolean;
     isRecording: boolean;
+    sessionAction?: ReactNode;
   }) =>
     createElement(
       "header",
@@ -232,6 +235,7 @@ vi.mock("@/components/classroom/classroom-header", () => ({
         "data-recording": String(isRecording),
       },
       action,
+      sessionAction,
     ),
 }));
 vi.mock("@/components/classroom/classroom-stage", () => ({
@@ -261,21 +265,42 @@ vi.mock("@/components/classroom/classroom-action-bar", () => ({
   ClassroomActionBar: ({
     center,
     left,
+    mobile,
     right,
   }: {
     center: ReactNode;
     left: ReactNode;
+    mobile?: ReactNode;
     right: ReactNode;
-  }) => createElement("nav", null, left, center, right),
+  }) =>
+    createElement(
+      "nav",
+      null,
+      testState.compactControls && mobile ? mobile : [left, center, right],
+    ),
   ClassroomActionButton: ({
     disabled,
+    label,
+    onClick,
     onPressedChange,
     title,
   }: {
     disabled?: boolean;
+    label?: string;
+    onClick?: () => void;
     onPressedChange?: () => void;
     title?: string;
-  }) => createElement("button", { disabled, onClick: onPressedChange, title }),
+  }) =>
+    createElement(
+      "button",
+      {
+        disabled,
+        onClick: onPressedChange ?? onClick,
+        title,
+        "aria-label": label,
+      },
+      label,
+    ),
 }));
 vi.mock("@/components/classroom/classroom-overlays", () => ({
   ClassroomEnableAudioOverlay: () => null,
@@ -320,10 +345,29 @@ vi.mock("@/components/classroom/draggable-classroom-pip", () => ({
     createElement("div", null, children),
 }));
 vi.mock("@/components/classroom/end-class-button", () => ({
-  EndClassButton: () => null,
+  EndClassButton: ({
+    appearance,
+    confirmBeforeEnd = true,
+    onLeave,
+  }: {
+    appearance?: string;
+    confirmBeforeEnd?: boolean;
+    onLeave?: () => void;
+  }) =>
+    appearance === "header"
+      ? createElement("button", {
+          "data-testid": "header-end-class-action",
+          "data-combined": String(confirmBeforeEnd && Boolean(onLeave)),
+        })
+      : null,
 }));
 vi.mock("@/components/classroom/leave-class-button", () => ({
-  LeaveClassButton: () => null,
+  LeaveClassButton: ({ appearance }: { appearance?: string }) =>
+    appearance === "header"
+      ? createElement("button", {
+          "data-testid": "header-leave-class-action",
+        })
+      : null,
 }));
 vi.mock("@/components/classroom/fullscreen-button", () => ({
   FullscreenButtonCompact: () => null,
@@ -377,6 +421,7 @@ describe("classroom session stability", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     testState.extensionContext = null;
+    testState.compactControls = false;
     testState.isExtensionLoading = false;
     testState.isLeadershipLoading = false;
     testState.recordingOperation = null;
@@ -407,6 +452,46 @@ describe("classroom session stability", () => {
     renderActiveClassroom();
     expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
       "classroom.recordingError",
+    );
+  });
+
+  it("offers leave or end class only to the room leader in the compact header", () => {
+    renderActiveClassroom();
+
+    expect(screen.getByTestId("header-end-class-action").dataset.combined).toBe(
+      "true",
+    );
+    expect(screen.queryByTestId("header-leave-class-action")).toBeNull();
+  });
+
+  it("offers only leave to other participants in the compact header", () => {
+    testState.leadership = {
+      ...testState.initialLeadership,
+      viewer: {
+        ...testState.initialLeadership.viewer,
+        isLeader: false,
+      },
+    };
+
+    renderActiveClassroom();
+
+    expect(screen.getByTestId("header-leave-class-action")).toBeTruthy();
+    expect(screen.queryByTestId("header-end-class-action")).toBeNull();
+  });
+
+  it("opens the companion QR dialog from compact more actions", async () => {
+    testState.compactControls = true;
+    renderActiveClassroom();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "classroom.moreActions" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "classroom.connectDevice" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("classroom.connectTablet")).toBeTruthy(),
     );
   });
 
