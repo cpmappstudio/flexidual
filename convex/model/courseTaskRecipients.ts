@@ -13,6 +13,7 @@ export async function ensureCourseTaskRecipient(
   const student = await ctx.db.get("users", studentId);
   if (
     !course ||
+    task?.releasedAt === undefined ||
     !student?.isActive ||
     !(await isStudentEnrolled(ctx, course, studentId))
   ) {
@@ -24,10 +25,23 @@ export async function ensureCourseTaskRecipient(
       q.eq("taskId", taskId).eq("studentId", studentId),
     )
     .unique();
-  if (existing) return existing._id;
+  if (existing) {
+    if (
+      existing.classId !== course._id ||
+      existing.releasedAt !== task.releasedAt
+    ) {
+      await ctx.db.patch("courseTaskRecipients", existing._id, {
+        classId: course._id,
+        releasedAt: task.releasedAt,
+      });
+    }
+    return existing._id;
+  }
   return await ctx.db.insert("courseTaskRecipients", {
     taskId,
     studentId,
+    classId: course._id,
+    releasedAt: task.releasedAt,
     assignedAt: Date.now(),
     submissionRevision: 0,
   });

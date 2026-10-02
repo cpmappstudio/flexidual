@@ -272,22 +272,41 @@ export default defineSchema({
   courseTasks: defineTable({
     classId: v.id("classes"),
     createdBy: v.id("users"),
+    isDraft: v.optional(v.boolean()),
     title: v.string(),
     description: v.optional(v.string()),
     availableAt: v.optional(v.number()),
+    availabilitySortAt: v.optional(v.number()),
     releasedAt: v.optional(v.number()),
     dueAt: v.optional(v.number()),
+    maxPublishedDueAt: v.optional(v.number()),
     allowLateSubmissions: v.boolean(),
     manuallyClosedAt: v.optional(v.number()),
     manuallyClosedBy: v.optional(v.id("users")),
+    reminderScheduledId: v.optional(v.id("_scheduled_functions")),
+    reminderGeneration: v.optional(v.number()),
     updatedAt: v.number(),
-  }).index("by_classId_and_releasedAt", ["classId", "releasedAt"]),
+  })
+    .index("by_classId_and_releasedAt", ["classId", "releasedAt"])
+    .index("by_classId_and_isDraft_and_releasedAt", [
+      "classId",
+      "isDraft",
+      "releasedAt",
+    ])
+    .index("by_classId_and_isDraft_and_availabilitySortAt", [
+      "classId",
+      "isDraft",
+      "availabilitySortAt",
+    ]),
 
   courseTaskRecipients: defineTable({
     taskId: v.id("courseTasks"),
     studentId: v.id("users"),
+    classId: v.optional(v.id("classes")),
+    releasedAt: v.optional(v.number()),
     assignedAt: v.number(),
     submittedAt: v.optional(v.number()),
+    submittedLate: v.optional(v.boolean()),
     submissionRevision: v.number(),
     feedback: v.optional(
       v.object({
@@ -300,7 +319,12 @@ export default defineSchema({
     ),
   })
     .index("by_taskId_and_studentId", ["taskId", "studentId"])
-    .index("by_studentId_and_taskId", ["studentId", "taskId"]),
+    .index("by_studentId_and_taskId", ["studentId", "taskId"])
+    .index("by_studentId_and_classId_and_releasedAt", [
+      "studentId",
+      "classId",
+      "releasedAt",
+    ]),
 
   courseTaskFiles: defineTable({
     taskId: v.id("courseTasks"),
@@ -558,6 +582,8 @@ export default defineSchema({
       v.literal("organization_membership_changed"),
       v.literal("announcement"),
       v.literal("course_chat"),
+      v.literal("course_task"),
+      v.literal("course_task_reminder"),
       v.literal("survey_invitation"),
     ),
     action: v.optional(
@@ -567,6 +593,8 @@ export default defineSchema({
     schoolId: v.optional(v.id("schools")),
     campusId: v.optional(v.id("campuses")),
     classId: v.optional(v.id("classes")),
+    taskId: v.optional(v.id("courseTasks")),
+    taskTitle: v.optional(v.string()),
     scheduleId: v.optional(v.id("classSchedule")),
     recordingId: v.optional(v.id("recordings")),
     cancellationEventId: v.optional(v.id("classCancellationEvents")),

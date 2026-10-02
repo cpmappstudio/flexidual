@@ -2,7 +2,13 @@ import type { Doc } from "@/convex/_generated/dataModel";
 
 type NavigableNotification = Pick<
   Doc<"systemNotifications">,
-  "kind" | "action" | "organizationSlug" | "classId" | "roomName" | "surveyId"
+  | "kind"
+  | "action"
+  | "organizationSlug"
+  | "classId"
+  | "roomName"
+  | "surveyId"
+  | "taskId"
 >;
 
 export function getSystemNotificationHref(notification: NavigableNotification) {
@@ -19,6 +25,15 @@ export function getSystemNotificationHref(notification: NavigableNotification) {
     return `/${orgSlug}/classroom/${encodeURIComponent(notification.roomName)}`;
   }
   if (
+    (notification.kind === "course_task" ||
+      notification.kind === "course_task_reminder") &&
+    notification.action !== "removed" &&
+    notification.classId &&
+    notification.taskId
+  ) {
+    return `/${orgSlug}/classes/${notification.classId}?task=${encodeURIComponent(notification.taskId)}`;
+  }
+  if (
     notification.kind === "class_cancelled" ||
     notification.kind === "calendar_closure"
   ) {
@@ -27,6 +42,8 @@ export function getSystemNotificationHref(notification: NavigableNotification) {
   if (
     (notification.kind === "course_enrollment" ||
       notification.kind === "course_assignment" ||
+      notification.kind === "course_task" ||
+      notification.kind === "course_task_reminder" ||
       notification.kind === "recording_available") &&
     notification.classId
   ) {

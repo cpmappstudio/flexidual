@@ -59,6 +59,23 @@ test("routes class notifications to their contextual destinations", () => {
     }),
     "/main-campus/classes/class-id",
   );
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "course_task",
+      organizationSlug: "main-campus",
+      classId: "class-id" as never,
+    }),
+    "/main-campus/classes/class-id",
+  );
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "course_task_reminder",
+      organizationSlug: "main-campus",
+      classId: "class-id" as never,
+      taskId: "task-id" as never,
+    }),
+    "/main-campus/classes/class-id?task=task-id",
+  );
 });
 
 test("removed memberships do not navigate to inaccessible organizations", () => {

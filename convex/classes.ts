@@ -10,6 +10,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
+import { assignOpenCourseTasksToStudent } from "./model/courseTaskPublication";
 import {
   canAccessClass,
   canManageClasses,
@@ -2508,6 +2509,7 @@ export const addStudent = mutation({
       eventKey: `enrollment:${enrollmentId}`,
       role: "student",
     });
+    await assignOpenCourseTasksToStudent(ctx, classData, args.studentId);
     return null;
   },
 });
@@ -2648,6 +2650,9 @@ export const remove = mutation({
 
     await ctx.db.delete(args.id);
     await ctx.scheduler.runAfter(0, internal.courseChatMessages.removeByClass, {
+      classId: args.id,
+    });
+    await ctx.scheduler.runAfter(0, internal.courseTasks.removeByClass, {
       classId: args.id,
     });
     await ctx.scheduler.runAfter(

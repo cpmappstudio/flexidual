@@ -21,22 +21,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   type CarouselApi,
-  Carousel,
   CarouselContent,
   CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
 } from "@/components/ui/carousel";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { DetailCarousel } from "./detail-carousel";
 import {
   getExternalClassPlatform,
   isExternalClassSession,
@@ -139,199 +130,164 @@ export function PastClassesPanel({
   }, [carouselApi, selectedSessionIndex]);
 
   return (
-    <Card className="gap-0 overflow-hidden rounded-[2rem] border-0 py-5 shadow-md ring-1 ring-border/80">
-      <Carousel
-        opts={{ align: "start", containScroll: "trimSnaps" }}
+    <>
+      <DetailCarousel
+        title={t("class.pastClasses")}
+        olderLabel={t("class.olderClasses")}
+        newerLabel={t("class.newerClasses")}
+        showNavigation={Boolean(sessions?.length)}
         setApi={setCarouselApi}
-        className="flex w-full touch-pan-y flex-col gap-2"
-        aria-label={t("class.pastClasses")}
       >
-        <CardHeader className="items-center px-5 sm:px-6">
-          <CardTitle className="text-xl font-bold">
-            {t("class.pastClasses")}
-          </CardTitle>
-          {sessions && sessions.length > 0 && (
-            <CardAction className="flex items-center gap-2 self-center sm:gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="hidden text-[10px] leading-none text-muted-foreground sm:block">
-                  {t("class.olderClasses")}
-                </span>
-                <CarouselPrevious
-                  className="static size-10 translate-y-0"
-                  aria-label={t("class.olderClasses")}
-                  title={t("class.olderClasses")}
+        {sessions === undefined ? (
+          <div className="space-y-5">
+            <div className="flex gap-3 overflow-hidden">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton
+                  key={index}
+                  className="h-24 min-w-[72%] rounded-2xl sm:min-w-[46%] md:min-w-[34%]"
                 />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CarouselNext
-                  className="static size-10 translate-y-0"
-                  aria-label={t("class.newerClasses")}
-                  title={t("class.newerClasses")}
-                />
-                <span className="hidden text-[10px] leading-none text-muted-foreground sm:block">
-                  {t("class.newerClasses")}
-                </span>
-              </div>
-            </CardAction>
-          )}
-        </CardHeader>
-        <CardContent className="px-5 sm:px-6">
-          {sessions === undefined ? (
-            <div className="space-y-5">
-              <div className="flex gap-3 overflow-hidden">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <Skeleton
-                    key={index}
-                    className="h-24 min-w-[72%] rounded-2xl sm:min-w-[46%] md:min-w-[34%]"
-                  />
-                ))}
-              </div>
-              <Skeleton className="h-72 w-full rounded-2xl" />
+              ))}
             </div>
-          ) : sessions.length === 0 ? (
-            <div className="rounded-2xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
-              {t("class.noPastClasses")}
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <CarouselContent className="-ml-3">
-                {orderedSessions.map((session, index) => {
-                  const isSelected =
-                    session.scheduleId === selectedSession?.scheduleId;
-                  return (
-                    <CarouselItem
-                      key={session.scheduleId}
-                      className="basis-[72%] pl-3 sm:basis-[46%] md:basis-[34%] 2xl:basis-1/4"
-                      aria-label={`${index + 1} / ${orderedSessions.length}`}
+            <Skeleton className="h-72 w-full rounded-2xl" />
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="rounded-2xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
+            {t("class.noPastClasses")}
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <CarouselContent className="-ml-3">
+              {orderedSessions.map((session, index) => {
+                const isSelected =
+                  session.scheduleId === selectedSession?.scheduleId;
+                return (
+                  <CarouselItem
+                    key={session.scheduleId}
+                    className="basis-[72%] pl-3 sm:basis-[46%] md:basis-[34%] 2xl:basis-1/4"
+                    aria-label={`${index + 1} / ${orderedSessions.length}`}
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedScheduleId(session.scheduleId)}
+                      className={cn(
+                        "flex h-24 w-full flex-col items-stretch justify-center rounded-2xl border px-4 py-3 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                        isSelected
+                          ? "border-secondary/60 bg-sidebar text-foreground shadow-[inset_3px_0_0_var(--secondary)] hover:bg-muted/40"
+                          : "border-border bg-sidebar text-foreground hover:bg-muted",
+                      )}
                     >
-                      <button
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() =>
-                          setSelectedScheduleId(session.scheduleId)
-                        }
-                        className={cn(
-                          "flex h-24 w-full flex-col items-stretch justify-center rounded-2xl border px-4 py-3 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                          isSelected
-                            ? "border-secondary/60 bg-sidebar text-foreground shadow-[inset_3px_0_0_var(--secondary)] hover:bg-muted/40"
-                            : "border-border bg-sidebar text-foreground hover:bg-muted",
-                        )}
-                      >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <p className="min-w-0 flex-1 truncate text-sm font-bold capitalize">
-                            {formatSessionDate(session)}
-                          </p>
-                          <CalendarProviderMark
-                            sessionType={session.sessionType}
-                            isPast={!isSelected}
-                            className="size-6"
-                            sizes="24px"
-                          />
-                        </div>
-                        {session.recordState !== "notApplicable" && (
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "mt-1.5 w-fit max-w-full gap-1 rounded-full px-2 py-0.5 text-[10px]",
-                              session.recordState === "completed"
-                                ? "bg-success/10 text-success"
-                                : "bg-warning/15 text-warning-foreground",
-                            )}
-                          >
-                            {session.recordState === "completed" ? (
-                              <CheckCircle2
-                                className="size-3"
-                                aria-hidden="true"
-                              />
-                            ) : (
-                              <ClipboardClock
-                                className="size-3"
-                                aria-hidden="true"
-                              />
-                            )}
-                            {t(
-                              session.recordState === "completed"
-                                ? "sessionRecord.completedLabel"
-                                : "sessionRecord.pendingLabel",
-                            )}
-                          </Badge>
-                        )}
-                      </button>
-                    </CarouselItem>
-                  );
-                })}
-              </CarouselContent>
-
-              <Separator />
-
-              {selectedSession && (
-                <div className="min-w-0">
-                  <div className="mb-4">
-                    <h3 className="text-base font-bold text-foreground">
-                      {getSessionTitle(selectedSession)}
-                    </h3>
-                    <p className="mt-1 text-sm capitalize text-muted-foreground">
-                      {formatSessionDate(selectedSession)}
-                    </p>
-                  </div>
-                  {selectedSessionIsExternal && selectedExternalPlatform ? (
-                    <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                      <div
-                        className={cn(
-                          "hidden sm:flex size-16 shrink-0 items-center justify-center rounded-xl border",
-                          getCalendarProviderAppearanceClasses(
-                            selectedSession.sessionType,
-                          )?.badge,
-                        )}
-                      >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-bold capitalize">
+                          {formatSessionDate(session)}
+                        </p>
                         <CalendarProviderMark
-                          sessionType={selectedSession.sessionType}
-                          className="size-10"
-                          sizes="40px"
+                          sessionType={session.sessionType}
+                          isPast={!isSelected}
+                          className="size-6"
+                          sizes="24px"
                         />
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-base font-medium text-foreground">
-                          {t("class.externalClassManaged", {
-                            platform: selectedExternalPlatform.name,
-                          })}
-                        </p>
-                        <Button
-                          asChild
-                          className="mt-2 h-10 px-6 font-semibold shadow-sm"
+                      {session.recordState !== "notApplicable" && (
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            "mt-1.5 w-fit max-w-full gap-1 rounded-full px-2 py-0.5 text-[10px]",
+                            session.recordState === "completed"
+                              ? "bg-success/10 text-success"
+                              : "bg-warning/15 text-warning-foreground",
+                          )}
                         >
-                          <a
-                            href={selectedExternalPlatform.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {t("classroom.goToPlatform", {
-                              platform: selectedExternalPlatform.name,
-                            })}
-                            <ExternalLink
-                              className="size-4"
+                          {session.recordState === "completed" ? (
+                            <CheckCircle2
+                              className="size-3"
                               aria-hidden="true"
                             />
-                          </a>
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <SessionRecordView
-                      record={sessionRecord}
-                      onWatchRecording={() => setRecordingOpen(true)}
-                      onCompleteReport={() => setCloseoutOpen(true)}
-                      variant="panel"
-                      showOwnAttendance={false}
-                      allowAttendanceEditing
-                    />
-                  )}
+                          ) : (
+                            <ClipboardClock
+                              className="size-3"
+                              aria-hidden="true"
+                            />
+                          )}
+                          {t(
+                            session.recordState === "completed"
+                              ? "sessionRecord.completedLabel"
+                              : "sessionRecord.pendingLabel",
+                          )}
+                        </Badge>
+                      )}
+                    </button>
+                  </CarouselItem>
+                );
+              })}
+            </CarouselContent>
+
+            <Separator />
+
+            {selectedSession && (
+              <div className="min-w-0">
+                <div className="mb-4">
+                  <h3 className="text-base font-bold text-foreground">
+                    {getSessionTitle(selectedSession)}
+                  </h3>
+                  <p className="mt-1 text-sm capitalize text-muted-foreground">
+                    {formatSessionDate(selectedSession)}
+                  </p>
                 </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Carousel>
+                {selectedSessionIsExternal && selectedExternalPlatform ? (
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                    <div
+                      className={cn(
+                        "hidden sm:flex size-16 shrink-0 items-center justify-center rounded-xl border",
+                        getCalendarProviderAppearanceClasses(
+                          selectedSession.sessionType,
+                        )?.badge,
+                      )}
+                    >
+                      <CalendarProviderMark
+                        sessionType={selectedSession.sessionType}
+                        className="size-10"
+                        sizes="40px"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base font-medium text-foreground">
+                        {t("class.externalClassManaged", {
+                          platform: selectedExternalPlatform.name,
+                        })}
+                      </p>
+                      <Button
+                        asChild
+                        className="mt-2 h-10 px-6 font-semibold shadow-sm"
+                      >
+                        <a
+                          href={selectedExternalPlatform.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {t("classroom.goToPlatform", {
+                            platform: selectedExternalPlatform.name,
+                          })}
+                          <ExternalLink className="size-4" aria-hidden="true" />
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <SessionRecordView
+                    record={sessionRecord}
+                    onWatchRecording={() => setRecordingOpen(true)}
+                    onCompleteReport={() => setCloseoutOpen(true)}
+                    variant="panel"
+                    showOwnAttendance={false}
+                    allowAttendanceEditing
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </DetailCarousel>
       {selectedSession && sessionRecordings.length > 0 && (
         <RecordingPlayerModal
           scheduleId={selectedSession.scheduleId}
@@ -363,6 +319,6 @@ export function PastClassesPanel({
           }}
         />
       )}
-    </Card>
+    </>
   );
 }

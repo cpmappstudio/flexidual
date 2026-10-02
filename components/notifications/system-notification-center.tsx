@@ -31,7 +31,10 @@ import { requestSurveyOpen } from "@/lib/survey-navigation";
 import { cn } from "@/lib/utils";
 import { UnreadIndicator } from "./unread-indicator";
 
-type SystemNotification = Doc<"systemNotifications">;
+type SystemNotification = Doc<"systemNotifications"> & {
+  taskDueAt?: number;
+  taskTimeZone?: string;
+};
 
 const notificationToneClasses = {
   destructive: "bg-destructive/10 text-destructive",
@@ -49,6 +52,11 @@ function getNotificationTone(notification: SystemNotification) {
     return "warning";
   if (notification.kind === "class_cancelled") return "destructive";
   if (notification.kind === "recording_available") return "success";
+  if (
+    notification.kind === "course_task" ||
+    notification.kind === "course_task_reminder"
+  )
+    return "primary";
   if (notification.kind === "announcement") return "primary";
   if (notification.action === "removed") return "destructive";
   if (notification.action === "changed") return "info";
@@ -68,7 +76,9 @@ function NotificationIcon({ kind }: Pick<SystemNotification, "kind">) {
       />
     );
   const Icon =
-    kind === "survey_invitation"
+    kind === "survey_invitation" ||
+    kind === "course_task" ||
+    kind === "course_task_reminder"
       ? ClipboardList
       : kind === "class_starting_soon"
         ? AlarmClock
@@ -140,6 +150,7 @@ function NotificationItem({
   const bodyValues = {
     count: notification.chatMessageCount ?? 0,
     className: notification.className ?? t("fallbackClassName"),
+    taskTitle: notification.taskTitle ?? t("fallbackTaskTitle"),
     organizationName: organizationName || t("fallbackOrganizationName"),
     previousOrganizationName:
       notification.previousOrganizationName ?? t("fallbackOrganizationName"),
@@ -187,6 +198,22 @@ function NotificationItem({
             ? notification.announcementBody
             : t(`items.${translationKey}.body`, bodyValues)}
         </span>
+        {(notification.kind === "course_task" ||
+          notification.kind === "course_task_reminder") && (
+          <span className="mt-1 block text-sm text-muted-foreground">
+            {notification.taskDueAt === undefined
+              ? t("items.course_task.noDeadline")
+              : t("items.course_task.deadline", {
+                  date: format.dateTime(notification.taskDueAt, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                    ...(notification.taskTimeZone
+                      ? { timeZone: notification.taskTimeZone }
+                      : {}),
+                  }),
+                })}
+          </span>
+        )}
         {notification.reason && (
           <span className="mt-1 block text-sm text-foreground/80">
             {t("reason", { reason: notification.reason })}
