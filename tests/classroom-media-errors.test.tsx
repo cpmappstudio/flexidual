@@ -29,7 +29,7 @@ describe("classroom media errors", () => {
     ["NotReadableError", "classroom.mediaDeviceInUse", "DeviceInUse"],
     ["AbortError", "classroom.mediaDeviceError", "Other"],
   ])("maps %s to a useful message", (name, message, failure) => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error");
     const { result } = renderHook(() => useClassroomMediaErrorHandler());
 
     act(() => result.current(new DOMException("Media failed", name)));
@@ -37,6 +37,7 @@ describe("classroom media errors", () => {
     expect(toastError).toHaveBeenCalledWith(message, {
       id: `classroom-media-${failure}`,
     });
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it("subscribes once and removes the same room listener", () => {

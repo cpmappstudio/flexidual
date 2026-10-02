@@ -238,16 +238,27 @@ vi.mock("@/components/classroom/session-closeout-dialog", async () => {
   return {
     SessionCloseoutDialog: ({
       open,
+      required,
+      onReopen,
+      isReopening,
+      onOpenChange,
       onComplete,
     }: {
       open: boolean;
+      required?: boolean;
+      onReopen?: () => void | Promise<void>;
+      isReopening?: boolean;
+      onOpenChange: (open: boolean) => void;
       onComplete: () => Promise<void>;
     }) => {
       const [notes, setNotes] = React.useState("");
       return open
         ? React.createElement(
             "div",
-            { "data-testid": "closeout" },
+            {
+              "data-testid": "closeout",
+              "data-required": required ? "true" : "false",
+            },
             React.createElement("input", {
               "aria-label": "Report notes",
               value: notes,
@@ -259,6 +270,18 @@ vi.mock("@/components/classroom/session-closeout-dialog", async () => {
               { onClick: () => void onComplete().catch(() => {}) },
               "Save report",
             ),
+            onReopen &&
+              React.createElement(
+                "button",
+                { disabled: isReopening, onClick: () => void onReopen() },
+                "Reopen from report",
+              ),
+            !required &&
+              React.createElement(
+                "button",
+                { onClick: () => onOpenChange(false) },
+                "Close report",
+              ),
           )
         : null;
     },
@@ -445,6 +468,7 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     };
 
     render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    expect(screen.getByText("classroom.endedBy")).toBeTruthy();
     fireEvent.click(screen.getByText("classroom.reopenClass"));
     fireEvent.click(screen.getByText("classroom.confirmReopenClass"));
     await flushPromises();
@@ -452,7 +476,7 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     expect(testState.reopenLiveSession).toHaveBeenCalledWith({
       roomName: "room-1",
     });
-    expect(screen.getByText("classroom.endedBy")).toBeTruthy();
+    expect(screen.queryByText("classroom.endedBy")).toBeNull();
   });
 
   it("does not collapse the sidebar again when restoring the full classroom", async () => {
@@ -965,6 +989,34 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     expect(screen.queryByTestId("closeout")).toBeNull();
   });
 
+  it("keeps a manually opened closeout in fullscreen and lets it close", async () => {
+    const fullscreenRoot = document.createElement("div");
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      value: fullscreenRoot,
+    });
+    const exitFullscreen = vi.fn(async () => undefined);
+    Object.defineProperty(document, "exitFullscreen", {
+      configurable: true,
+      value: exitFullscreen,
+    });
+
+    render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+    fireEvent.click(screen.getByText("Open report"));
+
+    expect(screen.getByTestId("closeout").dataset.required).toBe("false");
+    expect(exitFullscreen).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Close report"));
+    expect(screen.queryByTestId("closeout")).toBeNull();
+
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      value: null,
+    });
+  });
+
   it("opens a pending report on reentry only for its responsible person", async () => {
     testState.sessionStatus = {
       ...createSessionStatus(),
@@ -972,10 +1024,85 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
       isLive: false,
     };
     const view = render(createElement(FlexiClassroom, { roomName: "room-1" }));
-    expect(screen.getByTestId("closeout")).toBeTruthy();
+    expect(screen.getByTestId("closeout").dataset.required).toBe("true");
     testState.currentUser.user = { _id: "other-staff" };
     view.rerender(createElement(FlexiClassroom, { roomName: "room-1" }));
     expect(screen.queryByTestId("closeout")).toBeNull();
+  });
+
+  it("keeps an automatic closeout required during the reopen window", () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "completed",
+      isLive: false,
+      canReopen: true,
+      endedAutomatically: true,
+    };
+
+    render(createElement(FlexiClassroom, { roomName: "room-1" }));
+
+    expect(screen.getByTestId("closeout").dataset.required).toBe("true");
+    expect(screen.getByText("Reopen from report")).toBeTruthy();
+    expect(screen.queryByText("Close report")).toBeNull();
+  });
+
+  it("reopens directly from a required report and enters the new live activation", async () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "completed",
+      isLive: false,
+      canReopen: true,
+      endedAutomatically: true,
+    };
+    const view = render(createElement(FlexiClassroom, { roomName: "room-1" }));
+
+    fireEvent.click(screen.getByText("Reopen from report"));
+    await flushPromises();
+
+    expect(testState.reopenLiveSession).toHaveBeenCalledOnce();
+    expect(testState.reopenLiveSession).toHaveBeenCalledWith({
+      roomName: "room-1",
+    });
+    expect(screen.queryByTestId("closeout")).toBeNull();
+    expect(screen.queryByText("classroom.classEnded")).toBeNull();
+    expect(testState.router.push).not.toHaveBeenCalled();
+
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "active",
+      isLive: true,
+      activationId: "activation-2",
+    };
+    view.rerender(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+
+    expect(screen.getByTestId("livekit-room")).toBeTruthy();
+
+    testState.sessionStatus = {
+      ...testState.sessionStatus,
+      status: "completed",
+      isLive: false,
+      canReopen: false,
+    };
+    view.rerender(createElement(FlexiClassroom, { roomName: "room-1" }));
+    expect(screen.getByTestId("closeout").dataset.required).toBe("true");
+  });
+
+  it("keeps the required report open when reopening fails", async () => {
+    testState.sessionStatus = {
+      ...createSessionStatus(),
+      status: "completed",
+      isLive: false,
+      canReopen: true,
+    };
+    testState.reopenLiveSession.mockRejectedValueOnce(new Error("expired"));
+    render(createElement(FlexiClassroom, { roomName: "room-1" }));
+
+    fireEvent.click(screen.getByText("Reopen from report"));
+    await flushPromises();
+
+    expect(screen.getByTestId("closeout").dataset.required).toBe("true");
+    expect(screen.getByText("Reopen from report")).toBeTruthy();
   });
 
   it("does not force a closeout for students or companion devices", () => {

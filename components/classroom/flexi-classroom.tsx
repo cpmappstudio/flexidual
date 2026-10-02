@@ -183,6 +183,7 @@ export default function FlexiClassroom({
   const reopenLiveSession = useMutation(api.schedule.reopenLiveSession);
   const endSession = useAction(api.livekit.endSession);
   const [closeoutScope, setCloseoutScope] = useState<string | null>(null);
+  const [reopenedScope, setReopenedScope] = useState<string | null>(null);
   const [activationDialogMode, setActivationDialogMode] = useState<
     "start" | "reopen" | null
   >(null);
@@ -241,14 +242,15 @@ export default function FlexiClassroom({
     () => ({ id: crypto.randomUUID(), scope: connectionScope }),
     [connectionScope],
   );
-  const requiresCloseout =
+  const hasPendingCloseout =
     !isCompanion &&
     !resolvedIsStudentView &&
     !!convexUser &&
     scheduleDetails?.sessionLeaderId === convexUser._id &&
     sessionStatus?.status === "completed" &&
-    scheduleDetails?.sessionClosureStatus === "pending" &&
-    !sessionStatus.canReopen;
+    scheduleDetails?.sessionClosureStatus === "pending";
+  const requiresCloseout =
+    hasPendingCloseout && reopenedScope !== connectionScope;
   const isCloseoutOpen =
     !!convexUser && (closeoutScope === connectionScope || requiresCloseout);
   const canPersist = Boolean(
@@ -277,10 +279,10 @@ export default function FlexiClassroom({
   ]);
 
   useEffect(() => {
-    if (isCloseoutOpen && document.fullscreenElement) {
+    if (requiresCloseout && document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {});
     }
-  }, [isCloseoutOpen]);
+  }, [requiresCloseout]);
   const [roomErrorState, setRoomErrorState] = useState<{
     scopeKey: string;
     message: string;
@@ -327,8 +329,11 @@ export default function FlexiClassroom({
     if (isActivating) return;
     setIsActivating(true);
     try {
-      if (mode === "reopen") await reopenLiveSession({ roomName });
-      else await markLive({ roomName, isLive: true });
+      if (mode === "reopen") {
+        await reopenLiveSession({ roomName });
+        setReopenedScope(connectionScope);
+        setCloseoutScope(null);
+      } else await markLive({ roomName, isLive: true });
       clearToken();
       setActivationDialogMode(null);
     } catch (activationError) {
@@ -560,6 +565,10 @@ export default function FlexiClassroom({
           </div>
         </div>
       );
+    }
+
+    if (isSessionClosed && reopenedScope === connectionScope) {
+      return <ClassroomRocketLoader label={t("classroom.entering")} />;
     }
 
     if (isSessionClosed) {
@@ -905,10 +914,19 @@ export default function FlexiClassroom({
         open={isCloseoutOpen}
         roomName={roomName}
         sessionNow={now}
-        required
+        required={requiresCloseout}
         alreadyEnded={isSessionClosed}
+        onReopen={
+          requiresCloseout && sessionStatus?.canReopen
+            ? () => handleActivateSession("reopen")
+            : undefined
+        }
+        isReopening={isActivating}
         onOpenChange={(open) => {
-          if (open) setCloseoutScope(connectionScope);
+          setCloseoutScope((current) => {
+            if (open) return connectionScope;
+            return current === connectionScope ? null : current;
+          });
         }}
         onComplete={handleCompleteSession}
       />

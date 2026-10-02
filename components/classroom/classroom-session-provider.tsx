@@ -81,7 +81,9 @@ export function ClassroomSessionProvider({
     const target = outletRef.current?.isConnected
       ? outletRef.current
       : floatingRef.current;
-    if (target && hostRef.current) target.append(hostRef.current);
+    const classroomHost = hostRef.current;
+    if (target && classroomHost && classroomHost.parentElement !== target)
+      target.append(classroomHost);
   }, []);
 
   const {

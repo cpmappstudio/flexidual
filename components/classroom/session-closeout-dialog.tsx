@@ -49,6 +49,8 @@ interface SessionCloseoutDialogProps {
   sessionNow: number;
   onOpenChange: (open: boolean) => void;
   onComplete: () => void | Promise<void>;
+  onReopen?: () => void | Promise<void>;
+  isReopening?: boolean;
   alreadyEnded?: boolean;
   required?: boolean;
 }
@@ -79,10 +81,13 @@ export function SessionCloseoutDialog({
   sessionNow,
   onOpenChange,
   onComplete,
+  onReopen,
+  isReopening = false,
   alreadyEnded = false,
   required = false,
 }: SessionCloseoutDialogProps) {
   const t = useTranslations("classroom.closeout");
+  const classroomT = useTranslations("classroom");
   const attendanceT = useTranslations("attendance");
   const classT = useTranslations("class");
   const common = useTranslations("common");
@@ -262,7 +267,8 @@ export function SessionCloseoutDialog({
   };
 
   const handleSubmit = async () => {
-    if (!context || !submission.canSubmit || isSubmitting) return;
+    if (!context || !submission.canSubmit || isSubmitting || isReopening)
+      return;
     setIsSubmitting(true);
     setError(undefined);
     try {
@@ -292,14 +298,14 @@ export function SessionCloseoutDialog({
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && (isSubmitting || required)) return;
+    if (!nextOpen && (isSubmitting || isReopening || required)) return;
     onOpenChange(nextOpen);
   };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        showCloseButton={false}
+        showCloseButton={!required}
         className="grid max-h-[min(90dvh,56rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-4xl"
       >
         <Tabs
@@ -597,12 +603,23 @@ export function SessionCloseoutDialog({
           </ScrollArea>
 
           <DialogFooter className="flex-col gap-3 border-t bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-end">
+            {onReopen && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting || isReopening}
+                onClick={() => void onReopen()}
+              >
+                {isReopening && <Loader2 className="size-4 animate-spin" />}
+                {classroomT("reopenClass")}
+              </Button>
+            )}
             <div className="flex w-full gap-2 sm:w-auto">
               {(!required || activeStep === "attendance") && (
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isReopening}
                   className="flex-1 sm:flex-none"
                   onClick={() => {
                     if (activeStep === "attendance") setActiveStep("lessons");
@@ -631,7 +648,9 @@ export function SessionCloseoutDialog({
                   type="button"
                   variant="destructive"
                   className="flex-1 sm:flex-none"
-                  disabled={!submission.canSubmit || isSubmitting}
+                  disabled={
+                    !submission.canSubmit || isSubmitting || isReopening
+                  }
                   onClick={() => void handleSubmit()}
                 >
                   {isSubmitting && <Loader2 className="size-4 animate-spin" />}

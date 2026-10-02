@@ -70,7 +70,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { QRCodeSVG } from "qrcode.react";
 import { DeviceToggleButton } from "./device-toggle-button";
@@ -1550,6 +1549,65 @@ export function ActiveClassroomUI({
         </AlertDialogContent>
       </AlertDialog>
 
+      {amIAuthority && (
+        <Dialog
+          open={visibleLayer === "companion"}
+          onOpenChange={(open) => {
+            setShowQR(open);
+            if (!open && isPreviewing("companion")) {
+              setUiPreviewState("none");
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-xl">
+                {hasCompanion
+                  ? t("classroom.companionConnected") ||
+                    "Companion device connected!"
+                  : t("classroom.connectTablet") || "Connect Companion Tablet"}
+              </DialogTitle>
+              <DialogDescription>
+                {hasCompanion
+                  ? t("classroom.companionActiveDesc") ||
+                    "A companion device is currently active in this session. Scan again to add another."
+                  : t("classroom.connectTabletDesc") ||
+                    "Scan this QR code with your iPad or Android tablet to open the interactive whiteboard."}
+              </DialogDescription>
+            </DialogHeader>
+            {hasCompanion && (
+              <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
+                <span className="size-3 shrink-0 animate-pulse rounded-full bg-success" />
+                <p className="text-sm font-medium text-success">
+                  {companionParticipants
+                    .map(
+                      (participant) => participant.name || participant.identity,
+                    )
+                    .join(", ")}
+                </p>
+              </div>
+            )}
+            <div className="my-4 flex flex-col items-center justify-center rounded-xl bg-whiteboard p-6 shadow-inner">
+              {companionUrl ? (
+                <QRCodeSVG
+                  value={companionUrl}
+                  size={220}
+                  level="M"
+                  includeMargin
+                />
+              ) : (
+                <div className="flex size-[220px] animate-pulse items-center justify-center rounded-lg bg-muted" />
+              )}
+            </div>
+            <div className="text-center">
+              <p className="select-all break-all rounded-lg border border-border/50 bg-muted p-3 font-mono text-xs text-muted-foreground">
+                {companionUrl}
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {visibleLayer === "enable-audio" && (
         <ClassroomEnableAudioOverlay
           title={t("classroom.enableAudio")}
@@ -1642,7 +1700,6 @@ export function ActiveClassroomUI({
               onLeave={handleLeaveClick}
               onOpenChange={setIsSessionActionDialogOpen}
               disabled={isCloseoutOpen}
-              confirmBeforeEnd={false}
             />
           ) : (
             <LeaveClassButton
@@ -2197,89 +2254,30 @@ export function ActiveClassroomUI({
                 />
               )}
               {amIAuthority && (
-                <Dialog
-                  open={visibleLayer === "companion"}
-                  onOpenChange={(open) => {
-                    setShowQR(open);
-                    if (!open && isPreviewing("companion")) {
-                      setUiPreviewState("none");
-                    }
-                  }}
-                >
-                  <DialogTrigger asChild>
-                    <ClassroomActionButton
-                      icon={<TabletSmartphone />}
-                      label={t("classroom.connectDevice")}
-                      statusLabel={
-                        hasCompanion ? t("common.active") : t("common.inactive")
-                      }
-                      tone="success"
-                      className={
-                        hasCompanion
-                          ? "border-success/50 bg-success/10 text-success hover:border-success/60 hover:bg-success/15 hover:text-success"
-                          : undefined
-                      }
-                      aria-label={
-                        hasCompanion
-                          ? t("classroom.companionActive")
-                          : t("classroom.connectCompanionDevice")
-                      }
-                      title={
-                        hasCompanion
-                          ? t("classroom.companionActive")
-                          : t("classroom.connectCompanionDevice")
-                      }
-                    />
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle className="text-xl">
-                        {hasCompanion
-                          ? t("classroom.companionConnected") ||
-                            "Companion device connected!"
-                          : t("classroom.connectTablet") ||
-                            "Connect Companion Tablet"}
-                      </DialogTitle>
-                      <DialogDescription>
-                        {hasCompanion
-                          ? t("classroom.companionActiveDesc") ||
-                            "A companion device is currently active in this session. Scan again to add another."
-                          : t("classroom.connectTabletDesc") ||
-                            "Scan this QR code with your iPad or Android tablet to open the interactive whiteboard."}
-                      </DialogDescription>
-                    </DialogHeader>
-                    {hasCompanion && (
-                      <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
-                        <span className="size-3 shrink-0 animate-pulse rounded-full bg-success" />
-                        <p className="text-sm font-medium text-success">
-                          {companionParticipants
-                            .map(
-                              (participant) =>
-                                participant.name || participant.identity,
-                            )
-                            .join(", ")}
-                        </p>
-                      </div>
-                    )}
-                    <div className="my-4 flex flex-col items-center justify-center rounded-xl bg-whiteboard p-6 shadow-inner">
-                      {companionUrl ? (
-                        <QRCodeSVG
-                          value={companionUrl}
-                          size={220}
-                          level="M"
-                          includeMargin
-                        />
-                      ) : (
-                        <div className="flex size-[220px] animate-pulse items-center justify-center rounded-lg bg-muted" />
-                      )}
-                    </div>
-                    <div className="text-center">
-                      <p className="select-all break-all rounded-lg border border-border/50 bg-muted p-3 font-mono text-xs text-muted-foreground">
-                        {companionUrl}
-                      </p>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                <ClassroomActionButton
+                  icon={<TabletSmartphone />}
+                  label={t("classroom.connectDevice")}
+                  statusLabel={
+                    hasCompanion ? t("common.active") : t("common.inactive")
+                  }
+                  tone="success"
+                  className={
+                    hasCompanion
+                      ? "border-success/50 bg-success/10 text-success hover:border-success/60 hover:bg-success/15 hover:text-success"
+                      : undefined
+                  }
+                  aria-label={
+                    hasCompanion
+                      ? t("classroom.companionActive")
+                      : t("classroom.connectCompanionDevice")
+                  }
+                  title={
+                    hasCompanion
+                      ? t("classroom.companionActive")
+                      : t("classroom.connectCompanionDevice")
+                  }
+                  onClick={() => setShowQR(true)}
+                />
               )}
             </>
           }

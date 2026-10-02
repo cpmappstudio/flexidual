@@ -700,6 +700,8 @@
     "reopenClass": "Reabrir clase",
     "reopenClassTitle": "¿Reabrir y dirigir esta clase?",
     "reopenClassDescription": "Los participantes podrán volver a ingresar y la sesión continuará como la misma clase.",
+    "reopenClassDelayed": "La clase se reabrió, pero el ingreso está tardando más de lo esperado. Puedes seguir esperando o cerrar este aviso y entrar desde el calendario cuando se actualice.",
+    "reopenClassWaiting": "Esperando para entrar...",
     "confirmReopenClass": "Reabrir y dirigir",
     "reopenClassError": "No se pudo reabrir la clase.",
     "endedBy": "Finalizada por {name} · {time}",

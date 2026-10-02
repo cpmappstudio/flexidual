@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ArrowUpRight,
@@ -60,6 +60,7 @@ import { getCalendarEventDisplay } from "../calendar-event-display";
 import { CalendarProviderBadge } from "../calendar-provider-badge";
 
 type CancellationScope = "single" | "series";
+const REOPEN_STATUS_TIMEOUT_MS = 10_000;
 
 export default function CalendarManageEventDialog({
   canManageSeries = false,
@@ -67,6 +68,7 @@ export default function CalendarManageEventDialog({
   canManageSeries?: boolean;
 }) {
   const t = useTranslations();
+  const reopenErrorMessage = t("classroom.reopenClassError");
   const locale = useLocale();
   const now = useCurrentMinute();
   const isMobile = useIsMobile();
@@ -87,10 +89,19 @@ export default function CalendarManageEventDialog({
   const [recordingOpen, setRecordingOpen] = useState(false);
   const [closeoutOpen, setCloseoutOpen] = useState(false);
   const [isClassroomLaunching, setIsClassroomLaunching] = useState(false);
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+  const [isReopening, setIsReopening] = useState(false);
+  const [isReopenStatusDelayed, setIsReopenStatusDelayed] = useState(false);
+  const [reopenedRoomName, setReopenedRoomName] = useState<string | null>(null);
   const params = useParams();
   const router = useRouter();
   const orgSlug = (params.orgSlug as string) || "system";
   const cancelSchedule = useMutation(api.schedule.cancelSchedule);
+  const reopenLiveSession = useMutation(api.schedule.reopenLiveSession);
+  const reopenedSession = useQuery(
+    api.schedule.getSessionStatus,
+    reopenedRoomName ? { sessionId: reopenedRoomName, now } : "skip",
+  );
   const shouldLoadSessionRecord = Boolean(
     manageEventDialogOpen &&
       selectedEvent &&
@@ -111,7 +122,39 @@ export default function CalendarManageEventDialog({
     setCancelDialogOpen(false);
     setCloseoutOpen(false);
     setRecordingOpen(false);
+    setReopenDialogOpen(false);
   }, [selectedEvent?.scheduleId]);
+
+  useEffect(() => {
+    if (
+      !reopenedRoomName ||
+      reopenedSession?.status !== "active" ||
+      !reopenedSession.isLive
+    )
+      return;
+    setReopenedRoomName(null);
+    setReopenDialogOpen(false);
+    setIsReopening(false);
+    setIsReopenStatusDelayed(false);
+    setManageEventDialogOpen(false);
+    router.push(`/${orgSlug}/classroom/${reopenedRoomName}`);
+  }, [
+    reopenedRoomName,
+    reopenedSession?.status,
+    reopenedSession?.isLive,
+    orgSlug,
+    router,
+    setManageEventDialogOpen,
+  ]);
+
+  useEffect(() => {
+    if (!reopenedRoomName || isReopenStatusDelayed) return;
+    const timeout = window.setTimeout(
+      () => setIsReopenStatusDelayed(true),
+      REOPEN_STATUS_TIMEOUT_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [reopenedRoomName, isReopenStatusDelayed]);
 
   if (!selectedEvent) return null;
 
@@ -220,6 +263,20 @@ export default function CalendarManageEventDialog({
     }
   }
 
+  async function handleReopen() {
+    const roomName = selectedEvent?.roomName;
+    if (isReopening || !roomName) return;
+    setIsReopening(true);
+    try {
+      await reopenLiveSession({ roomName });
+      setReopenedRoomName(roomName);
+    } catch (error) {
+      console.error("Failed to reopen class:", error);
+      toast.error(reopenErrorMessage);
+      setIsReopening(false);
+    }
+  }
+
   const classIdentity = (
     <div className="min-w-0">
       <h2 className="text-xl font-bold leading-tight text-foreground sm:text-2xl">
@@ -266,7 +323,7 @@ export default function CalendarManageEventDialog({
     <>
       <Dialog
         open={manageEventDialogOpen && !(isMobile && recordingOpen)}
-        onOpenChange={(open) => !open && handleClose()}
+        onOpenChange={(open) => !open && !isReopening && handleClose()}
       >
         <DialogContent
           className="max-h-[90vh] max-w-xl gap-0 overflow-x-hidden overflow-y-auto p-0"
@@ -292,6 +349,7 @@ export default function CalendarManageEventDialog({
                 type="button"
                 variant="ghost"
                 size="icon"
+                disabled={isReopening}
                 className="absolute right-3 top-3 text-muted-foreground hover:bg-background/70 hover:text-foreground"
                 aria-label={t("common.close")}
               >
@@ -428,18 +486,21 @@ export default function CalendarManageEventDialog({
                     <MoveRight className="size-4" />
                   </Link>
                 </Button>
-              ) : primaryAction === "start-live" ||
-                primaryAction === "reopen-live" ? (
+              ) : primaryAction === "reopen-live" ? (
+                <Button
+                  className="h-11 w-full gap-2 sm:w-auto sm:min-w-44"
+                  onClick={() => setReopenDialogOpen(true)}
+                >
+                  {t("classroom.reopenClass")}
+                  <MoveRight className="size-4" />
+                </Button>
+              ) : primaryAction === "start-live" ? (
                 <Button
                   className="h-11 w-full gap-2 sm:w-auto sm:min-w-44"
                   asChild
                 >
                   <Link href={classroomHref}>
-                    {t(
-                      primaryAction === "reopen-live"
-                        ? "classroom.reopenClass"
-                        : "classroom.startClass",
-                    )}
+                    {t("classroom.startClass")}
                     <MoveRight className="size-4" />
                   </Link>
                 </Button>
@@ -478,6 +539,46 @@ export default function CalendarManageEventDialog({
           }}
         />
       )}
+
+      <AlertDialog
+        open={reopenDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && isReopenStatusDelayed) {
+            setReopenedRoomName(null);
+            setIsReopening(false);
+            setIsReopenStatusDelayed(false);
+          }
+          if (!isReopening || isReopenStatusDelayed) setReopenDialogOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("classroom.reopenClassTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                isReopenStatusDelayed
+                  ? "classroom.reopenClassDelayed"
+                  : "classroom.reopenClassDescription",
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isReopening && !isReopenStatusDelayed}>
+              {t(isReopenStatusDelayed ? "common.close" : "common.cancel")}
+            </AlertDialogCancel>
+            <Button disabled={isReopening} onClick={() => void handleReopen()}>
+              {isReopening && <Loader2 className="size-4 animate-spin" />}
+              {t(
+                isReopenStatusDelayed
+                  ? "classroom.reopenClassWaiting"
+                  : "classroom.confirmReopenClass",
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <AlertDialogContent>
