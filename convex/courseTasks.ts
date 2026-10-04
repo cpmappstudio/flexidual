@@ -141,6 +141,85 @@ export const removeByClass = internalMutation({
   },
 });
 
+export const remove = mutation({
+  args: { taskId: v.id("courseTasks") },
+  returns: v.null(),
+  handler: async (ctx, { taskId }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const task = await ctx.db.get("courseTasks", taskId);
+    if (!task || task.isDraft) throw new ConvexError("TASK_NOT_FOUND");
+    await requireTaskManager(ctx, task.classId, user._id);
+
+    if (task.reminderScheduledId) {
+      const scheduled = await ctx.db.system.get(
+        "_scheduled_functions",
+        task.reminderScheduledId,
+      );
+      if (scheduled?.state.kind === "pending") {
+        await ctx.scheduler.cancel(task.reminderScheduledId);
+      }
+    }
+
+    await ctx.db.delete("courseTasks", taskId);
+    await ctx.scheduler.runAfter(0, internal.courseTasks.removeDeletedTask, {
+      taskId,
+    });
+    return null;
+  },
+});
+
+export const removeDeletedTask = internalMutation({
+  args: { taskId: v.id("courseTasks") },
+  returns: v.null(),
+  handler: async (ctx, { taskId }) => {
+    if (await ctx.db.get("courseTasks", taskId)) return null;
+
+    const files = await ctx.db
+      .query("courseTaskFiles")
+      .withIndex("by_taskId_and_kind_and_state", (q) => q.eq("taskId", taskId))
+      .take(DELETE_BATCH_SIZE);
+    await Promise.all(files.map((file) => deleteCourseTaskFile(ctx, file)));
+    if (files.length === DELETE_BATCH_SIZE) {
+      await ctx.scheduler.runAfter(0, internal.courseTasks.removeDeletedTask, {
+        taskId,
+      });
+      return null;
+    }
+
+    const recipients = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) => q.eq("taskId", taskId))
+      .take(DELETE_BATCH_SIZE);
+    await Promise.all(
+      recipients.map((recipient) =>
+        ctx.db.delete("courseTaskRecipients", recipient._id),
+      ),
+    );
+    if (recipients.length === DELETE_BATCH_SIZE) {
+      await ctx.scheduler.runAfter(0, internal.courseTasks.removeDeletedTask, {
+        taskId,
+      });
+      return null;
+    }
+
+    const notifications = await ctx.db
+      .query("systemNotifications")
+      .withIndex("by_taskId", (q) => q.eq("taskId", taskId))
+      .take(DELETE_BATCH_SIZE);
+    await Promise.all(
+      notifications.map((notification) =>
+        ctx.db.delete("systemNotifications", notification._id),
+      ),
+    );
+    if (notifications.length === DELETE_BATCH_SIZE) {
+      await ctx.scheduler.runAfter(0, internal.courseTasks.removeDeletedTask, {
+        taskId,
+      });
+    }
+    return null;
+  },
+});
+
 async function requireTaskManager(
   ctx: QueryCtx | MutationCtx,
   classId: Id<"classes">,

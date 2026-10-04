@@ -60,6 +60,10 @@ const testState = vi.hoisted(() => ({
     loadingTransitions: 0,
     simulateMinuteLoading: false,
   },
+  queryErrors: {
+    scheduleDetails: undefined as Error | undefined,
+    sessionStatus: undefined as Error | undefined,
+  },
   sessionStatus: undefined as
     | ReturnType<typeof createSessionStatus>
     | null
@@ -133,6 +137,11 @@ vi.mock("convex/react", async () => {
         testState.sessionStatus,
       );
       const previousQueryKey = React.useRef(queryKey);
+
+      const queryError = isSessionStatus
+        ? testState.queryErrors.sessionStatus
+        : testState.queryErrors.scheduleDetails;
+      if (args !== "skip" && queryError) throw queryError;
 
       React.useEffect(() => {
         if (
@@ -357,6 +366,8 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     testState.roomLifecycle.mountedTokens = [];
     testState.queryLifecycle.loadingTransitions = 0;
     testState.queryLifecycle.simulateMinuteLoading = false;
+    testState.queryErrors.scheduleDetails = undefined;
+    testState.queryErrors.sessionStatus = undefined;
     testState.sessionStatus = createSessionStatus();
     testState.scheduleDetails = createScheduleDetails();
     testState.currentUser = {
@@ -378,6 +389,34 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("currently cannot initialize presence without crypto.randomUUID", () => {
+    vi.stubGlobal("crypto", {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    expect(() =>
+      render(createElement(FlexiClassroom, { roomName: "room-1" })),
+    ).toThrow(/randomUUID/);
+    consoleError.mockRestore();
+  });
+
+  it.each([
+    ["session status", "sessionStatus"],
+    ["schedule details", "scheduleDetails"],
+  ] as const)("does not contain a %s query exception", (_, query) => {
+    testState.queryErrors[query] = new Error(`${query} failed`);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    expect(() =>
+      render(createElement(FlexiClassroom, { roomName: "room-1" })),
+    ).toThrow(`${query} failed`);
+    expect(testState.getToken).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it("preserves the same room, token and presence while navigating away and back", async () => {

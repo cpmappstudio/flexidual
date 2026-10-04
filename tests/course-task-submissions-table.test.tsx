@@ -184,9 +184,41 @@ test("does not evaluate a newly released task with a time before its release", (
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
   expect(queryState.statusNow).toBe(800);
+});
+
+test("shows the delete action only to a course manager", () => {
+  const onDelete = vi.fn();
+  const props = {
+    classId: "class-id" as Id<"classes">,
+    taskId: "task-id" as Id<"courseTasks">,
+    timeZone: "UTC",
+    onEdit: vi.fn(),
+    onDelete,
+  };
+  const { rerender } = render(<CourseTaskDetail {...props} />);
+  const editButton = screen.getByRole("button", { name: "editTask" });
+  const deleteButton = screen.getByRole("button", { name: "deleteTask" });
+  expect(editButton.getAttribute("data-size")).toBe("icon-lg");
+  expect(deleteButton.getAttribute("data-size")).toBe("icon-lg");
+  expect(editButton.querySelector("span")?.classList.contains("hidden")).toBe(
+    true,
+  );
+  expect(deleteButton.parentElement?.classList.contains("row-start-2")).toBe(
+    true,
+  );
+  expect(deleteButton.parentElement?.classList.contains("sm:row-start-1")).toBe(
+    true,
+  );
+  fireEvent.click(deleteButton);
+  expect(onDelete).toHaveBeenCalledWith(detailState.task);
+
+  detailState.status = { ...detailState.status, canManage: false };
+  rerender(<CourseTaskDetail {...props} />);
+  expect(screen.queryByRole("button", { name: "deleteTask" })).toBeNull();
 });
 
 test("shows every relevant empty assignment field explicitly", () => {
@@ -196,6 +228,7 @@ test("shows every relevant empty assignment field explicitly", () => {
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
 
@@ -224,6 +257,7 @@ test("explains that students are assigned when a scheduled task becomes visible"
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
   expect(screen.getByText("scheduledStatus")).toBeTruthy();
@@ -239,6 +273,7 @@ test("does not show a task from another course through a task link", () => {
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
 
@@ -270,6 +305,7 @@ test("shows dates, late policy, close time, and materials when present", () => {
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
 
@@ -296,6 +332,7 @@ test("uses the shared table for all loaded submissions and keeps review availabl
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
 
@@ -336,6 +373,7 @@ test("keeps the assignment and open review visible while minute status refreshes
     taskId: "task-id" as Id<"courseTasks">,
     timeZone: "UTC",
     onEdit: vi.fn(),
+    onDelete: vi.fn(),
   };
   const { rerender } = render(<CourseTaskDetail {...props} />);
 
@@ -366,6 +404,7 @@ test("opens the review from the bottom on mobile", () => {
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
 
@@ -386,6 +425,7 @@ test("shows a sent comment and enables updating it only after a change", () => {
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
 
@@ -419,6 +459,7 @@ test("labels clearing an existing comment as removal", () => {
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
 
@@ -455,6 +496,7 @@ test("opens replacement in a dialog and leaves the current submission visible", 
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
 
@@ -528,6 +570,7 @@ test("keeps the replacement dialog open during upload and closes after saving", 
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "editSubmission" }));
@@ -563,6 +606,7 @@ test("shows only the saved submission when replacements are closed", () => {
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
 
@@ -598,6 +642,7 @@ test("shows the failed student file by name and keeps it available to retry", as
       taskId={"task-id" as Id<"courseTasks">}
       timeZone="UTC"
       onEdit={vi.fn()}
+      onDelete={vi.fn()}
     />,
   );
   expect(screen.getByText("filesToSubmit")).toBeTruthy();
