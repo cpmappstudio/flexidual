@@ -1,4 +1,11 @@
 {
+  "filePreview": {
+    "loadingPreview": "Cargando vista previa…",
+    "previewError": "No se pudo mostrar este archivo. Aún puedes descargarlo.",
+    "pdfPreviewUnavailable": "Este navegador no puede mostrar archivos PDF. Descarga el archivo para verlo.",
+    "retryPreview": "Reintentar",
+    "download": "Descargar archivo"
+  },
   "courseTasks": {
     "tab": "Tareas",
     "heading": "Tareas del curso",
@@ -91,6 +98,7 @@
     "feedbackRemoved": "Comentario eliminado.",
     "addFiles": "Adjuntar archivos",
     "removeFile": "Quitar {name}",
+    "preview": "Previsualizar archivo",
     "download": "Descargar archivo",
     "downloadError": "No se pudo descargar el archivo.",
     "fileLimits": "Hasta {count} archivos, {each} MiB cada uno y {total} MiB en total. Se aceptan fotos, PDF, Word y PowerPoint.",

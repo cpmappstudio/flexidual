@@ -2,13 +2,14 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useState } from "react";
-import { Download, FileText, Paperclip, X } from "lucide-react";
+import { Download, Eye, FileText, Paperclip, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
+import { FilePreview } from "@/components/file-preview";
 import {
   MAX_TASK_FILE_BYTES,
   MAX_TASK_TOTAL_BYTES,
@@ -319,6 +320,7 @@ export function TaskAttachmentList({
   const t = useTranslations("courseTasks");
   const request = useTaskFileRequest();
   const [downloading, setDownloading] = useState<string>();
+  const [previewFile, setPreviewFile] = useState<TaskAttachment>();
 
   async function download(file: TaskAttachment) {
     setDownloading(file.id);
@@ -338,48 +340,111 @@ export function TaskAttachmentList({
   }
 
   return (
-    <div className="min-w-0 space-y-2">
-      {files.map((file) => (
-        <div
-          key={file.id}
-          className={
-            onRemove
-              ? "flex w-full min-w-0 items-center gap-1 rounded-md border px-2 py-1 text-sm"
-              : "min-w-0"
-          }
-        >
-          <Button
-            type="button"
-            variant={onRemove || plain ? "ghost" : "outline"}
-            className={
-              onRemove
-                ? "h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal px-1 py-1 text-left"
-                : plain
-                  ? "h-auto max-w-full min-w-0 justify-start gap-2 whitespace-normal px-2 py-2 text-left text-primary hover:bg-primary/5 hover:text-primary"
-                  : "h-auto max-w-full min-w-0 justify-start gap-2 whitespace-normal text-left"
-            }
-            disabled={disabled || downloading === file.id}
-            onClick={() => void download(file)}
-            aria-label={`${t("download")}: ${file.name}`}
-          >
-            <Download className="size-4 shrink-0" aria-hidden="true" />
-            <span className="min-w-0 break-all">{file.name}</span>
-          </Button>
-          {onRemove && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
-              disabled={disabled}
-              onClick={() => onRemove(file.id)}
-              aria-label={t("removeFile", { name: file.name })}
+    <>
+      <div className="min-w-0 space-y-2">
+        {files.map((file) => {
+          const showFileDetails = plain && !onRemove;
+          const canPreview =
+            file.contentType === "application/pdf" ||
+            ["image/jpeg", "image/png", "image/webp"].includes(
+              file.contentType,
+            );
+          return (
+            <div
+              key={file.id}
+              className={
+                onRemove
+                  ? "flex w-full min-w-0 items-center gap-1 rounded-md border px-2 py-1 text-sm"
+                  : "flex w-full max-w-2xl min-w-0 items-center gap-2 rounded-lg py-1"
+              }
             >
-              <X className="size-4" aria-hidden="true" />
-            </Button>
-          )}
-        </div>
-      ))}
-    </div>
+              <Button
+                type="button"
+                variant={onRemove || plain ? "ghost" : "outline"}
+                className={
+                  onRemove
+                    ? "h-auto min-w-0 flex-1 shrink justify-start gap-2 whitespace-normal px-1 py-1 text-left"
+                    : plain
+                      ? "h-auto min-w-0 flex-1 shrink justify-start gap-3 whitespace-normal px-2 py-2 text-left hover:bg-primary/5"
+                      : "h-auto max-w-full min-w-0 shrink justify-start gap-2 whitespace-normal text-left"
+                }
+                disabled={disabled || downloading === file.id}
+                onClick={() =>
+                  canPreview ? setPreviewFile(file) : void download(file)
+                }
+                aria-label={`${t(canPreview ? "preview" : "download")}: ${file.name}`}
+              >
+                {showFileDetails ? (
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <FileText className="size-5" aria-hidden="true" />
+                  </span>
+                ) : canPreview ? (
+                  <Eye className="size-4 shrink-0" aria-hidden="true" />
+                ) : (
+                  <Download className="size-4 shrink-0" aria-hidden="true" />
+                )}
+                {showFileDetails ? (
+                  <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                    <span
+                      className="line-clamp-2 min-w-0 break-all text-sm font-semibold text-primary"
+                      title={file.name}
+                    >
+                      {file.name}
+                    </span>
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {file.name.split(".").at(-1)?.toUpperCase()}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="min-w-0 break-all">{file.name}</span>
+                )}
+                {showFileDetails && !canPreview && (
+                  <Download
+                    className="ml-auto size-4 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                )}
+              </Button>
+              {canPreview && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 text-muted-foreground hover:bg-primary/5 hover:text-primary"
+                  disabled={disabled || downloading === file.id}
+                  onClick={() => void download(file)}
+                  aria-label={`${t("download")}: ${file.name}`}
+                >
+                  <Download className="size-4" aria-hidden="true" />
+                </Button>
+              )}
+              {onRemove && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  disabled={disabled}
+                  onClick={() => onRemove(file.id)}
+                  aria-label={t("removeFile", { name: file.name })}
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {previewFile && (
+        <FilePreview
+          key={previewFile.id}
+          file={previewFile}
+          request={request}
+          onClose={() => setPreviewFile(undefined)}
+          onDownload={() => void download(previewFile)}
+          downloading={downloading === previewFile.id}
+        />
+      )}
+    </>
   );
 }

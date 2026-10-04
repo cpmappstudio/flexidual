@@ -1,5 +1,6 @@
 import { convexTest } from "convex-test";
 import rateLimiter from "@convex-dev/rate-limiter/test";
+import { zipSync } from "fflate";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -628,48 +629,103 @@ test("teacher materials are private until publication and can be replaced withou
 
 test("OOXML Word and PowerPoint uploads are accepted by signature, but macro-enabled content is rejected", async () => {
   const s = await setup();
-  function officePackage(mime: string) {
-    const name = new TextEncoder().encode("[Content_Types].xml");
-    const content = new TextEncoder().encode(
-      `<Types><Override ContentType="${mime}.main+xml"/></Types>`,
-    );
-    const header = new Uint8Array(30);
-    const view = new DataView(header.buffer);
-    view.setUint32(0, 0x04034b50, true);
-    view.setUint16(4, 20, true);
-    view.setUint32(18, content.length, true);
-    view.setUint32(22, content.length, true);
-    view.setUint16(26, name.length, true);
-    return new Blob([header, name, content], { type: mime });
-  }
   const wordType =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   const slidesType =
     "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  function officePackage(
+    mime: string,
+    mainPath: string,
+    options: { macro?: boolean; declaredMime?: string } = {},
+  ) {
+    const xml = new TextEncoder().encode(
+      `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/${mainPath}" ContentType="${options.declaredMime ?? mime}.main+xml"/></Types>`,
+    );
+    return new Blob(
+      [
+        zipSync({
+          [mainPath]: new TextEncoder().encode("<document/>"),
+          ...(options.macro
+            ? { "word/vbaProject.bin": new Uint8Array([1]) }
+            : {}),
+          "[Content_Types].xml": xml,
+        }),
+      ],
+      { type: mime },
+    );
+  }
   expect(
-    (await s.post(officePackage(wordType), s.student, s.taskId, "essay.docx"))
-      .status,
+    (
+      await s.post(
+        officePackage(wordType, "word/document.xml"),
+        s.student,
+        s.taskId,
+        "essay.docx",
+      )
+    ).status,
   ).toBe(200);
   expect(
     (
       await s.post(
-        officePackage(slidesType),
+        officePackage(slidesType, "ppt/presentation.xml"),
         s.student,
         s.taskId,
         "slides.pptx",
       )
     ).status,
   ).toBe(200);
-  const disguised = officePackage(
-    "application/vnd.ms-word.document.macroEnabled",
-  );
   expect(
     (
       await s.post(
-        new Blob([disguised], { type: wordType }),
+        officePackage(wordType, "word/document.xml", { macro: true }),
         s.student,
         s.taskId,
         "macro.docx",
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await s.post(
+        officePackage(wordType, "word/document.xml", {
+          declaredMime: "application/vnd.ms-word.document.macroEnabled",
+        }),
+        s.student,
+        s.taskId,
+        "disguised.docx",
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await s.post(
+        new Blob([zipSync({ "[Content_Types].xml": new Uint8Array([1]) })], {
+          type: wordType,
+        }),
+        s.student,
+        s.taskId,
+        "not-office.docx",
+      )
+    ).status,
+  ).toBe(400);
+  const slides = officePackage(slidesType, "ppt/presentation.xml");
+  expect(
+    (
+      await s.post(
+        new Blob([slides], { type: wordType }),
+        s.student,
+        s.taskId,
+        "wrong-type.docx",
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await s.post(
+        slides.slice(0, -22, slidesType),
+        s.student,
+        s.taskId,
+        "truncated.pptx",
       )
     ).status,
   ).toBe(400);

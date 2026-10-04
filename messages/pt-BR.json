@@ -1,4 +1,11 @@
 {
+  "filePreview": {
+    "loadingPreview": "Carregando pré-visualização…",
+    "previewError": "Não foi possível visualizar este arquivo. Você ainda pode baixá-lo.",
+    "pdfPreviewUnavailable": "Este navegador não pode visualizar arquivos PDF. Baixe o arquivo para vê-lo.",
+    "retryPreview": "Tentar novamente",
+    "download": "Baixar arquivo"
+  },
   "courseTasks": {
     "tab": "Tarefas",
     "heading": "Tarefas do curso",
@@ -91,6 +98,7 @@
     "feedbackRemoved": "Comentário removido.",
     "addFiles": "Anexar arquivos",
     "removeFile": "Remover {name}",
+    "preview": "Pré-visualizar arquivo",
     "download": "Baixar arquivo",
     "downloadError": "Não foi possível baixar o arquivo.",
     "fileLimits": "Até {count} arquivos, {each} MiB cada e {total} MiB no total. Fotos, PDF, Word e PowerPoint são aceitos.",

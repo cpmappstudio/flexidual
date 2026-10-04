@@ -1,4 +1,11 @@
 {
+  "filePreview": {
+    "loadingPreview": "Loading preview…",
+    "previewError": "Could not preview this file. You can still download it.",
+    "pdfPreviewUnavailable": "This browser cannot preview PDFs. Download the file to view it.",
+    "retryPreview": "Try again",
+    "download": "Download file"
+  },
   "courseTasks": {
     "tab": "Assignments",
     "heading": "Course assignments",
@@ -91,6 +98,7 @@
     "feedbackRemoved": "Comment removed.",
     "addFiles": "Attach files",
     "removeFile": "Remove {name}",
+    "preview": "Preview file",
     "download": "Download file",
     "downloadError": "Could not download the file.",
     "fileLimits": "Up to {count} files, {each} MiB each and {total} MiB in total. Photos, PDF, Word, and PowerPoint are accepted.",

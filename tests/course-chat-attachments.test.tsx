@@ -5,6 +5,7 @@ import {
   render as renderView,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { CourseChatComposer } from "@/components/chat/course-chat";
@@ -297,48 +298,76 @@ test("only authorized new links become anchors; unsafe schemes and legacy text s
   ).toBe(false);
 });
 
-test.each(["attachment-trigger", "attachment-action"])(
-  "document %s downloads through the authenticated request",
-  async (slot) => {
-    vi.useFakeTimers();
-    try {
-      vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:document");
-      const revoke = vi
-        .spyOn(URL, "revokeObjectURL")
-        .mockImplementation(() => {});
-      const click = vi
-        .spyOn(HTMLAnchorElement.prototype, "click")
-        .mockImplementation(() => {});
-      vi.mocked(fetch).mockResolvedValue(
-        new Response(new Blob(["%PDF"], { type: "application/pdf" })),
-      );
-      const { container } = render(
-        <ChatAttachment
-          file={{
-            id: "document" as Id<"courseChatAttachments">,
-            name: "lesson.pdf",
-            contentType: "application/pdf",
-            size: 4,
-          }}
-        />,
-      );
-      expect(
-        container.querySelector('[data-slot="attachment-title"]')?.textContent,
-      ).toBe("lesson.pdf");
-      expect(container.querySelector("button button")).toBeNull();
-      expect(fetch).not.toHaveBeenCalled();
-      await act(async () =>
-        fireEvent.click(container.querySelector(`[data-slot="${slot}"]`)!),
-      );
-      expect(click).toHaveBeenCalledTimes(1);
-      expect(state.getToken).toHaveBeenCalledWith({ template: "convex" });
-      await act(async () => vi.runAllTimers());
-      expect(revoke).toHaveBeenCalledWith("blob:document");
-    } finally {
-      vi.useRealTimers();
-    }
-  },
-);
+test("PDFs open an authenticated preview, with a separate download action", async () => {
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:document");
+  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  const click = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => {});
+  vi.mocked(fetch).mockImplementation(
+    async () => new Response(new Blob(["%PDF"], { type: "application/pdf" })),
+  );
+  const { container } = render(
+    <ChatAttachment
+      file={{
+        id: "document" as Id<"courseChatAttachments">,
+        name: "lesson.pdf",
+        contentType: "application/pdf",
+        size: 4,
+      }}
+    />,
+  );
+  expect(
+    container.querySelector('[data-slot="attachment-title"]')?.textContent,
+  ).toBe("lesson.pdf");
+  expect(container.querySelector("button button")).toBeNull();
+  expect(fetch).not.toHaveBeenCalled();
+  fireEvent.click(container.querySelector('[data-slot="attachment-trigger"]')!);
+  await waitFor(() =>
+    expect(document.querySelector("iframe")?.getAttribute("src")).toBe(
+      "blob:document",
+    ),
+  );
+  expect(state.getToken).toHaveBeenCalledWith({ template: "convex" });
+  expect(vi.mocked(fetch).mock.calls[0][0].toString()).toContain(
+    "/course-chat-files?id=document",
+  );
+  expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({
+    headers: { Authorization: "Bearer test-token" },
+  });
+  expect(click).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(revoke).toHaveBeenCalledWith("blob:document");
+  await act(async () =>
+    fireEvent.click(
+      container.querySelector('[data-slot="attachment-action"]')!,
+    ),
+  );
+  await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test("PDFs keep download available when the browser has no native viewer", () => {
+  vi.stubGlobal("navigator", { ...navigator, pdfViewerEnabled: false });
+  const { container } = render(
+    <ChatAttachment
+      file={{
+        id: "document" as Id<"courseChatAttachments">,
+        name: "lesson.pdf",
+        contentType: "application/pdf",
+        size: 4,
+      }}
+    />,
+  );
+  fireEvent.click(container.querySelector('[data-slot="attachment-trigger"]')!);
+  expect(screen.getByText("pdfPreviewUnavailable")).not.toBeNull();
+  expect(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "download: lesson.pdf",
+    }),
+  ).not.toBeNull();
+  expect(fetch).not.toHaveBeenCalled();
+});
 
 test("image bytes are fetched only near the viewport and blob URLs are released", async () => {
   let intersect: IntersectionObserverCallback | undefined;
@@ -384,9 +413,12 @@ test("image bytes are fetched only near the viewport and blob URLs are released"
   ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "openAttachment" }));
   expect(screen.getByRole("dialog")).toBeTruthy();
+  expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   expect(
-    screen.queryByRole("button", { name: "downloadAttachment" }),
-  ).toBeNull();
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "download: image.png",
+    }),
+  ).not.toBeNull();
   unmount();
   expect(revoke).toHaveBeenCalledWith("blob:test-image");
 });
