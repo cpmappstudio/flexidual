@@ -18,6 +18,13 @@ export function normalizeLiveAccess(liveAccess?: LiveAccess): LiveAccess {
   };
 }
 
+export function canStaffAccessLiveClass(
+  liveAccess: LiveAccess | undefined,
+  isInstitutionStaff: boolean,
+) {
+  return isInstitutionStaff && liveAccess?.mode === "school";
+}
+
 export function canStudentAccessLiveClass({
   isEnrolled,
   liveAccess,

@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import type { FunctionReturnType } from "convex/server";
 import { expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { modules } from "./test.setup";
@@ -150,7 +150,14 @@ async function setup(legacy = false) {
       students: [users.student],
       enrollmentsMigratedAt: undefined,
     });
-    return { courses, enrollmentId, users, campusId, secondCampusId };
+    return {
+      courses,
+      enrollmentId,
+      users,
+      campusId,
+      secondCampusId,
+      foreignCampusId,
+    };
   });
   const args = {
     orgSlug: "campus",
@@ -323,3 +330,165 @@ test("filtered pagination retains own courses without exposing other private cou
     ).page.map((course) => course.name),
   ).toEqual(["Public"]);
 });
+
+test.each(["teacher", "tutor", "principal"] as const)(
+  "%s can watch institutional live sessions across campuses without course or room privileges",
+  async (role) => {
+    const { t, data, args } = await setup();
+    const viewer = t.withIdentity({ subject: "teacher" });
+    const assignmentId = await t.run(async (ctx) => {
+      const assignment = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", data.users.teacher))
+        .unique();
+      await ctx.db.patch(assignment!._id, {
+        role,
+        orgId: data.secondCampusId,
+        // Exercise legacy memberships whose institution is resolved from the campus.
+        schoolId: undefined,
+      });
+      return assignment!._id;
+    });
+    const catalogArgs = { ...args, orgSlug: "second" };
+    const waiting = await viewer.query(
+      api.classes.listCurrentCatalog,
+      catalogArgs,
+    );
+    expect(
+      waiting.page.find((course) => course.name === "Public")?.currentSession
+        ?.canOpen,
+    ).toBe(false);
+
+    const scheduleId = await t.run(async (ctx) => {
+      const schedule = await ctx.db
+        .query("classSchedule")
+        .withIndex("by_room", (q) => q.eq("roomName", "Public--60000"))
+        .unique();
+      await ctx.db.patch(schedule!._id, { status: "active", isLive: true });
+      return schedule!._id;
+    });
+    for (const query of [
+      api.classes.listCatalog,
+      api.classes.listCurrentCatalog,
+    ]) {
+      const page = (await viewer.query(query, catalogArgs)).page;
+      const course = page.find((course) => course.name === "Public")!;
+      expect(course.canViewDetails).toBe(false);
+      expect(course.currentSession ?? course.liveSession).toMatchObject({
+        canOpen: true,
+        isLive: true,
+      });
+    }
+    const sessionArgs = { sessionId: "Public--60000", now: args.now };
+    await t.run((ctx) =>
+      ctx.db.insert("whiteboardSessions", {
+        roomName: sessionArgs.sessionId,
+        elements: [],
+        updatedAt: args.now,
+      }),
+    );
+    expect(
+      await viewer.query(api.whiteboardSessions.getScene, {
+        roomName: sessionArgs.sessionId,
+      }),
+    ).toMatchObject({ elements: [] });
+    await expect(
+      viewer.mutation(api.whiteboardSessions.upsertScene, {
+        roomName: sessionArgs.sessionId,
+        elements: [],
+      }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    expect(
+      await viewer.query(api.schedule.getWithDetails, { id: scheduleId }),
+    ).toMatchObject({ class: { _id: data.courses.Public } });
+    expect(
+      await viewer.query(api.schedule.getByRoomName, {
+        roomName: sessionArgs.sessionId,
+      }),
+    ).toMatchObject({ _id: scheduleId });
+    expect(
+      await viewer.query(api.schedule.getSessionStatus, sessionArgs),
+    ).toMatchObject({
+      roomAdmin: false,
+      leadershipRole: null,
+      canStart: false,
+      canReopen: false,
+    });
+    expect(
+      await t.query(internal.schedule.checkLiveKitAccess, {
+        userId: data.users.teacher,
+        roomName: sessionArgs.sessionId,
+        now: args.now,
+      }),
+    ).toMatchObject({
+      authorized: true,
+      roomAdmin: false,
+      computedRole: "student",
+    });
+    await expect(
+      viewer.query(api.classes.get, { id: data.courses.Public }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await expect(
+      viewer.mutation(api.schedule.markLive, {
+        roomName: sessionArgs.sessionId,
+        isLive: true,
+      }),
+    ).rejects.toThrow();
+    expect(
+      await viewer.query(api.sessionRecords.listRecent, {
+        classId: data.courses.Public,
+        now: args.now,
+      }),
+    ).toEqual([]);
+
+    // Private sessions stay restricted; ended public sessions expose status, not entry.
+    await t.run((ctx) =>
+      ctx.db.patch(scheduleId, {
+        liveAccess: { mode: "private", allowedGradeCodes: [] },
+      }),
+    );
+    await expect(
+      viewer.query(api.schedule.getSessionStatus, sessionArgs),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await t.run((ctx) =>
+      ctx.db.patch(scheduleId, {
+        liveAccess: { mode: "school", allowedGradeCodes: ["08"] },
+        status: "completed",
+        isLive: false,
+      }),
+    );
+    expect(
+      await viewer.query(api.schedule.getSessionStatus, sessionArgs),
+    ).toMatchObject({
+      status: "completed",
+      canStart: false,
+      canReopen: false,
+      roomAdmin: false,
+    });
+    const ended = await viewer.query(
+      api.classes.listCurrentCatalog,
+      catalogArgs,
+    );
+    expect(
+      ended.page.find((course) => course.name === "Public")?.currentSession
+        ?.canOpen,
+    ).toBe(false);
+    await expect(
+      viewer.action(api.livekit.getToken, { roomName: sessionArgs.sessionId }),
+    ).rejects.toThrow("This session has expired");
+    await t.run(async (ctx) => {
+      await ctx.db.patch(scheduleId, { status: "active", isLive: true });
+      await ctx.db.patch(assignmentId, { orgId: data.foreignCampusId });
+    });
+    await expect(
+      viewer.query(api.schedule.getSessionStatus, sessionArgs),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await t.run((ctx) =>
+      ctx.db.patch(assignmentId, { orgId: data.secondCampusId }),
+    );
+    await t.run((ctx) => ctx.db.patch(data.users.teacher, { isActive: false }));
+    await expect(
+      viewer.query(api.schedule.getSessionStatus, sessionArgs),
+    ).rejects.toThrow();
+  },
+);

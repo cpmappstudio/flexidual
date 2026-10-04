@@ -10,7 +10,11 @@ import { isLiveClassSession } from "../../lib/class-session";
 import { classHasLiveSessions } from "./classType";
 import { curriculumIconValidator } from "./curriculumIcons";
 import { isStudentEnrolled } from "./enrollments";
-import { canStudentAccessLiveClass, normalizeLiveAccess } from "./liveAccess";
+import {
+  canStaffAccessLiveClass,
+  canStudentAccessLiveClass,
+  normalizeLiveAccess,
+} from "./liveAccess";
 import { resolveMembershipSchoolId } from "./membership";
 import {
   ASSIGNABLE_COURSE_INSTRUCTOR_ROLES,
@@ -611,6 +615,8 @@ function toCatalogCourse(
   const canOpenSession = (schedule: Doc<"classSchedule">) =>
     schedule.status !== "completed" &&
     (staffCanOpen ||
+      (isLiveClassSession(schedule) &&
+        canStaffAccessLiveClass(schedule.liveAccess, access.isStaffViewer)) ||
       canStudentAccessLiveClass({
         isEnrolled,
         liveAccess: schedule.liveAccess,

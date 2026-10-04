@@ -6,9 +6,13 @@ import {
   getSoleStudentCampusId,
   getStudentGradeCode,
   getStudentSchoolIds,
+  resolveMembershipSchoolId,
 } from "./membership";
-import { hasOnlyInstructorStaffRoles } from "./roles";
-import { canStudentAccessLiveClass } from "./liveAccess";
+import { hasOnlyInstructorStaffRoles, isStaffRole } from "./roles";
+import {
+  canStaffAccessLiveClass,
+  canStudentAccessLiveClass,
+} from "./liveAccess";
 import { isStudentEnrolled } from "./enrollments";
 
 export type ScheduleClassScope = {
@@ -40,6 +44,23 @@ export async function canAccessInstitutionalSchedule(
     isStudentEnrolled(ctx, classData, userId),
   ]);
   const classSchoolId = campus?.schoolId ?? curriculum?.schoolId;
+  if (classSchoolId && canStaffAccessLiveClass(schedule.liveAccess, true)) {
+    const assignments = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const assignment of assignments) {
+      if (!isStaffRole(assignment.role)) continue;
+      const schoolId =
+        assignment.schoolId ??
+        (await resolveMembershipSchoolId(
+          ctx,
+          assignment.orgType,
+          assignment.orgId,
+        ));
+      if (schoolId === classSchoolId) return true;
+    }
+  }
   const studentGrade = classSchoolId
     ? await getStudentGradeCode(ctx, userId, classSchoolId, classData.campusId)
     : undefined;

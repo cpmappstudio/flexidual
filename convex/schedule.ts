@@ -90,6 +90,7 @@ import {
   canCoursesShareSchedule,
 } from "./model/courseScheduleShares";
 import {
+  canAccessInstitutionalSchedule,
   canAccessSchedule,
   listAccessibleScheduleClasses,
 } from "./model/scheduleAccess";
@@ -765,22 +766,12 @@ async function getLiveKitAccessData(
 
   let authorized = roomAdmin;
   if (!authorized) {
-    const studentSchoolIds = await getStudentSchoolIds(ctx, userId);
-    const studentGrade = classSchoolId
-      ? await getStudentGradeCode(
-          ctx,
-          userId,
-          classSchoolId,
-          classData.campusId,
-        )
-      : undefined;
-    authorized = canStudentAccessLiveClass({
-      isEnrolled: await isStudentEnrolled(ctx, classData, userId),
-      liveAccess: schedule.liveAccess,
-      studentGrade,
-      classSchoolId,
-      studentSchoolIds,
-    });
+    authorized = await canAccessInstitutionalSchedule(
+      ctx,
+      userId,
+      schedule,
+      classData,
+    );
   }
 
   return {
@@ -790,6 +781,7 @@ async function getLiveKitAccessData(
     isSessionLeader: schedule.sessionLeaderId === userId,
     leadershipRole,
     canJoinEarly: roomAdmin,
+    // ponytail: visiting staff reuse attendee permissions, never room administration.
     computedRole: isPrimaryTeacher
       ? ("teacher" as const)
       : roomAdmin
