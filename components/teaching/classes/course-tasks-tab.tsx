@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePaginatedQuery } from "convex/react";
+import { useMutation, usePaginatedQuery } from "convex/react";
 import { useFormatter, useTranslations } from "next-intl";
-import { Plus } from "lucide-react";
+import { Plus, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   type CarouselApi,
   CarouselContent,
@@ -33,6 +43,7 @@ export function CourseTasksTab({
 }) {
   const t = useTranslations("courseTasks");
   const format = useFormatter();
+  const removeTask = useMutation(api.courseTasks.remove);
   const { results, status, loadMore } = usePaginatedQuery(
     api.courseTasks.listForClass,
     { classId },
@@ -46,12 +57,18 @@ export function CourseTasksTab({
     task?: Doc<"courseTasks">;
     materials: TaskAttachment[];
   }>();
+  const [taskToDelete, setTaskToDelete] = useState<Doc<"courseTasks">>();
+  const [deleting, setDeleting] = useState(false);
+  const [deletedTaskIds, setDeletedTaskIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     setSelectedId(initialTaskId);
   }, [initialTaskId]);
 
-  const orderedTasks = [...results].reverse();
+  const visibleTasks = results.filter((task) => !deletedTaskIds.has(task._id));
+  const orderedTasks = [...visibleTasks].reverse();
   const activeTaskId = selectedId ?? orderedTasks.at(-1)?._id;
   const selectedIndex = orderedTasks.findIndex(
     (task) => task._id === activeTaskId,
@@ -72,6 +89,27 @@ export function CourseTasksTab({
     const url = new URL(window.location.href);
     url.searchParams.set("task", id);
     window.history.replaceState(null, "", url);
+  }
+
+  async function confirmDelete() {
+    if (!taskToDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await removeTask({ taskId: taskToDelete._id });
+      setDeletedTaskIds((current) => new Set(current).add(taskToDelete._id));
+      if (activeTaskId === taskToDelete._id) {
+        setSelectedId(undefined);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("task");
+        window.history.replaceState(null, "", url);
+      }
+      setTaskToDelete(undefined);
+      toast.success(t("deleteSuccess"));
+    } catch {
+      toast.error(t("deleteFailed"));
+    } finally {
+      setDeleting(false);
+    }
   }
 
   function formatTaskDate(value: number) {
@@ -96,7 +134,7 @@ export function CourseTasksTab({
         title={t("heading")}
         olderLabel={t("olderTasks")}
         newerLabel={t("newerTasks")}
-        showNavigation={results.length > 1}
+        showNavigation={visibleTasks.length > 1}
         setApi={setCarouselApi}
       >
         {status === "LoadingFirstPage" ? (
@@ -104,7 +142,7 @@ export function CourseTasksTab({
             <Skeleton className="h-28 w-full rounded-2xl" />
             <Skeleton className="h-72 w-full rounded-2xl" />
           </div>
-        ) : results.length === 0 ? (
+        ) : visibleTasks.length === 0 ? (
           <div className="rounded-2xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
             {t("empty")}
           </div>
@@ -182,6 +220,7 @@ export function CourseTasksTab({
                   taskId={activeTaskId}
                   timeZone={timeZone}
                   onEdit={(task, materials) => setEditor({ task, materials })}
+                  onDelete={setTaskToDelete}
                 />
               ) : (
                 <p className="py-8 text-center text-sm text-muted-foreground">
@@ -206,6 +245,44 @@ export function CourseTasksTab({
           }}
         />
       )}
+      <AlertDialog
+        open={taskToDelete !== undefined}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setTaskToDelete(undefined);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader className="items-center text-center sm:text-center">
+            <span className="flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              <TriangleAlert className="size-5" aria-hidden="true" />
+            </span>
+            <AlertDialogTitle>{t("deleteConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-center">
+                <p>{t("deleteConfirmDescription")}</p>
+                <p className="min-w-0 break-words font-semibold text-foreground [overflow-wrap:anywhere]">
+                  {taskToDelete?.title}
+                </p>
+                <p>{t("deleteConfirmConsequences")}</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col items-stretch justify-center sm:flex-row sm:items-center sm:justify-center">
+            <AlertDialogCancel disabled={deleting} className="w-full sm:w-auto">
+              {t("cancel")}
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={confirmDelete}
+              className="w-full sm:w-auto"
+            >
+              {deleting ? t("deletingTask") : t("deleteTask")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

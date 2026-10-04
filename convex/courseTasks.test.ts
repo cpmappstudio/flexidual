@@ -284,6 +284,163 @@ test("removing a course also removes its tasks, submissions, files, and task not
   });
 });
 
+test("only a course manager can delete a published assignment", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+  });
+  for (const actor of [s.student, s.tutor, s.outsider]) {
+    await expect(
+      actor.mutation(api.courseTasks.remove, { taskId }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+  }
+  expect(await s.teacher.query(api.courseTasks.get, { taskId })).not.toBeNull();
+
+  await s.admin.mutation(api.courseTasks.remove, { taskId });
+  expect(await s.teacher.query(api.courseTasks.get, { taskId })).toBeNull();
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+});
+
+test("a deleted scheduled assignment is never released to students", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Future assignment",
+    availableAt: NOW + DAY,
+  });
+  await s.teacher.mutation(api.courseTasks.remove, { taskId });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  const rows = await s.t.run(async (ctx) => ({
+    task: await ctx.db.get("courseTasks", taskId),
+    recipients: await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) => q.eq("taskId", taskId))
+      .collect(),
+    notifications: await ctx.db
+      .query("systemNotifications")
+      .withIndex("by_taskId", (q) => q.eq("taskId", taskId))
+      .collect(),
+  }));
+  expect(rows).toEqual({ task: null, recipients: [], notifications: [] });
+});
+
+test("deleting one assignment removes its files, submissions, feedback and notices without affecting another", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+    dueAt: NOW + 2 * DAY,
+  });
+  const otherTaskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Geometry",
+  });
+  const storageIds = await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.student),
+      )
+      .unique();
+    const materialStorageId = await ctx.storage.store(new Blob(["guide"]));
+    const submissionStorageId = await ctx.storage.store(new Blob(["answer"]));
+    await ctx.db.insert("courseTaskFiles", {
+      taskId,
+      kind: "material",
+      uploadedBy: s.users.teacher,
+      name: "guide.pdf",
+      contentType: "application/pdf",
+      size: 5,
+      storageId: materialStorageId,
+      state: "active",
+    });
+    await ctx.db.insert("courseTaskFiles", {
+      taskId,
+      recipientId: recipient!._id,
+      kind: "submission",
+      uploadedBy: s.users.student,
+      name: "answer.pdf",
+      contentType: "application/pdf",
+      size: 6,
+      storageId: submissionStorageId,
+      state: "active",
+    });
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: NOW,
+      submissionRevision: 1,
+      feedback: {
+        text: "Well done",
+        authorId: s.users.teacher,
+        createdAt: NOW,
+        updatedAt: NOW,
+        forRevision: 1,
+      },
+    });
+    for (let index = 0; index < 51; index++) {
+      await ctx.db.insert("courseTaskFiles", {
+        taskId,
+        kind: "submission",
+        uploadedBy: s.users.student,
+        name: `staged-${index}.pdf`,
+        contentType: "application/pdf",
+        size: 1,
+        state: "staged",
+        expiresAt: NOW + HOUR,
+      });
+      await ctx.db.insert("systemNotifications", {
+        recipientId: s.users.student,
+        kind: "course_task_reminder",
+        classId: s.classId,
+        taskId,
+        dedupeKey: `task-reminder:${taskId}:${index}`,
+        createdAt: NOW,
+      });
+    }
+    return [materialStorageId, submissionStorageId];
+  });
+
+  await s.teacher.mutation(api.courseTasks.remove, { taskId });
+  expect(await s.student.query(api.courseTasks.get, { taskId })).toBeNull();
+  const page = await s.student.query(api.courseTasks.listForClass, {
+    classId: s.classId,
+    paginationOpts: { cursor: null, numItems: 10 },
+  });
+  expect(page.page.map((task) => task._id)).toEqual([otherTaskId]);
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  const remaining = await s.t.run(async (ctx) => ({
+    course: await ctx.db.get("classes", s.classId),
+    otherTask: await ctx.db.get("courseTasks", otherTaskId),
+    files: await ctx.db
+      .query("courseTaskFiles")
+      .withIndex("by_taskId_and_kind_and_state", (q) => q.eq("taskId", taskId))
+      .collect(),
+    recipients: await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) => q.eq("taskId", taskId))
+      .collect(),
+    notifications: await ctx.db
+      .query("systemNotifications")
+      .withIndex("by_taskId", (q) => q.eq("taskId", taskId))
+      .collect(),
+    otherNotifications: await ctx.db
+      .query("systemNotifications")
+      .withIndex("by_taskId", (q) => q.eq("taskId", otherTaskId))
+      .collect(),
+    storedFiles: await Promise.all(storageIds.map((id) => ctx.storage.get(id))),
+  }));
+  expect(remaining.course).not.toBeNull();
+  expect(remaining.otherTask).not.toBeNull();
+  expect(remaining.otherNotifications).toHaveLength(2);
+  expect(remaining.files).toEqual([]);
+  expect(remaining.recipients).toEqual([]);
+  expect(remaining.notifications).toEqual([]);
+  expect(remaining.storedFiles).toEqual([null, null]);
+  await s.t.mutation(internal.courseTasks.removeDeletedTask, { taskId });
+});
+
 test("lists assignments by availability, with scheduled tasks after visible tasks", async () => {
   const s = await setup();
   const olderId = await s.teacher.mutation(api.courseTasks.create, {

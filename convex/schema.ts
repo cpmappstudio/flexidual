@@ -627,6 +627,7 @@ export default defineSchema({
       "createdAt",
     ])
     .index("by_dedupe_key", ["dedupeKey"])
+    .index("by_taskId", ["taskId"])
     .index("by_recipient_and_kind_and_read_at", [
       "recipientId",
       "kind",

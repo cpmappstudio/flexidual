@@ -116,8 +116,8 @@ export default function ClassDetailPage() {
 
   useEffect(() => {
     const taskId = searchParams.get("task");
+    setLinkedTaskId(taskId ? (taskId as Id<"courseTasks">) : undefined);
     if (taskId) {
-      setLinkedTaskId(taskId as Id<"courseTasks">);
       setActiveTab("tasks");
     }
   }, [searchParams]);

@@ -90,6 +90,7 @@ const testState = vi.hoisted(() => {
     initialLeadership: leadership,
     localParticipant: administrativeParticipant,
     participants: [administrativeParticipant],
+    qrValue: "",
     remoteAdministrativeParticipant,
     remoteStudentParticipant,
     studentParticipant,
@@ -174,7 +175,15 @@ vi.mock("sonner", () => ({
     warning: vi.fn(),
   },
 }));
-vi.mock("qrcode.react", () => ({ QRCodeSVG: () => null }));
+vi.mock("qrcode.react", async () => {
+  const React = await import("react");
+  return {
+    QRCodeSVG: ({ value }: { value: string }) => {
+      testState.qrValue = value;
+      return React.createElement("div", { "data-testid": "companion-qr" });
+    },
+  };
+});
 
 vi.mock("@/components/classroom/use-classroom-layout-state", () => ({
   useClassroomStageViewport: () => ({
@@ -430,6 +439,7 @@ describe("classroom session stability", () => {
     testState.room.isRecording = false;
     testState.room.localParticipant = testState.administrativeParticipant;
     testState.participants = [testState.administrativeParticipant];
+    testState.qrValue = "";
     testState.backendCall.mockResolvedValue(null);
   });
 
@@ -493,6 +503,10 @@ describe("classroom session stability", () => {
     await waitFor(() =>
       expect(screen.getByText("classroom.connectTablet")).toBeTruthy(),
     );
+    const displayedUrl =
+      "http://localhost:3000/classroom/room-1?companion=true";
+    expect(screen.getByText(displayedUrl)).toBeTruthy();
+    expect(testState.qrValue).toBe(displayedUrl);
   });
 
   it("sounds one chime per extension decision, not on countdown updates", async () => {

@@ -583,6 +583,32 @@ describe("reopening audit: supported flows", () => {
     expect(payload.exp - Math.floor(Date.now() / 1_000)).toBe(600);
   });
 
+  test("two companion token requests reuse one fixed LiveKit identity", async () => {
+    const f = await setup();
+    await f.start();
+    const decode = (token: string) =>
+      JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+    const primary = decode(
+      await f.teacher.action(api.livekit.getToken, { roomName: ROOM }),
+    );
+    const firstCompanion = decode(
+      await f.teacher.action(api.livekit.getToken, {
+        roomName: ROOM,
+        isCompanion: true,
+      }),
+    );
+    const secondCompanion = decode(
+      await f.teacher.action(api.livekit.getToken, {
+        roomName: ROOM,
+        isCompanion: true,
+      }),
+    );
+
+    expect(primary.sub).toBe("teacher");
+    expect(firstCompanion.sub).toBe("teacher-companion");
+    expect(secondCompanion.sub).toBe(firstCompanion.sub);
+  });
+
   test("guest messages and attachment downloads follow the reopened occurrence, never the whole course", async () => {
     const f = await setup();
     await f.start();

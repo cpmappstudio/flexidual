@@ -13,6 +13,7 @@ import {
   MessageSquareText,
   Paperclip,
   Pencil,
+  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -63,11 +64,13 @@ export function CourseTaskDetail({
   taskId,
   timeZone,
   onEdit,
+  onDelete,
 }: {
   classId: Id<"classes">;
   taskId: Id<"courseTasks">;
   timeZone: string;
   onEdit: (task: Doc<"courseTasks">, materials: TaskAttachment[]) => void;
+  onDelete: (task: Doc<"courseTasks">) => void;
 }) {
   const t = useTranslations("courseTasks");
   const format = useFormatter();
@@ -117,33 +120,51 @@ export function CourseTaskDetail({
             className="size-12 shrink-0 sm:size-15"
           />
           <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <div className="min-w-0 space-y-1.5">
-                <Badge
-                  className={cn(
-                    "font-semibold",
-                    task.releasedAt !== undefined && status.submissionsOpen
-                      ? "bg-primary/10 text-primary"
-                      : "bg-secondary/15 text-secondary-foreground",
-                  )}
-                >
-                  {publicationStatus}
-                </Badge>
-                <h3 className="break-words text-xl font-bold tracking-tight text-foreground [overflow-wrap:anywhere] sm:text-2xl">
-                  {task.title}
-                </h3>
-              </div>
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1.5 sm:gap-x-4">
+              <Badge
+                className={cn(
+                  "col-start-1 row-start-1 justify-self-start font-semibold",
+                  task.releasedAt !== undefined && status.submissionsOpen
+                    ? "bg-primary/10 text-primary"
+                    : "bg-secondary/15 text-secondary-foreground",
+                )}
+              >
+                {publicationStatus}
+              </Badge>
+              <h3 className="col-start-1 row-start-2 min-w-0 break-words text-xl font-bold tracking-tight text-foreground [overflow-wrap:anywhere] sm:text-2xl">
+                {task.title}
+              </h3>
               {status.canManage && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="shrink-0 self-start text-foreground hover:bg-primary/5 hover:text-primary"
-                  onClick={() => onEdit(task, materials)}
-                >
-                  <Pencil className="size-4 text-primary" />
-                  {t("editTask")}
-                </Button>
+                <div className="col-start-2 row-start-2 flex shrink-0 items-center gap-1 sm:row-start-1">
+                  <Button
+                    type="button"
+                    size="icon-lg"
+                    variant="ghost"
+                    aria-label={t("editTask")}
+                    className="text-foreground hover:bg-primary/5 hover:text-primary sm:h-8 sm:w-auto sm:px-2.5"
+                    onClick={() => onEdit(task, materials)}
+                  >
+                    <Pencil
+                      className="size-4 text-primary"
+                      aria-hidden="true"
+                    />
+                    <span className="hidden sm:inline">{t("editTask")}</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-lg"
+                    variant="ghost"
+                    aria-label={t("deleteTask")}
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-auto sm:px-2.5"
+                    onClick={() => onDelete(task)}
+                  >
+                    <Trash2
+                      className="size-4 text-destructive"
+                      aria-hidden="true"
+                    />
+                    <span className="hidden sm:inline">{t("deleteTask")}</span>
+                  </Button>
+                </div>
               )}
             </div>
           </div>

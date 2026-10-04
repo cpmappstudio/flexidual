@@ -1,6 +1,16 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
+
+const removeTask = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const successToast = vi.hoisted(() => vi.fn());
+const errorToast = vi.hoisted(() => vi.fn());
 
 const tasks = vi.hoisted(() => [
   {
@@ -25,11 +35,16 @@ const tasks = vi.hoisted(() => [
 ]);
 
 vi.mock("convex/react", () => ({
+  useMutation: () => removeTask,
   usePaginatedQuery: () => ({
     results: tasks,
     status: "Exhausted",
     loadMore: vi.fn(),
   }),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: successToast, error: errorToast },
 }));
 
 vi.mock("next-intl", () => ({
@@ -39,8 +54,26 @@ vi.mock("next-intl", () => ({
 }));
 
 vi.mock("@/components/teaching/classes/course-task-detail", () => ({
-  CourseTaskDetail: ({ taskId }: { taskId: string }) => (
-    <div>selected:{taskId}</div>
+  CourseTaskDetail: ({
+    taskId,
+    onDelete,
+  }: {
+    taskId: string;
+    onDelete: (task: Doc<"courseTasks">) => void;
+  }) => (
+    <div>
+      selected:{taskId}
+      <button
+        type="button"
+        onClick={() =>
+          onDelete(
+            tasks.find((task) => task._id === taskId) as Doc<"courseTasks">,
+          )
+        }
+      >
+        requestDelete
+      </button>
+    </div>
   ),
 }));
 
@@ -51,6 +84,10 @@ vi.mock("@/components/teaching/classes/course-task-editor", () => ({
 import { CourseTasksTab } from "@/components/teaching/classes/course-tasks-tab";
 
 beforeEach(() => {
+  removeTask.mockClear();
+  successToast.mockClear();
+  errorToast.mockClear();
+  window.history.replaceState(null, "", "/");
   vi.stubGlobal(
     "matchMedia",
     vi.fn().mockImplementation((query: string) => ({
@@ -127,5 +164,57 @@ test("resets a deep-linked selection when entering assignments manually", () => 
   expect(screen.getByText("selected:earlier")).toBeTruthy();
 
   rerender(<CourseTasksTab {...props} />);
+  expect(screen.getByText("selected:scheduled")).toBeTruthy();
+});
+
+test("requires confirmation before deleting and selects another assignment afterward", async () => {
+  window.history.replaceState(null, "", "/?task=scheduled");
+  render(
+    <CourseTasksTab
+      classId={"class-id" as Id<"classes">}
+      canManage
+      timeZone="UTC"
+      initialTaskId={"scheduled" as Id<"courseTasks">}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "requestDelete" }));
+  const dialog = screen.getByRole("alertdialog");
+  expect(dialog).toBeTruthy();
+  const footer = dialog.querySelector('[data-slot="alert-dialog-footer"]');
+  expect(footer?.classList.contains("flex-col")).toBe(true);
+  expect(footer?.classList.contains("sm:flex-row")).toBe(true);
+  expect(
+    screen.getByText("Scheduled assignment", { selector: "p" }),
+  ).toBeTruthy();
+  expect(screen.getByText("deleteConfirmConsequences")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "cancel" }));
+  expect(removeTask).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "requestDelete" }));
+  fireEvent.click(screen.getByRole("button", { name: "deleteTask" }));
+  await waitFor(() =>
+    expect(removeTask).toHaveBeenCalledWith({ taskId: "scheduled" }),
+  );
+  await waitFor(() => expect(screen.getByText("selected:latest")).toBeTruthy());
+  expect(window.location.search).toBe("");
+  expect(successToast).toHaveBeenCalledWith("deleteSuccess");
+  expect(screen.queryByText("Scheduled assignment")).toBeNull();
+});
+
+test("keeps the confirmation open when deletion fails", async () => {
+  removeTask.mockRejectedValueOnce(new Error("network"));
+  render(
+    <CourseTasksTab
+      classId={"class-id" as Id<"classes">}
+      canManage
+      timeZone="UTC"
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "requestDelete" }));
+  fireEvent.click(screen.getByRole("button", { name: "deleteTask" }));
+  await waitFor(() => expect(errorToast).toHaveBeenCalledWith("deleteFailed"));
+  expect(screen.getByRole("alertdialog")).toBeTruthy();
   expect(screen.getByText("selected:scheduled")).toBeTruthy();
 });
