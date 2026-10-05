@@ -5,6 +5,7 @@ import {
   useRestoreClassroomForDialog,
 } from "./classroom-presentation";
 import { ClassroomVideoPipSource } from "./classroom-video-pip-source";
+import { reportWhiteboardDiagnostic } from "@/lib/error-tracking";
 
 import {
   useLocalParticipant,
@@ -372,6 +373,13 @@ export function StudentClassroomUI({
         }
 
         if (senderIsAuthority && msg.type === "WHITEBOARD_STATE") {
+          reportWhiteboardDiagnostic({
+            operation: "whiteboard.state_received",
+            live_room: room.name,
+            active: msg.active === true,
+            attempt_id:
+              typeof msg.attemptId === "string" ? msg.attemptId : undefined,
+          });
           setIsWhiteboardActive(msg.active);
           if (msg.active) {
             toast.success(

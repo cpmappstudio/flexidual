@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   props: {} as ExcalidrawProps,
   save: vi.fn(),
   otherMutation: vi.fn(),
+  reportError: vi.fn(),
+  reportDiagnostic: vi.fn(),
   room: {
     name: "test-live-room",
     state: "connected",
@@ -17,6 +19,10 @@ const state = vi.hoisted(() => ({
     off: vi.fn(),
     localParticipant: { publishData: vi.fn() },
   },
+}));
+vi.mock("@/lib/error-tracking", () => ({
+  reportRuntimeError: state.reportError,
+  reportWhiteboardDiagnostic: state.reportDiagnostic,
 }));
 vi.mock("next/dynamic", () => ({
   default: () => (props: ExcalidrawProps) => {
@@ -134,4 +140,26 @@ test("a failed save can retry the same scene on the next change", async () => {
   change(elements);
   await flush();
   expect(state.save).toHaveBeenCalledTimes(2);
+  expect(state.reportError).toHaveBeenCalledWith(expect.any(Error), {
+    operation: "whiteboard.scene_save",
+    live_room: "test-live-room",
+    connection_state: "connected",
+  });
+});
+
+test("reports stalled readiness once, without logging strokes or surviving unmount", async () => {
+  const view = render(<SharedWhiteboard roomName="test-room" />);
+  expect(state.reportDiagnostic).toHaveBeenCalledWith({
+    operation: "whiteboard.mount",
+    live_room: "test-live-room",
+    readonly: false,
+  });
+  await act(async () => vi.advanceTimersByTime(20_000));
+  expect(state.reportError).toHaveBeenCalledTimes(1);
+  expect(state.reportError.mock.calls[0][1].operation).toBe(
+    "whiteboard.ready_timeout",
+  );
+  view.unmount();
+  await act(async () => vi.advanceTimersByTime(60_000));
+  expect(state.reportError).toHaveBeenCalledTimes(1);
 });

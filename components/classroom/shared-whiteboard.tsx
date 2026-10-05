@@ -22,6 +22,10 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
 import { cn } from "@/lib/utils";
+import {
+  reportRuntimeError,
+  reportWhiteboardDiagnostic,
+} from "@/lib/error-tracking";
 
 // Derived from the onChange signature — avoids importing the unexported OrderedExcalidrawElement
 type ExcalidrawElements = Parameters<
@@ -287,6 +291,23 @@ export function SharedWhiteboard({
   const onReadyRef = useRef(onReady);
   const hasSignaledReadyRef = useRef(false);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
+  useEffect(() => {
+    reportWhiteboardDiagnostic({
+      operation: "whiteboard.mount",
+      live_room: room.name,
+      readonly: isReadonly,
+    });
+    const timeout = setTimeout(() => {
+      if (!hasSignaledReadyRef.current)
+        reportRuntimeError(new Error("Whiteboard readiness timed out"), {
+          operation: "whiteboard.ready_timeout",
+          live_room: room.name,
+          readonly: isReadonly,
+          connection_state: room.state,
+        });
+    }, 20_000);
+    return () => clearTimeout(timeout);
+  }, [room, isReadonly]);
   const suppressRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSceneSaveRef = useRef<(() => void) | null>(null);
@@ -477,6 +498,10 @@ export function SharedWhiteboard({
         persistFileRefs();
       } catch (err) {
         console.error("[Whiteboard] Image upload failed:", err);
+        reportRuntimeError(err, {
+          operation: "whiteboard.image_upload",
+          live_room: room.name,
+        });
         sentFileIdsRef.current.delete(file.id);
       }
     },
@@ -569,11 +594,15 @@ export function SharedWhiteboard({
           }
         } catch (err) {
           console.error("[Whiteboard] Failed to load image from Convex:", err);
+          reportRuntimeError(err, {
+            operation: "whiteboard.image_load",
+            live_room: room.name,
+          });
           addedFileIdsRef.current.delete(fileId); // allow retry on next render
         }
       })();
     }
-  }, [isReadonly, sceneData?.fileRefs]);
+  }, [isReadonly, sceneData?.fileRefs, room.name]);
 
   useEffect(() => {
     if (
@@ -587,11 +616,16 @@ export function SharedWhiteboard({
     const readyTimer = setTimeout(() => {
       if (hasSignaledReadyRef.current) return;
       hasSignaledReadyRef.current = true;
+      reportWhiteboardDiagnostic({
+        operation: "whiteboard.ready",
+        live_room: room.name,
+        readonly: isReadonly,
+      });
       onReadyRef.current?.();
     }, 0);
 
     return () => clearTimeout(readyTimer);
-  }, [isCanvasReady, isReadonly, sceneData]);
+  }, [isCanvasReady, isReadonly, sceneData, room.name]);
 
   const handleChange = useCallback(
     (elements: ExcalidrawElements, appState: AppState, files: BinaryFiles) => {
@@ -648,6 +682,11 @@ export function SharedWhiteboard({
             if (lastSceneRevisionRef.current === revision)
               lastSceneRevisionRef.current = null;
             console.error("[Whiteboard] Scene save failed:", error);
+            reportRuntimeError(error, {
+              operation: "whiteboard.scene_save",
+              live_room: room.name,
+              connection_state: room.state,
+            });
           });
           persistScene();
         };

@@ -33,6 +33,7 @@ import { useClassroomToken } from "@/hooks/use-classroom-token";
 import { SessionCloseoutDialog } from "./session-closeout-dialog";
 import { useClassroomPresentation } from "./classroom-presentation";
 import { toast } from "sonner";
+import { reportRuntimeError } from "@/lib/error-tracking";
 import { SessionClosureProgress } from "./session-closure-progress";
 import {
   AlertDialog,
@@ -406,12 +407,16 @@ export default function FlexiClassroom({
   const handleRoomError = useCallback(
     (roomError: Error) => {
       console.error("LiveKit connection error:", roomError);
+      reportRuntimeError(roomError, {
+        operation: "classroom.connect",
+        live_room: sessionStatus?.liveRoomName,
+      });
       setRoomErrorState({
         scopeKey: connectionScope,
         message: t("classroom.connectionError"),
       });
     },
-    [connectionScope, t],
+    [connectionScope, t, sessionStatus?.liveRoomName],
   );
 
   const handleDisconnect = useCallback(

@@ -33,6 +33,7 @@ vi.mock("@/hooks/use-staff-access", () => ({
 }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/en/cpca-main/catalog",
+  useParams: () => ({ orgSlug: "cpca-main" }),
   notFound: () => {
     throw new Error("Unexpected notFound");
   },

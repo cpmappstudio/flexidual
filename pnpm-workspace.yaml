@@ -1,5 +1,6 @@
 allowBuilds:
   '@clerk/shared': true
+  '@posthog/cli': true
   '@tailwindcss/oxide': true
   core-js: false
   esbuild: true

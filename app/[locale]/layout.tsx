@@ -10,6 +10,7 @@ import { routing } from '@/i18n/routing';
 import { enUS, esES, ptBR } from '@clerk/localizations';
 import { AlertProvider } from "@/components/providers/alert-provider";
 import { PostHogBootstrap } from "@/components/posthog-bootstrap";
+import { ErrorTrackingIdentity } from "@/components/error-tracking-bootstrap";
 
 export default async function LocaleLayout({
     children,
@@ -46,6 +47,7 @@ export default async function LocaleLayout({
             <ConvexClientProvider>
                 <NextIntlClientProvider locale={locale} messages={messages}>
                     <PostHogBootstrap />
+                    <ErrorTrackingIdentity />
                     <AlertProvider>
                         {children}
                     </AlertProvider>

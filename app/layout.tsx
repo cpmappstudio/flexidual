@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Nunito } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { ErrorTrackingBootstrap } from "@/components/error-tracking-bootstrap";
 import "./globals.css";
 
 const nunito = Nunito({
@@ -53,6 +54,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="antialiased">
+        <ErrorTrackingBootstrap />
         {children}
         <Toaster />
       </body>

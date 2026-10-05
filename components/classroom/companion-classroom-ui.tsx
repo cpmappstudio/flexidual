@@ -22,6 +22,10 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { FullscreenButton } from "./fullscreen-button";
+import {
+  reportRuntimeError,
+  reportWhiteboardDiagnostic,
+} from "@/lib/error-tracking";
 
 /** localStorage key that survives companion page refreshes while the session is live. */
 const WB_PRESENTING_KEY = "wb_presenting_";
@@ -100,6 +104,11 @@ export function CompanionClassroomUI({
     } catch (err) {
       // DataChannel was not ready — reset so the Reconnected event can trigger a retry
       hasRestoredRef.current = false;
+      reportRuntimeError(err, {
+        operation: "whiteboard.restore",
+        live_room: room.name,
+        connection_state: room.state,
+      });
       console.error(
         "[Companion] Failed to restore broadcast state after refresh:",
         err,
@@ -167,6 +176,11 @@ export function CompanionClassroomUI({
         );
         // Scene and file refs are delivered to the late joiner via Convex reactive query.
       } catch (err) {
+        reportRuntimeError(err, {
+          operation: "whiteboard.late_join",
+          live_room: room.name,
+          connection_state: room.state,
+        });
         console.error("[Companion] Failed to sync late joiner:", err);
       }
     };
@@ -178,7 +192,22 @@ export function CompanionClassroomUI({
 
   // Issue 2: Guard against publishing when the WebRTC connection isn't ready
   const toggleWhiteboard = async () => {
+    const attempt_id = globalThis.crypto?.randomUUID?.();
+    const context = {
+      live_room: room.name,
+      connection_state: room.state,
+      active: !isBroadcasting,
+      attempt_id,
+    };
+    reportWhiteboardDiagnostic({
+      ...context,
+      operation: "whiteboard.share_requested",
+    });
     if (room.state !== ConnectionState.Connected) {
+      reportWhiteboardDiagnostic({
+        ...context,
+        operation: "whiteboard.connection_not_ready",
+      });
       toast.error(
         t("classroom.connectionNotReady") ||
           "Connection not ready — please try again.",
@@ -194,13 +223,16 @@ export function CompanionClassroomUI({
           JSON.stringify({
             type: "WHITEBOARD_STATE",
             active: newState,
+            attemptId: attempt_id,
             companionId: localParticipant.identity,
           }),
         ),
         { reliable: true },
       );
-      // When activating, immediately broadcast the full current scene so students
-      // who are already in the room see existing content without drawing anything new
+      reportWhiteboardDiagnostic({
+        ...context,
+        operation: "whiteboard.state_published",
+      });
       // Scene is already in Convex — no DataChannel publish needed when activating.
       if (newState) {
         toast.success(
@@ -208,6 +240,10 @@ export function CompanionClassroomUI({
         );
       }
     } catch (err) {
+      reportRuntimeError(err, {
+        ...context,
+        operation: "whiteboard.publish_failed",
+      });
       console.error("[Companion] toggleWhiteboard failed:", err);
       setIsBroadcasting(!newState); // revert optimistic update
       toast.error(

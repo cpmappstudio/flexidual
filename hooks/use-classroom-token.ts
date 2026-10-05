@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { reportRuntimeError } from "@/lib/error-tracking";
 
 export type ClassroomTokenError = "not-started" | "connection";
 
@@ -73,6 +74,11 @@ export function useClassroomToken({
         console.error("Error fetching classroom token:", requestError);
         const message =
           requestError instanceof Error ? requestError.message : "";
+        if (!message.includes("not started"))
+          reportRuntimeError(requestError, {
+            operation: "classroom.token",
+            live_room: activationId,
+          });
         setState({
           scopeKey,
           token: "",
