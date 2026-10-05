@@ -2,12 +2,21 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Clock } from "lucide-react";
+import { Clock, Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
 import { isLiveClassSession, type ClassSessionType } from "@/lib/class-session";
 import { cn } from "@/lib/utils";
+
+const encouragementKeys = [
+  "smallSteps",
+  "curiosity",
+  "practice",
+  "ownPace",
+  "explore",
+  "recharge",
+] as const;
 
 export type NextClassPanelItem = {
   id: string;
@@ -105,7 +114,14 @@ export function NextClassPanel({
 }) {
   const t = useTranslations();
   const [internalTime, setInternalTime] = useState(Date.now);
+  const [encouragementIndex, setEncouragementIndex] = useState(0);
   const hasNextClass = Boolean(nextClass);
+
+  useEffect(() => {
+    if (!hasNextClass) {
+      setEncouragementIndex(Math.floor(Math.random() * encouragementKeys.length));
+    }
+  }, [hasNextClass]);
 
   useEffect(() => {
     if (!hasNextClass || currentTime !== undefined) return;
@@ -178,6 +194,17 @@ export function NextClassPanel({
             <h3 className="mt-3 text-balance text-lg font-bold leading-tight text-foreground sm:text-xl xl:mt-4 xl:font-normal">
               {nextClass ? nextClass.title : t("student.today.noClasses")}
             </h3>
+            {!nextClass && (
+              <div className="mt-4 border-t border-border/60 pt-4">
+                <Sparkles
+                  className="mx-auto mb-2 size-5 text-warning-foreground"
+                  aria-hidden="true"
+                />
+                <p className="text-balance text-sm leading-relaxed text-muted-foreground">
+                  {t(`student.today.encouragement.${encouragementKeys[encouragementIndex]}`)}
+                </p>
+              </div>
+            )}
             {nextClass && action}
           </div>
           {children}

@@ -1291,6 +1291,14 @@
     "school": "Escuela",
     "today": {
       "noClasses": "No tienes clases hoy",
+      "encouragement": {
+        "smallSteps": "Un poquito de aprendizaje hoy hace la diferencia. ¡Paso a paso!",
+        "curiosity": "¿Te ronda alguna pregunta? Hoy es un buen día para explorarla.",
+        "practice": "Un repaso corto puede ayudarte a entender mejor. ¡Anímate!",
+        "ownPace": "Sin prisa. Elige algo que te guste y sigue aprendiendo a tu ritmo.",
+        "explore": "Siempre hay algo nuevo por descubrir. ¡Échale un vistazo a tus cursos!",
+        "recharge": "Descansar también ayuda a aprender. ¡Recarga energías y vuelve con curiosidad!"
+      },
       "laterToday": "Más tarde hoy",
       "doneForToday": "Eso es todo por hoy",
       "viewCalendar": "Ver mi calendario"

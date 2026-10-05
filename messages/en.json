@@ -1291,6 +1291,14 @@
     "school": "School",
     "today": {
       "noClasses": "No classes today",
+      "encouragement": {
+        "smallSteps": "A little learning today goes a long way. One step at a time!",
+        "curiosity": "Got a question on your mind? Today is a great day to explore it.",
+        "practice": "A quick review can make things click. Give it a go!",
+        "ownPace": "No rush. Pick something you enjoy and keep learning at your own pace.",
+        "explore": "There is always something new to discover. Take a peek at your courses!",
+        "recharge": "Taking a break helps you learn, too. Recharge and come back curious!"
+      },
       "laterToday": "Later today",
       "doneForToday": "That is all for today",
       "viewCalendar": "View my calendar"
