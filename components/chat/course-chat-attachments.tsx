@@ -14,6 +14,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { FilePreview } from "@/components/file-preview";
 import {
   Attachment,
   AttachmentAction,
@@ -24,12 +25,6 @@ import {
   AttachmentTitle,
   AttachmentTrigger,
 } from "@/components/ui/attachment";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { chatTextParts } from "@/lib/chat-attachments";
 
 export async function optimizeChatImage(file: File): Promise<File> {
@@ -211,6 +206,7 @@ export function ChatAttachment({
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const isImage = file.contentType.startsWith("image/");
   useEffect(() => {
     if (!isImage || !ref.current) return;
@@ -278,38 +274,22 @@ export function ChatAttachment({
             className="aspect-[4/3] rounded-md bg-background/20 text-inherit"
           >
             {url && !failed ? (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <button
-                    type="button"
-                    className="h-full w-full"
-                    aria-label={t("openAttachment", { name: file.name })}
-                  >
-                    <Image
-                      unoptimized
-                      width={960}
-                      height={720}
-                      src={url}
-                      alt={file.name}
-                      onError={() => setFailed(true)}
-                      className="h-full w-full object-contain"
-                    />
-                  </button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-3xl">
-                  <DialogTitle className="break-all text-sm">
-                    {file.name}
-                  </DialogTitle>
-                  <Image
-                    unoptimized
-                    width={960}
-                    height={720}
-                    src={url}
-                    alt={file.name}
-                    className="max-h-[75dvh] w-full object-contain"
-                  />
-                </DialogContent>
-              </Dialog>
+              <button
+                type="button"
+                className="h-full w-full"
+                onClick={() => setPreviewOpen(true)}
+                aria-label={t("openAttachment", { name: file.name })}
+              >
+                <Image
+                  unoptimized
+                  width={960}
+                  height={720}
+                  src={url}
+                  alt={file.name}
+                  onError={() => setFailed(true)}
+                  className="h-full w-full object-contain"
+                />
+              </button>
             ) : failed ? (
               <Button
                 type="button"
@@ -346,9 +326,8 @@ export function ChatAttachment({
             </AttachmentDescription>
           </AttachmentContent>
           <AttachmentTrigger
-            disabled={downloading}
-            onClick={() => void download()}
-            aria-label={t("downloadAttachment", { name: file.name })}
+            onClick={() => setPreviewOpen(true)}
+            aria-label={t("openAttachment", { name: file.name })}
           />
           <AttachmentActions>
             <AttachmentAction
@@ -368,6 +347,16 @@ export function ChatAttachment({
             </AttachmentAction>
           </AttachmentActions>
         </Attachment>
+      )}
+      {previewOpen && (
+        <FilePreview
+          file={file}
+          request={request}
+          initialUrl={isImage ? url : undefined}
+          onClose={() => setPreviewOpen(false)}
+          onDownload={() => void download()}
+          downloading={downloading}
+        />
       )}
     </div>
   );
