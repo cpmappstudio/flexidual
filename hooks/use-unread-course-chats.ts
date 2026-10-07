@@ -20,17 +20,17 @@ export function useUnreadCourseChats() {
   useEffect(() => {
     if (status === "CanLoadMore") loadMore(50);
   }, [status, loadMore]);
-  return new Map(
-    results
-      .filter(
-        (item) =>
-          context &&
-          (context.type === "campus"
-            ? item.campusId === context._id
-            : context.type === "school"
-              ? item.schoolId === context._id
-              : true),
-      )
-      .map((item) => [item.classId, item.count]),
-  );
+  const counts = new Map<(typeof results)[number]["classId"], number>();
+  for (const item of results.filter(
+    (item) =>
+      context &&
+      (context.type === "campus"
+        ? item.campusId === context._id
+        : context.type === "school"
+          ? item.schoolId === context._id
+          : true),
+  )) {
+    counts.set(item.classId, (counts.get(item.classId) ?? 0) + item.count);
+  }
+  return counts;
 }

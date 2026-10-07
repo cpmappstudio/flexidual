@@ -278,6 +278,9 @@ export default defineSchema({
     availableAt: v.optional(v.number()),
     availabilitySortAt: v.optional(v.number()),
     releasedAt: v.optional(v.number()),
+    announcementMessageId: v.optional(
+      v.union(v.id("courseChatMessages"), v.null()),
+    ),
     dueAt: v.optional(v.number()),
     maxPublishedDueAt: v.optional(v.number()),
     allowLateSubmissions: v.boolean(),
@@ -285,6 +288,7 @@ export default defineSchema({
     manuallyClosedBy: v.optional(v.id("users")),
     reminderScheduledId: v.optional(v.id("_scheduled_functions")),
     reminderGeneration: v.optional(v.number()),
+    reminderPublishedGeneration: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_classId_and_releasedAt", ["classId", "releasedAt"])
@@ -344,13 +348,27 @@ export default defineSchema({
   courseChatMessages: defineTable({
     classId: v.id("classes"),
     scheduleId: v.optional(v.id("classSchedule")),
-    authorId: v.id("users"),
+    authorId: v.optional(v.id("users")),
     body: v.string(),
+    event: v.optional(
+      v.object({
+        kind: v.union(
+          v.literal("course_task"),
+          v.literal("course_task_reminder"),
+        ),
+        taskId: v.id("courseTasks"),
+        title: v.string(),
+        reminderDueAt: v.optional(v.number()),
+        reminderGeneration: v.optional(v.number()),
+      }),
+    ),
+    eventKey: v.optional(v.string()),
     linksEnabled: v.optional(v.boolean()),
     attachmentIds: v.optional(v.array(v.id("courseChatAttachments"))),
     pinnedAt: v.optional(v.number()),
   })
     .index("by_class", ["classId"])
+    .index("by_eventKey", ["eventKey"])
     .index("by_classId_and_scheduleId", ["classId", "scheduleId"])
     .index("by_classId_and_pinnedAt", ["classId", "pinnedAt"]),
 
@@ -594,7 +612,9 @@ export default defineSchema({
     campusId: v.optional(v.id("campuses")),
     classId: v.optional(v.id("classes")),
     taskId: v.optional(v.id("courseTasks")),
+    messageId: v.optional(v.id("courseChatMessages")),
     taskTitle: v.optional(v.string()),
+    taskReminderGeneration: v.optional(v.number()),
     scheduleId: v.optional(v.id("classSchedule")),
     recordingId: v.optional(v.id("recordings")),
     cancellationEventId: v.optional(v.id("classCancellationEvents")),
@@ -628,6 +648,12 @@ export default defineSchema({
     ])
     .index("by_dedupe_key", ["dedupeKey"])
     .index("by_taskId", ["taskId"])
+    .index("by_recipientId_and_classId_and_readAt_and_createdAt", [
+      "recipientId",
+      "classId",
+      "readAt",
+      "createdAt",
+    ])
     .index("by_recipient_and_kind_and_read_at", [
       "recipientId",
       "kind",

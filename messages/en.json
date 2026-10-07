@@ -870,6 +870,18 @@
     "closeParticipantsPanel": "Close participants panel",
     "tutor": "Tutor",
     "classChatDescription": "Messages in this chat are visible to the whole class.",
+    "courseEvents": {
+      "sender": "Flexidual",
+      "taskPublished": "New mission! Your next assignment is ready. Let's get started 🚀",
+      "taskReminder": "A little reminder: if you haven't submitted this assignment yet, there's still time to get it ready!",
+      "openTask": "View assignment",
+      "deadline": "Due: {date}",
+      "noDeadline": "No deadline — go at your own pace.",
+      "unavailable": "This assignment is no longer available to you.",
+      "selectedMessage": "Selected message",
+      "closeSelectedMessage": "Close selected message",
+      "messageUnavailable": "This message is no longer available."
+    },
     "openInteractionPanel": "Open classroom panel",
     "closeInteractionPanel": "Close classroom panel",
     "chatPlaceholder": "Write a message...",

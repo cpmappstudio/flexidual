@@ -5,6 +5,7 @@ import {
   CourseChatMessages,
 } from "@/components/chat/course-chat";
 import { CourseChatParticipants } from "@/components/chat/course-chat-participants";
+import { CourseChatMessage } from "@/components/chat/course-chat-message";
 import { CourseChatPins } from "@/components/chat/course-chat-pins";
 import { CourseChatUploadProvider } from "@/components/chat/course-chat-pending";
 import { ClassroomHeader } from "@/components/classroom/classroom-header";
@@ -28,16 +29,20 @@ import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { Link } from "@/i18n/navigation";
 import { findLiveStandardClassroom } from "@/lib/course-classroom";
 import { useConvexAuth, useQuery } from "convex/react";
-import { BookOpenText } from "lucide-react";
+import { BookOpenText, X } from "lucide-react";
 import Image from "next/image";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 
 interface CourseChatPageProps {
   classId: Id<"classes">;
+  selectedMessageId?: string;
 }
 
-export function CourseChatPage({ classId }: CourseChatPageProps) {
+export function CourseChatPage({
+  classId,
+  selectedMessageId,
+}: CourseChatPageProps) {
   const t = useTranslations("classroom");
   const dashboardT = useTranslations("dashboard");
   const basePath = useOrgBasePath();
@@ -193,6 +198,12 @@ export function CourseChatPage({ classId }: CourseChatPageProps) {
           />
 
           <ClassroomLayoutStage>
+            {selectedMessageId && (
+              <SelectedCourseMessage
+                classId={classId}
+                messageId={selectedMessageId}
+              />
+            )}
             <CourseChatMessages courseId={classId} />
           </ClassroomLayoutStage>
 
@@ -211,5 +222,65 @@ export function CourseChatPage({ classId }: CourseChatPageProps) {
         </ClassroomLayout>
       </CourseChatUploadProvider>
     </main>
+  );
+}
+
+function SelectedCourseMessage({
+  classId,
+  messageId,
+}: {
+  classId: Id<"classes">;
+  messageId: string;
+}) {
+  const t = useTranslations("classroom.courseEvents");
+  const format = useFormatter();
+  const basePath = useOrgBasePath();
+  const { isAuthenticated } = useConvexAuth();
+  const message = useQuery(
+    api.courseChatMessages.get,
+    isAuthenticated ? { messageId } : "skip",
+  );
+  return (
+    <section
+      aria-label={t("selectedMessage")}
+      className="relative max-h-[45%] shrink-0 overflow-y-auto border-b bg-violet-50/50 p-3 pr-12 dark:bg-violet-950/20"
+    >
+      <Button
+        asChild
+        size="icon-sm"
+        variant="ghost"
+        className="absolute top-2 right-2"
+      >
+        <Link
+          href={`${basePath}/chats/${classId}`}
+          aria-label={t("closeSelectedMessage")}
+        >
+          <X className="size-4" />
+        </Link>
+      </Button>
+      <p className="mb-2 text-xs font-medium text-muted-foreground">
+        {t("selectedMessage")}
+        {message?.classId === classId && (
+          <time
+            className="ml-2 font-normal"
+            dateTime={new Date(message._creationTime).toISOString()}
+          >
+            {format.dateTime(message._creationTime, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </time>
+        )}
+      </p>
+      {message === undefined ? (
+        <Skeleton className="h-24 w-full max-w-sm" />
+      ) : message?.classId === classId ? (
+        <CourseChatMessage message={message} />
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {t("messageUnavailable")}
+        </p>
+      )}
+    </section>
   );
 }

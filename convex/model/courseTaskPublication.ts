@@ -3,8 +3,11 @@ import type { MutationCtx } from "../_generated/server";
 import { canSubmitCourseTask } from "./courseTaskAccess";
 import { ensureCourseTaskRecipient } from "./courseTaskRecipients";
 import { listClassStudentIds } from "./enrollments";
-import { getClassNotificationContext } from "./systemNotificationEvents";
-import { createSystemNotification } from "./systemNotifications";
+import {
+  prepareCourseTaskEvent,
+  publishCourseTaskEvent,
+  deliverCourseTaskEvent,
+} from "./courseChatEvents";
 import { refreshCourseTaskReminder } from "./courseTaskReminders";
 
 async function assignTaskToStudents(
@@ -12,23 +15,16 @@ async function assignTaskToStudents(
   task: Doc<"courseTasks">,
   course: Doc<"classes">,
   studentIds: Iterable<Id<"users">>,
+  notify = true,
 ) {
-  const context = await getClassNotificationContext(ctx, course);
+  const event = notify
+    ? await prepareCourseTaskEvent(ctx, task, course, "course_task")
+    : null;
   for (const studentId of new Set(studentIds)) {
     const student = await ctx.db.get("users", studentId);
     if (!student?.isActive) continue;
     await ensureCourseTaskRecipient(ctx, task._id, studentId);
-    await createSystemNotification(ctx, {
-      recipientId: studentId,
-      kind: "course_task",
-      actorId: task.createdBy,
-      classId: course._id,
-      className: course.name,
-      taskId: task._id,
-      taskTitle: task.title,
-      ...context,
-      dedupeKey: `course_task:assigned:${task._id}:${studentId}`,
-    });
+    if (event) await deliverCourseTaskEvent(ctx, event, course, studentId);
   }
 }
 
@@ -49,7 +45,14 @@ export async function releaseCourseTask(
     releasedAt: now,
     availabilitySortAt: now,
   });
-  await assignCurrentStudentsToTask(ctx, releasedTask, course);
+  await assignCurrentStudentsToTask(ctx, releasedTask, course, false);
+  const event = await prepareCourseTaskEvent(
+    ctx,
+    releasedTask,
+    course,
+    "course_task",
+  );
+  if (event) await publishCourseTaskEvent(ctx, event);
   await refreshCourseTaskReminder(ctx, releasedTask, course, now);
   return true;
 }
@@ -58,12 +61,14 @@ export async function assignCurrentStudentsToTask(
   ctx: MutationCtx,
   task: Doc<"courseTasks">,
   course: Doc<"classes">,
+  notify = true,
 ) {
   await assignTaskToStudents(
     ctx,
     task,
     course,
     await listClassStudentIds(ctx, course),
+    notify,
   );
 }
 

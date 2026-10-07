@@ -48,6 +48,7 @@ import type * as model_classCancellationEvents from "../model/classCancellationE
 import type * as model_classType from "../model/classType.js";
 import type * as model_courseChatAccess from "../model/courseChatAccess.js";
 import type * as model_courseChatAttachments from "../model/courseChatAttachments.js";
+import type * as model_courseChatEvents from "../model/courseChatEvents.js";
 import type * as model_courseProgress from "../model/courseProgress.js";
 import type * as model_courseSchedule from "../model/courseSchedule.js";
 import type * as model_courseScheduleShares from "../model/courseScheduleShares.js";
@@ -144,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "model/classType": typeof model_classType;
   "model/courseChatAccess": typeof model_courseChatAccess;
   "model/courseChatAttachments": typeof model_courseChatAttachments;
+  "model/courseChatEvents": typeof model_courseChatEvents;
   "model/courseProgress": typeof model_courseProgress;
   "model/courseSchedule": typeof model_courseSchedule;
   "model/courseScheduleShares": typeof model_courseScheduleShares;

@@ -5,6 +5,8 @@ import { CourseChatMessages } from "@/components/chat/course-chat";
 import { UnreadIndicator } from "@/components/notifications/unread-indicator";
 import type { Id } from "@/convex/_generated/dataModel";
 
+vi.mock("@/i18n/navigation", () => ({ Link: () => null }));
+
 const state = vi.hoisted(() => ({
   visibleMessageIds: [] as string[],
   latestId: "message-1",

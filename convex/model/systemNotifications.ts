@@ -33,7 +33,9 @@ export type SystemNotificationInput = {
   campusId?: Id<"campuses">;
   classId?: Id<"classes">;
   taskId?: Id<"courseTasks">;
+  messageId?: Id<"courseChatMessages">;
   taskTitle?: string;
+  taskReminderGeneration?: number;
   scheduleId?: Id<"classSchedule">;
   recordingId?: Id<"recordings">;
   cancellationEventId?: Id<"classCancellationEvents">;
@@ -109,6 +111,38 @@ async function getVisibleNotification(
       notification.recipientId,
     );
     if (access.kind !== "student") return null;
+    let reminderGeneration = notification.taskReminderGeneration;
+    if (notification.messageId) {
+      const message = await ctx.db.get(
+        "courseChatMessages",
+        notification.messageId,
+      );
+      if (
+        !message?.event ||
+        message.classId !== task.classId ||
+        message.event.taskId !== task._id ||
+        message.event.kind !== notification.kind ||
+        access.course.chatArchivedAt !== undefined ||
+        message._creationTime <=
+          (access.course.chatNotificationsClearedThrough ?? 0)
+      )
+        return null;
+      reminderGeneration = message.event.reminderGeneration;
+      if (
+        notification.kind === "course_task_reminder" &&
+        task.dueAt !== message.event.reminderDueAt
+      )
+        return null;
+    }
+    if (
+      notification.kind === "course_task_reminder" &&
+      reminderGeneration !== undefined &&
+      (access.recipient.submittedAt !== undefined ||
+        !access.course.isActive ||
+        task.manuallyClosedAt !== undefined ||
+        task.reminderGeneration !== reminderGeneration)
+    )
+      return null;
     if (!includeTaskDetails) return notification;
     const timeZone =
       task.dueAt === undefined

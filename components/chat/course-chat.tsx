@@ -145,6 +145,8 @@ export function CourseChatMessages({
       const startsGroup =
         index === 0 ||
         startsDay ||
+        Boolean(message.event) ||
+        Boolean(chronological[index - 1]?.event) ||
         message.authorId !== chronological[index - 1].authorId ||
         groupSize === MAX_MESSAGE_GROUP_SIZE;
       groupSize = startsGroup ? 1 : groupSize + 1;

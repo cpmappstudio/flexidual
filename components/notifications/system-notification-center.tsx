@@ -30,6 +30,7 @@ import { isNotificationInFeed } from "@/lib/notification-retention";
 import { requestSurveyOpen } from "@/lib/survey-navigation";
 import { cn } from "@/lib/utils";
 import { UnreadIndicator } from "./unread-indicator";
+import { CourseEventAvatar } from "@/components/chat/course-event";
 
 type SystemNotification = Doc<"systemNotifications"> & {
   taskDueAt?: number;
@@ -160,6 +161,7 @@ function NotificationItem({
   const hasNavigation = Boolean(getSystemNotificationHref(notification));
   const isUnread = notification.readAt === undefined;
   const tone = getNotificationTone(notification);
+  const isCourseEvent = Boolean(notification.messageId);
 
   return (
     <button
@@ -168,6 +170,10 @@ function NotificationItem({
       className={cn(
         "flex w-full gap-3 border-b px-4 py-3 text-left transition-colors last:border-b-0",
         isUnread ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-muted/60",
+        isCourseEvent &&
+          (isUnread
+            ? "bg-violet-50 hover:bg-violet-100/70 dark:bg-violet-950/40 dark:hover:bg-violet-950/70"
+            : "hover:bg-violet-50 dark:hover:bg-violet-950/40"),
         !hasNavigation && "cursor-default",
       )}
     >
@@ -178,7 +184,11 @@ function NotificationItem({
           !isUnread && "opacity-70",
         )}
       >
-        <NotificationIcon kind={notification.kind} />
+        {isCourseEvent ? (
+          <CourseEventAvatar className="size-9" />
+        ) : (
+          <NotificationIcon kind={notification.kind} />
+        )}
       </span>
       <span className="min-w-0 flex-1">
         <span

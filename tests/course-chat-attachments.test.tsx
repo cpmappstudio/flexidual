@@ -422,3 +422,4 @@ test("image bytes are fetched only near the viewport and blob URLs are released"
   unmount();
   expect(revoke).toHaveBeenCalledWith("blob:test-image");
 });
+vi.mock("@/i18n/navigation", () => ({ Link: () => null }));

@@ -41,6 +41,9 @@ const taskValidator = v.object({
   availableAt: v.optional(v.number()),
   availabilitySortAt: v.optional(v.number()),
   releasedAt: v.optional(v.number()),
+  announcementMessageId: v.optional(
+    v.union(v.id("courseChatMessages"), v.null()),
+  ),
   dueAt: v.optional(v.number()),
   maxPublishedDueAt: v.optional(v.number()),
   allowLateSubmissions: v.boolean(),
@@ -48,6 +51,7 @@ const taskValidator = v.object({
   manuallyClosedBy: v.optional(v.id("users")),
   reminderScheduledId: v.optional(v.id("_scheduled_functions")),
   reminderGeneration: v.optional(v.number()),
+  reminderPublishedGeneration: v.optional(v.number()),
   updatedAt: v.number(),
 });
 const PUBLISH_ATTEMPT_TTL_MS = 2 * 60 * 60 * 1000;

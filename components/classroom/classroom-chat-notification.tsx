@@ -24,6 +24,7 @@ export function ClassroomChatNotification({
   onOpenChat: () => void;
 }) {
   const t = useTranslations("classroom");
+  const eventT = useTranslations("classroom.courseEvents");
   const presentation = useClassroomPresentation();
   const reducedMotion = useReducedMotion();
   const play = useNotificationChime({
@@ -56,7 +57,11 @@ export function ClassroomChatNotification({
             exit={{ opacity: reducedMotion ? 1 : 0 }}
             transition={{ duration: reducedMotion ? 0 : 0.15 }}
             className="pointer-events-auto block w-fit max-w-full cursor-pointer rounded-xl text-left text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={`${t("openChat")}. ${message.authorName}: ${message.body || message.attachments?.map((file) => file.name).join(", ")}`}
+            aria-label={`${t("openChat")}. ${
+              message.event
+                ? `${eventT("sender")}: ${eventT(message.event.kind === "course_task" ? "taskPublished" : "taskReminder")} ${message.event.title}`
+                : `${message.authorName}: ${message.body || message.attachments?.map((file) => file.name).join(", ")}`
+            }`}
             onClick={() => {
               dismiss();
               onOpenChat();

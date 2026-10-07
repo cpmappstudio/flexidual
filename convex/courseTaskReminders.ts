@@ -1,10 +1,10 @@
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { canSubmitCourseTask } from "./model/courseTaskAccess";
-import { isStudentEnrolled } from "./model/enrollments";
-import { getClassNotificationContext } from "./model/systemNotificationEvents";
-import { createSystemNotification } from "./model/systemNotifications";
+import {
+  prepareCourseTaskEvent,
+  publishCourseTaskEvent,
+} from "./model/courseChatEvents";
 import { getClassTimeZone } from "./model/timeZone";
 import {
   dateInTimeZone,
@@ -12,13 +12,12 @@ import {
   shiftZonedDateTime,
 } from "../lib/time-zone";
 
-const BATCH_SIZE = 50;
-
 export const send = internalMutation({
   args: {
     taskId: v.id("courseTasks"),
     expectedDueAt: v.number(),
     generation: v.number(),
+    // Already queued legacy batches may still carry this argument after deployment.
     cursor: v.optional(v.string()),
   },
   returns: v.null(),
@@ -30,6 +29,9 @@ export const send = internalMutation({
       task.reminderGeneration !== args.generation
     )
       return null;
+    // The generation marker and first delivery job commit atomically; retries
+    // cannot choose another channel or fan out the same reminder again.
+    if (task.reminderPublishedGeneration === args.generation) return null;
     const course = await ctx.db.get("classes", task.classId);
     const now = Date.now();
     if (
@@ -47,33 +49,21 @@ export const send = internalMutation({
     )
       return null;
 
-    const page = await ctx.db
-      .query("courseTaskRecipients")
-      .withIndex("by_taskId_and_studentId", (q) => q.eq("taskId", task._id))
-      .paginate({ cursor: args.cursor ?? null, numItems: BATCH_SIZE });
-    const context = await getClassNotificationContext(ctx, course);
-    for (const recipient of page.page) {
-      if (
-        recipient.submittedAt !== undefined ||
-        !(await isStudentEnrolled(ctx, course, recipient.studentId))
-      )
-        continue;
-      await createSystemNotification(ctx, {
-        recipientId: recipient.studentId,
-        kind: "course_task_reminder",
-        actorId: task.createdBy,
-        classId: course._id,
-        className: course.name,
-        taskId: task._id,
-        taskTitle: task.title,
-        ...context,
-        dedupeKey: `course_task:reminder:${task._id}:${args.expectedDueAt}:${recipient.studentId}`,
+    const event = await prepareCourseTaskEvent(
+      ctx,
+      task,
+      course,
+      "course_task_reminder",
+    );
+    if (event) {
+      await publishCourseTaskEvent(ctx, {
+        ...event,
+        ...(args.cursor !== undefined
+          ? { legacyReminderContinuation: true }
+          : {}),
       });
-    }
-    if (!page.isDone) {
-      await ctx.scheduler.runAfter(0, internal.courseTaskReminders.send, {
-        ...args,
-        cursor: page.continueCursor,
+      await ctx.db.patch("courseTasks", task._id, {
+        reminderPublishedGeneration: args.generation,
       });
     }
     return null;

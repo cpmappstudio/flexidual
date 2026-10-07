@@ -6,6 +6,8 @@ import type { ChatMessage } from "@/components/chat/course-chat-message";
 import type { Id } from "@/convex/_generated/dataModel";
 import messages from "@/messages/es.json";
 
+vi.mock("@/i18n/navigation", () => ({ Link: () => null }));
+
 const state = vi.hoisted(() => ({
   message: null as ChatMessage | null,
   dismiss: vi.fn(),

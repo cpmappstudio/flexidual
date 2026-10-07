@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Clock, Sparkles } from "lucide-react";
+import { Clock } from "lucide-react";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
@@ -196,9 +197,12 @@ export function NextClassPanel({
             </h3>
             {!nextClass && (
               <div className="mt-4 border-t border-border/60 pt-4">
-                <Sparkles
-                  className="mx-auto mb-2 size-5 text-warning-foreground"
-                  aria-hidden="true"
+                <Image
+                  src="/astronaut/reading.png"
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="mx-auto mb-2 size-12 object-contain"
                 />
                 <p className="text-balance text-sm leading-relaxed text-muted-foreground">
                   {t(`student.today.encouragement.${encouragementKeys[encouragementIndex]}`)}

@@ -24,9 +24,12 @@ const lesson: NextClassPanelItem = {
 
 test("empty panels show a stable random encouragement without affecting classes", () => {
   const random = vi.spyOn(Math, "random").mockReturnValue(0.99);
-  const { rerender } = render(<NextClassPanel nextClass={null} currentTime={now} />);
+  const { rerender, container } = render(
+    <NextClassPanel nextClass={null} currentTime={now} />,
+  );
   expect(screen.getByText("student.today.noClasses")).toBeTruthy();
   expect(screen.getByText("student.today.encouragement.recharge")).toBeTruthy();
+  expect(container.querySelector('img[src*="reading.png"]')).toBeTruthy();
 
   random.mockReturnValue(0);
   rerender(<NextClassPanel nextClass={null} currentTime={now + 1000} />);
@@ -36,6 +39,7 @@ test("empty panels show a stable random encouragement without affecting classes"
   expect(screen.getByText(lesson.title)).toBeTruthy();
   expect(screen.queryByText(/student.today.encouragement/)).toBeNull();
   expect(screen.queryByText("student.today.noClasses")).toBeNull();
+  expect(container.querySelector('img[src*="reading.png"]')).toBeNull();
 
   rerender(<NextClassPanel nextClass={null} currentTime={now} />);
   expect(screen.getByText("student.today.encouragement.smallSteps")).toBeTruthy();

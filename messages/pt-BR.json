@@ -856,6 +856,18 @@
     "closeParticipantsPanel": "Fechar painel de participantes",
     "tutor": "Tutor",
     "classChatDescription": "As mensagens deste chat são visíveis para toda a turma.",
+    "courseEvents": {
+      "sender": "Flexidual",
+      "taskPublished": "Nova missão! Sua próxima tarefa está pronta. Vamos começar 🚀",
+      "taskReminder": "Um pequeno lembrete: se você ainda não entregou esta tarefa, ainda dá tempo de prepará-la!",
+      "openTask": "Ver tarefa",
+      "deadline": "Entrega: {date}",
+      "noDeadline": "Sem prazo: avance no seu ritmo.",
+      "unavailable": "Esta tarefa não está mais disponível para você.",
+      "selectedMessage": "Mensagem selecionada",
+      "closeSelectedMessage": "Fechar mensagem selecionada",
+      "messageUnavailable": "Esta mensagem não está mais disponível."
+    },
     "openInteractionPanel": "Abrir painel da aula",
     "closeInteractionPanel": "Fechar painel da aula",
     "chatPlaceholder": "Escreva uma mensagem...",

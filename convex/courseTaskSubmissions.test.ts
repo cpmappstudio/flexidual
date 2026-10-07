@@ -575,6 +575,8 @@ test("teacher materials are private until publication and can be replaced withou
     taskId: draftId,
     materialFileIds: [first],
   });
+  await vi.advanceTimersByTimeAsync(0);
+  await s.t.finishInProgressScheduledFunctions();
   expect(
     await s.t.run((ctx) =>
       ctx.db

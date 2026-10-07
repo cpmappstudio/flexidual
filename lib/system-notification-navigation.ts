@@ -9,11 +9,19 @@ type NavigableNotification = Pick<
   | "roomName"
   | "surveyId"
   | "taskId"
+  | "messageId"
 >;
 
 export function getSystemNotificationHref(notification: NavigableNotification) {
   const orgSlug = notification.organizationSlug;
   if (!orgSlug) return null;
+  if (
+    notification.messageId &&
+    notification.classId &&
+    notification.action !== "removed"
+  ) {
+    return `/${orgSlug}/chats/${notification.classId}?message=${encodeURIComponent(notification.messageId)}`;
+  }
   if (notification.kind === "survey_invitation" && notification.surveyId) {
     return `/${orgSlug}/catalog?survey=${encodeURIComponent(notification.surveyId)}`;
   }

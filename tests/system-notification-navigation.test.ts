@@ -20,6 +20,38 @@ test("survey invitations open the catalog with the selected survey", () => {
   );
 });
 
+test("message-backed events open chat while direct task notices open the assignment", () => {
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "course_task",
+      organizationSlug: "campus",
+      classId: "course" as never,
+      taskId: "task" as never,
+      messageId: "message" as never,
+    }),
+    "/campus/chats/course?message=message",
+  );
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "course_task",
+      organizationSlug: "campus",
+      classId: "course" as never,
+      taskId: "task" as never,
+    }),
+    "/campus/classes/course?task=task",
+  );
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "course_task_reminder",
+      organizationSlug: "campus",
+      classId: "course" as never,
+      messageId: "message" as never,
+      action: "removed",
+    }),
+    null,
+  );
+});
+
 test("routes class notifications to their contextual destinations", () => {
   assert.equal(
     getSystemNotificationHref({

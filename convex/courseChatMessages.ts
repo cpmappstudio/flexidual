@@ -36,6 +36,9 @@ import {
   deleteChatAttachment,
 } from "./model/courseChatAttachments";
 import { containsChatLink } from "../lib/chat-attachments";
+import { getCourseTaskAccess } from "./model/courseTaskAccess";
+import { getClassTimeZone } from "./model/timeZone";
+import { isValidTimeZone } from "../lib/time-zone";
 
 const MAX_MESSAGE_LENGTH = 2_000;
 const DELETE_BATCH_SIZE = 100;
@@ -45,7 +48,7 @@ const messageValidator = v.object({
   _creationTime: v.number(),
   classId: v.id("classes"),
   scheduleId: v.optional(v.id("classSchedule")),
-  authorId: v.id("users"),
+  authorId: v.optional(v.id("users")),
   body: v.string(),
   pinnedAt: v.optional(v.number()),
   linksEnabled: v.optional(v.boolean()),
@@ -57,11 +60,28 @@ const messageValidator = v.object({
     v.literal("teacher"),
     v.literal("tutor"),
     v.literal("member"),
+    v.literal("system"),
+  ),
+  event: v.optional(
+    v.object({
+      kind: v.union(
+        v.literal("course_task"),
+        v.literal("course_task_reminder"),
+      ),
+      taskId: v.id("courseTasks"),
+      title: v.string(),
+      dueAt: v.optional(v.number()),
+      timeZone: v.optional(v.string()),
+      available: v.boolean(),
+    }),
   ),
   isOwn: v.boolean(),
 });
 
-function getAuthorRole(classData: Doc<"classes">, authorId: Id<"users">) {
+function getAuthorRole(
+  classData: Doc<"classes">,
+  authorId: Id<"users"> | undefined,
+) {
   if (classData.teacherId === authorId) return "teacher" as const;
   if (classData.tutorId === authorId) return "tutor" as const;
   return "member" as const;
@@ -154,7 +174,11 @@ async function hydrateMessages(
   currentUser: Doc<"users">,
   includeCourseOnlyContent = true,
 ): Promise<Infer<typeof messageValidator>[]> {
-  const authorIds = [...new Set(messages.map(({ authorId }) => authorId))];
+  const authorIds = [
+    ...new Set(
+      messages.flatMap(({ authorId }) => (authorId ? [authorId] : [])),
+    ),
+  ];
   const authors = new Map(
     (
       await Promise.all(
@@ -174,7 +198,34 @@ async function hydrateMessages(
 
   return Promise.all(
     messages.map(async (message) => {
-      const author = authors.get(message.authorId);
+      const author = message.authorId
+        ? authors.get(message.authorId)
+        : undefined;
+      let event: Infer<typeof messageValidator>["event"];
+      if (message.event) {
+        const task = await ctx.db.get("courseTasks", message.event.taskId);
+        const access =
+          task && includeCourseOnlyContent
+            ? await getCourseTaskAccess(ctx, task, currentUser._id)
+            : null;
+        const available = !!access && access.kind !== "none";
+        const timeZone = available
+          ? await getClassTimeZone(ctx, classData)
+          : undefined;
+        event = {
+          kind: message.event.kind,
+          taskId: message.event.taskId,
+          title: available && task ? task.title : message.event.title,
+          available,
+          ...(available &&
+          (message.event.reminderDueAt ?? task?.dueAt) !== undefined
+            ? {
+                dueAt: message.event.reminderDueAt ?? task?.dueAt,
+                ...(timeZone && isValidTimeZone(timeZone) ? { timeZone } : {}),
+              }
+            : {}),
+        };
+      }
       const files = await Promise.all(
         (message.attachmentIds ?? []).map((id) =>
           ctx.db.get("courseChatAttachments", id),
@@ -191,20 +242,54 @@ async function hydrateMessages(
           contentType: file.contentType,
           size: file.size,
         }));
-      const { attachmentIds, linksEnabled, ...readableMessage } = message;
+      const {
+        attachmentIds,
+        linksEnabled,
+        event: storedEvent,
+        eventKey,
+        ...readableMessage
+      } = message;
       void attachmentIds;
       void linksEnabled;
+      void storedEvent;
+      void eventKey;
       return {
-        ...(includeCourseOnlyContent ? message : readableMessage),
+        ...readableMessage,
+        ...(includeCourseOnlyContent ? { attachmentIds, linksEnabled } : {}),
+        event,
         attachments,
-        authorName: author?.author.fullName ?? "Deleted user",
+        authorName: message.event
+          ? "Flexidual"
+          : (author?.author.fullName ?? "Deleted user"),
         authorImageUrl: author?.imageUrl,
-        authorRole: getAuthorRole(classData, message.authorId),
+        authorRole: message.event
+          ? ("system" as const)
+          : getAuthorRole(classData, message.authorId),
         isOwn: message.authorId === currentUser._id,
       };
     }),
   );
 }
+
+export const get = query({
+  args: { messageId: v.string() },
+  returns: v.union(messageValidator, v.null()),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const id = ctx.db.normalizeId("courseChatMessages", args.messageId);
+    const message = id ? await ctx.db.get("courseChatMessages", id) : null;
+    if (!message) return null;
+    const course = await ctx.db.get("classes", message.classId);
+    if (
+      !course ||
+      course.chatArchivedAt !== undefined ||
+      message._creationTime <= (course.chatNotificationsClearedThrough ?? 0) ||
+      !(await canAccessClass(ctx, user._id, course))
+    )
+      return null;
+    return (await hydrateMessages(ctx, [message], course, user))[0];
+  },
+});
 
 export const listPinned = query({
   args: { classId: v.id("classes"), paginationOpts: paginationOptsValidator },

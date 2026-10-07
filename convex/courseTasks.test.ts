@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { canSubmitCourseTask } from "./model/courseTaskAccess";
+import { assignOpenCourseTasksToStudent } from "./model/courseTaskPublication";
 import schema from "./schema";
 import { modules } from "./test.setup";
 
@@ -160,6 +161,8 @@ test("publishes immediately to enrolled students and protects access", async () 
     paginationOpts: { cursor: null, numItems: 10 },
   });
   expect(studentPage.page.map((item) => item._id)).toEqual([taskId]);
+  await vi.advanceTimersByTimeAsync(0);
+  await s.t.finishInProgressScheduledFunctions();
   const rows = await s.t.run(async (ctx) => ({
     recipients: await ctx.db
       .query("courseTaskRecipients")
@@ -859,6 +862,8 @@ test("a scheduled task published from an upload attempt waits before notifying s
       })
     ).page.map((task) => task._id),
   ).toEqual([taskId]);
+  await vi.advanceTimersByTimeAsync(0);
+  await s.t.finishInProgressScheduledFunctions();
   expect(await listNotifications()).toHaveLength(2);
 });
 
@@ -870,6 +875,8 @@ test("notification feed shows the current task, course, and deadline", async () 
     dueAt: NOW + DAY,
   });
   const getNotification = async () => {
+    await vi.advanceTimersByTimeAsync(0);
+    await s.t.finishInProgressScheduledFunctions();
     const feed = await s.student.query(api.systemNotifications.list, {
       paginationOpts: { cursor: null, numItems: 10 },
     });
@@ -969,6 +976,8 @@ test("rescheduling prevents stale publication and notifies once at release", asy
   expect(
     (await s.student.query(api.courseTasks.get, { taskId }))?.releasedAt,
   ).toBe(NOW + 2 * HOUR);
+  await vi.advanceTimersByTimeAsync(0);
+  await s.t.finishInProgressScheduledFunctions();
   const counts = await s.t.run(async (ctx) => ({
     recipients: await ctx.db
       .query("courseTaskRecipients")
@@ -1040,8 +1049,8 @@ test("reminds only students without a submission on the previous local day", asy
   expect(reminders[0]).toMatchObject({
     taskId,
     recipientId: s.users.classmate,
-    createdAt: NOW + DAY - 4 * HOUR,
   });
+  expect(Math.floor(reminders[0].createdAt)).toBe(NOW + DAY - 4 * HOUR);
 });
 
 test("the next-day reminder continues through multiple recipient pages without duplicates", async () => {
@@ -1091,7 +1100,9 @@ test("the next-day reminder continues through multiple recipient pages without d
   expect(reminders).toHaveLength(51);
   expect(new Set(reminders.map((item) => item.recipientId)).size).toBe(51);
   expect(
-    reminders.every((item) => item.createdAt === NOW + DAY - 4 * HOUR),
+    reminders.every(
+      (item) => Math.floor(item.createdAt) === NOW + DAY - 4 * HOUR,
+    ),
   ).toBe(true);
 });
 
@@ -1150,6 +1161,8 @@ test("an earlier deadline reschedules the reminder only when its send time is st
     title: "Fractions",
     dueAt: NOW + 3 * DAY,
   });
+  await vi.advanceTimersByTimeAsync(0);
+  await s.t.finishInProgressScheduledFunctions();
   await s.teacher.mutation(api.courseTasks.update, {
     taskId,
     dueAt: NOW + 2 * DAY,
@@ -1555,6 +1568,8 @@ test("clearing a scheduled start publishes immediately and notifies once", async
   expect(
     (await s.student.query(api.courseTasks.get, { taskId }))?.releasedAt,
   ).toBe(NOW);
+  await vi.advanceTimersByTimeAsync(0);
+  await s.t.finishInProgressScheduledFunctions();
   const notifications = await s.t.run((ctx) =>
     ctx.db
       .query("systemNotifications")
@@ -1596,4 +1611,678 @@ test("task creation uses the academic period when a legacy course has no endDate
       dueAt: NOW + 3 * DAY,
     }),
   ).rejects.toThrow("INVALID_TASK_DATES");
+});
+
+test("task events are canonical chat messages with independent, idempotent notifications", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+  });
+  const messages = await s.student.query(api.courseChatMessages.list, {
+    classId: s.classId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  expect(messages.page).toHaveLength(1);
+  const message = messages.page[0];
+  expect(message).toMatchObject({
+    authorRole: "system",
+    authorName: "Flexidual",
+    isOwn: false,
+    event: { kind: "course_task", taskId, title: "Fractions", available: true },
+  });
+  expect(message.authorId).toBeUndefined();
+  await s.t.mutation(internal.courseChatNotifications.publish, {
+    messageId: message._id,
+    cursor: null,
+    legacyOffset: 0,
+  });
+  await s.t.mutation(internal.courseChatNotifications.publish, {
+    messageId: message._id,
+    cursor: null,
+    legacyOffset: 0,
+  });
+  const humanId = await s.teacher.mutation(api.courseChatMessages.send, {
+    classId: s.classId,
+    body: "Hello",
+  });
+  await s.t.mutation(internal.courseChatNotifications.publish, {
+    messageId: humanId,
+    cursor: null,
+    legacyOffset: 0,
+  });
+  const feed = await s.student.query(api.systemNotifications.list, {
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  expect(feed.page).toHaveLength(2);
+  expect(feed.page.find((item) => item.kind === "course_task")).toMatchObject({
+    messageId: message._id,
+    taskId,
+  });
+  expect(
+    feed.page.find((item) => item.kind === "course_chat")?.chatMessageCount,
+  ).toBe(1);
+  const unread = await s.student.query(api.courseChatNotifications.listUnread, {
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  expect(unread.page.map((item) => item.count)).toEqual([1, 1]);
+  expect(
+    await s.student.query(api.courseChatMessages.get, { messageId: "bad-id" }),
+  ).toBeNull();
+  expect(
+    await s.outsider.query(api.courseChatMessages.get, {
+      messageId: message._id,
+    }),
+  ).toBeNull();
+  expect(
+    await s.tutor.query(api.courseChatMessages.get, { messageId: message._id }),
+  ).toMatchObject({ event: { available: false } });
+  await s.t.run(async (ctx) => {
+    const course = (await ctx.db.get("classes", s.classId))!;
+    await ctx.db.patch("campuses", course.campusId!, {
+      timeZone: "invalid/timezone",
+    });
+    await ctx.db.patch("courseTasks", taskId, { dueAt: NOW + DAY });
+  });
+  expect(
+    (
+      await s.student.query(api.courseChatMessages.get, {
+        messageId: message._id,
+      })
+    )?.event?.timeZone,
+  ).toBeUndefined();
+});
+
+test("legacy released tasks lazily create one announcement and notify only newly assigned students", async () => {
+  const s = await setup();
+  const taskId = await s.t.run(async (ctx) => {
+    const taskId = await ctx.db.insert("courseTasks", {
+      classId: s.classId,
+      createdBy: s.users.teacher,
+      title: "Legacy task",
+      releasedAt: NOW - HOUR,
+      allowLateSubmissions: true,
+      updatedAt: NOW - HOUR,
+    });
+    for (const studentId of [s.users.student, s.users.classmate]) {
+      await ctx.db.insert("courseTaskRecipients", {
+        taskId,
+        classId: s.classId,
+        studentId,
+        releasedAt: NOW - HOUR,
+        assignedAt: NOW - HOUR,
+        submissionRevision: 0,
+      });
+    }
+    return taskId;
+  });
+  await s.admin.mutation(api.classes.addStudent, {
+    classId: s.classId,
+    studentId: s.users.newStudent,
+  });
+  await s.t.run(async (ctx) => {
+    const course = (await ctx.db.get("classes", s.classId))!;
+    await assignOpenCourseTasksToStudent(ctx, course, s.users.newStudent);
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  await s.t.finishInProgressScheduledFunctions();
+  const result = await s.t.run(async (ctx) => ({
+    task: await ctx.db.get("courseTasks", taskId),
+    messages: await ctx.db
+      .query("courseChatMessages")
+      .withIndex("by_class", (q) => q.eq("classId", s.classId))
+      .collect(),
+    notifications: await ctx.db
+      .query("systemNotifications")
+      .withIndex("by_taskId", (q) => q.eq("taskId", taskId))
+      .collect(),
+  }));
+  expect(result.messages).toHaveLength(1);
+  expect(result.task?.announcementMessageId).toBe(result.messages[0]._id);
+  expect(result.notifications).toHaveLength(1);
+  expect(result.notifications[0]).toMatchObject({
+    recipientId: s.users.newStudent,
+    messageId: result.messages[0]._id,
+  });
+});
+
+test("late enrollment reuses the announcement and chat cleanup never republishes it", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+  });
+  vi.advanceTimersByTime(10);
+  await s.admin.mutation(api.classes.addStudent, {
+    classId: s.classId,
+    studentId: s.users.newStudent,
+  });
+  const feed = await s.newStudent.query(api.systemNotifications.list, {
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  expect(feed.page.filter((item) => item.taskId === taskId)).toHaveLength(1);
+  const chat = await s.teacher.query(api.courseChatMessages.list, {
+    classId: s.classId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  expect(chat.page).toHaveLength(1);
+  expect(feed.page.find((item) => item.taskId === taskId)?.messageId).toBe(
+    chat.page[0]._id,
+  );
+  await s.admin.mutation(api.courseChatMessages.clear, { classId: s.classId });
+  await s.teacher.mutation(api.courseTasks.setClosed, { taskId, closed: true });
+  await s.teacher.mutation(api.courseTasks.setClosed, {
+    taskId,
+    closed: false,
+  });
+  const cleared = await s.teacher.query(api.courseChatMessages.list, {
+    classId: s.classId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  expect(cleared.page).toHaveLength(0);
+  expect(
+    (
+      await s.newStudent.query(api.systemNotifications.list, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page.filter((item) => item.taskId === taskId),
+  ).toHaveLength(0);
+});
+
+test("chat read watermarks acknowledge events without clearing a newer human message", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+  });
+  const message = (
+    await s.student.query(api.courseChatMessages.list, {
+      classId: s.classId,
+      paginationOpts: { cursor: null, numItems: 20 },
+    })
+  ).page[0];
+  await s.student.mutation(api.courseChatNotifications.markRead, {
+    messageId: message._id,
+  });
+  await s.t.mutation(internal.courseChatNotifications.publish, {
+    messageId: message._id,
+    cursor: null,
+    legacyOffset: 0,
+  });
+  expect(
+    (
+      await s.student.query(api.systemNotifications.list, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page.some((item) => item.taskId === taskId),
+  ).toBe(false);
+  vi.advanceTimersByTime(10);
+  await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Second task",
+  });
+  const second = (
+    await s.student.query(api.courseChatMessages.list, {
+      classId: s.classId,
+      paginationOpts: { cursor: null, numItems: 20 },
+    })
+  ).page[0];
+  await s.t.mutation(internal.courseChatNotifications.publish, {
+    messageId: second._id,
+    cursor: null,
+    legacyOffset: 0,
+  });
+  vi.advanceTimersByTime(10);
+  const humanId = await s.teacher.mutation(api.courseChatMessages.send, {
+    classId: s.classId,
+    body: "Newer human message",
+  });
+  await s.t.mutation(internal.courseChatNotifications.publish, {
+    messageId: humanId,
+    cursor: null,
+    legacyOffset: 0,
+  });
+  await s.student.mutation(api.courseChatNotifications.markRead, {
+    messageId: second._id,
+  });
+  const feed = await s.student.query(api.systemNotifications.list, {
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  expect(
+    feed.page.find((item) => item.messageId === second._id)?.readAt,
+  ).toBeDefined();
+  expect(
+    feed.page.find((item) => item.kind === "course_chat")?.readAt,
+  ).toBeUndefined();
+});
+
+test("a shared reminder is visible to everyone but only pending students are notified", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+    dueAt: NOW + 2 * DAY,
+  });
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: NOW,
+    });
+  });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  const chat = await s.student.query(api.courseChatMessages.list, {
+    classId: s.classId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  const reminder = chat.page.find(
+    (item) => item.event?.kind === "course_task_reminder",
+  )!;
+  expect(reminder.event?.dueAt).toBe(NOW + 2 * DAY);
+  expect(
+    (
+      await s.student.query(api.systemNotifications.list, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page.some((item) => item.kind === "course_task_reminder"),
+  ).toBe(false);
+  const classmate = s.t.withIdentity({ subject: "classmate" });
+  const list = () =>
+    classmate.query(api.systemNotifications.list, {
+      paginationOpts: { cursor: null, numItems: 20 },
+    });
+  expect(
+    (await list()).page.find((item) => item.kind === "course_task_reminder"),
+  ).toMatchObject({ messageId: reminder._id });
+  await s.teacher.mutation(api.courseTasks.setClosed, { taskId, closed: true });
+  await s.teacher.mutation(api.courseTasks.setClosed, {
+    taskId,
+    closed: false,
+  });
+  expect(
+    (await list()).page.some((item) => item.kind === "course_task_reminder"),
+  ).toBe(false);
+  const reopened = (await s.teacher.query(api.courseTasks.get, { taskId }))!;
+  const args = {
+    taskId,
+    expectedDueAt: NOW + 2 * DAY,
+    generation: reopened.reminderGeneration!,
+  };
+  await s.t.mutation(internal.courseTaskReminders.send, args);
+  await s.t.mutation(internal.courseTaskReminders.send, args);
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  const currentReminders = (await list()).page.filter(
+    (item) => item.kind === "course_task_reminder",
+  );
+  expect(currentReminders).toHaveLength(1);
+  expect(currentReminders[0].messageId).not.toBe(reminder._id);
+});
+
+test("an archived task announcement delivers directly and does not switch channel after unarchiving", async () => {
+  const s = await setup();
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: true,
+  });
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+  });
+  expect(await s.student.query(api.courseTasks.get, { taskId })).toMatchObject({
+    title: "Fractions",
+  });
+  expect(
+    (
+      await s.student.query(api.systemNotifications.list, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page.some((item) => item.taskId === taskId),
+  ).toBe(false);
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: false,
+  });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  const feed = await s.student.query(api.systemNotifications.list, {
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  const notices = feed.page.filter((item) => item.taskId === taskId);
+  expect(notices).toHaveLength(1);
+  expect(notices[0].kind).toBe("course_task");
+  expect(notices[0].messageId).toBeUndefined();
+  expect(
+    (
+      await s.student.query(api.courseChatNotifications.listUnread, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page,
+  ).toHaveLength(0);
+  expect(
+    (
+      await s.student.query(api.courseChatMessages.list, {
+        classId: s.classId,
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page,
+  ).toHaveLength(0);
+});
+
+test("late enrollment while archived receives a direct notice even with an existing canonical announcement", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+  });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  const original = (await s.teacher.query(api.courseTasks.get, { taskId }))!
+    .announcementMessageId;
+  expect(original).toBeDefined();
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: true,
+  });
+  await s.admin.mutation(api.classes.addStudent, {
+    classId: s.classId,
+    studentId: s.users.newStudent,
+  });
+  const getNotice = async () =>
+    (
+      await s.newStudent.query(api.systemNotifications.list, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page.filter((item) => item.taskId === taskId);
+  const notices = await getNotice();
+  expect(notices).toHaveLength(1);
+  expect(notices[0].messageId).toBeUndefined();
+  expect(
+    (await s.teacher.query(api.courseTasks.get, { taskId }))
+      ?.announcementMessageId,
+  ).toBe(original);
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: false,
+  });
+  await s.teacher.mutation(api.courseTasks.setClosed, { taskId, closed: true });
+  await s.teacher.mutation(api.courseTasks.setClosed, {
+    taskId,
+    closed: false,
+  });
+  expect(await getNotice()).toMatchObject([{ _id: notices[0]._id }]);
+  const humanId = await s.teacher.mutation(api.courseChatMessages.send, {
+    classId: s.classId,
+    body: "Welcome back",
+  });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  await s.newStudent.mutation(api.courseChatNotifications.markRead, {
+    messageId: humanId,
+  });
+  expect((await getNotice())[0].readAt).toBeUndefined();
+  expect(
+    (
+      await s.newStudent.query(api.courseChatNotifications.listUnread, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page,
+  ).toHaveLength(0);
+});
+
+test("archiving a queued chat announcement never converts it to a direct notice", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+  });
+  expect(
+    (await s.teacher.query(api.courseTasks.get, { taskId }))
+      ?.announcementMessageId,
+  ).toBeTruthy();
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: true,
+  });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: false,
+  });
+  const notices = await s.t.run((ctx) =>
+    ctx.db
+      .query("systemNotifications")
+      .withIndex("by_taskId", (q) => q.eq("taskId", taskId))
+      .collect(),
+  );
+  expect(notices).toHaveLength(0);
+});
+
+test("direct reminders notify only pending students and become hidden on submission or stale generation", async () => {
+  const s = await setup();
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: true,
+  });
+  const dueAt = NOW + 2 * DAY;
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+    dueAt,
+  });
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: NOW,
+    });
+  });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  const classmate = s.t.withIdentity({ subject: "classmate" });
+  const list = async () =>
+    (
+      await classmate.query(api.systemNotifications.list, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page.filter((item) => item.kind === "course_task_reminder");
+  const reminder = await list();
+  expect(reminder).toHaveLength(1);
+  expect(reminder[0].messageId).toBeUndefined();
+  expect(reminder[0].taskReminderGeneration).toBeDefined();
+  expect(
+    (
+      await s.student.query(api.systemNotifications.list, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page.some((item) => item.kind === "course_task_reminder"),
+  ).toBe(false);
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.classmate),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: NOW + DAY,
+    });
+  });
+  expect(await list()).toHaveLength(0);
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.classmate),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: undefined,
+    });
+  });
+  await s.teacher.mutation(api.courseTasks.setClosed, { taskId, closed: true });
+  expect(await list()).toHaveLength(0);
+  await s.teacher.mutation(api.courseTasks.setClosed, {
+    taskId,
+    closed: false,
+  });
+  expect(await list()).toHaveLength(0);
+});
+
+test("direct reminder retries keep their channel during unarchiving and bounded fanout", async () => {
+  const s = await setup();
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: true,
+  });
+  const dueAt = NOW + 2 * DAY;
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+    dueAt,
+  });
+  await s.t.run(async (ctx) => {
+    for (let index = 0; index < 20; index++) {
+      const studentId = await ctx.db.insert("users", {
+        clerkId: `pending-${index}`,
+        firstName: "Pending",
+        lastName: String(index),
+        fullName: `Pending ${index}`,
+        isActive: true,
+        createdAt: NOW,
+      });
+      await ctx.db.insert("classEnrollments", {
+        classId: s.classId,
+        studentId,
+        enrolledAt: NOW,
+        enrolledBy: s.users.admin,
+      });
+      await ctx.db.insert("courseTaskRecipients", {
+        taskId,
+        classId: s.classId,
+        studentId,
+        assignedAt: NOW,
+        releasedAt: NOW,
+        submissionRevision: 0,
+      });
+    }
+  });
+  vi.setSystemTime(NOW + DAY - 4 * HOUR);
+  const task = (await s.teacher.query(api.courseTasks.get, { taskId }))!;
+  const args = {
+    taskId,
+    expectedDueAt: dueAt,
+    generation: task.reminderGeneration!,
+  };
+  await s.t.mutation(internal.courseTaskReminders.send, args);
+  expect(
+    (await s.teacher.query(api.courseTasks.get, { taskId }))!
+      .reminderPublishedGeneration,
+  ).toBe(args.generation);
+  const event = {
+    taskId,
+    kind: "course_task_reminder" as const,
+    createdAt: NOW + DAY - 4 * HOUR,
+    reminderDueAt: dueAt,
+    reminderGeneration: args.generation,
+  };
+  await s.t.mutation(internal.courseChatNotifications.publishTask, {
+    event,
+    cursor: null,
+  });
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: false,
+  });
+  await s.t.mutation(internal.courseTaskReminders.send, args);
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  const rows = await s.t.run((ctx) =>
+    ctx.db
+      .query("systemNotifications")
+      .withIndex("by_taskId", (q) => q.eq("taskId", taskId))
+      .collect(),
+  );
+  const reminders = rows.filter((item) => item.kind === "course_task_reminder");
+  expect(reminders).toHaveLength(22);
+  expect(new Set(reminders.map((item) => item.recipientId)).size).toBe(22);
+  expect(reminders.every((item) => item.messageId === undefined)).toBe(true);
+  expect(
+    (
+      await s.teacher.query(api.courseChatMessages.list, {
+        classId: s.classId,
+        paginationOpts: { cursor: null, numItems: 50 },
+      })
+    ).page,
+  ).toHaveLength(0);
+});
+
+test("legacy reminder continuation preserves delivered notices without blocking a later generation", async () => {
+  const s = await setup();
+  await s.admin.mutation(api.courseChatMessages.setArchived, {
+    classId: s.classId,
+    archived: true,
+  });
+  const dueAt = NOW + 2 * DAY;
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+    dueAt,
+  });
+  const reminderAt = NOW + DAY - 4 * HOUR;
+  vi.setSystemTime(reminderAt);
+  const legacyId = await s.t.run((ctx) =>
+    ctx.db.insert("systemNotifications", {
+      recipientId: s.users.student,
+      kind: "course_task_reminder",
+      classId: s.classId,
+      taskId,
+      dedupeKey: `course_task:reminder:${taskId}:${dueAt}:${s.users.student}`,
+      createdAt: reminderAt,
+    }),
+  );
+  const task = (await s.teacher.query(api.courseTasks.get, { taskId }))!;
+  await s.t.mutation(internal.courseTaskReminders.send, {
+    taskId,
+    expectedDueAt: dueAt,
+    generation: task.reminderGeneration!,
+    cursor: "legacy-continuation",
+  });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  const getReminders = () =>
+    s.t.run(async (ctx) =>
+      (
+        await ctx.db
+          .query("systemNotifications")
+          .withIndex("by_taskId", (q) => q.eq("taskId", taskId))
+          .collect()
+      ).filter((item) => item.kind === "course_task_reminder"),
+    );
+  const first = await getReminders();
+  expect(first).toHaveLength(2);
+  expect(
+    first.filter((item) => item.recipientId === s.users.student),
+  ).toMatchObject([{ _id: legacyId }]);
+  vi.setSystemTime(reminderAt + 1000);
+  await s.teacher.mutation(api.courseTasks.setClosed, { taskId, closed: true });
+  await s.teacher.mutation(api.courseTasks.setClosed, {
+    taskId,
+    closed: false,
+  });
+  const reopened = (await s.teacher.query(api.courseTasks.get, { taskId }))!;
+  await s.t.mutation(internal.courseTaskReminders.send, {
+    taskId,
+    expectedDueAt: dueAt,
+    generation: reopened.reminderGeneration!,
+  });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(
+    (await getReminders()).some(
+      (item) =>
+        item.recipientId === s.users.student &&
+        item.taskReminderGeneration === reopened.reminderGeneration,
+    ),
+  ).toBe(true);
 });

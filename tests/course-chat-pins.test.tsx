@@ -12,6 +12,8 @@ import { CourseChatPins } from "@/components/chat/course-chat-pins";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getFunctionName, type FunctionReference } from "convex/server";
 
+vi.mock("@/i18n/navigation", () => ({ Link: () => null }));
+
 const state = vi.hoisted(() => ({
   mobile: false,
   canPin: true,
