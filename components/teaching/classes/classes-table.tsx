@@ -64,8 +64,8 @@ export function ClassesTable({
   const getClassTypeLabel = (classDoc: Doc<"classes">) => {
     if (classDoc.classType === "ignitia") return "Ignitia";
     if (classDoc.classType === "abeka") return "Abeka";
-    if (classDoc.classType === "standard") return "Standard";
-    return classDoc.teacherId ? "Standard" : "";
+    if (classDoc.classType === "standard") return t("class.typeStandardShort");
+    return classDoc.teacherId ? t("class.typeStandardShort") : "";
   };
 
   const getTeacherOrTypeLabel = (classDoc: Doc<"classes">) => {
