@@ -13,11 +13,14 @@ import {
 } from "@/components/ui/carousel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { carouselCardStyles } from "@/components/ui/carousel-card-styles";
+import { AstronautEncouragement } from "@/components/student/astronaut-encouragement";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
+
+const TASK_ENCOURAGEMENT_KEYS = ["review", "confidence", "discover"] as const;
 
 export function StudentPendingTasks({
   classIds,
@@ -65,8 +68,19 @@ export function StudentPendingTasks({
       {tasks === undefined ? (
         <Skeleton className="h-32 w-full rounded-xl xl:h-28" />
       ) : tasks.length === 0 ? (
-        <div className="flex min-h-24 flex-1 items-center justify-center px-4 text-center text-sm text-muted-foreground">
-          {t("dashboardEmpty")}
+        <div className="flex flex-1 items-start justify-center px-2 py-2">
+          <div className="w-full max-w-sm rounded-2xl bg-muted/30 px-4 py-2 text-center ring-1 ring-border/50">
+            <h3 className="text-balance text-base font-semibold text-foreground">
+              {t("dashboardEmpty")}
+            </h3>
+            <AstronautEncouragement
+              className="w-full"
+              imageSrc="/astronaut/nice.png"
+              messages={TASK_ENCOURAGEMENT_KEYS.map((key) =>
+                t(`dashboardEncouragement.${key}`),
+              )}
+            />
+          </div>
         </div>
       ) : (
         <Carousel

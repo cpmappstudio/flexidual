@@ -3,14 +3,14 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
-import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-badge";
+import { AstronautEncouragement } from "@/components/student/astronaut-encouragement";
 import { isLiveClassSession, type ClassSessionType } from "@/lib/class-session";
 import { cn } from "@/lib/utils";
 
-const encouragementKeys = [
+const NEXT_CLASS_ENCOURAGEMENT_KEYS = [
   "smallSteps",
   "curiosity",
   "practice",
@@ -115,14 +115,7 @@ export function NextClassPanel({
 }) {
   const t = useTranslations();
   const [internalTime, setInternalTime] = useState(Date.now);
-  const [encouragementIndex, setEncouragementIndex] = useState(0);
   const hasNextClass = Boolean(nextClass);
-
-  useEffect(() => {
-    if (!hasNextClass) {
-      setEncouragementIndex(Math.floor(Math.random() * encouragementKeys.length));
-    }
-  }, [hasNextClass]);
 
   useEffect(() => {
     if (!hasNextClass || currentTime !== undefined) return;
@@ -196,18 +189,11 @@ export function NextClassPanel({
               {nextClass ? nextClass.title : t("student.today.noClasses")}
             </h3>
             {!nextClass && (
-              <div className="mt-4 border-t border-border/60 pt-4">
-                <Image
-                  src="/astronaut/reading.png"
-                  alt=""
-                  width={48}
-                  height={48}
-                  className="mx-auto mb-2 size-12 object-contain"
-                />
-                <p className="text-balance text-sm leading-relaxed text-muted-foreground">
-                  {t(`student.today.encouragement.${encouragementKeys[encouragementIndex]}`)}
-                </p>
-              </div>
+              <AstronautEncouragement
+                messages={NEXT_CLASS_ENCOURAGEMENT_KEYS.map((key) =>
+                  t(`student.today.encouragement.${key}`),
+                )}
+              />
             )}
             {nextClass && action}
           </div>

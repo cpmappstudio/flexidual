@@ -10,7 +10,12 @@
     "tab": "Tareas",
     "pendingIndicator": "Tienes una tarea por entregar en este curso",
     "dashboardTitle": "Tareas por entregar",
-    "dashboardEmpty": "No tienes tareas por entregar ahora. Consulta tus cursos para verlas todas.",
+    "dashboardEmpty": "No tienes tareas por entregar ahora.",
+    "dashboardEncouragement": {
+      "review": "Un pequeño repaso hoy puede darte grandes ideas para tu próxima tarea.",
+      "confidence": "Lo que practiques hoy puede ayudarte a comenzar tu próxima tarea con confianza.",
+      "discover": "Cada tarea es una oportunidad para descubrir lo que puedes lograr. ¡Sigue aprendiendo!"
+    },
     "dashboardPrevious": "Tarea anterior",
     "dashboardNext": "Siguiente tarea",
     "heading": "Tareas del curso",

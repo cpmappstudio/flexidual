@@ -125,6 +125,7 @@ test("profile carousel queries the selected student and clears retained tasks wh
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -155,4 +156,44 @@ test("links pending work to its course and removes it after submission", () => {
   view.rerender(<StudentPendingTasks {...props} />);
   expect(screen.queryByText("Draw a cell")).toBeNull();
   expect(screen.getByText("dashboardEmpty")).toBeTruthy();
+});
+
+test("empty tasks show a stable task-specific encouragement without affecting the carousel", () => {
+  const random = vi.spyOn(Math, "random").mockReturnValue(0.99);
+  state.tasks = [];
+  const props = {
+    classIds: ["class-1"] as Id<"classes">[],
+    now: 100,
+    orgSlug: "campus",
+  };
+  const { rerender, container } = render(<StudentPendingTasks {...props} />);
+
+  expect(screen.getByText("dashboardEmpty")).toBeTruthy();
+  expect(screen.getByText("dashboardEncouragement.discover")).toBeTruthy();
+  expect(container.querySelector('img[src*="nice.png"]')).toBeTruthy();
+
+  random.mockReturnValue(0);
+  rerender(<StudentPendingTasks {...props} now={200} />);
+  expect(screen.getByText("dashboardEncouragement.discover")).toBeTruthy();
+
+  state.tasks = [
+    {
+      taskId: "task-1",
+      classId: "class-1",
+      className: "Biology",
+      title: "Draw a cell",
+      timeZone: "America/Bogota",
+    },
+  ];
+  rerender(<StudentPendingTasks {...props} />);
+  expect(screen.getByRole("link", { name: /Draw a cell/ })).toBeTruthy();
+  expect(screen.queryByText(/dashboardEncouragement/)).toBeNull();
+
+  state.tasks = [];
+  rerender(<StudentPendingTasks {...props} />);
+  expect(screen.getByText("dashboardEncouragement.review")).toBeTruthy();
+
+  rerender(<StudentPendingTasks {...props} classIds={undefined} />);
+  expect(screen.queryByText(/dashboardEncouragement/)).toBeNull();
+  expect(container.querySelector('img[src*="nice.png"]')).toBeNull();
 });

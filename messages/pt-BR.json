@@ -10,7 +10,12 @@
     "tab": "Tarefas",
     "pendingIndicator": "Você tem uma tarefa para entregar neste curso",
     "dashboardTitle": "Tarefas para entregar",
-    "dashboardEmpty": "Nenhuma tarefa para entregar agora. Consulte seus cursos para ver todas.",
+    "dashboardEmpty": "Nenhuma tarefa para entregar agora.",
+    "dashboardEncouragement": {
+      "review": "Uma pequena revisão hoje pode trazer grandes ideias para sua próxima tarefa.",
+      "confidence": "O que você praticar hoje pode ajudar a começar sua próxima tarefa com confiança.",
+      "discover": "Cada tarefa é uma oportunidade de descobrir o que você pode fazer. Continue aprendendo!"
+    },
     "dashboardPrevious": "Tarefa anterior",
     "dashboardNext": "Próxima tarefa",
     "heading": "Tarefas do curso",

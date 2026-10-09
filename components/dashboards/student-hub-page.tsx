@@ -443,7 +443,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                                   className="h-6 text-xs"
                                 >
                                   <Pencil
-                                    className="size-4"
+                                    className="size-3"
                                     aria-hidden="true"
                                   />
                                   {t("student.edit")}
