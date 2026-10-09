@@ -25,6 +25,7 @@ import {
   CarouselItem,
 } from "@/components/ui/carousel";
 import { Separator } from "@/components/ui/separator";
+import { carouselCardStyles } from "@/components/ui/carousel-card-styles";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { DetailCarousel } from "./detail-carousel";
@@ -171,10 +172,8 @@ export function PastClassesPanel({
                       aria-pressed={isSelected}
                       onClick={() => setSelectedScheduleId(session.scheduleId)}
                       className={cn(
-                        "flex h-24 w-full flex-col items-stretch justify-center rounded-2xl border px-4 py-3 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                        isSelected
-                          ? "border-secondary/60 bg-sidebar text-foreground shadow-[inset_3px_0_0_var(--secondary)] hover:bg-muted/40"
-                          : "border-border bg-sidebar text-foreground hover:bg-muted",
+                        "flex h-24 w-full flex-col items-stretch justify-center px-4 py-3 text-left",
+                        carouselCardStyles(isSelected ? "accent" : "default"),
                       )}
                     >
                       <div className="flex min-w-0 items-center gap-2">

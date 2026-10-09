@@ -8,6 +8,11 @@
   },
   "courseTasks": {
     "tab": "Assignments",
+    "pendingIndicator": "You have an assignment to submit in this course",
+    "dashboardTitle": "Assignments to submit",
+    "dashboardEmpty": "Nothing to submit right now. Check your courses for all assignments.",
+    "dashboardPrevious": "Previous assignment",
+    "dashboardNext": "Next assignment",
     "heading": "Course assignments",
     "newerTasks": "Newer",
     "olderTasks": "Older",
@@ -141,6 +146,7 @@
   },
   "presence": {
     "online": "Online",
+    "offline": "Offline",
     "unknown": "No recent connection recorded",
     "lastSeen": "Last online: {date}"
   },

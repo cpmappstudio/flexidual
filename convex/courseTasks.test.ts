@@ -112,7 +112,7 @@ async function setup() {
         enrolledBy: users.admin,
       });
     }
-    return { users, classId };
+    return { users, classId, campusId, schoolId };
   });
   return {
     t,
@@ -121,6 +121,7 @@ async function setup() {
     admin: t.withIdentity({ subject: "admin" }),
     tutor: t.withIdentity({ subject: "tutor" }),
     student: t.withIdentity({ subject: "student" }),
+    classmate: t.withIdentity({ subject: "classmate" }),
     outsider: t.withIdentity({ subject: "outsider" }),
     newStudent: t.withIdentity({ subject: "newStudent" }),
   };
@@ -181,6 +182,194 @@ test("publishes immediately to enrolled students and protects access", async () 
     taskId,
     taskTitle: "Fractions",
   });
+});
+
+test("student pending assignments follow delivery access, deadlines, and submission state", async () => {
+  const s = await setup();
+  const laterId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Later deadline",
+    dueAt: NOW + 2 * DAY,
+    allowLateSubmissions: false,
+  });
+  const soonerId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Sooner deadline",
+    description: "Show your calculations",
+    dueAt: NOW + HOUR,
+    allowLateSubmissions: false,
+  });
+  const undatedId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "No deadline",
+  });
+  await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Scheduled",
+    availableAt: NOW + HOUR,
+  });
+  const pending = () =>
+    s.student.query(api.courseTasks.listMyPending, {
+      classIds: [s.classId],
+      now: NOW,
+    });
+  expect((await pending()).map((task) => task.taskId)).toEqual([
+    soonerId,
+    laterId,
+    undatedId,
+  ]);
+  expect((await pending())[0].description).toBe("Show your calculations");
+  expect(
+    await s.outsider.query(api.courseTasks.listMyPending, {
+      classIds: [s.classId],
+      now: NOW,
+    }),
+  ).toEqual([]);
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", soonerId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: NOW,
+    });
+  });
+  expect((await pending()).map((task) => task.taskId)).toEqual([
+    laterId,
+    undatedId,
+  ]);
+  expect(
+    (
+      await s.student.query(api.courseTasks.listMyPending, {
+        classIds: [],
+        now: NOW,
+      })
+    ).length,
+  ).toBe(0);
+  expect((await pending()).every((task) => task.className === "Math 5")).toBe(
+    true,
+  );
+});
+
+test("profile visitors see only the selected student's pending assignments", async () => {
+  const s = await setup();
+  await s.t.run(async (ctx) => {
+    await ctx.db.insert("roleAssignments", {
+      userId: s.users.teacher,
+      role: "teacher",
+      orgType: "campus",
+      orgId: s.campusId,
+      schoolId: s.schoolId,
+      assignedAt: NOW,
+      assignedBy: s.users.admin,
+    });
+  });
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Student work",
+  });
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.classmate),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: NOW,
+    });
+  });
+  const args = {
+    classIds: [s.classId],
+    now: NOW,
+    studentId: s.users.student,
+    orgSlug: "campus",
+  };
+  expect(
+    (await s.admin.query(api.courseTasks.listMyPending, args)).map(
+      (task) => task.taskId,
+    ),
+  ).toEqual([taskId]);
+  expect(
+    (await s.teacher.query(api.courseTasks.listMyPending, args)).map(
+      (task) => task.taskId,
+    ),
+  ).toEqual([taskId]);
+  expect(
+    await s.admin.query(api.courseTasks.listMyPending, {
+      ...args,
+      studentId: s.users.classmate,
+    }),
+  ).toEqual([]);
+  expect(await s.outsider.query(api.courseTasks.listMyPending, args)).toEqual(
+    [],
+  );
+  expect(await s.classmate.query(api.courseTasks.listMyPending, args)).toEqual(
+    [],
+  );
+  expect(
+    await s.admin.query(api.courseTasks.listMyPending, {
+      ...args,
+      orgSlug: "other-campus",
+    }),
+  ).toEqual([]);
+});
+
+test("student pending assignments exclude closed access but retain allowed late work", async () => {
+  const s = await setup();
+  await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Strict",
+    dueAt: NOW + HOUR,
+    allowLateSubmissions: false,
+  });
+  const lateId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Late allowed",
+    description: "Attach your draft",
+    dueAt: NOW + HOUR,
+    allowLateSubmissions: true,
+  });
+  vi.setSystemTime(NOW + 2 * HOUR);
+  const pending = () =>
+    s.student.query(api.courseTasks.listMyPending, {
+      classIds: [s.classId],
+      now: NOW + 2 * HOUR,
+    });
+  expect((await pending()).map((task) => task.taskId)).toEqual([lateId]);
+  expect((await pending())[0].description).toBe("Attach your draft");
+  await s.teacher.mutation(api.courseTasks.setClosed, {
+    taskId: lateId,
+    closed: true,
+  });
+  expect(await pending()).toEqual([]);
+});
+
+test("student pending assignments include recipients created before class denormalization", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Legacy recipient",
+  });
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      classId: undefined,
+      releasedAt: undefined,
+    });
+  });
+  const pending = await s.student.query(api.courseTasks.listMyPending, {
+    classIds: [s.classId],
+    now: NOW,
+  });
+  expect(pending.map((task) => task.taskId)).toEqual([taskId]);
 });
 
 test("removing a course also removes its tasks, submissions, files, and task notifications", async () => {

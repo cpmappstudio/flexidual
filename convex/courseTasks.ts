@@ -18,6 +18,8 @@ import {
   getCourseTaskAccess,
 } from "./model/courseTaskAccess";
 import { isStudentEnrolled } from "./model/enrollments";
+import { resolveStudentDashboardAccess } from "./model/studentDashboardAccess";
+import { getClassTimeZone } from "./model/timeZone";
 import {
   assignCurrentStudentsToTask,
   releaseCourseTask,
@@ -56,6 +58,7 @@ const taskValidator = v.object({
 });
 const PUBLISH_ATTEMPT_TTL_MS = 2 * 60 * 60 * 1000;
 const DELETE_BATCH_SIZE = 50;
+const PENDING_RECIPIENTS_PER_CLASS_LIMIT = 200;
 
 async function deleteUnpublishedTask(
   ctx: MutationCtx,
@@ -683,6 +686,124 @@ export const getStatus = query({
           now,
         )),
     };
+  },
+});
+
+export const listMyPending = query({
+  args: {
+    now: v.number(),
+    classIds: v.array(v.id("classes")),
+    studentId: v.optional(v.string()),
+    orgSlug: v.optional(v.string()),
+  },
+  returns: v.array(
+    v.object({
+      taskId: v.id("courseTasks"),
+      classId: v.id("classes"),
+      className: v.string(),
+      title: v.string(),
+      description: v.optional(v.string()),
+      dueAt: v.optional(v.number()),
+      timeZone: v.string(),
+    }),
+  ),
+  handler: async (ctx, { now, classIds, studentId, orgSlug }) => {
+    if (classIds.length === 0) return [];
+    if (classIds.length > 100) throw new ConvexError("TOO_MANY_CLASSES");
+    const targetStudentId = studentId
+      ? (await resolveStudentDashboardAccess(ctx, { studentId, orgSlug }))
+          ?.student._id
+      : (await getCurrentUserOrThrow(ctx))._id;
+    if (!targetStudentId) return [];
+    const allowedClassIds = new Set(classIds);
+    const recipientGroups = await Promise.all(
+      [...allowedClassIds].map((classId) =>
+        ctx.db
+          .query("courseTaskRecipients")
+          .withIndex(
+            "by_studentId_and_classId_and_submittedAt_and_releasedAt",
+            (q) =>
+              q
+                .eq("studentId", targetStudentId)
+                .eq("classId", classId)
+                .eq("submittedAt", undefined),
+          )
+          .order("desc")
+          .take(PENDING_RECIPIENTS_PER_CLASS_LIMIT),
+      ),
+    );
+    const legacyRecipients = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_studentId_and_classId_and_releasedAt", (q) =>
+        q.eq("studentId", targetStudentId).eq("classId", undefined),
+      )
+      .order("desc")
+      .take(PENDING_RECIPIENTS_PER_CLASS_LIMIT);
+    const recipients = [
+      ...recipientGroups.flat(),
+      ...legacyRecipients.filter(
+        (recipient) => recipient.submittedAt === undefined,
+      ),
+    ];
+    const tasks = await Promise.all(
+      recipients.map((recipient) =>
+        ctx.db.get("courseTasks", recipient.taskId),
+      ),
+    );
+    const relevantTasks = tasks.filter(
+      (task): task is Doc<"courseTasks"> =>
+        task !== null && allowedClassIds.has(task.classId),
+    );
+    const courses = await Promise.all(
+      [...new Set(relevantTasks.map((task) => task.classId))].map((id) =>
+        ctx.db.get("classes", id),
+      ),
+    );
+    const accessibleCourses = new Map(
+      (
+        await Promise.all(
+          courses.map(async (course) => {
+            if (
+              !course ||
+              !(await isStudentEnrolled(ctx, course, targetStudentId))
+            )
+              return null;
+            return {
+              course,
+              timeZone: (await getClassTimeZone(ctx, course)) ?? "UTC",
+            };
+          }),
+        )
+      )
+        .filter((item) => item !== null)
+        .map((item) => [item.course._id, item] as const),
+    );
+    const pending = await Promise.all(
+      relevantTasks.map(async (task) => {
+        const entry = accessibleCourses.get(task.classId);
+        if (
+          !entry ||
+          !(await canSubmitCourseTask(ctx, entry.course, task, now))
+        )
+          return null;
+        return {
+          taskId: task._id,
+          classId: entry.course._id,
+          className: entry.course.name,
+          title: task.title,
+          description: task.description,
+          dueAt: task.dueAt,
+          timeZone: entry.timeZone,
+        };
+      }),
+    );
+    return pending
+      .filter((item) => item !== null)
+      .sort(
+        (first, second) =>
+          (first.dueAt ?? Infinity) - (second.dueAt ?? Infinity) ||
+          first.title.localeCompare(second.title),
+      );
   },
 });
 

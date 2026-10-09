@@ -87,6 +87,11 @@ export default function ClassDetailPage() {
 
   const classData = useQuery(api.classes.get, { id: classId });
   const currentUser = useQuery(api.users.getCurrentUser);
+  const pendingTaskResult = useQuery(api.courseTasks.listMyPending, {
+    classIds: [classId],
+    now: queryNow,
+  });
+  const pendingTasks = useRetainedQueryResult(pendingTaskResult, classId);
   const setArchived = useMutation(api.courseChatMessages.setArchived);
 
   const curriculumProgress = useQuery(api.lessons.getClassCurriculumProgress, {
@@ -364,6 +369,17 @@ export default function ClassDetailPage() {
                 <TabsTrigger value="tasks" className={classTabTriggerClassName}>
                   <ClipboardList className="size-4" aria-hidden="true" />
                   {t("courseTasks.tab")}
+                  {pendingTasks && pendingTasks.length > 0 && (
+                    <>
+                      <span
+                        className="size-2 shrink-0 rounded-full bg-destructive"
+                        aria-hidden="true"
+                      />
+                      <span className="sr-only">
+                        {t("courseTasks.pendingIndicator")}
+                      </span>
+                    </>
+                  )}
                 </TabsTrigger>
                 <TabsTrigger
                   value="curriculum"

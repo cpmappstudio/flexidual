@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -161,6 +167,26 @@ const props = {
   ],
   pendingSessions: [],
 };
+
+test("compact attendance keeps four grouped counts and opens the same status detail", () => {
+  render(<StudentAttendanceSummary {...props} compact />);
+  const group = screen.getByRole("group", {
+    name: "root.student.profile.classAttendance",
+  });
+  const statuses = within(group).getAllByRole("button");
+  expect(statuses).toHaveLength(4);
+  expect(statuses[1].getAttribute("data-size")).toBe("default");
+  expect(statuses[0].hasAttribute("disabled")).toBe(true);
+  expect(statuses[1].textContent).toContain("1");
+  expect(statuses[1].textContent).toContain("partial");
+  expect(group.querySelectorAll("svg")).toHaveLength(6);
+  expect(
+    screen.queryByText("root.student.profile.attendanceVerifiedSummary"),
+  ).toBeNull();
+
+  fireEvent.click(within(group).getByRole("button", { name: /absent/i }));
+  expect(screen.getByText("Geography 9")).toBeTruthy();
+});
 
 test("status and course controls filter one history with class context", () => {
   render(<StudentAttendanceSummary {...props} />);

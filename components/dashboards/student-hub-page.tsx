@@ -13,14 +13,16 @@ import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
 import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   CalendarDays,
   ExternalLink,
@@ -48,6 +50,7 @@ import {
 } from "@/lib/class-session";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 import { StudentAttendanceSummary } from "@/components/dashboards/student-attendance-summary";
+import { StudentPendingTasks } from "@/components/dashboards/student-pending-tasks";
 import { UserPresenceText } from "@/components/presence/user-presence";
 
 const UserDialog = dynamic(() =>
@@ -64,9 +67,12 @@ const COURSE_CARD_ACCENTS = [
   "border-violet-200 bg-violet-50/80 before:bg-violet-400",
   "border-cyan-200 bg-cyan-50/80 before:bg-cyan-400",
 ];
+const STACKED_CARD_STYLES =
+  "rounded-[2rem] bg-card p-4 shadow-md ring-1 ring-border/80 sm:p-5 xl:rounded-none xl:bg-transparent xl:p-0 xl:shadow-none xl:ring-0";
 
 export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const t = useTranslations();
+  const presenceT = useTranslations("presence");
   const locale = useLocale();
   const formatter = useFormatter();
   const basePath = useOrgBasePath();
@@ -339,6 +345,18 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
       0,
     );
   const classroomCtaLabel = t("dashboard.goToClassroom");
+  const presenceBadgeContent = (
+    <>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-1.5 rounded-full",
+          presence?.online ? "bg-success" : "bg-muted-foreground/70",
+        )}
+      />
+      {presenceT(presence?.online ? "online" : "offline")}
+    </>
+  );
 
   if (isViewingStudentProfile && dashboardData === undefined) {
     return <Skeleton className="h-96 w-full" />;
@@ -373,104 +391,161 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
 
         <div className="grid gap-5 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="contents xl:grid xl:min-h-0 xl:grid-rows-[minmax(260px,280px)_minmax(0,1fr)] xl:gap-4">
-            <Card className="relative order-1 flex min-h-0 flex-col justify-center gap-0 rounded-[2rem] border-0 py-0 shadow-md ring-1 ring-border/80 xl:order-none">
-              {editableStudentOrgId && (
-                <CardHeader className="absolute inset-x-4 top-4 z-20 p-0 sm:inset-x-5 sm:top-5">
-                  <CardAction>
-                    <UserDialog
-                      user={studentProfile}
-                      defaultRole="student"
-                      allowedRoles={["student"]}
-                      scope={{
-                        orgType: "campus",
-                        orgId: editableStudentOrgId,
-                      }}
-                      hideRole
-                      onDeleted={() => router.replace(`${basePath}/students`)}
-                      trigger={
-                        <Button
-                          type="button"
-                          className="shrink-0"
-                          aria-label={t("student.edit")}
-                        >
-                          <Pencil className="size-4" aria-hidden="true" />
-                          <span className="hidden sm:inline">
-                            {t("student.edit")}
-                          </span>
-                        </Button>
-                      }
-                    />
-                  </CardAction>
-                </CardHeader>
-              )}
-
-              <CardContent className="grid w-full gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)] xl:items-center">
+            <Card className="contents xl:relative xl:flex xl:min-h-0 xl:flex-col xl:justify-center xl:gap-0 xl:rounded-[2rem] xl:border-0 xl:py-0 xl:shadow-md xl:ring-1 xl:ring-border/80">
+              <CardContent className="contents xl:grid xl:w-full xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] xl:grid-rows-[auto_1fr] xl:gap-x-5 xl:gap-y-3 xl:p-4">
                 <div
                   className={cn(
-                    "flex w-full items-center gap-3 text-left xl:flex-col xl:text-center",
-                    editableStudentOrgId && "pr-12 sm:pr-28 xl:pr-0",
+                    STACKED_CARD_STYLES,
+                    "order-1 min-w-0 xl:contents",
                   )}
                 >
-                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-[4px] border-warning bg-primary/10 shadow-inner sm:h-20 sm:w-20 xl:h-28 xl:w-28">
-                    {profileIsLoaded ? (
-                      <Avatar className="h-full w-full rounded-none">
-                        {avatarUrl && (
-                          <AvatarImage
-                            src={avatarUrl}
-                            alt={displayName}
-                            className="object-cover"
-                          />
+                  <div className="flex min-w-0 flex-col justify-center gap-2 xl:col-start-1 xl:row-start-1">
+                    <div className="relative flex w-full items-center justify-start gap-3 text-left sm:gap-4">
+                      <div className="flex shrink-0 flex-col items-center gap-2">
+                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-[4px] border-warning bg-primary/10 shadow-inner sm:h-20 sm:w-20">
+                          {profileIsLoaded ? (
+                            <Avatar className="h-full w-full rounded-none">
+                              {avatarUrl && (
+                                <AvatarImage
+                                  src={avatarUrl}
+                                  alt={displayName}
+                                  className="object-cover"
+                                />
+                              )}
+                              <AvatarFallback className="rounded-none bg-gradient-to-br from-primary to-secondary">
+                                <span className="text-3xl font-bold text-primary-foreground">
+                                  {displayName.charAt(0).toUpperCase()}
+                                </span>
+                              </AvatarFallback>
+                            </Avatar>
+                          ) : (
+                            <Skeleton className="h-full w-full rounded-none" />
+                          )}
+                        </div>
+                        {editableStudentOrgId && (
+                          <div className="absolute right-0 top-0 flex justify-center xl:static">
+                            <UserDialog
+                              user={studentProfile}
+                              defaultRole="student"
+                              allowedRoles={["student"]}
+                              scope={{
+                                orgType: "campus",
+                                orgId: editableStudentOrgId,
+                              }}
+                              hideRole
+                              onDeleted={() =>
+                                router.replace(`${basePath}/students`)
+                              }
+                              trigger={
+                                <Button
+                                  type="button"
+                                  size="xs"
+                                  className="h-6 text-xs"
+                                >
+                                  <Pencil
+                                    className="size-4"
+                                    aria-hidden="true"
+                                  />
+                                  {t("student.edit")}
+                                </Button>
+                              }
+                            />
+                          </div>
                         )}
-                        <AvatarFallback className="rounded-none bg-gradient-to-br from-primary to-secondary">
-                          <span className="text-3xl font-bold text-primary-foreground xl:text-4xl">
-                            {displayName.charAt(0).toUpperCase()}
-                          </span>
-                        </AvatarFallback>
-                      </Avatar>
-                    ) : (
-                      <Skeleton className="h-full w-full rounded-none" />
-                    )}
+                      </div>
+                      <div
+                        className={cn(
+                          "min-w-0 flex-1 xl:flex-initial",
+                          editableStudentOrgId && "pr-24 sm:pr-28 xl:pr-0",
+                        )}
+                      >
+                        <h2 className="max-w-full text-balance text-lg font-bold leading-snug text-foreground">
+                          {profileIsLoaded ? (
+                            displayName
+                          ) : (
+                            <Skeleton className="h-7 w-48" />
+                          )}
+                        </h2>
+                        <p className="mt-1 text-sm font-medium text-muted-foreground">
+                          {gradeLabel}
+                        </p>
+                        {presence !== undefined && (
+                          <div>
+                            {presence?.online ? (
+                              <Badge
+                                variant="outline"
+                                className="gap-1.5 rounded-full border-0 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success"
+                              >
+                                {presenceBadgeContent}
+                              </Badge>
+                            ) : (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      badgeVariants({ variant: "outline" }),
+                                      "gap-1.5 rounded-full border-0 bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted/80",
+                                    )}
+                                  >
+                                    {presenceBadgeContent}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" sideOffset={6}>
+                                  <UserPresenceText status={presence} />
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1 xl:flex-none">
-                    <h3 className="max-w-full text-balance text-base font-bold leading-snug text-foreground sm:text-lg">
-                      {profileIsLoaded ? (
-                        displayName
-                      ) : (
-                        <Skeleton className="h-7 w-48" />
-                      )}
-                    </h3>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-muted-foreground xl:mt-2">
-                      {gradeLabel}
-                      {presence !== undefined && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <UserPresenceText status={presence} />
-                        </>
-                      )}
-                    </p>
+
+                  <div className="mt-5 min-w-0 xl:col-start-1 xl:row-start-2 xl:mt-0 xl:self-center">
+                    <StudentAttendanceSummary
+                      counts={attendanceCounts}
+                      verifiedSessions={verifiedSessions}
+                      pendingVerification={pendingVerification}
+                      pendingSessions={
+                        dashboardData?.pendingAttendanceSessions ?? []
+                      }
+                      courses={classStats.map((classStat) => ({
+                        classId: classStat.classId,
+                        className: classStat.className,
+                      }))}
+                      studentId={studentId}
+                      studentName={displayName}
+                      orgSlug={orgSlug}
+                      hasProfileAction={Boolean(editableStudentOrgId)}
+                      compact
+                    />
                   </div>
                 </div>
 
-                <StudentAttendanceSummary
-                  counts={attendanceCounts}
-                  verifiedSessions={verifiedSessions}
-                  pendingVerification={pendingVerification}
-                  pendingSessions={
-                    dashboardData?.pendingAttendanceSessions ?? []
-                  }
-                  courses={classStats.map((classStat) => ({
-                    classId: classStat.classId,
-                    className: classStat.className,
-                  }))}
-                  studentId={studentId}
-                  studentName={displayName}
-                  orgSlug={orgSlug}
-                  hasProfileAction={Boolean(editableStudentOrgId)}
-                />
+                <div
+                  className={cn(
+                    STACKED_CARD_STYLES,
+                    "relative order-3 min-w-0 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:order-none xl:pl-5",
+                  )}
+                >
+                  <Separator
+                    orientation="vertical"
+                    className="absolute inset-y-0 left-0 hidden xl:block"
+                  />
+                  <StudentPendingTasks
+                    classIds={dashboardData?.classes.map(
+                      (item) => item.classId,
+                    )}
+                    now={roundedNow}
+                    orgSlug={orgSlug}
+                    studentId={studentId}
+                  />
+                </div>
               </CardContent>
             </Card>
 
-            <section className="relative isolate order-3 flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card p-5 shadow-md ring-1 ring-border/80 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:z-10 after:hidden after:h-20 after:bg-gradient-to-b after:from-card after:via-card/90 after:to-card/0 after:content-[''] xl:order-none xl:min-h-0 xl:after:block">
+            <section className="relative isolate order-4 flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card p-5 shadow-md ring-1 ring-border/80 after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:z-10 after:hidden after:h-20 after:bg-gradient-to-b after:from-card after:via-card/90 after:to-card/0 after:content-[''] xl:order-none xl:min-h-0 xl:after:block">
               <div className="relative z-20">
                 <h2 className="text-xl font-bold text-foreground">
                   {t("student.myClasses")}
@@ -579,37 +654,6 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                               }
                             />
                           )}
-                          <RadialChart
-                            value={classItem.courseProgress.percentage}
-                            label="Flexidual"
-                            ariaLabel={`Flexidual · ${t("class.courseProgress")}: ${classItem.courseProgress.percentage}%`}
-                            fill="var(--secondary)"
-                            config={{
-                              progress: {
-                                label: "Flexidual",
-                                color: "var(--secondary)",
-                              },
-                            }}
-                            className="size-11 shrink-0"
-                            tooltip={
-                              <span className="font-medium">
-                                Flexidual ·{" "}
-                                {formatter.number(
-                                  classItem.courseProgress.percentage / 100,
-                                  { style: "percent" },
-                                )}
-                              </span>
-                            }
-                            center={
-                              <Image
-                                src="/logo-flexidual.svg"
-                                alt=""
-                                width={28}
-                                height={14}
-                                className="h-auto w-7 object-contain"
-                              />
-                            }
-                          />
                         </div>
                       </div>
                     </div>
