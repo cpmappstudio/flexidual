@@ -107,6 +107,12 @@ test("orders past classes from oldest to newest and initially selects the newest
   expect(sessionButtons[1].textContent).toContain("Thu, Sep 17");
   expect(sessionButtons[2].textContent).toContain("Fri, Sep 18");
   expect(sessionButtons[2].getAttribute("aria-pressed")).toBe("true");
+  expect(sessionButtons[0].classList.contains("border-border")).toBe(true);
+  expect(sessionButtons[0].classList.contains("hover:bg-muted")).toBe(true);
+  expect(sessionButtons[2].classList.contains("border-secondary/60")).toBe(
+    true,
+  );
+  expect(sessionButtons[2].classList.contains("hover:bg-muted/40")).toBe(true);
   expect(screen.getByText("selected:newest")).toBeTruthy();
   expect(
     screen.getByRole("button", { name: "class.olderClasses" }),

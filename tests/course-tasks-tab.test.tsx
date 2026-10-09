@@ -138,6 +138,10 @@ test("shows earlier availability on the left and selects the latest on the right
     "Scheduled assignmentavailableOn 400noDeadline",
   ]);
   expect(cards[2].getAttribute("aria-pressed")).toBe("true");
+  expect(cards[0].classList.contains("border-border")).toBe(true);
+  expect(cards[0].classList.contains("hover:bg-muted")).toBe(true);
+  expect(cards[2].classList.contains("border-secondary/60")).toBe(true);
+  expect(cards[2].classList.contains("hover:bg-muted/40")).toBe(true);
   expect(screen.getByText("selected:scheduled")).toBeTruthy();
   expect(screen.getByRole("button", { name: "olderTasks" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "newerTasks" })).toBeTruthy();

@@ -324,6 +324,12 @@ export default defineSchema({
       "studentId",
       "classId",
       "releasedAt",
+    ])
+    .index("by_studentId_and_classId_and_submittedAt_and_releasedAt", [
+      "studentId",
+      "classId",
+      "submittedAt",
+      "releasedAt",
     ]),
 
   courseTaskFiles: defineTable({

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/carousel";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { carouselCardStyles } from "@/components/ui/carousel-card-styles";
 import { cn } from "@/lib/utils";
 import { CourseTaskDetail } from "./course-task-detail";
 import { CourseTaskEditor } from "./course-task-editor";
@@ -173,10 +174,8 @@ export function CourseTasksTab({
                       aria-pressed={isSelected}
                       onClick={() => select(task._id)}
                       className={cn(
-                        "flex h-32 w-full min-w-0 flex-col justify-center gap-1.5 rounded-2xl border px-4 py-3 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                        isSelected
-                          ? "border-secondary/60 bg-sidebar text-foreground shadow-[inset_3px_0_0_var(--secondary)] hover:bg-muted/40"
-                          : "border-border bg-sidebar text-foreground hover:bg-muted",
+                        "flex h-32 w-full min-w-0 flex-col justify-center gap-1.5 px-4 py-3 text-left",
+                        carouselCardStyles(isSelected ? "accent" : "default"),
                       )}
                     >
                       <span className="line-clamp-2 min-w-0 break-words text-sm font-bold [overflow-wrap:anywhere]">

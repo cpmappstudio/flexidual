@@ -35,6 +35,7 @@ import { SessionCloseoutDialog } from "@/components/classroom/session-closeout-d
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Combobox } from "@/components/ui/combobox";
 import {
   Dialog,
@@ -426,6 +427,7 @@ export function StudentAttendanceSummary({
   studentName,
   orgSlug,
   hasProfileAction = false,
+  compact = false,
 }: {
   counts: AttendanceCounts;
   verifiedSessions: number;
@@ -436,6 +438,7 @@ export function StudentAttendanceSummary({
   studentName: string;
   orgSlug: string;
   hasProfileAction?: boolean;
+  compact?: boolean;
 }) {
   const t = useTranslations();
   const historyT = useTranslations("student.attendanceHistory");
@@ -561,70 +564,136 @@ export function StudentAttendanceSummary({
   const isLoading = mode === "verified" && queryStatus === "LoadingFirstPage";
   const hasItems =
     mode === "pending" ? visiblePendingSessions.length > 0 : results.length > 0;
+  const attendanceStatusButtons = ATTENDANCE_STATUSES.map((status) => {
+    const appearance = ATTENDANCE_STATUS_APPEARANCE[status];
+    const Icon = appearance.icon;
+    const count = counts[status];
+    const label = attendanceT(status);
+    const commonProps = {
+      type: "button" as const,
+      disabled: count === 0,
+      "aria-haspopup": "dialog" as const,
+      "aria-label": historyT("openStatusDetails", { count, label }),
+      onClick: () => openHistory(status),
+    };
+
+    if (compact) {
+      return (
+        <Button
+          key={status}
+          {...commonProps}
+          variant="ghost"
+          size="default"
+          title={label}
+          className={cn(
+            "group h-16 min-w-0 flex-1 cursor-pointer flex-col gap-1 rounded-xl! border-0! px-1 py-1.5 text-center shadow-none hover:-translate-y-0.5 hover:brightness-95 hover:shadow-sm disabled:cursor-default disabled:hover:translate-y-0",
+            appearance.softClassName,
+          )}
+        >
+          <span className="flex items-center justify-center gap-1">
+            <Icon className="size-4 opacity-80" aria-hidden="true" />
+            <span className="text-2xl font-bold leading-none tabular-nums">
+              {count}
+            </span>
+          </span>
+          <span className="flex items-center justify-center gap-0.5 text-xs font-semibold leading-tight whitespace-normal">
+            <span>{label}</span>
+            {count > 0 && (
+              <ChevronRight
+                className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5"
+                aria-hidden="true"
+              />
+            )}
+          </span>
+        </Button>
+      );
+    }
+
+    return (
+      <button
+        key={status}
+        {...commonProps}
+        className={cn(
+          "group min-w-0 rounded-2xl px-2 py-2 text-center outline-none transition-[color,background-color,box-shadow,transform] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-60 xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:py-3",
+          appearance.summaryClassName,
+        )}
+      >
+        <span className="flex items-center justify-center gap-1.5">
+          <Icon className="size-4 opacity-80 xl:size-5" aria-hidden="true" />
+          <span className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
+            {count}
+          </span>
+        </span>
+        <span className="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
+          {label}
+          {count > 0 && (
+            <ChevronRight
+              className="size-3.5 transition-transform group-hover:translate-x-0.5"
+              aria-hidden="true"
+            />
+          )}
+        </span>
+      </button>
+    );
+  });
 
   return (
     <>
-      <div className="min-w-0 xl:border-l xl:border-border/60 xl:pl-5">
-        <div className={cn("mb-3 xl:mb-0", hasProfileAction && "xl:pr-28")}>
-          <h3 className="text-sm font-bold text-foreground xl:text-xl">
+      <div
+        className={cn(
+          "min-w-0",
+          !compact && "xl:border-l xl:border-border/60 xl:pl-5",
+        )}
+      >
+        <div
+          className={cn(
+            "mb-3",
+            compact && "mb-2",
+            !compact && "xl:mb-0",
+            hasProfileAction && !compact && "xl:pr-28",
+          )}
+        >
+          <h3
+            className={
+              compact
+                ? "text-sm font-semibold text-muted-foreground"
+                : "text-sm font-bold text-foreground xl:text-xl"
+            }
+          >
             {t("student.profile.classAttendance")}
           </h3>
-          <p className="mt-1 hidden text-sm font-medium text-muted-foreground xl:block">
-            {verifiedSessions > 0
-              ? t("student.profile.attendanceVerifiedSummary", {
-                  verified: verifiedSessions,
-                })
-              : t("student.profile.noCompletedClassesYet")}
-          </p>
+          {!compact && (
+            <p className="mt-1 hidden text-sm font-medium text-muted-foreground xl:block">
+              {verifiedSessions > 0
+                ? t("student.profile.attendanceVerifiedSummary", {
+                    verified: verifiedSessions,
+                  })
+                : t("student.profile.noCompletedClassesYet")}
+            </p>
+          )}
         </div>
 
-        <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 xl:mt-4 xl:gap-3">
-          {ATTENDANCE_STATUSES.map((status) => {
-            const appearance = ATTENDANCE_STATUS_APPEARANCE[status];
-            const Icon = appearance.icon;
-            const count = counts[status];
-            const label = attendanceT(status);
-            return (
-              <button
-                key={status}
-                type="button"
-                disabled={count === 0}
-                aria-haspopup="dialog"
-                aria-label={historyT("openStatusDetails", { count, label })}
-                className={cn(
-                  "group min-w-0 rounded-2xl px-2 py-2 text-center outline-none transition-[color,background-color,box-shadow,transform] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-default disabled:opacity-60 xl:flex xl:min-h-24 xl:flex-col xl:items-center xl:justify-center xl:py-3",
-                  appearance.summaryClassName,
-                )}
-                onClick={() => openHistory(status)}
-              >
-                <span className="flex items-center justify-center gap-1.5">
-                  <Icon
-                    className="size-4 opacity-80 xl:size-5"
-                    aria-hidden="true"
-                  />
-                  <span className="text-xl font-bold leading-none tabular-nums xl:text-3xl">
-                    {count}
-                  </span>
-                </span>
-                <span className="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold leading-tight xl:mt-2 xl:text-sm">
-                  {label}
-                  {count > 0 && (
-                    <ChevronRight
-                      className="size-3.5 transition-transform group-hover:translate-x-0.5"
-                      aria-hidden="true"
-                    />
-                  )}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {compact ? (
+          <ButtonGroup
+            className="min-w-0 w-full gap-2"
+            aria-label={t("student.profile.classAttendance")}
+          >
+            {attendanceStatusButtons}
+          </ButtonGroup>
+        ) : (
+          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 xl:mt-4 xl:gap-3">
+            {attendanceStatusButtons}
+          </div>
+        )}
 
         {pendingVerification > 0 && (
           <button
             type="button"
             aria-haspopup="dialog"
-            className="mt-3 flex w-full items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2 text-left text-xs text-warning-foreground transition-colors hover:bg-warning/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            className={cn(
+              "flex w-full items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/5 text-left text-xs text-warning-foreground transition-colors hover:bg-warning/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              compact ? "mt-2 px-2 py-1.5" : "mt-3 px-3 py-2",
+            )}
             onClick={openPendingHistory}
           >
             <span className="inline-flex items-center gap-2">

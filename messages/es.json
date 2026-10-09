@@ -8,6 +8,11 @@
   },
   "courseTasks": {
     "tab": "Tareas",
+    "pendingIndicator": "Tienes una tarea por entregar en este curso",
+    "dashboardTitle": "Tareas por entregar",
+    "dashboardEmpty": "No tienes tareas por entregar ahora. Consulta tus cursos para verlas todas.",
+    "dashboardPrevious": "Tarea anterior",
+    "dashboardNext": "Siguiente tarea",
     "heading": "Tareas del curso",
     "newerTasks": "Más recientes",
     "olderTasks": "Anteriores",
@@ -141,6 +146,7 @@
   },
   "presence": {
     "online": "En línea",
+    "offline": "Desconectado",
     "unknown": "Sin conexión reciente registrada",
     "lastSeen": "Última conexión: {date}"
   },
