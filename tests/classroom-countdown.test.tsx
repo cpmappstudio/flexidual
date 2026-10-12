@@ -46,6 +46,53 @@ function Intl({ children }: { children: ReactNode }) {
 const END = Date.UTC(2026, 8, 17, 14, 30);
 
 describe("classroom countdown", () => {
+  it("switches between presenter and mosaic views from the stage", () => {
+    const onViewModeChange = vi.fn();
+    render(
+      <ClassroomStage
+        stageRef={{ current: null }}
+        phoneControls={null}
+        isPhoneLandscape={false}
+        stageControlsVisible={false}
+        onRevealControls={vi.fn()}
+        zoom={1}
+        onZoom={vi.fn()}
+        contentActive={false}
+        isWhiteboardActive={false}
+        followViewport={false}
+        onToggleFollowViewport={vi.fn()}
+        followingLabel="Siguiendo"
+        unlockedLabel="Vista libre"
+        isFullscreen={false}
+        enterFullscreenLabel="Pantalla completa"
+        exitFullscreenLabel="Salir"
+        viewMode="presenter"
+        onViewModeChange={onViewModeChange}
+        presenterViewLabel="Presentador"
+        mosaicViewLabel="Mosaico"
+      >
+        <span>Contenido</span>
+      </ClassroomStage>,
+      { wrapper: Intl },
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Visualización de la sala" }),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Presentador" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Mosaico" }));
+    expect(onViewModeChange).toHaveBeenCalledWith("mosaic");
+    expect(
+      screen
+        .getByRole("button", { name: "Visualización de la sala" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+
   it("derives remaining time from the deadline and catches up after a suspended tab", () => {
     const view = render(<ClassroomCountdown end={END} now={END - 90_001} />, {
       wrapper: Intl,

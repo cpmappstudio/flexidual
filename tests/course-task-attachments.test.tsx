@@ -63,6 +63,60 @@ test("long attachment names wrap within the file row", () => {
   expect(filename.parentElement?.classList.contains("min-w-0")).toBe(true);
 });
 
+test.each([
+  ["notes.pdf", "application/pdf", "file-text"],
+  [
+    "essay.docx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "file-text",
+  ],
+  ["photo.jpg", "image/jpeg", "image"],
+  ["diagram.png", "image/png", "image"],
+  ["drawing.webp", "image/webp", "image"],
+  [
+    "slides.pptx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "presentation",
+  ],
+])(
+  "%s uses the correct file icon in task attachments",
+  (name, contentType, icon) => {
+    const file = {
+      id: name as Id<"courseTaskFiles">,
+      name,
+      contentType,
+      size: 100,
+    };
+    const { rerender } = render(<TaskAttachmentList files={[file]} plain />);
+
+    expect(
+      screen
+        .getByText(name)
+        .closest("button")
+        ?.querySelector(`.lucide-${icon}`),
+    ).not.toBeNull();
+
+    rerender(<TaskAttachmentList files={[file]} onRemove={vi.fn()} />);
+    expect(
+      screen
+        .getByText(name)
+        .closest("button")
+        ?.querySelector(`.lucide-${icon}`),
+    ).not.toBeNull();
+
+    rerender(
+      <TaskFilePicker
+        files={[new File(["content"], name, { type: contentType })]}
+        onChange={vi.fn()}
+        maxFiles={20}
+      />,
+    );
+    expect(
+      screen.getByText(name).parentElement?.querySelector(`.lucide-${icon}`),
+    ).not.toBeNull();
+  },
+);
+
 test("existing attachments share a row for preview, download and remove in the editor", () => {
   const file = {
     id: "file-id" as Id<"courseTaskFiles">,
@@ -120,6 +174,61 @@ test("read-only attachments emphasize the file name and show its format without 
   expect(fetch).not.toHaveBeenCalled();
 });
 
+test("read-only file cards align the action slot for previewable and download-only files", () => {
+  const files = [
+    {
+      id: "preview-file" as Id<"courseTaskFiles">,
+      name: "notes.pdf",
+      contentType: "application/pdf",
+      size: 100,
+    },
+    {
+      id: "download-file" as Id<"courseTaskFiles">,
+      name: "slides.pptx",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      size: 100,
+    },
+  ];
+  render(<TaskAttachmentList files={files} plain />);
+
+  const previewName = screen.getByRole("button", {
+    name: "notes.pdf · preview",
+  });
+  const preview = screen.getByRole("button", { name: "preview: notes.pdf" });
+  const previewDownload = screen.getByRole("button", {
+    name: "download: notes.pdf",
+  });
+  const officeDownload = screen.getByRole("button", {
+    name: "download: slides.pptx",
+  });
+  const previewCard = preview.parentElement;
+  const officeCard = officeDownload.parentElement;
+
+  expect(previewCard?.classList.contains("grid")).toBe(true);
+  expect(previewCard?.classList.contains("w-full")).toBe(true);
+  expect(previewCard?.classList.contains("rounded-xl")).toBe(true);
+  expect(officeCard?.className).toBe(previewCard?.className);
+  expect(previewName.parentElement).toBe(previewCard);
+  expect(officeDownload.classList.contains("col-span-3")).toBe(true);
+  expect(preview.querySelector(".lucide-eye")).not.toBeNull();
+  expect(officeDownload.querySelector(".lucide-eye")).toBeNull();
+  expect(preview.className).toBe(previewDownload.className);
+  expect(preview.classList.contains("size-10")).toBe(true);
+  expect(preview.getAttribute("data-variant")).toBe(
+    previewDownload.getAttribute("data-variant"),
+  );
+  expect(preview.getAttribute("data-size")).toBe(
+    previewDownload.getAttribute("data-size"),
+  );
+  expect(preview.nextElementSibling).toBe(previewDownload);
+  expect(
+    officeDownload
+      .querySelector(".lucide-download")
+      ?.parentElement?.classList.contains("size-10"),
+  ).toBe(true);
+});
+
 test.each([
   ["photo.png", "image/png", "img"],
   ["work.pdf", "application/pdf", "iframe"],
@@ -147,7 +256,10 @@ test.each([
     render(<TaskAttachmentList files={[file]} plain />);
 
     expect(fetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: `preview: ${name}` }));
+    const previewButton = screen.getByRole("button", {
+      name: `preview: ${name}`,
+    });
+    fireEvent.click(previewButton.querySelector(".lucide-eye")!);
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(getToken).toHaveBeenCalledWith({ template: "convex" });
     expect(vi.mocked(fetch).mock.calls[0][0].toString()).toContain(

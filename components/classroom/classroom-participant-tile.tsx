@@ -11,6 +11,7 @@ type ParticipantTileVariant = "grid" | "stage" | "mini";
 
 interface ClassroomParticipantTileProps {
   participant: Participant;
+  id?: string;
   className?: string;
   showLabel?: boolean;
   variant?: ParticipantTileVariant;
@@ -30,6 +31,7 @@ interface ClassroomParticipantTileProps {
 
 export function ClassroomParticipantTile({
   participant,
+  id,
   className,
   showLabel = true,
   variant = "grid",
@@ -72,6 +74,7 @@ export function ClassroomParticipantTile({
 
   return (
     <div
+      id={id}
       className={cn(
         "group relative isolate overflow-hidden bg-muted transition-all duration-300",
         variant === "grid" &&

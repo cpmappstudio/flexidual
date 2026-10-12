@@ -372,6 +372,330 @@ test("student pending assignments include recipients created before class denorm
   expect(pending.map((task) => task.taskId)).toEqual([taskId]);
 });
 
+test("student task history paginates every delivery state within an active course", async () => {
+  const s = await setup();
+  const submittedId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Submitted work",
+    dueAt: NOW + HOUR,
+    allowLateSubmissions: false,
+  });
+  const closedId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Expired work",
+    dueAt: NOW + HOUR,
+    allowLateSubmissions: false,
+  });
+  const pendingId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Open work",
+    dueAt: NOW + DAY,
+  });
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", submittedId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: NOW,
+    });
+  });
+
+  const items = [];
+  let cursor: string | null = null;
+  let isDone = false;
+  while (!isDone) {
+    const result: FunctionReturnType<
+      typeof api.courseTasks.listStudentTasksForClass
+    > = await s.student.query(api.courseTasks.listStudentTasksForClass, {
+      classId: s.classId,
+      now: NOW + 2 * HOUR,
+      paginationOpts: { cursor, numItems: 1 },
+    });
+    items.push(...result.page);
+    cursor = result.continueCursor;
+    isDone = result.isDone;
+  }
+  expect(items).toHaveLength(3);
+  expect(
+    Object.fromEntries(items.map((item) => [item.taskId, item.status])),
+  ).toEqual({
+    [submittedId]: "submitted",
+    [closedId]: "closed",
+    [pendingId]: "pending",
+  });
+  expect(items.find((item) => item.taskId === submittedId)?.submittedAt).toBe(
+    NOW,
+  );
+});
+
+test("task history filters reach matches beyond empty pages", async () => {
+  const s = await setup();
+  const closedId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Closed work",
+    dueAt: NOW + HOUR,
+    allowLateSubmissions: false,
+  });
+  const submittedId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Submitted work",
+    dueAt: NOW + HOUR,
+    allowLateSubmissions: false,
+  });
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", submittedId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: NOW,
+    });
+  });
+  const pendingIds: Id<"courseTasks">[] = [];
+  for (let index = 0; index < 12; index++) {
+    vi.setSystemTime(NOW + index + 1);
+    pendingIds.push(
+      await s.teacher.mutation(api.courseTasks.create, {
+        classId: s.classId,
+        title: `Open work ${index}`,
+        dueAt: NOW + DAY,
+      }),
+    );
+  }
+
+  const queryPage = (
+    status: "pending" | "submitted" | "closed",
+    cursor: string | null,
+  ) =>
+    s.student.query(api.courseTasks.listStudentTasksForClass, {
+      classId: s.classId,
+      now: NOW + 2 * HOUR,
+      status,
+      paginationOpts: { cursor, numItems: 3 },
+    });
+  const firstClosedPage = await queryPage("closed", null);
+  expect(firstClosedPage.page).toEqual([]);
+  expect(firstClosedPage.isDone).toBe(false);
+  let cursor = firstClosedPage.continueCursor;
+  const closedIds: Id<"courseTasks">[] = [];
+  let isDone = false;
+  while (!isDone) {
+    const result: FunctionReturnType<
+      typeof api.courseTasks.listStudentTasksForClass
+    > = await queryPage("closed", cursor);
+    closedIds.push(...result.page.map((item) => item.taskId));
+    cursor = result.continueCursor;
+    isDone = result.isDone;
+  }
+  expect(closedIds).toEqual([closedId]);
+
+  const pendingPage = await queryPage("pending", null);
+  expect(pendingPage.page.every((item) => item.status === "pending")).toBe(
+    true,
+  );
+  expect(
+    pendingPage.page.every((item) => pendingIds.includes(item.taskId)),
+  ).toBe(true);
+  const submittedIds: Id<"courseTasks">[] = [];
+  let submittedCursor: string | null = null;
+  let submittedDone = false;
+  while (!submittedDone) {
+    const result: FunctionReturnType<
+      typeof api.courseTasks.listStudentTasksForClass
+    > = await queryPage("submitted", submittedCursor);
+    submittedIds.push(...result.page.map((item) => item.taskId));
+    submittedCursor = result.continueCursor;
+    submittedDone = result.isDone;
+  }
+  expect(submittedIds).toEqual([submittedId]);
+});
+
+test("closed history follows submission availability and excludes delivered work", async () => {
+  const s = await setup();
+  const dueId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Due today",
+    dueAt: NOW + HOUR,
+    allowLateSubmissions: false,
+  });
+  const lateAllowedId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Late work allowed",
+    dueAt: NOW + HOUR,
+    allowLateSubmissions: true,
+  });
+  const manuallyClosedId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Closed by teacher",
+  });
+  await s.teacher.mutation(api.courseTasks.setClosed, {
+    taskId: manuallyClosedId,
+    closed: true,
+  });
+  const submittedId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Already delivered",
+    dueAt: NOW + HOUR,
+  });
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", submittedId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      submittedAt: NOW,
+    });
+  });
+  await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Not released",
+    availableAt: NOW + 2 * HOUR,
+  });
+
+  const list = async (
+    status: "pending" | "submitted" | "closed",
+    now: number,
+  ) =>
+    (
+      await s.student.query(api.courseTasks.listStudentTasksForClass, {
+        classId: s.classId,
+        now,
+        status,
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page.map((item) => item.taskId);
+
+  expect(await list("pending", NOW + HOUR)).toContain(dueId);
+  expect(await list("closed", NOW + HOUR)).toEqual([manuallyClosedId]);
+  expect(await list("closed", NOW + HOUR + 1)).toEqual([
+    manuallyClosedId,
+    dueId,
+  ]);
+  expect(await list("pending", NOW + HOUR + 1)).toEqual([lateAllowedId]);
+  expect(await list("submitted", NOW + HOUR + 1)).toEqual([submittedId]);
+
+  await s.t.run((ctx) =>
+    ctx.db.patch("classes", s.classId, { endDate: NOW + 2 * HOUR }),
+  );
+  expect(await list("closed", NOW + 2 * HOUR + 1)).toContain(lateAllowedId);
+});
+
+test("submitted history keeps task publication order", async () => {
+  const s = await setup();
+  const olderId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Published first",
+  });
+  vi.setSystemTime(NOW + 1);
+  const newerId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Published second",
+  });
+  await s.t.run(async (ctx) => {
+    for (const [taskId, submittedAt] of [
+      [olderId, NOW + 3] as const,
+      [newerId, NOW + 2] as const,
+    ]) {
+      const recipient = await ctx.db
+        .query("courseTaskRecipients")
+        .withIndex("by_taskId_and_studentId", (q) =>
+          q.eq("taskId", taskId).eq("studentId", s.users.student),
+        )
+        .unique();
+      await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+        submittedAt,
+      });
+    }
+  });
+  const page = await s.student.query(api.courseTasks.listStudentTasksForClass, {
+    classId: s.classId,
+    now: NOW + 3,
+    status: "submitted",
+    paginationOpts: { cursor: null, numItems: 10 },
+  });
+  expect(page.page.map((item) => item.taskId)).toEqual([newerId, olderId]);
+});
+
+test("task history preserves older recipients and protects student profiles", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Older assignment",
+  });
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.patch("courseTaskRecipients", recipient!._id, {
+      classId: undefined,
+      releasedAt: undefined,
+    });
+  });
+  const args = {
+    classId: s.classId,
+    now: NOW,
+    paginationOpts: { cursor: null, numItems: 10 },
+  };
+  expect(
+    (await s.student.query(api.courseTasks.listStudentTasksForClass, args))
+      .page,
+  ).toMatchObject([{ taskId, status: "pending" }]);
+  expect(
+    (
+      await s.student.query(api.courseTasks.listStudentTasksForClass, {
+        ...args,
+        status: "pending",
+      })
+    ).page,
+  ).toMatchObject([{ taskId, status: "pending" }]);
+  expect(
+    (
+      await s.admin.query(api.courseTasks.listStudentTasksForClass, {
+        ...args,
+        studentId: s.users.student,
+        orgSlug: "campus",
+      })
+    ).page,
+  ).toMatchObject([{ taskId }]);
+  await expect(
+    s.outsider.query(api.courseTasks.listStudentTasksForClass, {
+      ...args,
+      studentId: s.users.student,
+      orgSlug: "campus",
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    s.classmate.query(api.courseTasks.listStudentTasksForClass, {
+      ...args,
+      studentId: s.users.student,
+      orgSlug: "campus",
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    s.admin.query(api.courseTasks.listStudentTasksForClass, {
+      ...args,
+      studentId: s.users.student,
+      orgSlug: "other-campus",
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await s.t.run((ctx) =>
+    ctx.db.patch("classes", s.classId, { isActive: false }),
+  );
+  await expect(
+    s.student.query(api.courseTasks.listStudentTasksForClass, args),
+  ).rejects.toThrow("PERMISSION_DENIED");
+});
+
 test("removing a course also removes its tasks, submissions, files, and task notifications", async () => {
   const s = await setup();
   const taskId = await s.teacher.mutation(api.courseTasks.create, {

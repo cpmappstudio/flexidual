@@ -86,6 +86,7 @@ const testState = vi.hoisted(() => {
     isExtensionLoading: false,
     isLeadershipLoading: false,
     recordingOperation: null as { pending: boolean; failed: boolean } | null,
+    screenSharing: false,
     leadership: leadership as typeof leadership | null,
     initialLeadership: leadership,
     localParticipant: administrativeParticipant,
@@ -202,7 +203,7 @@ vi.mock("@/components/classroom/use-classroom-layout-state", () => ({
 vi.mock("@/components/classroom/use-classroom-media-tracks", () => ({
   useClassroomMediaTracks: () => ({
     activeScreenTrack: undefined,
-    isScreenSharingActive: false,
+    isScreenSharingActive: testState.screenSharing,
     isTeacherAudioOn: false,
     isTeacherVideoOn: false,
     screenTracks: [],
@@ -249,13 +250,45 @@ vi.mock("@/components/classroom/classroom-header", () => ({
 }));
 vi.mock("@/components/classroom/classroom-stage", () => ({
   ClassroomScreenShareContent: () => null,
-  ClassroomStage: ({ children }: { children: ReactNode }) =>
-    createElement("main", null, children),
+  ClassroomStage: ({
+    children,
+    onViewModeChange,
+  }: {
+    children: ReactNode;
+    onViewModeChange?: (mode: "presenter" | "mosaic") => void;
+  }) =>
+    createElement(
+      "main",
+      null,
+      children,
+      onViewModeChange &&
+        createElement(
+          "button",
+          {
+            onClick: () => onViewModeChange("mosaic"),
+            "aria-label": "Switch to mosaic",
+          },
+          "Mosaic",
+        ),
+      onViewModeChange &&
+        createElement(
+          "button",
+          {
+            onClick: () => onViewModeChange("presenter"),
+            "aria-label": "Switch to presenter",
+          },
+          "Presenter",
+        ),
+    ),
   ClassroomWhiteboardContent: ({ roomName }: { roomName: string }) =>
     createElement("div", {
       "data-testid": "classroom-whiteboard",
       "data-room-name": roomName,
     }),
+}));
+vi.mock("@/components/classroom/classroom-mosaic", () => ({
+  ClassroomMosaic: () => createElement("div", null, "Mosaic scene"),
+  getMosaicParticipants: () => [],
 }));
 vi.mock("@/components/classroom/classroom-presenter-content", () => ({
   ClassroomPresenterContent: ({
@@ -434,6 +467,7 @@ describe("classroom session stability", () => {
     testState.isExtensionLoading = false;
     testState.isLeadershipLoading = false;
     testState.recordingOperation = null;
+    testState.screenSharing = false;
     testState.leadership = testState.initialLeadership;
     testState.localParticipant = testState.administrativeParticipant;
     testState.room.isRecording = false;
@@ -612,6 +646,74 @@ describe("classroom session stability", () => {
     expect(
       testState.localParticipant.setMicrophoneEnabled,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restart camera or microphone when staff changes classroom views", async () => {
+    renderActiveClassroom();
+    await waitFor(() => {
+      expect(testState.localParticipant.setCameraEnabled).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+    expect(screen.getByText("Mosaic scene")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to presenter" }),
+    );
+
+    expect(screen.queryByText("Mosaic scene")).toBeNull();
+    expect(testState.localParticipant.setCameraEnabled).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      testState.localParticipant.setMicrophoneEnabled,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restart camera or microphone when a student changes classroom views", async () => {
+    renderStudentClassroom();
+    await waitFor(() => {
+      expect(
+        testState.studentParticipant.setCameraEnabled,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+    expect(screen.getByText("Mosaic scene")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to presenter" }),
+    );
+
+    expect(screen.queryByText("Mosaic scene")).toBeNull();
+    expect(testState.studentParticipant.setCameraEnabled).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      testState.studentParticipant.setMicrophoneEnabled,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns to presenter when screen sharing begins during mosaic", () => {
+    const view = renderActiveClassroom();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+    expect(screen.getByText("Mosaic scene")).toBeTruthy();
+
+    testState.screenSharing = true;
+    view.rerender(
+      createElement(ActiveClassroomUI, {
+        isCloseoutOpen: false,
+        onRequestCloseout: vi.fn(),
+        courseId: "class-1" as never,
+        currentUserRole: "admin",
+        roomName: "room-1",
+        sessionNow: INITIAL_NOW,
+        sessionIsLive: true,
+        sessionTimeZone: "America/Bogota",
+      }),
+    );
+
+    expect(screen.queryByText("Mosaic scene")).toBeNull();
   });
 
   it("lets staff pin a student to the main stage and unpin them", () => {

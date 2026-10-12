@@ -4,13 +4,16 @@ interface ClassroomSceneProps {
   presenter: ReactNode;
   screenShare?: ReactNode;
   whiteboard?: ReactNode;
+  mosaic?: ReactNode;
 }
 
 export function ClassroomScene({
   presenter,
   screenShare,
   whiteboard,
+  mosaic,
 }: ClassroomSceneProps) {
+  if (mosaic) return mosaic;
   if (whiteboard) return whiteboard;
   if (screenShare) return screenShare;
 
