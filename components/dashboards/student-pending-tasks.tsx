@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "convex/react";
-import { CalendarClock, ArrowUpRight } from "lucide-react";
+import { CalendarClock, ArrowUpRight, ChevronRight } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 
 import {
@@ -14,8 +15,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { carouselCardStyles } from "@/components/ui/carousel-card-styles";
 import { AstronautEncouragement } from "@/components/student/astronaut-encouragement";
+import {
+  StudentTaskHistory,
+  type StudentTaskCourse,
+} from "@/components/dashboards/student-task-history";
+import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
+import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
@@ -23,18 +29,23 @@ import { cn } from "@/lib/utils";
 const TASK_ENCOURAGEMENT_KEYS = ["review", "confidence", "discover"] as const;
 
 export function StudentPendingTasks({
-  classIds,
+  courses,
   now,
   orgSlug,
   studentId,
 }: {
-  classIds: Id<"classes">[] | undefined;
+  courses: StudentTaskCourse[] | undefined;
   now: number;
   orgSlug: string;
   studentId?: string;
 }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
   const t = useTranslations("courseTasks");
   const formatter = useFormatter();
+  const classIds = courses?.map((course) => course.classId);
+  const courseIcons = new Map(
+    courses?.map((course) => [course.classId, course.curriculumIconKey]),
+  );
   const result = useQuery(
     api.courseTasks.listMyPending,
     classIds === undefined
@@ -51,18 +62,31 @@ export function StudentPendingTasks({
       className="flex min-w-0 flex-col gap-2 lg:h-full"
       aria-labelledby="pending-tasks-title"
     >
-      <div className="flex min-w-0 items-center justify-left gap-2">
-        <h2
-          id="pending-tasks-title"
-          className="flex min-w-0 items-center gap-2 text-base font-bold text-foreground sm:text-lg"
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2
+            id="pending-tasks-title"
+            className="flex min-w-0 items-center gap-2 text-base font-bold text-foreground sm:text-lg"
+          >
+            {t("dashboardTitle")}
+          </h2>
+          {tasks && tasks.length > 1 && (
+            <span className="rounded-full bg-info/15 px-2.5 py-0.5 text-xs font-bold tabular-nums text-info">
+              {tasks.length}
+            </span>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 text-primary"
+          disabled={courses === undefined}
+          onClick={() => setHistoryOpen(true)}
         >
-          {t("dashboardTitle")}
-        </h2>
-        {tasks && tasks.length > 1 && (
-          <span className="rounded-full bg-info/15 px-2.5 py-0.5 text-xs font-bold tabular-nums text-info">
-            {tasks.length}
-          </span>
-        )}
+          {t("historyOpen")}
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </Button>
       </div>
 
       {tasks === undefined ? (
@@ -98,31 +122,40 @@ export function StudentPendingTasks({
                 <Link
                   href={`/${orgSlug}/classes/${task.classId}?task=${task.taskId}`}
                   className={cn(
-                    "group flex h-44 min-w-0 flex-col justify-between gap-2 p-4 xl:p-3",
                     carouselCardStyles("accent"),
+                    "group flex min-h-48 min-w-0 flex-col border-border p-4 xl:h-48 xl:p-3",
                   )}
                 >
                   <span className="flex min-w-0 items-start justify-between gap-2">
-                    <span className="min-w-0 truncate text-xs font-semibold text-info">
-                      {task.className}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <CurriculumIcon
+                        iconKey={courseIcons.get(task.classId)}
+                        className="size-7"
+                        size={28}
+                      />
+                      <span className="min-w-0 truncate text-xs font-semibold text-info">
+                        {task.className}
+                      </span>
                     </span>
                     <ArrowUpRight
                       className="size-4 shrink-0 text-info transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
                       aria-hidden="true"
                     />
                   </span>
-                  <span className="line-clamp-2 min-w-0 break-words text-base font-bold text-foreground [overflow-wrap:anywhere]">
-                    {task.title}
-                  </span>
-                  {task.description && (
-                    <span className="line-clamp-2 min-w-0 whitespace-pre-line break-words text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">
-                      <span className="font-semibold text-foreground">
-                        {t("instructions")}:{" "}
-                      </span>
-                      {task.description}
+                  <span className="mt-3 flex min-w-0 flex-col gap-2">
+                    <span className="line-clamp-2 min-w-0 break-words text-base font-bold text-foreground [overflow-wrap:anywhere]">
+                      {task.title}
                     </span>
-                  )}
-                  <span className="flex min-w-0 items-center gap-2">
+                    {task.description && (
+                      <span className="line-clamp-2 min-w-0 whitespace-pre-line break-words text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                        <span className="font-semibold text-foreground">
+                          {t("instructions")}:{" "}
+                        </span>
+                        {task.description}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-auto flex min-w-0 items-center gap-2 pt-2">
                     <CalendarClock
                       className="size-5 shrink-0 text-primary"
                       aria-hidden="true"
@@ -147,7 +180,7 @@ export function StudentPendingTasks({
             ))}
           </CarouselContent>
           {tasks.length > 1 && (
-            <div className="mt-2 flex items-center justify-end gap-2">
+            <div className="mt-2 flex items-center justify-end gap-2 xl:mt-1">
               <CarouselPrevious
                 type="button"
                 className="static size-8 translate-y-0"
@@ -162,6 +195,15 @@ export function StudentPendingTasks({
           )}
         </Carousel>
       )}
+      <StudentTaskHistory
+        key={`${orgSlug}:${studentId ?? "self"}`}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        courses={courses ?? []}
+        now={now}
+        orgSlug={orgSlug}
+        studentId={studentId}
+      />
     </section>
   );
 }

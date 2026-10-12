@@ -62,6 +62,10 @@ interface ClassroomStageProps {
   onToggleFullscreen?: () => void;
   enterFullscreenLabel: string;
   exitFullscreenLabel: string;
+  viewMode?: "presenter" | "mosaic";
+  onViewModeChange?: (mode: "presenter" | "mosaic") => void;
+  presenterViewLabel?: string;
+  mosaicViewLabel?: string;
 }
 
 export function ClassroomStage({
@@ -85,6 +89,10 @@ export function ClassroomStage({
   onToggleFullscreen,
   enterFullscreenLabel,
   exitFullscreenLabel,
+  viewMode,
+  onViewModeChange,
+  presenterViewLabel,
+  mosaicViewLabel,
 }: ClassroomStageProps) {
   const compact = useClassroomPresentation()?.mode === "compact";
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -117,13 +125,19 @@ export function ClassroomStage({
         onToggleFullscreen={onToggleFullscreen}
         enterFullscreenLabel={enterFullscreenLabel}
         exitFullscreenLabel={exitFullscreenLabel}
+        viewMode={viewMode}
+        onViewModeChange={onViewModeChange}
+        presenterViewLabel={presenterViewLabel}
+        mosaicViewLabel={mosaicViewLabel}
       />
 
       {isPhoneLandscape && (
         <>
           <div
             className="absolute inset-0 z-[25]"
-            style={{ pointerEvents: zoom > 1 ? "none" : "auto" }}
+            style={{
+              pointerEvents: contentActive && zoom > 1 ? "none" : "auto",
+            }}
             onTouchStart={(event) => {
               touchStartRef.current = {
                 x: event.touches[0].clientX,

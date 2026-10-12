@@ -3,9 +3,11 @@
 import {
   Eye,
   EyeOff,
+  LayoutGrid,
   Maximize2,
   Minimize2,
   MonitorCog,
+  Presentation,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -28,6 +30,10 @@ interface ClassroomDisplayControlsProps {
   onToggleFullscreen?: () => void;
   enterFullscreenLabel: string;
   exitFullscreenLabel: string;
+  viewMode?: "presenter" | "mosaic";
+  onViewModeChange?: (mode: "presenter" | "mosaic") => void;
+  presenterViewLabel?: string;
+  mosaicViewLabel?: string;
 }
 
 export function ClassroomDisplayControls({
@@ -42,6 +48,10 @@ export function ClassroomDisplayControls({
   onToggleFullscreen,
   enterFullscreenLabel,
   exitFullscreenLabel,
+  viewMode,
+  onViewModeChange,
+  presenterViewLabel,
+  mosaicViewLabel,
 }: ClassroomDisplayControlsProps) {
   const t = useTranslations("classroom");
   const presentation = useClassroomPresentation();
@@ -64,7 +74,15 @@ export function ClassroomDisplayControls({
 
   const hasWindowControls = Boolean(presentation?.enabled);
   const hasContentControls = Boolean(onZoom || isWhiteboardActive);
-  if (!hasContentControls && !onToggleFullscreen && !hasWindowControls)
+  const hasViewControls = Boolean(
+    onViewModeChange && presenterViewLabel && mosaicViewLabel,
+  );
+  if (
+    !hasViewControls &&
+    !hasContentControls &&
+    !onToggleFullscreen &&
+    !hasWindowControls
+  )
     return null;
 
   const fullscreenLabel = isFullscreen
@@ -136,6 +154,55 @@ export function ClassroomDisplayControls({
             : "hidden"
         }
       >
+        {hasViewControls && (
+          <div className="flex shrink-0 items-center gap-0.5" role="group">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onViewModeChange?.("presenter");
+                setOpen(false);
+              }}
+              aria-label={presenterViewLabel}
+              aria-pressed={viewMode === "presenter"}
+              title={presenterViewLabel}
+              className={cn(
+                viewMode === "presenter" && "bg-primary/10 text-primary",
+              )}
+            >
+              <Presentation className="size-4" />
+              <span className="hidden @min-[600px]:inline">
+                {presenterViewLabel}
+              </span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onViewModeChange?.("mosaic");
+                setOpen(false);
+              }}
+              aria-label={mosaicViewLabel}
+              aria-pressed={viewMode === "mosaic"}
+              title={mosaicViewLabel}
+              className={cn(
+                viewMode === "mosaic" && "bg-primary/10 text-primary",
+              )}
+            >
+              <LayoutGrid className="size-4" />
+              <span className="hidden @min-[600px]:inline">
+                {mosaicViewLabel}
+              </span>
+            </Button>
+          </div>
+        )}
+        {hasViewControls &&
+          (hasContentControls || onToggleFullscreen || hasWindowControls) && (
+            <span
+              aria-hidden="true"
+              className="mx-1 h-5 w-px shrink-0 bg-border"
+            />
+          )}
         {onZoom && (
           <div
             role="group"

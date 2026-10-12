@@ -24,6 +24,7 @@ interface ClassroomParticipantRosterProps {
   hasRaisedHand: (participant: Participant) => boolean;
   onLowerHand?: (identity: string) => void;
   onSelectParticipant?: (index: number) => void;
+  closeOnSelect?: boolean;
 }
 
 interface ClassroomParticipantRosterSheetProps
@@ -41,6 +42,7 @@ export function ClassroomParticipantRoster({
   hasRaisedHand,
   onLowerHand,
   onSelectParticipant,
+  closeOnSelect = true,
 }: ClassroomParticipantRosterProps) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4">
@@ -74,22 +76,27 @@ export function ClassroomParticipantRoster({
             </div>
           </>
         );
+        const selectButton = onSelectParticipant && (
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-start gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onSelectParticipant(index)}
+          >
+            {participantSummary}
+          </button>
+        );
 
         return (
           <div
             key={participant.identity}
             className="flex min-w-0 items-start gap-3 border-b border-border py-3 last:border-b-0"
           >
-            {onSelectParticipant ? (
-              <SheetClose asChild>
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-start gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => onSelectParticipant(index)}
-                >
-                  {participantSummary}
-                </button>
-              </SheetClose>
+            {selectButton ? (
+              closeOnSelect ? (
+                <SheetClose asChild>{selectButton}</SheetClose>
+              ) : (
+                selectButton
+              )
             ) : (
               <div className="flex min-w-0 flex-1 items-start gap-3">
                 {participantSummary}

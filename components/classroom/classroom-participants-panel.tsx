@@ -53,6 +53,7 @@ import { ClassroomChatNotification } from "./classroom-chat-notification";
 import { useClassroomPresentation } from "./classroom-presentation";
 
 export type ClassroomPanelTab = "participants" | "chat";
+type ClassroomViewMode = "presenter" | "mosaic";
 
 const classroomPanelTabTriggerClassName =
   "relative h-full min-w-0 rounded-none text-xs font-medium text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-transparent data-[state=active]:after:bg-primary";
@@ -66,6 +67,7 @@ interface ClassroomParticipantsPanelProps {
   chatLabel: string;
   isOpen: boolean;
   activeTab: ClassroomPanelTab;
+  viewMode?: ClassroomViewMode;
   onTabChange: (tab: ClassroomPanelTab) => void;
   previousLabel: string;
   nextLabel: string;
@@ -79,6 +81,7 @@ interface ClassroomParticipantsPanelProps {
   raisedHandsCountLabel: (count: number) => string;
   lowerHandLabel: string;
   onLowerHand?: (identity: string) => void;
+  onSelectMosaicParticipant?: (identity: string) => void;
   children: ReactNode;
   layoutMode?: "responsive" | "recording";
   notificationTargetRef?: RefObject<HTMLDivElement | null>;
@@ -134,6 +137,7 @@ function ClassroomParticipantsPanelContent({
   chatLabel,
   isOpen,
   activeTab,
+  viewMode,
   onTabChange,
   previousLabel,
   nextLabel,
@@ -147,6 +151,7 @@ function ClassroomParticipantsPanelContent({
   raisedHandsCountLabel,
   lowerHandLabel,
   onLowerHand,
+  onSelectMosaicParticipant,
   children,
   layoutMode = "responsive",
   unreadCount,
@@ -178,6 +183,20 @@ function ClassroomParticipantsPanelContent({
     useState<string>();
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<ClassroomPanelTab>("participants");
+  const previousMobileTabRef = useRef<ClassroomPanelTab | null>(null);
+  useEffect(() => {
+    if (viewMode === "mosaic") {
+      setMobileTab((current) => {
+        if (previousMobileTabRef.current === null) {
+          previousMobileTabRef.current = current;
+        }
+        return "chat";
+      });
+    } else if (previousMobileTabRef.current !== null) {
+      setMobileTab(previousMobileTabRef.current);
+      previousMobileTabRef.current = null;
+    }
+  }, [viewMode]);
   const presentation = useClassroomPresentation();
   const ownerWindow = presentation?.ownerWindow;
   const [isDesktop, setIsDesktop] = useState(false);
@@ -199,6 +218,7 @@ function ClassroomParticipantsPanelContent({
     onOpenChange?.(true);
     onTabChange("chat");
     if (!window.matchMedia("(min-width: 1280px)").matches) {
+      previousMobileTabRef.current = null;
       setMobileTab("chat");
       setIsMobileSheetOpen(true);
     }
@@ -227,6 +247,11 @@ function ClassroomParticipantsPanelContent({
   const selectParticipant = (index: number) => {
     const participant = participants[index];
     if (!participant) return;
+
+    if (viewMode === "mosaic") {
+      onSelectMosaicParticipant?.(participant.identity);
+      return;
+    }
 
     showParticipant(index);
     setHighlightedParticipantId(participant.identity);
@@ -307,17 +332,16 @@ function ClassroomParticipantsPanelContent({
       });
     });
 
-  const roster = (
-    <ClassroomParticipantRoster
-      participants={participants}
-      youLabel={youLabel}
-      raisedHandLabel={raisedHandLabel}
-      lowerHandLabel={lowerHandLabel}
-      hasRaisedHand={hasRaisedHand}
-      onLowerHand={onLowerHand}
-      onSelectParticipant={selectParticipant}
-    />
-  );
+  const rosterProps = {
+    participants,
+    youLabel,
+    raisedHandLabel,
+    lowerHandLabel,
+    hasRaisedHand,
+    onLowerHand,
+    onSelectParticipant: selectParticipant,
+  };
+  const roster = <ClassroomParticipantRoster {...rosterProps} />;
 
   return (
     <>
@@ -405,9 +429,29 @@ function ClassroomParticipantsPanelContent({
             forceMount
             className="m-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
           >
+            {viewMode === "mosaic" &&
+              (isEmpty ? (
+                <div className="flex flex-1 items-center justify-center px-2 text-center text-xs italic text-muted-foreground">
+                  {emptyContent}
+                </div>
+              ) : (
+                <>
+                  <div className="flex min-h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2 text-xs font-medium text-muted-foreground">
+                    <span>{rosterLabel}</span>
+                    {raisedHandsIndicator}
+                  </div>
+                  <ClassroomParticipantRoster
+                    {...rosterProps}
+                    closeOnSelect={false}
+                  />
+                </>
+              ))}
             <div
               ref={gridRef}
-              className="grid min-h-0 min-w-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-0 overflow-hidden"
+              className={cn(
+                "grid min-h-0 min-w-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-0 overflow-hidden",
+                viewMode === "mosaic" && "hidden",
+              )}
               style={
                 rowCount > 0
                   ? {
@@ -416,15 +460,15 @@ function ClassroomParticipantsPanelContent({
                   : undefined
               }
             >
-              {isEmpty && (
+              {viewMode !== "mosaic" && isEmpty && (
                 <div className="col-span-full row-[1/-1] flex h-full w-full items-center justify-center px-2 text-center text-xs italic text-muted-foreground">
                   {emptyContent}
                 </div>
               )}
-              {visibleParticipantTiles}
+              {viewMode !== "mosaic" && visibleParticipantTiles}
             </div>
 
-            {!isEmpty && (
+            {viewMode !== "mosaic" && !isEmpty && (
               <div className="flex min-h-9 shrink-0 items-center gap-1 border-t border-primary/20 bg-card px-2 py-1">
                 <ClassroomParticipantRosterSheet
                   heading={heading}
@@ -506,9 +550,10 @@ function ClassroomParticipantsPanelContent({
             </SheetHeader>
             <Tabs
               value={mobileTab}
-              onValueChange={(value) =>
-                setMobileTab(value as ClassroomPanelTab)
-              }
+              onValueChange={(value) => {
+                previousMobileTabRef.current = null;
+                setMobileTab(value as ClassroomPanelTab);
+              }}
               className="h-full min-h-0 gap-0"
             >
               <TabsList className="h-12 w-full shrink-0 rounded-none border-b border-border/70 bg-transparent p-0 pr-12 text-foreground">

@@ -115,8 +115,9 @@ export function useClassroomParticipantPagination(itemCount: number) {
   const activePage = Math.min(page, lastPage);
 
   useEffect(() => {
+    if (capacity === 0 && itemCount > 0) return;
     setPage((current) => Math.min(current, lastPage));
-  }, [lastPage]);
+  }, [capacity, itemCount, lastPage]);
 
   return {
     gridRef,

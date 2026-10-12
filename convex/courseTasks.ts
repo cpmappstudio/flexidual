@@ -2,7 +2,7 @@ import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -804,6 +804,155 @@ export const listMyPending = query({
           (first.dueAt ?? Infinity) - (second.dueAt ?? Infinity) ||
           first.title.localeCompare(second.title),
       );
+  },
+});
+
+const studentTaskSummaryValidator = v.object({
+  taskId: v.id("courseTasks"),
+  title: v.string(),
+  dueAt: v.optional(v.number()),
+  submittedAt: v.optional(v.number()),
+  submittedLate: v.optional(v.boolean()),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("submitted"),
+    v.literal("closed"),
+  ),
+});
+
+const studentTaskStatusFilterValidator = v.union(
+  v.literal("all"),
+  v.literal("pending"),
+  v.literal("submitted"),
+  v.literal("closed"),
+);
+
+async function toStudentTaskSummary(
+  ctx: QueryCtx,
+  course: Doc<"classes">,
+  task: Doc<"courseTasks">,
+  recipient: Doc<"courseTaskRecipients">,
+  now: number,
+) {
+  return {
+    taskId: task._id,
+    title: task.title,
+    dueAt: task.dueAt,
+    submittedAt: recipient.submittedAt,
+    submittedLate: recipient.submittedLate,
+    status:
+      recipient.submittedAt !== undefined
+        ? ("submitted" as const)
+        : (await canSubmitCourseTask(ctx, course, task, now))
+          ? ("pending" as const)
+          : ("closed" as const),
+  };
+}
+
+function filterStudentTaskSummaries(
+  items: (Awaited<ReturnType<typeof toStudentTaskSummary>> | null)[],
+  status?: Infer<typeof studentTaskStatusFilterValidator>,
+) {
+  return items.filter(
+    (item): item is NonNullable<typeof item> =>
+      item !== null && (!status || status === "all" || item.status === status),
+  );
+}
+
+export const listStudentTasksForClass = query({
+  args: {
+    classId: v.id("classes"),
+    now: v.number(),
+    status: v.optional(studentTaskStatusFilterValidator),
+    studentId: v.optional(v.string()),
+    orgSlug: v.optional(v.string()),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(studentTaskSummaryValidator),
+  handler: async (ctx, args) => {
+    const access = await resolveStudentDashboardAccess(ctx, args);
+    if (!access) throw new ConvexError("PERMISSION_DENIED");
+    const course = await ctx.db.get("classes", args.classId);
+    if (
+      !course?.isActive ||
+      (access.campus && course.campusId !== access.campus._id) ||
+      !(await isStudentEnrolled(ctx, course, access.student._id))
+    ) {
+      throw new ConvexError("PERMISSION_DENIED");
+    }
+
+    const unmigratedRecipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_studentId_and_classId_and_releasedAt", (q) =>
+        q.eq("studentId", access.student._id).eq("classId", undefined),
+      )
+      .first();
+    if (unmigratedRecipient) {
+      const result = await ctx.db
+        .query("courseTasks")
+        .withIndex("by_classId_and_isDraft_and_releasedAt", (q) =>
+          q
+            .eq("classId", course._id)
+            .eq("isDraft", undefined)
+            .gte("releasedAt", 0),
+        )
+        .order("desc")
+        .paginate(args.paginationOpts);
+      const page = await Promise.all(
+        result.page.map(async (task) => {
+          const recipient = await ctx.db
+            .query("courseTaskRecipients")
+            .withIndex("by_taskId_and_studentId", (q) =>
+              q.eq("taskId", task._id).eq("studentId", access.student._id),
+            )
+            .unique();
+          if (!recipient) return null;
+          return toStudentTaskSummary(ctx, course, task, recipient, args.now);
+        }),
+      );
+      return {
+        ...result,
+        page: filterStudentTaskSummaries(page, args.status),
+      };
+    }
+
+    const result =
+      !args.status || args.status === "all" || args.status === "submitted"
+        ? await ctx.db
+            .query("courseTaskRecipients")
+            .withIndex("by_studentId_and_classId_and_releasedAt", (q) =>
+              q.eq("studentId", access.student._id).eq("classId", course._id),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
+        : await ctx.db
+            .query("courseTaskRecipients")
+            .withIndex(
+              "by_studentId_and_classId_and_submittedAt_and_releasedAt",
+              (q) =>
+                q
+                  .eq("studentId", access.student._id)
+                  .eq("classId", course._id)
+                  .eq("submittedAt", undefined),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts);
+    const page = await Promise.all(
+      result.page.map(async (recipient) => {
+        const task = await ctx.db.get("courseTasks", recipient.taskId);
+        if (
+          !task ||
+          task.classId !== course._id ||
+          task.releasedAt === undefined
+        )
+          return null;
+        return toStudentTaskSummary(ctx, course, task, recipient, args.now);
+      }),
+    );
+    return {
+      ...result,
+      page: filterStudentTaskSummaries(page, args.status),
+    };
   },
 });
 

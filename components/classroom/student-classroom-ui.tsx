@@ -57,10 +57,7 @@ import {
 import { useClassroomMediaTracks } from "./use-classroom-media-tracks";
 import { ClassroomView, ClassroomViewControls } from "./classroom-view";
 import { ClassroomHeader } from "./classroom-header";
-import {
-  ClassroomParticipantsPanel,
-  type ClassroomPanelTab,
-} from "./classroom-participants-panel";
+import { ClassroomParticipantsPanel } from "./classroom-participants-panel";
 import {
   ClassroomActionBar,
   ClassroomActionButton,
@@ -72,6 +69,8 @@ import {
 } from "./classroom-stage";
 import { ClassroomPresenterContent } from "./classroom-presenter-content";
 import { ClassroomScene } from "./classroom-scene";
+import { ClassroomMosaic, getMosaicParticipants } from "./classroom-mosaic";
+import { useClassroomViewMode } from "./use-classroom-view-mode";
 import {
   ClassroomEnableAudioOverlay,
   ClassroomEndingSoonNotice,
@@ -157,8 +156,6 @@ export function StudentClassroomUI({
     useState<StudentClassroomPreviewState>("none");
   const [showPreviewParticipants, setShowPreviewParticipants] = useState(false);
   const [isClassroomPanelOpen, setIsClassroomPanelOpen] = useState(true);
-  const [classroomPanelTab, setClassroomPanelTab] =
-    useState<ClassroomPanelTab>("participants");
   const rootRef = useRef<HTMLDivElement>(null);
   const { zoom, pan, stageRef, handleZoom, startPanDrag } =
     useClassroomStageViewport();
@@ -308,6 +305,32 @@ export function StudentClassroomUI({
     isTeacherVideoOn,
     isTeacherAudioOn,
   } = useClassroomMediaTracks(teacher);
+  const {
+    viewMode,
+    changeViewMode,
+    panelTab: classroomPanelTab,
+    changePanelTab: setClassroomPanelTab,
+    highlightedParticipantId,
+    selectMosaicParticipant,
+  } = useClassroomViewMode(isWhiteboardActive || isScreenSharingActive);
+  const mosaicRosterParticipants = useMemo(
+    () =>
+      viewMode === "mosaic"
+        ? getMosaicParticipants(
+            participants,
+            uiPreviewEnabled && showPreviewParticipants
+              ? previewParticipants
+              : [],
+          )
+        : [],
+    [
+      participants,
+      previewParticipants,
+      showPreviewParticipants,
+      uiPreviewEnabled,
+      viewMode,
+    ],
+  );
   const isSharingLocally = localParticipant?.isScreenShareEnabled;
 
   // Data channel for screen share requests
@@ -787,8 +810,11 @@ export function StudentClassroomUI({
         onRevealControls={showStageControls}
         zoom={zoom}
         onZoom={handleZoom}
-        contentActive={isWhiteboardActive || isScreenSharingActive}
-        isWhiteboardActive={isWhiteboardActive}
+        contentActive={
+          viewMode === "presenter" &&
+          (isWhiteboardActive || isScreenSharingActive)
+        }
+        isWhiteboardActive={viewMode === "presenter" && isWhiteboardActive}
         followViewport={followViewport}
         onToggleFollowViewport={() => setFollowViewport((value) => !value)}
         followingLabel={t("classroom.followingTeacher") || "Following"}
@@ -797,6 +823,10 @@ export function StudentClassroomUI({
         onToggleFullscreen={onToggleFullscreen}
         enterFullscreenLabel={t("classroom.enterFullscreen") || "Fullscreen"}
         exitFullscreenLabel={t("classroom.exitFullscreen") || "Exit fullscreen"}
+        viewMode={viewMode}
+        onViewModeChange={changeViewMode}
+        presenterViewLabel={t("classroom.presenterView")}
+        mosaicViewLabel={t("classroom.mosaicView")}
         phoneControls={
           <>
             <DeviceToggleButton
@@ -848,6 +878,23 @@ export function StudentClassroomUI({
         }
       >
         <ClassroomScene
+          mosaic={
+            viewMode === "mosaic" ? (
+              <ClassroomMosaic
+                participants={participants}
+                previewParticipants={
+                  uiPreviewEnabled && showPreviewParticipants
+                    ? previewParticipants
+                    : undefined
+                }
+                raisedParticipantIds={raisedHands}
+                localParticipantRaised={handRaisedForDisplay}
+                youLabel={t("classroom.youShort")}
+                label={t("classroom.mosaicView")}
+                highlightedParticipantId={highlightedParticipantId}
+              />
+            ) : undefined
+          }
           presenter={
             <ClassroomPresenterContent
               participant={teacher}
@@ -1062,18 +1109,30 @@ export function StudentClassroomUI({
         scheduleId={scheduleId}
         notificationTargetRef={stageRef}
         onOpenChange={setIsClassroomPanelOpen}
-        heading={t("classroom.classmates")}
+        heading={
+          viewMode === "mosaic"
+            ? t("classroom.participants")
+            : t("classroom.classmates")
+        }
         compactHeading={t("classroom.classmatesAndChat")}
         compactOpenLabel={t("classroom.openPanelAction")}
         chatLabel={t("classroom.chat")}
         isOpen={isClassroomPanelOpen}
+        viewMode={viewMode}
         activeTab={classroomPanelTab}
         onTabChange={setClassroomPanelTab}
         previousLabel={t("common.previous")}
         nextLabel={t("common.next")}
-        isEmpty={displayedStudents.length === 0}
+        isEmpty={
+          viewMode === "mosaic"
+            ? mosaicRosterParticipants.length === 0
+            : displayedStudents.length === 0
+        }
         emptyContent={t("classroom.youAreFirst")}
-        participants={displayedStudents}
+        participants={
+          viewMode === "mosaic" ? mosaicRosterParticipants : displayedStudents
+        }
+        onSelectMosaicParticipant={selectMosaicParticipant}
         raisedParticipantIds={raisedHands}
         localParticipantRaised={handRaisedForDisplay}
         youLabel={t("classroom.youShort")}
@@ -1098,7 +1157,8 @@ export function StudentClassroomUI({
       </ClassroomParticipantsPanel>
 
       {/* Teacher PiP — floats over the entire classroom during whiteboard & screen share */}
-      {(isWhiteboardActive || isScreenSharingActive) &&
+      {viewMode === "presenter" &&
+        (isWhiteboardActive || isScreenSharingActive) &&
         teacher &&
         isTeacherVideoOn && (
           <DraggablePip containerRef={rootRef}>

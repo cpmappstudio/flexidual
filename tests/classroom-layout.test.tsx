@@ -77,6 +77,17 @@ describe("ClassroomScene", () => {
       <ClassroomScene
         presenter={<span>presenter</span>}
         screenShare={<span>screen share</span>}
+        whiteboard={<span>whiteboard</span>}
+        mosaic={<span>mosaic</span>}
+      />,
+    );
+    expect(screen.getByText("mosaic")).toBeTruthy();
+    expect(screen.queryByText("whiteboard")).toBeNull();
+
+    rerender(
+      <ClassroomScene
+        presenter={<span>presenter</span>}
+        screenShare={<span>screen share</span>}
       />,
     );
     expect(screen.getByText("screen share")).toBeTruthy();
