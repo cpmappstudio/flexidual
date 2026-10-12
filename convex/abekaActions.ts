@@ -12,6 +12,7 @@ import {
 import {
   signInAbeka,
   validateLoginCredentials,
+  LoginProbeError,
 } from "../lib/abeka/login-probe";
 import { AuthenticationRequired, ProbeError } from "../lib/abeka/progress";
 import { abekaFetch } from "./model/abekaTransport";
@@ -93,6 +94,7 @@ async function renew(ctx: ActionCtx, runId: Id<"abekaSyncRuns">) {
     runId,
   });
   if (!claimed) throw new AuthenticationRequired();
+  if ("paused" in claimed) throw new ProbeError("PROVIDER_UNAVAILABLE");
   let credentials;
   try {
     const key = process.env.ABEKA_SESSION_ENCRYPTION_KEY ?? "";
@@ -113,9 +115,14 @@ async function renew(ctx: ActionCtx, runId: Id<"abekaSyncRuns">) {
       }))
     )
       throw new AuthenticationRequired();
-  } catch {
-    // A failed sign-in must require intervention, not schedule another password attempt.
-    throw new AuthenticationRequired();
+  } catch (error) {
+    if (
+      error instanceof LoginProbeError &&
+      (error.code === "SIGN_IN_REJECTED" ||
+        error.code === "INTERACTION_REQUIRED")
+    )
+      throw new AuthenticationRequired();
+    throw error;
   } finally {
     if (credentials) credentials.password = "";
   }
@@ -143,13 +150,31 @@ async function recordFailure(
   const code =
     error instanceof AuthenticationRequired
       ? "NEEDS_RECONNECT"
-      : error instanceof ProbeError
-        ? error.message === "PROVIDER_UNAVAILABLE"
+      : error instanceof LoginProbeError
+        ? error.code === "PROVIDER_UNAVAILABLE"
           ? "PROVIDER_UNAVAILABLE"
           : "REPORT_FORMAT_CHANGED"
-        : "SYNC_FAILED";
+        : error instanceof ProbeError
+          ? error.message === "PROVIDER_UNAVAILABLE"
+            ? "PROVIDER_UNAVAILABLE"
+            : "REPORT_FORMAT_CHANGED"
+          : "SYNC_FAILED";
   await ctx.runMutation(internal.abekaSync.fail, { runId, code });
 }
+
+export const authenticate = internalAction({
+  args: runArgs,
+  returns: v.boolean(),
+  handler: async (ctx, { runId }): Promise<boolean> => {
+    try {
+      await renew(ctx, runId);
+      return true;
+    } catch (error) {
+      await recordFailure(ctx, runId, error);
+      return false;
+    }
+  },
+});
 
 export const roster = internalAction({
   args: runArgs,
@@ -242,10 +267,16 @@ export const progress = internalAction({
       const lessons = await withSession(ctx, args.runId, (c) =>
         c.progress(student.loginId, args.subjectId),
       );
-      return await ctx.runMutation(internal.abekaSync.saveProgress, {
+      const saved = await ctx.runMutation(internal.abekaSync.saveProgress, {
         ...args,
         lessons,
       });
+      if (!saved)
+        await ctx.runMutation(internal.abekaSync.fail, {
+          runId: args.runId,
+          code: "SYNC_FAILED",
+        });
+      return saved;
     } catch (error) {
       await recordFailure(ctx, args.runId, error);
       return false;

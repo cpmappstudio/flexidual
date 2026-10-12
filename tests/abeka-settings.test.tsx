@@ -1038,6 +1038,81 @@ test("pending links highlight selectors and Update data until synchronization co
   ).toBe(true);
 });
 
+test.each([null, { status: "completed", catalog: true }])(
+  "an incomplete full update remains resumable independently of the latest job: %j",
+  async (run) => {
+    const t = messages.settings.integrations;
+    mocks.query.mockReturnValue({
+      hasCredentials: true,
+      hasPendingUpdate: true,
+      connection: { status: "connected", confirmed: true },
+      run,
+    });
+    const view = renderSettings();
+    const update = screen.getByRole("button", { name: t.updateData });
+    expect(update.className).toContain("bg-amber-50");
+    expect(screen.getByRole("status").textContent).toBe(t.resumeSync);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+    fireEvent.focus(update);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(t.resumeSync);
+    fireEvent.blur(update);
+    fireEvent.click(update);
+    await waitFor(() =>
+      expect(mocks.mutate).toHaveBeenCalledExactlyOnceWith({
+        schoolId: "school",
+      }),
+    );
+    mocks.query.mockReturnValue({
+      hasCredentials: true,
+      hasPendingUpdate: false,
+      connection: { status: "connected", confirmed: true },
+      run: { status: "completed" },
+    });
+    view.rerender(
+      <NextIntlClientProvider
+        locale="es"
+        messages={messages}
+        timeZone="America/Bogota"
+      >
+        <AbekaIntegrationPage />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.queryByText(t.resumeSync)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: t.updateData }).className,
+    ).not.toContain("bg-amber-50");
+  },
+);
+
+test("saving replacement credentials does not automatically resume an incomplete update", async () => {
+  const t = messages.settings.integrations;
+  mocks.query.mockReturnValue({
+    hasCredentials: true,
+    hasPendingUpdate: true,
+    connection: { status: "connected", confirmed: true },
+    run: { status: "failed" },
+  });
+  mocks.fetch.mockResolvedValue(Response.json({ accepted: true }));
+  renderSettings();
+  fireEvent.click(screen.getByRole("button", { name: t.credentials.replace }));
+  const password = screen.getByLabelText(t.loginProbe.password);
+  fireEvent.change(screen.getByLabelText(t.loginProbe.username), {
+    target: { value: "test-account" },
+  });
+  fireEvent.change(password, { target: { value: "not-real" } });
+  fireEvent.submit(password.closest("form")!);
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  expect(screen.getByRole("status").textContent).toBe(t.resumeSync);
+  fireEvent.click(screen.getByRole("button", { name: t.updateData }));
+  await waitFor(() =>
+    expect(mocks.mutate).toHaveBeenCalledExactlyOnceWith({
+      schoolId: "school",
+    }),
+  );
+});
+
 test("campus edits preserve saved links on failure and explicit unlink remains available", async () => {
   const t = messages.settings.integrations;
   const student = {

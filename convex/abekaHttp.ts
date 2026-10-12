@@ -5,6 +5,7 @@ import { encryptSession, encryptCredentials } from "../lib/abeka/encryption";
 import { ConvexError } from "convex/values";
 import { readBoundedText, validateCookieHeader } from "../lib/abeka/session";
 import { abekaFetch } from "./model/abekaTransport";
+import { abekaClient } from "../lib/abeka/report";
 import {
   LoginProbeError,
   probeAbekaLogin,
@@ -53,10 +54,13 @@ export const connect = httpAction(async (ctx, request) => {
       await readBoundedText(new Response(request.body), 16_384),
     );
     const encrypted = await encryptSession(cookie, secret, schoolId);
+    const identity = await abekaClient(cookie, abekaFetch(ctx)).roster();
     await ctx.runMutation(internal.abeka.saveSession, {
       schoolId,
       encrypted,
       expectedRevision,
+      externalSchoolId: identity.externalSchoolId,
+      externalSchoolName: identity.externalSchoolName,
     });
     return Response.json({ accepted: true }, { status: 202, headers });
   } catch {
@@ -103,6 +107,7 @@ export const connectCredentials = httpAction(async (ctx, request) => {
         schoolId,
         expectedRevision,
         externalSchoolId: result.externalSchoolId,
+        externalSchoolName: result.externalSchoolName,
         encrypted: await encryptSession(result.cookie, key, schoolId),
         credentials: await encryptCredentials(credentials, key, schoolId),
       });

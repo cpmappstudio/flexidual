@@ -31,7 +31,7 @@ import {
 import { defaultAbekaSchedule } from "../lib/abeka/schedule";
 import { ABEKA_MANUAL_SYNC_INTERVAL_MS } from "../lib/abeka/request-policy";
 
-const limiter = new RateLimiter(components.rateLimiter, {
+export const abekaConnectLimiter = new RateLimiter(components.rateLimiter, {
   connectAbeka: { kind: "fixed window", rate: 6, period: HOUR },
 });
 const connectionDoc = v.object({
@@ -74,28 +74,43 @@ export async function startAbekaSync(
     studentId?: Id<"abekaStudents">;
     catalog?: boolean;
     initializeCatalog?: boolean;
+    authenticate?: boolean;
   } = {},
 ) {
   const previous = connection.latestRunId
     ? await ctx.db.get(connection.latestRunId)
     : null;
   if (previous?.status === "running") return previous._id;
-  if (!options.studentId && !options.catalog)
-    await setAbekaNextSync(ctx, connection._id);
+  const fullUpdate =
+    !options.studentId && !options.catalog && !options.authenticate;
+  const pending =
+    fullUpdate && connection.pendingUpdateId
+      ? await ctx.db.get(connection.pendingUpdateId)
+      : null;
+  const resume =
+    pending?.connectionId === connection._id && pending.status !== "completed"
+      ? pending
+      : null;
+  if (fullUpdate) await setAbekaNextSync(ctx, connection._id);
   const runId = await ctx.db.insert("abekaSyncRuns", {
     connectionId: connection._id,
     revision: connection.revision,
     status: "running",
     startedAt: Date.now(),
-    studentsSynced: 0,
+    studentsSynced: resume?.studentsSynced ?? 0,
     ...options,
+    ...(fullUpdate
+      ? { initializeCatalog: connection.catalogSyncedAt === undefined }
+      : {}),
   });
+  if (fullUpdate) await ctx.db.patch(runId, { updateId: resume?._id ?? runId });
   await ctx.db.patch(connection._id, {
     latestRunId: runId,
+    ...(fullUpdate ? { pendingUpdateId: resume?._id ?? runId } : {}),
     ...(options.catalog
       ? { catalogAttemptAt: Date.now(), catalogError: undefined }
       : {
-          ...(options.studentId ? {} : { lastAttemptAt: Date.now() }),
+          ...(fullUpdate && !resume ? { lastAttemptAt: Date.now() } : {}),
           errorCode: undefined,
         }),
   });
@@ -103,7 +118,11 @@ export async function startAbekaSync(
     ctx,
     options.catalog
       ? internal.abekaWorkflow.catalog
-      : internal.abekaWorkflow.sync,
+      : options.authenticate
+        ? internal.abekaWorkflow.authenticate
+        : fullUpdate
+          ? internal.abekaWorkflow.syncResumable
+          : internal.abekaWorkflow.sync,
     { runId, ...(options.studentId ? { studentId: options.studentId } : {}) },
     {
       startAsync: true,
@@ -114,6 +133,49 @@ export async function startAbekaSync(
   await ctx.db.patch(runId, { workflowId });
   return runId;
 }
+
+// Operator-only recovery: reuse the individual workflow without refreshing the
+// roster or downloading reports for students that already completed a sync.
+export const recoverStudent = internalMutation({
+  args: {
+    connectionId: v.id("abekaConnections"),
+    expectedRosterRunId: v.id("abekaSyncRuns"),
+    studentId: v.id("abekaStudents"),
+  },
+  returns: v.union(v.id("abekaSyncRuns"), v.null()),
+  handler: async (ctx, args) => {
+    const connection = await ctx.db.get(args.connectionId);
+    const school = connection && (await ctx.db.get(connection.schoolId));
+    if (
+      !school?.isActive ||
+      !connection?.confirmed ||
+      !["connected", "error", "needs_reconnect"].includes(connection.status)
+    )
+      throw new ConvexError("NOT_CONNECTED");
+    if (connection.rosterRunId !== args.expectedRosterRunId)
+      throw new ConvexError("CONNECTION_CHANGED");
+    const student = await ctx.db.get(args.studentId);
+    if (
+      student?.connectionId !== connection._id ||
+      student.rosterRunId !== args.expectedRosterRunId ||
+      !student.userId ||
+      !(await activeStudent(ctx, connection.schoolId, student.userId))
+    )
+      throw new ConvexError("INVALID_STUDENT");
+    if (student.lastSyncedAt !== undefined) return null;
+    const current = connection.latestRunId
+      ? await ctx.db.get(connection.latestRunId)
+      : null;
+    if (current?.status === "running") throw new ConvexError("SYNC_RUNNING");
+    const secret = await ctx.db
+      .query("abekaSecrets")
+      .withIndex("by_connection", (q) => q.eq("connectionId", connection._id))
+      .unique();
+    if (!secret?.encrypted && !secret?.credentials)
+      throw new ConvexError("NEEDS_CREDENTIALS");
+    return await startAbekaSync(ctx, connection, { studentId: student._id });
+  },
+});
 
 async function cancelActive(
   ctx: MutationCtx,
@@ -133,6 +195,7 @@ export const status = query({
   args: { schoolId: v.id("schools") },
   returns: v.object({
     hasCredentials: v.boolean(),
+    hasPendingUpdate: v.boolean(),
     schedule: v.union(abekaSchedule, v.null()),
     scheduleTimeZone: v.union(v.string(), v.null()),
     schedulePeriod: v.union(
@@ -154,6 +217,7 @@ export const status = query({
       .unique();
     const school = await ctx.db.get("schools", schoolId);
     return {
+      hasPendingUpdate: !!connection?.pendingUpdateId,
       schedule: connection
         ? (connection.syncSchedule ??
           defaultAbekaSchedule(
@@ -215,7 +279,10 @@ export const authorizeConnection = internalMutation({
   returns: v.number(),
   handler: async (ctx, { schoolId }) => {
     await requireAbekaAdmin(ctx, schoolId);
-    await limiter.limit(ctx, "connectAbeka", { key: schoolId, throws: true });
+    await abekaConnectLimiter.limit(ctx, "connectAbeka", {
+      key: schoolId,
+      throws: true,
+    });
     const connection = await ctx.db
       .query("abekaConnections")
       .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
@@ -231,11 +298,19 @@ export const saveSession = internalMutation({
     credentials: v.optional(encryptedSession),
     expectedRevision: v.optional(v.number()),
     externalSchoolId: v.optional(v.string()),
+    externalSchoolName: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (
     ctx,
-    { schoolId, encrypted, credentials, expectedRevision, externalSchoolId },
+    {
+      schoolId,
+      encrypted,
+      credentials,
+      expectedRevision,
+      externalSchoolId,
+      externalSchoolName,
+    },
   ) => {
     const user = await requireAbekaAdmin(ctx, schoolId);
     let connection = await ctx.db
@@ -257,7 +332,9 @@ export const saveSession = internalMutation({
       await cancelActive(ctx, connection);
       await ctx.db.patch(connection._id, {
         revision: connection.revision + 1,
-        status: "connecting",
+        status: connection.confirmed ? "connected" : "needs_confirmation",
+        externalSchoolId: externalSchoolId ?? connection.externalSchoolId,
+        externalSchoolName: externalSchoolName ?? connection.externalSchoolName,
         connectedBy: user._id,
         errorCode: undefined,
       });
@@ -270,7 +347,9 @@ export const saveSession = internalMutation({
         curriculumLinksMigratedAt: Date.now(),
         schoolId,
         revision: 1,
-        status: "connecting",
+        status: "needs_confirmation",
+        externalSchoolId,
+        externalSchoolName,
         confirmed: false,
         connectedBy: user._id,
         syncSchedule: {
@@ -295,7 +374,16 @@ export const saveSession = internalMutation({
         encrypted,
         credentials,
       });
-    await startAbekaSync(ctx, (await ctx.db.get(connection._id))!);
+    // Authentication never imports reports or changes the update checkpoint.
+    await refreshAbekaSchedule(
+      ctx,
+      connection._id,
+      connection.nextSyncAt !== undefined
+        ? connection.nextSyncAt > Date.now()
+          ? connection.nextSyncAt
+          : Date.now() + 7 * 24 * 60 * 60 * 1000
+        : undefined,
+    );
     return null;
   },
 });
@@ -321,8 +409,7 @@ export const renewSession = mutation({
       Date.now() - connection.lastRenewalAttemptAt < 60_000
     )
       throw new ConvexError("SYNC_COOLDOWN");
-    await limiter.limit(ctx, "connectAbeka", { key: schoolId, throws: true });
-    await startAbekaSync(ctx, connection, { forceRenewal: true });
+    await startAbekaSync(ctx, connection, { authenticate: true });
     return null;
   },
 });
@@ -345,15 +432,7 @@ export const confirm = mutation({
       confirmed: true,
       status: "connected",
     });
-    await startAbekaSync(
-      ctx,
-      {
-        ...connection,
-        confirmed: true,
-        status: "connected",
-      },
-      { initializeCatalog: connection.catalogAttemptAt === undefined },
-    );
+    await refreshAbekaSchedule(ctx, connection._id);
     return null;
   },
 });
@@ -376,6 +455,7 @@ export const syncNow = mutation({
       if (!secret?.credentials) throw new ConvexError("NEEDS_CREDENTIALS");
     }
     if (
+      !connection.pendingUpdateId &&
       connection.lastAttemptAt &&
       Date.now() - connection.lastAttemptAt < ABEKA_MANUAL_SYNC_INTERVAL_MS
     )
@@ -400,6 +480,7 @@ export const disconnect = mutation({
     await ctx.db.patch(connection._id, {
       status: "disconnected",
       revision: connection.revision + 1,
+      pendingUpdateId: undefined,
       errorCode: undefined,
     });
     return null;
@@ -448,7 +529,9 @@ export const students = query({
             ...student,
             syncPending:
               !!student.userId &&
-              (student.syncPending ?? student.lastSyncedAt === undefined),
+              ((student.syncPending ?? student.lastSyncedAt === undefined) ||
+                (!!connection.pendingUpdateId &&
+                  student.completedUpdateId !== connection.pendingUpdateId)),
             hasProgress:
               !!student.userId &&
               (student.hasProgress ?? !!report?.lessons.length),
@@ -494,11 +577,22 @@ export const linkStudent = mutation({
         throw new ConvexError("ALREADY_LINKED");
     }
     if (args.userId === (student.userId ?? null)) return null;
+    if (
+      connection.pendingUpdateId &&
+      student.completedUpdateId === connection.pendingUpdateId
+    ) {
+      const update = await ctx.db.get(connection.pendingUpdateId);
+      if (update)
+        await ctx.db.patch(update._id, {
+          studentsSynced: Math.max(0, update.studentsSynced - 1),
+        });
+    }
     // Linking changes only the local association. Existing provider snapshots
     // remain valid; Update data or the scheduled sync refreshes them later.
     await ctx.db.patch(student._id, {
       userId: args.userId ?? undefined,
       syncPending: args.userId ? true : undefined,
+      completedUpdateId: undefined,
     });
     return null;
   },

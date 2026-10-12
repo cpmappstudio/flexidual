@@ -274,7 +274,7 @@
         },
         "schedule": {
           "title": "Scheduled or on demand",
-          "description": "Sync runs in Convex, even with the browser closed. Expired sessions get one automatic renewal attempt per sync; failed sign-ins require an administrator."
+          "description": "Sync runs in Convex, even with the browser closed. Session renewal is controlled and interrupted updates resume pending students. Rejected sign-ins require an administrator."
         },
         "matching": {
           "title": "Institution and campuses",
@@ -292,7 +292,7 @@
           "CONNECTION_CHANGED": "The connection changed while verifying access. Review its current state before trying again.",
           "NOT_CONFIGURED": "The encryption key is not configured in this Convex environment."
         },
-        "description": "Use an authorized institution administrator account. After verifying access, credentials and session are stored encrypted in Convex to renew expired sessions. This is not an official Abeka integration.",
+        "description": "Use an authorized institution administrator account. Access is verified and credentials are stored encrypted in Convex, without importing data. Use Update data to download or resume reports. This is not an official Abeka integration.",
         "submit": "Connect and save credentials",
         "replace": "Set or change credentials",
         "manual": "Use a session manually instead (removes saved credentials)",
@@ -344,6 +344,7 @@
       "syncNow": "Sync now",
       "updateData": "Update data",
       "pendingSync": "Association saved. Use Update data to download pending progress, or wait for the scheduled sync.",
+      "resumeSync": "Update incomplete. Use Update data to download only the remaining students. Once complete, the next update refreshes everyone again.",
       "disconnect": "Disconnect",
       "disconnectExplanation": "Saved credentials and session will be deleted and automatic sync canceled. Imported reports and student links will be kept.",
       "sessionExplanation": "Connect using an authorized Abeka session. This is not an official integration or automatic sign-in. You will need to renew the session when it expires.",
@@ -355,7 +356,7 @@
       "notConfigured": "The encryption key has not been configured in this Convex environment.",
       "connectionError": "Could not save the session. Check the value and your permissions, or wait a few minutes before retrying.",
       "actionError": "Could not complete the operation. Wait before retrying and check the connection status.",
-      "syncActionError": "Could not start the sync. Allow at least 15 minutes between sync starts and check the connection status.",
+      "syncActionError": "Could not start the sync. Allow at least 15 minutes between new full updates. Wait before retrying an interrupted update and check the connection status.",
       "students": "Abeka students",
       "searchStudents": "Search by name, Abeka ID or campus…",
       "mappingExplanation": "Link each student to their Flexidual account. Names are not matched automatically. Campus membership comes from Flexidual, not Abeka.",
@@ -366,7 +367,7 @@
       "link": "Link",
       "report": "View progress",
       "loading": "Loading…",
-      "noStudents": "No students imported yet. Confirm the institution and wait for the sync to finish.",
+      "noStudents": "No students imported yet. Confirm the institution, then use Update data to import them.",
       "unavailableStudents": "Abeka shows {count} active accounts without a report link; they cannot be synced.",
       "loadMore": "Load more",
       "videoOnly": "This report tracks video viewing, not grades, attendance, or subject mastery.",

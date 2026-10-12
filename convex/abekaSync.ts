@@ -1,6 +1,7 @@
 import {
   paginationOptsValidator,
   paginationResultValidator,
+  type PaginationOptions,
 } from "convex/server";
 import { v } from "convex/values";
 import { cleanup, vWorkflowId, vResultValidator } from "@convex-dev/workflow";
@@ -25,9 +26,10 @@ import {
   selectAbekaPeriod,
 } from "./model/abekaScheduling";
 import { defaultAbekaSchedule } from "../lib/abeka/schedule";
-import { startAbekaSync } from "./abeka";
+import { startAbekaSync, abekaConnectLimiter } from "./abeka";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import { ABEKA_REQUEST_INTERVAL_MS } from "../lib/abeka/request-policy";
+import { MAX_SUBJECTS } from "../lib/abeka/report";
 
 const providerLimiter = new RateLimiter(components.rateLimiter, {
   abekaOutbound: {
@@ -130,29 +132,49 @@ export const renewalRequested = internalQuery({
 });
 
 // Claim before making the external request: workflow retries/concurrent calls
-// cannot submit the password twice for the same run.
+// cannot submit the password twice for the same renewal cycle.
 export const claimRenewal = internalMutation({
   args: runArgs,
   returns: v.union(
     v.null(),
+    v.object({ paused: v.literal(true) }),
     v.object({ schoolId: v.id("schools"), credentials: encryptedSession }),
   ),
   handler: async (ctx, { runId }) => {
     const state = await currentRun(ctx, runId);
-    if (!state || state.run.renewalAttempted) return null;
+    if (!state) return null;
+    if (state.run.renewalInFlight) return { paused: true as const };
+    if (state.run.updateId) {
+      // A new password attempt requires actual progress since the previous one.
+      if (
+        (state.run.renewals ?? 0) >= 6 ||
+        (state.run.renewedAtProgress !== undefined &&
+          state.run.studentsSynced <= state.run.renewedAtProgress)
+      )
+        return { paused: true as const };
+    } else if (state.run.renewalAttempted) return { paused: true as const };
     const secret = await ctx.db
       .query("abekaSecrets")
       .withIndex("by_connection", (q) =>
         q.eq("connectionId", state.connection._id),
       )
       .unique();
+    if (!secret?.credentials) return null;
     if (
-      !secret?.credentials ||
-      (state.connection.lastRenewalAttemptAt &&
-        Date.now() - state.connection.lastRenewalAttemptAt < 60_000)
+      state.connection.lastRenewalAttemptAt &&
+      Date.now() - state.connection.lastRenewalAttemptAt < 60_000
     )
-      return null;
-    await ctx.db.patch(runId, { renewalAttempted: true });
+      return { paused: true as const };
+    const limit = await abekaConnectLimiter.limit(ctx, "connectAbeka", {
+      key: state.connection.schoolId,
+    });
+    if (!limit.ok) return { paused: true as const };
+    await ctx.db.patch(runId, {
+      renewalAttempted: true,
+      renewalInFlight: true,
+      renewals: (state.run.renewals ?? 0) + 1,
+      renewedAtProgress: state.run.studentsSynced,
+    });
     await ctx.db.patch(state.connection._id, {
       lastRenewalAttemptAt: Date.now(),
     });
@@ -188,8 +210,9 @@ export const commitRenewal = internalMutation({
       .unique();
     if (!secret?.credentials) return false;
     await ctx.db.patch(secret._id, { encrypted: args.encrypted });
+    await ctx.db.patch(args.runId, { renewalInFlight: false });
     await ctx.db.patch(state.connection._id, {
-      status: state.connection.confirmed ? "connected" : "connecting",
+      status: state.connection.confirmed ? "connected" : "needs_confirmation",
       errorCode: undefined,
     });
     return true;
@@ -294,6 +317,40 @@ export const studentPage = internalQuery({
   },
 });
 
+// Two passes use the same stable user index. Completing a student changes only
+// its checkpoint, not the pagination key; the second pass cannot download it twice.
+export const pendingStudentPage = internalQuery({
+  args: {
+    ...runArgs,
+    priority: v.boolean(),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(v.id("abekaStudents")),
+  handler: async (ctx, args) => {
+    const state = await currentRun(ctx, args.runId);
+    if (!state?.run.updateId)
+      return { page: [], continueCursor: "", isDone: true };
+    const result = await ctx.db
+      .query("abekaStudents")
+      .withIndex("by_connection_user", (q) =>
+        q.eq("connectionId", state.connection._id).gt("userId", undefined),
+      )
+      .paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: result.page
+        .filter(
+          (student) =>
+            student.rosterRunId === args.runId &&
+            student.completedUpdateId !== state.run.updateId &&
+            (student.syncPending === true ||
+              student.lastSyncedAt === undefined) === args.priority,
+        )
+        .map((student) => student._id),
+    };
+  },
+});
+
 function studentBelongsToRun(
   state: { run: Doc<"abekaSyncRuns">; connection: Doc<"abekaConnections"> },
   student: Doc<"abekaStudents">,
@@ -367,12 +424,88 @@ export const saveProgress = internalMutation({
   },
 });
 
-export const studentComplete = internalMutation({
+const studentProgressArgs = {
+  ...runArgs,
+  studentId: v.id("abekaStudents"),
+  subjectIds: v.array(v.string()),
+};
+const progressCleanupArgs = {
+  ...studentProgressArgs,
+  paginationOpts: paginationOptsValidator,
+};
+
+async function cleanStudentProgress(
+  ctx: MutationCtx,
   args: {
-    ...runArgs,
-    studentId: v.id("abekaStudents"),
-    subjectIds: v.array(v.string()),
+    runId: Id<"abekaSyncRuns">;
+    studentId: Id<"abekaStudents">;
+    subjectIds: string[];
+    paginationOpts: PaginationOptions;
   },
+) {
+  const run = await ctx.db.get(args.runId);
+  const student = await ctx.db.get(args.studentId);
+  const connection = run ? await ctx.db.get(run.connectionId) : null;
+  if (
+    !run ||
+    !connection ||
+    !student?.userId ||
+    student.connectionId !== connection._id ||
+    connection.revision !== run.revision ||
+    connection.status === "disconnected" ||
+    student.syncedRunId !== run._id ||
+    student.syncPending === true ||
+    (run.updateId && student.completedUpdateId !== run.updateId)
+  )
+    return null;
+  if (connection.latestRunId !== run._id) {
+    const latest = connection.latestRunId
+      ? await ctx.db.get(connection.latestRunId)
+      : null;
+    // Catalog/auth jobs do not write reports. A new progress run fences this old cleanup.
+    if (!latest || (!latest.catalog && !latest.authenticate)) return null;
+  }
+  const page = await ctx.db
+    .query("abekaProgress")
+    .withIndex("by_student_subject", (q) => q.eq("studentId", student._id))
+    .paginate(args.paginationOpts);
+  const currentSubjects = new Set(args.subjectIds);
+  const reportRuns = new Map<Id<"abekaSyncRuns">, number | undefined>([
+    [run._id, run._creationTime],
+  ]);
+  for (const report of page.page) {
+    if (currentSubjects.has(report.subjectId)) continue;
+    if (!reportRuns.has(report.runId))
+      reportRuns.set(
+        report.runId,
+        (await ctx.db.get(report.runId))?._creationTime,
+      );
+    const writtenBy = reportRuns.get(report.runId);
+    // A later failed progress run may be followed by auth/catalog while the
+    // student's last complete checkpoint still refers to this old run.
+    // Equal timestamps from different runs are ambiguous: preserve the report.
+    if (
+      report.runId === run._id ||
+      (writtenBy !== undefined && writtenBy < run._creationTime)
+    )
+      await ctx.db.delete(report._id);
+  }
+  if (!page.isDone)
+    await ctx.scheduler.runAfter(0, internal.abekaSync.cleanupStudentProgress, {
+      ...args,
+      paginationOpts: { ...args.paginationOpts, cursor: page.continueCursor },
+    });
+  return null;
+}
+
+export const cleanupStudentProgress = internalMutation({
+  args: progressCleanupArgs,
+  returns: v.null(),
+  handler: cleanStudentProgress,
+});
+
+export const studentComplete = internalMutation({
+  args: studentProgressArgs,
   returns: v.null(),
   handler: async (ctx, args) => {
     const state = await currentRun(ctx, args.runId);
@@ -381,33 +514,55 @@ export const studentComplete = internalMutation({
       !state ||
       !student?.userId ||
       !studentBelongsToRun(state, student) ||
-      student.syncedRunId === args.runId ||
+      (state.run.updateId
+        ? student.completedUpdateId === state.run.updateId
+        : student.syncedRunId === args.runId) ||
       !(await activeStudent(ctx, state.connection.schoolId, student.userId))
     )
       return null;
-    const progress = await ctx.db
-      .query("abekaProgress")
-      .withIndex("by_student_subject", (q) => q.eq("studentId", student._id))
-      .take(25);
     if (
-      args.subjectIds.some(
-        (id) =>
-          !progress.some((p) => p.subjectId === id && p.runId === args.runId),
-      )
-    )
+      args.subjectIds.length > MAX_SUBJECTS ||
+      new Set(args.subjectIds).size !== args.subjectIds.length
+    ) {
+      if (state.run.updateId) await failRun(ctx, args.runId, "SYNC_FAILED");
       return null;
-    for (const stale of progress.filter(
-      (p) => !args.subjectIds.includes(p.subjectId),
-    ))
-      await ctx.db.delete(stale._id);
+    }
+    for (const subjectId of args.subjectIds) {
+      const report = await ctx.db
+        .query("abekaProgress")
+        .withIndex("by_student_subject", (q) =>
+          q.eq("studentId", student._id).eq("subjectId", subjectId),
+        )
+        .unique();
+      if (report?.runId !== args.runId) {
+        if (state.run.updateId) await failRun(ctx, args.runId, "SYNC_FAILED");
+        return null;
+      }
+    }
     await ctx.db.patch(student._id, {
       lastSyncedAt: Date.now(),
       syncedRunId: args.runId,
+      ...(state.run.updateId ? { completedUpdateId: state.run.updateId } : {}),
       syncPending: undefined,
       hasProgress: args.subjectIds.length > 0,
     });
     await ctx.db.patch(state.run._id, {
       studentsSynced: state.run.studentsSynced + 1,
+    });
+    if (state.run.updateId && state.run.updateId !== state.run._id) {
+      const update = await ctx.db.get(state.run.updateId);
+      if (update)
+        await ctx.db.patch(update._id, {
+          studentsSynced: update.studentsSynced + 1,
+        });
+    }
+    await cleanStudentProgress(ctx, {
+      ...args,
+      paginationOpts: {
+        cursor: null,
+        numItems: 20,
+        maximumBytesRead: 1_000_000,
+      },
     });
     return null;
   },
@@ -451,7 +606,13 @@ async function failRun(
     ctx,
     state.connection._id,
     !reconnect && state.connection.confirmed
-      ? (state.run.studentId && state.connection.nextSyncAt) ||
+      ? state.run.authenticate
+        ? state.connection.nextSyncAt === undefined
+          ? undefined
+          : state.connection.nextSyncAt > Date.now()
+            ? state.connection.nextSyncAt
+            : Date.now() + WEEK
+        : (state.run.studentId && state.connection.nextSyncAt) ||
           Date.now() + WEEK
       : undefined,
     !!state.run.studentId,
@@ -505,18 +666,33 @@ export const onComplete = internalMutation({
           status: "completed",
           finishedAt: Date.now(),
         });
-        if (state.run.catalog) {
+        if (state.run.catalog || state.run.authenticate) {
           await refreshAbekaSchedule(
             ctx,
             state.connection._id,
-            state.connection.nextSyncAt,
-            true,
+            state.run.authenticate &&
+              state.connection.nextSyncAt !== undefined &&
+              state.connection.nextSyncAt <= Date.now()
+              ? Date.now() + WEEK
+              : state.connection.nextSyncAt,
+            !state.run.authenticate,
           );
         } else if (state.connection.confirmed) {
           await ctx.db.patch(state.connection._id, {
             status: "connected",
             ...(state.run.studentId ? {} : { lastSyncedAt: Date.now() }),
+            ...(state.run.updateId ? { pendingUpdateId: undefined } : {}),
+            // Roster-only initialization must not delay the first linked download.
+            ...(state.run.updateId && state.run.studentsSynced === 0
+              ? { lastAttemptAt: undefined }
+              : {}),
           });
+          if (state.run.updateId && state.run.updateId !== state.run._id)
+            await ctx.db.patch(state.run.updateId, {
+              status: "completed",
+              finishedAt: Date.now(),
+              errorCode: undefined,
+            });
           await refreshAbekaSchedule(
             ctx,
             state.connection._id,
@@ -527,7 +703,7 @@ export const onComplete = internalMutation({
           );
           if (
             state.run.initializeCatalog &&
-            state.connection.catalogAttemptAt === undefined
+            state.connection.catalogSyncedAt === undefined
           ) {
             await startAbekaSync(
               ctx,

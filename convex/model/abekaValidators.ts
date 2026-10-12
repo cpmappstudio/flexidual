@@ -56,6 +56,8 @@ export const abekaConnectionFields = {
   externalSchoolName: v.optional(v.string()),
   unavailableStudents: v.optional(v.number()),
   latestRunId: v.optional(v.id("abekaSyncRuns")),
+  // Full update checkpoint, independent of catalog/authentication attempts.
+  pendingUpdateId: v.optional(v.id("abekaSyncRuns")),
   rosterRunId: v.optional(v.id("abekaSyncRuns")),
   lastAttemptAt: v.optional(v.number()),
   lastRenewalAttemptAt: v.optional(v.number()),
@@ -80,10 +82,13 @@ export const abekaStudentFields = {
   hasProgress: v.optional(v.boolean()),
   lastSyncedAt: v.optional(v.number()),
   syncedRunId: v.optional(v.id("abekaSyncRuns")),
+  completedUpdateId: v.optional(v.id("abekaSyncRuns")),
 };
 export const abekaRunFields = {
   catalog: v.optional(v.boolean()),
   initializeCatalog: v.optional(v.boolean()),
+  authenticate: v.optional(v.boolean()),
+  updateId: v.optional(v.id("abekaSyncRuns")),
   connectionId: v.id("abekaConnections"),
   revision: v.number(),
   status: v.union(
@@ -99,6 +104,9 @@ export const abekaRunFields = {
   forceRenewal: v.optional(v.boolean()),
   studentId: v.optional(v.id("abekaStudents")),
   renewalAttempted: v.optional(v.boolean()),
+  renewals: v.optional(v.number()),
+  renewedAtProgress: v.optional(v.number()),
+  renewalInFlight: v.optional(v.boolean()),
   errorCode: v.optional(abekaError),
 };
 export const abekaProgressFields = {

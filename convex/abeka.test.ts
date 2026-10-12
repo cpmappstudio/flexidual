@@ -21,14 +21,22 @@ import {
 import type { AbekaSchedule } from "../lib/abeka/schedule";
 import { startAbekaSync } from "./abeka";
 
-async function finishCurrentSync(t: Awaited<ReturnType<typeof setup>>["t"]) {
+async function finishCurrentSync(
+  t: Awaited<ReturnType<typeof setup>>["t"],
+  maxIterations = 100,
+) {
   let advanced = 0;
-  await t.finishAllScheduledFunctions(() => {
+  // convex-test supports this bound at runtime but omits it from its declarations.
+  const finish = t.finishAllScheduledFunctions as (
+    advanceTimers: () => void,
+    maxIterations: number,
+  ) => Promise<void>;
+  await finish(() => {
     advanced += 1_000;
     // Pump short workflow timers, never jump forward to the recurring weekly job.
     if (advanced > 3_600_000) throw new Error("Current sync did not settle");
     vi.advanceTimersByTime(1_000);
-  });
+  }, maxIterations);
 }
 
 afterEach(() => {
@@ -421,6 +429,327 @@ const credentialHeaders = {
   "Content-Type": "application/json",
 };
 
+const twoStudentRoster = rosterHtml.replace(
+  "</table>",
+  `${rosterHtml.match(/<tr>.*<\/tr>/)![0].replace('value="42"', 'value="43"')}</table>`,
+);
+
+async function resumableSetup() {
+  vi.useFakeTimers();
+  const fixture = await renewalSetup();
+  const secondUser = await fixture.t.run(async (ctx) => {
+    await ctx.db.patch(fixture.runId, { status: "completed" });
+    await ctx.db.patch(fixture.connectionId, {
+      syncSchedule: { ...dailySchedule, mode: "manual" },
+    });
+    const userId = await ctx.db.insert("users", {
+      clerkId: "resume-student",
+      firstName: "Second",
+      lastName: "Student",
+      fullName: "Second Student",
+      isActive: true,
+      createdAt: 1,
+    });
+    await ctx.db.insert("roleAssignments", {
+      userId,
+      orgType: "school",
+      orgId: fixture.schoolId,
+      role: "student",
+      assignedAt: 1,
+    });
+    return userId;
+  });
+  await fixture.adminClient.mutation(api.abeka.linkStudent, {
+    studentId: fixture.studentId,
+    userId: fixture.student,
+  });
+  await fixture.adminClient.mutation(api.abeka.linkStudent, {
+    studentId: fixture.secondId,
+    userId: secondUser,
+  });
+  return { ...fixture, secondUser };
+}
+
+async function twoStudentResponse(url: string) {
+  if (url.endsWith("StreamingDetails.aspx"))
+    return new Response(twoStudentRoster);
+  const response = reportResponse(url);
+  return url.includes("loginId=43")
+    ? new Response((await response.text()).replace('value="42"', 'value="43"'))
+    : response;
+}
+
+test("interrupted updates resume only unfinished students, preserve old snapshots, and the next update refreshes everybody", async () => {
+  const {
+    t,
+    adminClient,
+    schoolId,
+    connectionId,
+    studentId,
+    secondId,
+    runId,
+    secondUser,
+  } = await resumableSetup();
+  // The unfinished student already has a historical report: 'ever synced' is not a checkpoint.
+  await t.run(async (ctx) => {
+    await ctx.db.patch(secondId, {
+      lastSyncedAt: 1,
+      syncPending: undefined,
+      hasProgress: true,
+    });
+    await ctx.db.insert("abekaProgress", {
+      studentId: secondId,
+      subjectId: "117",
+      subjectName: "Old Math",
+      runId,
+      syncedAt: 1,
+      lessons: [
+        {
+          subjectName: "Math",
+          lessonNumber: 1,
+          percentage: 54,
+          completed: false,
+          lengthSeconds: 100,
+          watchedSeconds: 54,
+          lastViewed: null,
+          segmentId: null,
+          subscriptionItem: null,
+          subscriptionNumber: null,
+        },
+      ],
+    });
+  });
+  let failSecond = true;
+  const request = vi.fn(async (url: string) =>
+    failSecond && url.includes("loginId=43")
+      ? new Response("Unavailable", { status: 503 })
+      : twoStudentResponse(url),
+  );
+  vi.stubGlobal("fetch", request);
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
+  await finishCurrentSync(t);
+  const interrupted = await adminClient.query(api.abeka.status, { schoolId });
+  expect(interrupted.run).toMatchObject({
+    status: "failed",
+    studentsSynced: 1,
+  });
+  expect(interrupted.hasPendingUpdate).toBe(true);
+  expect(
+    (await adminClient.query(api.abeka.progress, { studentId: secondId }))[0],
+  ).toMatchObject({ syncedAt: 1, subjectName: "Old Math" });
+  const firstReport = await adminClient.query(api.abeka.progress, {
+    studentId,
+  });
+  const rows = await adminClient.query(api.abeka.students, {
+    schoolId,
+    paginationOpts: { numItems: 25, cursor: null },
+  });
+  expect(rows.page.map((s) => s.syncPending)).toEqual([false, true]);
+  expect((await t.run((ctx) => ctx.db.get(secondId)))?.userId).toBe(secondUser);
+
+  // Restoring authentication never resets checkpoints or starts report downloads.
+  vi.spyOn(loginProbe, "signInAbeka").mockResolvedValue(verifiedLogin);
+  request.mockClear();
+  expect(
+    (
+      await adminClient.fetch(`/abeka-credentials?schoolId=${schoolId}`, {
+        method: "POST",
+        headers: credentialHeaders,
+        body: JSON.stringify(testCredentials),
+      })
+    ).status,
+  ).toBe(202);
+  await finishCurrentSync(t);
+  expect(request).not.toHaveBeenCalled();
+  const authenticated = await adminClient.query(api.abeka.status, { schoolId });
+  expect(authenticated.connection?.pendingUpdateId).toBe(
+    interrupted.run?.updateId,
+  );
+  expect(authenticated.connection?.revision).toBe(
+    interrupted.connection!.revision + 1,
+  );
+  expect(authenticated.run?._id).toBe(interrupted.run?._id);
+  expect(await adminClient.query(api.abeka.progress, { studentId })).toEqual(
+    firstReport,
+  );
+
+  failSecond = false;
+  request.mockClear();
+  vi.advanceTimersByTime(60_000); // Provider Retry-After, but less than a new-update cooldown.
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
+  const retry = await adminClient.query(api.abeka.status, { schoolId });
+  expect(retry.run?._id).not.toBe(interrupted.run?._id);
+  expect(retry.run?.updateId).toBe(interrupted.run?.updateId);
+  // A canceled/failed physical attempt can never write into the continuation.
+  expect(
+    await t.mutation(internal.abekaSync.saveProgress, {
+      runId: interrupted.run!._id,
+      studentId,
+      subjectId: "117",
+      lessons: firstReport[0].lessons,
+    }),
+  ).toBe(false);
+  await finishCurrentSync(t);
+  expect(request).toHaveBeenCalledTimes(3); // One roster check, only the unfinished student's two reads.
+  expect(request.mock.calls.some(([url]) => url.includes("loginId=42"))).toBe(
+    false,
+  );
+  expect(await adminClient.query(api.abeka.progress, { studentId })).toEqual(
+    firstReport,
+  );
+  const resumed = await adminClient.query(api.abeka.status, { schoolId });
+  expect(resumed.run).toMatchObject({ status: "completed", studentsSynced: 2 });
+  expect(resumed.hasPendingUpdate).toBe(false);
+  expect(
+    (await t.run((ctx) => ctx.db.get(connectionId)))?.pendingUpdateId,
+  ).toBeUndefined();
+
+  request.mockClear();
+  vi.advanceTimersByTime(ABEKA_MANUAL_SYNC_INTERVAL_MS);
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
+  await finishCurrentSync(t);
+  expect(request).toHaveBeenCalledTimes(5);
+  const fresh = await adminClient.query(api.abeka.status, { schoolId });
+  expect(fresh.run?.updateId).not.toBe(resumed.run?.updateId);
+  expect(fresh.run?.studentsSynced).toBe(2);
+});
+
+test("pending associations run before old reports, with stable pagination and no second-pass duplicate", async () => {
+  const { t, adminClient, schoolId, studentId } = await resumableSetup();
+  await t.run((ctx) =>
+    ctx.db.patch(studentId, { lastSyncedAt: 1, syncPending: undefined }),
+  );
+  const request = vi.fn(twoStudentResponse);
+  vi.stubGlobal("fetch", request);
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
+  await finishCurrentSync(t);
+  expect(request).toHaveBeenCalledTimes(5);
+  expect(request.mock.calls[1][0]).toContain("loginId=43");
+  expect(request.mock.calls[3][0]).toContain("loginId=42");
+});
+
+test("priority scans across multiple pages do not skip records as completion clears pending flags", async () => {
+  const { t, adminClient, schoolId, connectionId, runId, studentId } =
+    await resumableSetup();
+  const ids = await t.run(async (ctx) => {
+    await ctx.db.patch(studentId, { lastSyncedAt: 1, syncPending: undefined });
+    const logins: string[] = [];
+    for (let i = 44; i < 66; i++) {
+      const userId = await ctx.db.insert("users", {
+        clerkId: `page-${i}`,
+        firstName: "Page",
+        lastName: `${i}`,
+        fullName: `Page ${i}`,
+        isActive: true,
+        createdAt: 1,
+      });
+      await ctx.db.insert("roleAssignments", {
+        userId,
+        orgType: "school",
+        orgId: schoolId,
+        role: "student",
+        assignedAt: 1,
+      });
+      await ctx.db.insert("abekaStudents", {
+        connectionId,
+        rosterRunId: runId,
+        loginId: `${i}`,
+        name: `Provider ${i}`,
+        userId,
+        syncPending: true,
+      });
+      logins.push(`${i}`);
+    }
+    return logins;
+  });
+  const roster = twoStudentRoster.replace(
+    "</table>",
+    `${ids.map((id) => rosterHtml.match(/<tr>.*<\/tr>/)![0].replace('value="42"', `value="${id}"`)).join("")}</table>`,
+  );
+  const request = vi.fn(async (url: string) => {
+    if (url.endsWith("StreamingDetails.aspx")) return new Response(roster);
+    const loginId = new URL(url).searchParams.get("loginId");
+    const response = reportResponse(url);
+    return loginId
+      ? new Response(
+          (await response.text()).replace('value="42"', `value="${loginId}"`),
+        )
+      : response;
+  });
+  vi.stubGlobal("fetch", request);
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
+  await finishCurrentSync(t, 1000);
+  const calls = request.mock.calls.filter(([url]) => url.includes("?loginId="));
+  expect(calls).toHaveLength(24);
+  expect(new Set(calls.map(([url]) => url)).size).toBe(24);
+  expect(calls.at(-1)![0]).toContain("loginId=42");
+  expect(
+    (await adminClient.query(api.abeka.status, { schoolId })).run,
+  ).toMatchObject({ status: "completed", studentsSynced: 24 });
+});
+
+test("renewal permits another expired session only after student progress, with cooldown and an attempt ceiling", async () => {
+  const { t, runId, connectionId } = await renewalSetup();
+  await t.run(async (ctx) => {
+    await ctx.db.patch(runId, { updateId: runId });
+    await ctx.db.patch(connectionId, { pendingUpdateId: runId });
+  });
+  expect(
+    await t.mutation(internal.abekaSync.claimRenewal, { runId }),
+  ).not.toBeNull();
+  expect(await t.mutation(internal.abekaSync.claimRenewal, { runId })).toEqual({
+    paused: true,
+  });
+  await t.mutation(internal.abekaSync.commitRenewal, {
+    runId,
+    externalSchoolId: "123",
+    encrypted: { iv: "00", ciphertext: "00" },
+  });
+  expect(await t.mutation(internal.abekaSync.claimRenewal, { runId })).toEqual({
+    paused: true,
+  });
+  await t.run(async (ctx) => {
+    await ctx.db.patch(runId, { studentsSynced: 1 });
+    await ctx.db.patch(connectionId, {
+      lastRenewalAttemptAt: Date.now() - 60_001,
+    });
+  });
+  expect(
+    await t.mutation(internal.abekaSync.claimRenewal, { runId }),
+  ).not.toBeNull();
+  await t.run((ctx) =>
+    ctx.db.patch(runId, {
+      renewals: 6,
+      renewalInFlight: false,
+      studentsSynced: 2,
+    }),
+  );
+  expect(await t.mutation(internal.abekaSync.claimRenewal, { runId })).toEqual({
+    paused: true,
+  });
+});
+
+test.each(["PROVIDER_UNAVAILABLE", "LOGIN_FLOW_CHANGED"] as const)(
+  "renewal %s is not misreported as rejected credentials",
+  async (code) => {
+    const { t, runId, adminClient, schoolId } = await renewalSetup();
+    vi.spyOn(loginProbe, "signInAbeka").mockRejectedValue(
+      new loginProbe.LoginProbeError(code),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 302 })),
+    );
+    expect(await t.action(internal.abekaActions.roster, { runId })).toBe(false);
+    const state = await adminClient.query(api.abeka.status, { schoolId });
+    expect(state.connection?.errorCode).toBe(
+      code === "PROVIDER_UNAVAILABLE" ? code : "REPORT_FORMAT_CHANGED",
+    );
+    expect(state.connection?.status).toBe("error");
+    expect(state.hasCredentials).toBe(true);
+  },
+);
+
 async function renewalSetup() {
   const fixture = await setup();
   vi.stubEnv("ABEKA_SESSION_ENCRYPTION_KEY", testKey);
@@ -445,6 +774,93 @@ async function renewalSetup() {
   return fixture;
 }
 
+test.each([false, true])(
+  "operator recovery only downloads the missing student, renewing a missing session when needed (%s)",
+  async (missingSession) => {
+    vi.useFakeTimers();
+    const { t, connectionId, runId, studentId, secondId, student } =
+      await renewalSetup();
+    await t.run(async (ctx) => {
+      await ctx.db.patch(runId, { status: "failed" });
+      await ctx.db.patch(connectionId, {
+        status: missingSession ? "needs_reconnect" : "connected",
+        lastSyncedAt: 123,
+        syncSchedule: { ...dailySchedule, mode: "manual" },
+      });
+      await ctx.db.patch(studentId, { userId: student, syncPending: true });
+      if (missingSession) {
+        const secret = await ctx.db.query("abekaSecrets").unique();
+        await ctx.db.patch(secret!._id, { encrypted: undefined });
+      }
+    });
+    const otherStudent = await t.run((ctx) => ctx.db.get(secondId));
+    const login = vi
+      .spyOn(loginProbe, "signInAbeka")
+      .mockResolvedValue(verifiedLogin);
+    const request = vi.fn(async (url: string) => reportResponse(url));
+    vi.stubGlobal("fetch", request);
+    const args = { connectionId, expectedRosterRunId: runId, studentId };
+    const recoveryRunId = await t.mutation(internal.abeka.recoverStudent, args);
+    expect(recoveryRunId).not.toBeNull();
+    await expect(
+      t.mutation(internal.abeka.recoverStudent, args),
+    ).rejects.toThrow("SYNC_RUNNING");
+    await finishCurrentSync(t);
+    expect(login).toHaveBeenCalledTimes(missingSession ? 1 : 0);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls[0][0]).toContain("?loginId=42");
+    const state = await t.run(async (ctx) => ({
+      run: await ctx.db.get(recoveryRunId!),
+      connection: await ctx.db.get(connectionId),
+      student: await ctx.db.get(studentId),
+      other: await ctx.db.get(secondId),
+    }));
+    expect(state.run).toMatchObject({
+      status: "completed",
+      studentsSynced: 1,
+      studentId,
+    });
+    expect(state.connection).toMatchObject({
+      status: "connected",
+      rosterRunId: runId,
+      lastSyncedAt: 123,
+    });
+    expect(state.student?.userId).toBe(student);
+    expect(state.student?.lastSyncedAt).toBeDefined();
+    expect(state.student?.syncPending).toBeUndefined();
+    expect(state.other).toEqual(otherStudent);
+    // Repeating an operator command cannot refresh already recovered reports.
+    expect(await t.mutation(internal.abeka.recoverStudent, args)).toBeNull();
+    expect(request).toHaveBeenCalledTimes(2);
+  },
+);
+
+test("operator recovery fences unlinked students, changed rosters and disconnected integrations", async () => {
+  const { t, connectionId, runId, studentId, secondId, student } =
+    await setup();
+  const args = { connectionId, expectedRosterRunId: runId, studentId };
+  await expect(t.mutation(internal.abeka.recoverStudent, args)).rejects.toThrow(
+    "INVALID_STUDENT",
+  );
+  await t.run((ctx) => ctx.db.patch(studentId, { userId: student }));
+  await expect(t.mutation(internal.abeka.recoverStudent, args)).rejects.toThrow(
+    "NEEDS_CREDENTIALS",
+  );
+  await t.run((ctx) => ctx.db.patch(connectionId, { rosterRunId: undefined }));
+  await expect(t.mutation(internal.abeka.recoverStudent, args)).rejects.toThrow(
+    "CONNECTION_CHANGED",
+  );
+  await t.run((ctx) =>
+    ctx.db.patch(connectionId, { rosterRunId: runId, status: "disconnected" }),
+  );
+  await expect(t.mutation(internal.abeka.recoverStudent, args)).rejects.toThrow(
+    "NOT_CONNECTED",
+  );
+  expect(
+    (await t.run((ctx) => ctx.db.get(secondId)))?.lastSyncedAt,
+  ).toBeUndefined();
+});
+
 test("credential connect verifies first and persists only encrypted secrets", async () => {
   vi.useFakeTimers();
   const { t, adminClient, schoolId } = await setup();
@@ -452,10 +868,8 @@ test("credential connect verifies first and persists only encrypted secrets", as
   const login = vi
     .spyOn(loginProbe, "signInAbeka")
     .mockResolvedValue(verifiedLogin);
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => new Response(rosterHtml)),
-  );
+  const request = vi.fn(async () => new Response(rosterHtml));
+  vi.stubGlobal("fetch", request);
   const response = await adminClient.fetch(
     `/abeka-credentials?schoolId=${schoolId}`,
     {
@@ -482,6 +896,8 @@ test("credential connect verifies first and persists only encrypted secrets", as
   expect(state.hasCredentials).toBe(true);
   expect(JSON.stringify(state)).not.toContain("ciphertext");
   expect(state.run?.status).toBe("completed");
+  expect(state.run?.studentsSynced).toBe(0);
+  expect(request).not.toHaveBeenCalled();
 });
 
 test("credential endpoint checks auth, permissions and body bounds before sign-in", async () => {
@@ -603,8 +1019,8 @@ test("expired session is renewed once and the failed report read is retried", as
   expect(await t.action(internal.abekaActions.roster, { runId })).toBe(false);
   expect(login).toHaveBeenCalledTimes(1);
   const state = await adminClient.query(api.abeka.status, { schoolId });
-  expect(state.connection?.status).toBe("needs_reconnect");
-  expect(state.connection?.nextSyncAt).toBeUndefined();
+  expect(state.connection?.status).toBe("error");
+  expect(state.connection?.errorCode).toBe("PROVIDER_UNAVAILABLE");
   expect(state.hasCredentials).toBe(true);
 });
 
@@ -639,9 +1055,9 @@ test("renewal claims are single-use and late renewal commits are revision-fenced
   expect(
     await t.mutation(internal.abekaSync.claimRenewal, { runId }),
   ).not.toBeNull();
-  expect(
-    await t.mutation(internal.abekaSync.claimRenewal, { runId }),
-  ).toBeNull();
+  expect(await t.mutation(internal.abekaSync.claimRenewal, { runId })).toEqual({
+    paused: true,
+  });
   await t.run((ctx) => ctx.db.patch(connectionId, { revision: 2 }));
   expect(
     await t.mutation(internal.abekaSync.commitRenewal, {
@@ -672,7 +1088,7 @@ test("renewal cannot replace a confirmed institution with another account", asyn
   );
 });
 
-test("manual renewal uses saved credentials and completes the existing sync workflow", async () => {
+test("manual renewal authenticates without importing reports or changing the completed-sync date", async () => {
   vi.useFakeTimers();
   const { t, adminClient, schoolId, runId, connectionId } =
     await renewalSetup();
@@ -693,9 +1109,93 @@ test("manual renewal uses saved credentials and completes the existing sync work
   const state = await adminClient.query(api.abeka.status, { schoolId });
   expect(state.run?.status).toBe("completed");
   expect(state.connection?.status).toBe("connected");
-  expect(state.connection?.nextSyncAt).toBeGreaterThan(
-    state.connection!.lastSyncedAt!,
-  );
+  expect(state.connection?.lastSyncedAt).toBeUndefined();
+  expect(state.run?.authenticate).toBe(true);
+  expect(state.run?.studentsSynced).toBe(0);
+});
+
+test.each([false, true])(
+  "authentication-only renewal preserves a paused update and dates without catching up an overdue schedule (failure=%s)",
+  async (providerFailure) => {
+    vi.useFakeTimers();
+    const { t, adminClient, schoolId, connectionId, runId } =
+      await renewalSetup();
+    const historicalSync = Date.now() - 86_400_000;
+    await t.run(async (ctx) => {
+      await ctx.db.patch(schoolId, { timeZone: "America/Bogota" });
+      await ctx.db.patch(runId, {
+        status: "failed",
+        updateId: runId,
+        studentsSynced: 1,
+      });
+      await ctx.db.patch(connectionId, {
+        pendingUpdateId: runId,
+        status: "needs_reconnect",
+        lastSyncedAt: historicalSync,
+        nextSyncAt: Date.now() - 60_000,
+        syncSchedule: { ...dailySchedule, stopAtPeriodEnd: false },
+      });
+    });
+    const login = vi.spyOn(loginProbe, "signInAbeka");
+    if (providerFailure)
+      login.mockRejectedValue(
+        new loginProbe.LoginProbeError("PROVIDER_UNAVAILABLE"),
+      );
+    else login.mockResolvedValue(verifiedLogin);
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    await adminClient.mutation(api.abeka.renewSession, { schoolId });
+    await finishCurrentSync(t);
+    const state = await adminClient.query(api.abeka.status, { schoolId });
+    expect(state.connection).toMatchObject({
+      status: providerFailure ? "error" : "connected",
+      pendingUpdateId: runId,
+      lastSyncedAt: historicalSync,
+    });
+    expect(state.connection?.nextSyncAt).toBeGreaterThan(Date.now());
+    expect(state.run).toMatchObject({
+      authenticate: true,
+      status: providerFailure ? "failed" : "completed",
+      studentsSynced: 0,
+    });
+    expect(request).not.toHaveBeenCalled();
+    expect((await t.run((ctx) => ctx.db.get(runId)))?.studentsSynced).toBe(1);
+  },
+);
+
+test("relinking a completed student during a paused update clears its checkpoint and removes its previous completion count", async () => {
+  const { t, adminClient, runId, connectionId, studentId, student } =
+    await resumableSetup();
+  await t.run(async (ctx) => {
+    await ctx.db.patch(runId, {
+      status: "failed",
+      updateId: runId,
+      studentsSynced: 1,
+    });
+    await ctx.db.patch(connectionId, { pendingUpdateId: runId });
+    await ctx.db.patch(studentId, {
+      completedUpdateId: runId,
+      lastSyncedAt: 1,
+      syncPending: undefined,
+    });
+  });
+  await adminClient.mutation(api.abeka.linkStudent, {
+    studentId,
+    userId: null,
+  });
+  await adminClient.mutation(api.abeka.linkStudent, {
+    studentId,
+    userId: student,
+  });
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
+    userId: student,
+    syncPending: true,
+    lastSyncedAt: 1,
+  });
+  expect(
+    (await t.run((ctx) => ctx.db.get(studentId)))?.completedUpdateId,
+  ).toBeUndefined();
+  expect((await t.run((ctx) => ctx.db.get(runId)))?.studentsSynced).toBe(0);
 });
 
 test.each(["legacy", "curriculum"])(
@@ -1651,6 +2151,7 @@ async function setup() {
       confirmed: true,
       connectedBy: admin,
       externalSchoolId: "123",
+      catalogSyncedAt: 1,
     });
     const runId = await ctx.db.insert("abekaSyncRuns", {
       connectionId,
@@ -2097,7 +2598,11 @@ test("cloud workflow uses encrypted session, imports linked progress and schedul
   await adminClient.mutation(internal.abeka.saveSession, {
     schoolId,
     encrypted: await encryptSession("session=test-only", key, schoolId),
+    externalSchoolId: "123",
+    externalSchoolName: "Example",
   });
+  expect(requests).toHaveLength(0);
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
   await finishCurrentSync(t);
   const status = await adminClient.query(api.abeka.status, { schoolId });
   expect(status.run?.status).toBe("completed");
@@ -2438,6 +2943,325 @@ test("legacy links derive pending/report availability and zero-percent reports r
     (await t.run((ctx) => ctx.db.get(studentId)))?.syncPending,
   ).toBeUndefined();
 });
+
+async function studentCompletionSetup(
+  obsoleteCount: number,
+  currentCount: number,
+) {
+  const fixture = await setup();
+  const subjectIds = Array.from(
+    { length: currentCount },
+    (_, i) => `z-current-${i}`,
+  );
+  const completion = await fixture.t.run(async (ctx) => {
+    const historicalRunId = fixture.runId;
+    const runId = await ctx.db.insert("abekaSyncRuns", {
+      connectionId: fixture.connectionId,
+      revision: 1,
+      status: "running",
+      startedAt: Date.now(),
+      studentsSynced: 0,
+    });
+    await ctx.db.patch(runId, { updateId: runId });
+    await ctx.db.patch(fixture.connectionId, {
+      pendingUpdateId: runId,
+      latestRunId: runId,
+      rosterRunId: runId,
+      syncSchedule: { ...dailySchedule, mode: "manual" },
+    });
+    await ctx.db.patch(fixture.studentId, {
+      userId: fixture.student,
+      syncPending: true,
+      hasProgress: true,
+      lastSyncedAt: 123,
+      syncedRunId: historicalRunId,
+      rosterRunId: runId,
+    });
+    const reportIds = [];
+    for (const subjectId of [
+      ...Array.from({ length: obsoleteCount }, (_, i) => `a-obsolete-${i}`),
+      ...subjectIds,
+    ]) {
+      reportIds.push(
+        await ctx.db.insert("abekaProgress", {
+          studentId: fixture.studentId,
+          subjectId,
+          subjectName: subjectId,
+          runId: subjectIds.includes(subjectId) ? runId : historicalRunId,
+          syncedAt: 123,
+          lessons: [
+            {
+              subjectName: subjectId,
+              lessonNumber: 1,
+              percentage: 54,
+              completed: false,
+              lengthSeconds: 100,
+              watchedSeconds: 54,
+              lastViewed: null,
+              segmentId: null,
+              subscriptionItem: null,
+              subscriptionNumber: null,
+            },
+          ],
+        }),
+      );
+    }
+    const curriculumId = await ctx.db.insert("curriculums", {
+      title: "Math",
+      isActive: true,
+      createdAt: 1,
+      createdBy: fixture.admin,
+    });
+    const courseId = await ctx.db.insert("abekaCourses", {
+      connectionId: fixture.connectionId,
+      subjectId: subjectIds[0] ?? "empty",
+      name: "Math",
+      totalLessons: 170,
+      available: true,
+    });
+    await ctx.db.insert("abekaCurriculumLinks", {
+      connectionId: fixture.connectionId,
+      curriculumId,
+      courseId,
+    });
+    return {
+      runId,
+      reports: await Promise.all(reportIds.map((id) => ctx.db.get(id))),
+    };
+  });
+  return { ...fixture, subjectIds, ...completion };
+}
+
+test("completion validates all 22 current reports despite four obsolete reports sorting before them", async () => {
+  vi.useFakeTimers();
+  const { t, runId, studentId, student, connectionId, subjectIds, reports } =
+    await studentCompletionSetup(4, 22);
+  const links = await t.run((ctx) =>
+    ctx.db.query("abekaCurriculumLinks").collect(),
+  );
+  const args = { runId, studentId, subjectIds };
+  await t.mutation(internal.abekaSync.studentComplete, args);
+  expect(await t.run((ctx) => ctx.db.get(runId))).toMatchObject({
+    status: "running",
+    studentsSynced: 1,
+  });
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
+    completedUpdateId: runId,
+    syncedRunId: runId,
+    userId: student,
+  });
+  await t.mutation(internal.abekaSync.studentComplete, args);
+  await finishCurrentSync(t);
+  expect((await t.run((ctx) => ctx.db.get(runId)))!.studentsSynced).toBe(1);
+  expect(await t.run((ctx) => ctx.db.query("abekaProgress").collect())).toEqual(
+    reports.filter((report) => subjectIds.includes(report!.subjectId)),
+  );
+  expect(
+    await t.run((ctx) => ctx.db.query("abekaCurriculumLinks").collect()),
+  ).toEqual(links);
+  expect(
+    (await t.run((ctx) => ctx.db.get(connectionId)))!.pendingUpdateId,
+  ).toBe(runId);
+});
+
+test("incomplete current reports preserve all historical reports and student checkpoints without cleanup", async () => {
+  vi.useFakeTimers();
+  const { t, runId, studentId, subjectIds, reports } =
+    await studentCompletionSetup(30, 2);
+  const before = await t.run((ctx) => ctx.db.get(studentId));
+  await t.mutation(internal.abekaSync.studentComplete, {
+    runId,
+    studentId,
+    subjectIds: [...subjectIds, "missing-current"],
+  });
+  await finishCurrentSync(t);
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toEqual(before);
+  expect(await t.run((ctx) => ctx.db.query("abekaProgress").collect())).toEqual(
+    reports,
+  );
+  expect(await t.run((ctx) => ctx.db.get(runId))).toMatchObject({
+    status: "failed",
+    errorCode: "SYNC_FAILED",
+    studentsSynced: 0,
+  });
+});
+
+test.each(["same", "catalog", "authenticate"] as const)(
+  "bounded cleanup removes every obsolete report after completion with latest %s job",
+  async (successor) => {
+    vi.useFakeTimers();
+    const { t, runId, studentId, connectionId, subjectIds, reports } =
+      await studentCompletionSetup(45, 22);
+    const otherStudent = await t.run(async (ctx) => {
+      const other = await ctx.db
+        .query("abekaStudents")
+        .withIndex("by_connection_login", (q) =>
+          q.eq("connectionId", connectionId).eq("loginId", "43"),
+        )
+        .unique();
+      const { _id, _creationTime, ...report } = reports[0]!;
+      const reportId = await ctx.db.insert("abekaProgress", {
+        ...report,
+        studentId: other!._id,
+      });
+      return {
+        student: await ctx.db.get(other!._id),
+        report: await ctx.db.get(reportId),
+      };
+    });
+    await t.mutation(internal.abekaSync.studentComplete, {
+      runId,
+      studentId,
+      subjectIds,
+    });
+    expect(
+      (await t.run((ctx) => ctx.db.query("abekaProgress").collect())).length,
+    ).toBeGreaterThan(23);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(runId, { status: "completed" });
+      await ctx.db.patch(connectionId, { pendingUpdateId: undefined });
+      if (successor !== "same") {
+        const latestRunId = await ctx.db.insert("abekaSyncRuns", {
+          connectionId,
+          revision: 1,
+          status: "running",
+          startedAt: Date.now(),
+          studentsSynced: 0,
+          [successor]: true,
+        });
+        await ctx.db.patch(connectionId, { latestRunId });
+      }
+    });
+    await finishCurrentSync(t);
+    const current = await t.run((ctx) =>
+      ctx.db
+        .query("abekaProgress")
+        .withIndex("by_student_subject", (q) => q.eq("studentId", studentId))
+        .collect(),
+    );
+    expect(current).toHaveLength(subjectIds.length);
+    expect(current).toEqual(
+      expect.arrayContaining(
+        reports.filter((report) => subjectIds.includes(report!.subjectId)),
+      ),
+    );
+    expect(await t.run((ctx) => ctx.db.get(otherStudent.student!._id))).toEqual(
+      otherStudent.student,
+    );
+    expect(await t.run((ctx) => ctx.db.get(otherStudent.report!._id))).toEqual(
+      otherStudent.report,
+    );
+    expect(
+      await t.run((ctx) => ctx.db.query("abekaProgress").collect()),
+    ).toHaveLength(23);
+  },
+);
+
+test.each(["new-progress", "revision", "relink"] as const)(
+  "delayed cleanup is fenced after %s and preserves newly written reports",
+  async (change) => {
+    vi.useFakeTimers();
+    const { t, runId, studentId, connectionId, subjectIds } =
+      await studentCompletionSetup(45, 2);
+    await t.mutation(internal.abekaSync.studentComplete, {
+      runId,
+      studentId,
+      subjectIds,
+    });
+    await t.run(async (ctx) => {
+      if (change === "new-progress") {
+        const latestRunId = await ctx.db.insert("abekaSyncRuns", {
+          connectionId,
+          revision: 1,
+          status: "running",
+          startedAt: Date.now(),
+          studentsSynced: 0,
+        });
+        await ctx.db.patch(connectionId, { latestRunId });
+        await ctx.db.patch(studentId, { rosterRunId: latestRunId });
+        const previous = await ctx.db
+          .query("abekaProgress")
+          .withIndex("by_student_subject", (q) =>
+            q.eq("studentId", studentId).eq("subjectId", "a-obsolete-30"),
+          )
+          .unique();
+        await ctx.db.patch(previous!._id, {
+          runId: latestRunId,
+          syncedAt: Date.now(),
+        });
+      } else if (change === "revision")
+        await ctx.db.patch(connectionId, { revision: 2 });
+      else
+        await ctx.db.patch(studentId, {
+          syncPending: true,
+          completedUpdateId: undefined,
+        });
+    });
+    const before = await t.run((ctx) =>
+      ctx.db.query("abekaProgress").collect(),
+    );
+    await finishCurrentSync(t);
+    expect(
+      await t.run((ctx) => ctx.db.query("abekaProgress").collect()),
+    ).toEqual(before);
+    expect((await t.run((ctx) => ctx.db.get(runId)))!.studentsSynced).toBe(1);
+  },
+);
+
+test.each([false, true])(
+  "old cleanup preserves a newer partial report after failed progress followed by authentication (targeted=%s)",
+  async (targeted) => {
+    vi.useFakeTimers();
+    const { t, runId, studentId, connectionId, subjectIds } =
+      await studentCompletionSetup(45, 2);
+    await t.mutation(internal.abekaSync.studentComplete, {
+      runId,
+      studentId,
+      subjectIds,
+    });
+    const partial = await t.run(async (ctx) => {
+      const newerRunId = await ctx.db.insert("abekaSyncRuns", {
+        connectionId,
+        revision: 1,
+        status: "failed",
+        startedAt: Date.now(),
+        studentsSynced: 0,
+        ...(targeted ? { studentId } : {}),
+      });
+      const report = await ctx.db
+        .query("abekaProgress")
+        .withIndex("by_student_subject", (q) =>
+          q.eq("studentId", studentId).eq("subjectId", "a-obsolete-30"),
+        )
+        .unique();
+      await ctx.db.patch(report!._id, {
+        runId: newerRunId,
+        syncedAt: Date.now(),
+      });
+      if (!targeted) await ctx.db.patch(studentId, { rosterRunId: newerRunId });
+      const authRunId = await ctx.db.insert("abekaSyncRuns", {
+        connectionId,
+        revision: 1,
+        status: "completed",
+        startedAt: Date.now(),
+        studentsSynced: 0,
+        authenticate: true,
+      });
+      await ctx.db.patch(connectionId, { latestRunId: authRunId });
+      return ctx.db.get(report!._id);
+    });
+    await finishCurrentSync(t);
+    expect(await t.run((ctx) => ctx.db.get(partial!._id))).toEqual(partial);
+    const remaining = await t.run((ctx) =>
+      ctx.db.query("abekaProgress").collect(),
+    );
+    expect(remaining.map((report) => report.subjectId)).toEqual([
+      "a-obsolete-30",
+      ...subjectIds,
+    ]);
+    expect((await t.run((ctx) => ctx.db.get(runId)))!.studentsSynced).toBe(1);
+  },
+);
 
 test("a successful empty subject list clears report availability and pending state", async () => {
   const { t, adminClient, schoolId, runId, studentId, student } = await setup();
@@ -2995,6 +3819,7 @@ test("new connection confirms before roster and one initial catalog import; prog
       confirmed: false,
       externalSchoolId: undefined,
       rosterRunId: undefined,
+      catalogSyncedAt: undefined,
     }),
   );
   const fetch = vi.fn(
@@ -3005,6 +3830,8 @@ test("new connection confirms before roster and one initial catalog import; prog
   await adminClient.mutation(internal.abeka.saveSession, {
     schoolId,
     encrypted: await encryptSession("session=test", key, schoolId),
+    externalSchoolId: "123",
+    externalSchoolName: "Example",
   });
   await finishCurrentSync(t);
   const pending = await adminClient.query(api.abeka.status, { schoolId });
@@ -3028,12 +3855,18 @@ test("new connection confirms before roster and one initial catalog import; prog
     schoolId,
     externalSchoolId: "123",
   });
+  expect(fetch).not.toHaveBeenCalled();
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
   await finishCurrentSync(t);
   expect(
     (await adminClient.query(api.abeka.status, { schoolId })).connection
       ?.status,
   ).toBe("connected");
-  expect(fetch).toHaveBeenCalledTimes(5);
+  expect(fetch).toHaveBeenCalledTimes(4);
+  expect(
+    (await adminClient.query(api.abeka.status, { schoolId })).connection
+      ?.lastAttemptAt,
+  ).toBeUndefined();
   const catalog = await adminClient.query(api.abekaCatalog.courses, {
     schoolId,
     paginationOpts: { numItems: 25, cursor: null },

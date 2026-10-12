@@ -275,7 +275,7 @@
         },
         "schedule": {
           "title": "Semanal ou sob demanda",
-          "description": "A sincronização é executada no Convex, mesmo com o navegador fechado. Sessões expiradas têm uma tentativa de renovação automática por sincronização; falhas de login exigem um administrador."
+          "description": "A sincronização é executada no Convex, mesmo com o navegador fechado. A renovação da sessão é controlada e atualizações interrompidas retomam os alunos pendentes. Logins rejeitados exigem um administrador."
         },
         "matching": {
           "title": "Instituição e campus",
@@ -293,7 +293,7 @@
           "CONNECTION_CHANGED": "A conexão mudou durante a verificação. Confira o estado atual antes de tentar novamente.",
           "NOT_CONFIGURED": "A chave de criptografia não está configurada neste ambiente Convex."
         },
-        "description": "Use uma conta autorizada de administrador da instituição. Após verificar o acesso, as credenciais e a sessão são armazenadas criptografadas no Convex para renovar sessões expiradas. Esta não é uma integração oficial da Abeka.",
+        "description": "Use uma conta autorizada de administrador da instituição. O acesso é verificado e as credenciais são armazenadas criptografadas no Convex, sem importar dados. Use Atualizar dados para baixar ou retomar relatórios. Esta não é uma integração oficial da Abeka.",
         "submit": "Conectar e salvar credenciais",
         "replace": "Configurar ou alterar credenciais",
         "manual": "Usar uma sessão manualmente (remove as credenciais salvas)",
@@ -331,6 +331,7 @@
       "syncNow": "Sincronizar agora",
       "updateData": "Atualizar dados",
       "pendingSync": "Vínculo salvo. Use Atualizar dados para baixar o progresso pendente ou aguarde a sincronização programada.",
+      "resumeSync": "Atualização incompleta. Use Atualizar dados para baixar apenas os alunos pendentes. Após concluir, a próxima atualização atualizará todos novamente.",
       "disconnect": "Desconectar",
       "disconnectExplanation": "As credenciais e a sessão salvas serão excluídas e a sincronização automática será cancelada. Os relatórios importados e os vínculos serão mantidos.",
       "sessionExplanation": "Conecte usando uma sessão autorizada da Abeka. Esta não é uma integração oficial nem um login automático. Renove a sessão quando ela expirar.",
@@ -342,7 +343,7 @@
       "notConfigured": "A chave de criptografia não foi configurada neste ambiente Convex.",
       "connectionError": "Não foi possível salvar a sessão. Confira o valor e suas permissões ou aguarde alguns minutos antes de tentar novamente.",
       "actionError": "Não foi possível concluir a operação. Aguarde antes de tentar novamente e verifique o estado da conexão.",
-      "syncActionError": "Não foi possível iniciar a sincronização. Aguarde pelo menos 15 minutos entre os inícios e verifique o estado da conexão.",
+      "syncActionError": "Não foi possível iniciar a sincronização. Aguarde pelo menos 15 minutos entre novas atualizações completas. Aguarde antes de retomar uma atualização interrompida e verifique o estado da conexão.",
       "students": "Alunos da Abeka",
       "searchStudents": "Buscar por nome, ID da Abeka ou campus…",
       "mappingExplanation": "Vincule cada aluno à sua conta Flexidual. Não há correspondência automática por nome. O campus vem do Flexidual, não da Abeka.",
@@ -353,7 +354,7 @@
       "link": "Vincular",
       "report": "Ver progresso",
       "loading": "Carregando…",
-      "noStudents": "Nenhum aluno importado. Confirme a instituição e aguarde o fim da sincronização.",
+      "noStudents": "Nenhum aluno importado. Confirme a instituição e use Atualizar dados para importá-los.",
       "unavailableStudents": "A Abeka mostra {count} contas ativas sem link de relatório; elas não podem ser sincronizadas.",
       "loadMore": "Carregar mais",
       "videoOnly": "Este relatório mostra a visualização de vídeos, não notas, presença ou domínio da matéria.",

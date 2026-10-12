@@ -128,6 +128,7 @@ function AbekaIntegration({
   const hasPendingStudents = students.some(
     (student) => student.available && student.linkedName && student.syncPending,
   );
+  const hasPendingSync = hasPendingStudents || state.hasPendingUpdate;
   const date = (value?: number) =>
     value
       ? format.dateTime(value, { dateStyle: "medium", timeStyle: "short" })
@@ -174,12 +175,12 @@ function AbekaIntegration({
               <AbekaIconAction
                 label={connectLabel}
                 tooltip={
-                  hasPendingStudents && !needsCredentials
-                    ? t("pendingSync")
+                  hasPendingSync && !needsCredentials
+                    ? t(state.hasPendingUpdate ? "resumeSync" : "pendingSync")
                     : undefined
                 }
                 className={
-                  hasPendingStudents && !needsCredentials
+                  hasPendingSync && !needsCredentials
                     ? pendingSyncClassName
                     : undefined
                 }
@@ -279,6 +280,11 @@ function AbekaIntegration({
           {connection?.errorCode && (
             <p role="alert" className="text-sm text-destructive">
               {t(`errors.${connection.errorCode}`)}
+            </p>
+          )}
+          {state.hasPendingUpdate && !running && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t("resumeSync")}
             </p>
           )}
           {running && (
