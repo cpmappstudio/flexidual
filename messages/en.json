@@ -848,6 +848,8 @@
     "viewCourseDetails": "View course details",
     "classroomUnavailable": "The classroom will be available when a Classroom class is live.",
     "participants": "Participants",
+    "presenterView": "Presenter",
+    "mosaicView": "Mosaic",
     "chatSettings": "Settings",
     "studentAttachmentsEnabled": "Allow student files and links",
     "attachFiles": "Attach files",

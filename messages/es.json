@@ -848,6 +848,8 @@
     "viewCourseDetails": "Ver detalles del curso",
     "classroomUnavailable": "El aula estará disponible cuando haya una clase de Classroom en vivo.",
     "participants": "Participantes",
+    "presenterView": "Presentador",
+    "mosaicView": "Mosaico",
     "chatSettings": "Configuración",
     "studentAttachmentsEnabled": "Permitir archivos y enlaces de estudiantes",
     "attachFiles": "Adjuntar archivos",
