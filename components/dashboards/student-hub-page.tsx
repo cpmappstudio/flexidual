@@ -534,9 +534,12 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                     className="absolute inset-y-0 left-0 hidden xl:block"
                   />
                   <StudentPendingTasks
-                    classIds={dashboardData?.classes.map(
-                      (item) => item.classId,
-                    )}
+                    courses={dashboardData?.classes.map((item) => ({
+                      classId: item.classId,
+                      className: item.className,
+                      timeZone: item.timeZone,
+                      curriculumIconKey: item.curriculumIconKey,
+                    }))}
                     now={roundedNow}
                     orgSlug={orgSlug}
                     studentId={studentId}

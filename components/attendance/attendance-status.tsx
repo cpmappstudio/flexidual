@@ -22,29 +22,34 @@ export const ATTENDANCE_STATUS_APPEARANCE: Record<
   {
     icon: LucideIcon;
     softClassName: string;
+    compactHoverClassName: string;
     summaryClassName: string;
   }
 > = {
   present: {
     icon: UserCheck,
     softClassName: "bg-success/10 text-success",
+    compactHoverClassName: "hover:bg-success/20 hover:text-success",
     summaryClassName:
       "bg-success/50 text-success-foreground hover:bg-success/60",
   },
   partial: {
     icon: ClockFading,
     softClassName: "bg-warning/15 text-warning-foreground",
+    compactHoverClassName: "hover:bg-warning/25 hover:text-warning-foreground",
     summaryClassName: "bg-warning/20 text-warning hover:bg-warning/30",
   },
   absent: {
     icon: UserX,
     softClassName: "bg-destructive/10 text-destructive",
+    compactHoverClassName: "hover:bg-destructive/20 hover:text-destructive",
     summaryClassName:
       "bg-destructive/25 text-destructive hover:bg-destructive/35",
   },
   excused: {
     icon: FilePenLine,
     softClassName: "bg-info/10 text-gray",
+    compactHoverClassName: "hover:bg-info/20 hover:text-gray",
     summaryClassName: "bg-info/40 text-gray hover:bg-info/50",
   },
 };

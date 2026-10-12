@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TZDate } from "@date-fns/tz";
 import { usePaginatedQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -33,17 +33,11 @@ import {
 } from "@/components/classroom/session-record";
 import { SessionCloseoutDialog } from "@/components/classroom/session-closeout-dialog";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
+import { StudentHistorySurface } from "@/components/dashboards/student-history-surface";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Combobox } from "@/components/ui/combobox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -53,17 +47,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
@@ -83,55 +69,6 @@ type CourseOption = { classId: Id<"classes">; className: string };
 const INITIAL_HISTORY_SIZE = 12;
 const ALL_COURSES = "all";
 const dateLocales = { en: enUS, es, "pt-BR": ptBR } as const;
-
-function AttendanceHistorySurface({
-  open,
-  onOpenChange,
-  title,
-  description,
-  children,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  const isMobile = useIsMobile();
-
-  if (isMobile) {
-    return (
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent
-          side="bottom"
-          className="h-[92dvh] max-h-[92dvh] gap-0 overflow-hidden overscroll-contain rounded-t-[2rem] p-0 pb-[env(safe-area-inset-bottom)]"
-        >
-          <div
-            aria-hidden="true"
-            className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-muted-foreground/30"
-          />
-          <SheetHeader className="border-b border-border/70 pr-12 text-left">
-            <SheetTitle>{title}</SheetTitle>
-            <SheetDescription>{description}</SheetDescription>
-          </SheetHeader>
-          {children}
-        </SheetContent>
-      </Sheet>
-    );
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-4xl">
-        <DialogHeader className="border-b px-6 py-5">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        {children}
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function SessionDate({
   start,
@@ -586,8 +523,9 @@ export function StudentAttendanceSummary({
           size="default"
           title={label}
           className={cn(
-            "group h-16 min-w-0 flex-1 cursor-pointer flex-col gap-1 rounded-xl! border-0! px-1 py-1.5 text-center shadow-none hover:-translate-y-0.5 hover:brightness-95 hover:shadow-sm disabled:cursor-default disabled:hover:translate-y-0",
+            "group h-16 min-w-0 flex-1 cursor-pointer flex-col gap-1 rounded-xl! border-0! px-1 py-1.5 text-center shadow-none hover:-translate-y-0.5 hover:shadow-sm disabled:cursor-default disabled:hover:translate-y-0",
             appearance.softClassName,
+            appearance.compactHoverClassName,
           )}
         >
           <span className="flex items-center justify-center gap-1">
@@ -707,7 +645,7 @@ export function StudentAttendanceSummary({
         )}
       </div>
 
-      <AttendanceHistorySurface
+      <StudentHistorySurface
         open={surfaceOpen}
         onOpenChange={(nextOpen) => {
           if (!nextOpen && !recordingOpen) closeHistory();
@@ -828,7 +766,7 @@ export function StudentAttendanceSummary({
             )}
           </ScrollArea>
         </div>
-      </AttendanceHistorySurface>
+      </StudentHistorySurface>
 
       {selectedRecordingItem && recordings.length > 0 && (
         <RecordingPlayerModal
