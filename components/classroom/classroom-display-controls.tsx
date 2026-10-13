@@ -7,6 +7,7 @@ import {
   Maximize2,
   Minimize2,
   MonitorCog,
+  PinOff,
   Presentation,
   ZoomIn,
   ZoomOut,
@@ -34,6 +35,8 @@ interface ClassroomDisplayControlsProps {
   onViewModeChange?: (mode: "presenter" | "mosaic") => void;
   presenterViewLabel?: string;
   mosaicViewLabel?: string;
+  onUnpinParticipant?: () => void;
+  unpinParticipantLabel?: string;
 }
 
 export function ClassroomDisplayControls({
@@ -52,6 +55,8 @@ export function ClassroomDisplayControls({
   onViewModeChange,
   presenterViewLabel,
   mosaicViewLabel,
+  onUnpinParticipant,
+  unpinParticipantLabel,
 }: ClassroomDisplayControlsProps) {
   const t = useTranslations("classroom");
   const presentation = useClassroomPresentation();
@@ -77,7 +82,9 @@ export function ClassroomDisplayControls({
   const hasViewControls = Boolean(
     onViewModeChange && presenterViewLabel && mosaicViewLabel,
   );
+  const hasUnpinControl = Boolean(onUnpinParticipant && unpinParticipantLabel);
   if (
+    !hasUnpinControl &&
     !hasViewControls &&
     !hasContentControls &&
     !onToggleFullscreen &&
@@ -124,6 +131,22 @@ export function ClassroomDisplayControls({
           "rounded-lg border border-border/50 bg-background/80 p-0.5 shadow-sm backdrop-blur-sm @min-[600px]:p-1",
       )}
     >
+      {hasUnpinControl && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-11 shrink-0 rounded-full border border-primary bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground xl:hidden"
+          aria-label={unpinParticipantLabel}
+          title={unpinParticipantLabel}
+          onClick={() => {
+            setOpen(false);
+            onUnpinParticipant?.();
+          }}
+        >
+          <PinOff className="size-4" />
+        </Button>
+      )}
       <Button
         ref={triggerRef}
         variant="ghost"

@@ -46,6 +46,64 @@ function Intl({ children }: { children: ReactNode }) {
 const END = Date.UTC(2026, 8, 17, 14, 30);
 
 describe("classroom countdown", () => {
+  it.each([false, true])(
+    "keeps unpin available outside the display menu (phone landscape: %s)",
+    (isPhoneLandscape) => {
+      const onUnpinParticipant = vi.fn();
+      const props = {
+        stageRef: { current: null },
+        phoneControls: null,
+        isPhoneLandscape,
+        stageControlsVisible: false,
+        onRevealControls: vi.fn(),
+        zoom: 1,
+        onZoom: vi.fn(),
+        contentActive: false,
+        isWhiteboardActive: false,
+        followViewport: false,
+        onToggleFollowViewport: vi.fn(),
+        followingLabel: "Siguiendo",
+        unlockedLabel: "Vista libre",
+        isFullscreen: false,
+        enterFullscreenLabel: "Pantalla completa",
+        exitFullscreenLabel: "Salir",
+      };
+      const view = render(
+        <ClassroomStage
+          {...props}
+          onUnpinParticipant={onUnpinParticipant}
+          unpinParticipantLabel="Desfijar a Ana de la vista principal"
+        >
+          <span>Ana</span>
+        </ClassroomStage>,
+        { wrapper: Intl },
+      );
+
+      expect(
+        screen
+          .getByRole("button", { name: "Visualización de la sala" })
+          .getAttribute("aria-expanded"),
+      ).toBe("false");
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Desfijar a Ana de la vista principal",
+        }),
+      );
+      expect(onUnpinParticipant).toHaveBeenCalledTimes(1);
+
+      view.rerender(
+        <ClassroomStage {...props}>
+          <span>Presentador</span>
+        </ClassroomStage>,
+      );
+      expect(
+        screen.queryByRole("button", {
+          name: "Desfijar a Ana de la vista principal",
+        }),
+      ).toBeNull();
+    },
+  );
+
   it("switches between presenter and mosaic views from the stage", () => {
     const onViewModeChange = vi.fn();
     render(

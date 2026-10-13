@@ -12,6 +12,7 @@ export function useClassroomViewMode(contentActive = false) {
     useState<string>();
   const shouldRestoreParticipantsRef = useRef(false);
   const wasContentActiveRef = useRef(contentActive);
+  const viewBeforePinRef = useRef<ClassroomViewMode | null>(null);
 
   useEffect(() => {
     if (!highlightedParticipantId) return;
@@ -22,7 +23,7 @@ export function useClassroomViewMode(contentActive = false) {
     return () => clearTimeout(timeout);
   }, [highlightedParticipantId]);
 
-  const changeViewMode = useCallback(
+  const applyViewMode = useCallback(
     (mode: ClassroomViewMode) => {
       if (mode === viewMode) return;
 
@@ -40,13 +41,32 @@ export function useClassroomViewMode(contentActive = false) {
     [panelTab, viewMode],
   );
 
+  const changeViewMode = useCallback(
+    (mode: ClassroomViewMode) => {
+      viewBeforePinRef.current = null;
+      applyViewMode(mode);
+    },
+    [applyViewMode],
+  );
+
+  const focusPinnedParticipant = () => {
+    viewBeforePinRef.current ??= viewMode;
+    applyViewMode("presenter");
+  };
+
+  const restoreViewBeforePin = useCallback(() => {
+    const previousView = viewBeforePinRef.current;
+    viewBeforePinRef.current = null;
+    if (previousView) applyViewMode(previousView);
+  }, [applyViewMode]);
+
   useEffect(() => {
     const contentStarted = contentActive && !wasContentActiveRef.current;
     wasContentActiveRef.current = contentActive;
-    if (contentStarted && viewMode === "mosaic") {
+    if (contentStarted) {
       changeViewMode("presenter");
     }
-  }, [changeViewMode, contentActive, viewMode]);
+  }, [changeViewMode, contentActive]);
 
   const changePanelTab = (tab: ClassroomPanelTab) => {
     shouldRestoreParticipantsRef.current = false;
@@ -56,6 +76,8 @@ export function useClassroomViewMode(contentActive = false) {
   return {
     viewMode,
     changeViewMode,
+    focusPinnedParticipant,
+    restoreViewBeforePin,
     panelTab,
     changePanelTab,
     highlightedParticipantId,

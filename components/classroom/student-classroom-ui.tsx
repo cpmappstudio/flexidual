@@ -317,18 +317,20 @@ export function StudentClassroomUI({
     () =>
       viewMode === "mosaic"
         ? getMosaicParticipants(
-            participants,
+            sortedStudents,
             uiPreviewEnabled && showPreviewParticipants
               ? previewParticipants
               : [],
+            { presenter: teacher },
           )
         : [],
     [
-      participants,
       previewParticipants,
       showPreviewParticipants,
       uiPreviewEnabled,
       viewMode,
+      sortedStudents,
+      teacher,
     ],
   );
   const isSharingLocally = localParticipant?.isScreenShareEnabled;
@@ -881,7 +883,8 @@ export function StudentClassroomUI({
           mosaic={
             viewMode === "mosaic" ? (
               <ClassroomMosaic
-                participants={participants}
+                students={sortedStudents}
+                presenter={teacher}
                 previewParticipants={
                   uiPreviewEnabled && showPreviewParticipants
                     ? previewParticipants

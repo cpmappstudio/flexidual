@@ -10,13 +10,16 @@ import {
 import { ClassroomParticipantTile } from "./classroom-participant-tile";
 
 interface ClassroomMosaicProps {
-  participants: Participant[];
+  students: Participant[];
+  presenter?: Participant;
   previewParticipants?: Participant[];
   raisedParticipantIds: ReadonlySet<string>;
   localParticipantRaised?: boolean;
   youLabel: string;
   label: string;
   highlightedParticipantId?: string;
+  onPinParticipant?: (identity: string) => void;
+  pinLabel?: (participant: Participant) => string;
 }
 
 const MIN_TILE_WIDTH = 120;
@@ -67,12 +70,26 @@ export function getMosaicLayout(count: number, width: number, height: number) {
 }
 
 export function getMosaicParticipants(
-  participants: Participant[],
+  students: Participant[],
   previewParticipants: Participant[],
-  cameraEnabledIds: ReadonlySet<string> = NO_CAMERA_IDS,
+  {
+    presenter,
+    cameraEnabledIds = NO_CAMERA_IDS,
+  }: {
+    presenter?: Participant;
+    cameraEnabledIds?: ReadonlySet<string>;
+  } = {},
 ) {
+  const visibleParticipants = presenter
+    ? [
+        presenter,
+        ...students.filter(
+          (participant) => participant.identity !== presenter.identity,
+        ),
+      ]
+    : students;
   return [
-    ...participants.filter(
+    ...visibleParticipants.filter(
       (participant) =>
         getParticipantConvexUserId(participant) &&
         !getIsCompanionParticipant(participant),
@@ -92,13 +109,16 @@ export function getMosaicParticipants(
 }
 
 export function ClassroomMosaic({
-  participants,
+  students,
+  presenter,
   previewParticipants = [],
   raisedParticipantIds,
   localParticipantRaised = false,
   youLabel,
   label,
   highlightedParticipantId,
+  onPinParticipant,
+  pinLabel,
 }: ClassroomMosaicProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -134,9 +154,9 @@ export function ClassroomMosaic({
     [cameraTracks],
   );
   const mosaicParticipants = getMosaicParticipants(
-    participants,
+    students,
     previewParticipants,
-    cameraEnabledIds,
+    { presenter, cameraEnabledIds },
   );
   const layout = getMosaicLayout(
     mosaicParticipants.length,
@@ -172,6 +192,7 @@ export function ClassroomMosaic({
           key={participant.identity}
           id={`classroom-mosaic-${participant.identity}`}
           participant={participant}
+          actionsPosition="left"
           className={`min-h-0 min-w-0 border-0 shadow-none hover:shadow-none ${
             highlightedParticipantId === participant.identity
               ? "z-20 ring-4 ring-inset ring-primary"
@@ -182,6 +203,12 @@ export function ClassroomMosaic({
             (participant.isLocal && localParticipantRaised)
           }
           youLabel={youLabel}
+          onPinnedChange={
+            onPinParticipant && participant.identity !== presenter?.identity
+              ? () => onPinParticipant(participant.identity)
+              : undefined
+          }
+          pinLabel={pinLabel?.(participant)}
         />
       ))}
     </div>

@@ -66,6 +66,8 @@ interface ClassroomStageProps {
   onViewModeChange?: (mode: "presenter" | "mosaic") => void;
   presenterViewLabel?: string;
   mosaicViewLabel?: string;
+  onUnpinParticipant?: () => void;
+  unpinParticipantLabel?: string;
 }
 
 export function ClassroomStage({
@@ -93,6 +95,8 @@ export function ClassroomStage({
   onViewModeChange,
   presenterViewLabel,
   mosaicViewLabel,
+  onUnpinParticipant,
+  unpinParticipantLabel,
 }: ClassroomStageProps) {
   const compact = useClassroomPresentation()?.mode === "compact";
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -106,6 +110,9 @@ export function ClassroomStage({
           stageControlsVisible &&
           "[--classroom-notification-bottom:4.5rem]",
       )}
+      onClick={
+        isPhoneLandscape && viewMode === "mosaic" ? onRevealControls : undefined
+      }
     >
       {children}
       {compact && countdown && (
@@ -129,38 +136,43 @@ export function ClassroomStage({
         onViewModeChange={onViewModeChange}
         presenterViewLabel={presenterViewLabel}
         mosaicViewLabel={mosaicViewLabel}
+        onUnpinParticipant={onUnpinParticipant}
+        unpinParticipantLabel={unpinParticipantLabel}
       />
 
       {isPhoneLandscape && (
         <>
-          <div
-            className="absolute inset-0 z-[25]"
-            style={{
-              pointerEvents: contentActive && zoom > 1 ? "none" : "auto",
-            }}
-            onTouchStart={(event) => {
-              touchStartRef.current = {
-                x: event.touches[0].clientX,
-                y: event.touches[0].clientY,
-              };
-            }}
-            onTouchEnd={(event) => {
-              const touchStart = touchStartRef.current;
-              if (!touchStart) return;
+          {viewMode !== "mosaic" && (
+            <div
+              className="absolute inset-0 z-[25]"
+              style={{
+                pointerEvents: contentActive && zoom > 1 ? "none" : "auto",
+              }}
+              onTouchStart={(event) => {
+                touchStartRef.current = {
+                  x: event.touches[0].clientX,
+                  y: event.touches[0].clientY,
+                };
+              }}
+              onTouchEnd={(event) => {
+                const touchStart = touchStartRef.current;
+                if (!touchStart) return;
 
-              const deltaX = Math.abs(
-                event.changedTouches[0].clientX - touchStart.x,
-              );
-              const deltaY = Math.abs(
-                event.changedTouches[0].clientY - touchStart.y,
-              );
-              touchStartRef.current = null;
-              if (deltaX < 8 && deltaY < 8) onRevealControls();
-            }}
-            onClick={onRevealControls}
-          />
+                const deltaX = Math.abs(
+                  event.changedTouches[0].clientX - touchStart.x,
+                );
+                const deltaY = Math.abs(
+                  event.changedTouches[0].clientY - touchStart.y,
+                );
+                touchStartRef.current = null;
+                if (deltaX < 8 && deltaY < 8) onRevealControls();
+              }}
+              onClick={onRevealControls}
+            />
+          )}
 
           <div
+            inert={!stageControlsVisible}
             className={cn(
               "pointer-events-none absolute inset-x-0 bottom-3 z-[35] flex items-center justify-center transition-all duration-300",
               stageControlsVisible
@@ -169,8 +181,13 @@ export function ClassroomStage({
             )}
           >
             <div
-              className="pointer-events-auto flex items-center gap-2 rounded-full border border-inverse-foreground/20 bg-inverse/60 px-4 py-2.5 shadow-2xl backdrop-blur-md"
-              onClick={onRevealControls}
+              className={cn(
+                "flex items-center gap-2 rounded-full border border-inverse-foreground/20 bg-inverse/60 px-4 py-2.5 shadow-2xl backdrop-blur-md",
+                stageControlsVisible
+                  ? "pointer-events-auto"
+                  : "pointer-events-none",
+              )}
+              onClick={viewMode === "mosaic" ? undefined : onRevealControls}
             >
               {phoneControls}
             </div>
