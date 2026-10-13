@@ -28,7 +28,8 @@ import {
   getAbekaStudentCourseProgress,
   getAbekaStudentCourseReports,
 } from "./model/abekaStudentProgress";
-import { lessonProgress } from "./model/abekaValidators";
+import { lessonProgress, abekaProgressPoint } from "./model/abekaValidators";
+import { getAbekaProgressHistory } from "./model/abekaProgressHistory";
 import {
   courseProgressFields,
   getClassCurriculumProgress,
@@ -71,6 +72,7 @@ export const getAbekaCourseReport = query({
     v.object({
       subjectName: v.string(),
       syncedAt: v.number(),
+      history: v.array(abekaProgressPoint),
       lessons: v.array(
         lessonProgress.pick(
           "lessonNumber",
@@ -102,6 +104,7 @@ export const getAbekaCourseReport = query({
     return {
       subjectName: report.subjectName,
       syncedAt: report.syncedAt,
+      history: await getAbekaProgressHistory(ctx, report._id),
       lessons: report.lessons.map(
         ({ lessonNumber, percentage, completed, lastViewed }) => ({
           lessonNumber,

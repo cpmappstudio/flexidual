@@ -16,6 +16,7 @@ import {
   abekaConnectionFields,
   abekaCourseFields,
   abekaProgressFields,
+  abekaProgressPoint,
   abekaRunFields,
   abekaStudentFields,
   encryptedSession,
@@ -79,6 +80,10 @@ export default defineSchema({
     "studentId",
     "subjectId",
   ]),
+  abekaProgressHistory: defineTable({
+    reportId: v.id("abekaProgress"),
+    ...abekaProgressPoint.fields,
+  }).index("by_reportId_and_date", ["reportId", "date"]),
   /**
    * USERS
    * All system users (students, teachers, tutors, admins)

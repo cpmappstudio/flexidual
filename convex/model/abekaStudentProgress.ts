@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import { abekaProgressPercentage } from "../../lib/abeka/progress-percentage";
 
 // Only call with the enrolled classes already authorized by the student dashboard.
 export async function getAbekaStudentCourseReports(
@@ -99,10 +100,7 @@ export async function getAbekaStudentCourseProgress(
   return new Map(
     [...reports].map(([classId, report]) => {
       const total = report.lessons.length;
-      // Equal weight per lesson, including partial and unviewed lessons.
-      const percentage =
-        report.lessons.reduce((sum, lesson) => sum + lesson.percentage, 0) /
-        total;
+      const percentage = abekaProgressPercentage(report.lessons);
       return [
         classId,
         {

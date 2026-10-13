@@ -1345,6 +1345,11 @@ test.each(["legacy", "curriculum"])(
         ],
       });
       // Another student's snapshot must never affect the linked student's percentage.
+      await ctx.db.insert("abekaProgressHistory", {
+        reportId: progressId,
+        date: "2026-10-12",
+        percentage: 0.0000013,
+      });
       await ctx.db.insert("abekaProgress", {
         studentId: secondId,
         subjectId: "117",
@@ -1371,6 +1376,7 @@ test.each(["legacy", "curriculum"])(
     const expectedReport = {
       subjectName: "Math",
       syncedAt: 1,
+      history: [{ date: "2026-10-12", percentage: 0.0000013 }],
       lessons: [
         { ...lessonSnapshot, completed: true },
         { ...lessonSnapshot, lessonNumber: 2, completed: false, percentage: 0 },
@@ -2368,6 +2374,93 @@ test("progress replaces the provider snapshot, including decreases and removed l
   expect(after[0]._id).toBe(before[0]._id);
   expect(after[0].lessons).toEqual([corrected]);
   expect(after[0].runId).toBe(nextRunId);
+});
+
+test("daily history uses institutional days and raw partial progress; retries replace only that day's point", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-25T04:59:00Z"));
+  const { t, adminClient, runId, studentId, schoolId, student } =
+    await linkedRunningSetup();
+  await t.run((ctx) => ctx.db.patch(schoolId, { timeZone: "America/Bogota" }));
+  const links = await t.run((ctx) =>
+    ctx.db.query("abekaCurriculumLinks").collect(),
+  );
+  const save = (partial: number) =>
+    t.mutation(internal.abekaSync.saveProgress, {
+      runId,
+      studentId,
+      subjectId: "117",
+      lessons: Array.from({ length: 170 }, (_, i) => ({
+        ...lessonSnapshot,
+        lessonNumber: i + 1,
+        percentage: i === 0 ? partial : 0,
+        completed: false,
+      })),
+    });
+  await save(54);
+  await save(53); // A provider correction, not a new lesson or a maximum.
+  expect(
+    (await adminClient.query(api.abeka.progress, { studentId }))[0].history,
+  ).toEqual([{ date: "2026-09-24", percentage: 53 / 170 }]);
+  vi.setSystemTime(new Date("2026-09-25T05:01:00Z"));
+  await save(54);
+  const report = (
+    await adminClient.query(api.abeka.progress, { studentId })
+  )[0];
+  expect(report.history).toEqual([
+    { date: "2026-09-24", percentage: 53 / 170 },
+    { date: "2026-09-25", percentage: 54 / 170 },
+  ]);
+  expect(report.lessons[0].percentage).toBe(54);
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
+    userId: student,
+  });
+  expect(
+    await t.run((ctx) => ctx.db.query("abekaCurriculumLinks").collect()),
+  ).toEqual(links);
+  await t.run((ctx) => ctx.db.patch(runId, { status: "failed" }));
+  expect(await save(100)).toBe(false);
+  expect(
+    (await adminClient.query(api.abeka.progress, { studentId }))[0],
+  ).toEqual(report);
+});
+
+test("history reads are bounded without deleting old points and cleanup never touches a live report", async () => {
+  vi.useFakeTimers();
+  const { t, adminClient, runId, studentId } = await linkedRunningSetup();
+  await t.mutation(internal.abekaSync.saveProgress, {
+    runId,
+    studentId,
+    subjectId: "117",
+    lessons: [lessonSnapshot],
+  });
+  const [report] = await adminClient.query(api.abeka.progress, { studentId });
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 105; i++)
+      await ctx.db.insert("abekaProgressHistory", {
+        reportId: report._id,
+        date: new Date(Date.UTC(2025, 0, i + 1)).toISOString().slice(0, 10),
+        percentage: i / 1_000,
+      });
+  });
+  const read = (await adminClient.query(api.abeka.progress, { studentId }))[0]
+    .history;
+  expect(read).toHaveLength(30);
+  expect(read[0].date < read[29].date).toBe(true);
+  await t.mutation(internal.abekaSync.clearProgressHistory, {
+    reportId: report._id,
+  });
+  expect(
+    await t.run((ctx) => ctx.db.query("abekaProgressHistory").collect()),
+  ).toHaveLength(106);
+  await t.run((ctx) => ctx.db.delete(report._id));
+  await t.mutation(internal.abekaSync.clearProgressHistory, {
+    reportId: report._id,
+  });
+  await finishCurrentSync(t);
+  expect(
+    await t.run((ctx) => ctx.db.query("abekaProgressHistory").collect()),
+  ).toEqual([]);
 });
 
 test("canceled or disconnected runs cannot obtain another outbound permit", async () => {

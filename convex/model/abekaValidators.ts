@@ -118,6 +118,11 @@ export const abekaProgressFields = {
   runId: v.id("abekaSyncRuns"),
 };
 
+export const abekaProgressPoint = v.object({
+  date: v.string(),
+  percentage: v.number(),
+});
+
 export const catalogSubject = v.object({
   subjectId: v.string(),
   name: v.string(),

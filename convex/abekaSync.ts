@@ -30,6 +30,9 @@ import { startAbekaSync, abekaConnectLimiter } from "./abeka";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import { ABEKA_REQUEST_INTERVAL_MS } from "../lib/abeka/request-policy";
 import { MAX_SUBJECTS } from "../lib/abeka/report";
+import { dateInTimeZone } from "../lib/time-zone";
+import { abekaProgressPercentage } from "../lib/abeka/progress-percentage";
+import { saveAbekaProgressHistory } from "./model/abekaProgressHistory";
 
 const providerLimiter = new RateLimiter(components.rateLimiter, {
   abekaOutbound: {
@@ -98,7 +101,7 @@ export async function currentRun(ctx: QueryCtx, runId: Id<"abekaSyncRuns">) {
     return null;
   const school = await ctx.db.get(connection.schoolId);
   if (!school?.isActive) return null;
-  return { run, connection };
+  return { run, connection, school };
 }
 
 export const credentials = internalQuery({
@@ -416,8 +419,14 @@ export const saveProgress = internalMutation({
         args.lessons[0].subjectName,
       syncedAt: Date.now(),
     };
+    const reportId =
+      existing?._id ?? (await ctx.db.insert("abekaProgress", fields));
     if (existing) await ctx.db.patch(existing._id, fields);
-    else await ctx.db.insert("abekaProgress", fields);
+    await saveAbekaProgressHistory(ctx, {
+      reportId,
+      date: dateInTimeZone(fields.syncedAt, state.school.timeZone ?? "UTC"),
+      percentage: abekaProgressPercentage(args.lessons),
+    });
     if (student.hasProgress !== true)
       await ctx.db.patch(student._id, { hasProgress: true });
     return true;
@@ -487,8 +496,12 @@ async function cleanStudentProgress(
     if (
       report.runId === run._id ||
       (writtenBy !== undefined && writtenBy < run._creationTime)
-    )
+    ) {
       await ctx.db.delete(report._id);
+      await ctx.scheduler.runAfter(0, internal.abekaSync.clearProgressHistory, {
+        reportId: report._id,
+      });
+    }
   }
   if (!page.isDone)
     await ctx.scheduler.runAfter(0, internal.abekaSync.cleanupStudentProgress, {
@@ -502,6 +515,24 @@ export const cleanupStudentProgress = internalMutation({
   args: progressCleanupArgs,
   returns: v.null(),
   handler: cleanStudentProgress,
+});
+
+export const clearProgressHistory = internalMutation({
+  args: { reportId: v.id("abekaProgress") },
+  returns: v.null(),
+  handler: async (ctx, { reportId }) => {
+    if (await ctx.db.get(reportId)) return null;
+    const points = await ctx.db
+      .query("abekaProgressHistory")
+      .withIndex("by_reportId_and_date", (q) => q.eq("reportId", reportId))
+      .take(100);
+    await Promise.all(points.map((point) => ctx.db.delete(point._id)));
+    if (points.length === 100)
+      await ctx.scheduler.runAfter(0, internal.abekaSync.clearProgressHistory, {
+        reportId,
+      });
+    return null;
+  },
 });
 
 export const studentComplete = internalMutation({

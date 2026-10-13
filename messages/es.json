@@ -400,6 +400,8 @@
       "completed": "{count} de {total} completas",
       "lesson": "Lección",
       "lessonCompleted": "Lección completada",
+      "progressTrend": "Progreso diario",
+      "progressHistoryPending": "Historial desde la próxima sincronización",
       "progress": "Visualizado",
       "lastViewed": "Última visualización",
       "status": {

@@ -1,4 +1,9 @@
-import type { ComponentProps } from "react";
+import {
+  cloneElement,
+  type ComponentProps,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import {
   cleanup,
   fireEvent,
@@ -6,12 +11,36 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { NextIntlClientProvider } from "next-intl";
 import { AbekaCourseReport } from "@/components/abeka/abeka-course-report";
 import messages from "@/messages/en.json";
 
-afterEach(cleanup);
+// Exercise real Recharts/shadcn behavior; JSDOM only needs a measured container.
+vi.mock("recharts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("recharts")>()),
+  ResponsiveContainer: ({ children }: { children: ReactNode }) =>
+    cloneElement(children as ReactElement<{ width: number; height: number }>, {
+      width: 128,
+      height: 36,
+    }),
+}));
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 test.each([true, false])(
   "the shared report supports collapsible=%s and retains partial lesson progress",
@@ -101,7 +130,10 @@ test("sorts numeric lessons, exact progress and calendar dates without mutating 
       .getByRole("progressbar", { name: "Lesson 2: Watched" })
       .getAttribute("aria-valuenow"),
   ).toBe("0.58");
-  expect(screen.getByRole("img", { name: "Lesson completed" })).toBeDefined();
+  expect(
+    screen.getByRole("img", { name: "Lesson completed" }).closest("td")
+      ?.textContent,
+  ).toBe("1");
   expect(screen.getByText(/1 of 3 completed/)).toBeDefined();
 
   fireEvent.click(screen.getByRole("button", { name: "Lesson" }));
@@ -116,6 +148,31 @@ test("sorts numeric lessons, exact progress and calendar dates without mutating 
   expect(visibleLessons()).toEqual(["1", "10", "2"]);
   expect(screen.getByText("Oct 1, 2026")).toBeDefined();
   expect(lessons).toEqual(original);
+});
+
+test("progress colors reflect the value without inferring Abeka completion", () => {
+  const values = [0, 49.99, 50, 99.99, 100];
+  renderLessons(
+    values.map((percentage, index) => ({
+      lessonNumber: index + 1,
+      percentage,
+      completed: false,
+      lastViewed: null,
+    })),
+  );
+  const colors = [
+    "bg-amber-500",
+    "bg-amber-500",
+    "bg-primary",
+    "bg-primary",
+    "bg-green-600",
+  ];
+  screen.getAllByRole("progressbar").forEach((bar, index) => {
+    expect(bar.firstElementChild?.className).toContain(colors[index]);
+    expect(bar.getAttribute("aria-valuenow")).toBe(String(values[index]));
+    expect(bar.parentElement?.className).toContain("gap-1.5");
+  });
+  expect(screen.queryByRole("img", { name: "Lesson completed" })).toBeNull();
 });
 
 test("paginates long reports and sorts all lessons, not just the visible page", () => {
@@ -174,4 +231,74 @@ test("paginates long reports and sorts all lessons, not just the visible page", 
       .getByRole("button", { name: "Go to next page" })
       .hasAttribute("disabled"),
   ).toBe(true);
+});
+
+test.each([1, 2])(
+  "the trend shows real observed days with sub-percent precision (%s points)",
+  (count) => {
+    render(
+      <NextIntlClientProvider locale="en" timeZone="UTC" messages={messages}>
+        <AbekaCourseReport
+          collapsible={false}
+          report={{
+            subjectName: "Science 8",
+            syncedAt: 0,
+            lessons: [],
+            history: [
+              { date: "2026-10-10", percentage: 0.0012 },
+              { date: "2026-10-12", percentage: 0.0000013 },
+            ].slice(0, count),
+          }}
+        />
+      </NextIntlClientProvider>,
+    );
+    const trend = screen.getByRole("figure", { name: "Daily progress" });
+    expect(within(trend).getByText("Oct 10, 2026: 0.0012%")).toBeDefined();
+    expect(within(trend).queryByText(/Oct 11/)).toBeNull();
+    if (count === 2)
+      expect(within(trend).getByText("Oct 12, 2026: 0.0000013%")).toBeDefined();
+    expect(within(trend).getAllByRole("listitem")).toHaveLength(count);
+    expect(screen.queryByText("History starts with the next sync")).toBeNull();
+  },
+);
+
+test("old reports do not fabricate historical activity", () => {
+  renderLessons([]);
+  expect(screen.getByText("History starts with the next sync")).toBeDefined();
+  expect(screen.queryByRole("list")).toBeNull();
+});
+
+test("the chart tooltip escapes the report and follows keyboard-selected days precisely", async () => {
+  const { container } = render(
+    <NextIntlClientProvider locale="en" timeZone="UTC" messages={messages}>
+      <AbekaCourseReport
+        collapsible={false}
+        report={{
+          subjectName: "Science 8",
+          syncedAt: 0,
+          lessons: [],
+          history: [
+            { date: "2026-10-10", percentage: 0.0012 },
+            { date: "2026-10-12", percentage: 0.0000013 },
+          ],
+        }}
+      />
+    </NextIntlClientProvider>,
+  );
+  const chart = screen.getByRole("application");
+  fireEvent.focus(chart);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(container.contains(tooltip)).toBe(false);
+  expect(within(tooltip).getByText("Oct 10, 2026")).toBeDefined();
+  fireEvent.keyDown(chart, { key: "ArrowRight" });
+  expect(await within(tooltip).findByText("Oct 12, 2026")).toBeDefined();
+  expect(within(tooltip).getByText("0.0000013%")).toBeDefined();
+  expect(screen.queryByText("NaN")).toBeNull();
+  fireEvent.keyDown(chart, { key: "ArrowLeft" });
+  expect(await within(tooltip).findByText("0.0012%")).toBeDefined();
+  fireEvent.keyDown(chart, { key: "Escape" });
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  fireEvent.pointerLeave(chart, { pointerType: "mouse" });
+  fireEvent.pointerMove(chart, { pointerType: "mouse" });
+  expect((await screen.findByRole("tooltip")).textContent).toContain("0.0012%");
 });

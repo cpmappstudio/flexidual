@@ -400,6 +400,8 @@
       "completed": "{count} of {total} completed",
       "lesson": "Lesson",
       "lessonCompleted": "Lesson completed",
+      "progressTrend": "Daily progress",
+      "progressHistoryPending": "History starts with the next sync",
       "progress": "Watched",
       "lastViewed": "Last viewed",
       "status": {

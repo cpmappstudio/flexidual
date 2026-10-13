@@ -18,10 +18,12 @@ import {
   abekaRunFields,
   abekaStudentFields,
   abekaProgressFields,
+  abekaProgressPoint,
   encryptedSession,
   abekaSchedule,
 } from "./model/abekaValidators";
 import { activeStudent, requireAbekaAdmin } from "./model/abekaAccess";
+import { getAbekaProgressHistory } from "./model/abekaProgressHistory";
 import {
   setAbekaNextSync,
   refreshAbekaSchedule,
@@ -657,6 +659,7 @@ export const progress = query({
       _id: v.id("abekaProgress"),
       _creationTime: v.number(),
       ...abekaProgressFields,
+      history: v.array(abekaProgressPoint),
     }),
   ),
   handler: async (ctx, { studentId }) => {
@@ -664,9 +667,15 @@ export const progress = query({
     const connection = student ? await ctx.db.get(student.connectionId) : null;
     if (!connection) throw new ConvexError("NOT_FOUND");
     await requireAbekaAdmin(ctx, connection.schoolId);
-    return await ctx.db
+    const reports = await ctx.db
       .query("abekaProgress")
       .withIndex("by_student_subject", (q) => q.eq("studentId", studentId))
       .take(24);
+    return Promise.all(
+      reports.map(async (report) => ({
+        ...report,
+        history: await getAbekaProgressHistory(ctx, report._id),
+      })),
+    );
   },
 });

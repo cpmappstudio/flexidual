@@ -8,6 +8,7 @@ import { createSortableHeader } from "@/components/table/column-helpers";
 import { DataTable } from "@/components/table/data-table";
 import { Progress } from "@/components/ui/progress";
 import type { Doc } from "@/convex/_generated/dataModel";
+import { AbekaProgressTrend } from "./abeka-progress-trend";
 
 type ReportLesson = Pick<
   Doc<"abekaProgress">["lessons"][number],
@@ -21,6 +22,7 @@ export function AbekaCourseReport({
 }: {
   report: Pick<Doc<"abekaProgress">, "subjectName" | "syncedAt"> & {
     lessons: ReportLesson[];
+    history?: { date: string; percentage: number }[];
   };
   collapsible?: boolean;
   timeZone?: string;
@@ -34,6 +36,18 @@ export function AbekaCourseReport({
         header: createSortableHeader(t("lesson")),
         sortingFn: "basic",
         meta: { className: "w-20 tabular-nums" },
+        cell: ({ row }) => (
+          <span className="inline-flex items-center gap-1.5">
+            {row.original.lessonNumber}
+            {row.original.completed && (
+              <CheckCircle2
+                className="size-4 text-green-600"
+                aria-label={t("lessonCompleted")}
+                role="img"
+              />
+            )}
+          </span>
+        ),
       },
       {
         accessorKey: "percentage",
@@ -46,25 +60,22 @@ export function AbekaCourseReport({
             maximumFractionDigits: 2,
           });
           return (
-            <div className="flex min-w-36 items-center gap-2 sm:min-w-52">
+            <div className="flex min-w-36 items-center gap-1.5 sm:min-w-52">
               <Progress
                 value={lesson.percentage}
                 aria-label={`${t("lesson")} ${lesson.lessonNumber}: ${t("progress")}`}
                 aria-valuetext={percentage}
-                className="h-2 flex-1 bg-[#86338a]/10"
-                indicatorClassName="bg-[#86338a] motion-reduce:transition-none"
+                className="h-2 flex-1 bg-muted"
+                indicatorClassName={`motion-reduce:transition-none ${
+                  lesson.percentage >= 100
+                    ? "bg-green-600"
+                    : lesson.percentage >= 50
+                      ? "bg-primary"
+                      : "bg-amber-500"
+                }`}
               />
-              <span className="w-14 text-right text-xs font-medium tabular-nums">
+              <span className="w-12 shrink-0 text-xs font-medium tabular-nums">
                 {percentage}
-              </span>
-              <span className="w-4 shrink-0">
-                {lesson.completed && (
-                  <CheckCircle2
-                    className="size-4 text-green-600"
-                    aria-label={t("lessonCompleted")}
-                    role="img"
-                  />
-                )}
               </span>
             </div>
           );
@@ -101,14 +112,20 @@ export function AbekaCourseReport({
     <Container
       className={
         collapsible
-          ? "min-w-0 rounded-lg border p-3 ph-mask"
-          : "min-w-0 ph-mask"
+          ? "relative min-w-0 rounded-lg border p-3 ph-mask"
+          : "relative min-w-0 ph-mask"
       }
     >
-      <Heading className={collapsible ? "cursor-pointer" : "pr-6 text-lg"}>
-        <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <Heading
+        className={
+          collapsible
+            ? "cursor-pointer pr-28 sm:pr-40"
+            : "pr-28 text-lg sm:pr-40"
+        }
+      >
+        <span className="inline-flex flex-wrap items-baseline gap-x-1 gap-y-1 sm:gap-x-2">
           <span className="font-medium">{report.subjectName}</span>
-          <span className="text-sm text-muted-foreground">
+          <span className="text-xs text-muted-foreground sm:text-sm">
             {t("completed", {
               count: report.lessons.filter((lesson) => lesson.completed).length,
               total: report.lessons.length,
@@ -116,7 +133,8 @@ export function AbekaCourseReport({
           </span>
         </span>
       </Heading>
-      <p className="my-2 text-xs text-muted-foreground">
+      <AbekaProgressTrend history={report.history ?? []} />
+      <p className="my-2 min-h-4 text-xs text-muted-foreground sm:pr-40">
         {t("lastSync")}:{" "}
         {format.dateTime(report.syncedAt, {
           dateStyle: "medium",

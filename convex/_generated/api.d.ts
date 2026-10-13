@@ -38,6 +38,7 @@ import type * as liveRoomLifecycle from "../liveRoomLifecycle.js";
 import type * as livekit from "../livekit.js";
 import type * as migration from "../migration.js";
 import type * as model_abekaAccess from "../model/abekaAccess.js";
+import type * as model_abekaProgressHistory from "../model/abekaProgressHistory.js";
 import type * as model_abekaScheduling from "../model/abekaScheduling.js";
 import type * as model_abekaStudentProgress from "../model/abekaStudentProgress.js";
 import type * as model_abekaTransport from "../model/abekaTransport.js";
@@ -135,6 +136,7 @@ declare const fullApi: ApiFromModules<{
   livekit: typeof livekit;
   migration: typeof migration;
   "model/abekaAccess": typeof model_abekaAccess;
+  "model/abekaProgressHistory": typeof model_abekaProgressHistory;
   "model/abekaScheduling": typeof model_abekaScheduling;
   "model/abekaStudentProgress": typeof model_abekaStudentProgress;
   "model/abekaTransport": typeof model_abekaTransport;
