@@ -385,6 +385,7 @@
       "noReports": "Ainda não há relatórios. Vincule o aluno e use Atualizar dados ou aguarde a sincronização programada. Vincular não baixa o progresso.",
       "completed": "{count} de {total} concluídas",
       "lesson": "Lição",
+      "lessonCompleted": "Lição concluída",
       "progress": "Assistido",
       "lastViewed": "Última visualização",
       "status": {

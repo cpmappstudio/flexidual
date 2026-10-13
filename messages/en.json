@@ -399,6 +399,7 @@
       "noReports": "No reports yet. Link the student, then use Update data or wait for the scheduled sync. Linking alone does not download progress.",
       "completed": "{count} of {total} completed",
       "lesson": "Lesson",
+      "lessonCompleted": "Lesson completed",
       "progress": "Watched",
       "lastViewed": "Last viewed",
       "status": {

@@ -399,6 +399,7 @@
       "noReports": "Aún no hay reportes. Vincula al estudiante y luego usa Actualizar datos o espera la sincronización programada. Vincular no descarga el progreso.",
       "completed": "{count} de {total} completas",
       "lesson": "Lección",
+      "lessonCompleted": "Lección completada",
       "progress": "Visualizado",
       "lastViewed": "Última visualización",
       "status": {
