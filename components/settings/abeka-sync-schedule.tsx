@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { AbekaSchedule } from "@/lib/abeka/schedule";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,7 @@ export function AbekaSyncSchedule({
   disabled: boolean;
 }) {
   const t = useTranslations("settings.integrations");
+  const common = useTranslations("common");
   const format = useFormatter();
   const update = useMutation(api.abeka.updateSchedule);
   const saved = schedule ?? initial;
@@ -49,20 +51,18 @@ export function AbekaSyncSchedule({
   const [saving, setSaving] = useState(false);
   const inFlight = useRef(false);
   const savedKey = JSON.stringify(saved);
+  const changed = JSON.stringify(draft) !== savedKey;
+  const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time);
   useEffect(() => {
     setDraft(JSON.parse(savedKey) as AbekaSchedule);
   }, [savedKey]);
-  async function save(value: AbekaSchedule) {
-    if (inFlight.current || disabled) return;
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)) {
-      setDraft(saved);
-      return;
-    }
-    setDraft(value);
+  // ponytail: apply the complete draft once, never schedule intermediate edits.
+  async function save() {
+    if (inFlight.current || disabled || !changed || !validTime) return;
     inFlight.current = true;
     setSaving(true);
     try {
-      await update({ schoolId, schedule: value });
+      await update({ schoolId, schedule: draft });
     } catch {
       setDraft(saved);
       toast.error(t("actionError"));
@@ -85,7 +85,7 @@ export function AbekaSyncSchedule({
             value={draft.mode}
             disabled={disabled || saving}
             onValueChange={(mode) =>
-              void save({ ...draft, mode: mode as AbekaSchedule["mode"] })
+              setDraft({ ...draft, mode: mode as AbekaSchedule["mode"] })
             }
           >
             <SelectTrigger
@@ -108,7 +108,7 @@ export function AbekaSyncSchedule({
               value={String(draft.weekday)}
               disabled={disabled || saving}
               onValueChange={(day) =>
-                void save({ ...draft, weekday: Number(day) })
+                setDraft({ ...draft, weekday: Number(day) })
               }
             >
               <SelectTrigger
@@ -140,15 +140,19 @@ export function AbekaSyncSchedule({
               onChange={(event) =>
                 setDraft({ ...draft, time: event.target.value })
               }
-              onBlur={() => {
-                if (draft.time !== saved.time) void save(draft);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-              }}
             />
           )}
-          {saving && <Spinner aria-label={t("loading")} />}
+          {changed && (
+            <Button
+              type="button"
+              size="sm"
+              disabled={disabled || saving || !validTime}
+              onClick={() => void save()}
+            >
+              {saving && <Spinner aria-label={t("loading")} />}
+              {common("save")}
+            </Button>
+          )}
         </div>
         {automatic ? (
           <>
@@ -158,7 +162,7 @@ export function AbekaSyncSchedule({
                 checked={draft.stopAtPeriodEnd}
                 disabled={disabled || saving}
                 onCheckedChange={(checked) =>
-                  void save({ ...draft, stopAtPeriodEnd: checked === true })
+                  setDraft({ ...draft, stopAtPeriodEnd: checked === true })
                 }
               />
               <Label
@@ -168,22 +172,24 @@ export function AbekaSyncSchedule({
                 {t("schedule.stopAtPeriodEnd")}
               </Label>
             </div>
-            <p className="text-xs" aria-live="polite">
-              {nextSyncAt && timeZone
-                ? t("schedule.next", {
-                    date: format.dateTime(nextSyncAt, {
-                      dateStyle: "medium",
-                      timeStyle: "short",
+            {!changed && (
+              <p className="text-xs" aria-live="polite">
+                {nextSyncAt && timeZone
+                  ? t("schedule.next", {
+                      date: format.dateTime(nextSyncAt, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                        timeZone,
+                      }),
                       timeZone,
-                    }),
-                    timeZone,
-                  })
-                : !timeZone
-                  ? t("schedule.noTimeZone")
-                  : draft.stopAtPeriodEnd && !period
-                    ? t("schedule.noPeriod")
-                    : t("schedule.paused")}
-            </p>
+                    })
+                  : !timeZone
+                    ? t("schedule.noTimeZone")
+                    : draft.stopAtPeriodEnd && !period
+                      ? t("schedule.noPeriod")
+                      : t("schedule.paused")}
+              </p>
+            )}
             {draft.stopAtPeriodEnd && period && (
               <p className="text-xs">
                 {t("schedule.period", {
@@ -197,7 +203,7 @@ export function AbekaSyncSchedule({
             )}
           </>
         ) : (
-          <p className="text-xs">{t("schedule.manualNote")}</p>
+          !changed && <p className="text-xs">{t("schedule.manualNote")}</p>
         )}
       </dd>
     </div>

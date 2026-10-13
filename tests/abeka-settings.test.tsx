@@ -145,7 +145,7 @@ test("schedule editor displays institution zone, next date and checked academic 
   expect(mocks.fetch).not.toHaveBeenCalled();
 });
 
-test("schedule modes autosave and manual hides time, academic limit and next-date note", async () => {
+test("schedule modes stay in draft until saved; manual hides time and academic limit", async () => {
   mocks.mutate.mockResolvedValue(null);
   renderSettings(
     <dl>
@@ -159,6 +159,8 @@ test("schedule modes autosave and manual hides time, academic limit and next-dat
   fireEvent.click(
     await screen.findByRole("option", { name: t.schedule.manual }),
   );
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: messages.common.save }));
   await waitFor(() =>
     expect(mocks.mutate).toHaveBeenCalledWith({
       schoolId: "school",
@@ -168,11 +170,12 @@ test("schedule modes autosave and manual hides time, academic limit and next-dat
   expect(screen.queryByLabelText(t.schedule.time)).toBeNull();
   expect(screen.queryByRole("checkbox")).toBeNull();
   expect(screen.queryByText(/America\/Bogota/)).toBeNull();
-  expect(screen.getByText(t.schedule.manualNote)).toBeTruthy();
+  // The note must wait for the reactive server setting, not the unsaved draft.
+  expect(screen.queryByText(t.schedule.manualNote)).toBeNull();
   expect(mocks.fetch).not.toHaveBeenCalled();
 });
 
-test("weekday mode has no weekday selector; time saves on blur and errors restore server settings", async () => {
+test("weekday mode has no weekday selector; time saves explicitly and errors restore server settings", async () => {
   mocks.mutate.mockRejectedValue(new Error("failed"));
   renderSettings(
     <dl>
@@ -188,6 +191,8 @@ test("weekday mode has no weekday selector; time saves on blur and errors restor
   fireEvent.change(time, { target: { value: "09:30" } });
   expect(mocks.mutate).not.toHaveBeenCalled();
   fireEvent.blur(time);
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: messages.common.save }));
   await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(t.actionError));
   expect(time.value).toBe("08:00");
   expect(mocks.mutate).toHaveBeenCalledWith({
@@ -212,12 +217,55 @@ test("academic limit can be disabled and missing period explains the pause", asy
   fireEvent.click(
     screen.getByRole("checkbox", { name: t.schedule.stopAtPeriodEnd }),
   );
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: messages.common.save }));
   await waitFor(() =>
     expect(mocks.mutate).toHaveBeenCalledWith({
       schoolId: "school",
       schedule: { ...scheduleProps.schedule, stopAtPeriodEnd: false },
     }),
   );
+});
+
+test("enabling automatic sync waits until the entire schedule is configured and saved once", async () => {
+  mocks.mutate.mockResolvedValue(null);
+  renderSettings(
+    <dl>
+      <AbekaSyncSchedule
+        {...scheduleProps}
+        schedule={{ ...scheduleProps.schedule, mode: "manual" }}
+        nextSyncAt={undefined}
+      />
+    </dl>,
+  );
+  const t = messages.settings.integrations;
+  fireEvent.keyDown(screen.getByRole("combobox", { name: `${t.nextSync}:` }), {
+    key: "ArrowDown",
+  });
+  fireEvent.click(
+    await screen.findByRole("option", { name: t.schedule.weekdays }),
+  );
+  const time = screen.getByLabelText(t.schedule.time);
+  fireEvent.change(time, { target: { value: "10:30" } });
+  fireEvent.blur(time);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: t.schedule.stopAtPeriodEnd }),
+  );
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  const save = screen.getByRole("button", { name: messages.common.save });
+  fireEvent.click(save);
+  fireEvent.click(save);
+  await waitFor(() => expect(mocks.mutate).toHaveBeenCalledTimes(1));
+  expect(mocks.mutate).toHaveBeenCalledWith({
+    schoolId: "school",
+    schedule: {
+      ...scheduleProps.schedule,
+      mode: "weekdays",
+      time: "10:30",
+      stopAtPeriodEnd: false,
+    },
+  });
+  expect(mocks.fetch).not.toHaveBeenCalled();
 });
 
 test("experimental login clears inputs, submits only once, and does not invoke connection mutations", async () => {

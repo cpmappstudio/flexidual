@@ -111,6 +111,65 @@ test("schedule settings replace one job atomically; manual fences stale jobs wit
   ).toEqual(before);
 });
 
+test.each([
+  ["2026-09-25T12:59:59Z", "2026-09-25T13:00Z"],
+  ["2026-09-25T13:00Z", "2026-09-28T13:00Z"],
+  ["2026-09-25T13:01Z", "2026-09-28T13:00Z"],
+])(
+  "saving a schedule at %s only arms the next future slot (%s)",
+  async (now, next) => {
+    const {
+      t,
+      adminClient,
+      schoolId,
+      connectionId,
+      runId,
+      studentId,
+      student,
+    } = await scheduleSetup();
+    vi.setSystemTime(new Date(now));
+    await t.run(async (ctx) => {
+      await ctx.db.patch(studentId, { userId: student });
+      await ctx.db.insert("abekaProgress", {
+        studentId,
+        subjectId: "math",
+        subjectName: "Math",
+        lessons: [],
+        syncedAt: 123,
+        runId,
+      });
+    });
+    const snapshot = () =>
+      t.run(async (ctx) => ({
+        students: await ctx.db.query("abekaStudents").collect(),
+        progress: await ctx.db.query("abekaProgress").collect(),
+        runs: await ctx.db.query("abekaSyncRuns").collect(),
+      }));
+    const before = await snapshot();
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    await adminClient.mutation(api.abeka.updateSchedule, {
+      schoolId,
+      schedule: dailySchedule,
+    });
+    const connection = (await t.run((ctx) => ctx.db.get(connectionId)))!;
+    expect(connection.nextSyncAt).toBe(Date.parse(next));
+    expect(connection.nextSyncAt).toBeGreaterThan(Date.now());
+    const job = await t.run((ctx) =>
+      ctx.db.system.get(connection.scheduledSyncId!),
+    );
+    expect(job?.scheduledTime).toBe(Date.parse(next));
+    expect(job?.state.kind).toBe("pending");
+    // Even a premature invocation cannot start the download before its configured slot.
+    await t.mutation(internal.abekaSync.runScheduled, {
+      connectionId,
+      generation: connection.syncScheduleGeneration!,
+    });
+    expect(await snapshot()).toEqual(before);
+    expect(request).not.toHaveBeenCalled();
+  },
+);
+
 test("schedule changes validate admin, timezone, time and weekday without contacting Abeka", async () => {
   const { t, adminClient, schoolId } = await setup();
   await expect(
