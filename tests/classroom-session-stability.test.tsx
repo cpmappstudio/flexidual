@@ -98,6 +98,7 @@ const testState = vi.hoisted(() => {
     studentParticipant,
     room: {
       name: "physical-room-activation-1",
+      state: "connected",
       isRecording: false,
       localParticipant: administrativeParticipant,
       disconnect: vi.fn(async () => undefined),
@@ -501,6 +502,9 @@ describe("classroom session stability", () => {
     testState.leadership = testState.initialLeadership;
     testState.localParticipant = testState.administrativeParticipant;
     testState.room.isRecording = false;
+    testState.room.state = "connected";
+    testState.administrativeParticipant.isScreenShareEnabled = false;
+    testState.studentParticipant.isScreenShareEnabled = false;
     testState.room.localParticipant = testState.administrativeParticipant;
     testState.participants = [testState.administrativeParticipant];
     testState.qrValue = "";
@@ -511,6 +515,105 @@ describe("classroom session stability", () => {
     cleanup();
     vi.unstubAllGlobals();
   });
+
+  it("lets session authorities share without granting new permissions", async () => {
+    vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
+    renderActiveClassroom();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "classroom.shareScreen" })[0],
+    );
+    await waitFor(() =>
+      expect(
+        testState.administrativeParticipant.setScreenShareEnabled,
+      ).toHaveBeenCalledWith(true, { audio: true }),
+    );
+    expect(
+      testState.administrativeParticipant.publishData,
+    ).not.toHaveBeenCalled();
+    expect(testState.backendCall).not.toHaveBeenCalled();
+  });
+
+  it("requires authority approval and a second student click before capture", async () => {
+    vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
+    renderStudentClassroom();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "classroom.shareScreen" })[0],
+    );
+    await waitFor(() =>
+      expect(testState.studentParticipant.publishData).toHaveBeenCalled(),
+    );
+    expect(
+      testState.studentParticipant.setScreenShareEnabled,
+    ).not.toHaveBeenCalled();
+    const handleData = testState.room.on.mock.calls.find(
+      ([event]) => event === "dataReceived",
+    )?.[1];
+    const grant = new TextEncoder().encode(
+      JSON.stringify({ type: "ALLOW_SHARE" }),
+    );
+    act(() => handleData(grant, testState.remoteStudentParticipant));
+    expect(
+      testState.studentParticipant.setScreenShareEnabled,
+    ).not.toHaveBeenCalled();
+    act(() => handleData(grant, testState.remoteAdministrativeParticipant));
+    expect(
+      testState.studentParticipant.setScreenShareEnabled,
+    ).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "classroom.shareScreen" })[0],
+    );
+    await waitFor(() =>
+      expect(
+        testState.studentParticipant.setScreenShareEnabled,
+      ).toHaveBeenCalledWith(true, { audio: true }),
+    );
+    expect(testState.backendCall).not.toHaveBeenCalled();
+  });
+
+  it.each(["staff", "student"])(
+    "honors authority stop messages, but ignores student stop messages (%s)",
+    async (view) => {
+      testState.administrativeParticipant.isScreenShareEnabled = true;
+      testState.studentParticipant.isScreenShareEnabled = true;
+      if (view === "student") renderStudentClassroom();
+      else renderActiveClassroom();
+      const handleData = testState.room.on.mock.calls.find(
+        ([event]) => event === "dataReceived",
+      )?.[1];
+      const stop = new TextEncoder().encode(
+        JSON.stringify({ type: "STOP_SHARE" }),
+      );
+      act(() => handleData(stop, testState.remoteStudentParticipant));
+      expect(
+        testState.localParticipant.setScreenShareEnabled,
+      ).not.toHaveBeenCalled();
+      act(() => handleData(stop, testState.remoteAdministrativeParticipant));
+      await waitFor(() =>
+        expect(
+          testState.localParticipant.setScreenShareEnabled,
+        ).toHaveBeenCalledWith(false, { audio: true }),
+      );
+    },
+  );
+
+  it.each(["staff", "student"])(
+    "does not attempt capture on unsupported browsers (%s)",
+    (view) => {
+      vi.stubGlobal("navigator", { mediaDevices: {} });
+      if (view === "student") renderStudentClassroom();
+      else renderActiveClassroom();
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "classroom.shareScreen" })[0],
+      );
+      expect(
+        testState.localParticipant.setScreenShareEnabled,
+      ).not.toHaveBeenCalled();
+      expect(testState.localParticipant.publishData).not.toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith(
+        "classroom.screenShareNotSupported",
+      );
+    },
+  );
 
   it("keeps recording start disabled while the durable operation is pending", () => {
     testState.recordingOperation = { pending: true, failed: false };

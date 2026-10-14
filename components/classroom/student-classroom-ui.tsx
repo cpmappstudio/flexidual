@@ -81,6 +81,7 @@ import { useClassroomEndingSoonNotice } from "./use-classroom-ending-soon-notice
 import { getClassroomQueryNow } from "./use-classroom-clock";
 import { useClassroomMediaInitialization } from "@/hooks/use-classroom-media-initialization";
 import { useClassroomMediaDeviceErrors } from "@/hooks/use-classroom-media-errors";
+import { useClassroomScreenShare } from "@/hooks/use-classroom-screen-share";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import {
   selectClassroomLayer,
@@ -138,6 +139,7 @@ export function StudentClassroomUI({
 }: StudentClassroomUIProps) {
   const t = useTranslations();
   const room = useRoomContext();
+  const setScreenShareEnabled = useClassroomScreenShare(room);
   const presentation = useClassroomPresentation();
   const [needsClick, setNeedsClick] = useState(false);
   const [shareState, setShareState] = useState<
@@ -364,9 +366,10 @@ export function StudentClassroomUI({
           msg.type === "STOP_SHARE" &&
           isSharingLocally
         ) {
-          localParticipant?.setScreenShareEnabled(false);
           setShareState("idle");
-          toast.info(t("classroom.sharingStoppedByTeacher"));
+          void setScreenShareEnabled(false).then((stopped) => {
+            if (stopped) toast.info(t("classroom.sharingStoppedByTeacher"));
+          });
         }
 
         if (
@@ -424,7 +427,7 @@ export function StudentClassroomUI({
     return () => {
       room.off("dataReceived", handleData);
     };
-  }, [room, isSharingLocally, localParticipant, t]);
+  }, [room, isSharingLocally, localParticipant, setScreenShareEnabled, t]);
 
   const handleMediaError = useClassroomMediaDeviceErrors(room);
 
@@ -455,30 +458,14 @@ export function StudentClassroomUI({
     }
 
     if (isSharingLocally) {
-      await localParticipant?.setScreenShareEnabled(false);
-      setShareState("idle");
+      if (await setScreenShareEnabled(false)) setShareState("idle");
       return;
     }
 
     if (shareState === "approved") {
       setShareState("idle");
 
-      try {
-        await localParticipant?.setScreenShareEnabled(true, { audio: true });
-      } catch (error) {
-        const err = error as Error;
-        if (
-          err.name === "NotAllowedError" ||
-          err.message?.includes("Permission denied")
-        )
-          return;
-        try {
-          await localParticipant?.setScreenShareEnabled(true, { audio: false });
-          toast.warning(t("classroom.screenShareAudioNotSupported"));
-        } catch {
-          toast.error(t("classroom.screenShareNotSupported"));
-        }
-      }
+      await setScreenShareEnabled(true);
       return;
     }
 

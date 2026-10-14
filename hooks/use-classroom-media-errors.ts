@@ -57,9 +57,15 @@ export function useClassroomMediaDeviceErrors(room: Room) {
   const handleMediaError = useClassroomMediaErrorHandler();
 
   useEffect(() => {
-    room.on(RoomEvent.MediaDevicesError, handleMediaError);
+    const handleDeviceError = (error: Error, kind?: MediaDeviceKind) => {
+      // Screen capture has no device kind; useClassroomScreenShare owns its errors.
+      if (kind === "audioinput" || kind === "videoinput") {
+        handleMediaError(error);
+      }
+    };
+    room.on(RoomEvent.MediaDevicesError, handleDeviceError);
     return () => {
-      room.off(RoomEvent.MediaDevicesError, handleMediaError);
+      room.off(RoomEvent.MediaDevicesError, handleDeviceError);
     };
   }, [handleMediaError, room]);
 

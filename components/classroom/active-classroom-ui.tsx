@@ -144,6 +144,7 @@ import { useClassroomEndingSoonNotice } from "./use-classroom-ending-soon-notice
 import { getClassroomQueryNow } from "./use-classroom-clock";
 import { useClassroomMediaInitialization } from "@/hooks/use-classroom-media-initialization";
 import { useClassroomMediaDeviceErrors } from "@/hooks/use-classroom-media-errors";
+import { useClassroomScreenShare } from "@/hooks/use-classroom-screen-share";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import {
   selectClassroomLayer,
@@ -232,6 +233,7 @@ export function ActiveClassroomUI({
   const presentation = useClassroomPresentation();
   const classroomPath = presentation?.classroomPath ?? pathname;
   const room = useRoomContext();
+  const setScreenShareEnabled = useClassroomScreenShare(room);
 
   const [companionUrl, setCompanionUrl] = useState("");
   useEffect(() => {
@@ -663,8 +665,9 @@ export function ActiveClassroomUI({
           msg.type === "STOP_SHARE" &&
           isSharingLocally
         ) {
-          localParticipant?.setScreenShareEnabled(false);
-          toast.info(t("classroom.sharingStoppedByTeacher"));
+          void setScreenShareEnabled(false).then((stopped) => {
+            if (stopped) toast.info(t("classroom.sharingStoppedByTeacher"));
+          });
         }
 
         if (senderIsStudent && msg.type === "RAISE_HAND" && participant) {
@@ -771,6 +774,7 @@ export function ActiveClassroomUI({
     amIAuthority,
     isSharingLocally,
     localParticipant,
+    setScreenShareEnabled,
     playNotificationChime,
     t,
   ]);
@@ -1069,8 +1073,7 @@ export function ActiveClassroomUI({
     }
 
     if (isSharingLocally) {
-      await localParticipant?.setScreenShareEnabled(false);
-      setShareApproved(false);
+      if (await setScreenShareEnabled(false)) setShareApproved(false);
       return;
     }
 
@@ -1080,30 +1083,9 @@ export function ActiveClassroomUI({
       return;
     }
 
-    // Consume approval before the async call so double-clicks don't re-enter
+    // An approval permits one attempt; another failure still requires approval.
     setShareApproved(false);
-
-    try {
-      await localParticipant?.setScreenShareEnabled(true, { audio: true });
-    } catch (error) {
-      const err = error as Error;
-      // User cancelled the picker — nothing to do
-      if (
-        err.name === "NotAllowedError" ||
-        err.message?.includes("Permission denied")
-      )
-        return;
-      // Any other error (NotSupportedError from audio constraint, codec issues, etc.):
-      // retry without audio. If audio: true threw before showing the picker, the user
-      // activation is still live so this call can succeed (feature detection, not UA sniffing).
-      try {
-        await localParticipant?.setScreenShareEnabled(true, { audio: false });
-        toast.warning(t("classroom.screenShareAudioNotSupported"));
-      } catch {
-        // Both attempts failed — screen sharing is not supported on this device/browser
-        toast.error(t("classroom.screenShareNotSupported"));
-      }
-    }
+    await setScreenShareEnabled(true);
   };
 
   const handleRecordClick = () => {
