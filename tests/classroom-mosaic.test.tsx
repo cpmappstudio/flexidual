@@ -15,23 +15,25 @@ function participant(
 
 describe("getMosaicParticipants", () => {
   it("shows connected people with cameras first and excludes devices and egress", () => {
-    const participants = [
+    const students = [
       participant("student-off", "Ana", { convexUserId: "student-1" }),
       participant("companion", "Tablet", {
         convexUserId: "teacher-1",
         isCompanion: true,
       }),
-      participant("teacher-on", "Carlos", { convexUserId: "teacher-1" }),
       participant("student-on", "Beatriz", { convexUserId: "student-2" }),
       participant("egress", "Recorder", {}),
     ];
+    const presenter = participant("teacher-on", "Carlos", {
+      role: "teacher",
+      convexUserId: "teacher-1",
+    });
     const preview = [participant("preview", "Zoe", { role: "student" })];
 
-    const result = getMosaicParticipants(
-      participants,
-      preview,
-      new Set(["teacher-on", "student-on"]),
-    );
+    const result = getMosaicParticipants(students, preview, {
+      presenter,
+      cameraEnabledIds: new Set(["teacher-on", "student-on"]),
+    });
 
     expect(result.map(({ identity }) => identity)).toEqual([
       "student-on",
@@ -39,6 +41,23 @@ describe("getMosaicParticipants", () => {
       "student-off",
       "preview",
     ]);
+  });
+
+  it("includes the selected administrative leader exactly once", () => {
+    const presenter = participant("admin-leader", "Carlos", {
+      role: "admin",
+      convexUserId: "admin-1",
+    });
+    const student = participant("student", "Ana", {
+      role: "student",
+      convexUserId: "student-1",
+    });
+
+    expect(
+      getMosaicParticipants([student, presenter], [], { presenter }).map(
+        ({ identity }) => identity,
+      ),
+    ).toEqual(["student", "admin-leader"]);
   });
 });
 

@@ -33,6 +33,55 @@ describe("useClassroomViewMode", () => {
     expect(result.current.panelTab).toBe("chat");
   });
 
+  it.each(["presenter", "mosaic"] as const)(
+    "restores %s after a temporary participant pin",
+    (mode) => {
+      const { result } = renderHook(useClassroomViewMode);
+      act(() => result.current.changeViewMode(mode));
+      act(() => result.current.focusPinnedParticipant());
+      expect(result.current.viewMode).toBe("presenter");
+
+      act(() => result.current.restoreViewBeforePin());
+      expect(result.current.viewMode).toBe(mode);
+    },
+  );
+
+  it("keeps the original layout when the pinned participant is replaced", () => {
+    const { result } = renderHook(useClassroomViewMode);
+    act(() => result.current.changeViewMode("mosaic"));
+    act(() => result.current.focusPinnedParticipant());
+    act(() => result.current.focusPinnedParticipant());
+    act(() => result.current.restoreViewBeforePin());
+
+    expect(result.current.viewMode).toBe("mosaic");
+  });
+
+  it.each(["presenter", "mosaic"] as const)(
+    "respects an explicit %s choice made after pinning",
+    (mode) => {
+      const { result } = renderHook(useClassroomViewMode);
+      act(() => result.current.changeViewMode("mosaic"));
+      act(() => result.current.focusPinnedParticipant());
+      act(() => result.current.changeViewMode(mode));
+      act(() => result.current.restoreViewBeforePin());
+
+      expect(result.current.viewMode).toBe(mode);
+    },
+  );
+
+  it("keeps newly shared content visible when a participant is unpinned", () => {
+    const { result, rerender } = renderHook(
+      ({ contentActive }) => useClassroomViewMode(contentActive),
+      { initialProps: { contentActive: false } },
+    );
+    act(() => result.current.changeViewMode("mosaic"));
+    act(() => result.current.focusPinnedParticipant());
+    rerender({ contentActive: true });
+    act(() => result.current.restoreViewBeforePin());
+
+    expect(result.current.viewMode).toBe("presenter");
+  });
+
   it("returns to the presenter when shared content starts without blocking a manual mosaic choice", () => {
     const { result, rerender } = renderHook(
       ({ contentActive }) => useClassroomViewMode(contentActive),

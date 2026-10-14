@@ -15,6 +15,7 @@ interface ClassroomParticipantTileProps {
   className?: string;
   showLabel?: boolean;
   variant?: ParticipantTileVariant;
+  actionsPosition?: "left" | "right";
   raisedHand?: boolean;
   onLowerHand?: () => void;
   lowerHandLabel?: string;
@@ -35,6 +36,7 @@ export function ClassroomParticipantTile({
   className,
   showLabel = true,
   variant = "grid",
+  actionsPosition = "right",
   raisedHand = false,
   onLowerHand,
   lowerHandLabel = "Lower hand",
@@ -76,7 +78,7 @@ export function ClassroomParticipantTile({
     <div
       id={id}
       className={cn(
-        "group relative isolate overflow-hidden bg-muted transition-all duration-300",
+        "group/participant relative isolate overflow-hidden bg-muted transition-all duration-300",
         variant === "grid" &&
           "rounded-none border border-primary/20 bg-card shadow-sm hover:border-primary/35 hover:shadow-md",
         isPinned && variant === "grid" && "border-primary/70",
@@ -166,7 +168,12 @@ export function ClassroomParticipantTile({
       ) : null}
 
       {(onPinnedChange || raisedHand) && (
-        <div className="absolute right-1.5 top-1.5 z-40 flex items-center gap-1">
+        <div
+          className={cn(
+            "absolute top-1.5 z-40 flex items-center gap-1",
+            actionsPosition === "left" ? "left-1.5" : "right-1.5",
+          )}
+        >
           {onPinnedChange && (
             <button
               type="button"
@@ -175,10 +182,10 @@ export function ClassroomParticipantTile({
               aria-pressed={isPinned}
               title={isPinned ? unpinLabel : pinLabel}
               className={cn(
-                "rounded-full border p-1 shadow-sm backdrop-blur-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex size-6 items-center justify-center rounded-full border p-0 shadow-sm backdrop-blur-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-7 md:size-8 xl:size-6",
                 isPinned
                   ? "border-primary bg-primary text-primary-foreground"
-                  : "border-inverse-foreground/10 bg-inverse/85 text-inverse-foreground hover:bg-inverse md:pointer-events-none md:opacity-0 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100 md:group-hover:pointer-events-auto md:group-hover:opacity-100",
+                  : "border-inverse-foreground/10 bg-inverse/85 text-inverse-foreground hover:bg-inverse [@media(hover:hover)_and_(pointer:fine)]:pointer-events-none [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-focus-within/participant:pointer-events-auto group-focus-within/participant:opacity-100 group-hover/participant:pointer-events-auto group-hover/participant:opacity-100",
               )}
             >
               {isPinned ? (

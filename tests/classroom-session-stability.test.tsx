@@ -87,6 +87,7 @@ const testState = vi.hoisted(() => {
     isLeadershipLoading: false,
     recordingOperation: null as { pending: boolean; failed: boolean } | null,
     screenSharing: false,
+    hideParticipantPanel: false,
     leadership: leadership as typeof leadership | null,
     initialLeadership: leadership,
     localParticipant: administrativeParticipant,
@@ -160,6 +161,7 @@ vi.mock("@livekit/components-react", () => ({
     localParticipant: testState.localParticipant,
   }),
   useParticipants: () => testState.participants,
+  useTracks: () => [],
   useRoomContext: () => testState.room,
 }));
 
@@ -253,14 +255,27 @@ vi.mock("@/components/classroom/classroom-stage", () => ({
   ClassroomStage: ({
     children,
     onViewModeChange,
+    onUnpinParticipant,
+    unpinParticipantLabel,
   }: {
     children: ReactNode;
     onViewModeChange?: (mode: "presenter" | "mosaic") => void;
+    onUnpinParticipant?: () => void;
+    unpinParticipantLabel?: string;
   }) =>
     createElement(
       "main",
       null,
       children,
+      onUnpinParticipant &&
+        createElement(
+          "button",
+          {
+            onClick: onUnpinParticipant,
+            "aria-label": unpinParticipantLabel,
+          },
+          "Unpin from stage",
+        ),
       onViewModeChange &&
         createElement(
           "button",
@@ -286,10 +301,6 @@ vi.mock("@/components/classroom/classroom-stage", () => ({
       "data-room-name": roomName,
     }),
 }));
-vi.mock("@/components/classroom/classroom-mosaic", () => ({
-  ClassroomMosaic: () => createElement("div", null, "Mosaic scene"),
-  getMosaicParticipants: () => [],
-}));
 vi.mock("@/components/classroom/classroom-presenter-content", () => ({
   ClassroomPresenterContent: ({
     participant,
@@ -300,8 +311,26 @@ vi.mock("@/components/classroom/classroom-presenter-content", () => ({
   }) => createElement("div", null, participant?.name ?? waitingLabel),
 }));
 vi.mock("@/components/classroom/classroom-participants-panel", () => ({
-  ClassroomParticipantsPanel: ({ children }: { children?: ReactNode }) =>
-    createElement("aside", null, children),
+  ClassroomParticipantsPanel: ({
+    children,
+    participants,
+    viewMode,
+  }: {
+    children?: ReactNode;
+    participants: { identity: string }[];
+    viewMode?: string;
+  }) =>
+    testState.hideParticipantPanel
+      ? null
+      : createElement(
+          "aside",
+          {
+            "data-participant-identities": participants
+              .map(({ identity }) => identity)
+              .join(","),
+          },
+          viewMode === "mosaic" ? null : children,
+        ),
 }));
 vi.mock("@/components/classroom/classroom-action-bar", () => ({
   ClassroomActionBar: ({
@@ -468,6 +497,7 @@ describe("classroom session stability", () => {
     testState.isLeadershipLoading = false;
     testState.recordingOperation = null;
     testState.screenSharing = false;
+    testState.hideParticipantPanel = false;
     testState.leadership = testState.initialLeadership;
     testState.localParticipant = testState.administrativeParticipant;
     testState.room.isRecording = false;
@@ -657,12 +687,16 @@ describe("classroom session stability", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
-    expect(screen.getByText("Mosaic scene")).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Switch to presenter" }),
     );
 
-    expect(screen.queryByText("Mosaic scene")).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeNull();
     expect(testState.localParticipant.setCameraEnabled).toHaveBeenCalledTimes(
       1,
     );
@@ -680,12 +714,16 @@ describe("classroom session stability", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
-    expect(screen.getByText("Mosaic scene")).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Switch to presenter" }),
     );
 
-    expect(screen.queryByText("Mosaic scene")).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeNull();
     expect(testState.studentParticipant.setCameraEnabled).toHaveBeenCalledTimes(
       1,
     );
@@ -697,7 +735,9 @@ describe("classroom session stability", () => {
   it("returns to presenter when screen sharing begins during mosaic", () => {
     const view = renderActiveClassroom();
     fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
-    expect(screen.getByText("Mosaic scene")).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeTruthy();
 
     testState.screenSharing = true;
     view.rerender(
@@ -713,7 +753,227 @@ describe("classroom session stability", () => {
       }),
     );
 
-    expect(screen.queryByText("Mosaic scene")).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeNull();
+  });
+
+  it.each(["staff", "student"])(
+    "keeps administrative observers hidden from the %s mosaic and roster",
+    (experience) => {
+      if (experience === "staff") {
+        testState.participants = [
+          testState.administrativeParticipant,
+          testState.remoteStudentParticipant,
+        ];
+        renderActiveClassroom();
+      } else {
+        renderStudentClassroom();
+      }
+      const observers = ["admin", "superadmin", "principal"].map((role) => ({
+        ...testState.remoteAdministrativeParticipant,
+        identity: `observer-${role}`,
+        name: `Observer ${role}`,
+        metadata: JSON.stringify({ role, convexUserId: `observer-${role}` }),
+      }));
+      testState.participants = [...testState.participants, ...observers];
+
+      fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+      const mosaic = screen.getByRole("region", {
+        name: "classroom.mosaicView",
+      });
+      expect(within(mosaic).getByText("Student")).toBeTruthy();
+      expect(within(mosaic).getByText("Administrative leader")).toBeTruthy();
+      for (const observer of observers) {
+        expect(screen.queryByText(observer.name)).toBeNull();
+      }
+      expect(
+        screen
+          .getByRole("complementary")
+          .getAttribute("data-participant-identities"),
+      ).toBe("admin-clerk-id,student-clerk-id");
+      if (experience === "student") {
+        expect(within(mosaic).queryByRole("button")).toBeNull();
+      }
+    },
+  );
+
+  it("hides the local administrative observer while the teacher leads the mosaic", () => {
+    const teacher = {
+      ...testState.remoteAdministrativeParticipant,
+      identity: "teacher-clerk-id",
+      name: "Teacher",
+      metadata: JSON.stringify({ role: "teacher", convexUserId: "teacher-1" }),
+    };
+    testState.leadership = {
+      ...testState.initialLeadership,
+      leader: {
+        ...testState.initialLeadership.leader,
+        participantIdentity: teacher.identity,
+        role: "teacher",
+      },
+      viewer: { ...testState.initialLeadership.viewer, isLeader: false },
+    };
+    testState.participants = [
+      testState.administrativeParticipant,
+      teacher,
+      testState.remoteStudentParticipant,
+    ];
+    renderActiveClassroom();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+
+    const mosaic = screen.getByRole("region", { name: "classroom.mosaicView" });
+    expect(within(mosaic).getByText("Teacher")).toBeTruthy();
+    expect(within(mosaic).getByText("Student")).toBeTruthy();
+    expect(within(mosaic).queryByText("Administrative leader")).toBeNull();
+    expect(
+      screen
+        .getByRole("complementary")
+        .getAttribute("data-participant-identities"),
+    ).toBe("student-clerk-id,teacher-clerk-id");
+  });
+
+  it("pins a student from mosaic using the existing presenter selection", () => {
+    testState.participants = [
+      testState.administrativeParticipant,
+      testState.remoteStudentParticipant,
+    ];
+    renderActiveClassroom();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+    const mosaic = screen.getByRole("region", { name: "classroom.mosaicView" });
+    expect(within(mosaic).getAllByRole("button")).toHaveLength(1);
+    fireEvent.click(
+      within(mosaic).getByRole("button", { name: "classroom.pinParticipant" }),
+    );
+
+    expect(
+      screen.queryByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeNull();
+    expect(within(screen.getByRole("main")).getByText("Student")).toBeTruthy();
+    expect(
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "classroom.unpinParticipant",
+      }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "classroom.unpinParticipant",
+      }),
+    );
+    expect(
+      screen.getByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeTruthy();
+  });
+
+  it("clears the pin and its return layout when mosaic is selected manually", () => {
+    testState.participants = [
+      testState.administrativeParticipant,
+      testState.remoteStudentParticipant,
+    ];
+    renderActiveClassroom();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+    fireEvent.click(
+      within(
+        screen.getByRole("region", { name: "classroom.mosaicView" }),
+      ).getByRole("button", { name: "classroom.pinParticipant" }),
+    );
+    expect(within(screen.getByRole("main")).getByText("Student")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+    expect(
+      screen.getByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "classroom.unpinParticipant" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to presenter" }),
+    );
+    expect(
+      within(screen.getByRole("main")).getByText("Administrative leader"),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "classroom.pinParticipant" }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("main")).getByRole("button", {
+        name: "classroom.unpinParticipant",
+      }),
+    );
+    expect(
+      screen.queryByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeNull();
+    expect(
+      within(screen.getByRole("main")).getByText("Administrative leader"),
+    ).toBeTruthy();
+  });
+
+  it("can unpin from the main stage when participant cards are unavailable", () => {
+    testState.hideParticipantPanel = true;
+    testState.participants = [
+      testState.administrativeParticipant,
+      testState.remoteStudentParticipant,
+    ];
+    renderActiveClassroom();
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(
+      within(screen.getByRole("main")).queryByRole("button", {
+        name: "classroom.unpinParticipant",
+      }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+    fireEvent.click(
+      within(
+        screen.getByRole("region", { name: "classroom.mosaicView" }),
+      ).getByRole("button", { name: "classroom.pinParticipant" }),
+    );
+
+    fireEvent.click(
+      within(screen.getByRole("main")).getByRole("button", {
+        name: "classroom.unpinParticipant",
+      }),
+    );
+    expect(
+      screen.getByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "classroom.unpinParticipant" }),
+    ).toBeNull();
+  });
+
+  it("returns to mosaic when the temporarily pinned participant leaves", () => {
+    testState.participants = [
+      testState.administrativeParticipant,
+      testState.remoteStudentParticipant,
+    ];
+    const view = renderActiveClassroom();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to mosaic" }));
+    fireEvent.click(
+      within(
+        screen.getByRole("region", { name: "classroom.mosaicView" }),
+      ).getByRole("button", { name: "classroom.pinParticipant" }),
+    );
+    expect(within(screen.getByRole("main")).getByText("Student")).toBeTruthy();
+
+    testState.participants = [testState.administrativeParticipant];
+    view.rerender(
+      createElement(ActiveClassroomUI, {
+        isCloseoutOpen: false,
+        onRequestCloseout: vi.fn(),
+        courseId: "class-1" as never,
+        currentUserRole: "admin",
+        roomName: "room-1",
+        sessionNow: INITIAL_NOW,
+        sessionIsLive: true,
+        sessionTimeZone: "America/Bogota",
+      }),
+    );
+
+    expect(
+      screen.getByRole("region", { name: "classroom.mosaicView" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Student")).toBeNull();
   });
 
   it("lets staff pin a student to the main stage and unpin them", () => {
@@ -732,7 +992,9 @@ describe("classroom session stability", () => {
     expect(within(stage).getByText("Student")).toBeTruthy();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "classroom.unpinParticipant" }),
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "classroom.unpinParticipant",
+      }),
     );
     expect(within(stage).getByText("Administrative leader")).toBeTruthy();
   });

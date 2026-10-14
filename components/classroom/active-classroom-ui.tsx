@@ -18,6 +18,7 @@ import {
   useParticipants,
 } from "@livekit/components-react";
 import {
+  type Participant,
   Track,
   RemoteParticipant,
   RemoteTrackPublication,
@@ -129,7 +130,10 @@ import {
 import { ClassroomPresenterContent } from "./classroom-presenter-content";
 import { ClassroomScene } from "./classroom-scene";
 import { ClassroomMosaic, getMosaicParticipants } from "./classroom-mosaic";
-import { useClassroomViewMode } from "./use-classroom-view-mode";
+import {
+  useClassroomViewMode,
+  type ClassroomViewMode,
+} from "./use-classroom-view-mode";
 import {
   ClassroomEnableAudioOverlay,
   ClassroomEndingSoonNotice,
@@ -547,6 +551,8 @@ export function ActiveClassroomUI({
   const {
     viewMode,
     changeViewMode,
+    focusPinnedParticipant,
+    restoreViewBeforePin,
     panelTab: classroomPanelTab,
     changePanelTab: setClassroomPanelTab,
     highlightedParticipantId,
@@ -556,20 +562,42 @@ export function ActiveClassroomUI({
     () =>
       viewMode === "mosaic"
         ? getMosaicParticipants(
-            participants,
+            sortedStudents,
             uiPreviewEnabled && showPreviewParticipants
               ? previewParticipants
               : [],
+            { presenter: teacher },
           )
         : [],
     [
-      participants,
       previewParticipants,
       showPreviewParticipants,
       uiPreviewEnabled,
       viewMode,
+      sortedStudents,
+      teacher,
     ],
   );
+  const handleParticipantPinnedChange = (
+    identity: string,
+    isPinned: boolean,
+  ) => {
+    setPinnedStudentIdentity(isPinned ? identity : undefined);
+    if (isPinned) focusPinnedParticipant();
+    else restoreViewBeforePin();
+  };
+  const handleViewModeChange = (mode: ClassroomViewMode) => {
+    if (mode === "mosaic") setPinnedStudentIdentity(undefined);
+    changeViewMode(mode);
+  };
+  const getParticipantPinLabel = (participant: Participant) =>
+    t("classroom.pinParticipant", {
+      name: participant.name || participant.identity,
+    });
+  const getParticipantUnpinLabel = (participant: Participant) =>
+    t("classroom.unpinParticipant", {
+      name: participant.name || participant.identity,
+    });
   const pinnedStudentCamera = pinnedStudent?.getTrackPublication(
     Track.Source.Camera,
   );
@@ -590,8 +618,9 @@ export function ActiveClassroomUI({
   useEffect(() => {
     if (pinnedStudentIdentity && !pinnedStudent) {
       setPinnedStudentIdentity(undefined);
+      restoreViewBeforePin();
     }
-  }, [pinnedStudent, pinnedStudentIdentity]);
+  }, [pinnedStudent, pinnedStudentIdentity, restoreViewBeforePin]);
 
   useEffect(() => {
     const decoder = new TextDecoder();
@@ -1940,9 +1969,17 @@ export function ActiveClassroomUI({
         enterFullscreenLabel={t("classroom.enterFullscreen") || "Fullscreen"}
         exitFullscreenLabel={t("classroom.exitFullscreen") || "Exit fullscreen"}
         viewMode={viewMode}
-        onViewModeChange={changeViewMode}
+        onViewModeChange={handleViewModeChange}
         presenterViewLabel={t("classroom.presenterView")}
         mosaicViewLabel={t("classroom.mosaicView")}
+        onUnpinParticipant={
+          amIAuthority && pinnedStudent
+            ? () => handleParticipantPinnedChange(pinnedStudent.identity, false)
+            : undefined
+        }
+        unpinParticipantLabel={
+          pinnedStudent ? getParticipantUnpinLabel(pinnedStudent) : undefined
+        }
         phoneControls={
           <>
             <DeviceToggleButton
@@ -2042,7 +2079,8 @@ export function ActiveClassroomUI({
           mosaic={
             viewMode === "mosaic" ? (
               <ClassroomMosaic
-                participants={participants}
+                students={sortedStudents}
+                presenter={teacher}
                 previewParticipants={
                   uiPreviewEnabled && showPreviewParticipants
                     ? previewParticipants
@@ -2052,6 +2090,13 @@ export function ActiveClassroomUI({
                 youLabel={t("classroom.youShort")}
                 label={t("classroom.mosaicView")}
                 highlightedParticipantId={highlightedParticipantId}
+                onPinParticipant={
+                  amIAuthority
+                    ? (identity) =>
+                        handleParticipantPinnedChange(identity, true)
+                    : undefined
+                }
+                pinLabel={getParticipantPinLabel}
               />
             ) : undefined
           }
@@ -2425,15 +2470,11 @@ export function ActiveClassroomUI({
             onPinnedChange={
               amIAuthority
                 ? (isPinned) =>
-                    setPinnedStudentIdentity(isPinned ? p.identity : undefined)
+                    handleParticipantPinnedChange(p.identity, isPinned)
                 : undefined
             }
-            pinLabel={t("classroom.pinParticipant", {
-              name: p.name || p.identity,
-            })}
-            unpinLabel={t("classroom.unpinParticipant", {
-              name: p.name || p.identity,
-            })}
+            pinLabel={getParticipantPinLabel(p)}
+            unpinLabel={getParticipantUnpinLabel(p)}
           />
         ))}
       </ClassroomParticipantsPanel>

@@ -68,15 +68,23 @@ function View({
   whiteboard = false,
   share = true,
   phone = false,
+  stageControlsVisible = false,
   onFullscreen = vi.fn(),
   onFollow = vi.fn(),
+  onReveal = vi.fn(),
+  viewMode,
+  children,
 }: {
   presentation: ClassroomPresentation;
   whiteboard?: boolean;
   share?: boolean;
   phone?: boolean;
+  stageControlsVisible?: boolean;
   onFullscreen?: () => void;
   onFollow?: () => void;
+  onReveal?: () => void;
+  viewMode?: "presenter" | "mosaic";
+  children?: ReactNode;
 }) {
   const { zoom, pan, stageRef, handleZoom, startPanDrag } =
     useClassroomStageViewport();
@@ -87,8 +95,9 @@ function View({
           stageRef={stageRef}
           phoneControls={<button>Micrófono</button>}
           isPhoneLandscape={phone}
-          stageControlsVisible={false}
-          onRevealControls={() => undefined}
+          stageControlsVisible={stageControlsVisible}
+          onRevealControls={onReveal}
+          viewMode={viewMode}
           zoom={zoom}
           onZoom={handleZoom}
           contentActive={share || whiteboard}
@@ -106,16 +115,18 @@ function View({
           enterFullscreenLabel="Pantalla completa"
           exitFullscreenLabel="Salir de pantalla completa"
         >
-          <ClassroomScreenShareContent
-            previewContent={
-              <input aria-label="Contenido compartido" defaultValue="" />
-            }
-            zoom={zoom}
-            pan={pan}
-            onRevealControls={() => undefined}
-            onStartPan={startPanDrag}
-            loadingLabel="Cargando"
-          />
+          {children ?? (
+            <ClassroomScreenShareContent
+              previewContent={
+                <input aria-label="Contenido compartido" defaultValue="" />
+              }
+              zoom={zoom}
+              pan={pan}
+              onRevealControls={() => undefined}
+              onStartPan={startPanDrag}
+              loadingLabel="Cargando"
+            />
+          )}
         </ClassroomStage>
       </ClassroomPresentationContext.Provider>
     </Intl>
@@ -123,6 +134,75 @@ function View({
 }
 
 describe("classroom display controls", () => {
+  it.each(["presenter", "mosaic"] as const)(
+    "disables hidden mobile media controls and restores them when revealed in %s",
+    (viewMode) => {
+      const presentation = makePresentation();
+      const view = render(
+        <View presentation={presentation} phone viewMode={viewMode} />,
+      );
+      const microphone = screen.getByRole("button", { name: "Micrófono" });
+      expect(microphone.closest("[inert]")).not.toBeNull();
+
+      view.rerender(
+        <View
+          presentation={presentation}
+          phone
+          viewMode={viewMode}
+          stageControlsVisible
+        />,
+      );
+      expect(microphone.closest("[inert]")).toBeNull();
+      expect(
+        screen
+          .getByRole("button", { name: "Visualización de la sala" })
+          .closest("[inert]"),
+      ).toBeNull();
+    },
+  );
+
+  it("lets mosaic cards receive clicks in phone landscape without the tap overlay", () => {
+    const onPin = vi.fn();
+    const onReveal = vi.fn();
+    const presentation = makePresentation();
+    const card = <button onClick={onPin}>Fijar a Ana</button>;
+    const view = render(
+      <View
+        presentation={presentation}
+        phone
+        share={false}
+        viewMode="mosaic"
+        onReveal={onReveal}
+      >
+        {card}
+      </View>,
+    );
+    const pin = screen.getByRole("button", { name: "Fijar a Ana" });
+    const stage = pin.parentElement!;
+    expect(stage.querySelector(":scope > .absolute.inset-0")).toBeNull();
+
+    fireEvent.click(pin);
+    expect(onPin).toHaveBeenCalledOnce();
+    expect(onReveal).toHaveBeenCalledOnce();
+    expect(
+      screen
+        .getByRole("button", { name: "Visualización de la sala" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+
+    view.rerender(
+      <View
+        presentation={presentation}
+        phone
+        share={false}
+        viewMode="presenter"
+      >
+        {card}
+      </View>,
+    );
+    expect(stage.querySelector(":scope > .absolute.inset-0")).not.toBeNull();
+  });
+
   it.each([false, true])(
     "offers one popup action and one restore action when video PiP is unavailable (error: %s)",
     (error) => {
@@ -353,7 +433,9 @@ describe("classroom display controls", () => {
     expect(
       screen.queryByRole("button", { name: "Abrir ventana flotante" }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Abrir sala completa" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Abrir sala completa" }),
+    );
     expect(presentation.returnToClassroom).toHaveBeenCalledOnce();
     expect(presentation.openFloating).not.toHaveBeenCalled();
   });
