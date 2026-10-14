@@ -229,6 +229,10 @@ export default defineSchema({
     .index("by_grade", ["gradeCode"])
     .index("by_active", ["isActive"])
     .index("by_active_and_class_type", ["isActive", "classType"])
+    .index("by_isActive_and_enrollmentsMigratedAt", [
+      "isActive",
+      "enrollmentsMigratedAt",
+    ])
     .index("by_school_and_active_and_class_type", [
       "schoolId",
       "isActive",

@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { useTranslations, useLocale, useFormatter } from "next-intl";
 import { enUS, es, ptBR } from "date-fns/locale";
-import { format, isSameDay } from "date-fns";
+import { endOfDay, format, isSameDay, startOfDay } from "date-fns";
 import { StudentScheduleEvent } from "@/lib/types/student";
 import { cn } from "@/lib/utils";
 import { Link, useRouter } from "@/i18n/navigation";
@@ -197,12 +197,16 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
 
   // Queries
   const roundedNow = Math.floor(now / 60_000) * 60_000;
+  const dayStart = startOfDay(now).getTime();
+  const dayEnd = endOfDay(now).getTime();
   const ownEventsResult = useQuery(
     api.schedule.getMySchedule,
     isViewingStudentProfile
       ? "skip"
       : {
-          now: roundedNow,
+          now: dayStart,
+          from: dayStart,
+          to: dayEnd,
           includeAttendance: false,
           includeRecordings: false,
         },
@@ -212,13 +216,20 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     isViewingStudentProfile ? "skip" : {},
   );
   const dashboardResult = useQuery(api.student.getStudentDashboardStats, {
-    now: roundedNow,
     ...(studentId ? { studentId, orgSlug } : {}),
   });
+  const studentScheduleResult = useQuery(
+    api.student.getStudentDashboardSchedule,
+    studentId ? { studentId, orgSlug, from: dayStart, to: dayEnd } : "skip",
+  );
   const dashboardScopeKey = studentId ? `${orgSlug}:${studentId}` : "self";
   const ownEvents = useRetainedQueryResult(ownEventsResult, "self");
   const dashboardData = useRetainedQueryResult(
     dashboardResult,
+    dashboardScopeKey,
+  );
+  const studentSchedule = useRetainedQueryResult(
+    studentScheduleResult,
     dashboardScopeKey,
   );
   const storedAvatarUrl = useQuery(
@@ -227,9 +238,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
       ? { storageId: dashboardData.student.avatarStorageId }
       : "skip",
   );
-  const events = isViewingStudentProfile
-    ? dashboardData?.upcomingLessons
-    : ownEvents;
+  const events = isViewingStudentProfile ? studentSchedule : ownEvents;
 
   useEffect(() => {
     if (isViewingStudentProfile) return;
@@ -291,7 +300,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
   const overallStats = dashboardData?.overall;
 
   const liveLessons = isViewingStudentProfile
-    ? (dashboardData?.upcomingLessons.filter(isLiveClassSession) ?? [])
+    ? (studentSchedule?.filter(isLiveClassSession) ?? [])
     : (accessibleLiveClasses ?? []);
   const nextLesson = liveLessons[0] ?? todayLessons[0] ?? null;
   const nextLessonExternalPlatform = getExternalClassPlatform(
@@ -358,7 +367,11 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     </>
   );
 
-  if (isViewingStudentProfile && dashboardData === undefined) {
+  if (
+    isViewingStudentProfile &&
+    (dashboardData === undefined ||
+      (dashboardData !== null && studentSchedule === undefined))
+  ) {
     return <Skeleton className="h-96 w-full" />;
   }
 

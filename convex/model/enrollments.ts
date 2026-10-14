@@ -3,6 +3,44 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { toCivilDate, todayInTimeZone } from "../../lib/time-zone";
 import { getClassTimeZone } from "./timeZone";
 
+export async function listActiveStudentClasses(
+  ctx: QueryCtx,
+  studentId: Id<"users">,
+  campusId?: Id<"campuses">,
+) {
+  const enrollments = await ctx.db
+    .query("classEnrollments")
+    .withIndex("by_student", (q) => q.eq("studentId", studentId))
+    .collect();
+  const [enrolled, legacy] = await Promise.all([
+    Promise.all(
+      enrollments.map(({ classId }) => ctx.db.get("classes", classId)),
+    ),
+    ctx.db
+      .query("classes")
+      .withIndex("by_isActive_and_enrollmentsMigratedAt", (q) =>
+        q.eq("isActive", true).lte("enrollmentsMigratedAt", 0),
+      )
+      .collect(),
+  ]);
+  // Missing/zero migration timestamps retain the existing legacy roster semantics.
+  const legacyEnrolled = legacy.filter(
+    (course) =>
+      !course.enrollmentsMigratedAt && course.students?.includes(studentId),
+  );
+  return [
+    ...new Map(
+      [...enrolled, ...legacyEnrolled]
+        .filter((course): course is Doc<"classes"> =>
+          Boolean(
+            course?.isActive && (!campusId || course.campusId === campusId),
+          ),
+        )
+        .map((course) => [course._id, course]),
+    ).values(),
+  ];
+}
+
 export function matchesCourseGrade(
   studentGrade: string | undefined,
   courseGrade: string | undefined,

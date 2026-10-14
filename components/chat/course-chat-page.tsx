@@ -59,6 +59,7 @@ export function CourseChatPage({
       ? {
           classId,
           now,
+          status: "active",
           includeAttendance: false,
           includeRecordings: false,
         }

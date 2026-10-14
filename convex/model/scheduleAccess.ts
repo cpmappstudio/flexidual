@@ -13,7 +13,7 @@ import {
   canStaffAccessLiveClass,
   canStudentAccessLiveClass,
 } from "./liveAccess";
-import { isStudentEnrolled } from "./enrollments";
+import { isStudentEnrolled, listActiveStudentClasses } from "./enrollments";
 
 export type ScheduleClassScope = {
   schoolId?: Id<"schools">;
@@ -284,32 +284,13 @@ export async function listAccessibleScheduleClasses(
         q.eq("teacherId", user._id).eq("isActive", true),
       )
       .collect();
-    const enrollmentRows = await ctx.db
-      .query("classEnrollments")
-      .withIndex("by_student", (q) => q.eq("studentId", user._id))
-      .collect();
-    const enrolledClasses = (
-      await Promise.all(enrollmentRows.map((row) => ctx.db.get(row.classId)))
-    ).filter((classData): classData is Doc<"classes"> =>
-      Boolean(classData?.isActive),
-    );
-    // Remove this fallback after class enrollment rows are backfilled everywhere.
-    const legacyClasses = (
-      await ctx.db
-        .query("classes")
-        .withIndex("by_active", (q) => q.eq("isActive", true))
-        .collect()
-    ).filter(
-      (classData) =>
-        !classData.enrollmentsMigratedAt &&
-        classData.students?.includes(user._id),
-    );
     const campusId = studentCampusId ?? scope.campusId;
-    const combined = [
-      ...teachingClasses,
-      ...enrolledClasses,
-      ...legacyClasses,
-    ].filter(
+    const enrolledClasses = await listActiveStudentClasses(
+      ctx,
+      user._id,
+      campusId,
+    );
+    const combined = [...teachingClasses, ...enrolledClasses].filter(
       (classData) =>
         (!campusId || classData.campusId === campusId) &&
         matchesScope(classData, scope),

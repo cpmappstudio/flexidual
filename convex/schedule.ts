@@ -845,20 +845,29 @@ export const getMySchedule = query({
 
     const scheduleItems = await Promise.all(
       classIds.map((id) =>
-        ctx.db
-          .query("classSchedule")
-          .withIndex("by_class", (q) => {
-            const range = q.eq("classId", id);
-            if (from !== undefined && to !== undefined) {
-              return range
-                .gte("scheduledStart", from)
-                .lte("scheduledStart", to);
-            }
-            if (from !== undefined) return range.gte("scheduledStart", from);
-            if (to !== undefined) return range.lte("scheduledStart", to);
-            return range;
-          })
-          .collect(),
+        args.status && from === undefined && to === undefined
+          ? ctx.db
+              .query("classSchedule")
+              .withIndex(
+                "by_class_and_status_and_session_type_and_scheduled_start",
+                (q) => q.eq("classId", id).eq("status", args.status!),
+              )
+              .collect()
+          : ctx.db
+              .query("classSchedule")
+              .withIndex("by_class", (q) => {
+                const range = q.eq("classId", id);
+                if (from !== undefined && to !== undefined) {
+                  return range
+                    .gte("scheduledStart", from)
+                    .lte("scheduledStart", to);
+                }
+                if (from !== undefined)
+                  return range.gte("scheduledStart", from);
+                if (to !== undefined) return range.lte("scheduledStart", to);
+                return range;
+              })
+              .collect(),
       ),
     );
 

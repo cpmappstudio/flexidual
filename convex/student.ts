@@ -9,7 +9,10 @@ import { ConvexError, v } from "convex/values";
 import { getInstitutionGrades } from "./model/grades";
 import { getStudentGradeCode } from "./model/membership";
 import { resolveStudentDashboardAccess } from "./model/studentDashboardAccess";
-import { isStudentEnrolled } from "./model/enrollments";
+import {
+  isStudentEnrolled,
+  listActiveStudentClasses,
+} from "./model/enrollments";
 import { canManageCampusPeople, canManageClasses } from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
 import { curriculumIconValidator } from "./model/curriculumIcons";
@@ -63,6 +66,106 @@ const dashboardScheduleValidator = v.object({
 const studentDashboardTargetValidator = v.object({
   studentId: v.optional(v.string()),
   orgSlug: v.optional(v.string()),
+});
+
+function toDashboardSchedule(
+  schedule: Doc<"classSchedule">,
+  course: Doc<"classes">,
+  curriculum: Doc<"curriculums"> | null,
+  timeZone: string | undefined,
+) {
+  return {
+    scheduleId: schedule._id,
+    title: schedule.title || course.name,
+    ...(schedule.description !== undefined
+      ? { description: schedule.description }
+      : {}),
+    className: course.name,
+    start: schedule.scheduledStart,
+    end: schedule.scheduledEnd,
+    timeZone: timeZone ?? "UTC",
+    roomName: schedule.roomName,
+    isLive: isLiveClassSession(schedule),
+    color: curriculum?.color || "#3b82f6",
+    status: schedule.status,
+    ...(schedule.sessionType !== undefined
+      ? { sessionType: schedule.sessionType }
+      : {}),
+    attendance: "upcoming" as const,
+    minutesAttended: 0 as const,
+    isStudentActive: false as const,
+  };
+}
+
+// The clock filters these events locally; the subscription changes only with the day or data.
+export const getStudentDashboardSchedule = query({
+  args: {
+    ...studentDashboardTargetValidator.fields,
+    from: v.number(),
+    to: v.number(),
+  },
+  returns: v.union(v.null(), v.array(dashboardScheduleValidator)),
+  handler: async (ctx, args) => {
+    if (
+      !Number.isFinite(args.from) ||
+      !Number.isFinite(args.to) ||
+      args.from > args.to ||
+      args.to - args.from > 2 * 24 * 60 * 60_000
+    )
+      throw new ConvexError("INVALID_DATE_RANGE");
+    const access = await resolveStudentDashboardAccess(ctx, args);
+    if (!access) return null;
+    const courses = await listActiveStudentClasses(
+      ctx,
+      access.student._id,
+      access.campus?._id,
+    );
+    const events = await Promise.all(
+      courses.map(async (course) => {
+        const [day, active, curriculum, timeZone] = await Promise.all([
+          ctx.db
+            .query("classSchedule")
+            .withIndex("by_class", (q) =>
+              q
+                .eq("classId", course._id)
+                .gte("scheduledStart", args.from)
+                .lte("scheduledStart", args.to),
+            )
+            .collect(),
+          ctx.db
+            .query("classSchedule")
+            .withIndex(
+              "by_class_and_status_and_session_type_and_scheduled_start",
+              (q) => q.eq("classId", course._id).eq("status", "active"),
+            )
+            .collect(),
+          ctx.db.get(course.curriculumId),
+          getClassTimeZone(ctx, course),
+        ]);
+        return [
+          ...new Map(
+            [
+              ...day,
+              ...active.filter(
+                (schedule) =>
+                  isLiveClassSession(schedule) ||
+                  schedule.scheduledEnd >= args.from,
+              ),
+            ].map((schedule) => [schedule._id, schedule]),
+          ).values(),
+        ]
+          .filter(
+            (schedule) =>
+              schedule.status !== "completed" &&
+              schedule.status !== "cancelled",
+          )
+          .map((schedule) =>
+            toDashboardSchedule(schedule, course, curriculum, timeZone),
+          );
+      }),
+    );
+    return events.flat().sort((a, b) => a.start - b.start);
+  },
 });
 
 export const getAbekaCourseReport = query({
@@ -155,41 +258,6 @@ const pendingAttendanceSessionValidator = v.object({
   canCompleteReport: v.boolean(),
 });
 
-async function listActiveStudentClasses(
-  ctx: QueryCtx,
-  studentId: Id<"users">,
-  campusId?: string,
-) {
-  const enrollmentRows = await ctx.db
-    .query("classEnrollments")
-    .withIndex("by_student", (q) => q.eq("studentId", studentId))
-    .collect();
-  const normalizedClasses = (
-    await Promise.all(
-      enrollmentRows.map(({ classId }) => ctx.db.get("classes", classId)),
-    )
-  ).filter((classData) => classData?.isActive);
-  const legacyClasses = (
-    await ctx.db
-      .query("classes")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
-      .collect()
-  ).filter(
-    (classData) =>
-      !classData.enrollmentsMigratedAt &&
-      classData.students?.includes(studentId),
-  );
-
-  return [
-    ...new Map(
-      [...normalizedClasses, ...legacyClasses]
-        .filter((classData) => classData !== null)
-        .filter((classData) => !campusId || classData!.campusId === campusId)
-        .map((classData) => [classData!._id, classData!]),
-    ).values(),
-  ];
-}
-
 function isVerifiedStandardSession(schedule: {
   status: "scheduled" | "active" | "completed" | "cancelled";
   sessionClosureStatus?: "pending" | "completed";
@@ -259,7 +327,7 @@ async function buildAttendanceHistoryItem(
 
 export const getStudentDashboardStats = query({
   args: {
-    now: v.number(),
+    now: v.optional(v.number()),
     ...studentDashboardTargetValidator.fields,
   },
   returns: v.union(
@@ -342,7 +410,8 @@ export const getStudentDashboardStats = query({
     const access = await resolveStudentDashboardAccess(ctx, args);
     if (!access) return null;
     const { viewer, student: user, campus } = access;
-    const includeUpcomingLessons = Boolean(args.studentId);
+    const now = args.now;
+    const includeUpcomingLessons = Boolean(args.studentId && now !== undefined);
 
     const canEdit = campus
       ? await canManageCampusPeople(
@@ -555,43 +624,34 @@ export const getStudentDashboardStats = query({
               attendanceCounts,
             },
             icon: userPreference?.icon || null,
-            nextSession: schedules
-              .filter((schedule) => schedule.scheduledStart > args.now)
-              .sort((a, b) => a.scheduledStart - b.scheduledStart)[0]
-              ?.scheduledStart,
+            nextSession:
+              now === undefined
+                ? undefined
+                : schedules
+                    .filter((schedule) => schedule.scheduledStart > now)
+                    .sort((a, b) => a.scheduledStart - b.scheduledStart)[0]
+                    ?.scheduledStart,
           },
           pendingAttendanceSessions,
-          upcomingLessons: includeUpcomingLessons
-            ? schedules
-                .filter((schedule) =>
-                  isUpcomingClassSession(
-                    schedule,
-                    schedule.scheduledEnd,
-                    args.now,
-                  ),
-                )
-                .map((schedule) => ({
-                  scheduleId: schedule._id,
-                  title: schedule.title || classData.name,
-                  ...(schedule.description !== undefined
-                    ? { description: schedule.description }
-                    : {}),
-                  className: classData.name,
-                  start: schedule.scheduledStart,
-                  end: schedule.scheduledEnd,
-                  timeZone: timeZone ?? "UTC",
-                  roomName: schedule.roomName,
-                  isLive: isLiveClassSession(schedule),
-                  color: curriculum?.color || "#3b82f6",
-                  status: schedule.status,
-                  ...(schedule.sessionType !== undefined
-                    ? { sessionType: schedule.sessionType }
-                    : {}),
-                  attendance: "upcoming" as const,
-                  minutesAttended: 0 as const,
-                  isStudentActive: false as const,
-                }))
-            : [],
+          upcomingLessons:
+            includeUpcomingLessons && now !== undefined
+              ? schedules
+                  .filter((schedule) =>
+                    isUpcomingClassSession(
+                      schedule,
+                      schedule.scheduledEnd,
+                      now,
+                    ),
+                  )
+                  .map((schedule) =>
+                    toDashboardSchedule(
+                      schedule,
+                      classData,
+                      curriculum,
+                      timeZone,
+                    ),
+                  )
+              : [],
         };
       }),
     );
