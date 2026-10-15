@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 224" role="img" aria-labelledby="flexidual-planet-title">
+  <title id="flexidual-planet-title">Planeta Flexidual</title>
+  <defs>
+    <radialGradient id="flexidual-planet-surface" cx="30%" cy="24%" r="82%">
+      <stop offset="0" stop-color="#73d4ec"/>
+      <stop offset="0.64" stop-color="#197db8"/>
+      <stop offset="1" stop-color="#125782"/>
+    </radialGradient>
+    <linearGradient id="flexidual-planet-orbit" x1="12" y1="112" x2="244" y2="137" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffc65a"/>
+      <stop offset="0.5" stop-color="#f59a0b"/>
+      <stop offset="1" stop-color="#e78409"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="128" cy="112" rx="116" ry="25" transform="rotate(-24 128 112)" fill="none" stroke="#e78409" stroke-width="10"/>
+  <circle cx="128" cy="112" r="78" fill="url(#flexidual-planet-surface)"/>
+  <path d="M 94 53 A 66 66 0 0 0 65 81" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="7" stroke-linecap="round"/>
+  <path d="M 12 112 A 116 25 0 0 0 244 112" transform="rotate(-24 128 112)" fill="none" stroke="url(#flexidual-planet-orbit)" stroke-width="13" stroke-linecap="round"/>
+</svg>

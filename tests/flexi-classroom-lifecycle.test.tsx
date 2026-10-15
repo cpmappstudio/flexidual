@@ -305,8 +305,40 @@ vi.mock("@/components/classroom/companion-classroom-ui", () => ({
   CompanionClassroomUI: ({ countdown }: { countdown?: ReactNode }) => countdown,
 }));
 
-vi.mock("@/components/student/rocket-transition", () => ({
-  ClassroomRocketLoader: () => null,
+vi.mock("@/components/classroom/classroom-entry-loader", () => ({
+  ClassroomEntryLoader: ({
+    label,
+    onComplete,
+  }: {
+    label: string;
+    onComplete: () => void;
+  }) =>
+    createElement(
+      "div",
+      null,
+      label,
+      createElement("button", { onClick: onComplete }, "Finish entrance"),
+    ),
+}));
+
+vi.mock("framer-motion", () => ({
+  useReducedMotion: () => false,
+  AnimatePresence: ({ children }: { children: ReactNode }) => children,
+  motion: {
+    div: ({
+      initial,
+      animate,
+      exit,
+      transition,
+      ...props
+    }: Record<string, unknown>) => {
+      void initial;
+      void animate;
+      void exit;
+      void transition;
+      return createElement("div", props);
+    },
+  },
 }));
 
 import FlexiClassroom from "@/components/classroom/flexi-classroom";
@@ -391,6 +423,37 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([false, true])(
+    "connects in parallel and reveals the room after connection and animation (student: %s)",
+    async (isStudentView) => {
+      let resolveToken!: (token: string) => void;
+      testState.getToken.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveToken = resolve;
+          }),
+      );
+      render(
+        createElement(FlexiClassroom, { roomName: "room-1", isStudentView }),
+      );
+      expect(screen.getByText("classroom.entering")).toBeTruthy();
+      expect(testState.roomLifecycle.mounts).toBe(0);
+
+      await act(async () => resolveToken("ready-token"));
+      expect(screen.getByText("classroom.entering")).toBeTruthy();
+      expect(testState.roomLifecycle.mounts).toBe(1);
+      expect(testState.roomLifecycle.mountedTokens).toEqual(["ready-token"]);
+      fireEvent.click(screen.getByRole("button", { name: "Finish entrance" }));
+      expect(screen.getByText("classroom.entering")).toBeTruthy();
+      await act(async () => {
+        await testState.liveKitProps?.onConnected?.();
+      });
+      expect(screen.queryByText("classroom.entering")).toBeNull();
+      expect(testState.roomLifecycle.mounts).toBe(1);
+      expect(testState.roomLifecycle.unmounts).toBe(0);
+    },
+  );
+
   it("currently cannot initialize presence without crypto.randomUUID", () => {
     vi.stubGlobal("crypto", {});
     const consoleError = vi
@@ -427,11 +490,14 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
       await testState.liveKitProps?.onConnected?.();
     });
     testState.pathname = "/es/school";
+    fireEvent.click(screen.getByRole("button", { name: "Finish entrance" }));
     view.rerender(createElement(PersistentClassroom, { show: false }));
+    expect(screen.queryByText("classroom.entering")).toBeNull();
     expect(screen.getByTestId("livekit-room")).toBe(originalRoom);
     expect(originalRoom.closest("[data-classroom-mini]")).not.toBeNull();
     testState.pathname = "/es/school/classroom/room-1";
     view.rerender(createElement(PersistentClassroom));
+    expect(screen.queryByText("classroom.entering")).toBeNull();
     expect(screen.getByTestId("livekit-room")).toBe(originalRoom);
     expect(originalRoom.closest("[data-classroom-mini]")).toBeNull();
     expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
@@ -717,6 +783,10 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     );
 
     await flushPromises();
+    await act(async () => {
+      await testState.liveKitProps?.onConnected?.();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Finish entrance" }));
 
     expect(screen.getByTestId("livekit-room")).toBeTruthy();
     expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
@@ -726,6 +796,7 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     });
 
     expect(testState.queryLifecycle.loadingTransitions).toBe(1);
+    expect(screen.queryByText("classroom.entering")).toBeNull();
     expect(screen.getByRole("timer").textContent).toContain("29:00");
     expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
 
@@ -734,6 +805,7 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     });
 
     expect(testState.queryLifecycle.loadingTransitions).toBe(2);
+    expect(screen.queryByText("classroom.entering")).toBeNull();
     expect(screen.getByRole("timer").textContent).toContain("28:00");
     expect(screen.getByTestId("livekit-room")).toBeTruthy();
     expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
@@ -891,6 +963,29 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     expect(screen.getByTestId("livekit-room")).toBeTruthy();
   });
 
+  it("waits for the new room connection after retrying an already connected room", async () => {
+    render(createElement(FlexiClassroom, { roomName: "room-1" }));
+    await flushPromises();
+    await act(async () => {
+      await testState.liveKitProps?.onConnected?.();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Finish entrance" }));
+    expect(screen.queryByText("classroom.entering")).toBeNull();
+
+    act(() => {
+      testState.liveKitProps?.onError?.(new Error("connection failed"));
+    });
+    fireEvent.click(screen.getByText("classroom.tryAgain"));
+    await flushPromises();
+    expect(testState.roomLifecycle).toMatchObject({ mounts: 2, unmounts: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Finish entrance" }));
+    expect(screen.getByText("classroom.entering")).toBeTruthy();
+    await act(async () => {
+      await testState.liveKitProps?.onConnected?.();
+    });
+    expect(screen.queryByText("classroom.entering")).toBeNull();
+  });
+
   it("does not navigate away after an unexpected final disconnect", async () => {
     render(createElement(FlexiClassroom, { roomName: "room-1" }));
     await flushPromises();
@@ -928,6 +1023,41 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     });
 
     expect(testState.router.push).toHaveBeenCalledWith("/es/school");
+  });
+
+  it("does not replay entrance while saving student departure or navigating away", async () => {
+    let finishLeave!: () => void;
+    render(
+      createElement(FlexiClassroom, {
+        roomName: "room-1",
+        isStudentView: true,
+      }),
+    );
+    await flushPromises();
+    await act(async () => {
+      await testState.liveKitProps?.onConnected?.();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Finish entrance" }));
+    expect(screen.queryByText("classroom.entering")).toBeNull();
+    testState.logPresence.mockImplementationOnce(
+      () => new Promise<null>((resolve) => (finishLeave = () => resolve(null))),
+    );
+
+    let departure: void | Promise<void>;
+    act(() => {
+      departure = testState.liveKitProps?.onDisconnected?.(
+        DisconnectReason.CLIENT_INITIATED,
+      );
+    });
+    expect(testState.router.push).not.toHaveBeenCalled();
+    expect(screen.queryByText("classroom.entering")).toBeNull();
+    expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
+    await act(async () => {
+      finishLeave();
+      await departure;
+    });
+    expect(testState.router.push).toHaveBeenCalledWith("/es/school");
+    expect(screen.queryByText("classroom.entering")).toBeNull();
   });
 
   it("unmounts only after a confirmed terminal session state", async () => {
