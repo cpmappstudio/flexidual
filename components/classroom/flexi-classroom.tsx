@@ -26,7 +26,7 @@ import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
 import { useSidebar } from "@/components/ui/sidebar";
 import { CompanionClassroomUI } from "./companion-classroom-ui";
 import { useFullscreen } from "@/hooks/use-fullscreen";
-import { ClassroomRocketLoader } from "@/components/student/rocket-transition";
+import { ClassroomEntryTransition } from "./classroom-entry-transition";
 import { ClassroomCountdown } from "./classroom-countdown";
 import { useClassroomClock } from "./use-classroom-clock";
 import { useClassroomToken } from "@/hooks/use-classroom-token";
@@ -243,6 +243,8 @@ export default function FlexiClassroom({
     () => ({ id: crypto.randomUUID(), scope: connectionScope }),
     [connectionScope],
   );
+  const [connectedScope, setConnectedScope] = useState<string>();
+  const [leavingScope, setLeavingScope] = useState<string>();
   const hasPendingCloseout =
     !isCompanion &&
     !resolvedIsStudentView &&
@@ -299,6 +301,19 @@ export default function FlexiClassroom({
         : "");
 
   const loggedScheduleRef = useRef<string | null>(null);
+  const isCheckingEntry = !convexUser || sessionStatus === undefined;
+  const isReopeningEntry = isSessionClosed && reopenedScope === connectionScope;
+  const isEntryEnabled =
+    !error &&
+    leavingScope !== connectionScope &&
+    scheduleDetails !== null &&
+    (isCheckingEntry || isReopeningEntry || shouldConnect);
+  const isEntryLoading =
+    isCheckingEntry ||
+    isReopeningEntry ||
+    !token ||
+    !scheduleDetails ||
+    connectedScope !== connectionScope;
   const nextRoomRef = useRef<string | null>(null);
   const currentRoomRef = useRef(roomName);
   const sessionClosedRef = useRef(isSessionClosed);
@@ -352,6 +367,8 @@ export default function FlexiClassroom({
   };
 
   const handleConnected = useCallback(async () => {
+    if (currentConnectionScopeRef.current === connectionScope)
+      setConnectedScope(connectionScope);
     setRoomErrorState((current) =>
       current?.scopeKey === connectionScope ? null : current,
     );
@@ -430,7 +447,9 @@ export default function FlexiClassroom({
       }
 
       const isClientInitiated = reason === DisconnectReason.CLIENT_INITIATED;
-      if (!isClientInitiated) {
+      if (isClientInitiated) setLeavingScope(connectionScope);
+      else {
+        setConnectedScope(undefined);
         setRoomErrorState({
           scopeKey: connectionScope,
           message:
@@ -491,6 +510,7 @@ export default function FlexiClassroom({
   );
 
   const handleRetry = useCallback(() => {
+    setConnectedScope(undefined);
     setRoomErrorState((current) =>
       current?.scopeKey === connectionScope ? null : current,
     );
@@ -515,24 +535,7 @@ export default function FlexiClassroom({
 
   const renderClassroom = () => {
     // Loading State
-    if (!convexUser || sessionStatus === undefined) {
-      if (resolvedIsStudentView) {
-        return <ClassroomRocketLoader label={t("classroom.checkingStatus")} />;
-      }
-
-      return (
-        <div
-          className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}
-        >
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            <p className="text-sm font-medium text-muted-foreground animate-pulse">
-              {t("classroom.checkingStatus")}
-            </p>
-          </div>
-        </div>
-      );
-    }
+    if (isCheckingEntry) return null;
 
     // Room Not Found
     if (!sessionStatus || scheduleDetails === null) {
@@ -572,9 +575,7 @@ export default function FlexiClassroom({
       );
     }
 
-    if (isSessionClosed && reopenedScope === connectionScope) {
-      return <ClassroomRocketLoader label={t("classroom.entering")} />;
-    }
+    if (isReopeningEntry) return null;
 
     if (isSessionClosed) {
       const endedTime = sessionStatus.endedAt
@@ -800,24 +801,7 @@ export default function FlexiClassroom({
     }
 
     // Connecting
-    if (!token || !scheduleDetails) {
-      if (resolvedIsStudentView) {
-        return <ClassroomRocketLoader label={t("classroom.entering")} />;
-      }
-
-      return (
-        <div
-          className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-sm rounded-lg ${className}`}
-        >
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
-            <p className="text-foreground font-medium">
-              {t("classroom.entering")}
-            </p>
-          </div>
-        </div>
-      );
-    }
+    if (!token || !scheduleDetails) return null;
 
     const countdown = isClassLive ? (
       <ClassroomCountdown
@@ -913,7 +897,16 @@ export default function FlexiClassroom({
 
   return (
     <>
-      {renderClassroom()}
+      <ClassroomEntryTransition
+        key={roomName}
+        enabled={isEntryEnabled}
+        loading={isEntryLoading}
+        label={t(
+          isCheckingEntry ? "classroom.checkingStatus" : "classroom.entering",
+        )}
+      >
+        {renderClassroom()}
+      </ClassroomEntryTransition>
       <SessionCloseoutDialog
         key={connectionScope}
         open={isCloseoutOpen}
