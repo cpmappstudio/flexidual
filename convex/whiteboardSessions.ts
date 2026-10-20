@@ -42,7 +42,7 @@ export const upsertScene = mutation({
       expectedLiveRoomName !== undefined &&
       getLiveRoomName(schedule) !== expectedLiveRoomName
     )
-      return null;
+      throw new ConvexError("STALE_LIVE_ACTIVATION");
     const existing = await ctx.db
       .query("whiteboardSessions")
       .withIndex("by_roomName", (q) => q.eq("roomName", roomName))

@@ -47,7 +47,12 @@ export function CompanionClassroomUI({
   // Restore presenting state from localStorage so a phone refresh doesn't reset the UI
   const [isBroadcasting, setIsBroadcasting] = useState(() => {
     if (typeof window === "undefined") return false;
-    return localStorage.getItem(`${WB_PRESENTING_KEY}${roomName}`) === "true";
+    try {
+      return localStorage.getItem(`${WB_PRESENTING_KEY}${roomName}`) === "true";
+    } catch {
+      // Storage is optional; a blocked browser starts without restoring presentation.
+      return false;
+    }
   });
   const [isPortrait, setIsPortrait] = useState(false);
   const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
@@ -61,10 +66,13 @@ export function CompanionClassroomUI({
 
   // Persist presenting state — lets the button show the correct label after a refresh
   useEffect(() => {
-    localStorage.setItem(
-      `${WB_PRESENTING_KEY}${roomName}`,
-      isBroadcasting ? "true" : "false",
-    );
+    try {
+      const key = `${WB_PRESENTING_KEY}${roomName}`;
+      if (isBroadcasting) localStorage.setItem(key, "true");
+      else localStorage.removeItem(key);
+    } catch {
+      // A full or blocked cache must not interrupt the live whiteboard.
+    }
   }, [isBroadcasting, roomName]);
 
   // Guard: fires only once per mount to avoid double re-announce
@@ -269,7 +277,11 @@ export function CompanionClassroomUI({
       }
     }
     // Clear the persisted presenting flag so a future reconnect starts clean
-    localStorage.removeItem(`${WB_PRESENTING_KEY}${roomName}`);
+    try {
+      localStorage.removeItem(`${WB_PRESENTING_KEY}${roomName}`);
+    } catch {
+      // Disconnect even if the browser refuses storage cleanup.
+    }
     await room.disconnect();
     // Navigation is handled by LiveKitRoom.onDisconnected → flexi-classroom.handleDisconnect
   };

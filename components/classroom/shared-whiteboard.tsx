@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, MutableRefObject } from "react";
 import dynamic from "next/dynamic";
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useRoomContext } from "@livekit/components-react";
@@ -32,16 +33,20 @@ type ExcalidrawElements = Parameters<
   NonNullable<ExcalidrawProps["onChange"]>
 >[0];
 
+function WhiteboardLoading() {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-whiteboard text-sm text-muted-foreground">
+      Loading whiteboard…
+    </div>
+  );
+}
+
 // Dynamic import required — Excalidraw uses browser-only APIs (no SSR)
 const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
   {
     ssr: false,
-    loading: () => (
-      <div className="flex h-full w-full items-center justify-center bg-whiteboard text-sm text-muted-foreground">
-        Loading whiteboard…
-      </div>
-    ),
+    loading: WhiteboardLoading,
   },
 ) as ComponentType<ExcalidrawProps>;
 
@@ -148,9 +153,22 @@ type FileRefMap = Record<string, FileRef>;
 type PersistedScene = {
   elements: ExcalidrawElements;
   files: BinaryFiles;
+  /** False only for local edits not yet acknowledged by Convex. */
+  saved?: boolean;
   /** CDN refs written after each upload — survives page refresh without re-uploading */
   fileRefs?: FileRefMap;
 };
+
+function sceneRevision(elements: ExcalidrawElements) {
+  return JSON.stringify(
+    elements.map((element) => [
+      element.id,
+      element.version,
+      element.versionNonce,
+      element.isDeleted,
+    ]),
+  );
+}
 
 /**
  * Compress a data URL image via an off-screen Canvas before upload.
@@ -280,12 +298,17 @@ export function SharedWhiteboard({
   const generateUploadUrl = useMutation(api.whiteboardFiles.generateUploadUrl);
   const upsertScene = useMutation(api.whiteboardSessions.upsertScene);
   const addFileRefMutation = useMutation(api.whiteboardSessions.addFileRef);
-  // Readers subscribe to Convex scene changes reactively.
-  // Writers (isReadonly=false) skip the query — they write, not read.
+  const [writerSnapshot, setWriterSnapshot] = useState<
+    FunctionReturnType<typeof api.whiteboardSessions.getScene> | undefined
+  >(undefined);
+  // Writers recover once, then unsubscribe instead of rereading every edit.
   const sceneData = useQuery(
     api.whiteboardSessions.getScene,
-    isReadonly ? { roomName, recordingToken } : "skip",
+    isReadonly || writerSnapshot === undefined
+      ? { roomName, recordingToken }
+      : "skip",
   );
+  const receivedScene = isReadonly ? sceneData : writerSnapshot;
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const onReadyRef = useRef(onReady);
@@ -312,8 +335,10 @@ export function SharedWhiteboard({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSceneSaveRef = useRef<(() => void) | null>(null);
   const lastSceneRevisionRef = useRef<string | null>(null);
+  const confirmedSceneRevisionRef = useRef<string | null>(null);
   useEffect(() => {
     lastSceneRevisionRef.current = null;
+    confirmedSceneRevisionRef.current = null;
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       pendingSceneSaveRef.current?.();
@@ -352,11 +377,19 @@ export function SharedWhiteboard({
   const collaboratorsRef = useRef<Map<SocketId, Collaborator>>(new Map());
 
   // Load persisted scene once per mount — roomName change means a new instance
-  const { initialData, initialFileRefs, initialFiles } = useMemo(() => {
+  const {
+    initialData: cachedData,
+    initialFileRefs,
+    initialFiles,
+    hasPendingScene,
+    cachedRevision,
+  } = useMemo(() => {
     const empty = {
       initialData: { elements: [] } as ExcalidrawInitialDataState,
       initialFileRefs: {} as FileRefMap,
       initialFiles: {} as BinaryFiles,
+      hasPendingScene: false,
+      cachedRevision: null as string | null,
     };
     if (typeof window === "undefined") return empty;
     try {
@@ -367,6 +400,8 @@ export function SharedWhiteboard({
           initialData: scene as ExcalidrawInitialDataState,
           initialFileRefs: scene.fileRefs ?? ({} as FileRefMap),
           initialFiles: scene.files ?? ({} as BinaryFiles),
+          hasPendingScene: scene.saved === false,
+          cachedRevision: sceneRevision(scene.elements),
         };
       }
     } catch {
@@ -379,6 +414,45 @@ export function SharedWhiteboard({
   const fileRefsRef = useRef<FileRefMap>(initialFileRefs);
   // Current BinaryFiles in scene — initialised from localStorage, kept current by handleChange
   const currentFilesRef = useRef<BinaryFiles>(initialFiles);
+  const cachedRevisionRef = useRef(cachedRevision);
+
+  const confirmCachedScene = useCallback(() => {
+    if (
+      confirmedSceneRevisionRef.current === null ||
+      confirmedSceneRevisionRef.current !== lastSceneRevisionRef.current
+    )
+      return;
+    try {
+      const key = `${WB_STORAGE_PREFIX}${roomName}`;
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const cached = JSON.parse(raw) as PersistedScene;
+      // Image updates do not change the drawing revision; another draft does.
+      if (
+        cached.saved === true ||
+        sceneRevision(cached.elements) !== cachedRevisionRef.current
+      )
+        return;
+      try {
+        localStorage.setItem(key, JSON.stringify({ ...cached, saved: true }));
+      } catch {
+        // Only discard an obsolete cache once its images are also in Convex.
+        if (
+          Object.keys(cached.files ?? {}).every((id) => fileRefsRef.current[id])
+        )
+          localStorage.removeItem(key);
+      }
+    } catch {
+      // Confirmation must not depend on optional browser storage.
+    }
+  }, [roomName]);
+
+  useEffect(() => {
+    if (isReadonly || writerSnapshot !== undefined || sceneData === undefined)
+      return;
+    fileRefsRef.current = { ...initialFileRefs, ...sceneData?.fileRefs };
+    setWriterSnapshot(sceneData);
+  }, [isReadonly, writerSnapshot, sceneData, initialFileRefs]);
 
   // ---------------------------------------------------------------------------
   // RECEIVER — apply remote scene data into the local canvas
@@ -496,6 +570,7 @@ export function SharedWhiteboard({
         // Cache locally so a page refresh doesn't lose the mapping
         fileRefsRef.current[file.id] = fileRef;
         persistFileRefs();
+        confirmCachedScene();
       } catch (err) {
         console.error("[Whiteboard] Image upload failed:", err);
         reportRuntimeError(err, {
@@ -505,7 +580,14 @@ export function SharedWhiteboard({
         sentFileIdsRef.current.delete(file.id);
       }
     },
-    [generateUploadUrl, persistFileRefs, addFileRefMutation, roomName, room],
+    [
+      generateUploadUrl,
+      persistFileRefs,
+      confirmCachedScene,
+      addFileRefMutation,
+      roomName,
+      room,
+    ],
   );
 
   /**
@@ -554,14 +636,16 @@ export function SharedWhiteboard({
 
   // Load new images from Convex file refs as they are added.
   useEffect(() => {
-    if (!isReadonly || !sceneData?.fileRefs) return;
-    const fileRefs = sceneData.fileRefs as Record<
-      string,
-      { url: string; mimeType: string; created: number }
-    >;
+    if (!receivedScene?.fileRefs) return;
+    const fileRefs = receivedScene.fileRefs;
     for (const [fileId, ref] of Object.entries(fileRefs)) {
       if (addedFileIdsRef.current.has(fileId)) continue;
       addedFileIdsRef.current.add(fileId);
+      if (
+        initialFiles[fileId] &&
+        initialFileRefs[fileId]?.storageId === ref.storageId
+      )
+        continue;
       void (async () => {
         try {
           // Route through the Next.js proxy to bypass browser CORS restrictions.
@@ -602,13 +686,13 @@ export function SharedWhiteboard({
         }
       })();
     }
-  }, [isReadonly, sceneData?.fileRefs, room.name]);
+  }, [receivedScene?.fileRefs, room.name, initialFiles, initialFileRefs]);
 
   useEffect(() => {
     if (
       !isCanvasReady ||
       hasSignaledReadyRef.current ||
-      (isReadonly && sceneData === undefined)
+      receivedScene === undefined
     ) {
       return;
     }
@@ -625,11 +709,12 @@ export function SharedWhiteboard({
     }, 0);
 
     return () => clearTimeout(readyTimer);
-  }, [isCanvasReady, isReadonly, sceneData, room.name]);
+  }, [isCanvasReady, isReadonly, receivedScene, room.name]);
 
   const handleChange = useCallback(
     (elements: ExcalidrawElements, appState: AppState, files: BinaryFiles) => {
-      if (isReadonly || suppressRef.current) return;
+      if (isReadonly || writerSnapshot === undefined || suppressRef.current)
+        return;
 
       // Keep currentFilesRef current
       const filesChanged = currentFilesRef.current !== files;
@@ -645,27 +730,22 @@ export function SharedWhiteboard({
 
       // Track ordered element revisions, not appState (selection, zoom, cursors).
       // Include IDs and nonces: summing versions alone can miss different scenes.
-      const revision = JSON.stringify(
-        elements.map((element) => [
-          element.id,
-          element.version,
-          element.versionNonce,
-          element.isDeleted,
-        ]),
-      );
+      const revision = sceneRevision(elements);
       const persistScene = () => {
         try {
           const scene: PersistedScene = {
             elements,
             files: currentFilesRef.current,
             fileRefs: fileRefsRef.current,
+            saved: confirmedSceneRevisionRef.current === revision,
           };
           localStorage.setItem(
             `${WB_STORAGE_PREFIX}${roomName}`,
             JSON.stringify(scene),
           );
+          cachedRevisionRef.current = revision;
         } catch {
-          /* ignore QuotaExceededError */
+          // Keep the last recoverable draft if browser storage cannot be written.
         }
       };
       if (revision !== lastSceneRevisionRef.current) {
@@ -674,21 +754,27 @@ export function SharedWhiteboard({
         const save = () => {
           pendingSceneSaveRef.current = null;
           timerRef.current = null;
+          persistScene();
           void upsertScene({
             roomName,
             expectedLiveRoomName: room.name,
             elements: elements.filter((element) => !element.isDeleted),
-          }).catch((error) => {
-            if (lastSceneRevisionRef.current === revision)
-              lastSceneRevisionRef.current = null;
-            console.error("[Whiteboard] Scene save failed:", error);
-            reportRuntimeError(error, {
-              operation: "whiteboard.scene_save",
-              live_room: room.name,
-              connection_state: room.state,
+          })
+            .then(() => {
+              if (lastSceneRevisionRef.current !== revision) return;
+              confirmedSceneRevisionRef.current = revision;
+              confirmCachedScene();
+            })
+            .catch((error) => {
+              if (lastSceneRevisionRef.current === revision)
+                lastSceneRevisionRef.current = null;
+              console.error("[Whiteboard] Scene save failed:", error);
+              reportRuntimeError(error, {
+                operation: "whiteboard.scene_save",
+                live_room: room.name,
+                connection_state: room.state,
+              });
             });
-          });
-          persistScene();
         };
         pendingSceneSaveRef.current = save;
         timerRef.current = setTimeout(save, 80);
@@ -727,7 +813,15 @@ export function SharedWhiteboard({
         }
       }
     },
-    [room, isReadonly, roomName, uploadAndBroadcastFile, upsertScene],
+    [
+      room,
+      isReadonly,
+      roomName,
+      uploadAndBroadcastFile,
+      upsertScene,
+      writerSnapshot,
+      confirmCachedScene,
+    ],
   );
 
   // ---------------------------------------------------------------------------
@@ -765,9 +859,17 @@ export function SharedWhiteboard({
     [room, isReadonly],
   );
 
+  if (!isReadonly && writerSnapshot === undefined) {
+    return <WhiteboardLoading />;
+  }
+
   return (
     <WhiteboardCanvas
-      initialData={initialData}
+      initialData={
+        !isReadonly && writerSnapshot && !hasPendingScene
+          ? { ...cachedData, elements: writerSnapshot.elements }
+          : cachedData
+      }
       excalidrawAPI={(api: ExcalidrawImperativeAPI) => {
         apiRef.current = api;
         onApiReady?.(api);

@@ -906,11 +906,13 @@ describe("reopening audit: safety regressions", () => {
       expectedLiveRoomName: (await f.lifecycle())!.liveRoomName,
       elements: [{ id: "new-scene" }],
     });
-    await f.teacher.mutation(api.whiteboardSessions.upsertScene, {
-      roomName: ROOM,
-      expectedLiveRoomName: oldRoom,
-      elements: [{ id: "old-scene" }],
-    });
+    await expect(
+      f.teacher.mutation(api.whiteboardSessions.upsertScene, {
+        roomName: ROOM,
+        expectedLiveRoomName: oldRoom,
+        elements: [{ id: "old-scene" }],
+      }),
+    ).rejects.toThrow("STALE_LIVE_ACTIVATION");
     expect(
       (
         await f.student.query(api.whiteboardSessions.getScene, {

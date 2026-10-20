@@ -1,67 +1,9 @@
-import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
-import schema from "./schema";
-import { modules } from "./test.setup";
-
-async function setupRecordingContext() {
-  const t = convexTest(schema, modules);
-  const now = Date.now();
-  const data = await t.run(async (ctx) => {
-    const firstLeaderId = await ctx.db.insert("users", {
-      clerkId: "recording-leader-one",
-      firstName: "First",
-      lastName: "Leader",
-      fullName: "First Leader",
-      isActive: true,
-      createdAt: now,
-    });
-    const secondLeaderId = await ctx.db.insert("users", {
-      clerkId: "recording-leader-two",
-      firstName: "Second",
-      lastName: "Leader",
-      fullName: "Second Leader",
-      isActive: true,
-      createdAt: now,
-    });
-    const curriculumId = await ctx.db.insert("curriculums", {
-      title: "Recording curriculum",
-      isActive: true,
-      createdAt: now,
-      createdBy: firstLeaderId,
-    });
-    const classId = await ctx.db.insert("classes", {
-      name: "Recording class",
-      curriculumId,
-      teacherId: firstLeaderId,
-      isActive: true,
-      createdAt: now,
-      createdBy: firstLeaderId,
-    });
-    const scheduleId = await ctx.db.insert("classSchedule", {
-      classId,
-      scheduledStart: now,
-      scheduledEnd: now + 60_000,
-      roomName: "recording-room",
-      isLive: true,
-      status: "active",
-      sessionLeaderId: firstLeaderId,
-      sessionLeaderRole: "teacher",
-      sessionLeaderSince: now,
-      createdAt: now,
-      createdBy: firstLeaderId,
-    });
-    await ctx.db.insert("whiteboardSessions", {
-      roomName: "recording-room",
-      elements: [],
-      recordingToken: "valid-recording-token",
-      updatedAt: now,
-    });
-    return { classId, scheduleId, secondLeaderId };
-  });
-
-  return { t, ...data };
-}
+import {
+  setupRecordingContext,
+  storeWhiteboardImage,
+} from "../tests/fixtures/whiteboard";
 
 test("returns the persisted session leader to an authorized recording", async () => {
   const { t, classId } = await setupRecordingContext();
@@ -183,4 +125,116 @@ test("identical scenes and recording tokens do not write, but edits and clears d
         elements: [],
       }),
   ).rejects.toThrow("PERMISSION_DENIED");
+});
+
+test("the authorized writer recovers drawings and image refs without replacing stored images", async () => {
+  const { t } = await setupRecordingContext();
+  const writer = t.withIdentity({ subject: "recording-leader-one" });
+  const ref = await storeWhiteboardImage(
+    t,
+    "recording-room",
+    "image-file",
+    "saved-image",
+  );
+  const elements = [
+    { id: "drawing", version: 1 },
+    { id: "image", fileId: "image-file", version: 1 },
+  ];
+  await writer.mutation(api.whiteboardSessions.upsertScene, {
+    roomName: "recording-room",
+    elements,
+  });
+  const restored = await writer.query(api.whiteboardSessions.getScene, {
+    roomName: "recording-room",
+  });
+  expect(restored?.elements).toEqual(elements);
+  expect(restored?.fileRefs).toEqual({ "image-file": ref });
+  await writer.mutation(api.whiteboardSessions.upsertScene, {
+    roomName: "recording-room",
+    elements: [...restored!.elements, { id: "next-stroke", version: 1 }],
+  });
+  expect(
+    (
+      await writer.query(api.whiteboardSessions.getScene, {
+        roomName: "recording-room",
+      })
+    )?.fileRefs,
+  ).toEqual(restored?.fileRefs);
+  expect(
+    await t.run(async (ctx) => (await ctx.storage.get(ref.storageId))?.text()),
+  ).toBe("saved-image");
+});
+
+test("recovery is scoped to the caller's course; outsiders and anonymous callers cannot read or overwrite it", async () => {
+  const { t, classId, secondLeaderId } = await setupRecordingContext();
+  const writer = t.withIdentity({ subject: "recording-leader-one" });
+  const other = t.withIdentity({ subject: "recording-leader-two" });
+  await t.run(async (ctx) => {
+    const originalClass = await ctx.db.get(classId);
+    const otherClass = await ctx.db.insert("classes", {
+      name: "Other course",
+      curriculumId: originalClass!.curriculumId,
+      teacherId: secondLeaderId,
+      isActive: true,
+      createdAt: 1,
+      createdBy: secondLeaderId,
+    });
+    await ctx.db.insert("classSchedule", {
+      classId: otherClass,
+      roomName: "other-room",
+      isLive: true,
+      status: "active",
+      scheduledStart: 1,
+      scheduledEnd: 2,
+      createdAt: 1,
+      createdBy: secondLeaderId,
+    });
+    await ctx.db.insert("whiteboardSessions", {
+      roomName: "other-room",
+      elements: [{ id: "private-other-drawing" }],
+      updatedAt: 1,
+    });
+  });
+  await writer.mutation(api.whiteboardSessions.upsertScene, {
+    roomName: "recording-room",
+    elements: [{ id: "saved-drawing" }],
+  });
+  expect(
+    (
+      await other.query(api.whiteboardSessions.getScene, {
+        roomName: "other-room",
+      })
+    )?.elements,
+  ).toEqual([{ id: "private-other-drawing" }]);
+  await expect(
+    writer.query(api.whiteboardSessions.getScene, { roomName: "other-room" }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  for (const [caller, error] of [
+    [other, "PERMISSION_DENIED"],
+    [t, "User not authenticated"],
+  ] as const) {
+    await expect(
+      caller.query(api.whiteboardSessions.getScene, {
+        roomName: "recording-room",
+      }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await expect(
+      caller.mutation(api.whiteboardSessions.upsertScene, {
+        roomName: "recording-room",
+        elements: [],
+      }),
+    ).rejects.toThrow(error);
+    await expect(
+      caller.mutation(api.whiteboardFiles.generateUploadUrl, {
+        roomName: "recording-room",
+      }),
+    ).rejects.toThrow(error);
+  }
+  expect(
+    (
+      await writer.query(api.whiteboardSessions.getScene, {
+        roomName: "recording-room",
+      })
+    )?.elements,
+  ).toEqual([{ id: "saved-drawing" }]);
 });
