@@ -1,10 +1,13 @@
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { deleteWhiteboardManifest } from "./whiteboardSceneStorage";
 
 export async function deleteSchedulesWithDependencies(
   ctx: MutationCtx,
   schedules: Doc<"classSchedule">[],
 ) {
+  for (const schedule of schedules)
+    await deleteWhiteboardManifest(ctx, schedule.roomName);
   const dependencies = await Promise.all(
     schedules.map(async (schedule) => {
       const [sessions, attendanceRecords, recordings, whiteboard] =

@@ -1,3 +1,4 @@
+import { isCourseTeacher } from "./model/courseAssignments";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -36,7 +37,11 @@ import {
   deleteChatAttachment,
 } from "./model/courseChatAttachments";
 import { containsChatLink } from "../lib/chat-attachments";
-import { getCourseTaskAccess } from "./model/courseTaskAccess";
+import {
+  canSubmitCourseTask,
+  getCourseTaskAccess,
+} from "./model/courseTaskAccess";
+import { chatReferenceParts } from "../lib/chat-references";
 import { getClassTimeZone } from "./model/timeZone";
 import { isValidTimeZone } from "../lib/time-zone";
 
@@ -52,6 +57,7 @@ const messageValidator = v.object({
   body: v.string(),
   pinnedAt: v.optional(v.number()),
   linksEnabled: v.optional(v.boolean()),
+  availableTaskIds: v.optional(v.array(v.id("courseTasks"))),
   attachmentIds: v.optional(v.array(v.id("courseChatAttachments"))),
   attachments: v.optional(v.array(attachmentSummary)),
   authorName: v.string(),
@@ -82,7 +88,7 @@ function getAuthorRole(
   classData: Doc<"classes">,
   authorId: Id<"users"> | undefined,
 ) {
-  if (classData.teacherId === authorId) return "teacher" as const;
+  if (isCourseTeacher(classData, authorId)) return "teacher" as const;
   if (classData.tutorId === authorId) return "tutor" as const;
   return "member" as const;
 }
@@ -195,6 +201,22 @@ async function hydrateMessages(
       .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
       .map((entry) => [entry.author._id, entry]),
   );
+  const availableTasks = new Map<string, Promise<Doc<"courseTasks"> | null>>();
+  function getAvailableTask(id: string) {
+    let result = availableTasks.get(id);
+    if (!result) {
+      result = (async () => {
+        if (!includeCourseOnlyContent) return null;
+        const taskId = ctx.db.normalizeId("courseTasks", id);
+        const task = taskId ? await ctx.db.get("courseTasks", taskId) : null;
+        if (!task || task.classId !== classData._id) return null;
+        const access = await getCourseTaskAccess(ctx, task, currentUser._id);
+        return access.kind === "none" ? null : task;
+      })();
+      availableTasks.set(id, result);
+    }
+    return result;
+  }
 
   return Promise.all(
     messages.map(async (message) => {
@@ -203,12 +225,8 @@ async function hydrateMessages(
         : undefined;
       let event: Infer<typeof messageValidator>["event"];
       if (message.event) {
-        const task = await ctx.db.get("courseTasks", message.event.taskId);
-        const access =
-          task && includeCourseOnlyContent
-            ? await getCourseTaskAccess(ctx, task, currentUser._id)
-            : null;
-        const available = !!access && access.kind !== "none";
+        const task = await getAvailableTask(message.event.taskId);
+        const available = task !== null;
         const timeZone = available
           ? await getClassTimeZone(ctx, classData)
           : undefined;
@@ -226,6 +244,20 @@ async function hydrateMessages(
             : {}),
         };
       }
+      const referencedTaskIds = [
+        ...new Set(
+          chatReferenceParts(message.body).flatMap((part) =>
+            part.taskId ? [part.taskId] : [],
+          ),
+        ),
+      ];
+      const availableTaskIds = (
+        await Promise.all(
+          referencedTaskIds.map(
+            async (id) => (await getAvailableTask(id))?._id ?? null,
+          ),
+        )
+      ).filter((id) => id !== null);
       const files = await Promise.all(
         (message.attachmentIds ?? []).map((id) =>
           ctx.db.get("courseChatAttachments", id),
@@ -256,6 +288,7 @@ async function hydrateMessages(
       return {
         ...readableMessage,
         ...(includeCourseOnlyContent ? { attachmentIds, linksEnabled } : {}),
+        ...(referencedTaskIds.length ? { availableTaskIds } : {}),
         event,
         attachments,
         authorName: message.event
@@ -417,6 +450,54 @@ export const markPinsSeen = mutation({
   },
 });
 
+export const listReferenceTasks = query({
+  args: {
+    classId: v.id("classes"),
+    now: v.number(),
+    search: v.string(),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(
+    v.object({ taskId: v.id("courseTasks"), title: v.string() }),
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const course = await ctx.db.get("classes", args.classId);
+    if (!course || !(await canAccessClass(ctx, user._id, course)))
+      throw new ConvexError("PERMISSION_DENIED");
+    assertChatActive(course);
+    const result = await ctx.db
+      .query("courseTasks")
+      .withIndex("by_classId_and_isDraft_and_releasedAt", (q) =>
+        q
+          .eq("classId", course._id)
+          .eq("isDraft", undefined)
+          .gte("releasedAt", 0)
+          .lte("releasedAt", args.now),
+      )
+      .order("desc")
+      .paginate({
+        ...args.paginationOpts,
+        numItems: Math.min(args.paginationOpts.numItems, 20),
+        maximumRowsRead: 128,
+      });
+    const search = args.search.trim().toLocaleLowerCase();
+    const page = await Promise.all(
+      result.page.map(async (task) => {
+        if (
+          !task.title.toLocaleLowerCase().includes(search) ||
+          !(await canSubmitCourseTask(ctx, course, task, args.now))
+        )
+          return null;
+        if ((await getCourseTaskAccess(ctx, task, user._id)).kind === "none")
+          return null;
+        return { taskId: task._id, title: task.title };
+      }),
+    );
+    return { ...result, page: page.filter((task) => task !== null) };
+  },
+});
+
 export const send = mutation({
   args: {
     classId: v.id("classes"),
@@ -449,6 +530,23 @@ export const send = mutation({
       throw new ConvexError("MESSAGE_REQUIRED");
     if (body.length > MAX_MESSAGE_LENGTH) {
       throw new ConvexError("MESSAGE_TOO_LONG");
+    }
+    const referencedTaskIds = new Set(
+      chatReferenceParts(body).flatMap((part) =>
+        part.taskId ? [part.taskId] : [],
+      ),
+    );
+    for (const id of referencedTaskIds) {
+      const taskId = ctx.db.normalizeId("courseTasks", id);
+      const task = taskId && (await ctx.db.get("courseTasks", taskId));
+      if (
+        !task ||
+        task.classId !== classData._id ||
+        task.releasedAt === undefined ||
+        task.releasedAt > Date.now() ||
+        (await getCourseTaskAccess(ctx, task, currentUser._id)).kind === "none"
+      )
+        throw new ConvexError("INVALID_CHAT_REFERENCE");
     }
     if (
       (attachmentIds.length || containsChatLink(body)) &&

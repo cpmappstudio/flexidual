@@ -6,6 +6,7 @@ import type { Id } from "./_generated/dataModel";
 import { canSubmitCourseTask } from "./model/courseTaskAccess";
 import { assignOpenCourseTasksToStudent } from "./model/courseTaskPublication";
 import schema from "./schema";
+import { taskChatReference } from "../lib/chat-references";
 import { modules } from "./test.setup";
 
 const NOW = Date.UTC(2026, 8, 28, 12);
@@ -126,6 +127,206 @@ async function setup() {
     newStudent: t.withIdentity({ subject: "newStudent" }),
   };
 }
+
+test("chat task suggestions and references respect publication, open state, recipients and external-link permissions", async () => {
+  const s = await setup();
+  const openId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Open task www.example.com",
+  });
+  const closedId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Closed task",
+  });
+  await s.teacher.mutation(api.courseTasks.setClosed, {
+    taskId: closedId,
+    closed: true,
+  });
+  const futureId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Future task",
+    availableAt: NOW + HOUR,
+  });
+  const draftId = await s.t.run((ctx) =>
+    ctx.db.insert("courseTasks", {
+      classId: s.classId,
+      createdBy: s.users.teacher,
+      isDraft: true,
+      title: "Draft task",
+      allowLateSubmissions: true,
+      updatedAt: NOW,
+    }),
+  );
+  const args = {
+    classId: s.classId,
+    now: NOW,
+    search: "",
+    paginationOpts: { numItems: 1, cursor: null as string | null },
+  };
+  const ids: Id<"courseTasks">[] = [];
+  let isDone = false;
+  for (let page = 0; page < 10 && !isDone; page++) {
+    const result: FunctionReturnType<
+      typeof api.courseChatMessages.listReferenceTasks
+    > = await s.student.query(api.courseChatMessages.listReferenceTasks, args);
+    ids.push(...result.page.map((task) => task.taskId));
+    args.paginationOpts.cursor = result.continueCursor;
+    isDone = result.isDone;
+  }
+  expect(isDone).toBe(true);
+  expect(ids).toEqual([openId]);
+  const queryArgs = {
+    ...args,
+    search: "Open",
+    paginationOpts: { numItems: 20, cursor: null },
+  };
+  expect(
+    (
+      await s.teacher.query(
+        api.courseChatMessages.listReferenceTasks,
+        queryArgs,
+      )
+    ).page.map((task) => task.taskId),
+  ).toEqual([openId]);
+  expect(
+    (await s.tutor.query(api.courseChatMessages.listReferenceTasks, queryArgs))
+      .page,
+  ).toEqual([]);
+  await expect(
+    s.outsider.query(api.courseChatMessages.listReferenceTasks, queryArgs),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  const body = taskChatReference(openId, "Open task www.example.com");
+  await s.student.mutation(api.courseChatMessages.send, {
+    classId: s.classId,
+    body,
+  });
+  await expect(
+    s.student.mutation(api.courseChatMessages.send, {
+      classId: s.classId,
+      body: body + " https://example.com",
+    }),
+  ).rejects.toThrow("CHAT_ATTACHMENTS_DISABLED");
+  for (const id of [futureId, draftId])
+    await expect(
+      s.teacher.mutation(api.courseChatMessages.send, {
+        classId: s.classId,
+        body: taskChatReference(id, "Hidden"),
+      }),
+    ).rejects.toThrow("INVALID_CHAT_REFERENCE");
+  const otherId = await s.t.run(async (ctx) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omit system fields when cloning the fixture
+    const { _id, _creationTime, ...course } = (await ctx.db.get(s.classId))!;
+    const classId = await ctx.db.insert("classes", {
+      ...course,
+      name: "Other course",
+    });
+    return ctx.db.insert("courseTasks", {
+      classId,
+      title: "Other course task",
+      createdBy: s.users.teacher,
+      releasedAt: NOW,
+      allowLateSubmissions: true,
+      updatedAt: NOW,
+    });
+  });
+  await expect(
+    s.teacher.mutation(api.courseChatMessages.send, {
+      classId: s.classId,
+      body: taskChatReference(otherId, "Other"),
+    }),
+  ).rejects.toThrow("INVALID_CHAT_REFERENCE");
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", openId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.delete(recipient!._id);
+  });
+  await expect(
+    s.student.mutation(api.courseChatMessages.send, {
+      classId: s.classId,
+      body,
+    }),
+  ).rejects.toThrow("INVALID_CHAT_REFERENCE");
+  expect(
+    (
+      await s.student.query(
+        api.courseChatMessages.listReferenceTasks,
+        queryArgs,
+      )
+    ).page,
+  ).toEqual([]);
+});
+
+test("chat references follow each reader's current task access without changing the stored message", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Fractions",
+  });
+  const reference = taskChatReference(taskId, "Fractions");
+  const body = `Review ${reference} and ${reference}`;
+  const messageId = await s.teacher.mutation(api.courseChatMessages.send, {
+    classId: s.classId,
+    body,
+  });
+  await s.teacher.mutation(api.courseChatMessages.setPinned, {
+    messageId,
+    pinned: true,
+  });
+  const args = {
+    classId: s.classId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  };
+  async function checkReader(
+    reader: typeof s.student,
+    availableTaskIds: Id<"courseTasks">[],
+  ) {
+    const [message, feed, pins] = await Promise.all([
+      reader.query(api.courseChatMessages.get, { messageId }),
+      reader.query(api.courseChatMessages.list, args),
+      reader.query(api.courseChatMessages.listPinned, args),
+    ]);
+    for (const result of [
+      message,
+      feed.page.find((item) => item._id === messageId),
+      pins.page.find((item) => item._id === messageId),
+    ])
+      expect(result).toMatchObject({ body, availableTaskIds });
+  }
+  for (const reader of [s.teacher, s.admin, s.student, s.classmate])
+    await checkReader(reader, [taskId]);
+  await checkReader(s.tutor, []);
+  await expect(
+    s.outsider.query(api.courseChatMessages.list, args),
+  ).rejects.toThrow("PERMISSION_DENIED");
+
+  await s.teacher.mutation(api.courseTasks.setClosed, { taskId, closed: true });
+  await checkReader(s.student, [taskId]);
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.delete(recipient!._id);
+  });
+  await checkReader(s.student, []);
+  await checkReader(s.classmate, [taskId]);
+  await expect(
+    s.student.query(api.courseTasks.get, { taskId }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await s.teacher.mutation(api.courseTasks.remove, { taskId });
+  await checkReader(s.teacher, []);
+  const stored = await s.t.run((ctx) =>
+    ctx.db.get("courseChatMessages", messageId),
+  );
+  expect(stored).toMatchObject({ body });
+  expect(stored).not.toHaveProperty("availableTaskIds");
+});
 
 test("publishes immediately to enrolled students and protects access", async () => {
   const s = await setup();

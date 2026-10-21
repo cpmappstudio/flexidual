@@ -78,14 +78,9 @@ export function CompanionClassroomUI({
   // Guard: fires only once per mount to avoid double re-announce
   const hasRestoredRef = useRef(false);
 
-  // Populated by SharedWhiteboard to re-announce the current presentation.
-  const broadcastRef = useRef<
-    ((destinationIdentities?: string[]) => Promise<void>) | null
-  >(null);
-
   /**
    * After a companion page refresh where the teacher was already presenting, re-announce
-   * WHITEBOARD_STATE + scene + files to all current participants.
+   * WHITEBOARD_STATE to all current participants. Convex restores scene and files.
    * Guards against running before the room is connected or before the Excalidraw API is ready.
    * Safe to call multiple times — hasRestoredRef ensures it only executes once.
    */
@@ -406,10 +401,9 @@ export function CompanionClassroomUI({
           <SharedWhiteboard
             roomName={roomName}
             isReadonly={false}
-            broadcastRef={broadcastRef}
             onApiReady={(api) => {
               whiteboardApiRef.current = api;
-              // Excalidraw API + broadcastRef are now both ready; attempt state restore
+              // The canvas is ready; re-announce presentation state.
               void restoreBroadcastState();
             }}
           />

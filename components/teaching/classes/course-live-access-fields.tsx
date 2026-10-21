@@ -3,7 +3,7 @@
 import { useId } from "react";
 import type { Doc } from "@/convex/_generated/dataModel";
 import type { LiveAccess } from "@/convex/model/liveAccess";
-import { Checkbox } from "@/components/ui/checkbox";
+import { GradeCheckboxList } from "./grade-checkbox-list";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useTranslations } from "next-intl";
@@ -88,39 +88,13 @@ export function CourseLiveAccessFields({
       {value.mode === "school" && (
         <div className="grid gap-2">
           <Label>{t("class.liveAccessGrades")}</Label>
-          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-            {grades?.map((grade) => {
-              const inputId = `${fieldId}-grade-${grade._id}`;
-              return (
-                <Label
-                  key={grade._id}
-                  htmlFor={inputId}
-                  className="flex cursor-pointer items-center gap-2 rounded-md border bg-sidebar p-2 font-normal"
-                >
-                  <Checkbox
-                    id={inputId}
-                    checked={value.allowedGradeCodes.includes(grade.code)}
-                    onCheckedChange={(checked) =>
-                      onChangeAction({
-                        mode: "school",
-                        allowedGradeCodes: checked
-                          ? [
-                              ...new Set([
-                                ...value.allowedGradeCodes,
-                                grade.code,
-                              ]),
-                            ]
-                          : value.allowedGradeCodes.filter(
-                              (code) => code !== grade.code,
-                            ),
-                      })
-                    }
-                  />
-                  {grade.name}
-                </Label>
-              );
-            })}
-          </div>
+          <GradeCheckboxList
+            grades={grades}
+            value={value.allowedGradeCodes}
+            onChangeAction={(allowedGradeCodes) =>
+              onChangeAction({ mode: "school", allowedGradeCodes })
+            }
+          />
           {value.allowedGradeCodes.length === 0 && (
             <p className="text-sm text-destructive">
               {t("class.liveAccessGradeRequired")}

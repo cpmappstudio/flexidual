@@ -34,6 +34,10 @@ import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { CourseLiveAccessFields } from "./course-live-access-fields";
+import {
+  CourseGradeAssignmentsFields,
+  type CourseGradeAssignmentInput,
+} from "./course-grade-assignments-fields";
 
 export interface CourseFormData {
   name: string;
@@ -41,6 +45,7 @@ export interface CourseFormData {
   curriculumId: string;
   teacherId: string;
   gradeCode: string;
+  gradeAssignments?: CourseGradeAssignmentInput[];
   liveAccess: LiveAccess;
 }
 
@@ -151,6 +156,17 @@ export function CourseFormFields({
                 return {
                   ...current,
                   gradeCode,
+                  gradeAssignments:
+                    current.gradeAssignments && curriculumMatchesGrade
+                      ? [
+                          current.gradeAssignments.find(
+                            (assignment) => assignment.gradeCode === gradeCode,
+                          ) ?? { gradeCode },
+                          ...current.gradeAssignments.filter(
+                            (assignment) => assignment.gradeCode !== gradeCode,
+                          ),
+                        ]
+                      : undefined,
                   liveAccess: {
                     ...current.liveAccess,
                     allowedGradeCodes,
@@ -223,6 +239,14 @@ export function CourseFormFields({
                               setFormData((current) => ({
                                 ...current,
                                 curriculumId: curriculum._id,
+                                gradeAssignments:
+                                  current.gradeAssignments?.filter(
+                                    (assignment) =>
+                                      isCurriculumAvailableForGrade(
+                                        curriculum.gradeCodes,
+                                        assignment.gradeCode,
+                                      ),
+                                  ),
                               }));
                               setOpenCurriculum(false);
                             }}
@@ -365,9 +389,36 @@ export function CourseFormFields({
         courseGradeCode={formData.gradeCode}
         grades={grades}
         onChangeAction={(liveAccess) =>
-          setFormData((current) => ({ ...current, liveAccess }))
+          setFormData((current) => ({
+            ...current,
+            liveAccess,
+          }))
         }
       />
+
+      {(formData.liveAccess.mode === "private" ||
+        (formData.gradeAssignments?.length ?? 0) > 1) &&
+        formData.gradeCode &&
+        formData.curriculumId && (
+          <CourseGradeAssignmentsFields
+            gradeCode={formData.gradeCode}
+            value={
+              formData.gradeAssignments ?? [{ gradeCode: formData.gradeCode }]
+            }
+            grades={(grades ?? []).filter((grade) =>
+              isCurriculumAvailableForGrade(
+                curriculums?.find(
+                  (curriculum) => curriculum._id === formData.curriculumId,
+                )?.gradeCodes,
+                grade.code,
+              ),
+            )}
+            teachers={teachers}
+            onChangeAction={(gradeAssignments) =>
+              setFormData((current) => ({ ...current, gradeAssignments }))
+            }
+          />
+        )}
 
       <div className="grid grid-cols-1 items-start gap-4">
         <div className="flex flex-col gap-2">

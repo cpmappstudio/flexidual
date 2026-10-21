@@ -1,4 +1,10 @@
 import {
+  isCourseTeacher,
+  getCourseGradeCodes,
+  getCourseTeacherIds,
+  getCourseTeacherForGrade,
+} from "./courseAssignments";
+import {
   paginationResultValidator,
   type PaginationOptions,
 } from "convex/server";
@@ -308,7 +314,7 @@ function matchesFilters(classData: Doc<"classes">, filters: CatalogFilters) {
     (!filters.campusId || classData.campusId === filters.campusId) &&
     (!filters.curriculumId ||
       classData.curriculumId === filters.curriculumId) &&
-    (!filters.teacherId || classData.teacherId === filters.teacherId) &&
+    (!filters.teacherId || isCourseTeacher(classData, filters.teacherId)) &&
     (!filters.visibility ||
       filters.visibility === "all" ||
       (filters.visibility === "public" && accessMode === "school") ||
@@ -356,9 +362,6 @@ async function paginateCurrentClasses(
             ? q.eq(q.field("curriculumId"), filters.curriculumId)
             : q.eq(true, true),
           campusId ? q.eq(q.field("campusId"), campusId) : q.eq(true, true),
-          filters.teacherId
-            ? q.eq(q.field("teacherId"), filters.teacherId)
-            : q.eq(true, true),
         ),
       )
       .paginate(paginationOpts);
@@ -398,9 +401,6 @@ async function paginateCurrentClasses(
             : q.eq(q.field("liveAccess.mode"), "school"),
         filters.curriculumId
           ? q.eq(q.field("curriculumId"), filters.curriculumId)
-          : q.eq(true, true),
-        filters.teacherId
-          ? q.eq(q.field("teacherId"), filters.teacherId)
           : q.eq(true, true),
       ),
     )
@@ -475,11 +475,7 @@ async function loadResources(
       classes.flatMap((item) => (item.campusId ? [item.campusId] : [])),
     ),
   ];
-  const teacherIds = [
-    ...new Set(
-      classes.flatMap((item) => (item.teacherId ? [item.teacherId] : [])),
-    ),
-  ];
+  const teacherIds = [...new Set(classes.flatMap(getCourseTeacherIds))];
   const [curriculumDocs, campusDocs, teacherDocs] = await Promise.all([
     Promise.all(curriculumIds.map((id) => ctx.db.get(id))),
     Promise.all(campusIds.map((id) => ctx.db.get(id))),
@@ -516,13 +512,10 @@ async function loadResources(
           item.schoolId ??
           (item.campusId ? campuses.get(item.campusId)?.schoolId : undefined) ??
           curriculums.get(item.curriculumId)?.schoolId;
-        return schoolId && item.gradeCode
-          ? [
-              [
-                `${schoolId}:${item.gradeCode}`,
-                { schoolId, code: item.gradeCode },
-              ] as const,
-            ]
+        return schoolId
+          ? getCourseGradeCodes(item).map(
+              (code) => [`${schoolId}:${code}`, { schoolId, code }] as const,
+            )
           : [];
       }),
     ).values(),
@@ -561,7 +554,7 @@ function getCourseSchoolId(
 
 function canOpenCourse(access: CatalogAccess, classData: Doc<"classes">) {
   return (
-    classData.teacherId === access.user._id ||
+    isCourseTeacher(classData, access.user._id) ||
     classData.tutorId === access.user._id ||
     canAssignmentsManageClass(
       access.assignments,
@@ -591,19 +584,24 @@ function toCatalogCourse(
   const campus = classData.campusId
     ? resources.campuses.get(classData.campusId)
     : undefined;
-  const teacher = classData.teacherId
-    ? resources.teachers.get(classData.teacherId)
-    : undefined;
+  const studentGrade = getStudentGrade(access, classData);
+  const teacherId = getCourseTeacherForGrade(
+    classData,
+    access.isStaffViewer ? undefined : studentGrade,
+  );
+  const teacher = teacherId ? resources.teachers.get(teacherId) : undefined;
   const schoolId = getCourseSchoolId(classData, resources);
   const school = schoolId ? resources.schools.get(schoolId) : undefined;
-  const grade =
-    schoolId && classData.gradeCode
-      ? resources.grades.get(`${schoolId}:${classData.gradeCode}`)
-      : undefined;
+  const gradeName = schoolId
+    ? getCourseGradeCodes(classData)
+        .map(
+          (code) => resources.grades.get(`${schoolId}:${code}`)?.name ?? code,
+        )
+        .join(", ") || undefined
+    : undefined;
   const timeZone =
     classData.timeZone ?? campus?.timeZone ?? school?.timeZone ?? "UTC";
   const { staffCanOpen, isEnrolled, canViewDetails } = permissions;
-  const studentGrade = getStudentGrade(access, classData);
   const toSession = (schedule: Doc<"classSchedule">, canOpen: boolean) => ({
     title: schedule.title ?? classData.name,
     start: schedule.scheduledStart,
@@ -638,8 +636,8 @@ function toCatalogCourse(
     curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
     ...(campus?.name !== undefined && { campusName: campus.name }),
     ...(school?.name !== undefined && { institutionName: school.name }),
-    ...(classData.teacherId !== undefined && {
-      teacherId: classData.teacherId,
+    ...(teacherId !== undefined && {
+      teacherId,
     }),
     ...(teacher?.fullName !== undefined && { teacherName: teacher.fullName }),
     ...(teacher?.imageUrl !== undefined && {
@@ -648,7 +646,7 @@ function toCatalogCourse(
     ...(classData.gradeCode !== undefined && {
       gradeCode: classData.gradeCode,
     }),
-    ...(grade?.name !== undefined && { gradeName: grade.name }),
+    ...(gradeName !== undefined && { gradeName }),
     accessMode: normalizeLiveAccess(classData.liveAccess).mode,
     ...(liveSchedule && {
       liveSession: toSession(liveSchedule, canOpenSession(liveSchedule)),
@@ -862,10 +860,16 @@ export async function listCatalogCourses(
     paginationOpts.cursor === null,
   );
   const entries = await Promise.all(
-    [...legacyClasses, ...pageResult.page].map(async (course) => ({
-      course,
-      permissions: await getCoursePermissions(ctx, access, course),
-    })),
+    [...legacyClasses, ...pageResult.page]
+      .filter(
+        (course) =>
+          !normalizedFilters.teacherId ||
+          isCourseTeacher(course, normalizedFilters.teacherId),
+      )
+      .map(async (course) => ({
+        course,
+        permissions: await getCoursePermissions(ctx, access, course),
+      })),
   );
   const visibleClasses = entries.filter(({ course, permissions }) =>
     isVisibleCourse(access, course, permissions),

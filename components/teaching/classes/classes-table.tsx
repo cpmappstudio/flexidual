@@ -2,6 +2,10 @@
 
 import * as React from "react";
 import { Doc, Id } from "@/convex/_generated/dataModel";
+import {
+  getCourseGradeCodes,
+  getCourseTeacherIds,
+} from "@/convex/model/courseAssignments";
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { useTranslations } from "next-intl";
@@ -57,6 +61,8 @@ export function ClassesTable({
 
   const getGradeName = (code?: string) =>
     grades?.find((grade) => grade.code === code)?.name || code || "-";
+  const getCourseGradeNames = (course: Doc<"classes">) =>
+    getCourseGradeCodes(course).map(getGradeName).join(", ") || "-";
 
   const getAcademicPeriodName = (id?: Id<"academicPeriods">) =>
     academicPeriods?.find((period) => period._id === id)?.name || "-";
@@ -69,8 +75,14 @@ export function ClassesTable({
   };
 
   const getTeacherOrTypeLabel = (classDoc: Doc<"classes">) => {
-    const teacher = getTeacher(classDoc.teacherId);
-    return teacher?.fullName || getClassTypeLabel(classDoc) || "-";
+    return (
+      getCourseTeacherIds(classDoc)
+        .map((id) => getTeacher(id)?.fullName)
+        .filter(Boolean)
+        .join(", ") ||
+      getClassTypeLabel(classDoc) ||
+      "-"
+    );
   };
 
   const renderTeacher = (classDoc: Doc<"classes">) => {
@@ -106,7 +118,7 @@ export function ClassesTable({
           <AvatarFallback className="text-xs">{initials || "T"}</AvatarFallback>
         </Avatar>
         <span className="min-w-0 break-words text-sm font-medium whitespace-normal">
-          {teacher.fullName}
+          {getTeacherOrTypeLabel(classDoc)}
         </span>
       </div>
     );
@@ -126,7 +138,7 @@ export function ClassesTable({
         [
           row.name,
           getCurriculumName(row.curriculumId),
-          getGradeName(row.gradeCode),
+          getCourseGradeNames(row),
           getTeacherOrTypeLabel(row),
           getAcademicPeriodName(row.academicPeriodId),
         ]
@@ -152,7 +164,7 @@ export function ClassesTable({
             <div className="inline-flex items-center text-xs">
               <span className="font-mono">{t("class.grade")}:</span>
               <span className="break-words text-muted-foreground whitespace-normal">
-                {getGradeName(row.original.gradeCode)}
+                {getCourseGradeNames(row.original)}
               </span>
             </div>
             <div className="inline-flex items-center text-xs">
@@ -189,12 +201,12 @@ export function ClassesTable({
     },
     {
       id: "grade",
-      accessorFn: (row) => getGradeName(row.gradeCode),
+      accessorFn: (row) => getCourseGradeNames(row),
       header: createSortableHeader(t("class.grade")),
       meta: { className: "hidden lg:table-cell" },
       cell: ({ row }) => (
         <span className="break-words whitespace-normal">
-          {getGradeName(row.original.gradeCode)}
+          {getCourseGradeNames(row.original)}
         </span>
       ),
     },

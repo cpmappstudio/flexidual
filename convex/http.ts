@@ -2,11 +2,22 @@ import { httpRouter } from "convex/server";
 import * as abekaHttp from "./abekaHttp";
 import * as chatFiles from "./courseChatAttachmentHttp";
 import * as taskFiles from "./courseTaskFileHttp";
+import * as whiteboardFiles from "./whiteboardFileHttp";
 import { verifyWebhook, type WebhookEvent } from "@clerk/backend/webhooks";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 const http = httpRouter();
+http.route({
+  path: "/whiteboard-files",
+  method: "POST",
+  handler: whiteboardFiles.upload,
+});
+http.route({
+  path: "/whiteboard-files",
+  method: "OPTIONS",
+  handler: whiteboardFiles.options,
+});
 http.route({
   path: "/abeka-credentials",
   method: "POST",

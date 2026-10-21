@@ -225,3 +225,62 @@ test("chat presence remains bounded and access revocation is reflected", async (
     }),
   ).toEqual([]);
 });
+
+test("chat presence includes grade teachers and revokes their access after reassignment", async () => {
+  const f = await setup();
+  await f.t.run(async (ctx) => {
+    const course = (await ctx.db.get("classes", f.classId))!;
+    await ctx.db.insert("roleAssignments", {
+      userId: f.outsiderId,
+      role: "teacher",
+      orgType: "campus",
+      orgId: course.campusId,
+      assignedBy: f.teacherId,
+      assignedAt: Date.now(),
+    });
+    await ctx.db.patch("classes", f.classId, {
+      gradeCode: "05",
+      gradeAssignments: [
+        { gradeCode: "05" },
+        { gradeCode: "06", teacherId: f.outsiderId },
+      ],
+    });
+  });
+  const session = await f.outsider.mutation(api.presence.heartbeat, {
+    roomId: f.outsiderId,
+    userId: f.outsiderId,
+    sessionId: "grade-teacher",
+    interval: 30_000,
+  });
+  const args = {
+    classId: f.classId,
+    userIds: [f.teacherId, f.outsiderId, f.outsiderId],
+  };
+  for (const viewer of [f.student, f.teacher, f.outsider])
+    expect(await viewer.query(api.presence.chatParticipants, args)).toEqual([
+      { userId: f.teacherId, status: null },
+      { userId: f.outsiderId, status: { online: true, lastDisconnected: 0 } },
+    ]);
+
+  await f.outsider.mutation(api.presence.disconnect, {
+    sessionToken: session.sessionToken,
+  });
+  expect(
+    await f.student.query(api.presence.chatParticipants, args),
+  ).toContainEqual({
+    userId: f.outsiderId,
+    status: { online: false, lastDisconnected: Date.now() },
+  });
+
+  await f.t.run((ctx) =>
+    ctx.db.patch("classes", f.classId, {
+      gradeAssignments: [{ gradeCode: "05" }, { gradeCode: "06" }],
+    }),
+  );
+  expect(await f.student.query(api.presence.chatParticipants, args)).toEqual([
+    { userId: f.teacherId, status: null },
+  ]);
+  expect(await f.outsider.query(api.presence.chatParticipants, args)).toEqual(
+    [],
+  );
+});

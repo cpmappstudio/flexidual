@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { getCourseGradeCodes } from "./courseAssignments";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 export const CALENDAR_CLOSURE_BATCH_SIZE = 20;
@@ -23,13 +24,17 @@ export function classifyCalendarClosureOverlap(
 
 export function calendarClosureMatchesClass(
   closure: Pick<Doc<"calendarClosures">, "schoolId" | "campusId" | "gradeCode">,
-  classData: Pick<Doc<"classes">, "schoolId" | "campusId" | "gradeCode">,
+  classData: Pick<
+    Doc<"classes">,
+    "schoolId" | "campusId" | "gradeCode" | "gradeAssignments"
+  >,
   fallbackSchoolId?: Id<"schools">,
 ) {
   return (
     (classData.schoolId ?? fallbackSchoolId) === closure.schoolId &&
     (!closure.campusId || classData.campusId === closure.campusId) &&
-    (!closure.gradeCode || classData.gradeCode === closure.gradeCode)
+    (!closure.gradeCode ||
+      getCourseGradeCodes(classData).includes(closure.gradeCode))
   );
 }
 
@@ -39,12 +44,14 @@ export async function listApplicableCalendarClosures(
     schoolId,
     campusId,
     gradeCode,
+    gradeCodes,
     from,
     to,
   }: {
     schoolId: Id<"schools">;
     campusId?: Id<"campuses">;
     gradeCode?: string;
+    gradeCodes?: string[];
     from: number;
     to: number;
   },
@@ -63,7 +70,10 @@ export async function listApplicableCalendarClosures(
     (closure) =>
       closure.endsAt > from &&
       (!closure.campusId || closure.campusId === campusId) &&
-      (!closure.gradeCode || closure.gradeCode === gradeCode),
+      (!closure.gradeCode ||
+        (gradeCodes ?? (gradeCode ? [gradeCode] : [])).includes(
+          closure.gradeCode,
+        )),
   );
 }
 

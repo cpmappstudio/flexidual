@@ -1,3 +1,4 @@
+import { isCourseTeacher } from "./model/courseAssignments";
 import { MutationCtx, QueryCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { resolveMembershipSchoolId } from "./model/membership";
@@ -218,7 +219,7 @@ export async function canAccessCurriculumContent(
       : null;
     if (
       classData.isActive &&
-      (classData.teacherId === userId ||
+      (isCourseTeacher(classData, userId) ||
         classData.tutorId === userId ||
         (await isStudentEnrolled(ctx, classData, userId)) ||
         (classData.campusId &&
@@ -272,7 +273,7 @@ export async function canCancelClassOccurrence(
   classData: Doc<"classes">,
   schoolId?: Id<"schools">,
 ) {
-  if (classData.teacherId === userId) return true;
+  if (isCourseTeacher(classData, userId)) return true;
   return await canManageClasses(
     ctx,
     userId,
@@ -302,7 +303,7 @@ export async function canAccessClass(
 ): Promise<boolean> {
   if (await hasSystemRole(ctx, userId, ["superadmin"])) return true;
   if (
-    classData.teacherId === userId ||
+    isCourseTeacher(classData, userId) ||
     classData.tutorId === userId ||
     (await isStudentEnrolled(ctx, classData, userId))
   ) {
@@ -347,7 +348,7 @@ export async function getCourseChatCapabilities(
   return {
     canModerate:
       canDisable ||
-      classData.teacherId === userId ||
+      isCourseTeacher(classData, userId) ||
       classData.tutorId === userId,
     canDisable,
   };
@@ -366,7 +367,7 @@ export async function canManageRoom(
 
   const classData = await ctx.db.get(schedule.classId);
   if (!classData) return false;
-  if (classData.teacherId === userId || classData.tutorId === userId) {
+  if (isCourseTeacher(classData, userId) || classData.tutorId === userId) {
     return true;
   }
 

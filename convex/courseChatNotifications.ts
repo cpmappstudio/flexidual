@@ -3,6 +3,7 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import { getCourseTeacherIds } from "./model/courseAssignments";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
@@ -121,7 +122,7 @@ export const publish = internalMutation({
           args.legacyOffset,
           args.legacyOffset + DELIVERY_BATCH_SIZE,
         );
-    const staff = [course.teacherId, course.tutorId].filter(
+    const staff = [...getCourseTeacherIds(course), course.tutorId].filter(
       (id): id is Id<"users"> => id !== undefined,
     );
     const firstBatch = args.cursor === null && args.legacyOffset === 0;

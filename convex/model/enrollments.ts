@@ -2,6 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { toCivilDate, todayInTimeZone } from "../../lib/time-zone";
 import { getClassTimeZone } from "./timeZone";
+import { getCourseGradeCodes } from "./courseAssignments";
 
 export async function listActiveStudentClasses(
   ctx: QueryCtx,
@@ -43,10 +44,13 @@ export async function listActiveStudentClasses(
 
 export function matchesCourseGrade(
   studentGrade: string | undefined,
-  courseGrade: string | undefined,
+  courseGrade: string | readonly string[] | undefined,
   curriculumGrades: readonly string[] | undefined,
 ) {
-  const allowedGrades = courseGrade ? [courseGrade] : curriculumGrades;
+  const allowedGrades =
+    typeof courseGrade === "string"
+      ? [courseGrade]
+      : (courseGrade ?? curriculumGrades);
   return (
     !allowedGrades?.length ||
     Boolean(studentGrade && allowedGrades.includes(studentGrade))
@@ -56,7 +60,7 @@ export function matchesCourseGrade(
 export function isEligibleForCourse(
   student: Doc<"users"> | null,
   membership: Doc<"roleAssignments"> | undefined,
-  course: Pick<Doc<"classes">, "campusId" | "gradeCode">,
+  course: Pick<Doc<"classes">, "campusId" | "gradeCode" | "gradeAssignments">,
   curriculum: Pick<Doc<"curriculums">, "gradeCodes">,
 ) {
   return Boolean(
@@ -67,7 +71,9 @@ export function isEligibleForCourse(
           membership.orgId === course.campusId)) &&
       matchesCourseGrade(
         membership.gradeCode ?? student.grade,
-        course.gradeCode,
+        getCourseGradeCodes(course).length
+          ? getCourseGradeCodes(course)
+          : undefined,
         curriculum.gradeCodes,
       ),
   );
@@ -94,12 +100,13 @@ async function hasCurrentGradeMismatch(
     )
       return false;
   }
-  const curriculum = course.gradeCode
+  const courseGrades = getCourseGradeCodes(course);
+  const curriculum = courseGrades.length
     ? null
     : await ctx.db.get(course.curriculumId);
   return !matchesCourseGrade(
     gradeCode,
-    course.gradeCode,
+    courseGrades.length ? courseGrades : undefined,
     curriculum?.gradeCodes,
   );
 }

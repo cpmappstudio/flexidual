@@ -22,7 +22,8 @@ import { ChevronDown, Paperclip, Pin, PinOff } from "lucide-react";
 import { useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { ChatAttachment, ChatMessageText } from "./course-chat-attachments";
+import { ChatAttachment } from "./course-chat-attachments";
+import { ChatMessageText } from "./course-chat-message-text";
 import { CourseEventAvatar, CourseEventContent } from "./course-event";
 
 export type ChatMessage = FunctionReturnType<
@@ -146,6 +147,8 @@ export function CourseChatMessage({
                   <ChatMessageText
                     body={message.body}
                     enabled={!preview && message.linksEnabled === true}
+                    classId={preview ? undefined : message.classId}
+                    availableTaskIds={message.availableTaskIds}
                   />
                 </p>
               )}

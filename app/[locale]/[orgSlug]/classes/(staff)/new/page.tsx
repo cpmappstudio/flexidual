@@ -8,6 +8,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
+import { getCourseTeacherIds } from "@/convex/model/courseAssignments";
 import { Id } from "@/convex/_generated/dataModel";
 import {
   CourseFormData,
@@ -177,10 +178,28 @@ function CourseEditor({
     curriculumId: classToEdit?.curriculumId ?? "",
     teacherId: classToEdit?.teacherId ?? "",
     gradeCode: classToEdit?.gradeCode ?? "",
+    gradeAssignments: classToEdit?.gradeAssignments,
     liveAccess: classToEdit?.liveAccess ?? {
       mode: "private",
       allowedGradeCodes: [],
     },
+  });
+  const gradeAssignments = (
+    formData.gradeAssignments ?? [{ gradeCode: formData.gradeCode }]
+  ).map((assignment) => ({
+    gradeCode: assignment.gradeCode,
+    ...(assignment.teacherId
+      ? { teacherId: assignment.teacherId as Id<"users"> }
+      : {}),
+  }));
+  const selectedGradeCodes = gradeAssignments.map(
+    (assignment) => assignment.gradeCode,
+  );
+  const selectedTeacherIds = getCourseTeacherIds({
+    teacherId: formData.teacherId
+      ? (formData.teacherId as Id<"users">)
+      : undefined,
+    gradeAssignments,
   });
   const scheduleGuides = useQuery(
     api.classes.listWeeklyScheduleGuides,
@@ -193,6 +212,8 @@ function CourseEditor({
           campusId,
           academicPeriodId: academicPeriodId as Id<"academicPeriods">,
           gradeCode: formData.gradeCode,
+          gradeCodes: selectedGradeCodes,
+          teacherIds: selectedTeacherIds,
           ...(formData.teacherId
             ? { teacherId: formData.teacherId as Id<"users"> }
             : {}),
@@ -233,9 +254,6 @@ function CourseEditor({
         new Date(`${selectedAcademicPeriod.endDate}T00:00:00Z`),
       )}`
     : classToEdit?.academicYear;
-  const selectedGradeName =
-    grades?.find((grade) => grade.code === formData.gradeCode)?.name ??
-    formData.gradeCode;
   const suggestedName = useMemo(() => {
     const curriculum = curriculums?.find(
       (item) => item._id === formData.curriculumId,
@@ -391,6 +409,10 @@ function CourseEditor({
           teacherId: formData.teacherId as Id<"users">,
           gradeCode: formData.gradeCode,
           liveAccess: formData.liveAccess,
+          gradeAssignments:
+            formData.gradeAssignments || formData.liveAccess.mode === "private"
+              ? gradeAssignments
+              : undefined,
           weeklySlots: weeklySlotConfigs,
           scheduleCancellationReason: requiresScheduleCancellationReason
             ? scheduleCancellationReason.trim() || undefined
@@ -409,6 +431,10 @@ function CourseEditor({
         teacherId: formData.teacherId as Id<"users">,
         gradeCode: formData.gradeCode,
         studentIds,
+        gradeAssignments:
+          formData.gradeAssignments || formData.liveAccess.mode === "private"
+            ? gradeAssignments
+            : undefined,
         liveAccess: formData.liveAccess,
         campusId,
         academicPeriodId: academicPeriodId as Id<"academicPeriods">,
@@ -716,8 +742,8 @@ function CourseEditor({
               backgroundSlots={
                 showExistingSchedules
                   ? scheduleGuides
-                      ?.filter(
-                        (guide) => guide.gradeCode === formData.gradeCode,
+                      ?.filter((guide) =>
+                        selectedGradeCodes.includes(guide.gradeCode),
                       )
                       .map((guide) => ({
                         id: guide.scheduleId,
@@ -783,7 +809,14 @@ function CourseEditor({
             curriculumId={formData.curriculumId as Id<"curriculums">}
             campusId={campusId}
             gradeCode={formData.gradeCode}
-            gradeName={selectedGradeName}
+            gradeCodes={selectedGradeCodes}
+            gradeName={gradeAssignments
+              .map(
+                (assignment) =>
+                  grades.find((grade) => grade.code === assignment.gradeCode)
+                    ?.name ?? assignment.gradeCode,
+              )
+              .join(", ")}
             grades={grades.map((grade) => ({
               code: grade.code,
               name: grade.name,

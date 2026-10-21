@@ -16,6 +16,11 @@ import schema from "./schema";
 import { modules } from "./test.setup";
 import { getLiveSessionHardEnd } from "../lib/live-session-policy";
 import { localDateTimeToUtc } from "../lib/time-zone";
+import {
+  whiteboardBucketId,
+  splitWhiteboardPayload,
+  joinWhiteboardPayload,
+} from "../lib/whiteboard-elements";
 
 const START = Date.UTC(2026, 8, 24, 13);
 const END = START + 60 * 60_000;
@@ -234,6 +239,368 @@ async function setup() {
     participants,
   };
 }
+
+async function createRecordingWhiteboard(
+  f: Awaited<ReturnType<typeof setup>>,
+  token: string,
+) {
+  const activation = (await f.lifecycle())!;
+  const element = {
+    id: "recorded-drawing",
+    version: 1,
+    versionNonce: 1,
+    type: "image",
+    fileId: "image-1",
+  };
+  const bucketId = whiteboardBucketId(element.id);
+  await f.teacher.mutation(api.whiteboardSessions.ensureScene, {
+    roomName: ROOM,
+    expectedLiveRoomName: activation.liveRoomName,
+  });
+  await f.teacher.mutation(api.whiteboardSessions.applySceneDelta, {
+    roomName: ROOM,
+    expectedLiveRoomName: activation.liveRoomName,
+    generation: 0,
+    bucketId,
+    parts: splitWhiteboardPayload(JSON.stringify([element])),
+  });
+  const files = await f.t.run(async (ctx) => {
+    const storageId = await ctx.storage.store(
+      new Blob(["image"], { type: "image/png" }),
+    );
+    const fileRefs = {
+      "image-1": {
+        storageId,
+        url: "https://files.invalid/image.png",
+        mimeType: "image/png",
+        created: START,
+      },
+    };
+    const session = (await ctx.db.query("whiteboardSessions").first())!;
+    await ctx.db.patch("whiteboardSessions", session._id, { fileRefs });
+    return fileRefs;
+  });
+  await f.t.mutation(internal.whiteboardSessions.setRecordingToken, {
+    roomName: ROOM,
+    recordingToken: token,
+  });
+  await f.t.mutation(internal.recordings.createRecording, {
+    scheduleId: f.data.scheduleId,
+    roomName: ROOM,
+    egressId: token,
+    recordingToken: token,
+    activationId: activation.activationId,
+    startedAt: START,
+  });
+  return { bucketId, element, files };
+}
+
+describe("LiveKit media optimization: lifecycle regressions", () => {
+  test.each(["complete", "failed", "aborted"] as const)(
+    "terminal %s revokes both recording readers without changing drawings, files or student permissions",
+    async (status) => {
+      const f = await setup();
+      await f.start();
+      const { bucketId, element, files } = await createRecordingWhiteboard(
+        f,
+        "recording-token",
+      );
+      const readArgs = { roomName: ROOM, recordingToken: "recording-token" };
+      expect(
+        await f.t.query(api.whiteboardSessions.getSceneManifest, readArgs),
+      ).not.toBeNull();
+      const sdkStatus = {
+        complete: EgressStatus.EGRESS_COMPLETE,
+        failed: EgressStatus.EGRESS_FAILED,
+        aborted: EgressStatus.EGRESS_ABORTED,
+      }[status];
+      vi.spyOn(WebhookReceiver.prototype, "receive").mockResolvedValue(
+        WebhookEvent.fromJson({
+          event: "egress_ended",
+          egressInfo: {
+            egressId: "recording-token",
+            status: sdkStatus,
+          },
+        }),
+      );
+      for (let repeat = 0; repeat < 2; repeat++) {
+        await f.t.action(internal.livekit.processEgressWebhook, {
+          body: "{}",
+          authorization: "fixture",
+        });
+        await expect(
+          f.t.query(api.whiteboardSessions.getScene, readArgs),
+        ).rejects.toThrow("PERMISSION_DENIED");
+        await expect(
+          f.t.query(api.whiteboardSessions.getSceneManifest, readArgs),
+        ).rejects.toThrow("PERMISSION_DENIED");
+        await expect(
+          f.t.query(api.whiteboardSessions.getSceneBucket, {
+            ...readArgs,
+            bucketId,
+          }),
+        ).rejects.toThrow("PERMISSION_DENIED");
+        await expect(
+          f.t.query(api.whiteboardSessions.getSceneFiles, readArgs),
+        ).rejects.toThrow("PERMISSION_DENIED");
+      }
+      const saved = await f.student.query(
+        api.whiteboardSessions.getSceneBucket,
+        { roomName: ROOM, bucketId },
+      );
+      expect(JSON.parse(joinWhiteboardPayload(saved!.parts))).toEqual([
+        element,
+      ]);
+      expect(
+        await f.student.query(api.whiteboardSessions.getSceneFiles, {
+          roomName: ROOM,
+        }),
+      ).toEqual({ fileRefs: files });
+      await expect(
+        f.student.mutation(api.whiteboardSessions.ensureScene, {
+          roomName: ROOM,
+          expectedLiveRoomName: (await f.lifecycle())!.liveRoomName,
+        }),
+      ).rejects.toThrow("PERMISSION_DENIED");
+      expect((await f.schedule())?.isLive).toBe(true);
+    },
+  );
+
+  test.each(["webhook", "stop"] as const)(
+    "%s repairs an orphaned manifest token and preserves a newer token",
+    async (source) => {
+      const f = await setup();
+      await f.start();
+      const { bucketId } = await createRecordingWhiteboard(f, "old-token");
+      await f.t.run(async (ctx) => {
+        const session = (await ctx.db.query("whiteboardSessions").first())!;
+        await ctx.db.patch("whiteboardSessions", session._id, {
+          recordingToken: "new-token",
+        });
+      });
+      if (source === "webhook")
+        await f.t.mutation(internal.recordings.updateFromWebhook, {
+          egressId: "old-token",
+          status: "failed",
+        });
+      else
+        await f.t.mutation(internal.whiteboardSessions.setRecordingToken, {
+          roomName: ROOM,
+          expectedToken: "old-token",
+        });
+      const state = await f.t.run(async (ctx) => ({
+        session: await ctx.db.query("whiteboardSessions").first(),
+        manifest: await ctx.db.query("whiteboardSceneManifests").first(),
+      }));
+      expect(state.session?.recordingToken).toBe("new-token");
+      expect(state.manifest?.recordingToken).toBeUndefined();
+      await expect(
+        f.t.query(api.whiteboardSessions.getSceneBucket, {
+          roomName: ROOM,
+          bucketId,
+          recordingToken: "old-token",
+        }),
+      ).rejects.toThrow("PERMISSION_DENIED");
+      await f.t.mutation(internal.whiteboardSessions.setRecordingToken, {
+        roomName: ROOM,
+        recordingToken: "new-token",
+      });
+      await f.t.mutation(internal.recordings.updateFromWebhook, {
+        egressId: "old-token",
+        status: "failed",
+      });
+      expect(
+        await f.t.query(api.whiteboardSessions.getSceneManifest, {
+          roomName: ROOM,
+          recordingToken: "new-token",
+        }),
+      ).not.toBeNull();
+    },
+  );
+
+  test("a concurrent participant webhook burst performs one control API check and allows later checks", async () => {
+    const f = await setup();
+    await f.start();
+    f.sdk.listParticipants.mockResolvedValue(f.participants());
+    const activation = (await f.lifecycle())!;
+    const receive = vi
+      .spyOn(WebhookReceiver.prototype, "receive")
+      .mockResolvedValue(
+        WebhookEvent.fromJson({
+          event: "participant_joined",
+          room: { name: activation.liveRoomName },
+        }),
+      );
+    await Promise.all(
+      Array.from({ length: 10 }, () =>
+        f.t.action(internal.livekit.processEgressWebhook, {
+          body: "{}",
+          authorization: "fixture",
+        }),
+      ),
+    );
+    expect(receive).toHaveBeenCalledTimes(10);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(f.sdk.listRooms).toHaveBeenCalledTimes(1);
+    expect(f.sdk.listParticipants).toHaveBeenCalledTimes(1);
+    await f.teacher.action(api.livekit.notifyRoomAdministratorLeft, {
+      roomName: ROOM,
+      expectedActivationId: activation.activationId,
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(f.sdk.listRooms).toHaveBeenCalledTimes(2);
+    expect((await f.schedule())?.isLive).toBe(true);
+  });
+
+  test("events during an in-flight reconciliation schedule one trailing check", async () => {
+    const f = await setup();
+    await f.start();
+    const args = { liveRoomName: (await f.lifecycle())!.liveRoomName };
+    f.sdk.listParticipants
+      .mockImplementationOnce(async () => {
+        await Promise.all(
+          Array.from({ length: 10 }, () =>
+            f.t.mutation(
+              internal.liveRoomLifecycle.requestReconciliation,
+              args,
+            ),
+          ),
+        );
+        return f.participants();
+      })
+      .mockResolvedValue(f.participants());
+    await f.t.mutation(internal.liveRoomLifecycle.requestReconciliation, args);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(f.sdk.listParticipants).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(f.sdk.listParticipants).toHaveBeenCalledTimes(2);
+  });
+
+  test("a failed scheduled check can be requested again without a stale lock", async () => {
+    const f = await setup();
+    await f.start();
+    const args = { liveRoomName: (await f.lifecycle())!.liveRoomName };
+    f.sdk.listParticipants
+      .mockRejectedValueOnce(new Error("Control API unavailable"))
+      .mockResolvedValue(f.participants());
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await f.t.mutation(internal.liveRoomLifecycle.requestReconciliation, args);
+    const failedJobId = await f.t.run(
+      async (ctx) =>
+        (await ctx.db.query("liveRoomActivations").first())!.reconcileJobId!,
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(error).toHaveBeenCalled();
+    const failed = await f.t.run((ctx) => ctx.db.system.get(failedJobId));
+    expect(failed?.state.kind).toBe("failed");
+    await f.t.mutation(internal.liveRoomLifecycle.requestReconciliation, args);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(f.sdk.listParticipants).toHaveBeenCalledTimes(2);
+    expect((await f.schedule())?.isLive).toBe(true);
+  });
+
+  test("slow control API calls absorb repeated bursts and run one check after completion", async () => {
+    const f = await setup();
+    await f.start();
+    const args = { liveRoomName: (await f.lifecycle())!.liveRoomName };
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    f.sdk.listRooms.mockImplementationOnce(async () => {
+      await blocked;
+      return [new Room({ name: args.liveRoomName })];
+    });
+    f.sdk.listParticipants.mockResolvedValue(f.participants());
+    await f.t.mutation(internal.liveRoomLifecycle.requestReconciliation, args);
+    try {
+      await vi.advanceTimersByTimeAsync(1_000);
+      for (let burst = 0; burst < 3; burst++) {
+        await Promise.all(
+          Array.from({ length: 10 }, () =>
+            f.t.mutation(
+              internal.liveRoomLifecycle.requestReconciliation,
+              args,
+            ),
+          ),
+        );
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(f.sdk.listRooms).toHaveBeenCalledTimes(1);
+      }
+    } finally {
+      release();
+      await f.t.finishInProgressScheduledFunctions();
+    }
+    expect(f.sdk.listParticipants).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(f.sdk.listRooms).toHaveBeenCalledTimes(2);
+    expect(f.sdk.listParticipants).toHaveBeenCalledTimes(2);
+    const activation = await f.t.run((ctx) =>
+      ctx.db.query("liveRoomActivations").first(),
+    );
+    expect(activation?.reconcileJobId).toBeUndefined();
+    expect(activation?.reconcileAgain).toBeUndefined();
+  });
+
+  test("late completion cannot clear the replacement of a canceled reconciliation", async () => {
+    const f = await setup();
+    await f.start();
+    f.sdk.listParticipants.mockResolvedValue(f.participants());
+    const args = { liveRoomName: (await f.lifecycle())!.liveRoomName };
+    await f.t.mutation(internal.liveRoomLifecycle.requestReconciliation, args);
+    const old = await f.t.run((ctx) =>
+      ctx.db.query("liveRoomActivations").first(),
+    );
+    await f.t.run((ctx) => ctx.scheduler.cancel(old!.reconcileJobId!));
+    await f.t.mutation(internal.liveRoomLifecycle.requestReconciliation, args);
+    const replacement = await f.t.run((ctx) =>
+      ctx.db.query("liveRoomActivations").first(),
+    );
+    expect(replacement!.reconcileJobId).not.toBe(old!.reconcileJobId);
+    await f.t.mutation(internal.liveRoomLifecycle.finishReconciliation, {
+      activationId: old!.activationId,
+      generation: old!.reconcileGeneration!,
+    });
+    expect(
+      (await f.t.run((ctx) => ctx.db.query("liveRoomActivations").first()))!
+        .reconcileJobId,
+    ).toBe(replacement!.reconcileJobId);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(f.sdk.listRooms).toHaveBeenCalledTimes(1);
+  });
+
+  test("pending checks from a closed activation cannot affect its reopening", async () => {
+    const f = await setup();
+    await f.start();
+    const old = (await f.lifecycle())!;
+    await f.t.mutation(internal.liveRoomLifecycle.requestReconciliation, {
+      liveRoomName: old.liveRoomName,
+    });
+    await f.close();
+    await f.reopen();
+    const current = (await f.lifecycle())!;
+    f.sdk.listParticipants.mockResolvedValue(f.participants());
+    f.sdk.listRooms.mockClear();
+    await f.t.mutation(internal.liveRoomLifecycle.requestReconciliation, {
+      liveRoomName: current.liveRoomName,
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await f.t.finishInProgressScheduledFunctions();
+    expect(f.sdk.listRooms).toHaveBeenCalledExactlyOnceWith([
+      current.liveRoomName,
+    ]);
+    expect((await f.schedule())?.liveActivationId).toBe(current.activationId);
+    expect((await f.schedule())?.isLive).toBe(true);
+  });
+});
 
 describe("reopening audit: supported flows", () => {
   test.each([
@@ -460,6 +827,76 @@ describe("reopening audit: supported flows", () => {
     await f.close();
     await f.reopen();
     expect((await f.schedule())?.liveActivationId).toBeDefined();
+  });
+
+  test("incremental buckets survive real close/reopen, revoke recording access and expire with the occurrence", async () => {
+    const f = await setup();
+    await f.start();
+    const oldRoom = (await f.lifecycle())!.liveRoomName;
+    await f.teacher.mutation(api.whiteboardSessions.ensureScene, {
+      roomName: ROOM,
+      expectedLiveRoomName: oldRoom,
+    });
+    const bucketId = whiteboardBucketId("incremental-stroke");
+    await f.teacher.mutation(api.whiteboardSessions.applySceneDelta, {
+      roomName: ROOM,
+      expectedLiveRoomName: oldRoom,
+      generation: 0,
+      bucketId,
+      parts: splitWhiteboardPayload(
+        JSON.stringify([
+          { id: "incremental-stroke", version: 1, versionNonce: 1 },
+        ]),
+      ),
+    });
+    await f.t.mutation(internal.whiteboardSessions.setRecordingToken, {
+      roomName: ROOM,
+      recordingToken: "incremental-recording-token",
+    });
+    await f.close();
+    await expect(
+      f.t.query(api.whiteboardSessions.getSceneBucket, {
+        roomName: ROOM,
+        bucketId,
+        recordingToken: "incremental-recording-token",
+      }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await expect(
+      f.student.query(api.whiteboardSessions.getSceneBucket, {
+        roomName: ROOM,
+        bucketId,
+      }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await f.reopen();
+    const saved = await f.student.query(api.whiteboardSessions.getSceneBucket, {
+      roomName: ROOM,
+      bucketId,
+    });
+    expect(JSON.parse(joinWhiteboardPayload(saved!.parts))).toEqual([
+      { id: "incremental-stroke", version: 1, versionNonce: 1 },
+    ]);
+    await expect(
+      f.teacher.mutation(api.whiteboardSessions.applySceneDelta, {
+        roomName: ROOM,
+        expectedLiveRoomName: oldRoom,
+        generation: 0,
+        bucketId,
+        parts: splitWhiteboardPayload(
+          JSON.stringify([
+            { id: "incremental-stroke", version: 99, versionNonce: 1 },
+          ]),
+        ),
+      }),
+    ).rejects.toThrow("STALE_LIVE_ACTIVATION");
+    await f.close();
+    await vi.advanceTimersByTimeAsync(70 * 60_000);
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(
+      await f.t.run((ctx) => ctx.db.query("whiteboardSceneManifests").take(1)),
+    ).toEqual([]);
+    expect(
+      await f.t.run((ctx) => ctx.db.query("whiteboardSceneBuckets").take(1)),
+    ).toEqual([]);
   });
 
   test("whiteboard and images survive reopen, cannot be read while closed and expire after final closure", async () => {
@@ -751,6 +1188,49 @@ describe("reopening audit: supported flows", () => {
     await f.t.action(internal.livekit.reconcileLiveSession, { roomName: ROOM });
     expect((await f.schedule())?.status).toBe("completed");
     await expect(f.reopen()).rejects.toThrow("SESSION_REOPEN_NOT_AVAILABLE");
+  });
+
+  test("the hard limit closes attendance and revokes recording access even when the control API fails", async () => {
+    const f = await setup();
+    await f.start();
+    const activation = (await f.lifecycle())!;
+    await f.student.mutation(api.schedule.logStudentPresence, {
+      scheduleId: f.data.scheduleId,
+      action: "join",
+      activationId: activation.activationId,
+      connectionId: "hard-limit-student",
+    });
+    await f.t.mutation(internal.whiteboardSessions.setRecordingToken, {
+      roomName: ROOM,
+      recordingToken: "hard-limit-recording",
+    });
+    await f.teacher.mutation(api.whiteboardSessions.ensureScene, {
+      roomName: ROOM,
+      expectedLiveRoomName: activation.liveRoomName,
+    });
+    f.sdk.listRooms.mockRejectedValue(new Error("LiveKit unavailable"));
+    vi.setSystemTime(getLiveSessionHardEnd(END));
+    await expect(
+      f.t.action(internal.livekit.reconcileLiveSession, {
+        roomName: ROOM,
+        expectedActivationId: activation.activationId,
+      }),
+    ).resolves.toBeNull();
+    expect(f.sdk.listRooms).not.toHaveBeenCalled();
+    expect(f.sdk.listParticipants).not.toHaveBeenCalled();
+    expect(await f.schedule()).toMatchObject({
+      isLive: false,
+      status: "completed",
+    });
+    const state = await f.t.run(async (ctx) => ({
+      attendance: await ctx.db.query("class_sessions").first(),
+      manifest: await ctx.db.query("whiteboardSceneManifests").first(),
+      activation: await ctx.db.query("liveRoomActivations").first(),
+    }));
+    expect(state.attendance?.leftAt).toBe(getLiveSessionHardEnd(END));
+    expect(state.manifest?.recordingToken).toBeUndefined();
+    expect(state.activation?.status).toBe("closing");
+    expect(state.activation?.cleanupJobId).toBeDefined();
   });
 
   test("repeated stable reconciliation does not multiply scheduled checks", async () => {
@@ -1091,13 +1571,13 @@ describe("reopening audit: safety regressions", () => {
       recordingToken: "token-b",
     });
     vi.spyOn(WebhookReceiver.prototype, "receive").mockResolvedValue(
-      new WebhookEvent({
+      WebhookEvent.fromJson({
         event: "egress_ended",
-        egressInfo: new EgressInfo({
+        egressInfo: {
           egressId: "recording-a",
           roomName: old.liveRoomName,
           status: EgressStatus.EGRESS_COMPLETE,
-        }),
+        },
       }),
     );
     await f.t.action(internal.livekit.processEgressWebhook, {
@@ -1121,9 +1601,9 @@ describe("reopening audit: safety regressions", () => {
     await f.reopen();
     f.sdk.listRooms.mockClear();
     vi.spyOn(WebhookReceiver.prototype, "receive").mockResolvedValue(
-      new WebhookEvent({
+      WebhookEvent.fromJson({
         event: "participant_left",
-        room: new Room({ name: old.liveRoomName }),
+        room: { name: old.liveRoomName },
       }),
     );
     await f.t.action(internal.livekit.processEgressWebhook, {

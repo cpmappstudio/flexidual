@@ -209,21 +209,21 @@ async function reconcileRoom(
   }
 
   const hardEndsAt = getLiveSessionHardEnd(session.scheduledEnd);
+  if (now >= hardEndsAt) {
+    await finalizeLiveSession(
+      ctx,
+      roomName,
+      session.activationId,
+      now,
+      undefined,
+      getLiveLifecycleSnapshot(session),
+    );
+    return;
+  }
   if (!clients) {
-    if (now >= hardEndsAt) {
-      await finalizeLiveSession(
-        ctx,
-        roomName,
-        session.activationId,
-        now,
-        undefined,
-        getLiveLifecycleSnapshot(session),
-      );
-    } else {
-      console.warn(
-        `[LiveKit Lifecycle] Credentials unavailable; skipped participant reconciliation for ${roomName}.`,
-      );
-    }
+    console.warn(
+      `[LiveKit Lifecycle] Credentials unavailable; skipped participant reconciliation for ${roomName}.`,
+    );
     return;
   }
 
@@ -712,9 +712,8 @@ export const notifyRoomAdministratorLeft = action({
   handler: async (ctx, args) => {
     const access = await requireRoomAdministrator(ctx, args.roomName);
     assertActivation(access.session, args.expectedActivationId);
-    await ctx.scheduler.runAfter(1_000, internal.livekit.reconcileLiveSession, {
-      roomName: args.roomName,
-      expectedActivationId: access.session.activationId,
+    await ctx.runMutation(internal.liveRoomLifecycle.requestReconciliation, {
+      liveRoomName: access.session.liveRoomName,
     });
     return null;
   },
@@ -724,17 +723,29 @@ export const reconcileLiveSession = internalAction({
   args: {
     roomName: v.string(),
     expectedActivationId: v.optional(v.string()),
+    reconciliationGeneration: v.optional(v.number()),
   },
   returns: v.null(),
-  handler: async (ctx, { roomName, expectedActivationId }) => {
+  handler: async (
+    ctx,
+    { roomName, expectedActivationId, reconciliationGeneration },
+  ) => {
     const config = getLiveKitConfig();
-    await reconcileRoom(
-      ctx,
-      roomName,
-      Date.now(),
-      config ? createLiveKitClients(config) : null,
-      expectedActivationId,
-    );
+    try {
+      await reconcileRoom(
+        ctx,
+        roomName,
+        Date.now(),
+        config ? createLiveKitClients(config) : null,
+        expectedActivationId,
+      );
+    } finally {
+      if (reconciliationGeneration !== undefined && expectedActivationId)
+        await ctx.runMutation(internal.liveRoomLifecycle.finishReconciliation, {
+          activationId: expectedActivationId,
+          generation: reconciliationGeneration,
+        });
+    }
     return null;
   },
 });
@@ -820,19 +831,9 @@ export const processEgressWebhook = internalAction({
         event.event === "participant_left") &&
       event.room?.name
     ) {
-      const activation = await ctx.runQuery(
-        internal.liveRoomLifecycle.resolveLiveRoom,
-        { liveRoomName: event.room.name },
-      );
-      if (activation)
-        await ctx.scheduler.runAfter(
-          1_000,
-          internal.livekit.reconcileLiveSession,
-          {
-            roomName: activation.roomName,
-            expectedActivationId: activation.activationId,
-          },
-        );
+      await ctx.runMutation(internal.liveRoomLifecycle.requestReconciliation, {
+        liveRoomName: event.room.name,
+      });
     }
 
     if (!event.egressInfo) {

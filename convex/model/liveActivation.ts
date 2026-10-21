@@ -28,6 +28,9 @@ export const liveRoomActivationFields = {
   cleanupError: v.optional(v.string()),
   recordingJobId: v.optional(v.id("_scheduled_functions")),
   recordingToken: v.optional(v.string()),
+  reconcileJobId: v.optional(v.id("_scheduled_functions")),
+  reconcileGeneration: v.optional(v.number()),
+  reconcileAgain: v.optional(v.boolean()),
 };
 
 export function getLiveActivationId(schedule: Doc<"classSchedule">) {

@@ -164,6 +164,7 @@ export default function CalendarManageEventDialog({
     canManageSeries,
     currentUserId: userId,
     teacherId: selectedEvent.teacherId,
+    isAssignedTeacher: selectedEvent.isAssignedTeacher,
     status: selectedEvent.status,
     start: selectedEvent.start.getTime(),
     now,

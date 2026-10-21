@@ -261,8 +261,9 @@ function CalendarContent() {
     }
 
     const assignedGradeCodes = new Set(
-      filterOptions?.courses.flatMap((course) =>
-        course.gradeCode ? [course.gradeCode] : [],
+      filterOptions?.courses.flatMap(
+        (course) =>
+          course.gradeCodes ?? (course.gradeCode ? [course.gradeCode] : []),
       ) ?? [],
     );
     return grades
@@ -358,10 +359,14 @@ function CalendarContent() {
       classId: e.classId,
       curriculumId: e.curriculumId,
       teacherId: e.teacherId,
+      teacherIds: e.teacherIds,
+      isAssignedTeacher: e.isAssignedTeacher,
+      gradeCodes: e.gradeCodes,
       gradeCode: e.gradeCode,
-      gradeLabel: e.gradeCode
-        ? (gradeNameByCode.get(e.gradeCode) ?? e.gradeCode)
-        : undefined,
+      gradeLabel:
+        (e.gradeCodes ?? (e.gradeCode ? [e.gradeCode] : []))
+          .map((code) => gradeNameByCode.get(code) ?? code)
+          .join(", ") || undefined,
       sessionType: e.sessionType,
       title: e.title,
       description: e.description,
@@ -399,11 +404,19 @@ function CalendarContent() {
     }
 
     if (selectedTeacherId) {
-      result = result.filter((event) => event.teacherId === selectedTeacherId);
+      result = result.filter((event) =>
+        (
+          event.teacherIds ?? (event.teacherId ? [event.teacherId] : [])
+        ).includes(selectedTeacherId),
+      );
     }
 
     if (selectedGradeCode) {
-      result = result.filter((event) => event.gradeCode === selectedGradeCode);
+      result = result.filter((event) =>
+        (
+          event.gradeCodes ?? (event.gradeCode ? [event.gradeCode] : [])
+        ).includes(selectedGradeCode),
+      );
     }
 
     return result;
@@ -418,7 +431,10 @@ function CalendarContent() {
     }
     if (canViewAllCampusCourses) return closureResult;
     const visibleGradeCodes = new Set(
-      allEvents.flatMap((event) => (event.gradeCode ? [event.gradeCode] : [])),
+      allEvents.flatMap(
+        (event) =>
+          event.gradeCodes ?? (event.gradeCode ? [event.gradeCode] : []),
+      ),
     );
     return closureResult.filter(
       (closure) =>

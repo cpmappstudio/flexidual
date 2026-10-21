@@ -1,4 +1,5 @@
 "use client";
+import { isCourseTeacher } from "@/convex/model/courseAssignments";
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -501,7 +502,7 @@ export default function ClassDetailPage() {
               <CourseTasksTab
                 classId={classId}
                 canManage={
-                  canManageClass || classData.teacherId === currentUser?._id
+                  canManageClass || isCourseTeacher(classData, currentUser?._id)
                 }
                 timeZone={
                   classData.timeZone ??

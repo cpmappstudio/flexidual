@@ -1,4 +1,8 @@
 import {
+  isCourseTeacher,
+  getCourseTeacherForGrade,
+} from "./model/courseAssignments";
+import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
@@ -296,7 +300,7 @@ async function buildAttendanceHistoryItem(
     schedule.scheduledEnd,
   );
   const canEditAttendance =
-    classData.teacherId === viewerId ||
+    isCourseTeacher(classData, viewerId) ||
     (await canManageClasses(
       ctx,
       viewerId,
@@ -504,6 +508,7 @@ export const getStudentDashboardStats = query({
     );
     const classDetails = await Promise.all(
       myClasses.map(async (classData) => {
+        const teacherId = getCourseTeacherForGrade(classData, gradeCode);
         const [
           teacher,
           curriculum,
@@ -512,7 +517,7 @@ export const getStudentDashboardStats = query({
           timeZone,
           curriculumProgress,
         ] = await Promise.all([
-          classData.teacherId ? ctx.db.get(classData.teacherId) : null,
+          teacherId ? ctx.db.get(teacherId) : null,
           ctx.db.get(classData.curriculumId),
           ctx.db
             .query("studentClassPreferences")
@@ -564,7 +569,7 @@ export const getStudentDashboardStats = query({
         );
         const canCompleteReport =
           pendingSchedules.length > 0 &&
-          (classData.teacherId === viewer._id ||
+          (isCourseTeacher(classData, viewer._id) ||
             (await canManageClasses(
               ctx,
               viewer._id,

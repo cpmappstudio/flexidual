@@ -4,6 +4,7 @@ import * as React from "react";
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
 import { Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getFullscreenPortalContainer } from "@/lib/fullscreen-portal";
 import { Button } from "@/components/ui/button";
 
 const Combobox = ComboboxPrimitive.Root;
@@ -12,13 +13,22 @@ const ComboboxValue = ComboboxPrimitive.Value;
 function ComboboxContent({
   className,
   anchor,
+  side = "bottom",
   ...props
 }: ComboboxPrimitive.Popup.Props &
-  Pick<ComboboxPrimitive.Positioner.Props, "anchor">) {
+  Pick<ComboboxPrimitive.Positioner.Props, "anchor" | "side">) {
+  const container = getFullscreenPortalContainer();
   return (
-    <ComboboxPrimitive.Portal>
+    <ComboboxPrimitive.Portal
+      container={
+        typeof HTMLElement !== "undefined" && container instanceof HTMLElement
+          ? container
+          : undefined
+      }
+    >
       <ComboboxPrimitive.Positioner
         anchor={anchor}
+        side={side}
         sideOffset={6}
         align="start"
         className="isolate z-50"
