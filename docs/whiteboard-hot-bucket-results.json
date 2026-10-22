@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-10-22T03:37:46.928Z",
+  "browser": "155.0.8059.85",
+  "elements": 2000,
+  "images": 12,
+  "distinctEdits": 120,
+  "bucketId": 40,
+  "canonicalBucketBytes": 170706,
+  "fullBucketSnapshotsDuringEdits": 0,
+  "receivedLiveJsonBytes": 391145,
+  "latencyMs": {
+    "samples": 120,
+    "p50": 284,
+    "p95": 297,
+    "max": 325
+  },
+  "finalVersion": 122,
+  "pageErrors": [],
+  "limits": "Real Chrome/Excalidraw/hook; local HTTP/SSE substitutes Convex, 50ms reads/writes. Reader CPU4x, 1Mbps/80ms extra latency after initial load. Latency uses two requestAnimationFrames, not physical paint. No production or LiveKit call tested."
+}

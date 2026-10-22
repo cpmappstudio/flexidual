@@ -17,7 +17,10 @@ import {
   readWhiteboardBucket,
   writeWhiteboardBucket,
   whiteboardManifestResult,
+  findWhiteboardBucketHistory,
+  recordWhiteboardBucketChanges,
 } from "./model/whiteboardSceneStorage";
+import { readWhiteboardBucketHistory } from "../lib/whiteboard-bucket-updates";
 import {
   WHITEBOARD_BUCKET_COUNT,
   joinWhiteboardPayload,
@@ -62,6 +65,7 @@ const manifestValidator = v.object({
   generation: v.number(),
   bucketIds: v.array(v.number()),
   legacyOrder: v.array(v.string()),
+  sourceId: v.optional(v.string()),
 });
 
 export const getSceneManifest = query({
@@ -114,12 +118,29 @@ export const ensureScene = mutation({
 });
 
 export const getSceneBucket = query({
-  args: { ...sceneReadArgs, bucketId: v.number() },
+  args: {
+    ...sceneReadArgs,
+    bucketId: v.number(),
+    cursor: v.optional(
+      v.object({
+        sourceId: v.string(),
+        generation: v.number(),
+        revision: v.number(),
+      }),
+    ),
+  },
   returns: v.union(
     v.null(),
-    v.object({ generation: v.number(), parts: v.array(v.string()) }),
+    v.object({
+      generation: v.number(),
+      parts: v.array(v.string()),
+      sourceId: v.optional(v.string()),
+      revision: v.optional(v.number()),
+      baseRevision: v.optional(v.union(v.null(), v.number())),
+      checkpoint: v.optional(v.boolean()),
+    }),
   ),
-  handler: async (ctx, { roomName, recordingToken, bucketId }) => {
+  handler: async (ctx, { roomName, recordingToken, bucketId, cursor }) => {
     if (
       !Number.isInteger(bucketId) ||
       bucketId < 0 ||
@@ -134,11 +155,39 @@ export const getSceneBucket = query({
       manifest?.recordingToken,
     );
     if (!manifest) return null;
+    if (
+      cursor?.sourceId === manifest._id &&
+      cursor.generation === manifest.generation
+    ) {
+      const history = await findWhiteboardBucketHistory(
+        ctx,
+        manifest._id,
+        bucketId,
+      );
+      const changes = readWhiteboardBucketHistory(history, cursor);
+      if (changes !== null)
+        return {
+          generation: manifest.generation,
+          sourceId: manifest._id,
+          revision: history!.revision,
+          baseRevision: cursor.revision,
+          ...changes,
+        };
+    }
     const bucket = await readWhiteboardBucket(ctx, manifest._id, bucketId);
+    const revision = bucket[0]?.revision ?? 0;
+    const unchanged =
+      cursor?.sourceId === manifest._id &&
+      cursor.generation === manifest.generation &&
+      cursor.revision === revision;
     return bucket.length
       ? {
           generation: manifest.generation,
-          parts: bucket.map((part) => part.jsonPart),
+          sourceId: manifest._id,
+          revision,
+          baseRevision: unchanged ? revision : null,
+          parts: unchanged ? [] : bucket.map((part) => part.jsonPart),
+          checkpoint: false,
         }
       : null;
   },
@@ -239,6 +288,13 @@ export const applySceneDelta = mutation({
         bucketId,
         mergedParts,
         existing,
+      );
+      await recordWhiteboardBucketChanges(
+        ctx,
+        manifest,
+        bucketId,
+        existing[0]?.revision ?? 0,
+        incoming.map((element) => winners.get(element.id)!),
       );
       if (!manifest.bucketIds.includes(bucketId))
         await ctx.db.patch("whiteboardSceneManifests", manifest._id, {

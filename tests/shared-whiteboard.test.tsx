@@ -1,5 +1,12 @@
 import { act, cleanup, render } from "@testing-library/react";
-import { StrictMode } from "react";
+import {
+  StrictMode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { getFunctionName, type FunctionReturnType } from "convex/server";
 import rateLimiter from "@convex-dev/rate-limiter/test";
@@ -25,6 +32,7 @@ import {
   whiteboardDraftStorage,
   whiteboardSceneRevision,
 } from "@/lib/whiteboard-draft-storage";
+import type { WhiteboardBucketCursor } from "@/lib/whiteboard-bucket-updates";
 
 vi.mock("@excalidraw/excalidraw/index.css", () => ({}));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
@@ -42,6 +50,8 @@ const state = vi.hoisted(() => ({
   },
   recoveryError: undefined as unknown,
   sceneHook: vi.fn(),
+  Canvas: undefined as ComponentType<ExcalidrawProps> | undefined,
+  buckets: {} as Record<string, unknown>,
   query: vi.fn(),
   queries: vi.fn(),
   save: vi.fn(),
@@ -64,7 +74,8 @@ vi.mock("@/lib/error-tracking", () => ({
 vi.mock("next/dynamic", () => ({
   default: () => (props: ExcalidrawProps) => {
     state.props = props;
-    return null;
+    const Canvas = state.Canvas;
+    return Canvas ? <Canvas {...props} /> : null;
   },
 }));
 vi.mock("@livekit/components-react", () => ({
@@ -214,13 +225,136 @@ async function attachCanvas() {
     );
   });
   await flush(3);
+  await flush(3);
   return canvas;
 }
+
+function canvasLifecycle() {
+  const mounts = vi.fn();
+  const unmounts = vi.fn();
+  let current: {
+    api: ExcalidrawImperativeAPI;
+    draw: (elements: ChangeArgs[0]) => void;
+  };
+  function Canvas(props: ExcalidrawProps) {
+    const propsRef = useRef(props);
+    propsRef.current = props;
+    const [model] = useState(() => {
+      const initial = props.initialData as {
+        elements: ChangeArgs[0];
+        files?: ChangeArgs[2];
+      };
+      return {
+        elements: initial.elements,
+        files: initial.files ?? {},
+        appState: {
+          activeTool: { type: "selection" },
+          scrollX: 0,
+          scrollY: 0,
+          zoom: { value: 1 },
+        } as ChangeArgs[1],
+      };
+    });
+    const emit = useCallback(
+      () =>
+        propsRef.current.onChange?.(
+          model.elements,
+          model.appState,
+          model.files,
+        ),
+      [model],
+    );
+    const [api] = useState(() => ({
+      updateScene: vi.fn(
+        (update: Parameters<ExcalidrawImperativeAPI["updateScene"]>[0]) => {
+          if (update.elements)
+            model.elements = update.elements as ChangeArgs[0];
+          if (update.appState) Object.assign(model.appState, update.appState);
+          emit();
+        },
+      ),
+      addFiles: vi.fn((files: BinaryFileData[]) => {
+        model.files = {
+          ...model.files,
+          ...Object.fromEntries(files.map((file) => [file.id, file])),
+        };
+        emit();
+      }),
+      getSceneElementsIncludingDeleted: () => model.elements,
+      getFiles: () => model.files,
+      getAppState: () => model.appState,
+      setActiveTool: (tool: ChangeArgs[1]["activeTool"]) => {
+        model.appState.activeTool = tool;
+        emit();
+      },
+    }));
+    useEffect(() => {
+      const editorApi = api as unknown as ExcalidrawImperativeAPI;
+      current = {
+        api: editorApi,
+        draw: (elements) => {
+          model.elements = elements;
+          emit();
+        },
+      };
+      mounts(editorApi);
+      propsRef.current.excalidrawAPI?.(editorApi);
+      emit();
+      return () => {
+        unmounts(editorApi);
+      };
+    }, [api, emit, model]);
+    return <div data-testid="mounted-whiteboard" />;
+  }
+  return { Canvas, mounts, unmounts, current: () => current };
+}
+
+async function incrementalSubscriptions() {
+  const { useWhiteboardScene } = await vi.importActual<
+    typeof import("@/hooks/use-whiteboard-scene")
+  >("@/hooks/use-whiteboard-scene");
+  state.sceneHook.mockImplementation(useWhiteboardScene);
+  state.query.mockImplementation((ref, args) => {
+    if (args === "skip") return undefined;
+    const name = getFunctionName(ref);
+    if (name.endsWith(":getSceneManifest")) return state.manifest;
+    if (name.endsWith(":getSceneFiles"))
+      return { fileRefs: state.scene?.fileRefs ?? {} };
+    return state.scene;
+  });
+  state.queries.mockImplementation(() => state.buckets);
+}
+
+function receiveScene(elements: ChangeArgs[0], pendingBucket?: number) {
+  state.scene = { ...cloudScene(elements), fileRefs: state.scene?.fileRefs };
+  const buckets = new Map<number, ChangeArgs[0][number][]>();
+  for (const element of elements) {
+    const id = whiteboardBucketId(element.id);
+    const bucket = buckets.get(id) ?? [];
+    bucket.push(element);
+    buckets.set(id, bucket);
+  }
+  state.manifest = { ...state.manifest, bucketIds: [...buckets.keys()] };
+  state.buckets = Object.fromEntries(
+    [...buckets].map(([id, elements]) => [
+      String(id),
+      id === pendingBucket
+        ? undefined
+        : {
+            generation: state.manifest.generation,
+            parts: splitWhiteboardPayload(JSON.stringify(elements)),
+          },
+    ]),
+  );
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
   vi.stubGlobal("indexedDB", undefined);
   state.props = {};
+  state.Canvas = undefined;
+  state.buckets = {};
   state.scene = null;
   state.recoveryError = undefined;
   state.sceneHook.mockImplementation(() => ({
@@ -861,8 +995,11 @@ test.each([false, true])(
     let buckets: Record<
       string,
       FunctionReturnType<typeof api.whiteboardSessions.getSceneBucket>
-    >;
-    const refresh = async () => {
+    > = {};
+    const refresh = async (useCursors = false) => {
+      const subscriptions = state.queries.mock.calls.at(-1)?.[0] as
+        | Record<string, { args: { cursor?: WhiteboardBucketCursor } }>
+        | undefined;
       state.manifest = (await writer.query(
         api.whiteboardSessions.getSceneManifest,
         { roomName },
@@ -880,6 +1017,9 @@ test.each([false, true])(
             await writer.query(api.whiteboardSessions.getSceneBucket, {
               roomName,
               bucketId,
+              ...(useCursors && subscriptions?.[String(bucketId)]?.args.cursor
+                ? { cursor: subscriptions[String(bucketId)].args.cursor }
+                : {}),
             }),
           ]),
         ),
@@ -948,7 +1088,11 @@ test.each([false, true])(
     });
     change(canvas.getSceneElementsIncludingDeleted(), 0, { [file.id]: file });
     await flush(80);
-    const peer = { ...shape("other-tab"), index: "a3" };
+    const peerId = Array.from(
+      { length: 10000 },
+      (_, i) => `other-tab-${i}`,
+    ).find((id) => whiteboardBucketId(id) === whiteboardBucketId(original.id))!;
+    const peer = { ...shape(peerId), index: "a3" };
     await writer.mutation(api.whiteboardSessions.applySceneDelta, {
       roomName,
       expectedLiveRoomName: liveRoomName,
@@ -956,7 +1100,19 @@ test.each([false, true])(
       bucketId: whiteboardBucketId(peer.id),
       parts: splitWhiteboardPayload(JSON.stringify([peer])),
     });
-    await refresh();
+    await refresh(true);
+    const incremental = buckets[String(whiteboardBucketId(original.id))]!;
+    expect(incremental.baseRevision).not.toBeNull();
+    expect(
+      JSON.parse(joinWhiteboardPayload(incremental.parts)).map(
+        (element: { id: string }) => element.id,
+      ),
+    ).toContain(peer.id);
+    expect(
+      JSON.parse(joinWhiteboardPayload(incremental.parts)).map(
+        (element: { id: string }) => element.id,
+      ),
+    ).not.toContain(original.id);
     view.rerender(<SharedWhiteboard roomName={roomName} />);
     await flush(3);
     const warning = new Event("beforeunload", { cancelable: true });
@@ -1004,6 +1160,292 @@ test.each([false, true])(
   },
 );
 
+test.each([false, true])(
+  "late editor startup reconciles remote edits with pending drawings and images across reload, readonly=%s",
+  async (isReadonly) => {
+    await incrementalSubscriptions();
+    const first = shape("confirmed");
+    const pending = shape("pending-stroke");
+    const remote = {
+      ...shape("remote-stroke"),
+      index: "a3",
+    } as ChangeArgs[0][number];
+    const pendingFile = imageFile("pending-image");
+    const remoteFile = imageFile("remote-image");
+    const pendingImage = {
+      ...imageElement(pendingFile),
+      id: "local-image",
+      index: "a2",
+    } as ChangeArgs[0][number];
+    const remoteImage = {
+      ...imageElement(remoteFile),
+      id: "remote-image",
+      index: "a4",
+    } as ChangeArgs[0][number];
+    const draft = {
+      elements: [first, pending, pendingImage],
+      files: { [pendingFile.id]: pendingFile },
+      saved: false,
+    };
+    localStorage.setItem("wb_test-room", JSON.stringify(draft));
+    quota();
+    let allowUpload!: () => void;
+    const upload = new Promise<void>((resolve) => {
+      allowUpload = resolve;
+    });
+    const fetcher = downloaded(remoteFile);
+    fetcher.mockImplementation(async (_url, options) => {
+      if (options?.method === "POST") await upload;
+      return {
+        ok: true,
+        blob: async () =>
+          new Blob(["remote-image"], { type: remoteFile.mimeType }),
+        json: async () =>
+          options?.method === "POST" ? imageRef(pendingFile) : {},
+      };
+    });
+    receiveScene([first]);
+    state.save.mockImplementation(async (args) => {
+      receiveScene(
+        mergeWhiteboardElements(
+          state.scene!.elements,
+          JSON.parse(joinWhiteboardPayload(args.parts)),
+        ),
+      );
+      return {
+        changed: true,
+        generation: state.manifest.generation,
+        conflictsParts: [],
+      };
+    });
+    // Capture initialData, but keep the dynamically imported editor unavailable.
+    let view = await mount("test-room", isReadonly);
+    receiveScene([first, remote, remoteImage]);
+    state.scene!.fileRefs = { [remoteFile.id]: imageRef(remoteFile) };
+    view.rerender(
+      <SharedWhiteboard roomName="test-room" isReadonly={isReadonly} />,
+    );
+    await flush(5);
+    expect(state.save).not.toHaveBeenCalled();
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    view.rerender(
+      <SharedWhiteboard roomName="test-room" isReadonly={isReadonly} />,
+    );
+    await flush(5);
+    const editor = lifecycle.current();
+    // API readiness commits first; reconciliation then schedules its update.
+    await flush(5);
+    const expected = isReadonly
+      ? [first, remote, remoteImage]
+      : [first, pending, pendingImage, remote, remoteImage];
+    expect(editor.api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining(expected),
+    );
+    expect(editor.api.getFiles()).toMatchObject({
+      [remoteFile.id]: remoteFile,
+    });
+    expect(editor.api.updateScene).toHaveBeenCalledWith(
+      expect.objectContaining({ captureUpdate: "NEVER" }),
+    );
+    if (isReadonly) {
+      expect(editor.api.getSceneElementsIncludingDeleted()).not.toEqual(
+        expect.arrayContaining([pending, pendingImage]),
+      );
+      expect(state.save).not.toHaveBeenCalled();
+      expect(
+        fetcher.mock.calls.filter(([, options]) => options?.method === "POST"),
+      ).toHaveLength(0);
+    } else {
+      expect(editor.api.getFiles()).toMatchObject(draft.files);
+      act(() => editor.api.setActiveTool({ type: "freedraw" }));
+      const next = {
+        ...shape("after-startup"),
+        index: "a5",
+      } as ChangeArgs[0][number];
+      act(() =>
+        editor.draw([...editor.api.getSceneElementsIncludingDeleted(), next]),
+      );
+      expected.push(next);
+      await flush(350);
+      expect(editor.api.getAppState().activeTool.type).toBe("freedraw");
+      expect(lifecycle.mounts).toHaveBeenCalledTimes(1);
+      const sent = state.save.mock.calls.flatMap(([args]) =>
+        JSON.parse(joinWhiteboardPayload(args.parts)),
+      );
+      expect(new Set(sent.map((element) => element.id))).toEqual(
+        new Set([pending.id, pendingImage.id, next.id]),
+      );
+      expect(sent.some((element) => element.isDeleted)).toBe(false);
+      const warning = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(warning);
+      expect(warning.defaultPrevented).toBe(true);
+      expect(fetcher).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            Authorization: "Bearer test-token",
+          }),
+        }),
+      );
+    }
+    await act(async () => allowUpload());
+    await flush(5);
+    if (!isReadonly) {
+      state.scene!.fileRefs![pendingFile.id] = imageRef(pendingFile);
+      const confirmed = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(confirmed);
+      expect(confirmed.defaultPrevented).toBe(false);
+    }
+    view.unmount();
+    await flush(1);
+    // Storage is still full: keep the old draft, recover acknowledged drawings
+    // from the cloud and retain the original pending image bytes on reload.
+    expect(JSON.parse(localStorage.getItem("wb_test-room")!)).toEqual(draft);
+    view = await mount("test-room", isReadonly);
+    await flush(5);
+    await flush(5);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining(expected),
+    );
+    expect(lifecycle.current().api.getFiles()).toMatchObject({
+      [remoteFile.id]: remoteFile,
+    });
+    if (!isReadonly)
+      expect(lifecycle.current().api.getFiles()).toMatchObject(draft.files);
+    view.unmount();
+  },
+);
+
+test.each([false, true])(
+  "incremental subscriptions retain the editor, pending strokes and images across full-storage reload, readonly=%s",
+  async (isReadonly) => {
+    await incrementalSubscriptions();
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const first = shape("first-stroke");
+    const second = shape("second-stroke");
+    const third = shape("third-stroke");
+    const file = imageFile();
+    const image = imageElement(file);
+    const original = [first, image];
+    const draft = {
+      elements: original,
+      files: { [file.id]: file },
+      fileRefs: { [file.id]: imageRef(file) },
+      saved: false,
+    };
+    localStorage.setItem("wb_test-room", JSON.stringify(draft));
+    quota();
+    receiveScene(original);
+    state.scene!.fileRefs = draft.fileRefs;
+    expect(state.manifest.bucketIds).not.toContain(
+      whiteboardBucketId(second.id),
+    );
+    const apply = (args: { parts: string[] }) => {
+      receiveScene(
+        mergeWhiteboardElements(
+          state.scene!.elements,
+          JSON.parse(joinWhiteboardPayload(args.parts)),
+        ),
+      );
+      return {
+        changed: true,
+        generation: state.manifest.generation,
+        conflictsParts: [],
+      };
+    };
+    state.save.mockImplementation(async (args) => apply(args));
+    let acknowledge!: () => void;
+    state.save.mockImplementationOnce(async (args) => {
+      const response = apply(args);
+      await new Promise<void>((resolve) => {
+        acknowledge = resolve;
+      });
+      return response;
+    });
+    let view = await mount("test-room", isReadonly);
+    await flush(5);
+    const editor = lifecycle.current();
+    act(() => {
+      if (isReadonly) editor.api.updateScene({ appState: { scrollX: 42 } });
+      else editor.api.setActiveTool({ type: "freedraw" });
+    });
+    if (!isReadonly) {
+      act(() => editor.draw([...original, second]));
+      await flush(80);
+      expect(state.save).toHaveBeenCalledTimes(1);
+    }
+    // The manifest arrives before the newly subscribed bucket does.
+    receiveScene([...original, second], whiteboardBucketId(second.id));
+    view.rerender(
+      <SharedWhiteboard roomName="test-room" isReadonly={isReadonly} />,
+    );
+    await flush(5);
+    expect(view.queryByText("Loading whiteboard…")).toBeNull();
+    expect(lifecycle.unmounts).not.toHaveBeenCalled();
+    expect(lifecycle.current()).toBe(editor);
+    if (!isReadonly) {
+      act(() => editor.draw([...original, second, third]));
+      await flush(350);
+      expect(state.save).toHaveBeenCalledTimes(1);
+      const pending = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(pending);
+      expect(pending.defaultPrevented).toBe(true);
+    }
+    receiveScene([...original, second]);
+    view.rerender(
+      <SharedWhiteboard roomName="test-room" isReadonly={isReadonly} />,
+    );
+    await flush(5);
+    expect(lifecycle.mounts).toHaveBeenCalledTimes(1);
+    if (isReadonly) {
+      expect(editor.api.getAppState().scrollX).toBe(42);
+      expect(state.save).not.toHaveBeenCalled();
+      receiveScene([...original, second, third]);
+    } else {
+      expect(editor.api.getAppState().activeTool.type).toBe("freedraw");
+      expect(editor.api.getSceneElementsIncludingDeleted()).toEqual(
+        expect.arrayContaining([...original, second, third]),
+      );
+      await act(async () => acknowledge());
+      await flush(350);
+      const sent = state.save.mock.calls.flatMap(([args]) =>
+        JSON.parse(joinWhiteboardPayload(args.parts)),
+      );
+      expect(sent).toEqual(expect.arrayContaining([second, third]));
+      expect(new Set(sent.map((element) => element.id))).toEqual(
+        new Set([second.id, third.id]),
+      );
+      expect(sent.some((element) => element.isDeleted)).toBe(false);
+    }
+    view.rerender(
+      <SharedWhiteboard roomName="test-room" isReadonly={isReadonly} />,
+    );
+    await flush(5);
+    expect(editor.api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([...original, second, third]),
+    );
+    expect(editor.api.getFiles()).toEqual(draft.files);
+    expect(editor.api.updateScene).toHaveBeenCalledWith(
+      expect.objectContaining({ captureUpdate: "NEVER" }),
+    );
+    // Neither storage can accept a new draft. Preserve the old one; recover
+    // acknowledged strokes from Convex rather than resetting the editor to it.
+    expect(JSON.parse(localStorage.getItem("wb_test-room")!)).toEqual(draft);
+    view.unmount();
+    await flush(1);
+    view = await mount("test-room", isReadonly);
+    await flush(5);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([...original, second, third]),
+    );
+    expect(lifecycle.current().api.getFiles()).toEqual(draft.files);
+    view.unmount();
+  },
+);
+
 test("reports stalled readiness once without surviving unmount", async () => {
   const view = await mount();
   await flush(20_000);
@@ -1015,6 +1457,82 @@ test("reports stalled readiness once without surviving unmount", async () => {
   await flush(60_000);
   expect(state.reportError).toHaveBeenCalledTimes(1);
 });
+
+test.each([false, true])(
+  "StrictMode's discarded API cannot consume buffered images before the current API, readonly=%s",
+  async (isReadonly) => {
+    await incrementalSubscriptions();
+    const first = shape("confirmed");
+    const pending = shape("pending-stroke");
+    const file = imageFile("strict-image");
+    const image = imageElement(file);
+    const draft = { elements: [first, pending], files: {}, saved: false };
+    localStorage.setItem("wb_test-room", JSON.stringify(draft));
+    quota();
+    const fetcher = downloaded(file);
+    receiveScene([first, image]);
+    state.scene!.fileRefs = { [file.id]: imageRef(file) };
+    cloudWrites();
+    const lifecycle = canvasLifecycle();
+    const ready = vi.fn(() => lifecycle.current().api.getFiles());
+    const props = { roomName: "test-room", isReadonly, onReady: ready };
+    let view = render(<SharedWhiteboard {...props} />);
+    await flush(5);
+    await flush(5);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const discarded = { addFiles: vi.fn(), updateScene: vi.fn() };
+    // Model the SDK's two constructor callbacks before either deferred task runs.
+    act(() => {
+      state.props.excalidrawAPI?.(
+        discarded as unknown as ExcalidrawImperativeAPI,
+      );
+      state.Canvas = lifecycle.Canvas;
+      view.rerender(<SharedWhiteboard {...props} />);
+    });
+    await flush(5);
+    await flush(5);
+    expect(discarded.addFiles).not.toHaveBeenCalled();
+    expect(discarded.updateScene).not.toHaveBeenCalled();
+    const current = lifecycle.current().api;
+    expect(current.addFiles).toHaveBeenCalledExactlyOnceWith([file]);
+    expect(current.getFiles()).toEqual({ [file.id]: file });
+    expect(current.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining(
+        isReadonly ? [first, image] : [first, pending, image],
+      ),
+    );
+    expect(current.updateScene).toHaveBeenCalledWith(
+      expect.objectContaining({ captureUpdate: "NEVER" }),
+    );
+    expect(ready).toHaveBeenCalledTimes(1);
+    expect(ready).toHaveReturnedWith({ [file.id]: file });
+    await flush(350);
+    if (isReadonly) {
+      expect(state.save).not.toHaveBeenCalled();
+      expect(state.token).not.toHaveBeenCalled();
+    } else {
+      expect(state.save).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.parse(joinWhiteboardPayload(state.save.mock.calls[0][0].parts)),
+      ).toEqual([pending]);
+    }
+    expect(JSON.parse(localStorage.getItem("wb_test-room")!)).toEqual(draft);
+    view.unmount();
+    await flush(1);
+    receiveScene(state.scene!.elements);
+    view = render(<SharedWhiteboard {...props} />);
+    await flush(5);
+    await flush(5);
+    await flush(5);
+    expect(lifecycle.current().api.getFiles()).toEqual({ [file.id]: file });
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining(
+        isReadonly ? [first, image] : [first, pending, image],
+      ),
+    );
+    view.unmount();
+  },
+);
 
 test("React StrictMode effect replay does not permanently close the sync controller", async () => {
   render(

@@ -372,7 +372,7 @@ function SharedWhiteboardSession({
     () => new Set<string>(JSON.parse(neededImageKey)),
     [neededImageKey],
   );
-  const [writerSnapshot, setWriterSnapshot] = useState<typeof receivedScene>();
+  const [initialScene, setInitialScene] = useState<typeof receivedScene>();
   const [draft, setDraft] = useState<PersistedScene | null>();
   const [saveError, setSaveError] = useState(false);
   const [sizeError, setSizeError] = useState(false);
@@ -437,7 +437,6 @@ function SharedWhiteboardSession({
   const addedFileIdsRef = useRef<Set<string>>(new Set());
 
   // Buffer data that arrives before Excalidraw has finished loading
-  const pendingElementsRef = useRef<ExcalidrawElements | null>(null);
   const pendingFilesRef = useRef<BinaryFileData[]>([]);
 
   // Track file IDs already in-flight — prevents duplicate uploads
@@ -505,19 +504,18 @@ function SharedWhiteboardSession({
   const currentFilesRef = useRef<BinaryFiles>(initialFiles);
   const cachedRevisionRef = useRef(cachedRevision);
   const initialCanvasData = useMemo(() => {
-    const cloud = writerSnapshot?.elements as ExcalidrawElements | undefined;
-    const elements =
-      !isReadonly && cloud
-        ? hasPendingScene
-          ? mergeWhiteboardElements(
-              cloud,
-              cachedData.elements ?? [],
-              cloud.map((element) => element.id),
-            )
-          : cloud
-        : (cachedData.elements ?? []);
+    const cloud = initialScene?.elements as ExcalidrawElements | undefined;
+    const elements = cloud
+      ? !isReadonly && hasPendingScene
+        ? mergeWhiteboardElements(
+            cloud,
+            cachedData.elements ?? [],
+            cloud.map((element) => element.id),
+          )
+        : cloud
+      : (cachedData.elements ?? []);
     return { ...cachedData, elements: isolateWhiteboardElements(elements) };
-  }, [writerSnapshot, cachedData, isReadonly, hasPendingScene]);
+  }, [initialScene, cachedData, isReadonly, hasPendingScene]);
 
   const confirmCachedScene = useCallback(() => {
     if (
@@ -535,20 +533,18 @@ function SharedWhiteboardSession({
 
   useEffect(() => {
     if (
-      isReadonly ||
       draft === undefined ||
-      writerSnapshot !== undefined ||
+      initialScene !== undefined ||
       receivedScene === undefined
     )
       return;
     fileRefsRef.current = { ...initialFileRefs, ...receivedScene.fileRefs };
     currentFilesRef.current = initialFiles;
     cachedRevisionRef.current = cachedRevision;
-    setWriterSnapshot(receivedScene);
+    setInitialScene(receivedScene);
   }, [
-    isReadonly,
     draft,
-    writerSnapshot,
+    initialScene,
     receivedScene,
     initialFileRefs,
     initialFiles,
@@ -664,9 +660,9 @@ function SharedWhiteboardSession({
     [roomName, room, applyDelta, generation, confirmCachedScene, scheduleDraft],
   );
   useEffect(() => {
-    if (writerSnapshot)
-      sync.seed(writerSnapshot.elements as ExcalidrawElements);
-  }, [sync, writerSnapshot]);
+    if (!isReadonly && initialScene)
+      sync.seed(initialScene.elements as ExcalidrawElements);
+  }, [sync, isReadonly, initialScene]);
   useEffect(() => {
     if (isReadonly) return;
     sync.resume();
@@ -887,13 +883,12 @@ function SharedWhiteboardSession({
   startUploadsRef.current = startUploads;
 
   // ---------------------------------------------------------------------------
-  // READER — apply scene from Convex when it changes (reactive subscription)
-  // Only active when isReadonly=true (teacher view, students).
+  // Apply complete remote scenes after editor initialization, for both roles.
   // ---------------------------------------------------------------------------
 
   // Merge concurrent staff edits; remote changes must not become local undo steps.
   useEffect(() => {
-    if (!remoteElements || (!isReadonly && !writerSnapshot)) return;
+    if (!isCanvasReady || !remoteElements || !initialScene) return;
     const elements = remoteElements as ExcalidrawElements;
     if (apiRef.current) {
       const api = apiRef.current;
@@ -940,14 +935,12 @@ function SharedWhiteboardSession({
         }, 0);
       }, 0);
       return () => clearTimeout(timer);
-    } else {
-      // API not mounted yet — buffer until excalidrawAPI callback fires
-      if (isReadonly) pendingElementsRef.current = elements;
     }
   }, [
+    isCanvasReady,
     isReadonly,
     remoteElements,
-    writerSnapshot,
+    initialScene,
     manifest?.legacyOrder,
     sync,
     scheduleDraft,
@@ -1058,7 +1051,7 @@ function SharedWhiteboardSession({
 
   const handleChange = useCallback(
     (elements: ExcalidrawElements, appState: AppState, files: BinaryFiles) => {
-      if (isReadonly || writerSnapshot === undefined || suppressRef.current)
+      if (isReadonly || initialScene === undefined || suppressRef.current)
         return;
 
       // Keep currentFilesRef current
@@ -1125,7 +1118,7 @@ function SharedWhiteboardSession({
         }
       }
     },
-    [room, isReadonly, startUploads, writerSnapshot, sync, scheduleDraft],
+    [room, isReadonly, startUploads, initialScene, sync, scheduleDraft],
   );
 
   // ---------------------------------------------------------------------------
@@ -1166,11 +1159,8 @@ function SharedWhiteboardSession({
   if (recoveryError) {
     return <div role="alert">{messages.recovery}</div>;
   }
-  if (
-    draft === undefined ||
-    receivedScene === undefined ||
-    (!isReadonly && writerSnapshot === undefined)
-  ) {
+  // Incremental reads can wait for a new bucket; never remount an initialized editor.
+  if (draft === undefined || initialScene === undefined) {
     return <WhiteboardLoading />;
   }
 
@@ -1189,25 +1179,13 @@ function SharedWhiteboardSession({
         excalidrawAPI={(api: ExcalidrawImperativeAPI) => {
           apiRef.current = api;
           onApiReady?.(api);
-          // Flush data buffered while the API was loading.
+          // Add files buffered while the API was loading, then reconcile the latest scene.
           // setTimeout(0) is a macrotask — it fires AFTER React has fully committed
           // Excalidraw's initial render, preventing the "setState inside update" error
           // that occurs when requestAnimationFrame fires mid-reconciliation.
           setTimeout(() => {
-            if (!mountedRef.current) return;
-            if (pendingElementsRef.current) {
-              suppressRef.current = true;
-              api.updateScene({
-                elements: isolateWhiteboardElements(pendingElementsRef.current),
-                captureUpdate: "NEVER" as Parameters<
-                  typeof api.updateScene
-                >[0]["captureUpdate"],
-              });
-              pendingElementsRef.current = null;
-              setTimeout(() => {
-                suppressRef.current = false;
-              }, 0);
-            }
+            // StrictMode can discard a constructor after it provided an API.
+            if (!mountedRef.current || apiRef.current !== api) return;
             if (pendingFilesRef.current.length > 0) {
               api.addFiles(pendingFilesRef.current.splice(0));
             }

@@ -1,0 +1,317 @@
+{
+  "recordedAt": "2026-10-22T03:09:30.869Z",
+  "machine": {
+    "cpu": "Apple M4 Max",
+    "logicalCpus": 16,
+    "ramGiB": 128,
+    "arch": "arm64"
+  },
+  "browser": "155.0.8059.85",
+  "results": [
+    {
+      "elements": 200,
+      "baselineFreehandPoints": 24000,
+      "images": 4,
+      "strokes": 12,
+      "durationSeconds": 6.2,
+      "initialJsonBytes": {
+        "teacher": 862640,
+        "student-1": 862640,
+        "student-2": 862640,
+        "student-slow": 862640
+      },
+      "initialImageBytes": {
+        "teacher": 181394,
+        "student-1": 181394,
+        "student-2": 181394,
+        "student-slow": 181394
+      },
+      "acceptedDeltaBatches": 33,
+      "sentDeltaBytes": 37444,
+      "fullSnapshotSameBatchesModelBytes": 27754008,
+      "readers": [
+        {
+          "role": "student-1",
+          "latencyMs": {
+            "samples": 33,
+            "p50": 252,
+            "p95": 307,
+            "max": 319
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 343,
+            "p95": 419,
+            "max": 419
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 257,
+            "p95": 324,
+            "max": 324
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedLiveJsonBytes": 71096
+        },
+        {
+          "role": "student-2",
+          "latencyMs": {
+            "samples": 33,
+            "p50": 257,
+            "p95": 312,
+            "max": 324
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 347,
+            "p95": 424,
+            "max": 424
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 262,
+            "p95": 329,
+            "max": 329
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedLiveJsonBytes": 71096
+        },
+        {
+          "role": "student-slow",
+          "latencyMs": {
+            "samples": 33,
+            "p50": 321,
+            "p95": 376,
+            "max": 388
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 411,
+            "p95": 504,
+            "max": 504
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 326,
+            "p95": 393,
+            "max": 393
+          },
+          "visibleBeforePointerUp": 9,
+          "receivedLiveJsonBytes": 71096
+        }
+      ],
+      "resources": [
+        {
+          "role": "teacher",
+          "startupMs": 1190,
+          "frameIntervalMs": {
+            "samples": 372,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 1114,
+          "heapMiB": 32
+        },
+        {
+          "role": "student-1",
+          "startupMs": 1155,
+          "frameIntervalMs": {
+            "samples": 372,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 231,
+          "heapMiB": 17
+        },
+        {
+          "role": "student-2",
+          "startupMs": 1164,
+          "frameIntervalMs": {
+            "samples": 373,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 230,
+          "heapMiB": 17
+        },
+        {
+          "role": "student-slow",
+          "startupMs": 1867,
+          "frameIntervalMs": {
+            "samples": 372,
+            "p50": 16.7,
+            "p95": 16.7,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 841,
+          "heapMiB": 20
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "elements": 2000,
+      "baselineFreehandPoints": 240000,
+      "images": 12,
+      "strokes": 12,
+      "durationSeconds": 8,
+      "initialJsonBytes": {
+        "teacher": 8493889,
+        "student-1": 8493889,
+        "student-2": 8493889,
+        "student-slow": 8493889
+      },
+      "initialImageBytes": {
+        "teacher": 544220,
+        "student-1": 544220,
+        "student-2": 544220,
+        "student-slow": 544220
+      },
+      "acceptedDeltaBatches": 35,
+      "sentDeltaBytes": 38997,
+      "fullSnapshotSameBatchesModelBytes": 291887020,
+      "readers": [
+        {
+          "role": "student-1",
+          "latencyMs": {
+            "samples": 35,
+            "p50": 210,
+            "p95": 344,
+            "max": 357
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 347,
+            "p95": 484,
+            "max": 484
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 263,
+            "p95": 364,
+            "max": 364
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedLiveJsonBytes": 118328
+        },
+        {
+          "role": "student-2",
+          "latencyMs": {
+            "samples": 35,
+            "p50": 221,
+            "p95": 354,
+            "max": 355
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 341,
+            "p95": 495,
+            "max": 495
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 258,
+            "p95": 358,
+            "max": 358
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedLiveJsonBytes": 118328
+        },
+        {
+          "role": "student-slow",
+          "latencyMs": {
+            "samples": 35,
+            "p50": 299,
+            "p95": 432,
+            "max": 432
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 453,
+            "p95": 572,
+            "max": 572
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 348,
+            "p95": 435,
+            "max": 435
+          },
+          "visibleBeforePointerUp": 11,
+          "receivedLiveJsonBytes": 118328
+        }
+      ],
+      "resources": [
+        {
+          "role": "teacher",
+          "startupMs": 1345,
+          "frameIntervalMs": {
+            "samples": 421,
+            "p50": 16.7,
+            "p95": 33.3,
+            "max": 66.8
+          },
+          "longTasks": 22,
+          "longTaskMs": 1696,
+          "rendererTaskCpuMs": 3290,
+          "heapMiB": 149
+        },
+        {
+          "role": "student-1",
+          "startupMs": 1319,
+          "frameIntervalMs": {
+            "samples": 479,
+            "p50": 16.7,
+            "p95": 16.7,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 325,
+          "heapMiB": 72
+        },
+        {
+          "role": "student-2",
+          "startupMs": 1330,
+          "frameIntervalMs": {
+            "samples": 479,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 325,
+          "heapMiB": 72
+        },
+        {
+          "role": "student-slow",
+          "startupMs": 2754,
+          "frameIntervalMs": {
+            "samples": 478,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 1229,
+          "heapMiB": 53
+        }
+      ],
+      "pageErrors": []
+    }
+  ],
+  "limits": "Development SDK on one desktop; local incremental transport with 50ms server delays; slow reader CPU4x and 1Mbps/80ms extra network latency. Paint proxy is two requestAnimationFrames, not a physical display probe. Snapshot comparison is modeled, not an executed historical version. No production, Convex invoice or LiveKit video measured."
+}

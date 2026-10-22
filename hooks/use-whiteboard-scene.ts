@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueries, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { sortWhiteboardElements } from "@/lib/whiteboard-elements";
 import {
-  parseWhiteboardElements,
-  sortWhiteboardElements,
-  joinWhiteboardPayload,
-} from "@/lib/whiteboard-elements";
+  applyWhiteboardBucketResult,
+  type CachedWhiteboardBucket,
+  type WhiteboardBucketCursor,
+} from "@/lib/whiteboard-bucket-updates";
 
 /** Subscribe only to occupied, bounded buckets. Image changes never resend drawings. */
 export function useWhiteboardScene(
@@ -44,6 +45,20 @@ export function useWhiteboardScene(
     api.whiteboardSessions.getSceneFiles,
     manifest?.format === 2 ? { roomName, recordingToken } : "skip",
   );
+  const scope = JSON.stringify([
+    roomName,
+    recordingToken,
+    manifest?.format === 2 ? manifest.sourceId : undefined,
+    manifest?.generation,
+  ]);
+  const [anchors, setAnchors] = useState<{
+    scope: string;
+    values: Record<number, WhiteboardBucketCursor>;
+  }>({ scope, values: {} });
+  const parsedBuckets = useMemo(
+    () => ({ scope, values: new Map<number, CachedWhiteboardBucket>() }),
+    [scope],
+  );
   const queries = useMemo(
     () =>
       Object.fromEntries(
@@ -55,51 +70,57 @@ export function useWhiteboardScene(
               roomName,
               ...(recordingToken ? { recordingToken } : {}),
               bucketId,
+              ...(anchors.scope === scope && anchors.values[bucketId]
+                ? { cursor: anchors.values[bucketId] }
+                : {}),
             },
           },
         ]),
       ),
-    [roomName, recordingToken, manifest],
+    [roomName, recordingToken, manifest, anchors, scope],
   );
   const buckets = useQueries(queries);
-  const parsedBuckets = useRef(
-    new Map<
-      number,
-      { parts: string[]; elements: ReturnType<typeof parseWhiteboardElements> }
-    >(),
-  );
   const elements = useMemo(() => {
     if (manifest === undefined) return undefined;
     if (manifest === null) return [];
     if (manifest.format === 1) return legacy?.elements;
-    const parts = manifest.bucketIds.map((id) => buckets[String(id)]);
-    for (const part of parts) if (part instanceof Error) throw part;
-    if (
-      parts.some(
-        (part) =>
-          part === undefined || part?.generation !== manifest.generation,
-      )
-    )
-      return undefined;
-    return sortWhiteboardElements(
-      parts.flatMap((part, index) => {
-        if (!part) return [];
-        const id = manifest.bucketIds[index];
-        let cached = parsedBuckets.current.get(id);
-        if (!cached || cached.parts !== part.parts) {
-          cached = {
-            parts: part.parts,
-            elements: parseWhiteboardElements(
-              joinWhiteboardPayload(part.parts),
-            ),
-          };
-          parsedBuckets.current.set(id, cached);
-        }
-        return cached.elements;
-      }),
-      manifest.legacyOrder,
+    for (const id of manifest.bucketIds)
+      if (buckets[String(id)] instanceof Error) throw buckets[String(id)];
+    const complete = [];
+    for (const id of manifest.bucketIds) {
+      const part = buckets[String(id)];
+      if (part instanceof Error) throw part;
+      let cached = parsedBuckets.values.get(id);
+      if (part !== undefined) {
+        if (
+          !part ||
+          part.generation !== manifest.generation ||
+          (manifest.sourceId && part.sourceId !== manifest.sourceId)
+        )
+          return undefined;
+        cached = applyWhiteboardBucketResult(cached, part);
+        if (cached) parsedBuckets.values.set(id, cached);
+        else parsedBuckets.values.delete(id);
+      }
+      if (!cached) return undefined;
+      complete.push(...cached.elements);
+    }
+    return sortWhiteboardElements(complete, manifest.legacyOrder);
+  }, [manifest, legacy, buckets, parsedBuckets]);
+  useEffect(() => {
+    const values = Object.fromEntries(
+      [...parsedBuckets.values].flatMap(([id, cached]) =>
+        cached.anchor ? [[id, cached.anchor]] : [],
+      ),
     );
-  }, [manifest, legacy, buckets]);
+    // Batch cursor renewals at applied checkpoints, not on every drawing update.
+    setAnchors((previous) =>
+      previous.scope === scope &&
+      JSON.stringify(previous.values) === JSON.stringify(values)
+        ? previous
+        : { scope, values },
+    );
+  }, [elements, scope, parsedBuckets, buckets]);
   const scene = useMemo(() => {
     if (
       elements === undefined ||

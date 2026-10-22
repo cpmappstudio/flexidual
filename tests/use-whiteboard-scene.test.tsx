@@ -2,6 +2,12 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import { useWhiteboardScene } from "@/hooks/use-whiteboard-scene";
+import { splitWhiteboardPayload } from "@/lib/whiteboard-elements";
+import {
+  appendWhiteboardBucketHistory,
+  readWhiteboardBucketHistory,
+  type WhiteboardBucketHistory,
+} from "@/lib/whiteboard-bucket-updates";
 
 const state = vi.hoisted(() => ({
   manifest: null as null | {
@@ -10,6 +16,7 @@ const state = vi.hoisted(() => ({
     bucketIds: number[];
     legacyOrder: string[];
     fromLegacy: boolean;
+    sourceId?: string;
   },
   buckets: {} as Record<string, unknown>,
   files: { fileRefs: {} },
@@ -165,6 +172,189 @@ test("a new activation retries recovery without retaining the previous failure",
     roomName: "room",
     expectedLiveRoomName: "new",
   });
+});
+
+test("a snapshot anchor survives skipped deltas, pending query results and recovery without remounting", () => {
+  state.manifest!.sourceId = "scene";
+  for (const id of [4, 12])
+    state.buckets[id] = {
+      ...(state.buckets[id] as object),
+      sourceId: "scene",
+      revision: 1,
+      baseRevision: null,
+    };
+  const { result, rerender } = renderHook(() =>
+    useWhiteboardScene("room", "activation", true),
+  );
+  expect(state.queries.mock.calls.at(-1)![0][4].args.cursor).toEqual({
+    sourceId: "scene",
+    generation: 1,
+    revision: 1,
+  });
+  state.buckets = {
+    ...state.buckets,
+    4: {
+      generation: 1,
+      sourceId: "scene",
+      revision: 3,
+      baseRevision: 1,
+      parts: [
+        JSON.stringify([
+          {
+            id: "a",
+            version: 2,
+            versionNonce: 2,
+            isDeleted: true,
+            index: "a0",
+          },
+          { id: "new", version: 1, versionNonce: 1, index: "a2" },
+        ]),
+      ],
+    },
+  };
+  rerender();
+  expect(result.current.scene!.elements).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: "a", isDeleted: true }),
+      expect.objectContaining({ id: "b" }),
+      expect.objectContaining({ id: "new" }),
+    ]),
+  );
+  expect(state.queries.mock.calls.at(-1)![0][4].args.cursor.revision).toBe(1);
+  state.buckets = { ...state.buckets, 4: undefined };
+  rerender();
+  expect(result.current.scene!.elements).toHaveLength(3);
+  state.manifest = { ...state.manifest!, bucketIds: [4, 12, 21] };
+  rerender();
+  expect(result.current.scene).toBeUndefined();
+  state.buckets = {
+    ...state.buckets,
+    4: {
+      generation: 1,
+      sourceId: "scene",
+      revision: 8,
+      baseRevision: 7,
+      parts: [],
+    },
+  };
+  rerender();
+  expect(result.current.scene).toBeUndefined();
+  expect(state.queries.mock.calls.at(-1)![0][4].args.cursor).toBeUndefined();
+  state.buckets = {
+    ...state.buckets,
+    4: {
+      generation: 1,
+      sourceId: "scene",
+      revision: 8,
+      baseRevision: null,
+      parts: [
+        JSON.stringify([{ id: "recovered", version: 1, versionNonce: 1 }]),
+      ],
+    },
+    21: {
+      generation: 1,
+      sourceId: "scene",
+      revision: 1,
+      baseRevision: null,
+      parts: ["[]"],
+    },
+  };
+  rerender();
+  expect(result.current.scene!.elements.map((element) => element.id)).toEqual([
+    "b",
+    "recovered",
+  ]);
+  expect(state.queries.mock.calls.at(-1)![0][4].args.cursor.revision).toBe(8);
+});
+
+test("a replacement manifest or room cannot reuse the preceding bucket cache or cursor", () => {
+  state.manifest!.sourceId = "old-scene";
+  for (const id of [4, 12])
+    state.buckets[id] = {
+      ...(state.buckets[id] as object),
+      sourceId: "old-scene",
+      revision: 1,
+      baseRevision: null,
+    };
+  const { result, rerender } = renderHook(
+    ({ room }) => useWhiteboardScene(room, "activation", true),
+    { initialProps: { room: "first" } },
+  );
+  expect(result.current.scene!.elements).toHaveLength(2);
+  state.manifest = { ...state.manifest!, sourceId: "new-scene" };
+  state.buckets = {};
+  rerender({ room: "second" });
+  expect(result.current.scene).toBeUndefined();
+  expect(state.queries.mock.calls.at(-1)![0][4].args).toEqual({
+    roomName: "second",
+    bucketId: 4,
+  });
+});
+
+test("many edits in one bucket renew only applied checkpoints while queries are delayed", () => {
+  state.manifest = { ...state.manifest!, sourceId: "scene", bucketIds: [4] };
+  state.buckets = {
+    4: {
+      generation: 1,
+      sourceId: "scene",
+      revision: 1,
+      baseRevision: null,
+      parts: splitWhiteboardPayload(
+        JSON.stringify([
+          {
+            id: "historic",
+            version: 1,
+            versionNonce: 1,
+            content: "x".repeat(250000),
+          },
+        ]),
+      ),
+    },
+  };
+  const { result, rerender } = renderHook(() =>
+    useWhiteboardScene("room", "activation", true),
+  );
+  let history: WhiteboardBucketHistory | undefined;
+  const cursor = () => state.queries.mock.calls.at(-1)![0][4].args.cursor;
+  let renewals = 0;
+  for (let revision = 2; revision <= 121; revision++) {
+    const before = cursor();
+    const change = {
+      id: "editing",
+      version: revision,
+      versionNonce: revision,
+      content: revision > 60 ? "y".repeat(20000) : "",
+    };
+    history = appendWhiteboardBucketHistory(history, 1, revision - 1, [change]);
+    // A pending subscription must keep the already applied complete cache.
+    state.buckets = { 4: undefined };
+    rerender();
+    expect(cursor()).toEqual(before);
+    const changes = readWhiteboardBucketHistory(history, before);
+    expect(changes).not.toBeNull();
+    state.buckets = {
+      4: {
+        generation: 1,
+        sourceId: "scene",
+        revision,
+        baseRevision: before.revision,
+        ...changes,
+      },
+    };
+    rerender();
+    expect(result.current.scene!.elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "historic" }),
+        expect.objectContaining({ id: "editing", version: revision }),
+      ]),
+    );
+    if (changes!.checkpoint) {
+      renewals++;
+      expect(cursor().revision).toBe(revision);
+    } else expect(cursor()).toEqual(before);
+  }
+  expect(renewals).toBeGreaterThan(3);
+  expect(renewals).toBeLessThan(120);
 });
 
 test("ignores a delayed initialization failure from an obsolete activation", async () => {

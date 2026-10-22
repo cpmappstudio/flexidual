@@ -971,6 +971,17 @@ export default defineSchema({
     "partIndex",
   ]),
 
+  // Bounded recent deltas. Canonical buckets remain authoritative for recovery.
+  whiteboardSceneUpdates: defineTable({
+    manifestId: v.id("whiteboardSceneManifests"),
+    bucketId: v.number(),
+    generation: v.number(),
+    revision: v.number(),
+    entries: v.array(
+      v.object({ revision: v.number(), parts: v.array(v.string()) }),
+    ),
+  }).index("by_manifestId_and_bucketId", ["manifestId", "bucketId"]),
+
   whiteboardSessions: defineTable({
     roomName: v.string(),
     elements: v.array(v.any()), // ExcalidrawElements array

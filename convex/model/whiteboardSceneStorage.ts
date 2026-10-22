@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { appendWhiteboardBucketHistory } from "../../lib/whiteboard-bucket-updates";
 import {
   MAX_WHITEBOARD_PARTS,
   parseWhiteboardElements,
@@ -84,6 +85,47 @@ export async function writeWhiteboardBucket(
     await ctx.db.delete("whiteboardSceneBuckets", previous._id);
 }
 
+export function findWhiteboardBucketHistory(
+  ctx: QueryCtx | MutationCtx,
+  manifestId: Id<"whiteboardSceneManifests">,
+  bucketId: number,
+) {
+  return ctx.db
+    .query("whiteboardSceneUpdates")
+    .withIndex("by_manifestId_and_bucketId", (q) =>
+      q.eq("manifestId", manifestId).eq("bucketId", bucketId),
+    )
+    .unique();
+}
+
+export async function recordWhiteboardBucketChanges(
+  ctx: MutationCtx,
+  manifest: Doc<"whiteboardSceneManifests">,
+  bucketId: number,
+  previousRevision: number,
+  changes: readonly WhiteboardElement[],
+) {
+  const previous = await findWhiteboardBucketHistory(
+    ctx,
+    manifest._id,
+    bucketId,
+  );
+  const history = appendWhiteboardBucketHistory(
+    previous,
+    manifest.generation,
+    previousRevision,
+    changes,
+  );
+  if (previous)
+    await ctx.db.patch("whiteboardSceneUpdates", previous._id, history);
+  else
+    await ctx.db.insert("whiteboardSceneUpdates", {
+      manifestId: manifest._id,
+      bucketId,
+      ...history,
+    });
+}
+
 export async function ensureWhiteboardManifest(
   ctx: MutationCtx,
   roomName: string,
@@ -148,6 +190,7 @@ export function whiteboardManifestResult(
     generation: manifest.generation,
     bucketIds: manifest.bucketIds,
     legacyOrder: manifest.legacyOrder,
+    sourceId: manifest._id,
   };
 }
 
@@ -164,7 +207,15 @@ export async function deleteWhiteboardBucketBatch(
     .take(8);
   for (const bucket of buckets)
     await ctx.db.delete("whiteboardSceneBuckets", bucket._id);
-  if (buckets.length === 8)
+  const updates = await ctx.db
+    .query("whiteboardSceneUpdates")
+    .withIndex("by_manifestId_and_bucketId", (q) =>
+      q.eq("manifestId", manifestId),
+    )
+    .take(8);
+  for (const update of updates)
+    await ctx.db.delete("whiteboardSceneUpdates", update._id);
+  if (buckets.length === 8 || updates.length === 8)
     await ctx.scheduler.runAfter(
       0,
       internal.whiteboardSessions.cleanupSceneBuckets,

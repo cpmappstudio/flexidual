@@ -15,6 +15,12 @@ import {
   type WhiteboardElement,
 } from "../lib/whiteboard-elements";
 import { deleteWhiteboardManifest } from "./model/whiteboardSceneStorage";
+import {
+  MAX_WHITEBOARD_RECENT_BYTES,
+  MAX_WHITEBOARD_RECENT_UPDATES,
+  type WhiteboardBucketCursor,
+  applyWhiteboardBucketResult,
+} from "../lib/whiteboard-bucket-updates";
 
 const ROOM = "recording-room";
 const encode = (elements: readonly WhiteboardElement[]) =>
@@ -174,7 +180,7 @@ test("a partial edit rewrites only its bucket and repeated/stale versions cause 
       parts: encode([element(first.id, 2)]),
     });
     expect((await ctx.meta.getTransactionMetrics()).documentsWritten.used).toBe(
-      1,
+      2, // canonical fragment + bounded recent-history document
     );
   });
   expect(await f.bucket(second.id)).toEqual(untouched);
@@ -579,7 +585,7 @@ test("large bucket updates write only changed fragments and shrinking removes ob
       parts: encode([changed]),
     });
     expect((await ctx.meta.getTransactionMetrics()).documentsWritten.used).toBe(
-      2,
+      3, // changed canonical fragments + bounded recent-history document
     );
   });
   expect(
@@ -662,4 +668,163 @@ test("detaching a manifest cleans bounded batches and old cleanup cannot erase a
     JSON.parse(joinWhiteboardPayload((await f.bucket("new-scene"))!.parts))[0]
       .id,
   ).toBe("new-scene");
+  const histories = await f.t.run((ctx) =>
+    ctx.db.query("whiteboardSceneUpdates").take(64),
+  );
+  expect(
+    histories.some((history) => history.manifestId === oldManifest!._id),
+  ).toBe(false);
+  expect(histories).toHaveLength(1);
+});
+
+test("revision reads skip historical bytes, recover missed concurrent edits and tombstones, and recheck access", async () => {
+  const f = await setup();
+  await f.ensure();
+  const old = element("historic", 1, { content: "x".repeat(250000) });
+  const ids = Array.from({ length: 10000 }, (_, i) => `recent-${i}`)
+    .filter((id) => whiteboardBucketId(id) === whiteboardBucketId(old.id))
+    .slice(0, 2);
+  await f.delta([old]);
+  const original = (await f.bucket(old.id))!;
+  const cursor: WhiteboardBucketCursor = {
+    sourceId: original.sourceId!,
+    generation: original.generation,
+    revision: original.revision!,
+  };
+  await Promise.all(ids.map((id) => f.delta([element(id)])));
+  await f.delta([element(ids[0], 2, { isDeleted: true })]);
+  const args = { roomName: ROOM, bucketId: whiteboardBucketId(old.id), cursor };
+  const changes = (await f.writer.query(
+    api.whiteboardSessions.getSceneBucket,
+    args,
+  ))!;
+  expect(changes.baseRevision).toBe(cursor.revision);
+  const recent = JSON.parse(joinWhiteboardPayload(changes.parts));
+  expect(recent.map((item: WhiteboardElement) => item.id).sort()).toEqual(
+    [...ids].sort(),
+  );
+  expect(
+    recent.find((item: WhiteboardElement) => item.id === ids[0]).isDeleted,
+  ).toBe(true);
+  expect(JSON.stringify(changes).length).toBeLessThan(2000);
+  await f.writer.run(async (ctx) => {
+    await ctx.runQuery(api.whiteboardSessions.getSceneBucket, args);
+    expect(
+      (await ctx.meta.getTransactionMetrics()).bytesRead.used,
+    ).toBeLessThan(50000);
+  });
+  const caughtUp = { ...cursor, revision: changes.revision! };
+  expect(
+    (await f.writer.query(api.whiteboardSessions.getSceneBucket, {
+      ...args,
+      cursor: caughtUp,
+    }))!.parts,
+  ).toEqual([]);
+  const outsider = f.t.withIdentity({ subject: "recording-leader-two" });
+  await expect(
+    outsider.query(api.whiteboardSessions.getSceneBucket, {
+      ...args,
+      cursor: caughtUp,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    f.t.query(api.whiteboardSessions.getSceneBucket, args),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  expect(
+    (await f.t.query(api.whiteboardSessions.getSceneBucket, {
+      ...args,
+      recordingToken: "valid-recording-token",
+    }))!.parts,
+  ).toEqual(changes.parts);
+  for (let i = 3; i < MAX_WHITEBOARD_RECENT_UPDATES + 5; i++)
+    await f.delta([element(ids[1], i)]);
+  const fallback = (await f.writer.query(
+    api.whiteboardSessions.getSceneBucket,
+    args,
+  ))!;
+  expect(fallback.baseRevision).toBeNull();
+  expect(JSON.parse(joinWhiteboardPayload(fallback.parts))).toEqual(
+    expect.arrayContaining([old]),
+  );
+  const history = await f.t.run((ctx) =>
+    ctx.db.query("whiteboardSceneUpdates").first(),
+  );
+  expect(history!.entries.length).toBeLessThanOrEqual(
+    MAX_WHITEBOARD_RECENT_UPDATES,
+  );
+  expect(
+    new TextEncoder().encode(JSON.stringify(history!.entries)).length,
+  ).toBeLessThanOrEqual(MAX_WHITEBOARD_RECENT_BYTES);
+  const wrongSource = (await f.writer.query(
+    api.whiteboardSessions.getSceneBucket,
+    { ...args, cursor: { ...caughtUp, sourceId: "earlier-manifest" } },
+  ))!;
+  expect(wrongSource.baseRevision).toBeNull();
+  const wrongGeneration = (await f.writer.query(
+    api.whiteboardSessions.getSceneBucket,
+    { ...args, cursor: { ...caughtUp, generation: 99 } },
+  ))!;
+  expect(wrongGeneration.baseRevision).toBeNull();
+});
+
+test("hot-bucket checkpoints stay incremental across count and byte windows and preserve reload and access", async () => {
+  const f = await setup();
+  await f.ensure();
+  const historic = element("historic", 1, { content: "x".repeat(250000) });
+  const editingId = Array.from({ length: 1000 }, (_, i) => `editing-${i}`).find(
+    (id) => whiteboardBucketId(id) === whiteboardBucketId(historic.id),
+  )!;
+  await f.delta([historic]);
+  let cached = applyWhiteboardBucketResult(
+    undefined,
+    (await f.bucket(historic.id))!,
+  )!;
+  const firstCursor = cached.anchor!;
+  let checkpoints = 0;
+  for (let version = 1; version <= 120; version++) {
+    await f.delta([
+      element(editingId, version, {
+        content: version > 60 ? "y".repeat(20000) : "",
+        isDeleted: version === 80,
+      }),
+    ]);
+    const response = (await f.writer.query(
+      api.whiteboardSessions.getSceneBucket,
+      {
+        roomName: ROOM,
+        bucketId: whiteboardBucketId(historic.id),
+        cursor: cached.anchor,
+      },
+    ))!;
+    expect(response.baseRevision).not.toBeNull();
+    expect(joinWhiteboardPayload(response.parts)).not.toContain("historic");
+    if (response.checkpoint) checkpoints++;
+    cached = applyWhiteboardBucketResult(cached, response)!;
+    expect(cached.elements.find((item) => item.id === editingId)!.version).toBe(
+      version,
+    );
+    expect(cached.elements.find((item) => item.id === historic.id)).toEqual(
+      historic,
+    );
+  }
+  expect(checkpoints).toBeGreaterThan(3);
+  expect(checkpoints).toBeLessThan(120);
+  const reloaded = (await f.bucket(historic.id))!;
+  expect(applyWhiteboardBucketResult(undefined, reloaded)!.elements).toEqual(
+    cached.elements,
+  );
+  expect(
+    (await f.writer.query(api.whiteboardSessions.getSceneBucket, {
+      roomName: ROOM,
+      bucketId: whiteboardBucketId(historic.id),
+      cursor: firstCursor,
+    }))!.baseRevision,
+  ).toBeNull();
+  await expect(
+    f.t.query(api.whiteboardSessions.getSceneBucket, {
+      roomName: ROOM,
+      bucketId: whiteboardBucketId(historic.id),
+      cursor: cached.anchor,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
 });
