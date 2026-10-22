@@ -81,13 +81,15 @@ export default function ClassDetailPage() {
   const { access } = useStaffAccess();
   const queryNow = useCurrentMinute();
   const canManageClass = access?.canManageCampus ?? false;
-  const canViewStudentProfiles = canManageClass || access?.role === "teacher";
   const canViewCurriculumSettings = access?.canViewInstitutionSettings ?? false;
 
   const [roadmapPage, setRoadmapPage] = useState(1);
 
   const classData = useQuery(api.classes.get, { id: classId });
   const currentUser = useQuery(api.users.getCurrentUser);
+  const canViewStudentProfiles =
+    canManageClass ||
+    Boolean(classData && isCourseTeacher(classData, currentUser?._id));
   const pendingTaskResult = useQuery(api.courseTasks.listMyPending, {
     classIds: [classId],
     now: queryNow,

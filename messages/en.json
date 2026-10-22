@@ -349,6 +349,7 @@
         "next": "Scheduled for {date} · {timeZone}",
         "manualNote": "Automatic sync is off. Use Update data to sync manually.",
         "noTimeZone": "Set the institution time zone in General to schedule sync.",
+        "configureTimeZone": "Open institution time zone settings",
         "noPeriod": "No academic period available. Automatic sync is paused; configure it in Academic calendar.",
         "paused": "No sync scheduled.",
         "period": "Period ends {date} · {name}"

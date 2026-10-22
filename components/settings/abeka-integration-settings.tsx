@@ -225,6 +225,7 @@ function AbekaIntegration({
                 </div>
                 <AbekaSyncSchedule
                   schoolId={schoolId}
+                  settingsPath={basePath}
                   schedule={state.schedule}
                   timeZone={state.scheduleTimeZone}
                   period={state.schedulePeriod}

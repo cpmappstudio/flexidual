@@ -41,6 +41,7 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
         "ABEKA_CURRICULUM_MIGRATION_IN_PROGRESS",
         "INVALID_CURRICULUM_TITLE",
         "COURSE_CLASS_OVERLAP",
+        "INVALID_WEEKLY_SCHEDULE",
         "CANCELLATION_REASON_REQUIRED",
         "SCHEDULE_CANNOT_BE_CANCELLED",
         "SCHEDULE_IS_NOT_RECURRING",
@@ -112,6 +113,8 @@ export function getErrorMessage(
       });
     case "COURSE_CLASS_OVERLAP":
       return t("class.classTimeOverlap");
+    case "INVALID_WEEKLY_SCHEDULE":
+      return t("class.invalidScheduleTime");
     case "CLASS_NOT_FOUND":
       return t("errors.classNotFound");
     case "PERMISSION_DENIED":

@@ -201,6 +201,128 @@ test("schedule changes validate admin, timezone, time and weekday without contac
   }
 });
 
+test.each(["weekdays", "weekly"] as const)(
+  "%s sync uses the institution timezone, not the campus override, and saving only schedules 8 PM",
+  async (mode) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-21T23:00:00Z")); // Wednesday, before 8 PM in Honduras.
+    const {
+      t,
+      adminClient,
+      schoolId,
+      connectionId,
+      campusId,
+      studentId,
+      student,
+      runId,
+    } = await setup();
+    await t.run((ctx) =>
+      ctx.db.patch(campusId, { timeZone: "America/Tegucigalpa" }),
+    );
+    await t.run(async (ctx) => {
+      await ctx.db.patch(studentId, { userId: student, hasProgress: true });
+      const reportId = await ctx.db.insert("abekaProgress", {
+        studentId,
+        subjectId: "biology",
+        subjectName: "Biology",
+        lessons: [
+          {
+            subjectName: "Biology",
+            lessonNumber: 1,
+            percentage: 75,
+            completed: false,
+            lengthSeconds: 1200,
+            watchedSeconds: 900,
+            lastViewed: "2026-10-20",
+            segmentId: null,
+            subscriptionItem: null,
+            subscriptionNumber: null,
+          },
+        ],
+        syncedAt: Date.now() - 1,
+        runId,
+      });
+      await ctx.db.insert("abekaProgressHistory", {
+        reportId,
+        date: "2026-10-20",
+        percentage: 75,
+      });
+    });
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+    const schedule: AbekaSchedule = {
+      mode,
+      time: "20:00",
+      weekday: 3,
+      stopAtPeriodEnd: false,
+    };
+    const snapshot = () =>
+      t.run(async (ctx) => ({
+        students: await ctx.db.query("abekaStudents").collect(),
+        progress: await ctx.db.query("abekaProgress").collect(),
+        history: await ctx.db.query("abekaProgressHistory").collect(),
+        runs: await ctx.db.query("abekaSyncRuns").collect(),
+        permissions: await ctx.db.query("roleAssignments").collect(),
+      }));
+    const before = await snapshot();
+    await expect(
+      adminClient.mutation(api.abeka.updateSchedule, { schoolId, schedule }),
+    ).rejects.toThrow("INVALID_TIME_ZONE");
+    expect(
+      (await adminClient.query(api.abeka.status, { schoolId }))
+        .scheduleTimeZone,
+    ).toBeNull();
+    expect(
+      (await t.run((ctx) => ctx.db.get(connectionId)))?.scheduledSyncId,
+    ).toBeUndefined();
+
+    // Use the existing institutional setting; a campus override must not determine this institution-wide job.
+    await adminClient.mutation(api.schools.updateInstitutionSettings, {
+      id: schoolId,
+      name: "School",
+      timeZone: "America/New_York",
+    });
+    await adminClient.mutation(api.abeka.updateSchedule, {
+      schoolId,
+      schedule,
+    });
+    const state = await adminClient.query(api.abeka.status, { schoolId });
+    expect(state.scheduleTimeZone).toBe("America/New_York");
+    expect(state.connection?.nextSyncAt).toBe(
+      Date.parse("2026-10-22T00:00:00Z"),
+    );
+    const connection = state.connection!;
+    const job = await t.run((ctx) =>
+      ctx.db.system.get(connection.scheduledSyncId!),
+    );
+    expect(job?.state.kind).toBe("pending");
+    expect(job?.scheduledTime).toBe(connection.nextSyncAt);
+    await t.mutation(internal.abekaSync.runScheduled, {
+      connectionId,
+      generation: connection.syncScheduleGeneration!,
+    });
+    expect(await snapshot()).toEqual(before);
+    expect(request).not.toHaveBeenCalled();
+    vi.setSystemTime(new Date("2026-10-22T01:00:00Z")); // Now past Wednesday's institutional 8 PM.
+    await adminClient.mutation(api.abeka.updateSchedule, {
+      schoolId,
+      schedule,
+    });
+    const next = await adminClient.query(api.abeka.status, { schoolId });
+    expect(next.connection?.nextSyncAt).toBe(
+      Date.parse(
+        mode === "weekly" ? "2026-10-29T00:00:00Z" : "2026-10-23T00:00:00Z",
+      ),
+    );
+    expect(
+      (await t.run((ctx) => ctx.db.system.get(connection.scheduledSyncId!)))
+        ?.state.kind,
+    ).toBe("canceled");
+    expect(await snapshot()).toEqual(before);
+    expect(request).not.toHaveBeenCalled();
+  },
+);
+
 test("institution timezone changes reschedule the same wall time and cancel the old job", async () => {
   const { t, adminClient, schoolId, connectionId } = await scheduleSetup();
   await adminClient.mutation(api.abeka.updateSchedule, {
@@ -1407,6 +1529,7 @@ test.each(["legacy", "curriculum"])(
         isActive: true,
         createdAt: 1,
       });
+      await ctx.db.patch(fixture.classId, { teacherId: teacher });
       return ctx.db.insert("roleAssignments", {
         userId: teacher,
         orgId: campusId,

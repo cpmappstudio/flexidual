@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { expect, test, vi } from "vitest";
 
 vi.mock("@clerk/nextjs/server", () => ({
@@ -6,7 +6,7 @@ vi.mock("@clerk/nextjs/server", () => ({
 }));
 
 vi.mock("next-intl/middleware", () => ({
-  default: () => vi.fn(),
+  default: () => () => NextResponse.next(),
 }));
 
 import middleware from "@/middleware";
@@ -27,4 +27,32 @@ test("an unauthenticated companion URL survives the redirect to sign-in", async 
   expect(location.searchParams.get("redirect_url")).toBe(
     "/es/school/classroom/live-room?companion=true",
   );
+});
+
+test.each([
+  ["teacher", "/students", true],
+  ["teacher", "/students/student-id", true],
+  ["teacher", "/professors", false],
+  ["tutor", "/students/student-id", false],
+  ["student", "/students", false],
+  ["admin", "/students/student-id", true],
+  ["principal", "/professors", true],
+])("%s access to %s is %s", async (role, path, allowed) => {
+  const request = new NextRequest(`https://app.example/en/campus${path}`);
+  const run = middleware as unknown as (
+    auth: () => Promise<unknown>,
+    request: NextRequest,
+  ) => Promise<Response>;
+  const response = await run(
+    async () => ({
+      userId: "viewer",
+      sessionClaims: { metadata: { roles: { campus: role } } },
+    }),
+    request,
+  );
+  expect(response.headers.has("location")).toBe(!allowed);
+  if (!allowed)
+    expect(new URL(response.headers.get("location")!).pathname).toBe(
+      "/en/campus",
+    );
 });

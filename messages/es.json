@@ -349,6 +349,7 @@
         "next": "Programada para {date} · {timeZone}",
         "manualNote": "La sincronización automática está desactivada. Usa Actualizar datos para sincronizar manualmente.",
         "noTimeZone": "Configura la zona horaria institucional en General para programar la sincronización.",
+        "configureTimeZone": "Abrir configuración de zona horaria institucional",
         "noPeriod": "No hay un período académico disponible. La sincronización automática está pausada; configúralo en Calendario académico.",
         "paused": "Sin sincronización programada.",
         "period": "Fin del período: {date} · {name}"

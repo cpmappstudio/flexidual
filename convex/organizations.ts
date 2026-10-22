@@ -163,9 +163,7 @@ export const getSwitcherOptions = query({
       } else if (
         assignment.orgType === "campus" &&
         assignment.orgId &&
-        ["principal", "teacher", "tutor", "student"].includes(
-          assignment.role,
-        )
+        ["principal", "teacher", "tutor", "student"].includes(assignment.role)
       ) {
         const campusId = ctx.db.normalizeId("campuses", assignment.orgId);
         if (campusId) directCampusIds.add(campusId);
@@ -223,6 +221,7 @@ export const getStaffContext = query({
       role: roleValidator,
       canManageCampus: v.boolean(),
       canViewPeople: v.boolean(),
+      canViewStudents: v.boolean(),
       canManagePeople: v.boolean(),
       canViewInstitutionSettings: v.boolean(),
       canManageInstitution: v.boolean(),
@@ -235,6 +234,7 @@ export const getStaffContext = query({
         role: "superadmin" as const,
         canManageCampus: true,
         canViewPeople: true,
+        canViewStudents: true,
         canManagePeople: true,
         canViewInstitutionSettings: true,
         canManageInstitution: true,
@@ -259,6 +259,7 @@ export const getStaffContext = query({
         role: "admin" as const,
         canManageCampus: true,
         canViewPeople: true,
+        canViewStudents: true,
         canManagePeople: true,
         canViewInstitutionSettings: true,
         canManageInstitution: true,
@@ -283,6 +284,7 @@ export const getStaffContext = query({
       role,
       canManageCampus,
       canViewPeople: role === "principal",
+      canViewStudents: role === "principal" || role === "teacher",
       canManagePeople: role === "principal",
       canViewInstitutionSettings: canManageCampus,
       canManageInstitution: false,

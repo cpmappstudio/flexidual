@@ -1,4 +1,4 @@
-import { isCourseTeacher } from "./model/courseAssignments";
+import { isCourseTeacher, listTeacherClasses } from "./model/courseAssignments";
 import { MutationCtx, QueryCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { resolveMembershipSchoolId } from "./model/membership";
@@ -116,14 +116,24 @@ export async function canViewStudentProfile(
   userId: Id<"users">,
   campusId: Id<"campuses">,
   schoolId: Id<"schools">,
+  studentId?: Id<"users">,
 ) {
-  if (await hasOrgRole(ctx, userId, schoolId, "school", ["admin"])) {
+  if (await canManageCampusPeople(ctx, userId, campusId, schoolId)) {
     return true;
   }
-  return await hasOrgRole(ctx, userId, campusId, "campus", [
-    "principal",
-    "teacher",
-  ]);
+  if (
+    !studentId ||
+    !(await hasOrgRole(ctx, userId, campusId, "campus", ["teacher"]))
+  )
+    return false;
+  for (const course of await listTeacherClasses(ctx, userId)) {
+    if (
+      course.campusId === campusId &&
+      (await isStudentEnrolled(ctx, course, studentId))
+    )
+      return true;
+  }
+  return false;
 }
 
 export async function canAccessSchool(

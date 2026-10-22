@@ -50,6 +50,7 @@ export async function resolveStudentDashboardAccess(
         viewer._id,
         campus._id,
         campus.schoolId,
+        student._id,
       ))
     )
       return null;

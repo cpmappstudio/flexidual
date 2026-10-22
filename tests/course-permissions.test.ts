@@ -255,7 +255,7 @@ test("campus people are managed by administrators and assigned principals", asyn
   );
 });
 
-test("student profiles are visible only to administrators, principals, and campus teachers", async () => {
+test("only administrators and principals can view a profile without a student relationship", async () => {
   for (const role of ["superadmin", "admin"] as const) {
     const assignment: Assignment =
       role === "superadmin"
@@ -272,7 +272,7 @@ test("student profiles are visible only to administrators, principals, and campu
     );
   }
 
-  for (const role of ["principal", "teacher"] as const) {
+  for (const role of ["principal"] as const) {
     const ctx = permissionContext([
       { userId, orgId: campusId, orgType: "campus", role },
     ]);
@@ -282,7 +282,7 @@ test("student profiles are visible only to administrators, principals, and campu
     );
   }
 
-  for (const role of ["tutor", "student"] as const) {
+  for (const role of ["teacher", "tutor", "student"] as const) {
     const ctx = permissionContext([
       { userId, orgId: campusId, orgType: "campus", role },
     ]);

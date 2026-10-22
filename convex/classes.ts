@@ -1848,6 +1848,7 @@ async function replaceFutureCourseSchedule(
       weeklySlots,
       school.scheduleStartMinutes ?? DEFAULT_SCHEDULE_START_MINUTES,
       school.scheduleEndMinutes ?? DEFAULT_SCHEDULE_END_MINUTES,
+      previousWeeklySlots,
     )
   ) {
     throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
