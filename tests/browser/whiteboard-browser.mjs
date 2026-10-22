@@ -25,6 +25,7 @@ let tokenRequests = 0;
 let releaseBuckets;
 const readonly = new URLSearchParams(location.search).has("readonly");
 const loadCount = Number(new URLSearchParams(location.search).get("load") ?? 0);
+const live = !new URLSearchParams(location.search).has("durable-only");
 let revision = -1;
 let refreshQueue = Promise.resolve();
 let requestedQueries = {};
@@ -33,8 +34,55 @@ const room = {
   state: "connected",
   on() {},
   off() {},
-  localParticipant: { publishData: async () => {} },
+  remoteParticipants: new Map(
+    readonly && live
+      ? [
+          [
+            "browser-writer",
+            {
+              identity: "browser-writer",
+              metadata: JSON.stringify({
+                roomAdmin: true,
+                convexUserId: "browser-writer-user",
+              }),
+            },
+          ],
+        ]
+      : [],
+  ),
+  registerByteStreamHandler(topic, callback) {
+    if (liveHandlers.has(topic))
+      throw new Error("Byte stream handler already registered");
+    liveHandlers.set(topic, callback);
+  },
+  unregisterByteStreamHandler(topic) {
+    liveHandlers.delete(topic);
+  },
+  localParticipant: {
+    identity: readonly ? "browser-reader" : "browser-writer",
+    metadata:
+      !readonly && live
+        ? JSON.stringify({
+            roomAdmin: true,
+            convexUserId: "browser-writer-user",
+          })
+        : undefined,
+    publishData: async () => {},
+    async sendBytes(bytes, options) {
+      const response = await fetch("/live", {
+        method: "POST",
+        body: bytes,
+        headers: {
+          "x-whiteboard-destinations": JSON.stringify(
+            options.destinationIdentities,
+          ),
+        },
+      });
+      if (!response.ok) throw new Error("Local live transport unavailable");
+    },
+  },
 };
+const liveHandlers = new Map();
 
 async function rpc(path, body) {
   const response = await fetch(
@@ -110,7 +158,14 @@ export function useQuery(ref, args) {
   throw new Error(`Unexpected full-scene query: ${name}`);
 }
 export function useQueries(queries) {
-  requestedQueries = queries;
+  const entries = Object.entries(queries);
+  const access = entries.some(([, query]) =>
+    getFunctionName(query.query).endsWith(":getRealtimeWriter"),
+  );
+  const audience = entries.some(([, query]) =>
+    getFunctionName(query.query).endsWith(":getRealtimeAudience"),
+  );
+  if (!access && !audience && entries.length) requestedQueries = queries;
   const cursors = JSON.stringify(
     Object.fromEntries(
       Object.entries(queries).flatMap(([id, query]) =>
@@ -121,7 +176,12 @@ export function useQueries(queries) {
   useEffect(() => {
     if (cursors !== "{}") refreshQueue = refreshQueue.then(() => refresh(true));
   }, [cursors]);
-  return useSnapshot().buckets;
+  const current = useSnapshot();
+  return audience
+    ? { audience: ["browser-reader"] }
+    : access
+      ? Object.fromEntries(entries.map(([identity]) => [identity, true]))
+      : current.buckets;
 }
 const mutate = async (args) => {
   const result = await rpc("/delta", args);
@@ -262,10 +322,28 @@ if (loadCount) {
 }
 await rpc("/initialize", { elements: initial, files: imageFiles });
 await refresh();
-const events = new EventSource("/events");
+const events = new EventSource(`/events?readonly=${readonly}`);
 events.onmessage = () => {
   refreshQueue = refreshQueue.then(refresh);
 };
+events.addEventListener("preview", (event) => {
+  if (!readonly || !live) return;
+  const bytes = new TextEncoder().encode(event.data);
+  for (const handler of liveHandlers.values())
+    handler(
+      {
+        info: { size: bytes.length },
+        async readAll({ signal }) {
+          signal.throwIfAborted();
+          return [bytes];
+        },
+        async *[Symbol.asyncIterator]() {
+          yield bytes;
+        },
+      },
+      { identity: "browser-writer" },
+    );
+});
 
 let measurement;
 let stopObservation;
@@ -340,7 +418,23 @@ document.addEventListener("pointerup", () => {
   if (measurement?.strokes.at(-1)) measurement.strokes.at(-1).up = Date.now();
 });
 
+const root = createRoot(document.getElementById("root"));
+let closedScene;
 window.whiteboardAudit = {
+  closedScene: () => closedScene,
+  closeOnNextStroke: () => {
+    const unsubscribe = currentApi.onPointerUp(() => {
+      unsubscribe();
+      queueMicrotask(() => {
+        // Finalization has finished, but the deferred pointer-up task has not run.
+        closedScene = structuredClone({
+          elements: currentApi.getSceneElementsIncludingDeleted(),
+          files: currentApi.getFiles(),
+        });
+        root.unmount();
+      });
+    });
+  },
   startMeasurement: observeBenchmark,
   stopMeasurement: () => {
     cancelAnimationFrame(animation);
@@ -433,7 +527,7 @@ window.whiteboardAudit = {
       ),
     ),
 };
-createRoot(document.getElementById("root")).render(
+root.render(
   React.createElement(
     StrictMode,
     null,

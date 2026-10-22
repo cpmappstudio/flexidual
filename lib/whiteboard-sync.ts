@@ -14,12 +14,13 @@ export function createWhiteboardSync<T extends WhiteboardElement>(options: {
   send: (elements: T[]) => Promise<unknown>;
   saved: (elements: readonly T[]) => void;
   error: (error: unknown) => void;
-  interval?: number;
+  interval?: number | (() => number);
 }) {
   const acknowledged = new Map<string, string>();
   let latest: readonly T[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
   let inFlight = false;
+  let flushRequested = false;
   let closed = false;
   let retryDelay = 1000;
 
@@ -31,14 +32,21 @@ export function createWhiteboardSync<T extends WhiteboardElement>(options: {
     latest.some(
       (element) => acknowledged.get(element.id) !== elementRevision(element),
     );
-  const schedule = (delay = options.interval ?? 80) => {
+  const schedule = (
+    delay = typeof options.interval === "function"
+      ? options.interval()
+      : (options.interval ?? 80),
+  ) => {
     if (!timer && !inFlight && !closed)
       timer = setTimeout(() => void flush(), delay);
   };
   async function flush() {
     if (timer) clearTimeout(timer);
     timer = undefined;
-    if (inFlight) return;
+    if (inFlight) {
+      flushRequested = true;
+      return;
+    }
     const pending = changes();
     if (!pending.length) return;
     // Excalidraw can mutate elements while a network request is pending.
@@ -52,7 +60,7 @@ export function createWhiteboardSync<T extends WhiteboardElement>(options: {
       // Remote revisions can arrive during send. Confirm the current scene only
       // after every local revision in it is acknowledged, not the old send snapshot.
       if (!hasChanges()) options.saved(latest);
-      else if (closed) void flushAfterCurrent();
+      else if (closed || flushRequested) void flushAfterCurrent();
       else scheduleAfterCurrent();
     } catch (error) {
       options.error(error);
@@ -67,6 +75,7 @@ export function createWhiteboardSync<T extends WhiteboardElement>(options: {
       }
     } finally {
       inFlight = false;
+      flushRequested = false;
     }
   }
   function scheduleAfterCurrent() {

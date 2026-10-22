@@ -32,6 +32,7 @@ export async function runWhiteboardHotBucketBenchmark({
   origin,
   reset,
   getState,
+  durableOnly = false,
 }) {
   reset();
   const participants = [];
@@ -51,7 +52,7 @@ export async function runWhiteboardHotBucketBenchmark({
           : route.abort(),
       );
       await page.goto(
-        `${origin}/?load=2000${role === "teacher" ? "" : "&readonly"}`,
+        `${origin}/?load=2000${role === "teacher" ? "" : "&readonly"}${durableOnly ? "&durable-only" : ""}`,
       );
       await page.waitForFunction(
         () => window.whiteboardAudit?.state().ready === 1,
@@ -182,14 +183,14 @@ export async function runWhiteboardHotBucketBenchmark({
       bucketId: whiteboardBucketId(id),
       canonicalBucketBytes: getState().bucketBytes[whiteboardBucketId(id)],
       fullBucketSnapshotsDuringEdits: fullSnapshots,
-      receivedLiveJsonBytes:
+      receivedDurableJsonBytes:
         getState().metrics.responseBytes["student-slow"] -
         before.responseBytes["student-slow"],
       latencyMs,
       finalVersion: latest,
       pageErrors: participants.flatMap((participant) => participant.errors),
       limits:
-        "Real Chrome/Excalidraw/hook; local HTTP/SSE substitutes Convex, 50ms reads/writes. Reader CPU4x, 1Mbps/80ms extra latency after initial load. Latency uses two requestAnimationFrames, not physical paint. No production or LiveKit call tested.",
+        "Real Chrome/Excalidraw/hook. Local HTTP/SSE models durable reads/writes (50ms) and a separate live preview stream, NOT actual WebRTC. Reader CPU4x, Chrome 1Mbps/80ms emulation after load; open SSE does not model SFU latency or backpressure. Two animation frames approximate paint. No production or video call tested.",
     };
     await writeFile(
       new URL("../docs/whiteboard-hot-bucket-results.json", import.meta.url),
@@ -207,6 +208,7 @@ export async function runWhiteboardBenchmark({
   origin,
   reset,
   getState,
+  durableOnly = false,
 }) {
   const results = [];
   for (const elements of [200, 2000]) {
@@ -239,7 +241,7 @@ export async function runWhiteboardBenchmark({
         participants.push({ context, page, role, session, errors });
         const started = Date.now();
         await page.goto(
-          `${origin}/?load=${elements}${role === "teacher" ? "" : "&readonly"}`,
+          `${origin}/?load=${elements}${role === "teacher" ? "" : "&readonly"}${durableOnly ? "&durable-only" : ""}`,
         );
         await page
           .waitForFunction(
@@ -401,6 +403,13 @@ export async function runWhiteboardBenchmark({
       );
       const teacherStrokes = participants[0].measurement.strokes;
       assert.equal(teacherStrokes.length, 12);
+      const teacherFinalRevisionAfterPointerUpMs = distribution(
+        expected.map((element, i) => {
+          const final = sent.get(`${element.id}:${element.version}`);
+          assert(final !== undefined, "The teacher must finalize every stroke");
+          return final - teacherStrokes[i].up;
+        }),
+      );
       const readers = participants.slice(1).map((participant) => {
         const latency = participant.measurement.changes
           .filter((change) => sent.has(`${change.id}:${change.version}`))
@@ -436,9 +445,12 @@ export async function runWhiteboardBenchmark({
             (latency, i) =>
               latency < teacherStrokes[i].up - teacherStrokes[i].down,
           ).length,
-          receivedLiveJsonBytes:
+          receivedDurableJsonBytes:
             traffic.responseBytes[participant.role] -
             (initialTraffic.responseBytes[participant.role] ?? 0),
+          receivedPreviewJsonBytes:
+            (traffic.liveReceivedBytes[participant.role] ?? 0) -
+            (initialTraffic.liveReceivedBytes[participant.role] ?? 0),
         };
       });
       assert.equal(
@@ -451,6 +463,7 @@ export async function runWhiteboardBenchmark({
         baselineFreehandPoints: Math.floor(elements * 0.75) * 160,
         images: elements > 200 ? 12 : 4,
         strokes: 12,
+        teacherFinalRevisionAfterPointerUpMs,
         durationSeconds:
           Math.round(
             (participants[0].measurement.ended -
@@ -461,6 +474,8 @@ export async function runWhiteboardBenchmark({
         initialImageBytes: initialTraffic.imageBytes,
         acceptedDeltaBatches: getState().deltas,
         sentDeltaBytes: traffic.deltaBytes,
+        sentPreviewBytes: traffic.liveBytes - initialTraffic.liveBytes,
+        sentPreviewBatches: traffic.liveBatches - initialTraffic.liveBatches,
         fullSnapshotSameBatchesModelBytes: traffic.fullSnapshotModelBytes,
         readers,
         resources: participants.map((participant) => ({
@@ -499,13 +514,19 @@ export async function runWhiteboardBenchmark({
       arch: process.arch,
     },
     browser: await browser.version(),
+    transportMode: durableOnly ? "durable-only" : "live-preview-and-durable",
     results,
     limits:
-      "Development SDK on one desktop; local incremental transport with 50ms server delays; slow reader CPU4x and 1Mbps/80ms extra network latency. Paint proxy is two requestAnimationFrames, not a physical display probe. Snapshot comparison is modeled, not an executed historical version. No production, Convex invoice or LiveKit video measured.",
+      "Real development editor on one desktop. HTTP/SSE models service boundaries: durable reads/writes have 50ms delay; preview uses a separate open SSE stream, NOT actual LiveKit/WebRTC. CPU4x and Chrome 1Mbps/80ms network emulation after load; open SSE does not reproduce WebRTC latency, backpressure or SFU. Paint proxy is two animation frames. No production, invoice, physical tablet or video-call measurement.",
   };
   const output = `${JSON.stringify(report, null, 2)}\n`;
   await writeFile(
-    new URL("../docs/whiteboard-benchmark-results.json", import.meta.url),
+    new URL(
+      durableOnly
+        ? "../docs/whiteboard-realtime-durable-baseline.json"
+        : "../docs/whiteboard-realtime-benchmark-results.json",
+      import.meta.url,
+    ),
     output,
   );
   console.log(output);

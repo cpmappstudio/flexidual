@@ -49,6 +49,9 @@ const reset = () => {
     histories: {},
     metrics: {
       deltaBytes: 0,
+      liveBytes: 0,
+      liveBatches: 0,
+      liveReceivedBytes: {},
       fullSnapshotModelBytes: 0,
       responseBytes: {},
       imageBytes: {},
@@ -111,6 +114,9 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (url.pathname === "/events") {
+      response.whiteboardReadonly = url.searchParams.get("readonly") === "true";
+      response.whiteboardClient =
+        request.headers["x-benchmark-client"] ?? "unattributed";
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -228,6 +234,31 @@ const server = createServer(async (request, response) => {
       for await (const chunk of request) chunks.push(chunk);
       const raw = Buffer.concat(chunks).toString();
       let result = {};
+      if (url.pathname === "/live") {
+        const destinations = JSON.parse(
+          request.headers["x-whiteboard-destinations"] ?? "null",
+        );
+        assert(
+          Array.isArray(destinations) && destinations.length > 0,
+          "Never broadcast whiteboard bytes to the whole room",
+        );
+        state.metrics.liveBytes += Buffer.byteLength(raw);
+        state.metrics.liveBatches++;
+        for (const stream of streams) {
+          if (
+            !stream.whiteboardReadonly ||
+            !destinations.includes("browser-reader")
+          )
+            continue;
+          state.metrics.liveReceivedBytes[stream.whiteboardClient] =
+            (state.metrics.liveReceivedBytes[stream.whiteboardClient] ?? 0) +
+            Buffer.byteLength(raw);
+          stream.write(`event: preview\ndata: ${raw}\n\n`);
+        }
+        response.setHeader("Content-Type", "application/json");
+        response.end("{}");
+        return;
+      }
       if (
         (url.pathname === "/delta" || url.pathname === "/whiteboard-files") &&
         state.blocked
@@ -419,6 +450,7 @@ try {
       origin,
       reset,
       getState: () => state,
+      durableOnly: process.argv.includes("--durable-only"),
     });
   }
   const results = [];
@@ -719,6 +751,90 @@ try {
         ),
         pendingFile.dataURL,
       );
+      const draftBeforeClose = await page.evaluate(() =>
+        window.whiteboardAudit.draft(),
+      );
+      await page.evaluate(() => {
+        window.whiteboardAudit.pencil();
+        window.whiteboardAudit.closeOnNextStroke();
+      });
+      await page.mouse.move(650, 350);
+      await page.mouse.down();
+      await page.mouse.move(850, 380, { steps: 12 });
+      await page.mouse.up();
+      await page.waitForFunction(() =>
+        Boolean(window.whiteboardAudit.closedScene()),
+      );
+      const closedScene = await page.evaluate(() =>
+        window.whiteboardAudit.closedScene(),
+      );
+      const closedIds = closedScene.elements
+        .filter((element) => !element.isDeleted)
+        .map((element) => element.id)
+        .sort();
+      assert.equal(closedIds.length, confirmedIds.length + 1);
+      await expect
+        .poll(() =>
+          state.elements
+            .filter((element) => !element.isDeleted)
+            .map((element) => element.id)
+            .sort(),
+        )
+        .toEqual(closedIds);
+      const finalStroke = closedScene.elements.find(
+        (element) => !element.isDeleted && !confirmedIds.includes(element.id),
+      );
+      assert(finalStroke, "The closing stroke must be finalized");
+      assert.deepEqual(
+        state.elements.find((element) => element.id === finalStroke.id)?.points,
+        finalStroke.points,
+        "Immediate close must retain the last point, not only the stroke ID",
+      );
+      assert.equal(
+        state.elements.find((element) => element.id === finalStroke.id)
+          ?.version,
+        finalStroke.version,
+      );
+      assert.equal(
+        state.elements.find((element) => element.id === finalStroke.id)
+          ?.versionNonce,
+        finalStroke.versionNonce,
+      );
+      const retainedDraft = await page.evaluate(() =>
+        window.whiteboardAudit.draft(),
+      );
+      assert.deepEqual(
+        retainedDraft,
+        draftBeforeClose,
+        "Full stores must retain the preceding draft and image bytes",
+      );
+      assert.equal(
+        closedScene.files["pending-file"].dataURL,
+        pendingFile.dataURL,
+      );
+      await page.reload();
+      await page.waitForFunction(
+        () => window.whiteboardAudit?.state().ready === 1,
+      );
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            window.whiteboardAudit
+              .state()
+              .elements.filter((element) => !element.isDeleted)
+              .map((element) => element.id)
+              .sort(),
+          ),
+        )
+        .toEqual(closedIds);
+      assert.equal(
+        await page.evaluate(
+          () => window.whiteboardAudit.state().files["pending-file"].dataURL,
+        ),
+        pendingFile.dataURL,
+      );
+      await expectImagePixel(page, [165, 200], [255, 0, 0, 255]);
+      await expectImagePixel(page, [250, 200], [0, 0, 255, 255]);
     }
     status = await page.evaluate(() => window.whiteboardAudit.state());
     assert.equal(

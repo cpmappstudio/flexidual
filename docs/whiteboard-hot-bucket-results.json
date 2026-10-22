@@ -1,20 +1,20 @@
 {
-  "recordedAt": "2026-10-22T03:37:46.928Z",
+  "recordedAt": "2026-10-22T10:02:27.745Z",
   "browser": "155.0.8059.85",
   "elements": 2000,
   "images": 12,
   "distinctEdits": 120,
   "bucketId": 40,
-  "canonicalBucketBytes": 170706,
+  "canonicalBucketBytes": 170702,
   "fullBucketSnapshotsDuringEdits": 0,
-  "receivedLiveJsonBytes": 391145,
+  "receivedDurableJsonBytes": 391025,
   "latencyMs": {
     "samples": 120,
-    "p50": 284,
-    "p95": 297,
-    "max": 325
+    "p50": 75,
+    "p95": 87,
+    "max": 99
   },
   "finalVersion": 122,
   "pageErrors": [],
-  "limits": "Real Chrome/Excalidraw/hook; local HTTP/SSE substitutes Convex, 50ms reads/writes. Reader CPU4x, 1Mbps/80ms extra latency after initial load. Latency uses two requestAnimationFrames, not physical paint. No production or LiveKit call tested."
+  "limits": "Real Chrome/Excalidraw/hook. Local HTTP/SSE models durable reads/writes (50ms) and a separate live preview stream, NOT actual WebRTC. Reader CPU4x, Chrome 1Mbps/80ms emulation after load; open SSE does not model SFU latency or backpressure. Two animation frames approximate paint. No production or video call tested."
 }

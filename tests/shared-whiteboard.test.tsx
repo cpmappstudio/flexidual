@@ -1,8 +1,8 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, renderHook } from "@testing-library/react";
 import {
   StrictMode,
   useCallback,
-  useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentType,
@@ -18,6 +18,8 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { Id } from "@/convex/_generated/dataModel";
 import { SharedWhiteboard } from "@/components/classroom/shared-whiteboard";
+import { useWhiteboardRealtime } from "@/hooks/use-whiteboard-realtime";
+import type { Room } from "livekit-client";
 import {
   setupRecordingContext,
   storeWhiteboardImage,
@@ -33,6 +35,11 @@ import {
   whiteboardSceneRevision,
 } from "@/lib/whiteboard-draft-storage";
 import type { WhiteboardBucketCursor } from "@/lib/whiteboard-bucket-updates";
+import {
+  encodeWhiteboardLiveChanges,
+  MAX_WHITEBOARD_LIVE_BYTES,
+  WHITEBOARD_SCENE_TOPIC,
+} from "@/lib/whiteboard-realtime";
 
 vi.mock("@excalidraw/excalidraw/index.css", () => ({}));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
@@ -47,6 +54,14 @@ const state = vi.hoisted(() => ({
     bucketIds: [] as number[],
     legacyOrder: [] as string[],
     fromLegacy: true,
+    sourceId: undefined as string | undefined,
+  } as {
+    format: 1 | 2;
+    generation: number;
+    bucketIds: number[];
+    legacyOrder: string[];
+    fromLegacy: boolean;
+    sourceId?: string;
   },
   recoveryError: undefined as unknown,
   sceneHook: vi.fn(),
@@ -54,6 +69,8 @@ const state = vi.hoisted(() => ({
   buckets: {} as Record<string, unknown>,
   query: vi.fn(),
   queries: vi.fn(),
+  permissions: {} as Record<string, boolean>,
+  audience: ["student"] as string[] | undefined,
   save: vi.fn(),
   otherMutation: vi.fn(),
   reportError: vi.fn(),
@@ -64,7 +81,15 @@ const state = vi.hoisted(() => ({
     state: "connected",
     on: vi.fn(),
     off: vi.fn(),
-    localParticipant: { publishData: vi.fn() },
+    remoteParticipants: new Map(),
+    registerByteStreamHandler: vi.fn(),
+    unregisterByteStreamHandler: vi.fn(),
+    localParticipant: {
+      identity: "local",
+      metadata: undefined as string | undefined,
+      publishData: vi.fn(),
+      sendBytes: vi.fn(),
+    },
   },
 }));
 vi.mock("@/lib/error-tracking", () => ({
@@ -89,7 +114,25 @@ vi.mock("@/hooks/use-whiteboard-scene", () => ({
 }));
 vi.mock("convex/react", () => ({
   useQuery: (...args: unknown[]) => state.query(...args),
-  useQueries: (...args: unknown[]) => state.queries(...args),
+  useQueries: (
+    queries: Record<string, { query: Parameters<typeof getFunctionName>[0] }>,
+  ) =>
+    !Object.keys(queries).length
+      ? {}
+      : Object.values(queries).some((entry) =>
+            getFunctionName(entry.query).endsWith(":getRealtimeAudience"),
+          )
+        ? { audience: state.audience }
+        : Object.values(queries).some((entry) =>
+              getFunctionName(entry.query).endsWith(":getRealtimeWriter"),
+            )
+          ? Object.fromEntries(
+              Object.keys(queries).map((identity) => [
+                identity,
+                state.permissions[identity],
+              ]),
+            )
+          : (state.queries(queries) ?? {}),
   useMutation: (ref: Parameters<typeof getFunctionName>[0]) =>
     getFunctionName(ref) === "whiteboardSessions:applySceneDelta"
       ? state.save
@@ -208,13 +251,61 @@ function quota(allowShrinking = false) {
     throw new DOMException("Full", "QuotaExceededError");
   });
 }
+
+function enableLiveWriter(identity = "local") {
+  state.manifest.sourceId = "test-manifest";
+  const metadata = JSON.stringify({
+    roomAdmin: true,
+    convexUserId: "writer-user",
+  });
+  if (identity === "local") state.room.localParticipant.metadata = metadata;
+  else state.room.remoteParticipants.set(identity, { identity, metadata });
+  state.permissions[identity] = true;
+}
+async function liveChanges(
+  elements: ChangeArgs[0],
+  identity = "remote",
+  overrides = {},
+) {
+  const bytes = encodeWhiteboardLiveChanges(
+    {
+      roomName: "test-room",
+      liveRoomName: state.room.name,
+      generation: state.manifest.generation,
+      sourceId: state.manifest.sourceId!,
+      ...overrides,
+    },
+    elements,
+  )[0];
+  const handler = state.room.registerByteStreamHandler.mock.calls.at(-1)?.[1];
+  expect(handler).toBeTypeOf("function");
+  const reader = {
+    info: { size: bytes.length },
+    readAll: vi.fn(async ({ signal }: { signal: AbortSignal }) => {
+      signal.throwIfAborted();
+      return [bytes];
+    }),
+    async *[Symbol.asyncIterator]() {
+      yield bytes;
+    },
+  };
+  await act(async () => {
+    handler(reader, { identity });
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  await flush(3);
+  return reader;
+}
 async function attachCanvas() {
   let elements =
     (state.props.initialData as { elements: ChangeArgs[0] }).elements ?? [];
   const canvas = {
-    updateScene: vi.fn((update: { elements?: ChangeArgs[0] }) => {
-      if (update.elements) elements = update.elements;
-    }),
+    updateScene: vi.fn(
+      (update: Parameters<ExcalidrawImperativeAPI["updateScene"]>[0]) => {
+        if (update.elements) elements = update.elements as ChangeArgs[0];
+      },
+    ),
     addFiles: vi.fn(),
     getSceneElementsIncludingDeleted: () => elements,
     getAppState: () => ({}),
@@ -235,9 +326,11 @@ function canvasLifecycle() {
   let current: {
     api: ExcalidrawImperativeAPI;
     draw: (elements: ChangeArgs[0]) => void;
+    endStroke: (finalElements?: ChangeArgs[0], notify?: boolean) => void;
   };
   function Canvas(props: ExcalidrawProps) {
     const propsRef = useRef(props);
+    const pointerUps = useRef(new Set<() => void>());
     propsRef.current = props;
     const [model] = useState(() => {
       const initial = props.initialData as {
@@ -283,12 +376,16 @@ function canvasLifecycle() {
       getSceneElementsIncludingDeleted: () => model.elements,
       getFiles: () => model.files,
       getAppState: () => model.appState,
+      onPointerUp: (callback: () => void) => {
+        pointerUps.current.add(callback);
+        return () => pointerUps.current.delete(callback);
+      },
       setActiveTool: (tool: ChangeArgs[1]["activeTool"]) => {
         model.appState.activeTool = tool;
         emit();
       },
     }));
-    useEffect(() => {
+    useLayoutEffect(() => {
       const editorApi = api as unknown as ExcalidrawImperativeAPI;
       current = {
         api: editorApi,
@@ -296,12 +393,23 @@ function canvasLifecycle() {
           model.elements = elements;
           emit();
         },
+        endStroke: (finalElements, notify = true) => {
+          pointerUps.current.forEach((callback) => callback());
+          // Real Excalidraw finalizes freedraw AFTER its pointer-up emitter.
+          if (finalElements) {
+            model.elements = finalElements;
+            if (notify) emit();
+          }
+        },
       };
       mounts(editorApi);
       propsRef.current.excalidrawAPI?.(editorApi);
       emit();
       return () => {
         unmounts(editorApi);
+        // Excalidraw destroys its scene/files before the parent's passive cleanup.
+        model.elements = [];
+        model.files = {};
       };
     }, [api, emit, model]);
     return <div data-testid="mounted-whiteboard" />;
@@ -342,6 +450,9 @@ function receiveScene(elements: ChangeArgs[0], pendingBucket?: number) {
         ? undefined
         : {
             generation: state.manifest.generation,
+            ...(state.manifest.sourceId
+              ? { sourceId: state.manifest.sourceId }
+              : {}),
             parts: splitWhiteboardPayload(JSON.stringify(elements)),
           },
     ]),
@@ -357,6 +468,10 @@ beforeEach(() => {
   state.buckets = {};
   state.scene = null;
   state.recoveryError = undefined;
+  state.permissions = {};
+  state.audience = ["student"];
+  state.room.localParticipant.metadata = undefined;
+  state.room.remoteParticipants.clear();
   state.sceneHook.mockImplementation(() => ({
     scene:
       state.scene === undefined
@@ -1534,6 +1649,849 @@ test.each([false, true])(
   },
 );
 
+test("live delivery precedes a delayed durable acknowledgement and never confirms a pending draft", async () => {
+  enableLiveWriter();
+  let acknowledge!: (value: unknown) => void;
+  state.save.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  await mount();
+  change([shape("pending")]);
+  await flush(40);
+  expect(state.room.localParticipant.sendBytes).toHaveBeenCalledTimes(1);
+  expect(state.room.localParticipant.sendBytes.mock.calls[0][1]).toMatchObject({
+    topic: WHITEBOARD_SCENE_TOPIC,
+  });
+  expect(state.save).not.toHaveBeenCalled();
+  await flush(300);
+  expect((await whiteboardDraftStorage.load("test-room"))?.saved).toBe(false);
+  await flush(450);
+  expect(state.save).toHaveBeenCalledTimes(1);
+  change([shape("pending", 2)]);
+  await flush(40);
+  expect(state.room.localParticipant.sendBytes).toHaveBeenCalledTimes(2);
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  acknowledge({ conflictsParts: [] });
+  await flush(1);
+  expect((await whiteboardDraftStorage.load("test-room"))?.saved).toBe(false);
+});
+
+test("audience changes and reconnects keep one durable writer and recover pending images with full storage", async () => {
+  enableLiveWriter();
+  downloaded();
+  const file = imageFile();
+  const image = imageElement(file);
+  const original = [shape("confirmed"), image];
+  const pending = [...original, shape("pending-stroke")];
+  const draft = JSON.stringify({
+    elements: pending,
+    files: { [file.id]: file },
+    saved: false,
+  });
+  localStorage.setItem("wb_test-room", draft);
+  quota();
+  state.scene = {
+    ...cloudScene(original),
+    fileRefs: { [file.id]: imageRef(file) },
+  };
+  let release!: () => void;
+  let active = 0;
+  let maxActive = 0;
+  const requests: (() => void)[] = [];
+  state.save.mockImplementation(() => {
+    maxActive = Math.max(maxActive, ++active);
+    return new Promise((resolve) => {
+      release = () => {
+        active--;
+        resolve({ conflictsParts: [] });
+      };
+      requests.push(release);
+    });
+  });
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  const view = await mount();
+  await flush(10);
+  act(() => lifecycle.current().draw(pending));
+  await flush(800);
+  expect(state.save).toHaveBeenCalledTimes(1);
+  expect(state.room.localParticipant.sendBytes.mock.calls[0][1]).toMatchObject({
+    destinationIdentities: ["student"],
+  });
+  state.audience = undefined;
+  view.rerender(<SharedWhiteboard roomName="test-room" />);
+  const second = [...original, shape("pending-stroke", 2)];
+  act(() => lifecycle.current().draw(second));
+  await flush(1000);
+  expect(state.save).toHaveBeenCalledTimes(1);
+  state.audience = ["authorized", "EG_recorder"];
+  view.rerender(<SharedWhiteboard roomName="test-room" />);
+  act(() =>
+    lifecycle.current().draw([...original, shape("pending-stroke", 3)]),
+  );
+  await flush(40);
+  expect(
+    state.room.localParticipant.sendBytes.mock.calls.at(-1)?.[1],
+  ).toMatchObject({ destinationIdentities: ["authorized", "EG_recorder"] });
+  state.audience = [];
+  view.rerender(<SharedWhiteboard roomName="test-room" />);
+  const sends = state.room.localParticipant.sendBytes.mock.calls.length;
+  act(() =>
+    lifecycle.current().draw([...original, shape("pending-stroke", 4)]),
+  );
+  await flush(40);
+  expect(state.room.localParticipant.sendBytes).toHaveBeenCalledTimes(sends);
+  expect(maxActive).toBe(1);
+  expect(localStorage.getItem("wb_test-room")).toBe(draft);
+  view.unmount();
+  await act(async () => requests[0]());
+  await flush(1);
+  expect(maxActive).toBe(1);
+  // Full quota must not retire an older pending draft before durable confirmation.
+  expect(localStorage.getItem("wb_test-room")).toBe(draft);
+  const reload = await mount();
+  await flush(10);
+  expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+    expect.arrayContaining(pending),
+  );
+  expect(lifecycle.current().api.getFiles()).toEqual({ [file.id]: file });
+  reload.unmount();
+  await act(async () => {
+    for (const finish of requests.slice(1)) finish();
+  });
+});
+
+test("live edits continue across a missing new bucket without acknowledging drafts or losing undo and images", async () => {
+  enableLiveWriter();
+  enableLiveWriter("remote");
+  downloaded();
+  const file = imageFile();
+  const image = imageElement(file);
+  const pending = shape("pending-stroke");
+  localStorage.setItem(
+    "wb_test-room",
+    JSON.stringify({
+      elements: [pending],
+      files: { [file.id]: file },
+      saved: false,
+    }),
+  );
+  quota();
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  await incrementalSubscriptions();
+  state.scene = {
+    ...cloudScene([image]),
+    fileRefs: { [file.id]: imageRef(file) },
+  };
+  receiveScene([image]);
+  const view = await mount();
+  await flush(10);
+  await liveChanges([shape("remote-new", 2)]);
+  receiveScene([image, shape("remote-new")], whiteboardBucketId("remote-new"));
+  view.rerender(<SharedWhiteboard roomName="test-room" />);
+  await flush(5);
+  for (const [version, isDeleted] of [
+    [3, false],
+    [4, true],
+    [5, false],
+    [6, true],
+  ] as const) {
+    await liveChanges([{ ...shape("remote-new", version), isDeleted }]);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([
+        pending,
+        image,
+        expect.objectContaining({ id: "remote-new", version, isDeleted }),
+      ]),
+    );
+  }
+  expect(lifecycle.current().api.getFiles()).toEqual({ [file.id]: file });
+  expect((await whiteboardDraftStorage.load("test-room"))?.saved).toBe(false);
+  expect(lifecycle.current().api.updateScene).toHaveBeenCalledWith(
+    expect.objectContaining({ captureUpdate: "NEVER" }),
+  );
+  receiveScene([image, shape("remote-new")]);
+  view.rerender(<SharedWhiteboard roomName="test-room" />);
+  await flush(5);
+  expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+    expect.arrayContaining([
+      pending,
+      expect.objectContaining({
+        id: "remote-new",
+        version: 6,
+        isDeleted: true,
+      }),
+    ]),
+  );
+  state.permissions.remote = false;
+  view.rerender(<SharedWhiteboard roomName="test-room" />);
+  await liveChanges([shape("revoked")]);
+  expect(
+    lifecycle
+      .current()
+      .api.getSceneElementsIncludingDeleted()
+      .some((element) => element.id === "revoked"),
+  ).toBe(false);
+  view.unmount();
+});
+
+test.each(["source", "generation", "activation"] as const)(
+  "a retained live base cannot cross a new %s or a permission revocation",
+  async (boundary) => {
+    enableLiveWriter("remote");
+    let durable: ChangeArgs[0] | undefined = [shape("base")];
+    const { result, rerender } = renderHook(() =>
+      useWhiteboardRealtime({
+        room: state.room as unknown as Room,
+        roomName: "test-room",
+        sourceId: state.manifest.sourceId,
+        generation: state.manifest.generation,
+        durable,
+        isReadonly: true,
+      }),
+    );
+    await liveChanges([shape("base", 2)]);
+    durable = undefined;
+    rerender();
+    await liveChanges([shape("base", 3)]);
+    expect(result.current.elements).toEqual([shape("base", 3)]);
+    state.permissions.remote = false;
+    rerender();
+    expect(result.current.elements).toBeUndefined();
+    state.permissions.remote = true;
+    if (boundary === "source") state.manifest.sourceId = "new-manifest";
+    if (boundary === "generation") state.manifest.generation++;
+    if (boundary === "activation") state.room.name = "new-activation";
+    rerender();
+    await liveChanges([shape("new-scope", 2)]);
+    expect(result.current.elements).toBeUndefined();
+    durable = [shape("new-scope")];
+    rerender();
+    expect(result.current.elements).toEqual([shape("new-scope", 2)]);
+    expect(state.save).not.toHaveBeenCalled();
+  },
+);
+
+test.each([false, true])(
+  "a final local edit during remote apply survives undo, redo and reload; full storage=%s",
+  async (full) => {
+    enableLiveWriter();
+    enableLiveWriter("remote");
+    cloudWrites();
+    downloaded();
+    const file = imageFile();
+    const image = imageElement(file);
+    const pending = shape("pending-stroke");
+    const draft = JSON.stringify({
+      elements: [pending, image],
+      files: { [file.id]: file },
+      saved: false,
+    });
+    localStorage.setItem("wb_test-room", draft);
+    if (full) quota();
+    state.scene = {
+      ...cloudScene([shape("base"), image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const view = await mount();
+    await flush(800);
+    const remote = shape("remote-final");
+    const rejected = await liveChanges([shape("unauthorized")], "student");
+    expect(rejected.readAll).toHaveBeenCalledExactlyOnceWith({
+      signal: expect.objectContaining({ aborted: true }),
+    });
+    await liveChanges([remote]);
+    state.scene = {
+      ...state.scene,
+      elements: [shape("base"), image, pending, remote],
+    };
+    view.rerender(<SharedWhiteboard roomName="test-room" />);
+    // Run remote apply but not a later timer: local input must never be suppressed.
+    await flush(0);
+    const local = shape("local-final");
+    act(() =>
+      lifecycle.current().draw([shape("base"), image, pending, remote, local]),
+    );
+    window.dispatchEvent(new Event("pagehide"));
+    await flush(1000);
+    expect(state.scene?.elements).toEqual(
+      expect.arrayContaining([pending, image, remote, local]),
+    );
+    expect(
+      state.scene?.elements.some((element) => element.id === "unauthorized"),
+    ).toBe(false);
+    if (full) expect(localStorage.getItem("wb_test-room")).toBe(draft);
+    else
+      expect(
+        (await whiteboardDraftStorage.load("test-room"))?.elements,
+      ).toEqual(expect.arrayContaining([local]));
+    for (const [version, isDeleted] of [
+      [2, true],
+      [3, false],
+    ] as const) {
+      act(() =>
+        lifecycle
+          .current()
+          .draw([
+            shape("base"),
+            image,
+            pending,
+            remote,
+            { ...shape(local.id, version), isDeleted },
+          ]),
+      );
+      window.dispatchEvent(new Event("pagehide"));
+      await flush(100);
+    }
+    expect(lifecycle.current().api.updateScene).toHaveBeenCalledWith(
+      expect.objectContaining({ captureUpdate: "NEVER" }),
+    );
+    view.unmount();
+    await flush(1);
+    const reload = await mount();
+    await flush(10);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([pending, image, remote, shape(local.id, 3)]),
+    );
+    expect(lifecycle.current().api.getFiles()).toMatchObject({
+      [file.id]: file,
+    });
+    reload.unmount();
+  },
+);
+
+test.each([false, true])(
+  "short edits batch durable saves but retain live delivery, images and delayed recovery; full storage=%s",
+  async (full) => {
+    enableLiveWriter();
+    downloaded();
+    const file = imageFile();
+    const image = imageElement(file);
+    const pending = shape("pending-stroke");
+    const draft = JSON.stringify({
+      elements: [pending, image],
+      files: { [file.id]: file },
+      saved: false,
+    });
+    localStorage.setItem("wb_test-room", draft);
+    if (full) quota();
+    state.scene = {
+      ...cloudScene([image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    cloudWrites();
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const view = await mount();
+    await flush(800);
+    state.save.mockClear();
+    state.room.localParticipant.sendBytes.mockClear();
+    const apply = state.save.getMockImplementation()!;
+    let acknowledge!: () => void;
+    state.save.mockImplementationOnce(async (args) => {
+      await new Promise<void>((resolve) => {
+        acknowledge = resolve;
+      });
+      return apply(args);
+    });
+
+    for (let version = 2; version <= 6; version++) {
+      act(() => {
+        lifecycle
+          .current()
+          .draw([image, shape(pending.id, version, version - 1)]);
+        lifecycle.current().endStroke([image, shape(pending.id, version)]);
+      });
+      await flush(100);
+    }
+    expect(state.room.localParticipant.sendBytes).toHaveBeenCalledTimes(5);
+    expect(state.save).not.toHaveBeenCalled();
+    if (full) expect(localStorage.getItem("wb_test-room")).toBe(draft);
+    else
+      expect(
+        (await whiteboardDraftStorage.load("test-room"))?.elements,
+      ).toEqual(expect.arrayContaining([shape(pending.id, 6)]));
+    await flush(250);
+    expect(state.save).toHaveBeenCalledTimes(1);
+    expect(
+      JSON.parse(joinWhiteboardPayload(state.save.mock.calls[0][0].parts)),
+    ).toEqual([shape(pending.id, 6)]);
+    const leaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leaving);
+    expect(leaving.defaultPrevented).toBe(true);
+
+    act(() => {
+      lifecycle.current().draw([image, shape(pending.id, 7)]);
+      lifecycle.current().endStroke();
+    });
+    window.dispatchEvent(new Event("pagehide"));
+    await flush(100);
+    expect(state.save).toHaveBeenCalledTimes(1);
+    await act(async () => acknowledge());
+    await flush(0);
+    expect(state.save).toHaveBeenCalledTimes(2);
+    expect(state.scene?.elements).toEqual(
+      expect.arrayContaining([image, shape(pending.id, 7)]),
+    );
+    if (full) expect(localStorage.getItem("wb_test-room")).toBe(draft);
+    view.unmount();
+    await flush(1);
+    const reload = await mount();
+    await flush(10);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([image, shape(pending.id, 7)]),
+    );
+    expect(lifecycle.current().api.getFiles()).toMatchObject({
+      [file.id]: file,
+    });
+    reload.unmount();
+  },
+);
+
+test("distinct short strokes retain every bucket while waiting for the shared durable window", async () => {
+  enableLiveWriter();
+  cloudWrites();
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  const view = await mount();
+  await flush(10);
+  const strokes = Array.from({ length: 5 }, (_, index) =>
+    shape(`stroke-${index}`),
+  );
+  const buckets = new Set(
+    strokes.map((stroke) => whiteboardBucketId(stroke.id)),
+  );
+  expect(buckets.size).toBe(5);
+  for (let index = 0; index < strokes.length; index++) {
+    act(() => {
+      lifecycle.current().draw(strokes.slice(0, index + 1));
+      lifecycle.current().endStroke();
+    });
+    await flush(100);
+  }
+  expect(state.room.localParticipant.sendBytes).toHaveBeenCalledTimes(5);
+  expect(state.save).not.toHaveBeenCalled();
+  await flush(250);
+  // One mutation per affected bucket, not one mutation per stroke or per whole scene.
+  expect(state.save).toHaveBeenCalledTimes(buckets.size);
+  expect(state.scene?.elements).toEqual(expect.arrayContaining(strokes));
+  expect(
+    state.save.mock.calls.flatMap(([args]) =>
+      JSON.parse(joinWhiteboardPayload(args.parts)),
+    ),
+  ).toHaveLength(strokes.length);
+  view.unmount();
+});
+
+test.each([
+  [false, "task"],
+  [true, "task"],
+  [false, "pagehide"],
+  [true, "pagehide"],
+  [false, "hidden"],
+  [true, "hidden"],
+  [false, "unmount"],
+  [true, "unmount"],
+] as const)(
+  "pointer-up reads the finalized API scene before onChange, retaining drafts and images on reload; full storage=%s, exit=%s",
+  async (full, exit) => {
+    enableLiveWriter();
+    downloaded();
+    const file = imageFile();
+    const image = imageElement(file);
+    const pending = shape("pending-stroke");
+    const remote = shape("remote");
+    localStorage.setItem(
+      "wb_test-room",
+      JSON.stringify({
+        elements: [pending, image],
+        files: { [file.id]: file },
+        saved: false,
+      }),
+    );
+    if (full) quota();
+    state.scene = {
+      ...cloudScene([remote, image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    cloudWrites();
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const view = await mount();
+    await flush(800);
+    state.save.mockClear();
+    state.room.localParticipant.sendBytes.mockClear();
+    const snapshot = vi.spyOn(whiteboardDraftStorage, "save");
+    const final = [image, remote, shape(pending.id, 3)];
+    act(() => {
+      lifecycle.current().draw([image, remote, shape(pending.id, 2)]);
+      lifecycle.current().endStroke(final, false);
+    });
+    // No full-scene snapshot blocks Excalidraw's pointer-up finalization.
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(state.save).not.toHaveBeenCalled();
+    if (exit === "task") {
+      await flush(1);
+      expect(state.save).not.toHaveBeenCalled();
+      if (!full)
+        expect(
+          (await whiteboardDraftStorage.load("test-room"))?.elements,
+        ).toEqual(final);
+    } else if (exit === "unmount") view.unmount();
+    else if (exit === "hidden") {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      act(() => document.dispatchEvent(new Event("visibilitychange")));
+    } else act(() => window.dispatchEvent(new Event("pagehide")));
+    expect(snapshot).toHaveBeenLastCalledWith(
+      "test-room",
+      expect.objectContaining({ elements: final, saved: false }),
+    );
+    expect(state.room.localParticipant.sendBytes).toHaveBeenCalledTimes(1);
+    if (exit === "task") window.dispatchEvent(new Event("pagehide"));
+    await flush(1);
+    expect(state.scene?.elements).toEqual(expect.arrayContaining(final));
+    expect(state.save).toHaveBeenCalledTimes(1);
+    if (exit !== "unmount") view.unmount();
+    const reload = await mount();
+    await flush(10);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining(final),
+    );
+    expect(lifecycle.current().api.getFiles()).toMatchObject({
+      [file.id]: file,
+    });
+    reload.unmount();
+  },
+);
+
+test("losing the fast channel restores pointer-up durable delivery without replacing the pending writer", async () => {
+  enableLiveWriter();
+  cloudWrites();
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  const view = await mount();
+  await flush(10);
+  act(() => lifecycle.current().draw([shape("pending")]));
+  await flush(40);
+  state.audience = undefined;
+  view.rerender(<SharedWhiteboard roomName="test-room" />);
+  expect(state.save).not.toHaveBeenCalled();
+  act(() => lifecycle.current().endStroke());
+  await flush(1);
+  expect(state.save).toHaveBeenCalledTimes(1);
+  expect(state.scene?.elements).toEqual([shape("pending")]);
+  view.unmount();
+});
+
+test("beforeunload protects a final API revision not yet observed by onChange", async () => {
+  enableLiveWriter();
+  state.scene = cloudScene([shape("confirmed")]);
+  cloudWrites();
+  quota();
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  const view = await mount();
+  act(() => lifecycle.current().draw([shape("confirmed", 2)]));
+  await flush(800);
+  const saved = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(saved);
+  expect(saved.defaultPrevented).toBe(false);
+  act(() => lifecycle.current().endStroke([shape("confirmed", 3)], false));
+  const pending = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(pending);
+  expect(pending.defaultPrevented).toBe(true);
+  view.unmount();
+  await flush(1);
+  expect(state.scene?.elements).toEqual([shape("confirmed", 3)]);
+});
+
+test.each([false, true])(
+  "an intentional empty scene still clears on immediate close and reload; full storage=%s",
+  async (full) => {
+    enableLiveWriter();
+    downloaded();
+    const file = imageFile();
+    const image = imageElement(file);
+    const drawing = shape("confirmed");
+    localStorage.setItem(
+      "wb_test-room",
+      JSON.stringify({
+        elements: [drawing, image],
+        files: { [file.id]: file },
+        saved: true,
+      }),
+    );
+    if (full) quota();
+    state.scene = {
+      ...cloudScene([drawing, image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    cloudWrites();
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const view = await mount();
+    await flush(10);
+    act(() => lifecycle.current().endStroke([], false));
+    view.unmount();
+    await flush(1);
+    expect(state.scene?.elements).toHaveLength(2);
+    expect(state.scene?.elements.every((element) => element.isDeleted)).toBe(
+      true,
+    );
+    const reload = await mount();
+    await flush(10);
+    expect(
+      lifecycle
+        .current()
+        .api.getSceneElementsIncludingDeleted()
+        .filter((element) => !element.isDeleted),
+    ).toEqual([]);
+    reload.unmount();
+  },
+);
+
+test.each(["pagehide", "hidden", "unmount"])(
+  "%s flushes a batched stroke before its durable interval expires, with storage full",
+  async (exit) => {
+    enableLiveWriter();
+    cloudWrites();
+    quota();
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const view = await mount();
+    await flush(10);
+    act(() => {
+      lifecycle.current().draw([shape("pending")]);
+      lifecycle.current().endStroke();
+    });
+    await flush(40);
+    expect(state.save).not.toHaveBeenCalled();
+    if (exit === "unmount") view.unmount();
+    else if (exit === "hidden") {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      document.dispatchEvent(new Event("visibilitychange"));
+    } else window.dispatchEvent(new Event("pagehide"));
+    await flush(1);
+    expect(state.save).toHaveBeenCalledTimes(1);
+    expect(state.scene?.elements).toEqual([shape("pending")]);
+    if (exit !== "unmount") view.unmount();
+  },
+);
+
+test("continuous edits coalesce durable writes while keeping live delivery independent", async () => {
+  enableLiveWriter();
+  cloudWrites();
+  await mount();
+  for (let version = 1; version <= 50; version++) {
+    change([shape("continuous", version)]);
+    await flush(20);
+  }
+  expect(
+    state.room.localParticipant.sendBytes.mock.calls.length,
+  ).toBeGreaterThan(15);
+  expect(state.save.mock.calls.length).toBeLessThanOrEqual(2);
+  await flush(800);
+  expect(state.scene?.elements).toEqual([shape("continuous", 50)]);
+});
+
+test("live changes and images survive older snapshots; deletion, undo and redo retain exact revisions", async () => {
+  enableLiveWriter("remote");
+  downloaded();
+  const image = imageElement();
+  state.scene = {
+    ...cloudScene([shape("drawing"), image]),
+    fileRefs: { "image-file": imageRef() },
+  };
+  const view = await mount("test-room", true);
+  const canvas = await attachCanvas();
+  const live = [shape("drawing", 3), { ...image, version: 2 }, shape("new")];
+  await liveChanges(live);
+  expect(canvas.getSceneElementsIncludingDeleted()).toEqual(live);
+  expect(canvas.addFiles).toHaveBeenCalled();
+  state.scene = { ...state.scene, elements: [shape("drawing", 2), image] };
+  view.rerender(<SharedWhiteboard roomName="test-room" isReadonly />);
+  await flush(5);
+  expect(canvas.getSceneElementsIncludingDeleted()).toEqual(live);
+  for (const [version, isDeleted] of [
+    [4, true],
+    [5, false],
+    [6, true],
+  ] as const) {
+    await liveChanges([{ ...shape("drawing", version), isDeleted }]);
+    expect(
+      canvas
+        .getSceneElementsIncludingDeleted()
+        .find((element) => element.id === "drawing"),
+    ).toMatchObject({ version, isDeleted });
+  }
+  expect(
+    canvas.updateScene.mock.calls.every(
+      ([update]) => update.captureUpdate === "NEVER",
+    ),
+  ).toBe(true);
+  expect(state.save).not.toHaveBeenCalled();
+  expect(state.room.localParticipant.sendBytes).not.toHaveBeenCalled();
+});
+
+test("concurrent live writers converge with durable conflicts without resurrecting a deletion", async () => {
+  enableLiveWriter("writer-a");
+  enableLiveWriter("writer-b");
+  state.scene = cloudScene([shape("drawing")]);
+  const view = await mount("test-room", true);
+  const canvas = await attachCanvas();
+  await liveChanges([shape("drawing", 2, 9)], "writer-a");
+  await liveChanges([shape("drawing", 2, 3)], "writer-b");
+  expect(canvas.getSceneElementsIncludingDeleted()).toEqual([
+    shape("drawing", 2, 3),
+  ]);
+  state.scene = cloudScene([shape("drawing", 2, 9)]);
+  view.rerender(<SharedWhiteboard roomName="test-room" isReadonly />);
+  await flush(5);
+  expect(canvas.getSceneElementsIncludingDeleted()).toEqual([
+    shape("drawing", 2, 3),
+  ]);
+  await liveChanges([{ ...shape("drawing", 3), isDeleted: true }], "writer-a");
+  await liveChanges([shape("drawing", 2, 1)], "writer-b");
+  expect(canvas.getSceneElementsIncludingDeleted()).toEqual([
+    { ...shape("drawing", 3), isDeleted: true },
+  ]);
+  expect(state.save).not.toHaveBeenCalled();
+});
+
+test.each(["unauthorized", "oversized", "unknown-size", "overlap"] as const)(
+  "cancel a rejected %s stream without blocking a valid writer or changing drawings",
+  async (reason) => {
+    enableLiveWriter("remote");
+    state.scene = cloudScene([shape("cloud")]);
+    await mount("test-room", true);
+    const canvas = await attachCanvas();
+    const handler = state.room.registerByteStreamHandler.mock.calls.at(-1)![1];
+    let release = () => {};
+    if (reason === "overlap") {
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const bytes = encodeWhiteboardLiveChanges(
+        {
+          roomName: "test-room",
+          liveRoomName: state.room.name,
+          sourceId: state.manifest.sourceId!,
+          generation: 1,
+        },
+        [shape("first")],
+      )[0];
+      handler(
+        {
+          info: { size: bytes.length },
+          async *[Symbol.asyncIterator]() {
+            await pending;
+            yield bytes;
+          },
+        },
+        { identity: "remote" },
+      );
+    }
+    const readAll = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
+      signal.throwIfAborted();
+      throw new Error("Rejected streams must never be read into memory");
+    });
+    handler(
+      {
+        info: {
+          size:
+            reason === "unknown-size"
+              ? undefined
+              : reason === "oversized"
+                ? MAX_WHITEBOARD_LIVE_BYTES + 1
+                : 1,
+        },
+        readAll,
+      },
+      { identity: reason === "unauthorized" ? "student" : "remote" },
+    );
+    expect(readAll).toHaveBeenCalledExactlyOnceWith({
+      signal: expect.objectContaining({ aborted: true }),
+    });
+    release();
+    await flush(5);
+    await liveChanges([shape("valid")]);
+    expect(canvas.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([shape("cloud"), shape("valid")]),
+    );
+    expect(state.save).not.toHaveBeenCalled();
+  },
+);
+
+test("an in-flight stream cannot apply after a generation change", async () => {
+  enableLiveWriter("remote");
+  state.scene = cloudScene([shape("cloud")]);
+  const view = await mount("test-room", true);
+  const canvas = await attachCanvas();
+  const bytes = encodeWhiteboardLiveChanges(
+    {
+      roomName: "test-room",
+      liveRoomName: state.room.name,
+      sourceId: state.manifest.sourceId!,
+      generation: 1,
+    },
+    [shape("obsolete")],
+  )[0];
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const handler = state.room.registerByteStreamHandler.mock.calls.at(-1)![1];
+  handler(
+    {
+      info: { size: bytes.length },
+      async *[Symbol.asyncIterator]() {
+        await pending;
+        yield bytes;
+      },
+    },
+    { identity: "remote" },
+  );
+  state.manifest = { ...state.manifest, generation: 2 };
+  view.rerender(<SharedWhiteboard roomName="test-room" isReadonly />);
+  release();
+  await flush(5);
+  expect(canvas.getSceneElementsIncludingDeleted()).toEqual([shape("cloud")]);
+  await liveChanges([shape("current")]);
+  expect(
+    canvas.getSceneElementsIncludingDeleted().map((element) => element.id),
+  ).toContain("current");
+});
+
+test("untrusted senders, revoked writers and stale scope cannot replace cloud drawings", async () => {
+  enableLiveWriter("remote");
+  state.scene = cloudScene([shape("cloud")]);
+  const view = await mount("test-room", true);
+  const canvas = await attachCanvas();
+  await liveChanges([shape("forged")], "student");
+  await liveChanges([shape("stale")], "remote", {
+    liveRoomName: "old-activation",
+  });
+  await liveChanges([shape("stale")], "remote", { generation: 0 });
+  expect(canvas.getSceneElementsIncludingDeleted()).toEqual([shape("cloud")]);
+  await liveChanges([shape("valid")]);
+  expect(
+    canvas.getSceneElementsIncludingDeleted().map((element) => element.id),
+  ).toContain("valid");
+  state.permissions.remote = false;
+  view.rerender(<SharedWhiteboard roomName="test-room" isReadonly />);
+  await flush(5);
+  await liveChanges([shape("revoked")]);
+  expect(canvas.getSceneElementsIncludingDeleted()).toEqual([shape("cloud")]);
+});
+
 test("React StrictMode effect replay does not permanently close the sync controller", async () => {
   render(
     <StrictMode>
@@ -1547,6 +2505,55 @@ test("React StrictMode effect replay does not permanently close the sync control
   expect(
     JSON.parse(joinWhiteboardPayload(state.save.mock.calls[0][0].parts)),
   ).toEqual([shape("strict-mode-stroke")]);
+});
+
+test("StrictMode re-registers live streams and both API callbacks preserve pending edits", async () => {
+  enableLiveWriter();
+  enableLiveWriter("remote");
+  downloaded();
+  const file = imageFile();
+  const pending = shape("pending-stroke");
+  localStorage.setItem(
+    "wb_test-room",
+    JSON.stringify({
+      elements: [pending],
+      files: { [file.id]: file },
+      saved: false,
+    }),
+  );
+  quota();
+  state.scene = {
+    ...cloudScene([imageElement(file)]),
+    fileRefs: { [file.id]: imageRef(file) },
+  };
+  const view = render(
+    <StrictMode>
+      <SharedWhiteboard roomName="test-room" />
+    </StrictMode>,
+  );
+  await flush(3);
+  const discarded = { addFiles: vi.fn(), updateScene: vi.fn() };
+  await liveChanges([shape("remote-new")]);
+  act(() =>
+    state.props.excalidrawAPI?.(
+      discarded as unknown as ExcalidrawImperativeAPI,
+    ),
+  );
+  const canvas = await attachCanvas();
+  await liveChanges([shape("remote-new", 2)]);
+  expect(discarded.updateScene).not.toHaveBeenCalled();
+  expect(canvas.getSceneElementsIncludingDeleted()).toEqual(
+    expect.arrayContaining([
+      pending,
+      imageElement(file),
+      shape("remote-new", 2),
+    ]),
+  );
+  expect(
+    state.room.registerByteStreamHandler.mock.calls.length,
+  ).toBeGreaterThanOrEqual(2);
+  expect(state.room.unregisterByteStreamHandler).toHaveBeenCalled();
+  view.unmount();
 });
 
 test("a newer cloud tombstone beats an old pending cache while preserving its image bytes", async () => {

@@ -58,9 +58,15 @@ export function joinWhiteboardPayload(parts: readonly string[]): string {
 
 export function parseWhiteboardElements(
   json: string,
+  options: { legacy?: boolean } = {},
+): WhiteboardElement[] {
+  return validateWhiteboardElements(JSON.parse(json), options);
+}
+
+export function validateWhiteboardElements(
+  value: unknown,
   { legacy = false }: { legacy?: boolean } = {},
 ): WhiteboardElement[] {
-  const value: unknown = JSON.parse(json);
   if (!Array.isArray(value)) throw new Error("INVALID_WHITEBOARD_ELEMENTS");
   const ids = new Set<string>();
   return value.map((element: unknown) => {

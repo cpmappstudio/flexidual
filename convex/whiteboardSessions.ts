@@ -9,6 +9,8 @@ import {
 } from "./model/whiteboardAccess";
 import { getLiveActivationId, getLiveRoomName } from "./model/liveActivation";
 import { revokeWhiteboardRecordingToken } from "./model/whiteboardRecording";
+import { canManageRoom } from "./permissions";
+import { canAccessSchedule } from "./model/scheduleAccess";
 import {
   deleteWhiteboardBucketBatch,
   encodeWhiteboardBucket,
@@ -101,6 +103,134 @@ export const getSceneManifest = query({
           legacyOrder: [],
         }
       : null;
+  },
+});
+
+export const getRealtimeWriter = query({
+  args: {
+    ...sceneReadArgs,
+    expectedLiveRoomName: v.string(),
+    writerId: v.id("users"),
+  },
+  returns: v.boolean(),
+  handler: async (
+    ctx,
+    { roomName, expectedLiveRoomName, writerId, recordingToken },
+  ) => {
+    const manifest = await findWhiteboardManifest(ctx, roomName);
+    const legacy = manifest
+      ? null
+      : await ctx.db
+          .query("whiteboardSessions")
+          .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
+          .unique();
+    await requireLiveWhiteboardReader(
+      ctx,
+      roomName,
+      recordingToken,
+      manifest ? manifest.recordingToken : legacy?.recordingToken,
+    );
+
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", roomName))
+      .first();
+    if (
+      !schedule ||
+      schedule.status !== "active" ||
+      !schedule.isLive ||
+      getLiveRoomName(schedule) !== expectedLiveRoomName
+    )
+      return false;
+
+    // writerId is the inspected LiveKit sender, never the caller's identity.
+    const writer = await ctx.db.get("users", writerId);
+    return Boolean(
+      writer?.isActive && (await canManageRoom(ctx, writerId, roomName)),
+    );
+  },
+});
+
+export const getRealtimeAudience = query({
+  args: {
+    roomName: v.string(),
+    expectedLiveRoomName: v.string(),
+    participants: v.array(
+      v.object({ identity: v.string(), userId: v.id("users") }),
+    ),
+  },
+  returns: v.array(v.string()),
+  handler: async (ctx, { roomName, expectedLiveRoomName, participants }) => {
+    const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
+    if (getLiveRoomName(schedule) !== expectedLiveRoomName) return [];
+    if (
+      participants.length > 256 ||
+      participants.some(({ identity }) => !identity || identity.length > 512)
+    )
+      throw new ConvexError("INVALID_WHITEBOARD_AUDIENCE");
+
+    // User IDs describe candidate recipients, never the caller's identity.
+    const allowed = new Map<string, Set<string>>();
+    await Promise.all(
+      [...new Set(participants.map(({ userId }) => userId))].map(
+        async (userId) => {
+          const user = await ctx.db.get("users", userId);
+          if (
+            !user?.isActive ||
+            !(await canAccessSchedule(ctx, userId, schedule))
+          )
+            return;
+          const identities = new Set([user.clerkId]);
+          allowed.set(userId, identities);
+          const companion = `${user.clerkId}-companion`;
+          if (
+            participants.some(
+              (participant) =>
+                participant.userId === userId &&
+                participant.identity === companion,
+            ) &&
+            (await canManageRoom(ctx, userId, roomName))
+          )
+            identities.add(companion);
+        },
+      ),
+    );
+    const recipients = new Set(
+      participants
+        .filter(({ identity, userId }) => allowed.get(userId)?.has(identity))
+        .map(({ identity }) => identity),
+    );
+
+    const manifest = await findWhiteboardManifest(ctx, roomName);
+    const legacy = manifest
+      ? null
+      : await ctx.db
+          .query("whiteboardSessions")
+          .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
+          .unique();
+    const token = manifest ? manifest.recordingToken : legacy?.recordingToken;
+    if (token) {
+      const recordings = await Promise.all(
+        (["starting", "active"] as const).map((status) =>
+          ctx.db
+            .query("recordings")
+            .withIndex("by_schedule", (q) =>
+              q.eq("scheduleId", schedule._id).eq("status", status),
+            )
+            .order("desc")
+            .take(32),
+        ),
+      );
+      for (const recording of recordings.flat())
+        if (
+          recording.roomName === roomName &&
+          recording.activationId === getLiveActivationId(schedule) &&
+          recording.recordingToken === token
+        )
+          // LiveKit BuildEgressToken uses egressID as its hidden participant identity.
+          recipients.add(recording.egressId);
+    }
+    return [...recipients].sort();
   },
 });
 

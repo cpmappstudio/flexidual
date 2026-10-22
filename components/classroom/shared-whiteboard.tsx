@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ComponentType } from "react";
 import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
@@ -25,6 +32,8 @@ import type {
 import "@excalidraw/excalidraw/index.css";
 import { cn } from "@/lib/utils";
 import { useWhiteboardScene } from "@/hooks/use-whiteboard-scene";
+import { useWhiteboardRealtime } from "@/hooks/use-whiteboard-realtime";
+import { WHITEBOARD_SAVE_INTERVAL } from "@/lib/whiteboard-realtime";
 import { createWhiteboardSync } from "@/lib/whiteboard-sync";
 import {
   whiteboardBucketId,
@@ -139,8 +148,7 @@ export function ClassroomWhiteboardPreview() {
 }
 
 // ---------------------------------------------------------------------------
-// Wire protocol — only ephemeral real-time events (pointer + viewport).
-// Scene elements and file refs use Convex, independently of DataChannel limits.
+// Pointer and viewport use lossy packets; element streams and durable saves are separate.
 // ---------------------------------------------------------------------------
 
 type WhiteboardPointerMsg = {
@@ -298,7 +306,7 @@ export interface SharedWhiteboardProps {
 
 export function SharedWhiteboard(props: SharedWhiteboardProps) {
   const room = useRoomContext();
-  const key = `${props.roomName}:${room.name}:${Boolean(props.isReadonly)}`;
+  const key = `${props.roomName}:${room.name}:${Boolean(props.isReadonly)}:${props.recordingToken ?? ""}`;
   // Recording renders outside the localized, authenticated application layout.
   if (props.isReadonly) return <SharedWhiteboardSession key={key} {...props} />;
   return <WritableWhiteboard key={key} {...props} />;
@@ -351,7 +359,17 @@ function SharedWhiteboardSession({
     error: recoveryError,
   } = useWhiteboardScene(roomName, room.name, isReadonly, recordingToken);
   const generation = manifest?.format === 2 ? manifest.generation : undefined;
-  const remoteElements = receivedScene?.elements;
+  const durableElements = receivedScene?.elements;
+  const realtime = useWhiteboardRealtime({
+    room,
+    roomName,
+    sourceId: manifest?.format === 2 ? manifest.sourceId : undefined,
+    generation,
+    durable: durableElements,
+    isReadonly,
+    recordingToken,
+  });
+  const remoteElements = realtime.elements;
   const [localImageIds, setLocalImageIds] = useState<string[]>([]);
   const localImageKeyRef = useRef("[]");
   const neededImageKey = JSON.stringify(
@@ -410,11 +428,11 @@ function SharedWhiteboardSession({
     }, 20_000);
     return () => clearTimeout(timeout);
   }, [room, isReadonly]);
-  const suppressRef = useRef(false);
   const lastSceneRevisionRef = useRef<string | null>(null);
   const confirmedSceneRevisionRef = useRef<string | null>(null);
   const latestElementsRef = useRef<ExcalidrawElements>([]);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finishStrokeRef = useRef<(() => void) | null>(null);
   // Throttle: stores the timestamp of the last pointer message sent
   const lastPointerSentRef = useRef(0);
   // Viewport sync — tracks last-broadcast viewport to avoid redundant sends
@@ -452,12 +470,14 @@ function SharedWhiteboardSession({
   const [imageLoadRetry, setImageLoadRetry] = useState(0);
   const startUploadsRef = useRef<() => void>(() => {});
   const mountedRef = useRef(true);
-  useEffect(() => {
+  useLayoutEffect(() => {
     mountedRef.current = true;
     const retryTimers = imageRetryTimersRef.current;
     const loadTimers = imageLoadTimersRef.current;
     return () => {
       mountedRef.current = false;
+      // Capture before the child SDK destroys its scene/files; persistence stays passive.
+      finishStrokeRef.current?.();
       for (const timer of retryTimers.values()) clearTimeout(timer);
       retryTimers.clear();
       for (const timer of loadTimers) clearTimeout(timer);
@@ -581,11 +601,16 @@ function SharedWhiteboardSession({
     if (!draftTimerRef.current)
       draftTimerRef.current = setTimeout(persistDraft, 300);
   }, [persistDraft]);
+  const saveIntervalRef = useRef(80);
+  saveIntervalRef.current = realtime.canBroadcast
+    ? WHITEBOARD_SAVE_INTERVAL
+    : 80;
   const sync: ReturnType<
     typeof createWhiteboardSync<ExcalidrawElements[number]>
   > = useMemo(
     () =>
       createWhiteboardSync<ExcalidrawElements[number]>({
+        interval: () => saveIntervalRef.current,
         send: async (elements) => {
           if (generation === undefined) throw new Error("WHITEBOARD_NOT_READY");
           const buckets = new Map<number, ExcalidrawElements[number][]>();
@@ -667,6 +692,7 @@ function SharedWhiteboardSession({
     if (isReadonly) return;
     sync.resume();
     const flush = () => {
+      finishStrokeRef.current?.();
       persistDraft();
       void sync.flush();
     };
@@ -679,6 +705,7 @@ function SharedWhiteboardSession({
         fileRefsRef.current,
       );
       if (
+        finishStrokeRef.current !== null ||
         sync.hasPending() ||
         pendingImage ||
         (lastSceneRevisionRef.current !== null &&
@@ -700,7 +727,6 @@ function SharedWhiteboardSession({
       sync.dispose();
     };
   }, [isReadonly, persistDraft, sync]);
-
   // ---------------------------------------------------------------------------
   // RECEIVER — apply remote scene data into the local canvas
   // ---------------------------------------------------------------------------
@@ -894,7 +920,6 @@ function SharedWhiteboardSession({
       const api = apiRef.current;
       const timer = setTimeout(() => {
         if (!mountedRef.current) return;
-        suppressRef.current = true;
         const current = api.getSceneElementsIncludingDeleted();
         const isolated = isolateWhiteboardElements(elements, current);
         const next = isReadonly
@@ -912,14 +937,10 @@ function SharedWhiteboardSession({
                 isolated,
                 manifest?.legacyOrder,
               ) as ExcalidrawElements);
-        api.updateScene({
-          elements: next,
-          captureUpdate: "NEVER" as Parameters<
-            typeof api.updateScene
-          >[0]["captureUpdate"],
-        });
         if (!isReadonly) {
-          sync.seed(elements);
+          // Live delivery is not a durable acknowledgement.
+          sync.seed((durableElements ?? []) as ExcalidrawElements);
+          realtime.transport.seed(elements);
           latestElementsRef.current = sync.update(next) as ExcalidrawElements;
           lastSceneRevisionRef.current = sceneRevision(
             latestElementsRef.current,
@@ -930,9 +951,13 @@ function SharedWhiteboardSession({
           }
           scheduleDraft();
         }
-        setTimeout(() => {
-          suppressRef.current = false;
-        }, 0);
+        // Track the remote revision before onChange; never suppress later local input.
+        api.updateScene({
+          elements: next,
+          captureUpdate: "NEVER" as Parameters<
+            typeof api.updateScene
+          >[0]["captureUpdate"],
+        });
       }, 0);
       return () => clearTimeout(timer);
     }
@@ -940,11 +965,13 @@ function SharedWhiteboardSession({
     isCanvasReady,
     isReadonly,
     remoteElements,
+    durableElements,
     initialScene,
     manifest?.legacyOrder,
     sync,
     scheduleDraft,
     confirmCachedScene,
+    realtime.transport,
   ]);
 
   // Load new images from Convex file refs as they are added.
@@ -1051,8 +1078,7 @@ function SharedWhiteboardSession({
 
   const handleChange = useCallback(
     (elements: ExcalidrawElements, appState: AppState, files: BinaryFiles) => {
-      if (isReadonly || initialScene === undefined || suppressRef.current)
-        return;
+      if (isReadonly || initialScene === undefined) return;
 
       // Keep currentFilesRef current
       const filesChanged = currentFilesRef.current !== files;
@@ -1080,6 +1106,8 @@ function SharedWhiteboardSession({
       const revision = sceneRevision(elements);
       if (revision !== lastSceneRevisionRef.current) {
         latestElementsRef.current = sync.update(elements) as ExcalidrawElements;
+        if (realtime.canBroadcast)
+          realtime.transport.update(latestElementsRef.current);
         lastSceneRevisionRef.current = sceneRevision(latestElementsRef.current);
         scheduleDraft();
       } else if (filesChanged) {
@@ -1118,8 +1146,61 @@ function SharedWhiteboardSession({
         }
       }
     },
-    [room, isReadonly, startUploads, initialScene, sync, scheduleDraft],
+    [
+      room,
+      isReadonly,
+      startUploads,
+      initialScene,
+      sync,
+      scheduleDraft,
+      realtime.canBroadcast,
+      realtime.transport,
+    ],
   );
+
+  useEffect(() => {
+    if (isReadonly || !isCanvasReady) return;
+    const api = apiRef.current;
+    let strokeTimer: ReturnType<typeof setTimeout> | undefined;
+    const finishStroke = () => {
+      if (!api) return;
+      if (strokeTimer !== undefined) clearTimeout(strokeTimer);
+      strokeTimer = undefined;
+      finishStrokeRef.current = null;
+      handleChange(
+        api.getSceneElementsIncludingDeleted(),
+        api.getAppState(),
+        api.getFiles(),
+      );
+      void realtime.transport.flush();
+      // Durable writes still coalesce when live delivery is available.
+      if (!realtime.canBroadcast) void sync.flush();
+    };
+    const unsubscribe = api?.onPointerUp?.(() => {
+      if (strokeTimer !== undefined) clearTimeout(strokeTimer);
+      // Excalidraw emits pointerUp before finalizing freedraw. Read its final
+      // scene next task, through the same change path, before snapshotting it.
+      finishStrokeRef.current = finishStroke;
+      strokeTimer = setTimeout(() => {
+        finishStroke();
+        persistDraft();
+      }, 0);
+    });
+    return () => {
+      unsubscribe?.();
+      if (strokeTimer !== undefined) clearTimeout(strokeTimer);
+      if (finishStrokeRef.current === finishStroke)
+        finishStrokeRef.current = null;
+    };
+  }, [
+    isReadonly,
+    isCanvasReady,
+    handleChange,
+    sync,
+    realtime.transport,
+    realtime.canBroadcast,
+    persistDraft,
+  ]);
 
   // ---------------------------------------------------------------------------
   // POINTER BROADCASTER — laser / cursor at ~30 fps (throttled, not debounced)

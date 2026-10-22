@@ -7,17 +7,22 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { SharedWhiteboard } from "@/components/classroom/shared-whiteboard";
 import type { WhiteboardFileRefs } from "@/lib/whiteboard-draft-storage";
 import type { Id } from "@/convex/_generated/dataModel";
+import { encodeWhiteboardLiveChanges } from "@/lib/whiteboard-realtime";
 
 const state = vi.hoisted(() => ({
   props: null as ExcalidrawProps | null,
   mutation: vi.fn(),
   sceneHook: vi.fn(),
+  access: vi.fn<(queries: unknown) => Record<string, unknown>>(() => ({})),
   room: {
     name: "recording-activation",
     state: "connected",
     on: vi.fn(),
     off: vi.fn(),
-    localParticipant: { publishData: vi.fn() },
+    remoteParticipants: new Map(),
+    registerByteStreamHandler: vi.fn(),
+    unregisterByteStreamHandler: vi.fn(),
+    localParticipant: { identity: "recorder", publishData: vi.fn() },
   },
   scene: {
     elements: [
@@ -43,7 +48,10 @@ vi.mock("next/dynamic", () => ({
 vi.mock("@livekit/components-react", () => ({
   useRoomContext: () => state.room,
 }));
-vi.mock("convex/react", () => ({ useMutation: () => state.mutation }));
+vi.mock("convex/react", () => ({
+  useMutation: () => state.mutation,
+  useQueries: (queries: unknown) => state.access(queries),
+}));
 vi.mock("@/hooks/use-whiteboard-scene", () => ({
   useWhiteboardScene: (...args: unknown[]) => {
     state.sceneHook(...args);
@@ -55,6 +63,7 @@ vi.mock("@/hooks/use-whiteboard-scene", () => ({
         bucketIds: [],
         legacyOrder: [],
         fromLegacy: false,
+        sourceId: "recording-manifest",
       },
       error: undefined,
     };
@@ -69,6 +78,8 @@ const initialScene = state.scene;
 beforeEach(() => {
   state.scene = initialScene;
   state.props = null;
+  state.room.remoteParticipants.clear();
+  state.access.mockImplementation(() => ({}));
 });
 
 afterEach(() => {
@@ -77,6 +88,82 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
   localStorage.clear();
+});
+
+test("recording uses its reader token for live writer authorization without Clerk or Intl", async () => {
+  vi.useFakeTimers();
+  state.room.remoteParticipants.set("teacher", {
+    identity: "teacher",
+    metadata: JSON.stringify({ roomAdmin: true, convexUserId: "teacher-user" }),
+  });
+  state.access.mockReturnValue({ teacher: true });
+  render(
+    <SharedWhiteboard
+      roomName="recording-room"
+      recordingToken="recording-token"
+      isReadonly
+    />,
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5);
+  });
+  let elements = state.scene.elements;
+  const updateScene = vi.fn((value) => {
+    if (value.elements) elements = value.elements;
+  });
+  const api = {
+    updateScene,
+    addFiles: vi.fn(),
+    getSceneElementsIncludingDeleted: () => elements,
+  };
+  act(() =>
+    state.props?.excalidrawAPI?.(api as unknown as ExcalidrawImperativeAPI),
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5);
+  });
+  const next = [{ ...elements[0], version: 2, versionNonce: 2 }];
+  const bytes = encodeWhiteboardLiveChanges(
+    {
+      roomName: "recording-room",
+      liveRoomName: "recording-activation",
+      sourceId: "recording-manifest",
+      generation: 1,
+    },
+    next,
+  )[0];
+  const handler = state.room.registerByteStreamHandler.mock.calls.at(-1)![1];
+  await act(async () => {
+    handler(
+      {
+        info: { size: bytes.length },
+        async readAll({ signal }: { signal: AbortSignal }) {
+          signal.throwIfAborted();
+          return [bytes];
+        },
+        async *[Symbol.asyncIterator]() {
+          yield bytes;
+        },
+      },
+      { identity: "teacher" },
+    );
+    await vi.advanceTimersByTimeAsync(5);
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5);
+  });
+  expect(state.access).toHaveBeenCalledWith(
+    expect.objectContaining({
+      teacher: expect.objectContaining({
+        args: expect.objectContaining({ recordingToken: "recording-token" }),
+      }),
+    }),
+  );
+  expect(elements).toEqual(next);
+  expect(updateScene).toHaveBeenLastCalledWith(
+    expect.objectContaining({ captureUpdate: "NEVER" }),
+  );
+  expect(state.mutation).not.toHaveBeenCalled();
 });
 
 test("recording downloads only visible images and fetches a deleted image when undo restores it", async () => {

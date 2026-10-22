@@ -89,6 +89,101 @@ it("keeps one request in flight and coalesces later edits into the newest revisi
   sync.dispose();
 });
 
+it("changes cadence without replacing pending writes or their acknowledgements", async () => {
+  const first = deferred();
+  let interval = 80;
+  const send = vi.fn<(elements: WhiteboardElement[]) => Promise<void>>(
+    async () => {},
+  );
+  send.mockImplementationOnce(() => first.promise);
+  const saved = vi.fn();
+  const sync = createWhiteboardSync({
+    send,
+    saved,
+    error: vi.fn(),
+    interval: () => interval,
+  });
+  sync.update([element()]);
+  await vi.advanceTimersByTimeAsync(80);
+  interval = 750;
+  sync.update([element(2)]);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(saved).not.toHaveBeenCalled();
+  first.resolve();
+  await vi.advanceTimersByTimeAsync(749);
+  expect(send).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(send).toHaveBeenLastCalledWith([element(2)]);
+  expect(saved).toHaveBeenCalledExactlyOnceWith([element(2)]);
+  interval = 80;
+  sync.update([element(3)]);
+  await vi.advanceTimersByTimeAsync(80);
+  expect(send).toHaveBeenCalledTimes(3);
+  sync.dispose();
+});
+
+it.each([33, 750])(
+  "drains an explicit flush behind an in-flight send without another %i ms window",
+  async (interval) => {
+    const first = deferred();
+    const send = vi.fn<(elements: WhiteboardElement[]) => Promise<void>>(
+      async () => {},
+    );
+    send.mockImplementationOnce(() => first.promise);
+    const saved = vi.fn();
+    const sync = createWhiteboardSync({
+      send,
+      saved,
+      error: vi.fn(),
+      interval,
+    });
+    sync.update([element()]);
+    await vi.advanceTimersByTimeAsync(interval);
+    sync.update([element(2)]);
+    await sync.flush();
+    sync.update([element(3)]);
+    await sync.flush();
+    expect(send).toHaveBeenCalledTimes(1);
+    first.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenLastCalledWith([element(3)]);
+    expect(saved).toHaveBeenCalledExactlyOnceWith([element(3)]);
+    sync.dispose();
+  },
+);
+
+it.each(["offline", "PERMISSION_DENIED"])(
+  "queued flush does not bypass failure policy: %s",
+  async (message) => {
+    let reject!: (error: Error) => void;
+    const first = new Promise<void>((_, fail) => {
+      reject = fail;
+    });
+    const send = vi.fn<(elements: WhiteboardElement[]) => Promise<void>>(
+      async () => {},
+    );
+    send.mockImplementationOnce(() => first);
+    const { sync, error } = setup(send);
+    sync.update([element()]);
+    await vi.advanceTimersByTimeAsync(80);
+    sync.update([element(2)]);
+    await sync.flush();
+    reject(new Error(message));
+    await vi.advanceTimersByTimeAsync(999);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(send).toHaveBeenCalledTimes(message === "offline" ? 2 : 1);
+    if (message === "offline")
+      expect(send).toHaveBeenLastCalledWith([element(2)]);
+    // Dispose intentionally requests a final send; keep the permanent-failure
+    // assertion above separate from that existing lifecycle behavior.
+    sync.dispose();
+  },
+);
+
 it("confirms the current scene when remote edits arrive before the local acknowledgement", async () => {
   const request = deferred();
   const { sync, send, saved } = setup(vi.fn(() => request.promise));
