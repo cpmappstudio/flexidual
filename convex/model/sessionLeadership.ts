@@ -1,3 +1,4 @@
+import { isCourseTeacher } from "./courseAssignments";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { UserRole } from "./roles";
@@ -32,7 +33,7 @@ export function getSessionLeaderRoleFromAssignments(
   schoolId: Id<"schools"> | undefined,
   assignments: Doc<"roleAssignments">[],
 ): SessionLeaderRole | null {
-  if (classData.teacherId === userId) return "teacher";
+  if (isCourseTeacher(classData, userId)) return "teacher";
   if (
     assignments.some(
       (assignment) =>

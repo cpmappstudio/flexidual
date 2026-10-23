@@ -1,3 +1,4 @@
+import { isCourseTeacher } from "./model/courseAssignments";
 import {
   paginationOptsValidator,
   paginationResultValidator,
@@ -235,7 +236,7 @@ async function requireTaskManager(
   const course = await ctx.db.get("classes", classId);
   if (!course) throw new ConvexError("CLASS_NOT_FOUND");
   if (
-    course.teacherId !== userId &&
+    !isCourseTeacher(course, userId) &&
     !(await canManageClass(ctx, userId, course))
   ) {
     throw new ConvexError("PERMISSION_DENIED");
@@ -964,7 +965,7 @@ export const listForClass = query({
     const course = await ctx.db.get("classes", args.classId);
     if (!course) throw new ConvexError("CLASS_NOT_FOUND");
     const isManager =
-      course.teacherId === user._id ||
+      isCourseTeacher(course, user._id) ||
       (await canManageClass(ctx, user._id, course));
     if (!isManager && !(await isStudentEnrolled(ctx, course, user._id))) {
       throw new ConvexError("PERMISSION_DENIED");

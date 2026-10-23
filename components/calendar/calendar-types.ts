@@ -31,6 +31,9 @@ export type CalendarEvent = {
   classId: Id<"classes">;
   curriculumId: Id<"curriculums">;
   teacherId?: Id<"users">;
+  teacherIds?: Id<"users">[];
+  isAssignedTeacher?: boolean;
+  gradeCodes?: string[];
   gradeCode?: string;
   gradeLabel?: string;
   sessionType: "live" | "ignitia" | "abeka";

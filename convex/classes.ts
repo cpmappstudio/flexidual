@@ -61,6 +61,15 @@ import {
   listCatalogCourses,
 } from "./model/catalog";
 import { deriveClassType } from "./model/classType";
+import {
+  courseGradeAssignmentValidator,
+  getCourseGradeCodes,
+  getCourseTeacherIds,
+  isCourseTeacher,
+  listGradeClasses,
+  listTeacherClasses,
+  syncCourseGradeAssignments,
+} from "./model/courseAssignments";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { getUserImageUrl } from "./model/userImage";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
@@ -114,6 +123,7 @@ const classFields = {
   academicPeriodId: v.optional(v.id("academicPeriods")),
   academicYear: v.optional(v.string()),
   gradeCode: v.optional(v.string()),
+  gradeAssignments: v.optional(v.array(courseGradeAssignmentValidator)),
   startDate: v.optional(v.number()),
   endDate: v.optional(v.number()),
   timeZone: v.optional(v.string()),
@@ -252,12 +262,7 @@ async function listAccessibleClasses(
 
   if (instructorOnly) {
     const [teachingClasses, tutoringClasses] = await Promise.all([
-      ctx.db
-        .query("classes")
-        .withIndex("by_teacher", (q) =>
-          q.eq("teacherId", userId).eq("isActive", args.isActive ?? true),
-        )
-        .collect(),
+      listTeacherClasses(ctx, userId, args.isActive ?? true),
       ctx.db
         .query("classes")
         .withIndex("by_tutor", (q) =>
@@ -315,13 +320,7 @@ async function listAccessibleClasses(
 }
 
 async function getTeacherOptions(ctx: QueryCtx, classes: Doc<"classes">[]) {
-  const teacherIds = [
-    ...new Set(
-      classes.flatMap((classData) =>
-        classData.teacherId ? [classData.teacherId] : [],
-      ),
-    ),
-  ];
+  const teacherIds = [...new Set(classes.flatMap(getCourseTeacherIds))];
   const teachers = (
     await Promise.all(teacherIds.map((teacherId) => ctx.db.get(teacherId)))
   ).filter((teacher): teacher is Doc<"users"> => Boolean(teacher?.isActive));
@@ -453,6 +452,7 @@ export const listFilterOptions = query({
         name: v.string(),
         teacherId: v.optional(v.id("users")),
         gradeCode: v.optional(v.string()),
+        gradeCodes: v.optional(v.array(v.string())),
       }),
     ),
     teachers: v.array(teacherOptionValidator),
@@ -470,6 +470,9 @@ export const listFilterOptions = query({
           name: classData.name,
           teacherId: classData.teacherId,
           gradeCode: classData.gradeCode,
+          ...(classData.gradeAssignments
+            ? { gradeCodes: getCourseGradeCodes(classData) }
+            : {}),
         }))
         .sort((a, b) => a.name.localeCompare(b.name)),
       teachers: await getTeacherOptions(ctx, classes),
@@ -603,9 +606,8 @@ export const getChatContext = query({
       Id<"users">,
       "teacher" | "tutor" | "student"
     >();
-    if (classData.teacherId) {
-      participantRoles.set(classData.teacherId, "teacher");
-    }
+    for (const teacherId of getCourseTeacherIds(classData))
+      participantRoles.set(teacherId, "teacher");
     if (classData.tutorId && !participantRoles.has(classData.tutorId)) {
       participantRoles.set(classData.tutorId, "tutor");
     }
@@ -659,6 +661,8 @@ export const listWeeklyScheduleGuides = query({
     campusId: v.id("campuses"),
     academicPeriodId: v.id("academicPeriods"),
     gradeCode: v.string(),
+    gradeCodes: v.optional(v.array(v.string())),
+    teacherIds: v.optional(v.array(v.id("users"))),
     teacherId: v.optional(v.id("users")),
     excludeClassId: v.optional(v.id("classes")),
   },
@@ -694,38 +698,45 @@ export const listWeeklyScheduleGuides = query({
       throw new ConvexError("PERMISSION_DENIED");
     }
 
-    const [school, gradeClasses, teacherClasses, sharedClassIds] =
+    const gradeCodes = args.gradeCodes ?? [args.gradeCode];
+    const teacherIds = [
+      ...new Set([
+        ...(args.teacherId ? [args.teacherId] : []),
+        ...(args.teacherIds ?? []),
+      ]),
+    ];
+    if (
+      !gradeCodes.length ||
+      gradeCodes.length > 64 ||
+      teacherIds.length > 65 ||
+      !gradeCodes.includes(args.gradeCode) ||
+      (args.gradeCodes &&
+        (await validateGradeCodes(ctx, campus.schoolId, gradeCodes)).length > 0)
+    )
+      throw new ConvexError("INVALID_SCHEDULE_GUIDE_FILTERS");
+    const [school, gradeGroups, teacherGroups, sharedClassIds] =
       await Promise.all([
         ctx.db.get(campus.schoolId),
-        ctx.db
-          .query("classes")
-          .withIndex("by_campus_period_grade", (q) =>
-            q
-              .eq("campusId", campus._id)
-              .eq("academicPeriodId", academicPeriod._id)
-              .eq("gradeCode", args.gradeCode)
-              .eq("isActive", true),
-          )
-          .collect(),
-        args.teacherId
-          ? ctx.db
-              .query("classes")
-              .withIndex("by_teacher_campus_period_active", (q) =>
-                q
-                  .eq("teacherId", args.teacherId)
-                  .eq("campusId", campus._id)
-                  .eq("academicPeriodId", academicPeriod._id)
-                  .eq("isActive", true),
-              )
-              .collect()
-          : Promise.resolve([]),
+        Promise.all(
+          gradeCodes.map((code) =>
+            listGradeClasses(ctx, campus._id, academicPeriod._id, code),
+          ),
+        ),
+        Promise.all(
+          teacherIds.map((teacherId) =>
+            listTeacherClasses(ctx, teacherId, true, {
+              campusId: campus._id,
+              academicPeriodId: academicPeriod._id,
+            }),
+          ),
+        ),
         args.excludeClassId
           ? listScheduleShareClassIds(ctx, args.excludeClassId)
           : Promise.resolve(new Set<Id<"classes">>()),
       ]);
     const classes = [
       ...new Map(
-        [...gradeClasses, ...teacherClasses].map((classData) => [
+        [...gradeGroups.flat(), ...teacherGroups.flat()].map((classData) => [
           classData._id,
           classData,
         ]),
@@ -784,20 +795,34 @@ export const listWeeklyScheduleGuides = query({
                 ).getUTCDay(),
                 startMinutes,
                 endMinutes,
-                gradeCode: classData.gradeCode ?? "",
+                gradeCode:
+                  getCourseGradeCodes(classData).find((code) =>
+                    gradeCodes.includes(code),
+                  ) ??
+                  classData.gradeCode ??
+                  "",
                 sessionType,
-                isTeacherCourse:
-                  args.teacherId !== undefined &&
-                  classData.teacherId === args.teacherId,
-                canShare: canCoursesShareSchedule(
-                  {
-                    campusId: campus._id,
-                    academicPeriodId: academicPeriod._id,
-                    teacherId: args.teacherId,
-                    gradeCode: args.gradeCode,
-                  },
-                  classData,
+                isTeacherCourse: teacherIds.some((id) =>
+                  isCourseTeacher(classData, id),
                 ),
+                canShare:
+                  teacherIds.some((id) => isCourseTeacher(classData, id)) &&
+                  teacherIds
+                    .filter((id) => isCourseTeacher(classData, id))
+                    .every((id) =>
+                      canCoursesShareSchedule(
+                        {
+                          campusId: campus._id,
+                          academicPeriodId: academicPeriod._id,
+                          teacherId: id,
+                          gradeCode: args.gradeCode,
+                          gradeAssignments: gradeCodes.map((gradeCode) => ({
+                            gradeCode,
+                          })),
+                        },
+                        classData,
+                      ),
+                    ),
                 isScheduleShared: sharedClassIds.has(classData._id),
               },
             ];
@@ -851,18 +876,22 @@ export const get = query({
 
     const curriculum = await ctx.db.get(classData.curriculumId);
     const schoolId = classData.schoolId ?? curriculum?.schoolId;
-    const gradeCode = classData.gradeCode;
-    const [timeZone, teacher, grade] = await Promise.all([
+    const gradeCodes = getCourseGradeCodes(classData);
+    const [timeZone, teacher, grades] = await Promise.all([
       getClassTimeZone(ctx, classData),
       classData.teacherId ? ctx.db.get(classData.teacherId) : null,
-      gradeCode && schoolId
-        ? ctx.db
-            .query("institutionGrades")
-            .withIndex("by_school_and_code", (q) =>
-              q.eq("schoolId", schoolId).eq("code", gradeCode),
-            )
-            .unique()
-        : null,
+      schoolId
+        ? Promise.all(
+            gradeCodes.map((gradeCode) =>
+              ctx.db
+                .query("institutionGrades")
+                .withIndex("by_school_and_code", (q) =>
+                  q.eq("schoolId", schoolId).eq("code", gradeCode),
+                )
+                .unique(),
+            ),
+          )
+        : [],
     ]);
 
     return {
@@ -874,7 +903,9 @@ export const get = query({
       curriculumTitle: curriculum?.title || "Unknown Curriculum",
       curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
       teacherName: teacher?.fullName,
-      gradeName: grade?.name,
+      gradeName:
+        grades.flatMap((grade) => (grade ? [grade.name] : [])).join(", ") ||
+        undefined,
     };
   },
 });
@@ -988,8 +1019,9 @@ export const searchStudents = query({
       throw new ConvexError("PERMISSION_DENIED");
     }
 
-    const gradeCodes = classData.gradeCode
-      ? [classData.gradeCode]
+    const courseGrades = getCourseGradeCodes(classData);
+    const gradeCodes = courseGrades.length
+      ? courseGrades
       : curriculum.gradeCodes;
     let results = await getInstitutionStudents(
       ctx,
@@ -1072,6 +1104,7 @@ export const listCourseCreationGradeStudents = query({
     curriculumId: v.id("curriculums"),
     campusId: v.id("campuses"),
     gradeCode: v.string(),
+    gradeCodes: v.optional(v.array(v.string())),
   },
   returns: v.array(courseCreationStudentValidator),
   handler: async (ctx, args) => {
@@ -1082,10 +1115,16 @@ export const listCourseCreationGradeStudents = query({
       args.curriculumId,
       args.campusId,
     );
+    const gradeCodes = args.gradeCodes ?? [args.gradeCode];
     if (
-      (await validateGradeCodes(ctx, curriculum.schoolId!, [args.gradeCode]))
-        .length > 0 ||
-      !isCurriculumAvailableForGrade(curriculum.gradeCodes, args.gradeCode)
+      !gradeCodes.length ||
+      gradeCodes.length > 64 ||
+      !gradeCodes.includes(args.gradeCode) ||
+      (await validateGradeCodes(ctx, curriculum.schoolId!, gradeCodes)).length >
+        0 ||
+      gradeCodes.some(
+        (code) => !isCurriculumAvailableForGrade(curriculum.gradeCodes, code),
+      )
     ) {
       throw new ConvexError("INVALID_GRADE");
     }
@@ -1095,7 +1134,7 @@ export const listCourseCreationGradeStudents = query({
       curriculum.schoolId!,
       args.campusId,
       true,
-      [args.gradeCode],
+      gradeCodes,
     );
     return students
       .sort((a, b) => a.user.fullName.localeCompare(b.user.fullName))
@@ -1109,6 +1148,7 @@ export const searchCourseCreationStudents = query({
     campusId: v.id("campuses"),
     searchQuery: v.string(),
     gradeCode: v.optional(v.string()),
+    gradeCodes: v.optional(v.array(v.string())),
   },
   returns: v.array(courseCreationStudentValidator),
   handler: async (ctx, args) => {
@@ -1119,6 +1159,20 @@ export const searchCourseCreationStudents = query({
       args.curriculumId,
       args.campusId,
     );
+    const gradeCodes =
+      args.gradeCodes ??
+      (args.gradeCode ? [args.gradeCode] : curriculum.gradeCodes);
+    if (
+      args.gradeCodes &&
+      (!gradeCodes?.length ||
+        gradeCodes.length > 64 ||
+        (await validateGradeCodes(ctx, curriculum.schoolId!, gradeCodes))
+          .length > 0 ||
+        gradeCodes.some(
+          (code) => !isCurriculumAvailableForGrade(curriculum.gradeCodes, code),
+        ))
+    )
+      throw new ConvexError("INVALID_GRADE");
     const searchQuery = args.searchQuery.trim().toLowerCase();
     if (searchQuery.length < 2) return [];
 
@@ -1127,7 +1181,7 @@ export const searchCourseCreationStudents = query({
       curriculum.schoolId!,
       args.campusId,
       true,
-      args.gradeCode ? [args.gradeCode] : curriculum.gradeCodes,
+      gradeCodes,
     );
     return students
       .filter(
@@ -1251,6 +1305,50 @@ async function isCourseInstructorInInstitution(
   return campuses.some((campus) => campus?.schoolId === schoolId);
 }
 
+async function validateCourseGradeAssignments(
+  ctx: MutationCtx,
+  curriculum: Doc<"curriculums">,
+  campusId: Id<"campuses"> | undefined,
+  teacherId: Id<"users"> | undefined,
+  gradeCode: string | undefined,
+  assignments: Doc<"classes">["gradeAssignments"],
+) {
+  if (assignments === undefined) return;
+  const grades = assignments.map((assignment) => assignment.gradeCode);
+  if (
+    !curriculum.schoolId ||
+    !gradeCode ||
+    grades.length === 0 ||
+    grades.length > 64 ||
+    !grades.includes(gradeCode) ||
+    new Set(grades).size !== grades.length ||
+    (await validateGradeCodes(ctx, curriculum.schoolId, grades)).length > 0 ||
+    grades.some(
+      (code) => !isCurriculumAvailableForGrade(curriculum.gradeCodes, code),
+    )
+  ) {
+    throw new ConvexError("INVALID_GRADE");
+  }
+  if (!teacherId || !campusId) throw new ConvexError("INVALID_TEACHER");
+  for (const id of getCourseTeacherIds({
+    teacherId,
+    gradeAssignments: assignments,
+  })) {
+    const teacher = await ctx.db.get("users", id);
+    if (
+      !teacher ||
+      !(await isCourseInstructorInInstitution(
+        ctx,
+        teacher,
+        curriculum.schoolId,
+        campusId,
+      ))
+    ) {
+      throw new ConvexError("INVALID_TEACHER");
+    }
+  }
+}
+
 async function getCourseWeeklySlots(
   ctx: QueryCtx | MutationCtx,
   classData: Doc<"classes">,
@@ -1302,6 +1400,7 @@ async function validateExistingScheduleForTeacher(
 
   return await validateTeacherScheduleConflicts(ctx, {
     teacherId,
+    teacherIds: getCourseTeacherIds({ ...classData, teacherId }),
     plannedClasses,
     className,
     excludeClassId: classData._id,
@@ -1309,6 +1408,7 @@ async function validateExistingScheduleForTeacher(
     academicPeriodId: classData.academicPeriodId,
     gradeCode: gradeCode ?? classData.gradeCode,
     studentIds,
+    gradeAssignments: classData.gradeAssignments,
     approvedScheduleShareIds,
   });
 }
@@ -1350,6 +1450,8 @@ async function validateTeacherScheduleConflicts(
   ctx: MutationCtx,
   {
     teacherId,
+    teacherIds,
+    gradeAssignments,
     plannedClasses,
     className,
     excludeClassId,
@@ -1360,6 +1462,8 @@ async function validateTeacherScheduleConflicts(
     approvedScheduleShareIds = [],
   }: {
     teacherId: Id<"users">;
+    teacherIds?: Id<"users">[];
+    gradeAssignments?: Doc<"classes">["gradeAssignments"];
     plannedClasses: PlannedCourseOccurrence[];
     className: string;
     excludeClassId?: Id<"classes">;
@@ -1374,15 +1478,28 @@ async function validateTeacherScheduleConflicts(
     (plannedClass) => plannedClass.sessionType === "live",
   );
   if (liveClasses.length === 0) return [];
-
-  const teacherClasses = (
-    await ctx.db
-      .query("classes")
-      .withIndex("by_teacher", (q) =>
-        q.eq("teacherId", teacherId).eq("isActive", true),
-      )
-      .collect()
-  ).filter((classData) => classData._id !== excludeClassId);
+  if (teacherIds?.some((id) => id !== teacherId)) {
+    const shares: Id<"classes">[][] = await Promise.all(
+      [...new Set([teacherId, ...teacherIds])].map((id) =>
+        validateTeacherScheduleConflicts(ctx, {
+          teacherId: id,
+          plannedClasses,
+          className,
+          excludeClassId,
+          campusId,
+          academicPeriodId,
+          gradeCode,
+          gradeAssignments,
+          studentIds,
+          approvedScheduleShareIds,
+        }),
+      ),
+    );
+    return [...new Set(shares.flat())];
+  }
+  const teacherClasses = (await listTeacherClasses(ctx, teacherId)).filter(
+    (classData) => classData._id !== excludeClassId,
+  );
   if (teacherClasses.length === 0) return [];
 
   const rangeStart = Math.min(...liveClasses.map(({ start }) => start));
@@ -1428,7 +1545,13 @@ async function validateTeacherScheduleConflicts(
         gradeCode: conflictClass.gradeCode,
         conflictTime: conflict.scheduledStart,
         canShare: canCoursesShareSchedule(
-          { campusId, academicPeriodId, teacherId, gradeCode },
+          {
+            campusId,
+            academicPeriodId,
+            teacherId,
+            gradeCode,
+            gradeAssignments,
+          },
           conflictClass,
         ),
       });
@@ -1495,6 +1618,7 @@ async function insertCourseSchedule(
     createdBy,
     createdAt,
     periodEnd,
+    gradeCodes,
     occurrencesBySlot,
     metadataByOccurrence = new Map(),
   }: {
@@ -1505,6 +1629,7 @@ async function insertCourseSchedule(
     createdBy: Id<"users">;
     createdAt: number;
     periodEnd: number;
+    gradeCodes?: string[];
     occurrencesBySlot: PlannedCourseOccurrence[][];
     metadataByOccurrence?: Map<string, FutureScheduleMetadata>;
   },
@@ -1516,6 +1641,7 @@ async function insertCourseSchedule(
           schoolId,
           campusId,
           gradeCode,
+          gradeCodes,
           from: Math.min(...plannedOccurrences.map((item) => item.start)),
           to: Math.max(...plannedOccurrences.map((item) => item.end)),
         })
@@ -1722,6 +1848,7 @@ async function replaceFutureCourseSchedule(
       weeklySlots,
       school.scheduleStartMinutes ?? DEFAULT_SCHEDULE_START_MINUTES,
       school.scheduleEndMinutes ?? DEFAULT_SCHEDULE_END_MINUTES,
+      previousWeeklySlots,
     )
   ) {
     throw new ConvexError("INVALID_WEEKLY_SCHEDULE");
@@ -1866,12 +1993,14 @@ async function replaceFutureCourseSchedule(
   const newScheduleShareIds = teacherId
     ? await validateTeacherScheduleConflicts(ctx, {
         teacherId,
+        teacherIds: getCourseTeacherIds({ ...classData, teacherId }),
         plannedClasses,
         className,
         excludeClassId: classData._id,
         campusId: classData.campusId,
         academicPeriodId: classData.academicPeriodId,
         gradeCode: gradeCode ?? classData.gradeCode,
+        gradeAssignments: classData.gradeAssignments,
         studentIds: await listClassStudentIds(ctx, classData),
         approvedScheduleShareIds,
       })
@@ -1898,6 +2027,10 @@ async function replaceFutureCourseSchedule(
     createdBy: updatedBy,
     createdAt: now,
     periodEnd,
+    gradeCodes: getCourseGradeCodes({
+      ...classData,
+      gradeCode: gradeCode ?? classData.gradeCode,
+    }),
     occurrencesBySlot,
     metadataByOccurrence,
   });
@@ -1941,6 +2074,7 @@ export const createWithSchedule = mutation({
     teacherId: v.id("users"),
     academicPeriodId: v.id("academicPeriods"),
     gradeCode: v.string(),
+    gradeAssignments: v.optional(v.array(courseGradeAssignmentValidator)),
     studentIds: v.array(v.id("users")),
     liveAccess: liveAccessValidator,
     weeklySlots: v.array(courseWeeklySlotValidator),
@@ -2021,6 +2155,14 @@ export const createWithSchedule = mutation({
       throw new ConvexError("INVALID_TEACHER");
     }
 
+    await validateCourseGradeAssignments(
+      ctx,
+      curriculum,
+      args.campusId,
+      args.teacherId,
+      args.gradeCode,
+      args.gradeAssignments,
+    );
     const studentIds = [...new Set(args.studentIds)];
     if (studentIds.length !== args.studentIds.length) {
       throw new ConvexError("INVALID_STUDENTS");
@@ -2083,6 +2225,8 @@ export const createWithSchedule = mutation({
     assertNoCourseScheduleOverlap(plannedClasses);
     const scheduleShareIds = await validateTeacherScheduleConflicts(ctx, {
       teacherId: args.teacherId,
+      teacherIds: getCourseTeacherIds(args),
+      gradeAssignments: args.gradeAssignments,
       plannedClasses,
       className: name,
       campusId: args.campusId,
@@ -2107,6 +2251,7 @@ export const createWithSchedule = mutation({
       academicYear: academicPeriod.name,
       gradeCode: args.gradeCode,
       startDate,
+      gradeAssignments: args.gradeAssignments,
       endDate,
       timeZone,
       liveAccess,
@@ -2125,6 +2270,7 @@ export const createWithSchedule = mutation({
       createdBy: user._id,
       createdAt: now,
       periodEnd: endDate,
+      gradeCodes: getCourseGradeCodes(args),
       occurrencesBySlot,
     });
     await insertScheduleShares(ctx, {
@@ -2145,15 +2291,17 @@ export const createWithSchedule = mutation({
 
     const createdClass = await ctx.db.get("classes", classId);
     if (createdClass) {
-      await publishCourseNotification(ctx, {
-        recipientId: args.teacherId,
-        actorId: user._id,
-        classData: createdClass,
-        kind: "course_assignment",
-        action: "added",
-        eventKey: `class_created:${classId}`,
-        role: "teacher",
-      });
+      await syncCourseGradeAssignments(ctx, createdClass);
+      for (const teacherId of getCourseTeacherIds(createdClass))
+        await publishCourseNotification(ctx, {
+          recipientId: teacherId,
+          actorId: user._id,
+          classData: createdClass,
+          kind: "course_assignment",
+          action: "added",
+          eventKey: `class_created:${classId}`,
+          role: "teacher",
+        });
 
       for (const studentId of studentIds) {
         const enrollmentId = await ctx.db.insert("classEnrollments", {
@@ -2189,6 +2337,7 @@ export const update = mutation({
     teacherId: v.optional(v.id("users")),
     curriculumId: v.optional(v.id("curriculums")),
     gradeCode: v.optional(v.string()),
+    gradeAssignments: v.optional(v.array(courseGradeAssignmentValidator)),
     liveAccess: v.optional(liveAccessValidator),
     weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
     scheduleCancellationReason: v.optional(v.string()),
@@ -2263,7 +2412,28 @@ export const update = mutation({
             args.liveAccess,
           );
 
+    const gradeAssignments =
+      args.gradeAssignments?.length === 0
+        ? undefined
+        : (args.gradeAssignments ?? classData.gradeAssignments);
+    const effectiveCourse = {
+      ...classData,
+      gradeCode: effectiveGradeCode,
+      teacherId: args.teacherId ?? classData.teacherId,
+      gradeAssignments,
+      liveAccess: liveAccess ?? classData.liveAccess,
+    };
+    await validateCourseGradeAssignments(
+      ctx,
+      targetCurriculum,
+      classData.campusId,
+      effectiveCourse.teacherId,
+      effectiveGradeCode,
+      gradeAssignments,
+    );
+
     if (
+      args.gradeAssignments !== undefined ||
       effectiveGradeCode !== classData.gradeCode ||
       targetCurriculum._id !== classData.curriculumId
     ) {
@@ -2280,7 +2450,7 @@ export const update = mutation({
           !isEligibleForCourse(
             student,
             membership,
-            { ...classData, gradeCode: effectiveGradeCode },
+            effectiveCourse,
             targetCurriculum,
           )
         ) {
@@ -2326,7 +2496,7 @@ export const update = mutation({
     let scheduleShareIds: Id<"classes">[] = [];
     if (scheduleChanged || curriculumChanged) {
       scheduleShareIds = await replaceFutureCourseSchedule(ctx, {
-        classData,
+        classData: { ...classData, gradeAssignments },
         curriculum: targetCurriculum,
         teacherId: args.teacherId ?? classData.teacherId,
         className: name ?? classData.name,
@@ -2338,13 +2508,15 @@ export const update = mutation({
         approvedScheduleShareIds: args.approvedScheduleShareIds,
       });
     } else if (
-      args.teacherId !== undefined &&
-      args.teacherId !== classData.teacherId
+      effectiveCourse.teacherId &&
+      (args.gradeAssignments !== undefined ||
+        (args.teacherId !== undefined &&
+          args.teacherId !== classData.teacherId))
     ) {
       scheduleShareIds = await validateExistingScheduleForTeacher(
         ctx,
-        classData,
-        args.teacherId,
+        effectiveCourse,
+        effectiveCourse.teacherId,
         name ?? classData.name,
         effectiveGradeCode,
         args.approvedScheduleShareIds,
@@ -2379,6 +2551,8 @@ export const update = mutation({
       cleanUpdates.curriculumId = args.curriculumId;
     }
     if (args.gradeCode !== undefined) cleanUpdates.gradeCode = args.gradeCode;
+    if (args.gradeAssignments !== undefined)
+      cleanUpdates.gradeAssignments = gradeAssignments;
     if (liveAccess !== undefined) cleanUpdates.liveAccess = liveAccess;
     if (shouldPersistWeeklySlots && args.weeklySlots) {
       cleanUpdates.weeklySlots = args.weeklySlots;
@@ -2388,30 +2562,19 @@ export const update = mutation({
     }
 
     await ctx.db.patch(args.classId, cleanUpdates);
-    if (
-      args.teacherId !== undefined &&
-      args.teacherId !== classData.teacherId
-    ) {
-      const eventKey = `teacher_changed:${args.classId}:${classData.teacherId ?? "none"}:${args.teacherId}:${Date.now()}`;
-      if (classData.teacherId) {
-        await publishCourseNotification(ctx, {
-          recipientId: classData.teacherId,
-          actorId: user._id,
-          classData,
-          kind: "course_assignment",
-          action: "removed",
-          eventKey,
-          role: "teacher",
-          className: name ?? classData.name,
-        });
-      }
+    await syncCourseGradeAssignments(ctx, effectiveCourse);
+    const previousTeachers = new Set(getCourseTeacherIds(classData));
+    const nextTeachers = new Set(getCourseTeacherIds(effectiveCourse));
+    for (const teacherId of new Set([...previousTeachers, ...nextTeachers])) {
+      if (previousTeachers.has(teacherId) === nextTeachers.has(teacherId))
+        continue;
       await publishCourseNotification(ctx, {
-        recipientId: args.teacherId,
+        recipientId: teacherId,
         actorId: user._id,
         classData,
         kind: "course_assignment",
-        action: "added",
-        eventKey,
+        action: nextTeachers.has(teacherId) ? "added" : "removed",
+        eventKey: `teachers_changed:${args.classId}:${Date.now()}`,
         role: "teacher",
         className: name ?? classData.name,
       });
@@ -2639,6 +2802,10 @@ export const remove = mutation({
       });
     }
     await deleteSchedulesWithDependencies(ctx, schedules);
+    await syncCourseGradeAssignments(ctx, {
+      ...classData,
+      gradeAssignments: undefined,
+    });
     await Promise.all(
       [
         ...enrollments.map((enrollment) => enrollment._id),

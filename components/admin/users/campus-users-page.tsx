@@ -27,19 +27,22 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
   const [visibleCount, setVisibleCount] = React.useState<number | null>(null);
 
   const title = isStudents ? t("students") : t("teachers");
+  const canViewPage = isStudents
+    ? access?.canViewStudents
+    : access?.canViewPeople;
 
   React.useEffect(() => {
-    if (!isAccessLoading && access && !access.canViewPeople) {
+    if (!isAccessLoading && access && !canViewPage) {
       router.replace(basePath);
     }
-  }, [access, basePath, isAccessLoading, router]);
+  }, [access, basePath, canViewPage, isAccessLoading, router]);
 
   if (
     isAuthLoading ||
     isAccessLoading ||
     !isAuthenticated ||
     orgContext === undefined ||
-    !access?.canViewPeople
+    !canViewPage
   ) {
     return <Skeleton className="h-96 w-full" />;
   }
@@ -56,7 +59,7 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
           allowedRoles={isStudents ? ["student"] : ["teacher"]}
           scope={{ orgType: "campus", orgId: campusId }}
           hideRole
-          readOnly={!access.canManagePeople}
+          readOnly={!access?.canManagePeople}
           onFilteredRowCountChange={setVisibleCount}
           onRowClick={
             isStudents

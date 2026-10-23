@@ -20,6 +20,8 @@ import {
 } from "./permissions";
 import { isRoleValidForOrganization, roleValidator } from "./model/roles";
 import { isPasswordLongEnough } from "../lib/password";
+import { listTeacherClasses } from "./model/courseAssignments";
+import { listClassStudentIds } from "./model/enrollments";
 
 const publicUserFields = {
   _id: v.id("users"),
@@ -214,6 +216,8 @@ export const getUsers = query({
   ),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
+    const requestedRoles = args.roles ?? (args.role ? [args.role] : undefined);
+    let teacherClasses: Doc<"classes">[] | undefined;
     const isSuperadmin = await hasSystemRole(ctx, currentUser._id, [
       "superadmin",
     ]);
@@ -223,10 +227,9 @@ export const getUsers = query({
       throw new ConvexError("ORGANIZATION_REQUIRED");
     } else if (args.orgType === "school") {
       const schoolId = ctx.db.normalizeId("schools", args.orgId);
-      const requestedRoles = args.roles ?? (args.role ? [args.role] : []);
       const canPrincipalReadAdministrativeBody =
         !!schoolId &&
-        requestedRoles.length > 0 &&
+        !!requestedRoles?.length &&
         requestedRoles.every((role) =>
           (["admin", "principal"] as const).includes(
             role as "admin" | "principal",
@@ -246,9 +249,10 @@ export const getUsers = query({
     } else {
       const campusId = ctx.db.normalizeId("campuses", args.orgId);
       const campus = campusId ? await ctx.db.get(campusId) : null;
+      if (!campusId || !campus) {
+        throw new ConvexError("PERMISSION_DENIED");
+      }
       if (
-        !campusId ||
-        !campus ||
         !(await canViewCampusPeople(
           ctx,
           currentUser._id,
@@ -256,7 +260,17 @@ export const getUsers = query({
           campus.schoolId,
         ))
       ) {
-        throw new ConvexError("PERMISSION_DENIED");
+        if (
+          !requestedRoles?.length ||
+          !requestedRoles.every((role) => role === "student") ||
+          !(await hasOrgRole(ctx, currentUser._id, campusId, "campus", [
+            "teacher",
+          ]))
+        )
+          throw new ConvexError("PERMISSION_DENIED");
+        teacherClasses = (
+          await listTeacherClasses(ctx, currentUser._id)
+        ).filter((course) => course.campusId === campusId);
       }
     }
 
@@ -305,11 +319,23 @@ export const getUsers = query({
     }
 
     // 2. Apply Role Filter
-    const requestedRoles = args.roles ?? (args.role ? [args.role] : undefined);
     if (requestedRoles) {
       const roleSet = new Set(requestedRoles);
       assignments = assignments.filter((assignment) =>
         roleSet.has(assignment.role),
+      );
+    }
+
+    if (teacherClasses) {
+      const studentIds = new Set(
+        (
+          await Promise.all(
+            teacherClasses.map((course) => listClassStudentIds(ctx, course)),
+          )
+        ).flat(),
+      );
+      assignments = assignments.filter((assignment) =>
+        studentIds.has(assignment.userId),
       );
     }
 

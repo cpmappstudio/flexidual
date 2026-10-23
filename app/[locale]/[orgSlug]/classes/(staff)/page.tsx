@@ -1,4 +1,8 @@
 "use client";
+import {
+  getCourseGradeCodes,
+  isCourseTeacher,
+} from "@/convex/model/courseAssignments";
 
 import { useState, useMemo } from "react";
 import { useQuery } from "convex/react";
@@ -80,12 +84,13 @@ export default function MyClassesPage() {
     if (!tableData) return undefined;
     return tableData.classes.filter(
       (classData) =>
-        (!selectedTeacherId || classData.teacherId === selectedTeacherId) &&
+        (!selectedTeacherId || isCourseTeacher(classData, selectedTeacherId)) &&
         (!selectedCurriculumId ||
           classData.curriculumId === selectedCurriculumId) &&
         (!selectedAcademicPeriodId ||
           classData.academicPeriodId === selectedAcademicPeriodId) &&
-        (!selectedGradeCode || classData.gradeCode === selectedGradeCode),
+        (!selectedGradeCode ||
+          getCourseGradeCodes(classData).includes(selectedGradeCode)),
     );
   }, [
     selectedAcademicPeriodId,

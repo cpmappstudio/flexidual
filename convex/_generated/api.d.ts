@@ -48,6 +48,7 @@ import type * as model_calendarClosures from "../model/calendarClosures.js";
 import type * as model_catalog from "../model/catalog.js";
 import type * as model_classCancellationEvents from "../model/classCancellationEvents.js";
 import type * as model_classType from "../model/classType.js";
+import type * as model_courseAssignments from "../model/courseAssignments.js";
 import type * as model_courseChatAccess from "../model/courseChatAccess.js";
 import type * as model_courseChatAttachments from "../model/courseChatAttachments.js";
 import type * as model_courseChatEvents from "../model/courseChatEvents.js";
@@ -83,6 +84,8 @@ import type * as model_systemNotifications from "../model/systemNotifications.js
 import type * as model_timeZone from "../model/timeZone.js";
 import type * as model_userImage from "../model/userImage.js";
 import type * as model_whiteboardAccess from "../model/whiteboardAccess.js";
+import type * as model_whiteboardRecording from "../model/whiteboardRecording.js";
+import type * as model_whiteboardSceneStorage from "../model/whiteboardSceneStorage.js";
 import type * as organizations from "../organizations.js";
 import type * as permissions from "../permissions.js";
 import type * as presence from "../presence.js";
@@ -97,6 +100,7 @@ import type * as surveyNotifications from "../surveyNotifications.js";
 import type * as systemNotifications from "../systemNotifications.js";
 import type * as types from "../types.js";
 import type * as users from "../users.js";
+import type * as whiteboardFileHttp from "../whiteboardFileHttp.js";
 import type * as whiteboardFiles from "../whiteboardFiles.js";
 import type * as whiteboardSessions from "../whiteboardSessions.js";
 
@@ -147,6 +151,7 @@ declare const fullApi: ApiFromModules<{
   "model/catalog": typeof model_catalog;
   "model/classCancellationEvents": typeof model_classCancellationEvents;
   "model/classType": typeof model_classType;
+  "model/courseAssignments": typeof model_courseAssignments;
   "model/courseChatAccess": typeof model_courseChatAccess;
   "model/courseChatAttachments": typeof model_courseChatAttachments;
   "model/courseChatEvents": typeof model_courseChatEvents;
@@ -182,6 +187,8 @@ declare const fullApi: ApiFromModules<{
   "model/timeZone": typeof model_timeZone;
   "model/userImage": typeof model_userImage;
   "model/whiteboardAccess": typeof model_whiteboardAccess;
+  "model/whiteboardRecording": typeof model_whiteboardRecording;
+  "model/whiteboardSceneStorage": typeof model_whiteboardSceneStorage;
   organizations: typeof organizations;
   permissions: typeof permissions;
   presence: typeof presence;
@@ -196,6 +203,7 @@ declare const fullApi: ApiFromModules<{
   systemNotifications: typeof systemNotifications;
   types: typeof types;
   users: typeof users;
+  whiteboardFileHttp: typeof whiteboardFileHttp;
   whiteboardFiles: typeof whiteboardFiles;
   whiteboardSessions: typeof whiteboardSessions;
 }>;

@@ -24,6 +24,7 @@ import {
 import { v } from "convex/values";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { liveAccessValidator } from "./model/liveAccess";
+import { courseGradeAssignmentValidator } from "./model/courseAssignments";
 import { courseWeeklySlotValidator } from "./model/courseSchedule";
 import {
   sessionClosureStatusValidator,
@@ -199,6 +200,7 @@ export default defineSchema({
     academicPeriodId: v.optional(v.id("academicPeriods")),
     academicYear: v.optional(v.string()), // "2024-2025"
     gradeCode: v.optional(v.string()),
+    gradeAssignments: v.optional(v.array(courseGradeAssignmentValidator)),
     startDate: v.optional(v.number()),
     endDate: v.optional(v.number()),
     timeZone: v.optional(v.string()),
@@ -255,6 +257,26 @@ export default defineSchema({
       searchField: "name",
       filterFields: ["schoolId", "isActive", "classType"],
     }),
+
+  classGradeAssignments: defineTable({
+    classId: v.id("classes"),
+    campusId: v.id("campuses"),
+    academicPeriodId: v.id("academicPeriods"),
+    gradeCode: v.string(),
+    teacherId: v.id("users"),
+  })
+    .index("by_classId_and_gradeCode", ["classId", "gradeCode"])
+    .index("by_teacherId_and_classId", ["teacherId", "classId"])
+    .index("by_teacherId_and_campusId_and_academicPeriodId", [
+      "teacherId",
+      "campusId",
+      "academicPeriodId",
+    ])
+    .index("by_campusId_and_academicPeriodId_and_gradeCode", [
+      "campusId",
+      "academicPeriodId",
+      "gradeCode",
+    ]),
 
   courseScheduleShares: defineTable({
     classId: v.id("classes"),
@@ -941,10 +963,47 @@ export default defineSchema({
   /**
    * WHITEBOARD SESSIONS
    * Live scene state for an active classroom whiteboard session.
-   * Writer (companion device) upserts on every change (debounced).
-   * Readers (teacher view, students) subscribe reactively via useQuery.
-   * Avoids all WebRTC DataChannel size limits for scene data.
+   * Stable manifests and ID-hashed buckets deliver changed scene data only.
+   * JSON fragments bound each document and support long freehand strokes.
+   * whiteboardSessions retains legacy snapshots, image refs and recording tokens;
+   * upgraded writers cannot overwrite buckets with a stale legacy snapshot.
    */
+  whiteboardSceneManifests: defineTable({
+    roomName: v.string(),
+    fromLegacy: v.boolean(),
+    generation: v.number(),
+    bucketIds: v.array(v.number()),
+    legacyOrder: v.array(v.string()),
+    recordingToken: v.optional(v.string()),
+  }).index("by_roomName", ["roomName"]),
+
+  whiteboardSceneBuckets: defineTable({
+    manifestId: v.id("whiteboardSceneManifests"),
+    bucketId: v.number(),
+    partIndex: v.number(),
+    // JSON avoids Convex's nested-array limit for long freehand strokes.
+    // Endpoints bound the UTF-8 payload independently of the database limit.
+    jsonPart: v.string(),
+    // Only part zero carries the logical bucket's monotonic revision.
+    revision: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+  }).index("by_manifestId_and_bucketId_and_partIndex", [
+    "manifestId",
+    "bucketId",
+    "partIndex",
+  ]),
+
+  // Bounded recent deltas. Canonical buckets remain authoritative for recovery.
+  whiteboardSceneUpdates: defineTable({
+    manifestId: v.id("whiteboardSceneManifests"),
+    bucketId: v.number(),
+    generation: v.number(),
+    revision: v.number(),
+    entries: v.array(
+      v.object({ revision: v.number(), parts: v.array(v.string()) }),
+    ),
+  }).index("by_manifestId_and_bucketId", ["manifestId", "bucketId"]),
+
   whiteboardSessions: defineTable({
     roomName: v.string(),
     elements: v.array(v.any()), // ExcalidrawElements array

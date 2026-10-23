@@ -1,5 +1,6 @@
 import { Infer, v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
+import { weeklyScheduleSlotKey } from "../../lib/course-schedule-change";
 import {
   civilDayNumber,
   getWeeklyOccurrenceStarts,
@@ -65,7 +66,9 @@ export function isValidWeeklySchedule(
   slots: CourseWeeklySlotConfig[],
   scheduleStartMinutes: number,
   scheduleEndMinutes: number,
+  previousSlots: CourseWeeklySlotConfig[] = [],
 ) {
+  const previousKeys = new Set(previousSlots.map(weeklyScheduleSlotKey));
   return (
     slots.length > 0 &&
     slots.length <= MAX_WEEKLY_SLOTS &&
@@ -75,11 +78,15 @@ export function isValidWeeklySchedule(
         slot.dayOfWeek >= 0 &&
         slot.dayOfWeek <= 6 &&
         Number.isInteger(slot.startMinutes) &&
-        slot.startMinutes >= scheduleStartMinutes &&
+        slot.startMinutes >= 0 &&
         Number.isInteger(slot.durationMinutes) &&
         slot.durationMinutes >= 1 &&
         slot.durationMinutes <= 8 * 60 &&
-        slot.startMinutes + slot.durationMinutes <= scheduleEndMinutes,
+        slot.startMinutes + slot.durationMinutes <= 24 * 60 &&
+        // A narrower institution window must not invalidate an unchanged block.
+        ((slot.startMinutes >= scheduleStartMinutes &&
+          slot.startMinutes + slot.durationMinutes <= scheduleEndMinutes) ||
+          previousKeys.has(weeklyScheduleSlotKey(slot))),
     )
   );
 }

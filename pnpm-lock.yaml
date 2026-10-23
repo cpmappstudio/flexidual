@@ -6,6 +6,7 @@ settings:
 
 patchedDependencies:
   '@convex-dev/presence@0.4.0': 56068b7e175035a8f423fa4d82ce75925547e17bc253aee94ee50f19993c122c
+  livekit-client@2.22.4: 3d4906acf0126161d5b9886659a12994d5f36278e399a2995a38b6b45b4916d9
 
 importers:
 
@@ -61,7 +62,7 @@ importers:
         version: 5.2.2(react-hook-form@7.69.0(react@19.1.1))
       '@livekit/components-react':
         specifier: ^2.9.17
-        version: 2.9.17(livekit-client@2.22.4(@types/dom-mediacapture-record@1.0.22))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(tslib@2.8.1)
+        version: 2.9.17(livekit-client@2.22.4(patch_hash=3d4906acf0126161d5b9886659a12994d5f36278e399a2995a38b6b45b4916d9)(@types/dom-mediacapture-record@1.0.22))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(tslib@2.8.1)
       '@midudev/tailwind-animations':
         specifier: ^0.2.0
         version: 0.2.0(tailwindcss@4.1.12)
@@ -169,7 +170,7 @@ importers:
         version: 12.23.26(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       livekit-client:
         specifier: ^2.22.4
-        version: 2.22.4(@types/dom-mediacapture-record@1.0.22)
+        version: 2.22.4(patch_hash=3d4906acf0126161d5b9886659a12994d5f36278e399a2995a38b6b45b4916d9)(@types/dom-mediacapture-record@1.0.22)
       livekit-server-sdk:
         specifier: ^2.14.2
         version: 2.14.2
@@ -7709,21 +7710,21 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@livekit/components-core@0.12.12(livekit-client@2.22.4(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)':
+  '@livekit/components-core@0.12.12(livekit-client@2.22.4(patch_hash=3d4906acf0126161d5b9886659a12994d5f36278e399a2995a38b6b45b4916d9)(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)':
     dependencies:
       '@floating-ui/dom': 1.7.4
-      livekit-client: 2.22.4(@types/dom-mediacapture-record@1.0.22)
+      livekit-client: 2.22.4(patch_hash=3d4906acf0126161d5b9886659a12994d5f36278e399a2995a38b6b45b4916d9)(@types/dom-mediacapture-record@1.0.22)
       loglevel: 1.9.1
       rxjs: 7.8.2
       tslib: 2.8.1
 
-  '@livekit/components-react@2.9.17(livekit-client@2.22.4(@types/dom-mediacapture-record@1.0.22))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(tslib@2.8.1)':
+  '@livekit/components-react@2.9.17(livekit-client@2.22.4(patch_hash=3d4906acf0126161d5b9886659a12994d5f36278e399a2995a38b6b45b4916d9)(@types/dom-mediacapture-record@1.0.22))(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(tslib@2.8.1)':
     dependencies:
-      '@livekit/components-core': 0.12.12(livekit-client@2.22.4(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)
+      '@livekit/components-core': 0.12.12(livekit-client@2.22.4(patch_hash=3d4906acf0126161d5b9886659a12994d5f36278e399a2995a38b6b45b4916d9)(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)
       clsx: 2.1.1
       events: 3.3.0
       jose: 6.1.3
-      livekit-client: 2.22.4(@types/dom-mediacapture-record@1.0.22)
+      livekit-client: 2.22.4(patch_hash=3d4906acf0126161d5b9886659a12994d5f36278e399a2995a38b6b45b4916d9)(@types/dom-mediacapture-record@1.0.22)
       react: 19.1.1
       react-dom: 19.1.1(react@19.1.1)
       tslib: 2.8.1
@@ -11338,7 +11339,7 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
 
-  livekit-client@2.22.4(@types/dom-mediacapture-record@1.0.22):
+  livekit-client@2.22.4(patch_hash=3d4906acf0126161d5b9886659a12994d5f36278e399a2995a38b6b45b4916d9)(@types/dom-mediacapture-record@1.0.22):
     dependencies:
       '@livekit/mutex': 1.1.1
       '@livekit/protocol': 1.52.1

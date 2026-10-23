@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { getCourseGradeCodes } from "./courseAssignments";
 
 type DatabaseCtx = Pick<QueryCtx | MutationCtx, "db">;
 
@@ -8,13 +9,18 @@ type ProposedCourseScheduleContext = {
   academicPeriodId?: Id<"academicPeriods">;
   teacherId?: Id<"users">;
   gradeCode?: string;
+  gradeAssignments?: Doc<"classes">["gradeAssignments"];
 };
 
 export function canCoursesShareSchedule(
   proposed: ProposedCourseScheduleContext,
   existing: Pick<
     Doc<"classes">,
-    "campusId" | "academicPeriodId" | "teacherId" | "gradeCode"
+    | "campusId"
+    | "academicPeriodId"
+    | "teacherId"
+    | "gradeCode"
+    | "gradeAssignments"
   >,
 ) {
   return Boolean(
@@ -26,7 +32,9 @@ export function canCoursesShareSchedule(
       existing.academicPeriodId === proposed.academicPeriodId &&
       existing.teacherId === proposed.teacherId &&
       existing.gradeCode &&
-      existing.gradeCode !== proposed.gradeCode,
+      !getCourseGradeCodes(existing).some((code) =>
+        getCourseGradeCodes(proposed).includes(code),
+      ),
   );
 }
 

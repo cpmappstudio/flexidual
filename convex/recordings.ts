@@ -4,6 +4,7 @@ import { getCurrentUserFromAuth } from "./users";
 import { canAccessClass } from "./permissions";
 import { isExternalClassSession } from "../lib/class-session";
 import { createSystemNotification } from "./model/systemNotifications";
+import { revokeWhiteboardRecordingToken } from "./model/whiteboardRecording";
 import {
   getClassNotificationContext,
   listClassNotificationRecipients,
@@ -126,31 +127,23 @@ export const updateFromWebhook = internalMutation({
       ...(args.details !== undefined && { details: args.details }),
     };
     if (
-      Object.entries(updates).every(
-        ([key, value]) => recording[key as keyof typeof updates] === value,
-      )
-    ) {
-      return recording._id;
-    }
-
-    if (
       args.status === "complete" ||
       args.status === "failed" ||
       args.status === "aborted"
     ) {
-      const whiteboard = await ctx.db
-        .query("whiteboardSessions")
-        .withIndex("by_roomName", (q) => q.eq("roomName", recording.roomName))
-        .unique();
-      if (
-        recording.recordingToken &&
-        whiteboard?.recordingToken === recording.recordingToken
-      ) {
-        await ctx.db.patch("whiteboardSessions", whiteboard._id, {
-          recordingToken: undefined,
-        });
-      }
+      if (recording.recordingToken)
+        await revokeWhiteboardRecordingToken(
+          ctx,
+          recording.roomName,
+          recording.recordingToken,
+        );
     }
+    if (
+      Object.entries(updates).every(
+        ([key, value]) => recording[key as keyof typeof updates] === value,
+      )
+    )
+      return recording._id;
     await ctx.db.patch("recordings", recording._id, updates);
 
     const becamePlayable =

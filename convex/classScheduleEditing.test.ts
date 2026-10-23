@@ -5,6 +5,239 @@ import schema from "./schema";
 import { modules } from "./test.setup";
 import { localDateTimeToUtc, utcToLocalDateTime } from "../lib/time-zone";
 
+test.each([false, true])(
+  "adding a weekly block preserves an unchanged legacy time outside the current window (stored=%s)",
+  async (stored) => {
+    vi.useFakeTimers();
+    const now = localDateTimeToUtc("2026-10-22T12:00", "UTC");
+    vi.setSystemTime(now);
+    const t = convexTest(schema, modules);
+    const existing = {
+      dayOfWeek: 1,
+      startMinutes: 17 * 60 + 25,
+      durationMinutes: 30,
+      sessionType: "live" as const,
+    };
+    const added = {
+      dayOfWeek: 5,
+      startMinutes: 8 * 60,
+      durationMinutes: 60,
+      sessionType: "live" as const,
+    };
+    const data = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("users", {
+        clerkId: "legacy-window-admin",
+        firstName: "Ada",
+        lastName: "Admin",
+        fullName: "Ada Admin",
+        isActive: true,
+        createdAt: now,
+      });
+      const studentId = await ctx.db.insert("users", {
+        clerkId: "legacy-window-student",
+        firstName: "Sam",
+        lastName: "Student",
+        fullName: "Sam Student",
+        isActive: true,
+        createdAt: now,
+      });
+      const schoolId = await ctx.db.insert("schools", {
+        name: "School",
+        slug: "legacy-school",
+        timeZone: "UTC",
+        scheduleStartMinutes: 8 * 60,
+        scheduleEndMinutes: 17 * 60,
+        isActive: true,
+        createdAt: now,
+        createdBy: adminId,
+      });
+      const campusId = await ctx.db.insert("campuses", {
+        schoolId,
+        name: "Campus",
+        slug: "legacy-campus",
+        isActive: true,
+        createdAt: now,
+        createdBy: adminId,
+      });
+      await ctx.db.insert("roleAssignments", {
+        userId: adminId,
+        orgId: schoolId,
+        orgType: "school",
+        role: "admin",
+        assignedAt: now,
+      });
+      const curriculumId = await ctx.db.insert("curriculums", {
+        title: "Science",
+        schoolId,
+        isActive: true,
+        createdAt: now,
+        createdBy: adminId,
+      });
+      const academicPeriodId = await ctx.db.insert("academicPeriods", {
+        schoolId,
+        name: "Term",
+        startDate: "2026-10-01",
+        endDate: "2026-10-31",
+        createdAt: now,
+        createdBy: adminId,
+      });
+      const classId = await ctx.db.insert("classes", {
+        name: "Science",
+        schoolId,
+        campusId,
+        curriculumId,
+        academicPeriodId,
+        timeZone: "UTC",
+        students: [studentId],
+        ...(stored ? { weeklySlots: [existing] } : {}),
+        isActive: true,
+        createdAt: now,
+        createdBy: adminId,
+      });
+      await ctx.db.insert("classEnrollments", {
+        classId,
+        studentId,
+        enrolledAt: now - 1,
+        enrolledBy: adminId,
+      });
+      const pastId = await ctx.db.insert("classSchedule", {
+        classId,
+        scheduledStart: localDateTimeToUtc("2026-10-19T17:25", "UTC"),
+        scheduledEnd: localDateTimeToUtc("2026-10-19T17:55", "UTC"),
+        sessionType: "live",
+        roomName: "legacy-past",
+        isRecurring: true,
+        status: "completed",
+        createdAt: now,
+        createdBy: adminId,
+      });
+      const futureId = await ctx.db.insert("classSchedule", {
+        classId,
+        scheduledStart: localDateTimeToUtc("2026-10-26T17:25", "UTC"),
+        scheduledEnd: localDateTimeToUtc("2026-10-26T17:55", "UTC"),
+        sessionType: "live",
+        roomName: "legacy-future",
+        recurrenceParentId: pastId,
+        isRecurring: true,
+        status: "scheduled",
+        createdAt: now,
+        createdBy: adminId,
+      });
+      const attendanceId = await ctx.db.insert("studentAttendanceRecords", {
+        scheduleId: pastId,
+        studentId,
+        status: "present",
+        confirmedBy: adminId,
+        confirmedAt: now,
+        lastUpdatedBy: adminId,
+        lastUpdatedAt: now,
+      });
+      return { classId, pastId, futureId, attendanceId, studentId };
+    });
+    const asAdmin = t.withIdentity({ subject: "legacy-window-admin" });
+    const baseline = await asAdmin.query(api.classes.get, { id: data.classId });
+    expect(baseline?.weeklySlots).toEqual([existing]);
+    const preserved = await t.run(async (ctx) => ({
+      past: await ctx.db.get(data.pastId),
+      attendance: await ctx.db.get(data.attendanceId),
+      enrollments: await ctx.db.query("classEnrollments").collect(),
+      permissions: await ctx.db.query("roleAssignments").collect(),
+    }));
+
+    await expect(
+      t
+        .withIdentity({ subject: "legacy-window-student" })
+        .mutation(api.classes.update, {
+          classId: data.classId,
+          weeklySlots: [existing, added],
+        }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+
+    await asAdmin.mutation(api.classes.update, {
+      classId: data.classId,
+      weeklySlots: [existing, added],
+    });
+    const state = await t.run(async (ctx) => ({
+      course: await ctx.db.get(data.classId),
+      schedules: await ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", data.classId))
+        .collect(),
+      attendance: await ctx.db.get(data.attendanceId),
+      enrollments: await ctx.db.query("classEnrollments").collect(),
+      permissions: await ctx.db.query("roleAssignments").collect(),
+    }));
+    expect(state.course?.students).toEqual([data.studentId]);
+    expect(state.course?.weeklySlots).toEqual([existing, added]);
+    expect(state.schedules.find(({ _id }) => _id === data.pastId)).toEqual(
+      preserved.past,
+    );
+    expect(state.attendance).toEqual(preserved.attendance);
+    expect(state.enrollments).toEqual(preserved.enrollments);
+    expect(state.permissions).toEqual(preserved.permissions);
+    expect(state.schedules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          scheduledStart: localDateTimeToUtc("2026-10-26T17:25", "UTC"),
+          status: "scheduled",
+        }),
+        expect.objectContaining({
+          scheduledStart: localDateTimeToUtc("2026-10-23T08:00", "UTC"),
+          status: "scheduled",
+        }),
+      ]),
+    );
+    for (const changed of [
+      { ...existing, dayOfWeek: 2 },
+      { ...existing, startMinutes: 17 * 60 + 30 },
+      { ...existing, durationMinutes: 31 },
+    ])
+      await expect(
+        asAdmin.mutation(api.classes.update, {
+          classId: data.classId,
+          weeklySlots: [existing, added, changed],
+        }),
+      ).rejects.toThrow("INVALID_WEEKLY_SCHEDULE");
+    expect(await t.run((ctx) => ctx.db.get(data.classId))).toEqual(
+      state.course,
+    );
+    await expect(
+      asAdmin.mutation(api.classes.update, {
+        classId: data.classId,
+        weeklySlots: [
+          existing,
+          added,
+          { ...added, startMinutes: added.startMinutes + 30 },
+        ],
+      }),
+    ).rejects.toThrow("COURSE_CLASS_OVERLAP");
+
+    // The institution can widen its existing window; no global 5 PM cutoff may remain.
+    const schoolId = state.course!.schoolId!;
+    await asAdmin.mutation(api.academicSettings.updateScheduleWindow, {
+      schoolId,
+      startMinutes: 8 * 60,
+      endMinutes: 20 * 60,
+    });
+    const evening = { ...added, dayOfWeek: 2, startMinutes: 19 * 60 };
+    await asAdmin.mutation(api.classes.update, {
+      classId: data.classId,
+      weeklySlots: [existing, added, evening],
+    });
+    expect(
+      (await t.run((ctx) => ctx.db.get(data.classId)))?.weeklySlots,
+    ).toEqual([existing, added, evening]);
+    expect(
+      await t.run(async (ctx) => ({
+        past: await ctx.db.get(data.pastId),
+        attendance: await ctx.db.get(data.attendanceId),
+        enrollments: await ctx.db.query("classEnrollments").collect(),
+        permissions: await ctx.db.query("roleAssignments").collect(),
+      })),
+    ).toEqual(preserved);
+  },
+);
+
 afterEach(() => {
   vi.useRealTimers();
 });

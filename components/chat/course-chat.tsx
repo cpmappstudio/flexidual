@@ -1,6 +1,7 @@
 "use client";
 
 import { CourseChatMessage } from "./course-chat-message";
+import { CourseChatReferenceInput } from "./course-chat-reference-input";
 import { useDocumentActive } from "@/hooks/use-document-active";
 import {
   CourseChatUploadProvider,
@@ -23,7 +24,6 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
-  InputGroupInput,
 } from "@/components/ui/input-group";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import {
@@ -516,10 +516,10 @@ function ChatComposer({
             </DropdownMenu>
           )}
           <InputGroup className="h-11 min-w-0 flex-1 overflow-hidden bg-background sm:h-12">
-            <InputGroupInput
+            <CourseChatReferenceInput
+              courseId={courseId}
               value={isSending && files.length ? "" : body}
-              onChange={(event) => setBody(event.target.value)}
-              maxLength={2000}
+              onChange={setBody}
               disabled={isComposerDisabled}
               placeholder={
                 isArchived
@@ -528,7 +528,6 @@ function ChatComposer({
                     ? t("chatMuted")
                     : t("chatPlaceholder")
               }
-              className="text-sm sm:text-base"
             />
             <InputGroupAddon
               align="inline-end"

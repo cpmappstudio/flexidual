@@ -14,10 +14,8 @@ import {
   PendingChatMessage,
 } from "@/components/chat/course-chat-pending";
 import type { ReactNode } from "react";
-import {
-  ChatAttachment,
-  ChatMessageText,
-} from "@/components/chat/course-chat-attachments";
+import { ChatAttachment } from "@/components/chat/course-chat-attachments";
+import { ChatMessageText } from "@/components/chat/course-chat-message-text";
 import type { Id } from "@/convex/_generated/dataModel";
 import { chatTextParts, isValidChatFile } from "@/lib/chat-attachments";
 
@@ -35,6 +33,11 @@ const state = vi.hoisted(() => ({
 vi.mock("convex/react", () => ({
   useConvexAuth: () => ({ isAuthenticated: true }),
   useQuery: () => state.status,
+  usePaginatedQuery: () => ({
+    results: [],
+    status: "Exhausted",
+    loadMore: vi.fn(),
+  }),
   useMutation: () => state.send,
 }));
 vi.mock("@clerk/nextjs", () => ({

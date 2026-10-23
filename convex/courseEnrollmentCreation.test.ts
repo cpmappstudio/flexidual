@@ -50,6 +50,658 @@ async function assignRole(
   });
 }
 
+async function seedMultiGradeCourse() {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-27T12:00:00Z"));
+  const t = convexTest(schema, modules);
+  const data = await t.run(async (ctx) => {
+    const adminId = await seedUser(ctx, "multi-admin", "Ada Admin");
+    const teacherId = await seedUser(ctx, "multi-teacher", "Main Teacher");
+    const gradeTeacherId = await seedUser(
+      ctx,
+      "multi-grade-teacher",
+      "Grade Teacher",
+    );
+    const unassignedTeacherId = await seedUser(
+      ctx,
+      "multi-unassigned",
+      "Other Teacher",
+    );
+    const studentId = await seedUser(
+      ctx,
+      "multi-student-05",
+      "Grade Five Student",
+    );
+    const secondStudentId = await seedUser(
+      ctx,
+      "multi-student-06",
+      "Grade Six Student",
+    );
+    const notEnrolledId = await seedUser(
+      ctx,
+      "multi-not-enrolled",
+      "Not Enrolled",
+    );
+    const outsideStudentId = await seedUser(
+      ctx,
+      "multi-outside",
+      "Outside Student",
+    );
+    const outsideTeacherId = await seedUser(
+      ctx,
+      "multi-outside-teacher",
+      "Outside Teacher",
+    );
+    const schoolId = await ctx.db.insert("schools", {
+      name: "School",
+      slug: "multi-school",
+      timeZone: "UTC",
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: adminId,
+    });
+    const campusId = await ctx.db.insert("campuses", {
+      schoolId,
+      name: "Main",
+      slug: "multi-campus",
+      timeZone: "UTC",
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: adminId,
+    });
+    const outsideCampusId = await ctx.db.insert("campuses", {
+      schoolId,
+      name: "Other",
+      slug: "multi-other",
+      timeZone: "UTC",
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: adminId,
+    });
+    for (const id of [teacherId, gradeTeacherId, unassignedTeacherId])
+      await assignRole(ctx, {
+        userId: id,
+        schoolId,
+        orgId: campusId,
+        role: "teacher",
+      });
+    await assignRole(ctx, {
+      userId: outsideTeacherId,
+      schoolId,
+      orgId: outsideCampusId,
+      role: "teacher",
+    });
+    await assignRole(ctx, {
+      userId: adminId,
+      schoolId,
+      orgId: schoolId,
+      role: "admin",
+    });
+    for (const [userId, gradeCode, orgId] of [
+      [studentId, "05", campusId],
+      [secondStudentId, "06", campusId],
+      [notEnrolledId, "06", campusId],
+      [outsideStudentId, "06", outsideCampusId],
+    ] as const)
+      await assignRole(ctx, {
+        userId,
+        gradeCode,
+        orgId,
+        schoolId,
+        role: "student",
+      });
+    for (const code of ["05", "06", "07"])
+      await ctx.db.insert("institutionGrades", {
+        schoolId,
+        code,
+        name: `Grade ${code}`,
+        order: Number(code),
+        createdAt: Date.now(),
+        createdBy: adminId,
+      });
+    const curriculumId = await ctx.db.insert("curriculums", {
+      title: "Shared Science",
+      gradeCodes: ["05", "06"],
+      schoolId,
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: adminId,
+    });
+    const academicPeriodId = await ctx.db.insert("academicPeriods", {
+      schoolId,
+      name: "2026",
+      startDate: "2026-09-01",
+      endDate: "2026-09-30",
+      createdAt: Date.now(),
+      createdBy: adminId,
+    });
+    return {
+      adminId,
+      schoolId,
+      campusId,
+      teacherId,
+      gradeTeacherId,
+      unassignedTeacherId,
+      studentId,
+      secondStudentId,
+      notEnrolledId,
+      outsideStudentId,
+      outsideTeacherId,
+      curriculumId,
+      academicPeriodId,
+    };
+  });
+  const args = {
+    name: "Shared private course",
+    campusId: data.campusId,
+    curriculumId: data.curriculumId,
+    academicPeriodId: data.academicPeriodId,
+    teacherId: data.teacherId,
+    gradeCode: "05",
+    gradeAssignments: [
+      { gradeCode: "05" },
+      { gradeCode: "06", teacherId: data.gradeTeacherId },
+    ],
+    studentIds: [data.studentId, data.secondStudentId],
+    liveAccess: { mode: "private" as const, allowedGradeCodes: [] },
+    weeklySlots: [
+      {
+        dayOfWeek: 2,
+        startMinutes: 9 * 60,
+        durationMinutes: 60,
+        sessionType: "live" as const,
+      },
+    ],
+  };
+  return { t, data, args, admin: t.withIdentity({ subject: "multi-admin" }) };
+}
+
+test("private multi-grade courses retain campus enrollments, per-grade teachers and the same mandatory calendar", async () => {
+  const { t, data, args, admin } = await seedMultiGradeCourse();
+  const roster = await admin.query(
+    api.classes.listCourseCreationGradeStudents,
+    {
+      curriculumId: data.curriculumId,
+      campusId: data.campusId,
+      gradeCode: "05",
+      gradeCodes: ["05", "06"],
+    },
+  );
+  expect(roster.map((student) => student._id)).toEqual(
+    expect.arrayContaining([
+      data.studentId,
+      data.secondStudentId,
+      data.notEnrolledId,
+    ]),
+  );
+  expect(roster.map((student) => student._id)).not.toContain(
+    data.outsideStudentId,
+  );
+  const { classId } = await admin.mutation(
+    api.classes.createWithSchedule,
+    args,
+  );
+  const range = {
+    campusId: data.campusId,
+    from: Date.parse("2026-09-01T00:00Z"),
+    to: Date.parse("2026-09-08T23:59Z"),
+  };
+  for (const [subject, teacher] of [
+    ["multi-student-05", data.teacherId],
+    ["multi-student-06", data.gradeTeacherId],
+  ] as const) {
+    const client = t.withIdentity({ subject });
+    const events = await client.query(api.calendar.listEvents, range);
+    expect(events).toHaveLength(2);
+    expect(
+      events.every(
+        (event) => event.classId === classId && event.teacherId === teacher,
+      ),
+    ).toBe(true);
+    const dashboard = await client.query(api.student.getStudentDashboardStats, {
+      now: Date.now(),
+    });
+    expect(dashboard?.classes).toHaveLength(1);
+    expect(dashboard?.classes[0].stats.totalClasses).toBe(5);
+    expect(dashboard?.classes[0].teacher.fullName).toBe(
+      subject.endsWith("06") ? "Grade Teacher" : "Main Teacher",
+    );
+  }
+  const gradeTeacher = t.withIdentity({ subject: "multi-grade-teacher" });
+  expect(
+    (
+      await gradeTeacher.query(api.classes.listOverview, {
+        campusId: data.campusId,
+      })
+    ).classes.map((course) => course._id),
+  ).toContain(classId);
+  const events = await gradeTeacher.query(api.calendar.listEvents, {
+    ...range,
+    gradeCode: "06",
+    teacherId: data.gradeTeacherId,
+  });
+  expect(events).toHaveLength(2);
+  expect(events[0]).toMatchObject({
+    gradeCodes: ["05", "06"],
+    teacherIds: [data.teacherId, data.gradeTeacherId],
+  });
+  expect(
+    events.every((event) => event.canLeadSession && event.isAssignedTeacher),
+  ).toBe(true);
+  expect(
+    await t.query(internal.schedule.checkLiveKitAccess, {
+      userId: data.gradeTeacherId,
+      roomName: events[0].roomName,
+      now: events[0].start,
+    }),
+  ).toMatchObject({
+    authorized: true,
+    roomAdmin: true,
+    computedRole: "teacher",
+    leadershipRole: "teacher",
+  });
+  for (const subject of [
+    "multi-not-enrolled",
+    "multi-outside",
+    "multi-unassigned",
+  ]) {
+    const client = t.withIdentity({ subject });
+    expect(await client.query(api.calendar.listEvents, range)).toEqual([]);
+    await expect(
+      client.query(api.classes.get, { id: classId }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+  }
+});
+
+test("chat participants include grade teachers exactly once and reflect reassignment without granting outsider access", async () => {
+  const { t, data, args, admin } = await seedMultiGradeCourse();
+  const { classId } = await admin.mutation(api.classes.createWithSchedule, {
+    ...args,
+    gradeAssignments: [
+      { gradeCode: "05", teacherId: data.teacherId },
+      { gradeCode: "06", teacherId: data.gradeTeacherId },
+    ],
+  });
+  await t.run((ctx) => ctx.db.patch(classId, { tutorId: data.teacherId }));
+  const context = await t
+    .withIdentity({ subject: "multi-grade-teacher" })
+    .query(api.classes.getChatContext, { classId });
+  expect(context).toMatchObject({ canModerate: true, canDisableChat: false });
+  expect(
+    context?.participants
+      .filter((participant) => participant.role === "teacher")
+      .map((participant) => participant._id)
+      .sort(),
+  ).toEqual([data.teacherId, data.gradeTeacherId].sort());
+  expect(
+    new Set(context?.participants.map((participant) => participant._id)).size,
+  ).toBe(context?.participants.length);
+  expect(
+    await t
+      .withIdentity({ subject: "multi-student-06" })
+      .query(api.classes.getChatContext, { classId }),
+  ).toMatchObject({ canModerate: false, canDisableChat: false });
+  for (const subject of [
+    "multi-unassigned",
+    "multi-not-enrolled",
+    "multi-outside",
+  ])
+    await expect(
+      t
+        .withIdentity({ subject })
+        .query(api.classes.getChatContext, { classId }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+  await admin.mutation(api.classes.update, {
+    classId,
+    gradeAssignments: [
+      { gradeCode: "05" },
+      { gradeCode: "06", teacherId: data.unassignedTeacherId },
+    ],
+  });
+  await expect(
+    t
+      .withIdentity({ subject: "multi-grade-teacher" })
+      .query(api.classes.getChatContext, { classId }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  const updated = await t
+    .withIdentity({ subject: "multi-unassigned" })
+    .query(api.classes.getChatContext, { classId });
+  expect(
+    updated?.participants.map((participant) => participant._id),
+  ).not.toContain(data.gradeTeacherId);
+  expect(updated?.participants).toContainEqual(
+    expect.objectContaining({ _id: data.unassignedTeacherId, role: "teacher" }),
+  );
+});
+
+test("one main teacher can cover every selected grade and deleting the course cleans its assignment indexes", async () => {
+  const { t, data, args, admin } = await seedMultiGradeCourse();
+  const { classId } = await admin.mutation(api.classes.createWithSchedule, {
+    ...args,
+    gradeAssignments: [{ gradeCode: "05" }, { gradeCode: "06" }],
+  });
+  const rows = await t.run((ctx) =>
+    ctx.db
+      .query("classGradeAssignments")
+      .withIndex("by_classId_and_gradeCode", (q) => q.eq("classId", classId))
+      .collect(),
+  );
+  expect(rows).toHaveLength(2);
+  expect(rows.every((row) => row.teacherId === data.teacherId)).toBe(true);
+  expect(
+    (
+      await t
+        .withIdentity({ subject: "multi-teacher" })
+        .query(api.classes.listOverview, { campusId: data.campusId })
+    ).classes,
+  ).toHaveLength(1);
+  expect(
+    (
+      await t
+        .withIdentity({ subject: "multi-student-06" })
+        .query(api.student.getStudentDashboardStats, {})
+    )?.classes[0].teacher.fullName,
+  ).toBe("Main Teacher");
+  await admin.mutation(api.classes.remove, { id: classId });
+  expect(
+    await t.run((ctx) => ctx.db.query("classGradeAssignments").collect()),
+  ).toEqual([]);
+});
+
+test("private grade assignments reject cross-campus instructors, unsupported grades and invalid rosters atomically", async () => {
+  const { t, data, args, admin } = await seedMultiGradeCourse();
+  for (const changes of [
+    {
+      gradeAssignments: [
+        { gradeCode: "05" },
+        { gradeCode: "06", teacherId: data.outsideTeacherId },
+      ],
+    },
+    { gradeAssignments: [{ gradeCode: "05" }, { gradeCode: "07" }] },
+    { gradeAssignments: [{ gradeCode: "05" }, { gradeCode: "05" }] },
+    { gradeAssignments: [] },
+    { studentIds: [data.studentId, data.outsideStudentId] },
+  ])
+    await expect(
+      admin.mutation(api.classes.createWithSchedule, { ...args, ...changes }),
+    ).rejects.toThrow();
+  await t.run(async (ctx) => {
+    expect(await ctx.db.query("classes").collect()).toEqual([]);
+    expect(await ctx.db.query("classGradeAssignments").collect()).toEqual([]);
+    expect(await ctx.db.query("classEnrollments").collect()).toEqual([]);
+  });
+});
+
+test("editing grade teachers updates indexed access and notifications without resetting enrollments or attendance", async () => {
+  const { t, data, args, admin } = await seedMultiGradeCourse();
+  const { classId } = await admin.mutation(
+    api.classes.createWithSchedule,
+    args,
+  );
+  const previous = await t.run(async (ctx) => ({
+    schedules: await ctx.db
+      .query("classSchedule")
+      .withIndex("by_class", (q) => q.eq("classId", classId))
+      .collect(),
+    enrollments: await ctx.db
+      .query("classEnrollments")
+      .withIndex("by_class", (q) => q.eq("classId", classId))
+      .collect(),
+  }));
+  await t.run((ctx) =>
+    ctx.db.insert("studentAttendanceRecords", {
+      scheduleId: previous.schedules[0]._id,
+      studentId: data.secondStudentId,
+      status: "present",
+      confirmedBy: data.teacherId,
+      confirmedAt: Date.now(),
+      lastUpdatedBy: data.teacherId,
+      lastUpdatedAt: Date.now(),
+    }),
+  );
+  await admin.mutation(api.classes.update, {
+    classId,
+    gradeAssignments: [
+      { gradeCode: "05" },
+      { gradeCode: "06", teacherId: data.unassignedTeacherId },
+    ],
+  });
+  await expect(
+    t
+      .withIdentity({ subject: "multi-grade-teacher" })
+      .query(api.classes.get, { id: classId }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  expect(
+    await t
+      .withIdentity({ subject: "multi-unassigned" })
+      .query(api.classes.get, { id: classId }),
+  ).not.toBeNull();
+  await expect(
+    admin.mutation(api.classes.update, {
+      classId,
+      gradeAssignments: [{ gradeCode: "05" }],
+    }),
+  ).rejects.toThrow("INVALID_STUDENTS");
+  for (const liveAccess of [
+    { mode: "school" as const, allowedGradeCodes: ["05", "06"] },
+    args.liveAccess,
+  ]) {
+    await admin.mutation(api.classes.update, { classId, liveAccess });
+    expect(await t.run((ctx) => ctx.db.get("classes", classId))).toMatchObject({
+      gradeAssignments: [
+        { gradeCode: "05" },
+        { gradeCode: "06", teacherId: data.unassignedTeacherId },
+      ],
+      liveAccess,
+    });
+  }
+  await t.run(async (ctx) => {
+    expect(
+      await ctx.db
+        .query("classEnrollments")
+        .withIndex("by_class", (q) => q.eq("classId", classId))
+        .collect(),
+    ).toEqual(previous.enrollments);
+    expect(
+      await ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", classId))
+        .collect(),
+    ).toEqual(previous.schedules);
+    expect(
+      await ctx.db.query("studentAttendanceRecords").collect(),
+    ).toHaveLength(1);
+    const notifications = await ctx.db.query("systemNotifications").collect();
+    expect(notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          recipientId: data.gradeTeacherId,
+          action: "removed",
+        }),
+        expect.objectContaining({
+          recipientId: data.unassignedTeacherId,
+          action: "added",
+        }),
+      ]),
+    );
+  });
+});
+
+test("secondary grade instructors cannot be double-booked by course creation or schedule edits", async () => {
+  const { t, data, args, admin } = await seedMultiGradeCourse();
+  const { classId } = await admin.mutation(
+    api.classes.createWithSchedule,
+    args,
+  );
+  const curriculumId = await t.run((ctx) =>
+    ctx.db.insert("curriculums", {
+      title: "Other subject",
+      gradeCodes: ["05", "06"],
+      schoolId: data.schoolId,
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: data.adminId,
+    }),
+  );
+  await expect(
+    admin.mutation(api.classes.createWithSchedule, {
+      ...args,
+      curriculumId,
+      teacherId: data.gradeTeacherId,
+      gradeAssignments: [{ gradeCode: "05" }, { gradeCode: "06" }],
+      studentIds: [],
+    }),
+  ).rejects.toThrow("TEACHER_SCHEDULE_CONFLICT");
+  const other = await admin.mutation(api.classes.createWithSchedule, {
+    ...args,
+    curriculumId,
+    teacherId: data.unassignedTeacherId,
+    gradeAssignments: [{ gradeCode: "05" }],
+    studentIds: [],
+    weeklySlots: [
+      {
+        dayOfWeek: 2,
+        startMinutes: 11 * 60,
+        durationMinutes: 60,
+        sessionType: "live",
+      },
+    ],
+  });
+  await expect(
+    admin.mutation(api.classes.update, {
+      classId: other.classId,
+      gradeAssignments: [{ gradeCode: "05", teacherId: data.gradeTeacherId }],
+      weeklySlots: args.weeklySlots,
+    }),
+  ).rejects.toThrow("TEACHER_SCHEDULE_CONFLICT");
+  expect(
+    (await admin.query(api.classes.get, { id: classId }))?.gradeAssignments,
+  ).toEqual(args.gradeAssignments);
+});
+
+test.each([false, true])(
+  "schedule edits revalidate all grades of an approved share and roll back conflicts (series: %s)",
+  async (updateSeries) => {
+    const { t, data, args, admin } = await seedMultiGradeCourse();
+    const first = await admin.mutation(api.classes.createWithSchedule, {
+      ...args,
+      gradeAssignments: [{ gradeCode: "05" }],
+      studentIds: [data.studentId],
+    });
+    const second = await admin.mutation(api.classes.createWithSchedule, {
+      ...args,
+      gradeCode: "06",
+      gradeAssignments: [{ gradeCode: "06" }],
+      studentIds: [data.secondStudentId],
+      approvedScheduleShareIds: [first.classId],
+    });
+    const schedules = await t.run((ctx) =>
+      ctx.db
+        .query("classSchedule")
+        .withIndex("by_class", (q) => q.eq("classId", first.classId))
+        .collect(),
+    );
+    const move = {
+      id: schedules[0]._id,
+      durationMinutes: 60,
+      updateSeries: true,
+    };
+    // Approved cross-grade sharing must remain usable before the grades overlap.
+    for (const hour of ["11", "09", "11"])
+      await admin.mutation(api.schedule.updateSchedule, {
+        ...move,
+        localStart: `2026-09-01T${hour}:00`,
+      });
+    await admin.mutation(api.classes.update, {
+      classId: first.classId,
+      gradeAssignments: args.gradeAssignments,
+    });
+    if (updateSeries) {
+      const secondSchedule = await t.run((ctx) =>
+        ctx.db
+          .query("classSchedule")
+          .withIndex("by_class", (q) => q.eq("classId", second.classId))
+          .first(),
+      );
+      // Let the first edit succeed, so a later occurrence must roll it back.
+      await admin.mutation(api.schedule.updateSchedule, {
+        id: secondSchedule!._id,
+        localStart: "2026-09-01T13:00",
+        durationMinutes: 60,
+      });
+    }
+    await t.run(async (ctx) => {
+      const pastScheduleId = await ctx.db.insert("classSchedule", {
+        classId: first.classId,
+        schoolId: data.schoolId,
+        scheduledStart: Date.parse("2026-08-25T09:00Z"),
+        scheduledEnd: Date.parse("2026-08-25T10:00Z"),
+        status: "completed",
+        roomName: "past-multi-grade-class",
+        createdBy: data.teacherId,
+        createdAt: Date.now(),
+      });
+      const lessonId = await ctx.db.insert("lessons", {
+        curriculumId: data.curriculumId,
+        title: "Completed lesson",
+        order: 1,
+        isActive: true,
+        createdBy: data.teacherId,
+        createdAt: Date.now(),
+      });
+      const reportId = await ctx.db.insert("classSessionReports", {
+        classId: first.classId,
+        scheduleId: pastScheduleId,
+        closedBy: data.teacherId,
+        closedAt: Date.now(),
+      });
+      await ctx.db.insert("classSessionReportLessons", {
+        reportId,
+        classId: first.classId,
+        scheduleId: pastScheduleId,
+        lessonId,
+      });
+      await ctx.db.insert("studentAttendanceRecords", {
+        scheduleId: pastScheduleId,
+        studentId: data.studentId,
+        status: "present",
+        confirmedBy: data.teacherId,
+        confirmedAt: Date.now(),
+        lastUpdatedBy: data.teacherId,
+        lastUpdatedAt: Date.now(),
+      });
+    });
+    const snapshot = () =>
+      t.run(async (ctx) => ({
+        courses: await ctx.db.query("classes").collect(),
+        schedules: await ctx.db.query("classSchedule").collect(),
+        shares: await ctx.db.query("courseScheduleShares").collect(),
+        enrollments: await ctx.db.query("classEnrollments").collect(),
+        attendance: await ctx.db.query("studentAttendanceRecords").collect(),
+        reports: await ctx.db.query("classSessionReports").collect(),
+        lessons: await ctx.db.query("classSessionReportLessons").collect(),
+      }));
+    const before = await snapshot();
+    await expect(
+      t
+        .withIdentity({ subject: "multi-grade-teacher" })
+        .mutation(api.schedule.updateSchedule, {
+          ...move,
+          updateSeries,
+          localStart: "2026-09-01T09:00",
+        }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await expect(
+      admin.mutation(api.schedule.updateSchedule, {
+        ...move,
+        updateSeries,
+        localStart: "2026-09-01T09:00",
+      }),
+    ).rejects.toThrow("TEACHER_SCHEDULE_CONFLICT");
+    expect(await snapshot()).toEqual(before);
+  },
+);
+
 test("course creation reviews every grade student and enrolls the selected roster", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-08-27T12:00:00Z"));
@@ -759,6 +1411,7 @@ test("course creation reviews every grade student and enrolls the selected roste
 
   const history = await t.run(async (ctx) => {
     const course = (await ctx.db.get(result.classId))!;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omit system fields when cloning the fixture
     const { _id, _creationTime, ...fields } = course;
     const pastClassId = await ctx.db.insert("classes", {
       ...fields,

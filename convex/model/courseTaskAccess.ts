@@ -1,3 +1,4 @@
+import { isCourseTeacher } from "./courseAssignments";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
@@ -64,7 +65,7 @@ export async function getCourseTaskAccess(
   ]);
   if (!course || !user?.isActive) return { kind: "none" } as const;
   if (
-    course.teacherId === userId ||
+    isCourseTeacher(course, userId) ||
     (await canManageClass(ctx, userId, course))
   ) {
     return { kind: "manager", course } as const;

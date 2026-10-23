@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
+import { ConvexError } from "convex/values";
 import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { AbekaSchedule } from "@/lib/abeka/schedule";
+import { Link } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -29,6 +31,7 @@ const initial: AbekaSchedule = {
 
 export function AbekaSyncSchedule({
   schoolId,
+  settingsPath,
   schedule,
   timeZone,
   period,
@@ -36,6 +39,7 @@ export function AbekaSyncSchedule({
   disabled,
 }: {
   schoolId: Id<"schools">;
+  settingsPath: string;
   schedule?: AbekaSchedule | null;
   timeZone?: string | null;
   period?: { name: string; endDate: string } | null;
@@ -53,25 +57,39 @@ export function AbekaSyncSchedule({
   const savedKey = JSON.stringify(saved);
   const changed = JSON.stringify(draft) !== savedKey;
   const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time);
+  const automatic = draft.mode !== "manual";
+  const missingTimeZone = automatic && !timeZone;
   useEffect(() => {
     setDraft(JSON.parse(savedKey) as AbekaSchedule);
   }, [savedKey]);
   // ponytail: apply the complete draft once, never schedule intermediate edits.
   async function save() {
-    if (inFlight.current || disabled || !changed || !validTime) return;
+    if (
+      inFlight.current ||
+      disabled ||
+      !changed ||
+      !validTime ||
+      missingTimeZone
+    )
+      return;
     inFlight.current = true;
     setSaving(true);
     try {
       await update({ schoolId, schedule: draft });
-    } catch {
+    } catch (error) {
       setDraft(saved);
-      toast.error(t("actionError"));
+      toast.error(
+        t(
+          error instanceof ConvexError && error.data === "INVALID_TIME_ZONE"
+            ? "schedule.noTimeZone"
+            : "actionError",
+        ),
+      );
     } finally {
       inFlight.current = false;
       setSaving(false);
     }
   }
-  const automatic = draft.mode !== "manual";
   return (
     <div className="flex flex-wrap items-start gap-x-2 gap-y-2">
       <dt className="pt-1.5">
@@ -146,7 +164,7 @@ export function AbekaSyncSchedule({
             <Button
               type="button"
               size="sm"
-              disabled={disabled || saving || !validTime}
+              disabled={disabled || saving || !validTime || missingTimeZone}
               onClick={() => void save()}
             >
               {saving && <Spinner aria-label={t("loading")} />}
@@ -172,23 +190,33 @@ export function AbekaSyncSchedule({
                 {t("schedule.stopAtPeriodEnd")}
               </Label>
             </div>
-            {!changed && (
-              <p className="text-xs" aria-live="polite">
-                {nextSyncAt && timeZone
-                  ? t("schedule.next", {
-                      date: format.dateTime(nextSyncAt, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
+            {missingTimeZone ? (
+              <div className="space-y-1 text-xs" aria-live="polite">
+                <p>{t("schedule.noTimeZone")}</p>
+                <Link
+                  href={`${settingsPath}#institution-time-zone`}
+                  className="underline"
+                >
+                  {t("schedule.configureTimeZone")}
+                </Link>
+              </div>
+            ) : (
+              !changed && (
+                <p className="text-xs" aria-live="polite">
+                  {nextSyncAt && timeZone
+                    ? t("schedule.next", {
+                        date: format.dateTime(nextSyncAt, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                          timeZone,
+                        }),
                         timeZone,
-                      }),
-                      timeZone,
-                    })
-                  : !timeZone
-                    ? t("schedule.noTimeZone")
+                      })
                     : draft.stopAtPeriodEnd && !period
                       ? t("schedule.noPeriod")
                       : t("schedule.paused")}
-              </p>
+                </p>
+              )
             )}
             {draft.stopAtPeriodEnd && period && (
               <p className="text-xs">

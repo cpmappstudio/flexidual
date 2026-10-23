@@ -6,6 +6,7 @@ import type { Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./users";
 import { canAccessClass } from "./permissions";
 import { isStudentEnrolled } from "./model/enrollments";
+import { isCourseTeacher } from "./model/courseAssignments";
 import { resolveStudentDashboardAccess } from "./model/studentDashboardAccess";
 
 const presence = new Presence(components.presence);
@@ -100,7 +101,7 @@ export const chatParticipants = query({
     const results = await Promise.all(
       [...new Set(args.userIds)].map(async (userId) => {
         if (
-          userId !== course.teacherId &&
+          !isCourseTeacher(course, userId) &&
           userId !== course.tutorId &&
           !(await isStudentEnrolled(ctx, course, userId))
         )

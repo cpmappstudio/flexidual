@@ -2551,18 +2551,16 @@ test("attendance history identifies each class and lets principals correct it", 
     canEditAttendance: false,
   });
 
-  const otherTeacherHistory = await t
-    .withIdentity({ subject: "leader-other-teacher" })
-    .query(api.student.listStudentAttendanceHistory, {
-      studentId: data.studentId,
-      orgSlug: "leadership-campus",
-      status: "absent",
-      paginationOpts,
-    });
-  expect(otherTeacherHistory.page[0]).toMatchObject({
-    scheduleId: data.endGateScheduleId,
-    canEditAttendance: false,
-  });
+  await expect(
+    t
+      .withIdentity({ subject: "leader-other-teacher" })
+      .query(api.student.listStudentAttendanceHistory, {
+        studentId: data.studentId,
+        orgSlug: "leadership-campus",
+        status: "absent",
+        paginationOpts,
+      }),
+  ).rejects.toThrow("PERMISSION_DENIED");
 
   await principal.mutation(api.schedule.updateAttendance, {
     scheduleId: data.endGateScheduleId,

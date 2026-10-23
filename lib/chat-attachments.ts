@@ -1,3 +1,5 @@
+import { chatReferenceParts } from "./chat-references";
+
 export const MAX_CHAT_ATTACHMENTS = 3;
 export const MAX_CHAT_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_CHAT_MESSAGE_BYTES = 20 * 1024 * 1024;
@@ -56,5 +58,7 @@ export function chatTextParts(body: string) {
 }
 
 export function containsChatLink(body: string) {
-  return /(?:https?:\/\/|www\.)/i.test(body);
+  return chatReferenceParts(body).some(
+    (part) => !part.taskId && /(?:https?:\/\/|www\.)/i.test(part.text),
+  );
 }

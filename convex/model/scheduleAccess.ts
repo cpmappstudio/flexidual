@@ -14,6 +14,11 @@ import {
   canStudentAccessLiveClass,
 } from "./liveAccess";
 import { isStudentEnrolled, listActiveStudentClasses } from "./enrollments";
+import {
+  getCourseGradeCodes,
+  isCourseTeacher,
+  listTeacherClasses,
+} from "./courseAssignments";
 
 export type ScheduleClassScope = {
   schoolId?: Id<"schools">;
@@ -90,8 +95,9 @@ function matchesScope(
   scope: Pick<ScheduleClassScope, "teacherId" | "gradeCode">,
 ) {
   return (
-    (!scope.teacherId || classData.teacherId === scope.teacherId) &&
-    (!scope.gradeCode || classData.gradeCode === scope.gradeCode)
+    (!scope.teacherId || isCourseTeacher(classData, scope.teacherId)) &&
+    (!scope.gradeCode ||
+      getCourseGradeCodes(classData).includes(scope.gradeCode))
   );
 }
 
@@ -144,12 +150,7 @@ export async function listAccessibleScheduleClasses(
     }
   } else if (instructorOnly) {
     const [teachingClasses, tutoringClasses] = await Promise.all([
-      ctx.db
-        .query("classes")
-        .withIndex("by_teacher", (q) =>
-          q.eq("teacherId", user._id).eq("isActive", true),
-        )
-        .collect(),
+      listTeacherClasses(ctx, user._id),
       ctx.db
         .query("classes")
         .withIndex("by_tutor", (q) =>
@@ -184,12 +185,7 @@ export async function listAccessibleScheduleClasses(
   } else if (isStaffViewer) {
     if (isSuperAdmin && !scope.schoolId && !scope.campusId) {
       const candidates = scope.teacherId
-        ? await ctx.db
-            .query("classes")
-            .withIndex("by_teacher", (q) =>
-              q.eq("teacherId", scope.teacherId).eq("isActive", true),
-            )
-            .collect()
+        ? await listTeacherClasses(ctx, scope.teacherId)
         : await ctx.db
             .query("classes")
             .withIndex("by_active", (q) => q.eq("isActive", true))
@@ -278,12 +274,7 @@ export async function listAccessibleScheduleClasses(
     ) {
       return { user, classes: [], isStaffViewer };
     }
-    const teachingClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_teacher", (q) =>
-        q.eq("teacherId", user._id).eq("isActive", true),
-      )
-      .collect();
+    const teachingClasses = await listTeacherClasses(ctx, user._id);
     const campusId = studentCampusId ?? scope.campusId;
     const enrolledClasses = await listActiveStudentClasses(
       ctx,

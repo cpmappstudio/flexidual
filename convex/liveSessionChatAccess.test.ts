@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
+import { taskChatReference } from "../lib/chat-references";
 
 test.each(["student", "teacher", "tutor", "principal"] as const)(
   "institutional %s guests can only read the active session chat",
@@ -155,6 +156,14 @@ test.each(["student", "teacher", "tutor", "principal"] as const)(
       await ctx.db.patch("courseChatAttachments", attachmentId, {
         messageId: resourceMessageId,
       });
+      const taskId = await ctx.db.insert("courseTasks", {
+        classId,
+        createdBy: teacherId,
+        title: "Session assignment",
+        releasedAt: now,
+        allowLateSubmissions: true,
+        updatedAt: now,
+      });
 
       return {
         classId,
@@ -162,6 +171,7 @@ test.each(["student", "teacher", "tutor", "principal"] as const)(
         campusId,
         resourceMessageId,
         attachmentId,
+        taskId,
       };
     });
     const teacher = t.withIdentity({ subject: "live-chat-teacher" });
@@ -169,10 +179,11 @@ test.each(["student", "teacher", "tutor", "principal"] as const)(
     const wrongGrade = t.withIdentity({ subject: "live-chat-wrong-grade" });
     const paginationOpts = { cursor: null, numItems: 20 };
 
+    const liveBody = `Live announcement ${taskChatReference(data.taskId, "Session assignment")}`;
     const liveMessageId = await teacher.mutation(api.courseChatMessages.send, {
       classId: data.classId,
       scheduleId: data.scheduleId,
-      body: "Live announcement",
+      body: liveBody,
     });
     expect(
       await t.run((ctx) => ctx.db.get("courseChatMessages", liveMessageId)),
@@ -184,9 +195,12 @@ test.each(["student", "teacher", "tutor", "principal"] as const)(
       paginationOpts,
     });
     expect(guestPage.page.map((message) => message.body)).toEqual([
-      "Live announcement",
+      liveBody,
       "Current resource https://example.com",
     ]);
+    expect(
+      guestPage.page.find((message) => message._id === liveMessageId),
+    ).toMatchObject({ body: liveBody, availableTaskIds: [] });
     const resource = guestPage.page.find(
       (message) => message._id === data.resourceMessageId,
     )!;
@@ -298,8 +312,11 @@ test.each(["student", "teacher", "tutor", "principal"] as const)(
         "Course history",
         "Previous session",
         "Current resource https://example.com",
-        "Live announcement",
+        liveBody,
       ]),
     );
+    expect(
+      teacherPage.page.find((message) => message._id === liveMessageId),
+    ).toMatchObject({ body: liveBody, availableTaskIds: [data.taskId] });
   },
 );

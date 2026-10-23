@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { LiveKitRoom } from "@livekit/components-react";
-import { DisconnectReason } from "livekit-client";
+import {
+  DisconnectReason,
+  type RoomOptions,
+  type RoomConnectOptions,
+} from "livekit-client";
 import { api } from "@/convex/_generated/api";
 import { ActiveClassroomUI } from "./active-classroom-ui";
 import { StudentClassroomUI } from "./student-classroom-ui";
@@ -45,6 +49,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+// Stable options keep media adaptation from recreating the room on UI updates.
+const ROOM_OPTIONS: RoomOptions = { adaptiveStream: true, dynacast: true };
+const PRIMARY_CONNECTION_OPTIONS: RoomConnectOptions = { autoSubscribe: true };
+const COMPANION_CONNECTION_OPTIONS: RoomConnectOptions = {
+  autoSubscribe: false,
+};
 
 interface FlexiClassroomProps {
   roomName: string;
@@ -822,6 +833,12 @@ export default function FlexiClassroom({
         )}
         <LiveKitRoom
           key={connectionScope}
+          options={ROOM_OPTIONS}
+          connectOptions={
+            isCompanion
+              ? COMPANION_CONNECTION_OPTIONS
+              : PRIMARY_CONNECTION_OPTIONS
+          }
           video={false}
           audio={false}
           token={token}

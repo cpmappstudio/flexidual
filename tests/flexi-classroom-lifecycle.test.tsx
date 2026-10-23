@@ -8,11 +8,20 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DisconnectReason } from "livekit-client";
+import {
+  DisconnectReason,
+  Room,
+  type RoomOptions,
+  type RoomConnectOptions,
+} from "livekit-client";
 
 type LiveKitRoomTestProps = {
   children?: ReactNode;
   token?: string;
+  options?: RoomOptions;
+  connectOptions?: RoomConnectOptions;
+  audio?: boolean;
+  video?: boolean;
   onDisconnected?: (reason?: number) => void | Promise<void>;
   onError?: (error: Error) => void;
   onConnected?: () => void | Promise<void>;
@@ -752,6 +761,30 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
       };
       const view = render(createElement(FlexiClassroom, props));
       await flushPromises();
+      const initialOptions = testState.liveKitProps!.options;
+      const initialConnectOptions = testState.liveKitProps!.connectOptions;
+      expect(initialOptions).toMatchObject({
+        adaptiveStream: true,
+        dynacast: true,
+      });
+      expect(initialConnectOptions).toEqual({
+        autoSubscribe: viewType !== "companion",
+      });
+      expect(testState.liveKitProps).toMatchObject({
+        audio: false,
+        video: false,
+      });
+      const sdkRoom = new Room(initialOptions);
+      const sdkDefaults = new Room();
+      expect(sdkRoom.options.publishDefaults).toEqual(
+        sdkDefaults.options.publishDefaults,
+      );
+      expect(sdkRoom.options.audioCaptureDefaults).toEqual(
+        sdkDefaults.options.audioCaptureDefaults,
+      );
+      expect(sdkRoom.options.videoCaptureDefaults).toEqual(
+        sdkDefaults.options.videoCaptureDefaults,
+      );
       expect(screen.getByRole("timer").textContent).toContain("30:00");
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1_000);
@@ -770,6 +803,10 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
       expect(testState.roomLifecycle).toMatchObject({ mounts: 1, unmounts: 0 });
       expect(testState.getToken).toHaveBeenCalledTimes(1);
       expect(testState.endSession).not.toHaveBeenCalled();
+      expect(testState.liveKitProps!.options).toBe(initialOptions);
+      expect(testState.liveKitProps!.connectOptions).toBe(
+        initialConnectOptions,
+      );
     },
   );
 

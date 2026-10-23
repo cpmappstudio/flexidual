@@ -1,3 +1,4 @@
+import { isCourseTeacher } from "./model/courseAssignments";
 import { ConvexError, v, type Infer } from "convex/values";
 
 import type { Doc } from "./_generated/dataModel";
@@ -198,7 +199,7 @@ export const get = query({
       getClassSchoolId(ctx, classData),
     ]);
     const canViewAttendance =
-      classData.teacherId === user._id ||
+      isCourseTeacher(classData, user._id) ||
       (await canManageClasses(ctx, user._id, classData.campusId, schoolId));
 
     if (!report) {

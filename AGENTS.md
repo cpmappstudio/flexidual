@@ -11,3 +11,9 @@ Convex agent skills for common tasks can be installed by running
 `npx convex ai-files install`.
 
 <!-- convex-ai-end -->
+
+## Carpeta de trabajo obligatoria
+
+Trabajar exclusivamente en `/Users/ulvenforst/Codex/Projects/CPM/flexidual`.
+Verificar la ruta antes de modificar archivos. No crear ni usar otros worktrees,
+ni cambiar de rama, salvo que el usuario lo solicite explícitamente.

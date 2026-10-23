@@ -25,7 +25,6 @@ import {
   AttachmentTitle,
   AttachmentTrigger,
 } from "@/components/ui/attachment";
-import { chatTextParts } from "@/lib/chat-attachments";
 
 export async function optimizeChatImage(file: File): Promise<File> {
   if (
@@ -93,33 +92,6 @@ export function useChatFileRequest() {
       return response;
     },
     [getToken],
-  );
-}
-
-export function ChatMessageText({
-  body,
-  enabled,
-}: {
-  body: string;
-  enabled: boolean;
-}) {
-  if (!enabled) return body;
-  return chatTextParts(body).map((part, index) =>
-    part.href ? (
-      <span key={index}>
-        <a
-          href={part.href}
-          target="_blank"
-          rel="noopener noreferrer nofollow"
-          className="underline underline-offset-2"
-        >
-          {part.label}
-        </a>
-        {part.suffix}
-      </span>
-    ) : (
-      <span key={index}>{part.text}</span>
-    ),
   );
 }
 

@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { listTeacherClasses } from "./model/courseAssignments";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { ConvexError } from "convex/values";
@@ -140,12 +141,7 @@ export const list = query({
     const validSchoolIds = [...new Set([...adminSchoolIds, ...staffSchoolIds])];
 
     // Find curriculums tied to active classes they teach
-    const myClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_teacher", (q) =>
-        q.eq("teacherId", user._id).eq("isActive", true),
-      )
-      .collect();
+    const myClasses = await listTeacherClasses(ctx, user._id);
     const taughtCurriculumIds = myClasses.map((c) => c.curriculumId);
 
     const schoolIds = args.schoolId

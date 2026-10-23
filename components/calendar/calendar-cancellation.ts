@@ -4,6 +4,7 @@ type CalendarCancellationInput = {
   canManageSeries: boolean;
   currentUserId?: Id<"users">;
   teacherId?: Id<"users">;
+  isAssignedTeacher?: boolean;
   status: "scheduled" | "active" | "completed" | "cancelled";
   start: number;
   now: number;
@@ -15,6 +16,7 @@ export function getCalendarCancellationCapabilities({
   canManageSeries,
   currentUserId,
   teacherId,
+  isAssignedTeacher: assignedTeacher = false,
   status,
   start,
   now,
@@ -24,7 +26,8 @@ export function getCalendarCancellationCapabilities({
   const canCancelScheduledClass =
     status === "scheduled" && start > now && !isLive;
   const isAssignedTeacher =
-    currentUserId !== undefined && currentUserId === teacherId;
+    currentUserId !== undefined &&
+    (assignedTeacher || currentUserId === teacherId);
 
   return {
     canCancelOccurrence:

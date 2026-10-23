@@ -23,12 +23,14 @@ export function NavMain() {
   const canViewPeople =
     access?.canViewPeople ??
     (role === "admin" || role === "principal" || role === "superadmin");
+  const canViewStudents =
+    access?.canViewStudents ?? (canViewPeople || role === "teacher");
 
   if (!isLoaded) return null;
 
   return (
     <>
-      <SidebarGroup className={canViewPeople ? "pb-0" : undefined}>
+      <SidebarGroup className={canViewStudents ? "pb-0" : undefined}>
         {role !== "student" && (
           <SidebarGroupLabel>{t("navigation.platform")}</SidebarGroupLabel>
         )}
@@ -38,7 +40,9 @@ export function NavMain() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  isActive={pathname === basePath || pathname === `${basePath}/`}
+                  isActive={
+                    pathname === basePath || pathname === `${basePath}/`
+                  }
                   tooltip={t("navigation.dashboard")}
                   aria-label={t("navigation.dashboard")}
                   className="h-12 gap-3 px-2 text-base group-data-[collapsible=icon]:p-1!"
@@ -128,7 +132,7 @@ export function NavMain() {
         </SidebarGroupContent>
       </SidebarGroup>
 
-      {canViewPeople && (
+      {canViewStudents && (
         <SidebarGroup className="pt-0 group-data-[collapsible=icon]:mt-4">
           <SidebarGroupLabel>
             {t("navigation.administration")}
@@ -157,27 +161,29 @@ export function NavMain() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname.includes(`${basePath}/professors`)}
-                  tooltip={t("navigation.teachers")}
-                  aria-label={t("navigation.teachers")}
-                  className="h-12 gap-3 px-2 text-base group-data-[collapsible=icon]:p-1!"
-                >
-                  <Link href={`${basePath}/professors`}>
-                    <Image
-                      src="/professors-icon.svg"
-                      alt=""
-                      width={32}
-                      height={32}
-                      aria-hidden="true"
-                      className="group-data-[collapsible=icon]:size-6"
-                    />
-                    <span>{t("navigation.teachers")}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {canViewPeople && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname.includes(`${basePath}/professors`)}
+                    tooltip={t("navigation.teachers")}
+                    aria-label={t("navigation.teachers")}
+                    className="h-12 gap-3 px-2 text-base group-data-[collapsible=icon]:p-1!"
+                  >
+                    <Link href={`${basePath}/professors`}>
+                      <Image
+                        src="/professors-icon.svg"
+                        alt=""
+                        width={32}
+                        height={32}
+                        aria-hidden="true"
+                        className="group-data-[collapsible=icon]:size-6"
+                      />
+                      <span>{t("navigation.teachers")}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

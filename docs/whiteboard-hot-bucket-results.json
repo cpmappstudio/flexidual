@@ -1,0 +1,20 @@
+{
+  "recordedAt": "2026-10-22T10:02:27.745Z",
+  "browser": "155.0.8059.85",
+  "elements": 2000,
+  "images": 12,
+  "distinctEdits": 120,
+  "bucketId": 40,
+  "canonicalBucketBytes": 170702,
+  "fullBucketSnapshotsDuringEdits": 0,
+  "receivedDurableJsonBytes": 391025,
+  "latencyMs": {
+    "samples": 120,
+    "p50": 75,
+    "p95": 87,
+    "max": 99
+  },
+  "finalVersion": 122,
+  "pageErrors": [],
+  "limits": "Real Chrome/Excalidraw/hook. Local HTTP/SSE models durable reads/writes (50ms) and a separate live preview stream, NOT actual WebRTC. Reader CPU4x, Chrome 1Mbps/80ms emulation after load; open SSE does not model SFU latency or backpressure. Two animation frames approximate paint. No production or video call tested."
+}

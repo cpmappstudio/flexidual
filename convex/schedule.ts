@@ -1,3 +1,9 @@
+import { isCourseTeacher } from "./model/courseAssignments";
+import {
+  getCourseTeacherIds,
+  getCourseTeacherForGrade,
+  listTeacherClasses,
+} from "./model/courseAssignments";
 import { v } from "convex/values";
 import {
   internalMutation,
@@ -8,6 +14,10 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import {
+  deleteWhiteboardManifest,
+  findWhiteboardManifest,
+} from "./model/whiteboardSceneStorage";
 import {
   ensureLiveActivation,
   getLiveActivationId,
@@ -237,6 +247,7 @@ const scheduleEventValidator = v.object({
   classId: v.id("classes"),
   curriculumId: v.id("curriculums"),
   teacherId: v.optional(v.id("users")),
+  isAssignedTeacher: v.optional(v.boolean()),
   gradeCode: v.optional(v.string()),
   isRecurring: v.boolean(),
   recurrenceRule: v.optional(v.string()),
@@ -341,12 +352,7 @@ async function validateScheduleOverlap(
 
   // 2. ONLY check teacher overlap if a teacher is actually assigned
   if (teacherId && sessionType === "live") {
-    const teacherClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_teacher", (q) =>
-        q.eq("teacherId", teacherId).eq("isActive", true),
-      )
-      .collect();
+    const teacherClasses = await listTeacherClasses(ctx, teacherId);
 
     const teacherClassesById = new Map(
       teacherClasses.map((classData) => [classData._id, classData]),
@@ -394,6 +400,7 @@ async function validateScheduleOverlap(
               academicPeriodId: currentClass.academicPeriodId,
               teacherId,
               gradeCode: currentClass.gradeCode,
+              gradeAssignments: currentClass.gradeAssignments,
             },
             conflictingClass,
           )
@@ -459,6 +466,7 @@ async function validateClassScheduleTime(
 }
 
 async function deleteWhiteboardSession(ctx: MutationCtx, roomName: string) {
+  await deleteWhiteboardManifest(ctx, roomName);
   const whiteboard = await ctx.db
     .query("whiteboardSessions")
     .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
@@ -524,7 +532,10 @@ async function getExtensionConflicts(
   const staffSchedule = candidates
     .filter((candidate) => {
       const classData = classById.get(candidate.classId);
-      return classData?.teacherId === userId || classData?.tutorId === userId;
+      return (
+        Boolean(classData && isCourseTeacher(classData, userId)) ||
+        classData?.tutorId === userId
+      );
     })
     .sort((a, b) => a.scheduledStart - b.scheduledStart)[0];
   const staffClass = staffSchedule
@@ -744,7 +755,7 @@ async function getLiveKitAccessData(
   ]);
   if (!user) return null;
 
-  const isPrimaryTeacher = classData.teacherId === userId;
+  const isPrimaryTeacher = isCourseTeacher(classData, userId);
   const isDirectInstructor = isPrimaryTeacher || classData.tutorId === userId;
   const classSchoolId = classData.campusId
     ? campus?.schoolId
@@ -886,7 +897,7 @@ export const getMySchedule = query({
           (classData) =>
             classesWithCompletedSchedules.has(classData._id) &&
             (isStaffViewer ||
-              classData.teacherId === user._id ||
+              isCourseTeacher(classData, user._id) ||
               classData.tutorId === user._id),
         )
       : [];
@@ -902,7 +913,7 @@ export const getMySchedule = query({
     const uniqueCurriculumIds = new Set(myClasses.map((c) => c.curriculumId));
     const uniqueUserIds = new Set(
       [
-        ...myClasses.map((c) => c.teacherId),
+        ...myClasses.flatMap(getCourseTeacherIds),
         ...flatSchedule.map((schedule) => schedule.sessionEndedBy),
       ].filter((id): id is Id<"users"> => id !== undefined),
     );
@@ -965,7 +976,7 @@ export const getMySchedule = query({
           const classData = classMap.get(schedule.classId);
           const needsFullAttendance =
             isStaffViewer ||
-            classData?.teacherId === user._id ||
+            Boolean(classData && isCourseTeacher(classData, user._id)) ||
             classData?.tutorId === user._id;
           const sessions = needsFullAttendance
             ? ctx.db
@@ -995,7 +1006,7 @@ export const getMySchedule = query({
           const classData = classMap.get(schedule.classId);
           const needsFullAttendance =
             isStaffViewer ||
-            classData?.teacherId === user._id ||
+            Boolean(classData && isCourseTeacher(classData, user._id)) ||
             classData?.tutorId === user._id;
           const attendanceRecords = needsFullAttendance
             ? ctx.db
@@ -1083,9 +1094,16 @@ export const getMySchedule = query({
       if (!classData) return null;
 
       const curriculum = curriculumMap.get(classData.curriculumId);
-      const teacher = classData.teacherId
-        ? userMap.get(classData.teacherId)
+      const studentGrade = !isStaffViewer
+        ? (roleAssignments.find(
+            (assignment) =>
+              assignment.role === "student" &&
+              assignment.orgType === "campus" &&
+              assignment.orgId === classData.campusId,
+          )?.gradeCode ?? user.grade)
         : undefined;
+      const teacherId = getCourseTeacherForGrade(classData, studentGrade);
+      const teacher = teacherId ? userMap.get(teacherId) : undefined;
       const sessionEndedBy = item.sessionEndedBy
         ? userMap.get(item.sessionEndedBy)
         : undefined;
@@ -1095,7 +1113,7 @@ export const getMySchedule = query({
       const isClassAdminOrTeacher =
         includeAttendance &&
         (isStaffViewer ||
-          classData.teacherId === user._id ||
+          isCourseTeacher(classData, user._id) ||
           classData.tutorId === user._id);
       const classStudents = studentIdsByClass.get(classData._id) ?? [];
 
@@ -1246,7 +1264,8 @@ export const getMySchedule = query({
         status: effectiveStatus,
         classId: classData._id,
         curriculumId: classData.curriculumId,
-        teacherId: classData.teacherId,
+        teacherId,
+        isAssignedTeacher: isCourseTeacher(classData, user._id),
         gradeCode: classData.gradeCode,
         isRecurring: item.isRecurring || false,
         recurrenceRule: recurrenceRule,
@@ -1656,7 +1675,7 @@ export const getSessionLeadership = query({
           : null,
       ]);
     const isLeader = schedule.sessionLeaderId === user._id;
-    const isPrimaryTeacher = classData.teacherId === user._id;
+    const isPrimaryTeacher = isCourseTeacher(classData, user._id);
     const isLiveSession =
       schedule.status === "active" && schedule.isLive === true;
     const leaderAbsentLongEnough =
@@ -2172,7 +2191,7 @@ export const getAttendanceDetails = query({
     if (!classData) throw new Error("Class not found");
     const curriculum = await ctx.db.get(classData.curriculumId);
 
-    const isClassTeacher = classData.teacherId === user._id;
+    const isClassTeacher = isCourseTeacher(classData, user._id);
     const isAuthorizedAdmin = await canManageClasses(
       ctx,
       user._id,
@@ -2275,14 +2294,16 @@ export const updateSchedule = mutation({
         args.localStart,
         newDuration / 60_000,
       );
-      await validateScheduleOverlap(ctx, {
-        teacherId: classData.teacherId,
-        classId: classData._id,
-        start: newStart,
-        end: newEnd,
-        sessionType: args.sessionType ?? schedule.sessionType ?? "live",
-        excludeScheduleId: args.id,
-      });
+      const teachers = getCourseTeacherIds(classData);
+      for (const teacherId of teachers.length ? teachers : [undefined])
+        await validateScheduleOverlap(ctx, {
+          teacherId,
+          classId: classData._id,
+          start: newStart,
+          end: newEnd,
+          sessionType: args.sessionType ?? schedule.sessionType ?? "live",
+          excludeScheduleId: args.id,
+        });
     }
 
     const metadataUpdates: Partial<Doc<"classSchedule">> = {};
@@ -2357,14 +2378,16 @@ export const updateSchedule = mutation({
             utcToLocalDateTime(itemNewStart, timeZone),
             newDuration / 60_000,
           );
-          await validateScheduleOverlap(ctx, {
-            teacherId: classData.teacherId,
-            classId: classData._id,
-            start: itemNewStart,
-            end: itemNewEnd,
-            sessionType: args.sessionType ?? item.sessionType ?? "live",
-            excludeScheduleId: item._id,
-          });
+          const teachers = getCourseTeacherIds(classData);
+          for (const teacherId of teachers.length ? teachers : [undefined])
+            await validateScheduleOverlap(ctx, {
+              teacherId,
+              classId: classData._id,
+              start: itemNewStart,
+              end: itemNewEnd,
+              sessionType: args.sessionType ?? item.sessionType ?? "live",
+              excludeScheduleId: item._id,
+            });
           updatePatch.scheduledStart = itemNewStart;
           updatePatch.scheduledEnd = itemNewEnd;
         }
@@ -2716,7 +2739,7 @@ export const recoverSessionLeadership = mutation({
   handler: async (ctx, args) => {
     const { user, schedule, classData } =
       await getLiveLeadershipMutationContext(ctx, args.roomName);
-    if (classData.teacherId !== user._id) {
+    if (!isCourseTeacher(classData, user._id)) {
       throw new ConvexError("Only the assigned teacher can recover the class");
     }
     if (schedule.sessionLeaderId === user._id) return null;
@@ -3242,6 +3265,14 @@ async function claimLiveSessionEndState(
   if (whiteboard?.recordingToken) {
     await ctx.db.patch(whiteboard._id, { recordingToken: undefined });
   }
+  const whiteboardManifest = await findWhiteboardManifest(
+    ctx,
+    schedule.roomName,
+  );
+  if (whiteboardManifest?.recordingToken)
+    await ctx.db.patch("whiteboardSceneManifests", whiteboardManifest._id, {
+      recordingToken: undefined,
+    });
   const reopenUntil = getLiveSessionReopenUntil(
     schedule.scheduledEnd,
     schedule.liveExtensionEndsAt,
@@ -3460,7 +3491,7 @@ export const updateAttendance = mutation({
     if (!classData) throw new Error("Class not found");
     const curriculum = await ctx.db.get(classData.curriculumId);
 
-    const isClassTeacher = classData.teacherId === user._id;
+    const isClassTeacher = isCourseTeacher(classData, user._id);
     const isAuthorizedAdmin = await canManageClasses(
       ctx,
       user._id,

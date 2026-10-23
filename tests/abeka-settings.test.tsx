@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { getFunctionName } from "convex/server";
+import { ConvexError } from "convex/values";
 import { NextIntlClientProvider } from "next-intl";
 import { IntegrationSettings } from "@/components/settings/integration-settings";
 import AbekaIntegrationPage from "@/app/[locale]/[orgSlug]/settings/integrations/abeka/page";
@@ -17,6 +18,22 @@ import { AbekaSyncSchedule } from "@/components/settings/abeka-sync-schedule";
 import type { Id } from "@/convex/_generated/dataModel";
 import InstitutionSettingsPage from "@/app/[locale]/[orgSlug]/settings/page";
 import messages from "@/messages/es.json";
+import english from "@/messages/en.json";
+import portuguese from "@/messages/pt-BR.json";
+
+test("Abeka schedule messages exist in every supported language", () => {
+  const keys = Object.keys(english.settings.integrations.schedule).sort();
+  for (const translated of [messages, portuguese]) {
+    expect(
+      Object.keys(translated.settings.integrations.schedule).sort(),
+    ).toEqual(keys);
+    expect(
+      Object.values(translated.settings.integrations.schedule).every(
+        (value) => value.trim().length > 0,
+      ),
+    ).toBe(true);
+  }
+});
 
 const mocks = vi.hoisted(() => ({
   admin: true,
@@ -114,6 +131,7 @@ const renderSettings = (content = <AbekaIntegrationPage />) =>
 
 const scheduleProps = {
   schoolId: "school" as Id<"schools">,
+  settingsPath: "/school/settings",
   schedule: {
     mode: "weekly" as const,
     time: "08:00",
@@ -125,6 +143,124 @@ const scheduleProps = {
   nextSyncAt: Date.parse("2026-09-28T13:00Z"),
   disabled: false,
 };
+
+test("missing institution timezone stays visible in an automatic draft and prevents an invalid save", async () => {
+  const t = messages.settings.integrations;
+  renderSettings(
+    <dl>
+      <AbekaSyncSchedule
+        {...scheduleProps}
+        timeZone={null}
+        nextSyncAt={undefined}
+        schedule={{ ...scheduleProps.schedule, mode: "manual" }}
+      />
+    </dl>,
+  );
+  fireEvent.keyDown(screen.getByRole("combobox", { name: `${t.nextSync}:` }), {
+    key: "ArrowDown",
+  });
+  fireEvent.click(
+    await screen.findByRole("option", { name: t.schedule.weekdays }),
+  );
+  fireEvent.change(screen.getByLabelText(t.schedule.time), {
+    target: { value: "20:00" },
+  });
+  expect(screen.getByText(t.schedule.noTimeZone)).toBeTruthy();
+  expect(
+    screen
+      .getByRole("link", { name: t.schedule.configureTimeZone })
+      .getAttribute("href"),
+  ).toBe("/school/settings#institution-time-zone");
+  const save = screen.getByRole("button", { name: messages.common.save });
+  expect((save as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(save);
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  expect(mocks.fetch).not.toHaveBeenCalled();
+});
+
+test("a timezone validation error is explained instead of suggesting a connection retry", async () => {
+  mocks.mutate.mockRejectedValue(new ConvexError("INVALID_TIME_ZONE"));
+  renderSettings(
+    <dl>
+      <AbekaSyncSchedule {...scheduleProps} />
+    </dl>,
+  );
+  const t = messages.settings.integrations;
+  fireEvent.change(screen.getByLabelText(t.schedule.time), {
+    target: { value: "20:00" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: messages.common.save }));
+  await waitFor(() =>
+    expect(mocks.error).toHaveBeenCalledWith(t.schedule.noTimeZone),
+  );
+  expect(mocks.error).not.toHaveBeenCalledWith(t.actionError);
+});
+
+test("the existing institution timezone enables the pending draft without changing its time or starting a sync", async () => {
+  const content = (timeZone: string | null) => (
+    <NextIntlClientProvider locale="es" messages={messages} timeZone="UTC">
+      <dl>
+        <AbekaSyncSchedule
+          {...scheduleProps}
+          timeZone={timeZone}
+          nextSyncAt={undefined}
+        />
+      </dl>
+    </NextIntlClientProvider>
+  );
+  const { rerender } = render(content(null));
+  const t = messages.settings.integrations;
+  fireEvent.change(screen.getByLabelText(t.schedule.time), {
+    target: { value: "20:00" },
+  });
+  expect(
+    (
+      screen.getByRole("button", {
+        name: messages.common.save,
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  rerender(content("America/Tegucigalpa"));
+  expect(screen.queryByText(t.schedule.noTimeZone)).toBeNull();
+  expect(
+    (screen.getByLabelText(t.schedule.time) as HTMLInputElement).value,
+  ).toBe("20:00");
+  const save = screen.getByRole("button", { name: messages.common.save });
+  expect((save as HTMLButtonElement).disabled).toBe(false);
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  fireEvent.click(save);
+  await waitFor(() =>
+    expect(mocks.mutate).toHaveBeenCalledWith({
+      schoolId: "school",
+      schedule: { ...scheduleProps.schedule, time: "20:00" },
+    }),
+  );
+  expect(mocks.fetch).not.toHaveBeenCalled();
+});
+
+test("missing institution timezone does not prevent disabling automatic sync", async () => {
+  const t = messages.settings.integrations;
+  renderSettings(
+    <dl>
+      <AbekaSyncSchedule {...scheduleProps} timeZone={null} />
+    </dl>,
+  );
+  fireEvent.keyDown(screen.getByRole("combobox", { name: `${t.nextSync}:` }), {
+    key: "ArrowDown",
+  });
+  fireEvent.click(
+    await screen.findByRole("option", { name: t.schedule.manual }),
+  );
+  expect(screen.queryByText(t.schedule.noTimeZone)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: messages.common.save }));
+  await waitFor(() =>
+    expect(mocks.mutate).toHaveBeenCalledWith({
+      schoolId: "school",
+      schedule: { ...scheduleProps.schedule, mode: "manual" },
+    }),
+  );
+  expect(mocks.fetch).not.toHaveBeenCalled();
+});
 
 test("schedule editor displays institution zone, next date and checked academic limit without fetching Abeka", () => {
   renderSettings(

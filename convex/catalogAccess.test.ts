@@ -167,6 +167,79 @@ async function setup(legacy = false) {
   return { t, data, args };
 }
 
+test.each([undefined, "private"])(
+  "catalog teacher filters include grade instructors without breaking pagination (search=%s)",
+  async (search) => {
+    const { t, data, args } = await setup();
+    const classId = data.courses["Teacher private"];
+    await t.run(async (ctx) => {
+      await ctx.db.patch(classId, {
+        teacherId: data.users.principal,
+        gradeAssignments: [
+          { gradeCode: "08" },
+          { gradeCode: "09", teacherId: data.users.teacher },
+        ],
+      });
+      const course = (await ctx.db.get(classId))!;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omit system fields when cloning the fixture
+      const { _id, _creationTime, ...fields } = course;
+      for (const suffix of ["one", "two"])
+        await ctx.db.insert("classes", {
+          ...fields,
+          name: `Teacher private decoy ${suffix}`,
+          gradeAssignments: undefined,
+        });
+    });
+    const teacher = t.withIdentity({ subject: "teacher" });
+    for (const teacherId of [data.users.teacher, data.users.principal]) {
+      for (const query of [
+        api.classes.listCatalog,
+        api.classes.listCurrentCatalog,
+      ]) {
+        const result = await teacher.query(query, {
+          ...args,
+          search,
+          teacherId,
+        });
+        const ids = result.page.map((course) => course._id);
+        expect(ids).toContain(classId);
+        if (teacherId === data.users.teacher) expect(ids).toEqual([classId]);
+      }
+    }
+    const ids: Id<"classes">[] = [];
+    let cursor: string | null = null;
+    let emptyPages = 0;
+    let isDone = false;
+    for (let page = 0; page < 20 && !isDone; page++) {
+      const result: FunctionReturnType<typeof api.classes.listCatalog> =
+        await teacher.query(api.classes.listCatalog, {
+          ...args,
+          search,
+          teacherId: data.users.teacher,
+          paginationOpts: { numItems: 1, cursor },
+        });
+      ids.push(...result.page.map((course) => course._id));
+      if (result.page.length === 0) emptyPages++;
+      cursor = result.continueCursor;
+      isDone = result.isDone;
+    }
+    expect(isDone).toBe(true);
+    expect(emptyPages).toBeGreaterThan(0);
+    expect(ids).toEqual([classId]);
+    expect(
+      (
+        await t
+          .withIdentity({ subject: "student" })
+          .query(api.classes.listCatalog, {
+            ...args,
+            search,
+            teacherId: data.users.teacher,
+          })
+      ).page,
+    ).toEqual([]);
+  },
+);
+
 test.each([false, true])(
   "catalog honors own private courses and revocation (legacy=%s)",
   async (legacy) => {

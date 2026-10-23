@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { listClassStudentIds } from "./enrollments";
+import { getCourseTeacherIds } from "./courseAssignments";
 import { createSystemNotification } from "./systemNotifications";
 
 export async function getClassNotificationContext(
@@ -25,12 +26,10 @@ export async function listClassNotificationRecipients(
   ctx: MutationCtx,
   classData: Doc<"classes">,
 ) {
-  const recipients = new Map<
-    Id<"users">,
-    "student" | "teacher" | "tutor"
-  >();
+  const recipients = new Map<Id<"users">, "student" | "teacher" | "tutor">();
 
-  if (classData.teacherId) recipients.set(classData.teacherId, "teacher");
+  for (const teacherId of getCourseTeacherIds(classData))
+    recipients.set(teacherId, "teacher");
   if (classData.tutorId && !recipients.has(classData.tutorId)) {
     recipients.set(classData.tutorId, "tutor");
   }

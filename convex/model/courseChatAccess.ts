@@ -1,3 +1,4 @@
+import { isCourseTeacher } from "./courseAssignments";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -84,7 +85,7 @@ export async function canManageCourseChatContent(
   userId: Id<"users">,
 ) {
   return (
-    course.teacherId === userId ||
+    isCourseTeacher(course, userId) ||
     (await getCourseChatCapabilities(ctx, userId, course)).canDisable
   );
 }

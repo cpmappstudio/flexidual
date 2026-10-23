@@ -39,6 +39,23 @@ test("course managers can cancel an occurrence or its future series", () => {
   );
 });
 
+test("an assigned grade teacher can cancel an occurrence but cannot manage its series", () => {
+  assert.deepEqual(
+    getCalendarCancellationCapabilities({
+      canManageSeries: false,
+      currentUserId: "grade-teacher" as Id<"users">,
+      teacherId,
+      isAssignedTeacher: true,
+      status: "scheduled",
+      start: future,
+      now,
+      isLive: false,
+      isRecurring: true,
+    }),
+    { canCancelOccurrence: true, canCancelSeries: false },
+  );
+});
+
 test("past, active, live, and cancelled classes cannot be cancelled", () => {
   for (const state of [
     { status: "scheduled" as const, start: now - 1, isLive: false },

@@ -1,0 +1,340 @@
+{
+  "recordedAt": "2026-10-22T11:37:53.035Z",
+  "machine": {
+    "cpu": "Apple M4 Max",
+    "logicalCpus": 16,
+    "ramGiB": 128,
+    "arch": "arm64"
+  },
+  "browser": "155.0.8059.85",
+  "transportMode": "live-preview-and-durable",
+  "results": [
+    {
+      "elements": 200,
+      "baselineFreehandPoints": 24000,
+      "images": 4,
+      "strokes": 12,
+      "teacherFinalRevisionAfterPointerUpMs": {
+        "samples": 12,
+        "p50": 5,
+        "p95": 8,
+        "max": 8
+      },
+      "durationSeconds": 6.9,
+      "initialJsonBytes": {
+        "teacher": 862631,
+        "student-1": 862631,
+        "student-2": 862631,
+        "student-slow": 862631
+      },
+      "initialImageBytes": {
+        "teacher": 181394,
+        "student-1": 181394,
+        "student-2": 181394,
+        "student-slow": 181394
+      },
+      "acceptedDeltaBatches": 17,
+      "sentDeltaBytes": 21270,
+      "sentPreviewBytes": 117457,
+      "sentPreviewBatches": 114,
+      "fullSnapshotSameBatchesModelBytes": 14303751,
+      "readers": [
+        {
+          "role": "student-1",
+          "latencyMs": {
+            "samples": 114,
+            "p50": 33,
+            "p95": 47,
+            "max": 61
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 61,
+            "p95": 73,
+            "max": 73
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 36,
+            "p95": 53,
+            "max": 53
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedDurableJsonBytes": 41371,
+          "receivedPreviewJsonBytes": 117457
+        },
+        {
+          "role": "student-2",
+          "latencyMs": {
+            "samples": 114,
+            "p50": 34,
+            "p95": 47,
+            "max": 62
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 61,
+            "p95": 74,
+            "max": 74
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 37,
+            "p95": 53,
+            "max": 53
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedDurableJsonBytes": 41371,
+          "receivedPreviewJsonBytes": 117457
+        },
+        {
+          "role": "student-slow",
+          "latencyMs": {
+            "samples": 114,
+            "p50": 35,
+            "p95": 60,
+            "max": 77
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 78,
+            "p95": 86,
+            "max": 86
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 54,
+            "p95": 65,
+            "max": 65
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedDurableJsonBytes": 41371,
+          "receivedPreviewJsonBytes": 117457
+        }
+      ],
+      "resources": [
+        {
+          "role": "teacher",
+          "startupMs": 1182,
+          "frameIntervalMs": {
+            "samples": 412,
+            "p50": 16.7,
+            "p95": 16.7,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 1219,
+          "heapMiB": 44
+        },
+        {
+          "role": "student-1",
+          "startupMs": 1155,
+          "frameIntervalMs": {
+            "samples": 412,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 690,
+          "heapMiB": 18
+        },
+        {
+          "role": "student-2",
+          "startupMs": 1149,
+          "frameIntervalMs": {
+            "samples": 412,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 683,
+          "heapMiB": 28
+        },
+        {
+          "role": "student-slow",
+          "startupMs": 1869,
+          "frameIntervalMs": {
+            "samples": 412,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 2875,
+          "heapMiB": 25
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "elements": 2000,
+      "baselineFreehandPoints": 240000,
+      "images": 12,
+      "strokes": 12,
+      "teacherFinalRevisionAfterPointerUpMs": {
+        "samples": 12,
+        "p50": 7,
+        "p95": 12,
+        "max": 12
+      },
+      "durationSeconds": 8.2,
+      "initialJsonBytes": {
+        "teacher": 8493802,
+        "student-1": 8493802,
+        "student-2": 8493802,
+        "student-slow": 8493802
+      },
+      "initialImageBytes": {
+        "teacher": 544220,
+        "student-1": 544220,
+        "student-2": 544220,
+        "student-slow": 544220
+      },
+      "acceptedDeltaBatches": 15,
+      "sentDeltaBytes": 20616,
+      "sentPreviewBytes": 118934,
+      "sentPreviewBatches": 116,
+      "fullSnapshotSameBatchesModelBytes": 125097853,
+      "readers": [
+        {
+          "role": "student-1",
+          "latencyMs": {
+            "samples": 116,
+            "p50": 29,
+            "p95": 112,
+            "max": 128
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 64,
+            "p95": 72,
+            "max": 72
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 115,
+            "p95": 131,
+            "max": 131
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedDurableJsonBytes": 58164,
+          "receivedPreviewJsonBytes": 118934
+        },
+        {
+          "role": "student-2",
+          "latencyMs": {
+            "samples": 116,
+            "p50": 31,
+            "p95": 114,
+            "max": 121
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 65,
+            "p95": 73,
+            "max": 73
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 117,
+            "p95": 133,
+            "max": 133
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedDurableJsonBytes": 58164,
+          "receivedPreviewJsonBytes": 118934
+        },
+        {
+          "role": "student-slow",
+          "latencyMs": {
+            "samples": 116,
+            "p50": 38,
+            "p95": 132,
+            "max": 149
+          },
+          "firstStrokeVisibleMs": {
+            "samples": 12,
+            "p50": 76,
+            "p95": 113,
+            "max": 113
+          },
+          "finalVersionAfterPointerUpMs": {
+            "samples": 12,
+            "p50": 125,
+            "p95": 154,
+            "max": 154
+          },
+          "visibleBeforePointerUp": 12,
+          "receivedDurableJsonBytes": 58164,
+          "receivedPreviewJsonBytes": 118934
+        }
+      ],
+      "resources": [
+        {
+          "role": "teacher",
+          "startupMs": 1328,
+          "frameIntervalMs": {
+            "samples": 417,
+            "p50": 16.7,
+            "p95": 66.6,
+            "max": 83.3
+          },
+          "longTasks": 27,
+          "longTaskMs": 2106,
+          "rendererTaskCpuMs": 3712,
+          "heapMiB": 116
+        },
+        {
+          "role": "student-1",
+          "startupMs": 1317,
+          "frameIntervalMs": {
+            "samples": 493,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 1025,
+          "heapMiB": 55
+        },
+        {
+          "role": "student-2",
+          "startupMs": 1315,
+          "frameIntervalMs": {
+            "samples": 494,
+            "p50": 16.7,
+            "p95": 16.7,
+            "max": 16.8
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 997,
+          "heapMiB": 63
+        },
+        {
+          "role": "student-slow",
+          "startupMs": 2739,
+          "frameIntervalMs": {
+            "samples": 490,
+            "p50": 16.7,
+            "p95": 16.8,
+            "max": 33.4
+          },
+          "longTasks": 0,
+          "longTaskMs": 0,
+          "rendererTaskCpuMs": 4103,
+          "heapMiB": 77
+        }
+      ],
+      "pageErrors": []
+    }
+  ],
+  "limits": "Real development editor on one desktop. HTTP/SSE models service boundaries: durable reads/writes have 50ms delay; preview uses a separate open SSE stream, NOT actual LiveKit/WebRTC. CPU4x and Chrome 1Mbps/80ms network emulation after load; open SSE does not reproduce WebRTC latency, backpressure or SFU. Paint proxy is two animation frames. No production, invoice, physical tablet or video-call measurement."
+}

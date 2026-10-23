@@ -1,5 +1,11 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  query,
+  type MutationCtx,
+} from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { getCurrentUserFromAuth } from "./users";
 import { canAccessSchedule } from "./model/scheduleAccess";
 import { internal } from "./_generated/api";
@@ -254,12 +260,30 @@ export const stopRecordingIntent = internalMutation({
   },
 });
 
-export const resolveLiveRoom = internalQuery({
+async function scheduleReconciliation(
+  ctx: MutationCtx,
+  activation: Doc<"liveRoomActivations">,
+) {
+  const reconcileGeneration = (activation.reconcileGeneration ?? 0) + 1;
+  const reconcileJobId = await ctx.scheduler.runAfter(
+    1_000,
+    internal.livekit.reconcileLiveSession,
+    {
+      roomName: activation.roomName,
+      expectedActivationId: activation.activationId,
+      reconciliationGeneration: reconcileGeneration,
+    },
+  );
+  await ctx.db.patch("liveRoomActivations", activation._id, {
+    reconcileJobId,
+    reconcileGeneration,
+    reconcileAgain: undefined,
+  });
+}
+
+export const requestReconciliation = internalMutation({
   args: { liveRoomName: v.string() },
-  returns: v.union(
-    v.null(),
-    v.object({ roomName: v.string(), activationId: v.string() }),
-  ),
+  returns: v.null(),
   handler: async (ctx, { liveRoomName }) => {
     const schedule =
       (await ctx.db
@@ -274,12 +298,42 @@ export const resolveLiveRoom = internalQuery({
         .unique());
     if (
       !schedule?.isLive ||
+      schedule.status !== "active" ||
       (schedule.liveRoomName ?? schedule.roomName) !== liveRoomName
     )
       return null;
-    return {
-      roomName: schedule.roomName,
-      activationId: getLiveActivationId(schedule),
-    };
+    const activation = await ensureLiveActivation(ctx, schedule);
+    const job = activation.reconcileJobId
+      ? await ctx.db.system.get(activation.reconcileJobId)
+      : null;
+    if (job?.state.kind === "pending") return null;
+    if (job?.state.kind === "inProgress") {
+      if (!activation.reconcileAgain)
+        await ctx.db.patch("liveRoomActivations", activation._id, {
+          reconcileAgain: true,
+        });
+      return null;
+    }
+    await scheduleReconciliation(ctx, activation);
+    return null;
+  },
+});
+
+export const finishReconciliation = internalMutation({
+  args: { activationId: v.string(), generation: v.number() },
+  returns: v.null(),
+  handler: async (ctx, { activationId, generation }) => {
+    const activation = await findLiveActivation(ctx, activationId);
+    // A late completion must not clear the replacement of a canceled/failed job.
+    if (!activation || activation.reconcileGeneration !== generation)
+      return null;
+    if (activation.status === "active" && activation.reconcileAgain)
+      await scheduleReconciliation(ctx, activation);
+    else
+      await ctx.db.patch("liveRoomActivations", activation._id, {
+        reconcileJobId: undefined,
+        reconcileAgain: undefined,
+      });
+    return null;
   },
 });

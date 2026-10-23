@@ -120,7 +120,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
       const isPeopleRoute = /^\/(students|professors)(\/|$)/.test(subPath)
       const canViewPeople = ["superadmin", "admin", "principal"].includes(
         orgRole ?? highestStaffRole ?? "",
-      )
+      ) || (orgRole === "teacher" && /^\/students(\/|$)/.test(subPath))
       if (isPeopleRoute && !canViewPeople) {
         return NextResponse.redirect(new URL(`/${locale}/${orgSlug}`, req.url))
       }

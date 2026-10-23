@@ -1,4 +1,10 @@
 import { ConvexError, v } from "convex/values";
+import {
+  getCourseGradeCodes,
+  getCourseTeacherIds,
+  getCourseTeacherForGrade,
+  isCourseTeacher,
+} from "./model/courseAssignments";
 
 import { query } from "./_generated/server";
 import { listAccessibleScheduleClasses } from "./model/scheduleAccess";
@@ -33,6 +39,9 @@ const calendarEventValidator = v.object({
   classId: v.id("classes"),
   curriculumId: v.id("curriculums"),
   teacherId: v.optional(v.id("users")),
+  teacherIds: v.optional(v.array(v.id("users"))),
+  isAssignedTeacher: v.optional(v.boolean()),
+  gradeCodes: v.optional(v.array(v.string())),
   gradeCode: v.optional(v.string()),
   isRecurring: v.boolean(),
   recurrenceRule: v.optional(v.string()),
@@ -69,7 +78,7 @@ export const listEvents = query({
     const accessContext = await listAccessibleScheduleClasses(ctx, args);
     if (!accessContext || accessContext.classes.length === 0) return [];
 
-    const { classes, user } = accessContext;
+    const { classes, user, isStaffViewer } = accessContext;
     const classById = new Map(
       classes.map((classData) => [classData._id, classData]),
     );
@@ -95,7 +104,7 @@ export const listEvents = query({
     const userIds = [
       ...new Set(
         [
-          ...classes.map((classData) => classData.teacherId),
+          ...classes.flatMap(getCourseTeacherIds),
           ...schedules.map((schedule) => schedule.sessionEndedBy),
         ].filter((id) => id !== undefined),
       ),
@@ -174,9 +183,16 @@ export const listEvents = query({
         const classData = classById.get(schedule.classId);
         if (!classData) return [];
         const curriculum = curriculumById.get(classData.curriculumId);
-        const teacher = classData.teacherId
-          ? userById.get(classData.teacherId)
+        const studentGrade = !isStaffViewer
+          ? (roleAssignments.find(
+              (assignment) =>
+                assignment.role === "student" &&
+                assignment.orgType === "campus" &&
+                assignment.orgId === classData.campusId,
+            )?.gradeCode ?? user.grade)
           : undefined;
+        const teacherId = getCourseTeacherForGrade(classData, studentGrade);
+        const teacher = teacherId ? userById.get(teacherId) : undefined;
         const sessionEndedBy = schedule.sessionEndedBy
           ? userById.get(schedule.sessionEndedBy)
           : undefined;
@@ -216,7 +232,10 @@ export const listEvents = query({
             status: schedule.status,
             classId: classData._id,
             curriculumId: classData.curriculumId,
-            teacherId: classData.teacherId,
+            teacherId,
+            teacherIds: getCourseTeacherIds(classData),
+            isAssignedTeacher: isCourseTeacher(classData, user._id),
+            gradeCodes: getCourseGradeCodes(classData),
             gradeCode: classData.gradeCode,
             isRecurring: schedule.isRecurring || false,
             recurrenceRule,

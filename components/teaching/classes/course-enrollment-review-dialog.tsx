@@ -34,6 +34,7 @@ interface CourseEnrollmentReviewDialogProps {
   curriculumId: Id<"curriculums">;
   campusId: Id<"campuses">;
   gradeCode: string;
+  gradeCodes?: string[];
   gradeName: string;
   grades: Array<{ code: string; name: string }>;
   courseName: string;
@@ -96,6 +97,7 @@ export function CourseEnrollmentReviewDialog({
   curriculumId,
   campusId,
   gradeCode,
+  gradeCodes,
   gradeName,
   grades,
   courseName,
@@ -105,27 +107,34 @@ export function CourseEnrollmentReviewDialog({
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search.trim(), 250);
   const [initializedGradeCode, setInitializedGradeCode] = useState("");
+  const rosterKey = `${campusId}:${curriculumId}:${(gradeCodes ?? [gradeCode]).join(",")}`;
   const [selectedStudents, setSelectedStudents] = useState<
     Map<Id<"users">, CourseCreationStudent>
   >(new Map());
   const gradeStudents = useQuery(
     api.classes.listCourseCreationGradeStudents,
-    open ? { curriculumId, campusId, gradeCode } : "skip",
+    open ? { curriculumId, campusId, gradeCode, gradeCodes } : "skip",
   );
   const searchResults = useQuery(
     api.classes.searchCourseCreationStudents,
     open && debouncedSearch.length >= 2
-      ? { curriculumId, campusId, gradeCode, searchQuery: debouncedSearch }
+      ? {
+          curriculumId,
+          campusId,
+          gradeCode,
+          gradeCodes,
+          searchQuery: debouncedSearch,
+        }
       : "skip",
   );
 
   useEffect(() => {
-    if (!open || !gradeStudents || initializedGradeCode === gradeCode) return;
+    if (!open || !gradeStudents || initializedGradeCode === rosterKey) return;
     setSelectedStudents(
       new Map(gradeStudents.map((student) => [student._id, student])),
     );
-    setInitializedGradeCode(gradeCode);
-  }, [gradeCode, gradeStudents, initializedGradeCode, open]);
+    setInitializedGradeCode(rosterKey);
+  }, [rosterKey, gradeStudents, initializedGradeCode, open]);
 
   const selected = useMemo(
     () =>
@@ -135,7 +144,7 @@ export function CourseEnrollmentReviewDialog({
     [selectedStudents],
   );
   const isRosterReady =
-    gradeStudents !== undefined && initializedGradeCode === gradeCode;
+    gradeStudents !== undefined && initializedGradeCode === rosterKey;
   const availableResults = (searchResults ?? []).filter(
     (student) => !selectedStudents.has(student._id),
   );
