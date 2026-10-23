@@ -343,6 +343,9 @@ export default defineSchema({
     submittedAt: v.optional(v.number()),
     submittedLate: v.optional(v.boolean()),
     submissionRevision: v.number(),
+    previousCorrection: v.optional(
+      v.object({ revision: v.number(), submittedAt: v.number() }),
+    ),
     feedback: v.optional(
       v.object({
         text: v.string(),
@@ -376,8 +379,27 @@ export default defineSchema({
     contentType: v.string(),
     size: v.number(),
     storageId: v.optional(v.id("_storage")),
-    state: v.union(v.literal("staged"), v.literal("active")),
+    state: v.union(
+      v.literal("staged"),
+      v.literal("active"),
+      v.literal("archived"),
+    ),
     expiresAt: v.optional(v.number()),
+    correction: v.optional(
+      v.object({
+        fileId: v.id("courseTaskFiles"),
+        version: v.id("_storage"),
+        revision: v.number(),
+        saveId: v.string(),
+      }),
+    ),
+    lastCorrection: v.optional(
+      v.object({
+        authorId: v.id("users"),
+        updatedAt: v.number(),
+        saveId: v.string(),
+      }),
+    ),
   })
     .index("by_taskId_and_kind_and_state", ["taskId", "kind", "state"])
     .index("by_recipientId_and_state", ["recipientId", "state"]),

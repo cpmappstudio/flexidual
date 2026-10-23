@@ -1,3 +1,5 @@
+import { RateLimiter, HOUR, MINUTE } from "@convex-dev/rate-limiter";
+import { components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
@@ -5,6 +7,22 @@ import {
   MAX_TASK_MATERIAL_FILES,
   validTaskFileSet,
 } from "../../lib/course-task-files";
+
+export const taskFileLimiter = new RateLimiter(components.rateLimiter, {
+  taskUploads: { kind: "token bucket", rate: 50, period: MINUTE, capacity: 50 },
+  taskUploadBytes: {
+    kind: "token bucket",
+    rate: 400 * 1024 * 1024,
+    period: HOUR,
+    capacity: 400 * 1024 * 1024,
+  },
+  taskDownloadBytes: {
+    kind: "token bucket",
+    rate: 5 * 1024 * 1024 * 1024,
+    period: HOUR,
+    capacity: 5 * 1024 * 1024 * 1024,
+  },
+});
 
 export async function deleteCourseTaskFile(
   ctx: MutationCtx,

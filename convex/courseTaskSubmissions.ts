@@ -21,6 +21,8 @@ const fileSummary = v.object({
   name: v.string(),
   contentType: v.string(),
   size: v.number(),
+  version: v.optional(v.id("_storage")),
+  correctedAt: v.optional(v.number()),
 });
 
 const feedbackValidator = v.object({
@@ -37,6 +39,8 @@ function summarizeFile(file: Doc<"courseTaskFiles">) {
     name: file.name,
     contentType: file.contentType,
     size: file.size,
+    version: file.storageId,
+    correctedAt: file.lastCorrection?.updatedAt,
   };
 }
 
@@ -101,8 +105,25 @@ export const submit = mutation({
       .withIndex("by_recipientId_and_state", (q) =>
         q.eq("recipientId", access.recipient._id).eq("state", "active"),
       )
-      .collect();
-    for (const file of previous) await deleteCourseTaskFile(ctx, file);
+      .take(MAX_TASK_SUBMISSION_FILES);
+    const corrected = previous.filter(
+      (file) => file.contentType === "application/pdf" && file.lastCorrection,
+    );
+    if (corrected.length) {
+      const archived = await ctx.db
+        .query("courseTaskFiles")
+        .withIndex("by_recipientId_and_state", (q) =>
+          q.eq("recipientId", access.recipient._id).eq("state", "archived"),
+        )
+        .take(MAX_TASK_SUBMISSION_FILES);
+      for (const file of archived) await deleteCourseTaskFile(ctx, file);
+    }
+    const correctedIds = new Set(corrected.map((file) => file._id));
+    for (const file of previous) {
+      if (correctedIds.has(file._id))
+        await ctx.db.patch("courseTaskFiles", file._id, { state: "archived" });
+      else await deleteCourseTaskFile(ctx, file);
+    }
     for (const file of files) {
       await ctx.db.patch("courseTaskFiles", file!._id, {
         state: "active",
@@ -114,6 +135,12 @@ export const submit = mutation({
       submittedLate: task.dueAt !== undefined && now > task.dueAt,
       submissionRevision: access.recipient.submissionRevision + 1,
       feedback: undefined,
+      previousCorrection: corrected.length
+        ? {
+            revision: access.recipient.submissionRevision,
+            submittedAt: access.recipient.submittedAt!,
+          }
+        : access.recipient.previousCorrection,
     });
     return null;
   },
@@ -126,11 +153,19 @@ export const get = query({
   },
   returns: v.object({
     studentId: v.id("users"),
+    studentName: v.string(),
     submittedAt: v.optional(v.number()),
     submittedLate: v.optional(v.boolean()),
     submissionRevision: v.number(),
     feedback: v.optional(feedbackValidator),
     files: v.array(fileSummary),
+    previousCorrection: v.optional(
+      v.object({
+        revision: v.number(),
+        submittedAt: v.number(),
+        files: v.array(fileSummary),
+      }),
+    ),
   }),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
@@ -143,19 +178,32 @@ export const get = query({
       throw new ConvexError("PERMISSION_DENIED");
     const recipient = await getRecipient(ctx, task._id, studentId);
     if (!recipient) throw new ConvexError("TASK_RECIPIENT_NOT_FOUND");
-    const files = await ctx.db
-      .query("courseTaskFiles")
-      .withIndex("by_recipientId_and_state", (q) =>
-        q.eq("recipientId", recipient._id).eq("state", "active"),
-      )
-      .collect();
+    const student =
+      studentId === user._id ? user : await ctx.db.get("users", studentId);
+    const [files, archived] = await Promise.all(
+      (["active", "archived"] as const).map((state) =>
+        ctx.db
+          .query("courseTaskFiles")
+          .withIndex("by_recipientId_and_state", (q) =>
+            q.eq("recipientId", recipient._id).eq("state", state),
+          )
+          .take(MAX_TASK_SUBMISSION_FILES),
+      ),
+    );
     return {
       studentId,
+      studentName: student?.fullName ?? "",
       submittedAt: recipient.submittedAt,
       submittedLate: recipient.submittedLate,
       submissionRevision: recipient.submissionRevision,
       feedback: recipient.feedback,
       files: files.map(summarizeFile),
+      previousCorrection: recipient.previousCorrection
+        ? {
+            ...recipient.previousCorrection,
+            files: archived.map(summarizeFile),
+          }
+        : undefined,
     };
   },
 });
@@ -207,6 +255,7 @@ export const setFeedback = mutation({
     taskId: v.id("courseTasks"),
     studentId: v.id("users"),
     text: v.union(v.string(), v.null()),
+    expectedRevision: v.number(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -218,6 +267,8 @@ export const setFeedback = mutation({
     const recipient = await getRecipient(ctx, task._id, args.studentId);
     if (!recipient || recipient.submittedAt === undefined)
       throw new ConvexError("TASK_SUBMISSION_NOT_FOUND");
+    if (recipient.submissionRevision !== args.expectedRevision)
+      throw new ConvexError("TASK_SUBMISSION_CHANGED");
     const text = args.text?.trim() || undefined;
     if (text && text.length > 2_000)
       throw new ConvexError("TASK_FEEDBACK_TOO_LONG");

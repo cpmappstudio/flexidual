@@ -172,7 +172,7 @@ test("resets a deep-linked selection when entering assignments manually", () => 
 });
 
 test("requires confirmation before deleting and selects another assignment afterward", async () => {
-  window.history.replaceState(null, "", "/?task=scheduled");
+  window.history.replaceState(null, "", "/?task=scheduled&student=student-one");
   render(
     <CourseTasksTab
       classId={"class-id" as Id<"classes">}
@@ -221,4 +221,22 @@ test("keeps the confirmation open when deletion fails", async () => {
   await waitFor(() => expect(errorToast).toHaveBeenCalledWith("deleteFailed"));
   expect(screen.getByRole("alertdialog")).toBeTruthy();
   expect(screen.getByText("selected:scheduled")).toBeTruthy();
+});
+
+test("switching assignments clears the previously reviewed student", () => {
+  window.history.replaceState(null, "", "/?task=scheduled&student=student-one");
+  render(
+    <CourseTasksTab
+      classId={"class-id" as Id<"classes">}
+      canManage
+      timeZone="UTC"
+      initialTaskId={"scheduled" as Id<"courseTasks">}
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: /Earlier published assignment/ }),
+  );
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get("task")).toBe("earlier");
+  expect(params.has("student")).toBe(false);
 });

@@ -138,6 +138,7 @@ export default function ClassDetailPage() {
     const url = new URL(window.location.href);
     if (!url.searchParams.has("task")) return;
     url.searchParams.delete("task");
+    url.searchParams.delete("student");
     window.history.replaceState(null, "", url);
   }
 
