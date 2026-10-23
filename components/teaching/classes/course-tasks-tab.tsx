@@ -89,6 +89,7 @@ export function CourseTasksTab({
     setSelectedId(id);
     const url = new URL(window.location.href);
     url.searchParams.set("task", id);
+    url.searchParams.delete("student");
     window.history.replaceState(null, "", url);
   }
 
@@ -102,6 +103,7 @@ export function CourseTasksTab({
         setSelectedId(undefined);
         const url = new URL(window.location.href);
         url.searchParams.delete("task");
+        url.searchParams.delete("student");
         window.history.replaceState(null, "", url);
       }
       setTaskToDelete(undefined);

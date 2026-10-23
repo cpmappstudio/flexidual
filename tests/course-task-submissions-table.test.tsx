@@ -38,13 +38,25 @@ const detailState = vi.hoisted(() => ({
   reviewSubmission: {
     submittedAt: 1_001,
     submittedLate: false,
+    submissionRevision: 1,
     files: [{ id: "file-1", name: "Trabajo_de_Grado.pdf" }],
     feedback: undefined,
   } as {
     submittedAt: number | undefined;
     submittedLate: boolean;
-    files: { id: string; name: string }[];
+    submissionRevision: number;
+    files: {
+      id: string;
+      name: string;
+      contentType?: string;
+      correctedAt?: number;
+    }[];
     feedback?: { text: string; updatedAt: number };
+    previousCorrection?: {
+      revision: number;
+      submittedAt: number;
+      files: { id: string; name: string }[];
+    };
   },
 }));
 const feedbackMutation = vi.hoisted(() => vi.fn().mockResolvedValue(null));
@@ -54,6 +66,14 @@ const queryState = vi.hoisted(() => ({
   now: 1_000,
   statusNow: 0,
   statusLoading: false,
+}));
+
+vi.mock("@clerk/nextjs", () => ({
+  useAuth: () => ({ userId: "teacher-test" }),
+}));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 
 vi.mock("next-intl", () => ({
@@ -72,7 +92,7 @@ vi.mock("@/hooks/use-mobile", () => ({
 vi.mock("convex/react", async () => {
   const { getFunctionName } = await import("convex/server");
   return {
-    useQuery: (ref: unknown, args?: { now?: number }) => {
+    useQuery: (ref: unknown, args?: { now?: number; studentId?: string }) => {
       switch (getFunctionName(ref as Parameters<typeof getFunctionName>[0])) {
         case "courseTasks:get":
           return detailState.task;
@@ -82,7 +102,12 @@ vi.mock("convex/react", async () => {
         case "courseTaskFiles:listMaterials":
           return detailState.materials;
         case "courseTaskSubmissions:get":
-          return detailState.reviewSubmission;
+          return {
+            ...detailState.reviewSubmission,
+            studentName:
+              rows.find((row) => row.studentId === args?.studentId)
+                ?.studentName ?? "Linked student",
+          };
         default:
           throw new Error("Unexpected query");
       }
@@ -104,11 +129,19 @@ vi.mock("@/components/teaching/classes/course-task-attachments", () => ({
   TaskAttachmentList: ({
     files,
     plain,
+    editPdfs,
+    compact,
   }: {
     files: { name: string }[];
     plain?: boolean;
+    editPdfs?: boolean;
+    compact?: boolean;
   }) => (
-    <div data-plain={plain}>
+    <div
+      data-plain={plain}
+      data-edit-pdfs={Boolean(editPdfs)}
+      data-compact={Boolean(compact)}
+    >
       <span>attachments:{files.length}</span>
       {files.map((file) => (
         <span key={file.name}>{file.name}</span>
@@ -140,6 +173,8 @@ vi.mock("@/components/teaching/classes/course-task-attachments", () => ({
   useTaskFileUploadErrorMessage:
     () => (error: { fileName: string; code: string }) =>
       `fileUploadFailed:${error.fileName}:${error.code}`,
+}));
+vi.mock("@/hooks/use-task-file-request", () => ({
   useTaskFileRequest: () => vi.fn(),
 }));
 
@@ -147,6 +182,9 @@ import { CourseTaskDetail } from "@/components/teaching/classes/course-task-deta
 
 afterEach(() => {
   cleanup();
+  window.sessionStorage.clear();
+  vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
   detailState.task = {
     _id: "task-id",
     classId: "class-id",
@@ -159,6 +197,7 @@ afterEach(() => {
   detailState.reviewSubmission = {
     submittedAt: 1_001,
     submittedLate: false,
+    submissionRevision: 1,
     files: [{ id: "file-1", name: "Trabajo_de_Grado.pdf" }],
     feedback: undefined,
   };
@@ -354,7 +393,7 @@ test("uses the shared table for all loaded submissions and keeps review availabl
   expect(review.className).toContain("slide-in-from-right");
   expect(within(review).getByText("submissionFiles")).toBeTruthy();
   expect(within(review).getByText("Trabajo_de_Grado.pdf")).toBeTruthy();
-  expect(within(review).getByText("feedbackNotSent")).toBeTruthy();
+  expect(within(review).queryByText("feedbackNotSent")).toBeNull();
   expect(
     within(review)
       .getByText("attachments:1")
@@ -445,6 +484,7 @@ test("shows a sent comment and enables updating it only after a change", () => {
     taskId: "task-id",
     studentId: "student-1",
     text: "Excelente trabajo",
+    expectedRevision: 1,
   });
 });
 
@@ -475,6 +515,7 @@ test("labels clearing an existing comment as removal", () => {
     taskId: "task-id",
     studentId: "student-1",
     text: null,
+    expectedRevision: 1,
   });
 });
 
@@ -505,7 +546,12 @@ test("opens replacement in a dialog and leaves the current submission visible", 
     .closest("section")!;
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(within(submission).queryByText("replacementFiles")).toBeNull();
-  expect(within(submission).getByText("submissionFiles")).toBeTruthy();
+  expect(within(submission).getByText("Trabajo_de_Grado.pdf")).toBeTruthy();
+  expect(
+    within(submission)
+      .getByText("attachments:1")
+      .parentElement?.getAttribute("data-compact"),
+  ).toBe("true");
   expect(
     within(submission)
       .getByText("attachments:1")
@@ -525,7 +571,7 @@ test("opens replacement in a dialog and leaves the current submission visible", 
   const replace = within(dialog).getByRole("button", { name: "resubmit" });
 
   expect(within(dialog).getByText("replacementFiles")).toBeTruthy();
-  expect(warning.parentElement?.className).toContain("bg-warning/10");
+  expect(warning.closest('[class*="bg-warning/10"]')).not.toBeNull();
   expect(
     picker.compareDocumentPosition(warning) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
@@ -610,7 +656,7 @@ test("shows only the saved submission when replacements are closed", () => {
     />,
   );
 
-  expect(screen.getByText("submissionFiles")).toBeTruthy();
+  expect(screen.getByText("Trabajo_de_Grado.pdf")).toBeTruthy();
   expect(screen.getByText("submissionClosed")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "editSubmission" })).toBeNull();
   expect(screen.queryByRole("button", { name: "select file" })).toBeNull();
@@ -626,6 +672,7 @@ test("shows the failed student file by name and keeps it available to retry", as
   detailState.reviewSubmission = {
     submittedAt: undefined,
     submittedLate: false,
+    submissionRevision: 1,
     files: [],
     feedback: undefined,
   };
@@ -668,3 +715,257 @@ test("shows the failed student file by name and keeps it available to retry", as
     expect.any(Function),
   );
 });
+
+test("a feedback draft keeps its starting revision and cannot be applied after student resubmission", () => {
+  const props = {
+    classId: "class-id" as Id<"classes">,
+    taskId: "task-id" as Id<"courseTasks">,
+    timeZone: "UTC",
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+  };
+  const view = render(<CourseTaskDetail {...props} />);
+  fireEvent.click(screen.getAllByRole("button", { name: "review" })[1]);
+  fireEvent.change(screen.getByLabelText("feedback"), {
+    target: { value: "Draft for old submission" },
+  });
+  detailState.reviewSubmission = {
+    ...detailState.reviewSubmission,
+    submissionRevision: 2,
+  };
+  view.rerender(<CourseTaskDetail {...props} />);
+  expect(screen.getByText("pdfCorrection.submissionChanged")).toBeTruthy();
+  expect((screen.getByLabelText("feedback") as HTMLTextAreaElement).value).toBe(
+    "Draft for old submission",
+  );
+  expect(
+    screen
+      .getByRole("button", { name: "sendFeedback" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+});
+
+test("a submission link opens the requested student even outside the loaded table page", () => {
+  window.history.replaceState(
+    null,
+    "",
+    "/campus/classes/class-id?task=task-id&student=outside-page",
+  );
+  render(
+    <CourseTaskDetail
+      classId={"class-id" as Id<"classes">}
+      taskId={"task-id" as Id<"courseTasks">}
+      timeZone="UTC"
+      onEdit={vi.fn()}
+      onDelete={vi.fn()}
+    />,
+  );
+  const review = screen.getByRole("dialog");
+  expect(
+    within(review).getByRole("heading", { name: "Linked student" }),
+  ).toBeTruthy();
+  expect(within(review).getByText("Trabajo_de_Grado.pdf")).toBeTruthy();
+  fireEvent.click(within(review).getByRole("button", { name: "Close" }));
+  expect(new URL(window.location.href).searchParams.has("student")).toBe(false);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("a student link for another assignment does not open a review", () => {
+  window.history.replaceState(
+    null,
+    "",
+    "/campus/classes/class-id?task=another-task&student=outside-page",
+  );
+  render(
+    <CourseTaskDetail
+      classId={"class-id" as Id<"classes">}
+      taskId={"task-id" as Id<"courseTasks">}
+      timeZone="UTC"
+      onEdit={vi.fn()}
+      onDelete={vi.fn()}
+    />,
+  );
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("an unsent comment survives opening the PDF and returning to the same submission", async () => {
+  const props = {
+    classId: "class-id" as Id<"classes">,
+    taskId: "task-id" as Id<"courseTasks">,
+    timeZone: "UTC",
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+  };
+  const first = render(<CourseTaskDetail {...props} />);
+  fireEvent.click(screen.getAllByRole("button", { name: "review" })[1]);
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "Comentario todavía sin enviar" },
+  });
+  first.unmount();
+  const second = render(<CourseTaskDetail {...props} />);
+  await waitFor(() =>
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "Comentario todavía sin enviar",
+    ),
+  );
+  expect(feedbackMutation).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "sendFeedback" }));
+  await waitFor(() =>
+    expect(feedbackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Comentario todavía sin enviar",
+        expectedRevision: 1,
+      }),
+    ),
+  );
+  await waitFor(() =>
+    expect(
+      window.sessionStorage.getItem(
+        "flexidual:task-feedback:teacher-test:task-id:student-1",
+      ),
+    ).toBeNull(),
+  );
+  second.unmount();
+});
+
+test("a restored comment remains tied to the submission it was drafted for", async () => {
+  window.history.replaceState(
+    null,
+    "",
+    "/campus/classes/class-id?task=task-id&student=student-1",
+  );
+  window.sessionStorage.setItem(
+    "flexidual:task-feedback:teacher-test:task-id:student-1",
+    JSON.stringify({ text: "Borrador de la primera entrega", revision: 1 }),
+  );
+  detailState.reviewSubmission.submissionRevision = 2;
+  render(
+    <CourseTaskDetail
+      classId={"class-id" as Id<"classes">}
+      taskId={"task-id" as Id<"courseTasks">}
+      timeZone="UTC"
+      onEdit={vi.fn()}
+      onDelete={vi.fn()}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByText("pdfCorrection.submissionChanged")).toBeTruthy(),
+  );
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+    "Borrador de la primera entrega",
+  );
+  expect(
+    screen
+      .getByRole("button", { name: "sendFeedback" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+});
+
+test.each([true, false])(
+  "shows previous corrected files separately, read only, with manager=%s",
+  (canManage) => {
+    detailState.status.canManage = canManage;
+    detailState.reviewSubmission.previousCorrection = {
+      revision: 1,
+      submittedAt: 1_000,
+      files: [{ id: "previous-file", name: "Anterior_corregido.pdf" }],
+    };
+    render(
+      <CourseTaskDetail
+        classId={"class-id" as Id<"classes">}
+        taskId={"task-id" as Id<"courseTasks">}
+        timeZone="UTC"
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    if (canManage)
+      fireEvent.click(screen.getAllByRole("button", { name: "review" })[1]);
+    const toggle = screen.getByRole("button", { name: /^title/ });
+    const section = toggle.closest("section")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(within(section).queryByText("source")).toBeNull();
+    expect(within(section).queryByText("files")).toBeNull();
+    expect(within(section).queryByText("Anterior_corregido.pdf")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(within(section).queryByText("source")).toBeNull();
+    expect(within(section).queryByText("readOnly")).toBeNull();
+    expect(within(section).queryByText("description")).toBeNull();
+    expect(within(section).getByText("submittedAt")).toBeTruthy();
+    expect(within(section).getByText("Anterior_corregido.pdf")).toBeTruthy();
+    expect(section.querySelector('[data-edit-pdfs="false"]')).toBeTruthy();
+    expect(
+      section.querySelector(`[data-compact="${!canManage}"]`),
+    ).toBeTruthy();
+    expect(within(section).queryByText("Trabajo_de_Grado.pdf")).toBeNull();
+    expect(screen.getByText("Trabajo_de_Grado.pdf")).toBeTruthy();
+  },
+);
+
+test.each([
+  [false, false, undefined],
+  [false, true, undefined],
+  [true, false, "replacementCorrectionWarning"],
+  [true, true, "replacementCorrectionWarningWithPrevious"],
+])(
+  "replacement notice matches corrected PDFs=%s and previous correction=%s",
+  (corrected, archived, expected) => {
+    detailState.status.canManage = false;
+    detailState.status.canSubmit = true;
+    detailState.reviewSubmission.files[0].contentType = "application/pdf";
+    if (corrected) detailState.reviewSubmission.files[0].correctedAt = 1_000;
+    if (archived)
+      detailState.reviewSubmission.previousCorrection = {
+        revision: 1,
+        submittedAt: 500,
+        files: [{ id: "old", name: "old.pdf" }],
+      };
+    render(
+      <CourseTaskDetail
+        classId={"class-id" as Id<"classes">}
+        taskId={"task-id" as Id<"courseTasks">}
+        timeZone="UTC"
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "editSubmission" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("replacementWarning")).toBeTruthy();
+    for (const key of [
+      "replacementCorrectionWarning",
+      "replacementCorrectionWarningWithPrevious",
+    ]) {
+      expect(Boolean(within(dialog).queryByText(key))).toBe(key === expected);
+    }
+  },
+);
+
+test.each([true, false])(
+  "supporting files remain visible with manager=%s after material updates",
+  (canManage) => {
+    detailState.status.canManage = canManage;
+    detailState.materials = Array.from({ length: 20 }, (_, at) => ({
+      name: `guide-${at}.pdf`,
+    }));
+    const props = {
+      classId: "class-id" as Id<"classes">,
+      taskId: "task-id" as Id<"courseTasks">,
+      timeZone: "UTC",
+      onEdit: vi.fn(),
+      onDelete: vi.fn(),
+    };
+    const view = render(<CourseTaskDetail {...props} />);
+    expect(screen.getByText("guide-19.pdf")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^materials/ })).toBeNull();
+    if (!canManage)
+      expect(screen.getByText("Trabajo_de_Grado.pdf")).toBeTruthy();
+    detailState.materials = [
+      ...detailState.materials,
+      { name: "new-guide.pdf" },
+    ];
+    view.rerender(<CourseTaskDetail {...props} />);
+    expect(screen.getByText("new-guide.pdf")).toBeTruthy();
+  },
+);

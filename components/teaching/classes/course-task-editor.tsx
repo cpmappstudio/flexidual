@@ -41,9 +41,9 @@ import {
   TaskFileUploadStatus,
   uploadTaskFiles,
   useTaskFileUploadErrorMessage,
-  useTaskFileRequest,
   type TaskAttachment,
 } from "./course-task-attachments";
+import { useTaskFileRequest } from "@/hooks/use-task-file-request";
 
 export function CourseTaskEditor({
   classId,

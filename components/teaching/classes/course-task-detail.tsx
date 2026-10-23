@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { FunctionReturnType } from "convex/server";
@@ -51,9 +58,11 @@ import {
   TaskFileUploadStatus,
   uploadTaskFiles,
   useTaskFileUploadErrorMessage,
-  useTaskFileRequest,
   type TaskAttachment,
 } from "./course-task-attachments";
+import { useTaskFileRequest } from "@/hooks/use-task-file-request";
+import { useTaskFeedbackDraft } from "@/hooks/use-task-feedback-draft";
+import { TaskPreviousCorrection } from "./course-task-previous-correction";
 
 type SubmissionRow = FunctionReturnType<
   typeof api.courseTaskSubmissions.listForTask
@@ -107,7 +116,7 @@ export function CourseTaskDetail({
       ? t(status.submissionsOpen ? "visibleStatus" : "closedStatus")
       : t("scheduledStatus");
   const availabilityDate = task.releasedAt ?? task.availableAt;
-
+  
   return (
     <div className="min-w-0 space-y-4 py-2">
       <section className="min-w-0 space-y-4">
@@ -260,9 +269,8 @@ export function CourseTaskDetail({
       <section className="min-w-0 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="flex items-center gap-2 font-semibold text-foreground">
-            <Paperclip className="size-5 text-primary" aria-hidden="true" />
             {t("materials")}
-          </h3>
+            </h3>
           {materials.length > 0 && (
             <Badge className="min-w-6 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-primary">
               {materials.length}
@@ -285,7 +293,11 @@ export function CourseTaskDetail({
           <TeacherTaskSubmissions taskId={taskId} timeZone={timeZone} />
         )
       ) : (
-        <StudentTaskSubmission taskId={taskId} canSubmit={status.canSubmit} />
+        <StudentTaskSubmission
+          taskId={taskId}
+          canSubmit={status.canSubmit}
+          timeZone={timeZone}
+        />
       )}
     </div>
   );
@@ -294,9 +306,11 @@ export function CourseTaskDetail({
 function StudentTaskSubmission({
   taskId,
   canSubmit,
+  timeZone,
 }: {
   taskId: Id<"courseTasks">;
   canSubmit: boolean;
+  timeZone: string;
 }) {
   const t = useTranslations("courseTasks");
   const request = useTaskFileRequest();
@@ -363,6 +377,10 @@ function StudentTaskSubmission({
 
   if (submission === undefined) return <Skeleton className="h-40 w-full" />;
   const hasSubmission = submission.submittedAt !== undefined;
+  const hasCorrectedPdfs = submission.files.some(
+    (file) =>
+      file.contentType === "application/pdf" && file.correctedAt !== undefined,
+  );
   const submissionForm = (
     <form className="min-w-0 space-y-4" onSubmit={(event) => void send(event)}>
       <div className="min-w-0 space-y-3">
@@ -398,7 +416,18 @@ function StudentTaskSubmission({
             className="mt-0.5 size-5 shrink-0 text-warning"
             aria-hidden="true"
           />
-          <p className="min-w-0 leading-relaxed">{t("replacementWarning")}</p>
+          <div className="min-w-0 space-y-1 leading-relaxed">
+            <p>{t("replacementWarning")}</p>
+            {hasCorrectedPdfs && (
+              <p>
+                {t(
+                  submission.previousCorrection
+                    ? "replacementCorrectionWarningWithPrevious"
+                    : "replacementCorrectionWarning",
+                )}
+              </p>
+            )}
+          </div>
         </div>
       )}
       <div
@@ -427,7 +456,7 @@ function StudentTaskSubmission({
   );
 
   return (
-    <section className="min-w-0 space-y-4 border-t pt-4">
+    <section className="min-w-0 space-y-4 rounded-xl border bg-muted/40 p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-semibold text-foreground">{t("yourSubmission")}</h3>
         {hasSubmission && (
@@ -444,36 +473,7 @@ function StudentTaskSubmission({
         )}
       </div>
       {hasSubmission ? (
-        <div className="min-w-0 space-y-4">
-          <div className="min-w-0 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Paperclip className="size-4 text-primary" aria-hidden="true" />
-                {t("submissionFiles")}
-              </h4>
-              <Badge className="min-w-6 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-primary">
-                {submission.files.length}
-              </Badge>
-            </div>
-            <TaskAttachmentList files={submission.files} plain />
-          </div>
-          {submission.feedback && (
-            <div className="flex max-w-2xl min-w-0 items-start gap-3 rounded-2xl rounded-tl-sm bg-primary/5 px-4 py-3">
-              <MessageSquareText
-                className="mt-0.5 size-5 shrink-0 text-primary"
-                aria-hidden="true"
-              />
-              <div className="min-w-0 space-y-1">
-                <p className="text-xs font-semibold text-primary">
-                  {t("teacherFeedback")}
-                </p>
-                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]">
-                  {submission.feedback.text}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+        <TaskAttachmentList files={submission.files} plain submission compact />
       ) : (
         <p className="text-sm text-muted-foreground">{t("notSubmitted")}</p>
       )}
@@ -523,6 +523,27 @@ function StudentTaskSubmission({
       ) : (
         <p className="text-sm text-muted-foreground">{t("submissionClosed")}</p>
       )}
+      {hasSubmission && submission.feedback && (
+        <div className="flex max-w-2xl min-w-0 items-start gap-3 rounded-2xl rounded-tl-sm bg-primary/5 px-4 py-3">
+          <MessageSquareText
+            className="mt-0.5 size-5 shrink-0 text-primary"
+            aria-hidden="true"
+          />
+          <div className="min-w-0 space-y-1">
+            <h4 className="text-sm font-semibold text-primary">
+              {t("teacherFeedback")}
+            </h4>
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground [overflow-wrap:anywhere]">
+              {submission.feedback.text}
+            </p>
+          </div>
+        </div>
+      )}
+      <TaskPreviousCorrection
+        correction={submission.previousCorrection}
+        timeZone={timeZone}
+        compactFiles
+      />
     </section>
   );
 }
@@ -537,15 +558,35 @@ function TeacherTaskSubmissions({
   const t = useTranslations("courseTasks");
   const common = useTranslations("common");
   const format = useFormatter();
+  const searchParams = useSearchParams();
+  const linkedStudentId =
+    searchParams.get("task") === taskId ? searchParams.get("student") : null;
   const { results, status, loadMore } = usePaginatedQuery(
     api.courseTaskSubmissions.listForTask,
     { taskId },
     { initialNumItems: 20 },
   );
-  const [selectedStudent, setSelectedStudent] = useState<{
-    id: Id<"users">;
-    name: string;
-  }>();
+  const [selectedStudent, setSelectedStudent] = useState<
+    Id<"users"> | undefined
+  >(linkedStudentId ? (linkedStudentId as Id<"users">) : undefined);
+  useEffect(() => {
+    setSelectedStudent(
+      linkedStudentId ? (linkedStudentId as Id<"users">) : undefined,
+    );
+  }, [linkedStudentId]);
+
+  const selectStudent = useCallback(
+    (studentId?: Id<"users">) => {
+      setSelectedStudent(studentId);
+      const url = new URL(window.location.href);
+      if (studentId) {
+        url.searchParams.set("task", taskId);
+        url.searchParams.set("student", studentId);
+      } else url.searchParams.delete("student");
+      window.history.replaceState(null, "", url);
+    },
+    [taskId],
+  );
   const columns = useMemo<ColumnDef<SubmissionRow, unknown>[]>(
     () => [
       {
@@ -599,13 +640,9 @@ function TeacherTaskSubmissions({
               type="button"
               size="sm"
               variant="outline"
+              className="min-h-11"
               disabled={row.original.submittedAt === undefined}
-              onClick={() =>
-                setSelectedStudent({
-                  id: row.original.studentId,
-                  name: row.original.studentName,
-                })
-              }
+              onClick={() => selectStudent(row.original.studentId)}
             >
               {t("review")}
             </Button>
@@ -613,7 +650,7 @@ function TeacherTaskSubmissions({
         ),
       },
     ],
-    [common, format, t, timeZone],
+    [common, format, t, timeZone, selectStudent],
   );
 
   return (
@@ -636,12 +673,11 @@ function TeacherTaskSubmissions({
       )}
       {selectedStudent && (
         <TeacherSubmissionReview
-          key={selectedStudent.id}
+          key={selectedStudent}
           taskId={taskId}
-          studentId={selectedStudent.id}
-          studentName={selectedStudent.name}
+          studentId={selectedStudent}
           timeZone={timeZone}
-          onClose={() => setSelectedStudent(undefined)}
+          onClose={() => selectStudent()}
         />
       )}
     </section>
@@ -651,13 +687,11 @@ function TeacherTaskSubmissions({
 function TeacherSubmissionReview({
   taskId,
   studentId,
-  studentName,
   timeZone,
   onClose,
 }: {
   taskId: Id<"courseTasks">;
   studentId: Id<"users">;
-  studentName: string;
   timeZone: string;
   onClose: () => void;
 }) {
@@ -669,13 +703,21 @@ function TeacherSubmissionReview({
     studentId,
   });
   const setFeedback = useMutation(api.courseTaskSubmissions.setFeedback);
-  const [feedback, setFeedbackText] = useState<string>();
+  const { draft: feedback, setDraft: setFeedbackText } = useTaskFeedbackDraft(
+    taskId,
+    studentId,
+  );
   const [saving, setSaving] = useState(false);
   const savedFeedback = submission?.feedback?.text ?? "";
-  const currentFeedback = feedback ?? savedFeedback;
+  const currentFeedback = feedback?.text ?? savedFeedback;
+  const staleFeedback =
+    feedback !== undefined &&
+    feedback.revision !== submission?.submissionRevision;
   const hasChanges = currentFeedback.trim() !== savedFeedback.trim();
   const canSaveFeedback =
-    hasChanges && (Boolean(currentFeedback.trim()) || Boolean(savedFeedback));
+    !staleFeedback &&
+    hasChanges &&
+    (Boolean(currentFeedback.trim()) || Boolean(savedFeedback));
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -686,6 +728,7 @@ function TeacherSubmissionReview({
         taskId,
         studentId,
         text: currentFeedback.trim() || null,
+        expectedRevision: feedback!.revision,
       });
       setFeedbackText(undefined);
       toast.success(
@@ -702,21 +745,30 @@ function TeacherSubmissionReview({
       <SheetContent
         side={isMobile ? "bottom" : "right"}
         className={cn(
-          "w-full gap-0 overflow-hidden p-0",
+          "w-full gap-0 overflow-hidden p-0 [&>button]:flex [&>button]:size-11 [&>button]:items-center [&>button]:justify-center",
           isMobile
             ? "h-[90dvh] max-h-[90dvh] rounded-t-2xl pb-[env(safe-area-inset-bottom)]"
             : "sm:max-w-lg",
         )}
       >
-        <SheetHeader className="shrink-0 gap-3 pb-4 pl-4 pr-12 pt-6 text-left sm:pl-6">
+        <SheetHeader className="shrink-0 gap-2 border-b py-5 pl-4 pr-16 text-left sm:pl-6">
           <SheetTitle className="break-words text-xl font-bold tracking-tight [overflow-wrap:anywhere]">
-            {studentName}
+            {submission?.studentName ?? t("review")}
           </SheetTitle>
           <SheetDescription className="sr-only">
             {t("reviewDescription")}
           </SheetDescription>
           {submission !== undefined && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
+              {submission.submittedAt !== undefined && (
+                <span>
+                  {format.dateTime(submission.submittedAt, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                    timeZone,
+                  })}
+                </span>
+              )}
               <Badge
                 variant={submission.submittedLate ? "outline" : "active"}
                 className={
@@ -727,15 +779,6 @@ function TeacherSubmissionReview({
               >
                 {t(submission.submittedLate ? "late" : "delivered")}
               </Badge>
-              {submission.submittedAt !== undefined && (
-                <span>
-                  {format.dateTime(submission.submittedAt, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                    timeZone,
-                  })}
-                </span>
-              )}
             </div>
           )}
         </SheetHeader>
@@ -744,55 +787,96 @@ function TeacherSubmissionReview({
             <Skeleton className="h-40 w-full" />
           </div>
         ) : (
-          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 pt-2 sm:px-6">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
             <section className="min-w-0 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="flex items-center gap-2 font-semibold text-foreground">
-                  <Paperclip
-                    className="size-5 text-primary"
-                    aria-hidden="true"
-                  />
-                  {t("submissionFiles")}
-                </h3>
-                <Badge className="min-w-6 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-primary">
-                  {submission.files.length}
-                </Badge>
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Paperclip
+                      className="size-4 text-primary"
+                      aria-hidden="true"
+                    />
+                    {t("submissionFiles")}
+                  </h3>
+                  <Badge
+                    variant="outline"
+                    className="min-w-6 rounded-full border-transparent bg-muted text-muted-foreground tabular-nums"
+                  >
+                    {submission.files.length}
+                  </Badge>
+                </div>
               </div>
-              <TaskAttachmentList files={submission.files} plain />
+              <TaskAttachmentList
+                files={submission.files}
+                plain
+                submission
+                editPdfs
+              />
             </section>
 
-            <form onSubmit={(event) => void save(event)} className="space-y-3">
-              <div className="space-y-1">
-                <label
-                  htmlFor="task-feedback"
-                  className="flex items-center gap-2 font-semibold text-foreground"
-                >
-                  <MessageSquareText
-                    className="size-5 text-primary"
-                    aria-hidden="true"
-                  />
-                  {t("feedback")}
-                </label>
-                <p className="text-sm text-muted-foreground">
-                  {hasChanges
-                    ? t("feedbackUnsaved")
-                    : submission.feedback
-                      ? t("feedbackSentAt", {
-                          date: format.dateTime(submission.feedback.updatedAt, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                            timeZone,
-                          }),
-                        })
-                      : t("feedbackNotSent")}
-                </p>
+            <form
+              onSubmit={(event) => void save(event)}
+              className="space-y-3 border-t pt-5"
+            >
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label
+                    htmlFor="task-feedback"
+                    className="flex items-center gap-2 text-sm font-semibold text-foreground"
+                  >
+                    <MessageSquareText
+                      className="size-4 text-primary"
+                      aria-hidden="true"
+                    />
+                    {t("feedback")}
+                  </label>
+                  {hasChanges && (
+                    <Badge variant="outline" role="status" aria-atomic="true">
+                      {t("feedbackUnsaved")}
+                    </Badge>
+                  )}
+                </div>
+                {!hasChanges && submission.feedback && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("feedbackSentAt", {
+                      date: format.dateTime(submission.feedback.updatedAt, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                        timeZone,
+                      }),
+                    })}
+                  </p>
+                )}
               </div>
+              {staleFeedback && (
+                <div
+                  role="alert"
+                  className="space-y-2 text-sm text-destructive"
+                >
+                  <p>{t("pdfCorrection.submissionChanged")}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-h-11"
+                    onClick={() => setFeedbackText(undefined)}
+                  >
+                    {t("pdfCorrection.useCurrentSubmission")}
+                  </Button>
+                </div>
+              )}
               <Textarea
                 id="task-feedback"
                 maxLength={2000}
-                rows={5}
+                rows={4}
                 value={currentFeedback}
-                onChange={(event) => setFeedbackText(event.target.value)}
+                onChange={(event) =>
+                  setFeedbackText({
+                    text: event.target.value,
+                    revision:
+                      feedback?.revision ?? submission.submissionRevision,
+                  })
+                }
                 disabled={saving}
                 placeholder={t("feedbackPlaceholder")}
               />
@@ -800,6 +884,7 @@ function TeacherSubmissionReview({
                 <Button
                   type="submit"
                   size="sm"
+                  className="pointer-coarse:min-h-11"
                   disabled={saving || !canSaveFeedback}
                   variant={
                     savedFeedback && !currentFeedback.trim()
@@ -816,6 +901,10 @@ function TeacherSubmissionReview({
                 </Button>
               </div>
             </form>
+            <TaskPreviousCorrection
+              correction={submission.previousCorrection}
+              timeZone={timeZone}
+            />
           </div>
         )}
       </SheetContent>

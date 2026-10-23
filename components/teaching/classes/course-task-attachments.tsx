@@ -1,23 +1,31 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import {
   Download,
   Eye,
   FileText,
   Image as ImageIcon,
   Paperclip,
+  Pencil,
   Presentation,
   X,
 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import dynamic from "next/dynamic";
+import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { FilePreview } from "@/components/file-preview";
+import { useTaskFileRequest } from "@/hooks/use-task-file-request";
+import { TaskPdfEditor } from "./task-pdf-editor";
 import {
   MAX_TASK_FILE_BYTES,
   MAX_TASK_TOTAL_BYTES,
@@ -27,11 +35,17 @@ import {
   validTaskFileSet,
 } from "@/lib/course-task-files";
 
+const TaskPdfViewer = dynamic(() => import("./task-pdf-viewer"), {
+  ssr: false,
+});
+
 export type TaskAttachment = {
   id: Id<"courseTaskFiles">;
   name: string;
   contentType: string;
   size: number;
+  version?: string;
+  correctedAt?: number;
 };
 
 function getTaskFileIcon(contentType: string) {
@@ -102,39 +116,6 @@ async function optimizeTaskImage(file: File) {
   } catch {
     return file;
   }
-}
-
-export function useTaskFileRequest() {
-  const { getToken } = useAuth();
-  return useCallback(
-    async (params: Record<string, string>, init?: RequestInit) => {
-      const token = await getToken({ template: "convex" });
-      if (!token) throw new Error("PERMISSION_DENIED");
-      const site =
-        process.env.NEXT_PUBLIC_CONVEX_SITE_URL ??
-        process.env.NEXT_PUBLIC_CONVEX_URL?.replace(
-          /\.convex\.cloud$/,
-          ".convex.site",
-        );
-      if (!site) throw new Error("UPLOAD_FAILED");
-      const url = new URL("/course-task-files", site);
-      url.search = new URLSearchParams(params).toString();
-      const response = await fetch(url, {
-        ...init,
-        headers: { ...init?.headers, Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        const result: unknown = await response.json().catch(() => null);
-        const error =
-          result && typeof result === "object" && "error" in result
-            ? result.error
-            : null;
-        throw new Error(typeof error === "string" ? error : "UPLOAD_FAILED");
-      }
-      return response;
-    },
-    [getToken],
-  );
 }
 
 export async function uploadTaskFiles(
@@ -334,16 +315,42 @@ export function TaskAttachmentList({
   onRemove,
   disabled,
   plain = false,
+  submission = false,
+  editPdfs = false,
+  compact = false,
 }: {
   files: TaskAttachment[];
   onRemove?: (id: Id<"courseTaskFiles">) => void;
   disabled?: boolean;
   plain?: boolean;
+  submission?: boolean;
+  editPdfs?: boolean;
+  compact?: boolean;
 }) {
   const t = useTranslations("courseTasks");
   const request = useTaskFileRequest();
+  const compactList = compact && plain && !onRemove && !editPdfs;
   const [downloading, setDownloading] = useState<string>();
-  const [previewFile, setPreviewFile] = useState<TaskAttachment>();
+  const [previewId, setPreviewId] = useState<string>();
+  const previewFile = files.find((file) => file.id === previewId);
+  const [pdf, setPdf] = useState<{
+    id: string;
+    editing: boolean;
+    trigger: HTMLButtonElement;
+  }>();
+  function openPreview(file: TaskAttachment, trigger: HTMLButtonElement) {
+    if (
+      editPdfs &&
+      plain &&
+      !onRemove &&
+      file.contentType === "application/pdf"
+    )
+      setPdf({ id: file.id, editing: false, trigger });
+    else setPreviewId(file.id);
+  }
+  function editPdf(file: TaskAttachment, trigger: HTMLButtonElement) {
+    setPdf({ id: file.id, editing: true, trigger });
+  }
 
   async function download(file: TaskAttachment) {
     setDownloading(file.id);
@@ -364,25 +371,41 @@ export function TaskAttachmentList({
 
   return (
     <>
-      <div className={plain ? "min-w-0 space-y-3" : "min-w-0 space-y-2"}>
+      <div
+        className={
+          compactList
+            ? "min-w-0 divide-y rounded-lg border bg-card px-3"
+            : plain
+              ? "min-w-0 space-y-3"
+              : "min-w-0 space-y-2"
+        }
+      >
         {files.map((file) => {
           const showFileDetails = plain && !onRemove;
+          const showEditAction =
+            editPdfs &&
+            showFileDetails &&
+            file.contentType === "application/pdf";
           const FileIcon = getTaskFileIcon(file.contentType);
           const canPreview =
             file.contentType === "application/pdf" ||
             ["image/jpeg", "image/png", "image/webp"].includes(
               file.contentType,
             );
-          const actionButtonClassName = `${showFileDetails ? "size-10" : ""} shrink-0 text-muted-foreground hover:bg-primary/5 hover:text-primary`;
+          const actionButtonClassName = `${showFileDetails ? "size-11" : ""} shrink-0 text-muted-foreground hover:bg-primary/5 hover:text-primary`;
           return (
             <div
               key={file.id}
               className={
-                showFileDetails
-                  ? "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_2.5rem_2.5rem] items-center rounded-xl border p-3 transition-colors hover:border-primary/30"
-                  : onRemove
-                    ? "flex w-full min-w-0 items-center gap-1 rounded-md border px-2 py-1 text-sm"
-                    : "flex w-full max-w-2xl min-w-0 items-center gap-2 rounded-lg py-1"
+                compactList
+                  ? "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_2.75rem_2.75rem] items-center py-2"
+                  : showEditAction
+                    ? "flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3 transition-colors hover:border-primary/30"
+                    : showFileDetails
+                      ? "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_2.75rem_2.75rem] items-center rounded-xl border p-3 transition-colors hover:border-primary/30"
+                      : onRemove
+                        ? "flex w-full min-w-0 items-center gap-1 rounded-md border px-2 py-1 text-sm"
+                        : "flex w-full max-w-2xl min-w-0 items-center gap-2 rounded-lg py-1"
               }
             >
               <Button
@@ -392,12 +415,14 @@ export function TaskAttachmentList({
                   onRemove
                     ? "h-auto min-w-0 flex-1 shrink justify-start gap-2 whitespace-normal px-1 py-1 text-left"
                     : plain
-                      ? `h-auto min-w-0 w-full flex-1 shrink justify-start gap-3 whitespace-normal px-0 py-0 text-left hover:bg-transparent has-[>svg]:px-0 ${canPreview ? "" : "col-span-3"}`
+                      ? `h-auto min-h-11 min-w-0 w-full flex-1 shrink justify-start gap-3 whitespace-normal px-0 py-0 text-left hover:bg-transparent has-[>svg]:px-0 ${showEditAction ? "basis-48" : !canPreview ? "col-span-3" : ""}`
                       : "h-auto max-w-full min-w-0 shrink justify-start gap-2 whitespace-normal text-left"
                 }
                 disabled={disabled || downloading === file.id}
-                onClick={() =>
-                  canPreview ? setPreviewFile(file) : void download(file)
+                onClick={(event) =>
+                  canPreview
+                    ? openPreview(file, event.currentTarget)
+                    : void download(file)
                 }
                 aria-label={
                   showFileDetails && canPreview
@@ -420,9 +445,9 @@ export function TaskAttachmentList({
                     >
                       {file.name}
                     </span>
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {file.name.split(".").at(-1)?.toUpperCase()}
-                    </span>
+                    {file.correctedAt && (
+                      <CorrectionDate value={file.correctedAt} />
+                    )}
                   </span>
                 ) : (
                   <span className="min-w-0 break-all">{file.name}</span>
@@ -440,36 +465,64 @@ export function TaskAttachmentList({
                     />
                   ))}
                 {showFileDetails && !canPreview && (
-                  <span className="ml-auto flex size-10 shrink-0 items-center justify-center text-muted-foreground">
+                  <span className="ml-auto flex size-11 shrink-0 items-center justify-center text-muted-foreground">
                     <Download className="size-4" aria-hidden="true" />
                   </span>
                 )}
               </Button>
-              {showFileDetails && canPreview && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={actionButtonClassName}
-                  disabled={disabled || downloading === file.id}
-                  onClick={() => setPreviewFile(file)}
-                  aria-label={`${t("preview")}: ${file.name}`}
-                >
-                  <Eye className="size-4" aria-hidden="true" />
-                </Button>
+              {showFileDetails && canPreview && !showEditAction && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={actionButtonClassName}
+                      disabled={disabled || downloading === file.id}
+                      onClick={(event) =>
+                        openPreview(file, event.currentTarget)
+                      }
+                      aria-label={`${t("preview")}: ${file.name}`}
+                    >
+                      <Eye className="size-4" aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("preview")}</TooltipContent>
+                </Tooltip>
               )}
-              {canPreview && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={actionButtonClassName}
-                  disabled={disabled || downloading === file.id}
-                  onClick={() => void download(file)}
-                  aria-label={`${t("download")}: ${file.name}`}
-                >
-                  <Download className="size-4" aria-hidden="true" />
-                </Button>
+              {showEditAction && (
+                <div className="ml-auto shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={disabled}
+                    className="shrink-0 border-primary/30 text-primary hover:bg-primary/5 hover:text-primary pointer-coarse:min-h-11"
+                    aria-label={`${t("pdfCorrection.edit")}: ${file.name}`}
+                    onClick={(event) => editPdf(file, event.currentTarget)}
+                  >
+                    <Pencil className="size-4" aria-hidden="true" />
+                    {t("pdfCorrection.edit")}
+                  </Button>
+                </div>
+              )}
+              {canPreview && !showEditAction && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={actionButtonClassName}
+                      disabled={disabled || downloading === file.id}
+                      onClick={() => void download(file)}
+                      aria-label={`${t("download")}: ${file.name}`}
+                    >
+                      <Download className="size-4" aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("download")}</TooltipContent>
+                </Tooltip>
               )}
               {onRemove && (
                 <Button
@@ -488,16 +541,45 @@ export function TaskAttachmentList({
           );
         })}
       </div>
+      {pdf && (
+        <TaskPdfEditor
+          key={pdf.id}
+          fileId={pdf.id}
+          initialEditing={pdf.editing}
+          returnFocus={pdf.trigger}
+          onClose={() => setPdf(undefined)}
+        />
+      )}
       {previewFile && (
         <FilePreview
-          key={previewFile.id}
+          key={`${previewFile.id}:${previewFile.version ?? ""}`}
           file={previewFile}
           request={request}
-          onClose={() => setPreviewFile(undefined)}
+          renderPdf={
+            submission
+              ? (src) => <TaskPdfViewer src={src} name={previewFile.name} />
+              : undefined
+          }
+          onClose={() => setPreviewId(undefined)}
           onDownload={() => void download(previewFile)}
           downloading={downloading === previewFile.id}
         />
       )}
     </>
+  );
+}
+
+function CorrectionDate({ value }: { value: number }) {
+  const t = useTranslations("courseTasks.pdfCorrection");
+  const format = useFormatter();
+  return (
+    <span className="text-xs text-muted-foreground">
+      {t("correctedAt", {
+        date: format.dateTime(value, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }),
+      })}
+    </span>
   );
 }

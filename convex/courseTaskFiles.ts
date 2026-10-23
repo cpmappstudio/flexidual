@@ -1,31 +1,15 @@
-import { RateLimiter, HOUR, MINUTE } from "@convex-dev/rate-limiter";
+import { HOUR } from "@convex-dev/rate-limiter";
 import { ConvexError, v } from "convex/values";
-import { components, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import {
   canSubmitCourseTask,
   getCourseEndAt,
   getCourseTaskAccess,
 } from "./model/courseTaskAccess";
-import { deleteCourseTaskFile } from "./model/courseTaskFiles";
+import { deleteCourseTaskFile, taskFileLimiter } from "./model/courseTaskFiles";
 import { getCurrentUserOrThrow } from "./users";
 import { isValidTaskFile } from "../lib/course-task-files";
-
-const limiter = new RateLimiter(components.rateLimiter, {
-  taskUploads: { kind: "token bucket", rate: 50, period: MINUTE, capacity: 50 },
-  taskUploadBytes: {
-    kind: "token bucket",
-    rate: 400 * 1024 * 1024,
-    period: HOUR,
-    capacity: 400 * 1024 * 1024,
-  },
-  taskDownloadBytes: {
-    kind: "token bucket",
-    rate: 5 * 1024 * 1024 * 1024,
-    period: HOUR,
-    capacity: 5 * 1024 * 1024 * 1024,
-  },
-});
 
 export const reserve = internalMutation({
   args: {
@@ -54,8 +38,11 @@ export const reserve = internalMutation({
     }
     if (!isValidTaskFile({ ...args, type: args.contentType }))
       throw new ConvexError("INVALID_TASK_FILE");
-    await limiter.limit(ctx, "taskUploads", { key: user._id, throws: true });
-    await limiter.limit(ctx, "taskUploadBytes", {
+    await taskFileLimiter.limit(ctx, "taskUploads", {
+      key: user._id,
+      throws: true,
+    });
+    await taskFileLimiter.limit(ctx, "taskUploadBytes", {
       key: user._id,
       count: args.size,
       throws: true,
@@ -150,17 +137,20 @@ export const cancelStaged = mutation({
 });
 
 export const read = internalMutation({
-  args: { id: v.id("courseTaskFiles") },
+  args: { id: v.id("courseTaskFiles"), version: v.optional(v.id("_storage")) },
   returns: v.object({
     storageId: v.id("_storage"),
     name: v.string(),
     contentType: v.string(),
     size: v.number(),
   }),
-  handler: async (ctx, { id }) => {
+  handler: async (ctx, { id, version }) => {
     const user = await getCurrentUserOrThrow(ctx);
     const file = await ctx.db.get("courseTaskFiles", id);
-    if (!file?.storageId || file.state !== "active")
+    if (
+      !file?.storageId ||
+      (file.state !== "active" && file.state !== "archived")
+    )
       throw new ConvexError("PERMISSION_DENIED");
     const task = await ctx.db.get("courseTasks", file.taskId);
     const access = task && (await getCourseTaskAccess(ctx, task, user._id));
@@ -179,7 +169,9 @@ export const read = internalMutation({
       )
         throw new ConvexError("PERMISSION_DENIED");
     }
-    await limiter.limit(ctx, "taskDownloadBytes", {
+    if (version !== undefined && file.storageId !== version)
+      throw new ConvexError("TASK_CORRECTION_CONFLICT");
+    await taskFileLimiter.limit(ctx, "taskDownloadBytes", {
       key: user._id,
       count: file.size,
       throws: true,

@@ -142,6 +142,7 @@ test("student sends files, teacher sees the current submission and can comment",
   });
   expect(own).toMatchObject({
     studentId: s.users.student,
+    studentName: "student Test",
     submittedAt: NOW,
     submittedLate: false,
     submissionRevision: 1,
@@ -159,6 +160,7 @@ test("student sends files, teacher sees the current submission and can comment",
     taskId: s.taskId,
     studentId: s.users.student,
     text: "  Good work  ",
+    expectedRevision: 1,
   });
   expect(
     (await s.student.query(api.courseTaskSubmissions.get, { taskId: s.taskId }))
@@ -181,6 +183,7 @@ test("resubmitting replaces and deletes all old files, clears feedback, and free
     taskId: s.taskId,
     studentId: s.users.student,
     text: "Needs changes",
+    expectedRevision: 1,
   });
   vi.setSystemTime(NOW + 3 * HOUR);
   const replacement = await s.upload("replacement.pdf");
@@ -731,4 +734,541 @@ test("OOXML Word and PowerPoint uploads are accepted by signature, but macro-ena
       )
     ).status,
   ).toBe(400);
+});
+
+async function correctionSetup() {
+  const s = await setup();
+  const id = await s.upload();
+  await s.student.mutation(api.courseTaskSubmissions.submit, {
+    taskId: s.taskId,
+    fileIds: [id],
+  });
+  const document = (await s.teacher.query(api.courseTaskCorrections.get, {
+    id,
+  }))!;
+  const correct = (
+    saveId: string,
+    client = s.teacher,
+    version = document.version,
+    body = s.pdf(saveId),
+  ) =>
+    client.fetch(
+      `/course-task-files?id=${id}&version=${version}&revision=${document.revision}&saveId=${saveId}`,
+      {
+        method: "PUT",
+        body,
+        headers: {
+          "Content-Type": "application/pdf",
+          "X-File-Size": String(body.size),
+        },
+      },
+    );
+  return { ...s, id, document, correct };
+}
+
+test("PDF correction replaces only the binary, preserving student ownership and submission status", async () => {
+  const s = await correctionSetup();
+  expect(s.document).toMatchObject({
+    studentId: s.users.student,
+    studentName: "student Test",
+    taskTitle: "Fractions",
+    courseName: "Math 5",
+  });
+  vi.setSystemTime(NOW + 3 * HOUR);
+  await s.t.run((ctx) =>
+    ctx.db.patch("courseTasks", s.taskId, {
+      manuallyClosedAt: NOW + 3 * HOUR,
+      allowLateSubmissions: false,
+    }),
+  );
+  const response = await s.correct("first-save");
+  expect(response.status, await response.clone().text()).toBe(200);
+  const { version } = await response.json();
+  const submission = await s.student.query(api.courseTaskSubmissions.get, {
+    taskId: s.taskId,
+  });
+  expect(submission).toMatchObject({
+    submittedAt: NOW,
+    submittedLate: false,
+    submissionRevision: 1,
+    files: [
+      {
+        id: s.id,
+        name: "work.pdf",
+        version,
+        correctedAt: NOW + 3 * HOUR,
+      },
+    ],
+  });
+  const stored = await s.t.run((ctx) => ctx.db.get("courseTaskFiles", s.id));
+  expect(stored?.uploadedBy).toBe(s.users.student);
+  expect(
+    await s.t.run((ctx) => ctx.storage.get(s.document.version)),
+  ).toBeNull();
+  expect(
+    await (await s.student.fetch(`/course-task-files?id=${s.id}`)).text(),
+  ).toContain("first-save");
+  expect(
+    (await s.teacher.query(api.courseTaskCorrections.get, { id: s.id }))
+      ?.version,
+  ).toBe(version);
+});
+
+test("a save retry is idempotent and stale editors cannot overwrite the winning correction", async () => {
+  const s = await correctionSetup();
+  const first = await s.correct("save-once");
+  const version = (await first.json()).version;
+  const before = await s.t.run((ctx) => ctx.db.get("courseTaskFiles", s.id));
+  vi.setSystemTime(NOW + HOUR);
+  expect((await s.correct("save-once")).status).toBe(200);
+  expect(await s.t.run((ctx) => ctx.db.get("courseTaskFiles", s.id))).toEqual(
+    before,
+  );
+  const stale = await s.correct("another-tab");
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toEqual({ error: "TASK_CORRECTION_CONFLICT" });
+  expect((await s.correct("second-save", s.teacher, version)).status).toBe(200);
+});
+
+test("student resubmission invalidates open corrections and text feedback", async () => {
+  const s = await correctionSetup();
+  const staged = await s.teacher.mutation(
+    internal.courseTaskCorrections.reserve,
+    {
+      id: s.id,
+      version: s.document.version,
+      revision: 1,
+      size: s.pdf("old").size,
+      saveId: "in-flight",
+    },
+  );
+  if (!staged.id) throw new Error("Expected staged correction");
+  const storageId = await s.t.run((ctx) => ctx.storage.store(s.pdf("old")));
+  await s.teacher.mutation(internal.courseTaskCorrections.attach, {
+    id: staged.id,
+    storageId,
+  });
+  const replacement = await s.upload("new.pdf");
+  await s.student.mutation(api.courseTaskSubmissions.submit, {
+    taskId: s.taskId,
+    fileIds: [replacement],
+  });
+  await expect(
+    s.teacher.mutation(internal.courseTaskCorrections.complete, {
+      id: staged.id,
+      storageId,
+    }),
+  ).rejects.toThrow("TASK_CORRECTION_UNAVAILABLE");
+  await s.t.mutation(internal.courseTaskCorrections.discard, {
+    id: staged.id,
+    fileId: s.id,
+    storageId,
+  });
+  expect(await s.t.run((ctx) => ctx.storage.get(storageId))).toBeNull();
+  await expect(
+    s.teacher.mutation(api.courseTaskSubmissions.setFeedback, {
+      taskId: s.taskId,
+      studentId: s.users.student,
+      text: "Old draft",
+      expectedRevision: 1,
+    }),
+  ).rejects.toThrow("TASK_SUBMISSION_CHANGED");
+  const current = await s.student.query(api.courseTaskSubmissions.get, {
+    taskId: s.taskId,
+  });
+  expect(current).toMatchObject({
+    submissionRevision: 2,
+    files: [{ id: replacement }],
+  });
+  expect(current.files[0].correctedAt).toBeUndefined();
+  expect(current.feedback).toBeUndefined();
+});
+
+test("corrections require manager permission when opening and again when committing", async () => {
+  const s = await correctionSetup();
+  for (const client of [s.student, s.classmate, s.outsider]) {
+    expect(
+      await client.query(api.courseTaskCorrections.get, { id: s.id }),
+    ).toBeNull();
+    expect((await s.correct("forbidden", client)).status).toBe(400);
+  }
+  const blob = s.pdf("pending");
+  const staged = await s.teacher.mutation(
+    internal.courseTaskCorrections.reserve,
+    {
+      id: s.id,
+      version: s.document.version,
+      revision: 1,
+      size: blob.size,
+      saveId: "revoked",
+    },
+  );
+  if (!staged.id) throw new Error("Expected staged correction");
+  const storageId = await s.t.run((ctx) => ctx.storage.store(blob));
+  await s.teacher.mutation(internal.courseTaskCorrections.attach, {
+    id: staged.id,
+    storageId,
+  });
+  await s.t.run((ctx) =>
+    ctx.db.patch("classes", s.classId, { teacherId: s.users.outsider }),
+  );
+  await expect(
+    s.teacher.mutation(internal.courseTaskCorrections.complete, {
+      id: staged.id,
+      storageId,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await s.t.mutation(internal.courseTaskCorrections.discard, {
+    id: staged.id,
+    fileId: s.id,
+    storageId,
+  });
+  expect(
+    await s.t.run(async (ctx) =>
+      Boolean(await ctx.storage.get(s.document.version)),
+    ),
+  ).toBe(true);
+});
+
+test("invalid PDF uploads never replace the current file and discard temporary records", async () => {
+  const s = await correctionSetup();
+  const response = await s.correct(
+    "bad-pdf",
+    s.teacher,
+    s.document.version,
+    new Blob(["not a pdf"], { type: "application/pdf" }),
+  );
+  expect(response.status).toBe(400);
+  expect(
+    (await s.teacher.query(api.courseTaskCorrections.get, { id: s.id }))
+      ?.version,
+  ).toBe(s.document.version);
+  const files = await s.t.run((ctx) =>
+    ctx.db.query("courseTaskFiles").collect(),
+  );
+  expect(files).toHaveLength(1);
+});
+
+test("different PDFs save independently and are archived together on resubmission", async () => {
+  const s = await setup();
+  const ids = [await s.upload("one.pdf"), await s.upload("two.pdf")];
+  await s.student.mutation(api.courseTaskSubmissions.submit, {
+    taskId: s.taskId,
+    fileIds: ids,
+  });
+  const documents = await Promise.all(
+    ids.map((id) => s.teacher.query(api.courseTaskCorrections.get, { id })),
+  );
+  for (const [index, id] of ids.entries()) {
+    const document = documents[index]!;
+    const blob = s.pdf(`correction-${index}`);
+    const response = await s.teacher.fetch(
+      `/course-task-files?id=${id}&version=${document.version}&revision=1&saveId=file-${index}`,
+      {
+        method: "PUT",
+        body: blob,
+        headers: {
+          "Content-Type": "application/pdf",
+          "X-File-Size": String(blob.size),
+        },
+      },
+    );
+    expect(response.status).toBe(200);
+  }
+  const current = await s.student.query(api.courseTaskSubmissions.get, {
+    taskId: s.taskId,
+  });
+  expect(current.files.every((file) => file.correctedAt === NOW)).toBe(true);
+  expect(current.submissionRevision).toBe(1);
+  const next = await s.upload("new.pdf");
+  await s.student.mutation(api.courseTaskSubmissions.submit, {
+    taskId: s.taskId,
+    fileIds: [next],
+  });
+  const resubmitted = await s.student.query(api.courseTaskSubmissions.get, {
+    taskId: s.taskId,
+  });
+  expect(resubmitted.previousCorrection?.files.map((file) => file.id)).toEqual(
+    ids,
+  );
+  expect(resubmitted.files.map((file) => file.id)).toEqual([next]);
+});
+
+test("abandoned correction uploads expire, while cleanup never deletes a committed correction", async () => {
+  const s = await correctionSetup();
+  const blob = s.pdf("abandoned");
+  const staged = await s.teacher.mutation(
+    internal.courseTaskCorrections.reserve,
+    {
+      id: s.id,
+      version: s.document.version,
+      revision: 1,
+      size: blob.size,
+      saveId: "abandoned",
+    },
+  );
+  if (!staged.id) throw new Error("Expected staged correction");
+  const storageId = await s.t.run((ctx) => ctx.storage.store(blob));
+  await s.teacher.mutation(internal.courseTaskCorrections.attach, {
+    id: staged.id,
+    storageId,
+  });
+  vi.setSystemTime(NOW + HOUR + 1);
+  await s.t.mutation(internal.courseTaskFiles.expire, { id: staged.id });
+  expect(await s.t.run((ctx) => ctx.storage.get(storageId))).toBeNull();
+  expect(
+    await s.t.run(async (ctx) =>
+      Boolean(await ctx.storage.get(s.document.version)),
+    ),
+  ).toBe(true);
+  const committed = await s.correct("success");
+  const { version } = await committed.json();
+  await s.t.mutation(internal.courseTaskCorrections.discard, {
+    id: staged.id,
+    fileId: s.id,
+    storageId: version,
+  });
+  expect(
+    await s.t.run(async (ctx) => Boolean(await ctx.storage.get(version))),
+  ).toBe(true);
+});
+
+test("deactivating a reviewer makes the editor unavailable without a query error", async () => {
+  const s = await correctionSetup();
+  await s.t.run((ctx) =>
+    ctx.db.patch("users", s.users.teacher, { isActive: false }),
+  );
+  expect(
+    await s.teacher.query(api.courseTaskCorrections.get, { id: s.id }),
+  ).toBeNull();
+  expect((await s.correct("inactive-user")).status).toBe(400);
+});
+
+test("concurrent retries of one save keep one binary and do not repeat a correction", async () => {
+  const s = await correctionSetup();
+  const blob = s.pdf("concurrent");
+  const stages = await Promise.all(
+    [0, 1].map(() =>
+      s.teacher.mutation(internal.courseTaskCorrections.reserve, {
+        id: s.id,
+        version: s.document.version,
+        revision: 1,
+        size: blob.size,
+        saveId: "same-operation",
+      }),
+    ),
+  );
+  const versions: string[] = [];
+  for (const staged of stages) {
+    if (!staged.id) throw new Error("Expected staged correction");
+    const storageId = await s.t.run((ctx) => ctx.storage.store(blob));
+    await s.teacher.mutation(internal.courseTaskCorrections.attach, {
+      id: staged.id,
+      storageId,
+    });
+    versions.push(
+      await s.teacher.mutation(internal.courseTaskCorrections.complete, {
+        id: staged.id,
+        storageId,
+      }),
+    );
+  }
+  expect(versions[0]).toBe(versions[1]);
+  expect(
+    await s.t.run((ctx) => ctx.db.query("courseTaskFiles").collect()),
+  ).toHaveLength(1);
+});
+
+test("resubmission retains only corrected PDFs without copying their binary, through unreviewed resubmissions", async () => {
+  const s = await correctionSetup();
+  expect((await s.correct("review-one")).status).toBe(200);
+  const corrected = await s.t.run((ctx) => ctx.db.get("courseTaskFiles", s.id));
+  const replacement = await s.upload("second.pdf");
+  vi.setSystemTime(NOW + 1_000);
+  await s.student.mutation(api.courseTaskSubmissions.submit, {
+    taskId: s.taskId,
+    fileIds: [replacement],
+  });
+  for (const client of [s.student, s.teacher]) {
+    const submission = await client.query(api.courseTaskSubmissions.get, {
+      taskId: s.taskId,
+      studentId: s.users.student,
+    });
+    expect(submission).toMatchObject({
+      submissionRevision: 2,
+      files: [{ id: replacement }],
+      previousCorrection: {
+        revision: 1,
+        submittedAt: NOW,
+        files: [{ id: s.id, version: corrected!.storageId, correctedAt: NOW }],
+      },
+    });
+    const response = await client.fetch(`/course-task-files?id=${s.id}`);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("review-one");
+  }
+  expect(
+    await s.t.run((ctx) => ctx.db.system.query("_storage").collect()),
+  ).toHaveLength(2);
+  const third = await s.upload("third.pdf");
+  await s.student.mutation(api.courseTaskSubmissions.submit, {
+    taskId: s.taskId,
+    fileIds: [third],
+  });
+  const current = await s.student.query(api.courseTaskSubmissions.get, {
+    taskId: s.taskId,
+  });
+  expect(current.previousCorrection).toMatchObject({
+    revision: 1,
+    submittedAt: NOW,
+    files: [{ id: s.id }],
+  });
+  expect(
+    await s.t.run((ctx) => ctx.db.get("courseTaskFiles", replacement)),
+  ).toBeNull();
+  expect(
+    await s.t.run((ctx) => ctx.db.system.query("_storage").collect()),
+  ).toHaveLength(2);
+  expect(
+    await s.teacher.query(api.courseTaskCorrections.get, { id: s.id }),
+  ).toBeNull();
+  expect((await s.correct("stale-review")).status).toBe(400);
+  expect((await s.student.fetch(`/course-task-files?id=${s.id}`)).status).toBe(
+    200,
+  );
+  for (const client of [s.classmate, s.outsider]) {
+    expect((await client.fetch(`/course-task-files?id=${s.id}`)).status).toBe(
+      403,
+    );
+    await expect(
+      client.query(api.courseTaskSubmissions.get, {
+        taskId: s.taskId,
+        studentId: s.users.student,
+      }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+  }
+});
+
+test("the next corrected resubmission replaces the archived set and deletes uncorrected files", async () => {
+  const s = await correctionSetup();
+  expect((await s.correct("old-review")).status).toBe(200);
+  const old = await s.t.run((ctx) => ctx.db.get("courseTaskFiles", s.id));
+  const next = await s.upload("next.pdf");
+  const uncorrected = await s.upload("uncorrected.pdf");
+  await s.student.mutation(api.courseTaskSubmissions.submit, {
+    taskId: s.taskId,
+    fileIds: [next, uncorrected],
+  });
+  const document = (await s.teacher.query(api.courseTaskCorrections.get, {
+    id: next,
+  }))!;
+  const body = s.pdf("new-review");
+  vi.setSystemTime(NOW + 1_000);
+  const response = await s.teacher.fetch(
+    `/course-task-files?id=${next}&version=${document.version}&revision=2&saveId=new-review`,
+    {
+      method: "PUT",
+      body,
+      headers: {
+        "Content-Type": "application/pdf",
+        "X-File-Size": String(body.size),
+      },
+    },
+  );
+  expect(response.status).toBe(200);
+  expect(
+    (await s.student.query(api.courseTaskSubmissions.get, { taskId: s.taskId }))
+      .previousCorrection?.revision,
+  ).toBe(1);
+  const uncorrectedFile = await s.t.run((ctx) =>
+    ctx.db.get("courseTaskFiles", uncorrected),
+  );
+  const latest = await s.upload("latest.pdf");
+  await s.student.mutation(api.courseTaskSubmissions.submit, {
+    taskId: s.taskId,
+    fileIds: [latest],
+  });
+  expect(
+    await s.student.query(api.courseTaskSubmissions.get, { taskId: s.taskId }),
+  ).toMatchObject({
+    submissionRevision: 3,
+    files: [{ id: latest }],
+    previousCorrection: {
+      revision: 2,
+      submittedAt: NOW,
+      files: [{ id: next, correctedAt: NOW + 1_000 }],
+    },
+  });
+  for (const file of [old!, uncorrectedFile!]) {
+    expect(
+      await s.t.run((ctx) => ctx.db.get("courseTaskFiles", file._id)),
+    ).toBeNull();
+    expect(await s.t.run((ctx) => ctx.storage.get(file.storageId!))).toBeNull();
+  }
+  expect(
+    await s.t.run((ctx) => ctx.db.system.query("_storage").collect()),
+  ).toHaveLength(2);
+  await s.teacher.mutation(api.courseTasks.remove, { taskId: s.taskId });
+  await s.t.mutation(internal.courseTasks.removeDeletedTask, {
+    taskId: s.taskId,
+  });
+  expect(
+    await s.t.run((ctx) => ctx.db.query("courseTaskFiles").collect()),
+  ).toHaveLength(0);
+  expect(
+    await s.t.run((ctx) => ctx.db.system.query("_storage").collect()),
+  ).toHaveLength(0);
+});
+
+test("an in-flight save cannot change an archived correction, and archived files cannot be resubmitted directly", async () => {
+  const s = await correctionSetup();
+  expect((await s.correct("saved-review")).status).toBe(200);
+  const saved = await s.t.run((ctx) => ctx.db.get("courseTaskFiles", s.id));
+  const blob = s.pdf("unsaved-review");
+  const staged = await s.teacher.mutation(
+    internal.courseTaskCorrections.reserve,
+    {
+      id: s.id,
+      version: saved!.storageId!,
+      revision: 1,
+      size: blob.size,
+      saveId: "in-flight-archived",
+    },
+  );
+  if (!staged.id) throw new Error("Expected staged correction");
+  const storageId = await s.t.run((ctx) => ctx.storage.store(blob));
+  await s.teacher.mutation(internal.courseTaskCorrections.attach, {
+    id: staged.id,
+    storageId,
+  });
+  const next = await s.upload("next.pdf");
+  await s.student.mutation(api.courseTaskSubmissions.submit, {
+    taskId: s.taskId,
+    fileIds: [next],
+  });
+  await expect(
+    s.teacher.mutation(internal.courseTaskCorrections.complete, {
+      id: staged.id,
+      storageId,
+    }),
+  ).rejects.toThrow("TASK_CORRECTION_UNAVAILABLE");
+  await s.t.mutation(internal.courseTaskCorrections.discard, {
+    id: staged.id,
+    fileId: s.id,
+    storageId,
+  });
+  expect(await s.t.run((ctx) => ctx.storage.get(storageId))).toBeNull();
+  await expect(
+    s.student.mutation(api.courseTaskSubmissions.submit, {
+      taskId: s.taskId,
+      fileIds: [s.id],
+    }),
+  ).rejects.toThrow("INVALID_TASK_FILES");
+  expect(
+    (await s.student.query(api.courseTaskSubmissions.get, { taskId: s.taskId }))
+      .previousCorrection?.files[0].version,
+  ).toBe(saved!.storageId);
+  expect(
+    await (await s.student.fetch(`/course-task-files?id=${s.id}`)).text(),
+  ).toContain("saved-review");
 });

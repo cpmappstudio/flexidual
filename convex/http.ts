@@ -64,6 +64,11 @@ http.route({
 });
 http.route({
   path: "/course-task-files",
+  method: "PUT",
+  handler: taskFiles.correct,
+});
+http.route({
+  path: "/course-task-files",
   method: "OPTIONS",
   handler: taskFiles.options,
 });

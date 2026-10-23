@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Download, RotateCcw } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ export function FilePreview({
   onClose,
   onDownload,
   downloading,
+  renderPdf,
 }: {
   file: { id: string; name: string; contentType: string };
   request: (
@@ -25,12 +26,14 @@ export function FilePreview({
   onClose: () => void;
   onDownload: () => void;
   downloading: boolean;
+  renderPdf?: (url: string) => ReactNode;
 }) {
   const t = useTranslations("filePreview");
   const [url, setUrl] = useState(initialUrl);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const pdfViewerUnavailable =
+    !renderPdf &&
     file.contentType === "application/pdf" &&
     typeof navigator !== "undefined" &&
     navigator.pdfViewerEnabled === false;
@@ -65,9 +68,9 @@ export function FilePreview({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         aria-describedby={undefined}
-        className="flex h-[min(90dvh,900px)] w-[calc(100vw-1rem)] max-w-none min-w-0 flex-col gap-3 overflow-hidden p-4 sm:w-[min(90vw,1100px)] sm:max-w-none sm:p-6"
+        className="flex h-[min(90dvh,900px)] w-[calc(100vw-1rem)] max-w-none min-w-0 flex-col gap-3 overflow-hidden p-4 sm:w-[min(90vw,1100px)] sm:max-w-none sm:p-6 [&_[data-slot=dialog-close]]:flex [&_[data-slot=dialog-close]]:size-11 [&_[data-slot=dialog-close]]:items-center [&_[data-slot=dialog-close]]:justify-center"
       >
-        <div className="flex min-w-0 items-center gap-3 pr-8">
+        <div className="flex min-w-0 items-center gap-2 pr-12 sm:gap-3">
           <DialogTitle className="min-w-0 flex-1 break-all text-base leading-snug">
             {file.name}
           </DialogTitle>
@@ -75,7 +78,7 @@ export function FilePreview({
             type="button"
             variant="outline"
             size="sm"
-            className="shrink-0"
+            className="min-h-11 min-w-11 shrink-0"
             onClick={onDownload}
             disabled={downloading}
             aria-label={`${t("download")}: ${file.name}`}
@@ -94,7 +97,12 @@ export function FilePreview({
               <p role="alert" className="text-sm text-muted-foreground">
                 {t("previewError")}
               </p>
-              <Button type="button" variant="outline" onClick={retryPreview}>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                onClick={retryPreview}
+              >
                 <RotateCcw className="size-4" aria-hidden="true" />
                 {t("retryPreview")}
               </Button>
@@ -108,12 +116,16 @@ export function FilePreview({
               {t("loadingPreview")}
             </div>
           ) : file.contentType === "application/pdf" ? (
-            <iframe
-              src={url}
-              title={file.name}
-              className="size-full bg-background"
-              onError={() => setFailed(true)}
-            />
+            renderPdf ? (
+              renderPdf(url)
+            ) : (
+              <iframe
+                src={url}
+                title={file.name}
+                className="size-full bg-background"
+                onError={() => setFailed(true)}
+              />
+            )
           ) : (
             <Image
               unoptimized

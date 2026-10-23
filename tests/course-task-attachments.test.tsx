@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Id } from "@/convex/_generated/dataModel";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   TaskAttachmentList,
   TaskFilePicker,
@@ -17,17 +18,64 @@ import {
 
 const getToken = vi.hoisted(() => vi.fn().mockResolvedValue("test-token"));
 
+vi.mock("@/i18n/navigation", () => ({
+  Link: ({ href, children, ...props }: React.ComponentProps<"a">) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ orgSlug: "test-campus" }),
+}));
+
+vi.mock("@/components/teaching/classes/task-pdf-editor", () => ({
+  TaskPdfEditor: ({
+    fileId,
+    initialEditing,
+    onClose,
+  }: {
+    fileId: string;
+    initialEditing?: boolean;
+    onClose: () => void;
+  }) => (
+    <div
+      data-testid="pdf-dialog"
+      data-file={fileId}
+      data-editing={String(initialEditing)}
+    >
+      <button onClick={onClose}>Close PDF</button>
+    </div>
+  ),
+}));
+vi.mock("next/dynamic", () => ({
+  default:
+    () =>
+    ({ src }: { src: string }) => (
+      <div data-testid="pdf-viewer" data-src={src} />
+    ),
+}));
+
 vi.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ getToken }),
 }));
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
+  useFormatter: () => ({ dateTime: (value: number) => String(value) }),
 }));
 
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", "https://test.convex.cloud");
   vi.stubGlobal("fetch", vi.fn());
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
 });
 
 afterEach(() => {
@@ -151,7 +199,7 @@ test("existing attachments share a row for preview, download and remove in the e
   ).not.toBeNull();
 });
 
-test("read-only attachments emphasize the file name and show its format without overflowing", () => {
+test("read-only attachments emphasize long file names without repeating their extension", () => {
   const file = {
     id: "long-file" as Id<"courseTaskFiles">,
     name: `${"long-assignment-document-".repeat(8)}.pdf`,
@@ -164,7 +212,7 @@ test("read-only attachments emphasize the file name and show its format without 
   expect(name.classList.contains("line-clamp-2")).toBe(true);
   expect(name.classList.contains("break-all")).toBe(true);
   expect(name.getAttribute("title")).toBe(file.name);
-  expect(screen.getByText("PDF")).not.toBeNull();
+  expect(screen.queryByText("PDF")).toBeNull();
   expect(
     screen.getByRole("button", { name: `preview: ${file.name}` }),
   ).not.toBeNull();
@@ -214,7 +262,7 @@ test("read-only file cards align the action slot for previewable and download-on
   expect(preview.querySelector(".lucide-eye")).not.toBeNull();
   expect(officeDownload.querySelector(".lucide-eye")).toBeNull();
   expect(preview.className).toBe(previewDownload.className);
-  expect(preview.classList.contains("size-10")).toBe(true);
+  expect(preview.classList.contains("size-11")).toBe(true);
   expect(preview.getAttribute("data-variant")).toBe(
     previewDownload.getAttribute("data-variant"),
   );
@@ -225,7 +273,7 @@ test("read-only file cards align the action slot for previewable and download-on
   expect(
     officeDownload
       .querySelector(".lucide-download")
-      ?.parentElement?.classList.contains("size-10"),
+      ?.parentElement?.classList.contains("size-11"),
   ).toBe(true);
 });
 
@@ -289,30 +337,33 @@ test.each([
   },
 );
 
-test("Office files retain download-only behavior", async () => {
-  const file = {
-    id: "office-id" as Id<"courseTaskFiles">,
-    name: "presentation.pptx",
-    contentType:
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    size: 100,
-  };
-  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:office");
-  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-  vi.mocked(fetch).mockResolvedValue(new Response(new Blob(["slides"])));
-  render(<TaskAttachmentList files={[file]} plain />);
+test.each([false, true])(
+  "Office files retain download-only behavior in compact=%s",
+  async (compact) => {
+    const file = {
+      id: "office-id" as Id<"courseTaskFiles">,
+      name: "presentation.pptx",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      size: 100,
+    };
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:office");
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    vi.mocked(fetch).mockResolvedValue(new Response(new Blob(["slides"])));
+    render(<TaskAttachmentList files={[file]} plain compact={compact} />);
 
-  expect(
-    screen.queryByRole("button", { name: `preview: ${file.name}` }),
-  ).toBeNull();
-  await act(async () => {
-    fireEvent.click(
-      screen.getByRole("button", { name: `download: ${file.name}` }),
-    );
-  });
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(screen.queryByRole("dialog")).toBeNull();
-});
+    expect(
+      screen.queryByRole("button", { name: `preview: ${file.name}` }),
+    ).toBeNull();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: `download: ${file.name}` }),
+      );
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  },
+);
 
 test("a failed preview can be retried without changing the attachment", async () => {
   const file = {
@@ -451,4 +502,226 @@ test("the assignment picker enforces the shared file count before upload", async
     expect(screen.getByRole("alert").textContent).toBe("fileLimits"),
   );
   expect(onChange).not.toHaveBeenCalled();
+});
+
+test("only current teacher PDFs expose a correction button that opens the shared dialog directly in edit mode", () => {
+  const files = [
+    {
+      id: "pdf" as Id<"courseTaskFiles">,
+      name: "work.pdf",
+      contentType: "application/pdf",
+      size: 10,
+    },
+    {
+      id: "image" as Id<"courseTaskFiles">,
+      name: "photo.png",
+      contentType: "image/png",
+      size: 10,
+    },
+  ];
+  const view = render(
+    <TaskAttachmentList files={files} plain submission editPdfs />,
+  );
+  const edit = screen.getByRole("button", {
+    name: "pdfCorrection.edit: work.pdf",
+  });
+  const name = screen.getByRole("button", { name: "work.pdf · preview" });
+  expect(within(name.parentElement!).getAllByRole("button")).toHaveLength(2);
+  expect(
+    screen.queryByRole("button", { name: "preview: work.pdf" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "download: work.pdf" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "preview: photo.png" }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "download: photo.png" }),
+  ).toBeTruthy();
+  fireEvent.click(edit);
+  expect(screen.getByTestId("pdf-dialog").getAttribute("data-editing")).toBe(
+    "true",
+  );
+  expect(screen.getByTestId("pdf-dialog").getAttribute("data-file")).toBe(
+    "pdf",
+  );
+  expect(
+    screen.queryByRole("button", { name: "pdfCorrection.edit: photo.png" }),
+  ).toBeNull();
+  fireEvent.click(screen.getByText("Close PDF"));
+  view.rerender(<TaskAttachmentList files={files} plain submission />);
+  expect(
+    screen.queryByRole("button", { name: "pdfCorrection.edit: work.pdf" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "preview: work.pdf" }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "download: work.pdf" }),
+  ).toBeTruthy();
+});
+
+test("an open submission preview reloads a replaced binary and closes when the file is removed", async () => {
+  const file = {
+    id: "file" as Id<"courseTaskFiles">,
+    name: "work.pdf",
+    contentType: "application/pdf",
+    size: 10,
+    version: "original",
+  };
+  vi.spyOn(URL, "createObjectURL")
+    .mockReturnValueOnce("blob:original")
+    .mockReturnValueOnce("blob:corrected");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  vi.mocked(fetch).mockResolvedValue(new Response(new Blob(["%PDF-1.4"])));
+  const view = render(<TaskAttachmentList files={[file]} plain submission />);
+  fireEvent.click(screen.getByRole("button", { name: "preview: work.pdf" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("pdf-viewer").getAttribute("data-src")).toBe(
+      "blob:original",
+    ),
+  );
+  vi.mocked(fetch).mockResolvedValue(
+    new Response(new Blob(["%PDF-1.4 corrected"])),
+  );
+  view.rerender(
+    <TaskAttachmentList
+      files={[{ ...file, version: "corrected" }]}
+      plain
+      submission
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId("pdf-viewer").getAttribute("data-src")).toBe(
+      "blob:corrected",
+    ),
+  );
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:original");
+  view.rerender(<TaskAttachmentList files={[]} plain submission />);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("preview and direct correction open the same dialog in their respective modes", () => {
+  const files = [
+    {
+      id: "pdf" as Id<"courseTaskFiles">,
+      name: "work.pdf",
+      contentType: "application/pdf",
+      size: 10,
+    },
+  ];
+  const view = render(
+    <TaskAttachmentList files={files} plain submission editPdfs />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "work.pdf · preview" }));
+  expect(screen.getByTestId("pdf-dialog").getAttribute("data-editing")).toBe(
+    "false",
+  );
+  fireEvent.click(screen.getByText("Close PDF"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "pdfCorrection.edit: work.pdf" }),
+  );
+  expect(screen.getByTestId("pdf-dialog").getAttribute("data-editing")).toBe(
+    "true",
+  );
+  view.rerender(<TaskAttachmentList files={[]} plain submission editPdfs />);
+  expect(screen.getByTestId("pdf-dialog")).toBeTruthy();
+});
+
+test.each([
+  ["answer.pdf", "application/pdf"],
+  ["photo.png", "image/png"],
+])(
+  "compact student files expose preview and download consistently, keeping downloading inside the viewer: %s",
+  async (name, contentType) => {
+    const file = {
+      id: "file" as Id<"courseTaskFiles">,
+      name,
+      contentType,
+      size: 100,
+      correctedAt: contentType === "application/pdf" ? 1_000 : undefined,
+    };
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:student-file");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const clickDownload = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    vi.mocked(fetch).mockImplementation(() =>
+      Promise.resolve(
+        new Response(new Blob(["content"], { type: contentType })),
+      ),
+    );
+    render(<TaskAttachmentList files={[file]} plain submission compact />);
+    const preview = screen.getByRole("button", { name: `${name} · preview` });
+    expect(screen.getAllByRole("button")).toHaveLength(3);
+    const previewIcon = screen.getByRole("button", {
+      name: `preview: ${name}`,
+    });
+    const downloadIcon = screen.getByRole("button", {
+      name: `download: ${name}`,
+    });
+    expect(previewIcon.nextElementSibling).toBe(downloadIcon);
+    expect(previewIcon.classList.contains("size-11")).toBe(true);
+    expect(downloadIcon.classList.contains("size-11")).toBe(true);
+    if (contentType === "application/pdf")
+      expect(screen.getByText("correctedAt")).toBeTruthy();
+    fireEvent.click(contentType === "application/pdf" ? preview : previewIcon);
+    const dialog = await screen.findByRole("dialog", { name });
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: `download: ${name}` }),
+    );
+    await waitFor(() => expect(clickDownload).toHaveBeenCalledOnce());
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(
+      screen.queryByRole("button", { name: /^pdfCorrection.edit/ }),
+    ).toBeNull();
+  },
+);
+
+test("compact files can download directly without opening a preview", async () => {
+  const file = {
+    id: "pdf" as Id<"courseTaskFiles">,
+    name: "work.pdf",
+    contentType: "application/pdf",
+    size: 100,
+  };
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:direct-download");
+  const clickDownload = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => {});
+  vi.mocked(fetch).mockResolvedValue(new Response(new Blob(["%PDF-1.4"])));
+  render(<TaskAttachmentList files={[file]} plain submission compact />);
+  fireEvent.click(screen.getByRole("button", { name: "download: work.pdf" }));
+  await waitFor(() => expect(clickDownload).toHaveBeenCalledOnce());
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("file action help appears on keyboard focus and Escape dismisses only the tooltip", async () => {
+  const onOpenChange = vi.fn();
+  const file = {
+    id: "pdf" as Id<"courseTaskFiles">,
+    name: "work.pdf",
+    contentType: "application/pdf",
+    size: 100,
+  };
+  render(
+    <Sheet open onOpenChange={onOpenChange}>
+      <SheetContent aria-describedby={undefined}>
+        <SheetTitle>Review</SheetTitle>
+        <TaskAttachmentList files={[file]} plain submission compact />
+      </SheetContent>
+    </Sheet>,
+  );
+  const preview = screen.getByRole("button", { name: "preview: work.pdf" });
+  act(() => preview.focus());
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip.textContent).toBe("preview");
+  fireEvent.keyDown(preview, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+  expect(screen.getByRole("dialog", { name: "Review" })).toBeTruthy();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
 });

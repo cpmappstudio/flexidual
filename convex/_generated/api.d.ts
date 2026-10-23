@@ -24,6 +24,7 @@ import type * as courseChatAttachmentHttp from "../courseChatAttachmentHttp.js";
 import type * as courseChatAttachments from "../courseChatAttachments.js";
 import type * as courseChatMessages from "../courseChatMessages.js";
 import type * as courseChatNotifications from "../courseChatNotifications.js";
+import type * as courseTaskCorrections from "../courseTaskCorrections.js";
 import type * as courseTaskFileHttp from "../courseTaskFileHttp.js";
 import type * as courseTaskFiles from "../courseTaskFiles.js";
 import type * as courseTaskReminders from "../courseTaskReminders.js";
@@ -122,6 +123,7 @@ declare const fullApi: ApiFromModules<{
   courseChatAttachments: typeof courseChatAttachments;
   courseChatMessages: typeof courseChatMessages;
   courseChatNotifications: typeof courseChatNotifications;
+  courseTaskCorrections: typeof courseTaskCorrections;
   courseTaskFileHttp: typeof courseTaskFileHttp;
   courseTaskFiles: typeof courseTaskFiles;
   courseTaskReminders: typeof courseTaskReminders;
