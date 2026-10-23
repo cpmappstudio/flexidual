@@ -1076,7 +1076,12 @@
         "excused": "Justificado",
         "absent": "Ausente"
       },
-      "saveConfirmation": "Ao salvar, você confirma os status sugeridos. Altere apenas os casos necessários.",
+      "saveConfirmation": "Ao salvar, você confirma a presença exibida. Altere os casos necessários.",
+      "markAllPresent": "Marcar todos como presentes",
+      "restoreSuggestions": "Restaurar sugestões",
+      "markAllPresentConfirmTitle": "Marcar todos como presentes?",
+      "markAllPresentConfirmDescription": "{count, plural, one {O # estudante ficará como presente} other {Os # estudantes ficarão como presentes}}. Isso substituirá a presença sugerida pelo sistema e qualquer ajuste manual.",
+      "markAllPresentConfirmAction": "Marcar todos",
       "backToLessons": "Voltar às lições",
       "continueToAttendance": "Continuar para presença",
       "submit": "Salvar e encerrar aula",

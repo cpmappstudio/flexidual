@@ -1078,7 +1078,12 @@
         "excused": "Ausencia justificada",
         "absent": "Ausente"
       },
-      "saveConfirmation": "Al guardar confirmas los estados sugeridos. Modifica únicamente los casos necesarios.",
+      "saveConfirmation": "Al guardar confirmas la asistencia que se muestra. Modifica los casos necesarios.",
+      "markAllPresent": "Marcar a todos como presentes",
+      "restoreSuggestions": "Restaurar sugerencias",
+      "markAllPresentConfirmTitle": "¿Marcar a todos como presentes?",
+      "markAllPresentConfirmDescription": "{count, plural, one {El # estudiante quedará como presente} other {Los # estudiantes quedarán como presentes}}. Esto reemplazará la asistencia sugerida por el sistema y cualquier ajuste manual.",
+      "markAllPresentConfirmAction": "Marcar a todos",
       "backToLessons": "Volver a lecciones",
       "continueToAttendance": "Continuar a asistencia",
       "submit": "Guardar y finalizar clase",
