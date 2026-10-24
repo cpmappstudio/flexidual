@@ -189,7 +189,7 @@
       "courseLabel": "Curso",
       "expandViewer": "Ampliar visualizador",
       "restoreViewer": "Restaurar tamanho do visualizador",
-      "edit": "Corrigir PDF",
+      "edit": "Avaliar PDF",
       "availability": "Correção disponível para PDF · Mais formatos em breve.",
       "correctedAt": "Corrigido em {date}",
       "submissionChanged": "O estudante enviou novamente. Este comentário pertence à entrega anterior e não pode ser salvo na nova.",

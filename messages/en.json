@@ -189,7 +189,7 @@
       "courseLabel": "Course",
       "expandViewer": "Expand viewer",
       "restoreViewer": "Restore viewer size",
-      "edit": "Correct PDF",
+      "edit": "Grade PDF",
       "availability": "Correction available for PDFs · More formats coming soon.",
       "correctedAt": "Corrected on {date}",
       "submissionChanged": "The student submitted again. This comment belongs to the previous submission and cannot be saved to the new one.",
