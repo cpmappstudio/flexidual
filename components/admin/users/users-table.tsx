@@ -34,6 +34,7 @@ interface UsersTableProps {
   requireCampusSelection?: boolean;
   hideRole?: boolean;
   readOnly?: boolean;
+  columnVisibilityKey?: string;
   onFilteredRowCountChange?: (count: number) => void;
   onRowClick?: (user: User) => void;
 }
@@ -71,6 +72,7 @@ export function UsersTable({
   requireCampusSelection = false,
   hideRole = false,
   readOnly = false,
+  columnVisibilityKey,
   onFilteredRowCountChange,
   onRowClick,
 }: UsersTableProps) {
@@ -170,11 +172,13 @@ export function UsersTable({
     createSearchColumn<User>(["fullName", "email"]),
     {
       accessorKey: "fullName",
+      // Keep the profile entry point and mobile row identity available.
+      enableHiding: false,
       header: directory.searching
         ? () => userHeader
         : createSortableHeader(userHeader),
       enableSorting: !directory.searching,
-      cell: ({ row }) => {
+      cell: ({ row, table }) => {
         return (
           <div className="flex items-center gap-3">
             <div className="hidden lg:block">
@@ -184,12 +188,14 @@ export function UsersTable({
               <div className="flex">
                 <span className="font-medium">{row.getValue("fullName")}</span>
               </div>
-              <div className="lg:hidden">
-                <span className="font-mono">{t("teacher.email")}:</span>
-                <span className="text-muted-foreground">
-                  {row.original.email || "-"}
-                </span>
-              </div>
+              {table.getColumn("email")?.getIsVisible() && (
+                <div className="lg:hidden">
+                  <span className="font-mono">{t("teacher.email")}:</span>
+                  <span className="text-muted-foreground">
+                    {row.original.email || "-"}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -201,7 +207,7 @@ export function UsersTable({
         ? t("teacher.email")
         : createSortableHeader(t("teacher.email")),
       enableSorting: !directory.searching,
-      meta: { className: "hidden lg:table-cell" },
+      meta: { className: "hidden lg:table-cell", label: t("teacher.email") },
     },
     ...(isStudentTable
       ? [
@@ -211,6 +217,7 @@ export function UsersTable({
               ? t("student.grade")
               : createSortableHeader(t("student.grade")),
             enableSorting: !directory.searching,
+            meta: { label: t("student.grade") },
             filterFn: (row, id, filterValues: string[]) =>
               filterValues.includes((row.getValue(id) as string) ?? ""),
             cell: ({ row }) => {
@@ -225,6 +232,7 @@ export function UsersTable({
       : []),
     {
       accessorKey: "isActive",
+      meta: { label: t("common.status") },
       header: directory.searching
         ? t("common.status")
         : createSortableHeader(t("common.status")),
@@ -276,6 +284,7 @@ export function UsersTable({
         data={users}
         server={directory.enabled ? directory.server : undefined}
         columns={columns}
+        columnVisibilityKey={columnVisibilityKey}
         filterColumn="search"
         filterPlaceholder={t("common.searchByName")}
         emptyMessage={

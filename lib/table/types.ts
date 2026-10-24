@@ -23,6 +23,8 @@ export interface DataTableProps<TData> {
   filterPlaceholder?: string;
   emptyMessage?: string;
   columnsMenuLabel?: string;
+  /** Opt-in browser preference key, scoped by the caller to the user and table. */
+  columnVisibilityKey?: string;
   exportButtonLabel?: string;
   filterConfigs?: FilterConfig[];
   filterAllLabel?: string;

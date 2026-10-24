@@ -10,12 +10,14 @@ import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useRouter } from "@/i18n/navigation";
 import * as React from "react";
 import { TableResultCount } from "@/components/table/table-result-count";
+import { useAuth } from "@clerk/nextjs";
 
 export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
   const t = useTranslations("navigation");
   const router = useRouter();
   const { access, isLoading: isAccessLoading } = useStaffAccess();
   const isStudents = type === "students";
+  const { userId } = useAuth();
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const params = useParams<{ orgSlug?: string }>();
   const basePath = `/${params.orgSlug}`;
@@ -66,6 +68,11 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
           allowedRoles={isStudents ? ["student"] : ["teacher"]}
           scope={{ orgType: "campus", orgId: campusId }}
           hideRole
+          columnVisibilityKey={
+            isStudents && userId
+              ? `flexidual:table-columns:v1:${userId}:${campusId}:students`
+              : undefined
+          }
           readOnly={!access?.canManagePeople}
           onFilteredRowCountChange={setVisibleCount}
           onRowClick={

@@ -138,6 +138,7 @@ const listCalls = () =>
     .filter(([name, args]) => name === "people:list" && args !== "skip")
     .map(([, args]) => args);
 beforeEach(() => {
+  localStorage.clear();
   vi.useFakeTimers();
   state.calls.mockClear();
   state.prepare.mockClear();
@@ -156,6 +157,54 @@ beforeEach(() => {
       removeEventListener: vi.fn(),
     })),
   );
+});
+
+test("student column choices keep the real server paginator and grade filtering unchanged", async () => {
+  render(table({ columnVisibilityKey: "columns:teacher:campus-a:students" }));
+  const initialArgs = JSON.stringify(listCalls().at(-1));
+  fireEvent.keyDown(screen.getByRole("button", { name: "table.columns" }), {
+    key: "Enter",
+  });
+  fireEvent.click(
+    screen.getByRole("menuitemcheckbox", { name: "student.grade" }),
+  );
+  await act(async () =>
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" }),
+  );
+  expect(
+    screen.queryByRole("columnheader", { name: "student.grade" }),
+  ).toBeNull();
+  fireEvent.keyDown(screen.getByRole("button", { name: "table.columns" }), {
+    key: "Enter",
+  });
+  fireEvent.click(
+    screen.getByRole("menuitemcheckbox", { name: "teacher.email" }),
+  );
+  await act(async () =>
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" }),
+  );
+  // The mobile email inside the name cell must follow the same column preference.
+  expect(screen.queryByText("teacher.email:")).toBeNull();
+  expect(
+    screen.queryByRole("columnheader", { name: "teacher.email" }),
+  ).toBeNull();
+  expect(JSON.stringify(listCalls().at(-1))).toBe(initialArgs);
+  fireEvent.click(screen.getByRole("button", { name: "Choose grade" }));
+  expect(listCalls().at(-1)).toMatchObject({
+    grade: "05",
+    paginationOpts: { cursor: null },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Go to next page" }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(screen.getByText("Second page")).toBeTruthy();
+  expect(listCalls().at(-1)).toMatchObject({ grade: "05" });
+  expect(
+    state.calls.mock.calls.filter(
+      ([name, args]) => name === "users:getUsers" && args !== "skip",
+    ),
+  ).toHaveLength(0);
 });
 afterEach(() => {
   cleanup();
