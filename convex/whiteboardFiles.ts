@@ -1,5 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { RateLimiter, HOUR, MINUTE } from "@convex-dev/rate-limiter";
+import type { MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { components } from "./_generated/api";
 import { internalMutation, mutation } from "./_generated/server";
 import { requireLiveWhiteboardManager } from "./model/whiteboardAccess";
@@ -61,24 +63,7 @@ export const authorizeUpload = internalMutation({
     );
     if (getLiveRoomName(schedule) !== args.expectedLiveRoomName)
       throw new ConvexError("STALE_LIVE_ACTIVATION");
-    if (
-      !/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/.test(args.fileId) ||
-      !Number.isFinite(args.created) ||
-      !Number.isSafeInteger(args.size) ||
-      args.size <= 0 ||
-      args.size > MAX_WHITEBOARD_FILE_SIZE ||
-      !imageTypes.has(args.contentType)
-    )
-      throw new ConvexError("INVALID_WHITEBOARD_FILE");
-    await limiter.limit(ctx, "whiteboardUploads", {
-      key: user._id,
-      throws: true,
-    });
-    await limiter.limit(ctx, "whiteboardUploadBytes", {
-      key: user._id,
-      count: args.size,
-      throws: true,
-    });
+    await validateAndLimitWhiteboardUpload(ctx, user._id, args);
     return null;
   },
 });
@@ -132,3 +117,28 @@ export const complete = internalMutation({
     return ref;
   },
 });
+
+export async function validateAndLimitWhiteboardUpload(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  args: { fileId: string; created: number; size: number; contentType: string },
+) {
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/.test(args.fileId) ||
+    !Number.isFinite(args.created) ||
+    !Number.isSafeInteger(args.size) ||
+    args.size <= 0 ||
+    args.size > MAX_WHITEBOARD_FILE_SIZE ||
+    !imageTypes.has(args.contentType)
+  )
+    throw new ConvexError("INVALID_WHITEBOARD_FILE");
+  await limiter.limit(ctx, "whiteboardUploads", {
+    key: userId,
+    throws: true,
+  });
+  await limiter.limit(ctx, "whiteboardUploadBytes", {
+    key: userId,
+    count: args.size,
+    throws: true,
+  });
+}

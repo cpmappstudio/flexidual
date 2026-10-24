@@ -210,6 +210,8 @@ export default defineSchema({
     chatStudentAttachmentsEnabled: v.optional(v.boolean()),
     chatDisabled: v.optional(v.boolean()),
     chatArchivedAt: v.optional(v.number()),
+    notebookArchivedAt: v.optional(v.number()),
+    notebookInitializedAt: v.optional(v.number()),
     chatLastPinnedAt: v.optional(v.number()),
     chatNotificationsClearedThrough: v.optional(v.number()),
 
@@ -969,13 +971,52 @@ export default defineSchema({
    * upgraded writers cannot overwrite buckets with a stale legacy snapshot.
    */
   whiteboardSceneManifests: defineTable({
-    roomName: v.string(),
+    roomName: v.optional(v.string()),
+    presentedPageId: v.optional(v.id("courseNotebookPages")),
+    pageId: v.optional(v.id("courseNotebookPages")),
     fromLegacy: v.boolean(),
     generation: v.number(),
     bucketIds: v.array(v.number()),
     legacyOrder: v.array(v.string()),
     recordingToken: v.optional(v.string()),
-  }).index("by_roomName", ["roomName"]),
+  })
+    .index("by_roomName", ["roomName"])
+    .index("by_pageId", ["pageId"]),
+
+  courseNotebookPages: defineTable({
+    classId: v.id("classes"),
+    title: v.string(),
+    createdBy: v.id("users"),
+    // Hidden, not destroyed: pending drafts and undo in another editor can revive it.
+    retiredAt: v.optional(v.number()),
+    // Legacy previews remain readable until their first write to courseNotebookPreviews.
+    previewStorageId: v.optional(v.id("_storage")),
+    previewVersion: v.optional(v.number()),
+    previewRevision: v.optional(v.string()),
+    previewRequestedRevision: v.optional(v.string()),
+  })
+    .index("by_classId", ["classId"])
+    .index("by_classId_and_retiredAt", ["classId", "retiredAt"])
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["classId", "retiredAt"],
+    }),
+
+  courseNotebookPreviews: defineTable({
+    pageId: v.id("courseNotebookPages"),
+    previewStorageId: v.optional(v.id("_storage")),
+    previewVersion: v.optional(v.number()),
+    previewRevision: v.optional(v.string()),
+    previewRequestedRevision: v.optional(v.string()),
+  }).index("by_pageId", ["pageId"]),
+
+  courseNotebookFiles: defineTable({
+    pageId: v.id("courseNotebookPages"),
+    fileId: v.string(),
+    storageId: v.id("_storage"),
+    mimeType: v.string(),
+    created: v.number(),
+  }).index("by_pageId_and_fileId", ["pageId", "fileId"]),
 
   whiteboardSceneBuckets: defineTable({
     manifestId: v.id("whiteboardSceneManifests"),
@@ -1002,6 +1043,15 @@ export default defineSchema({
     entries: v.array(
       v.object({ revision: v.number(), parts: v.array(v.string()) }),
     ),
+  }).index("by_manifestId_and_bucketId", ["manifestId", "bucketId"]),
+
+  // Small preview consistency metadata, independent of drawing-sized history.
+  whiteboardScenePreviewSignatures: defineTable({
+    manifestId: v.id("whiteboardSceneManifests"),
+    bucketId: v.number(),
+    generation: v.number(),
+    signature: v.string(),
+    hasContent: v.optional(v.boolean()),
   }).index("by_manifestId_and_bucketId", ["manifestId", "bucketId"]),
 
   whiteboardSessions: defineTable({

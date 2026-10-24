@@ -36,7 +36,8 @@ vi.mock("convex/react", () => ({
     return state.legacy;
   },
   useQueries: (queries: unknown) => {
-    state.queries(queries);
+    // Record occupied bucket subscriptions, not the disabled notebook-image hook.
+    if (Object.keys(queries as object).length) state.queries(queries);
     return state.buckets;
   },
 }));

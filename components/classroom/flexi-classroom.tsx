@@ -851,6 +851,7 @@ export default function FlexiClassroom({
         >
           {isCompanion ? (
             <CompanionClassroomUI
+              courseId={scheduleDetails.class._id}
               countdown={countdown}
               roomName={roomName}
               isFullscreen={isFullscreen}

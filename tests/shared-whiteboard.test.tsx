@@ -1,4 +1,5 @@
 import { act, cleanup, render, renderHook } from "@testing-library/react";
+import { createHash } from "node:crypto";
 import {
   StrictMode,
   useCallback,
@@ -18,6 +19,11 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { Id } from "@/convex/_generated/dataModel";
 import { SharedWhiteboard } from "@/components/classroom/shared-whiteboard";
+import { NotebookPageEditor } from "@/components/whiteboard/notebook-page-editor";
+import {
+  WhiteboardEditor,
+  type WhiteboardEditorProps,
+} from "@/components/whiteboard/whiteboard-editor";
 import { useWhiteboardRealtime } from "@/hooks/use-whiteboard-realtime";
 import type { Room } from "livekit-client";
 import {
@@ -62,9 +68,11 @@ const state = vi.hoisted(() => ({
     legacyOrder: string[];
     fromLegacy: boolean;
     sourceId?: string;
+    notebookPageId?: Id<"courseNotebookPages">;
   },
   recoveryError: undefined as unknown,
   sceneHook: vi.fn(),
+  roomContext: vi.fn(),
   Canvas: undefined as ComponentType<ExcalidrawProps> | undefined,
   buckets: {} as Record<string, unknown>,
   query: vi.fn(),
@@ -73,6 +81,8 @@ const state = vi.hoisted(() => ({
   audience: ["student"] as string[] | undefined,
   save: vi.fn(),
   otherMutation: vi.fn(),
+  previewStart: vi.fn(),
+  previewExport: vi.fn(),
   reportError: vi.fn(),
   reportDiagnostic: vi.fn(),
   token: vi.fn(async () => "test-token"),
@@ -92,6 +102,15 @@ const state = vi.hoisted(() => ({
     },
   },
 }));
+vi.mock("@excalidraw/excalidraw", () => ({
+  exportToBlob: state.previewExport,
+}));
+vi.mock("@/hooks/use-notebook-page-scene", () => ({
+  useNotebookPageScene: () => ({
+    scene: state.scene ?? { elements: [], fileRefs: {} },
+    manifest: state.manifest,
+  }),
+}));
 vi.mock("@/lib/error-tracking", () => ({
   reportRuntimeError: state.reportError,
   reportWhiteboardDiagnostic: state.reportDiagnostic,
@@ -104,7 +123,10 @@ vi.mock("next/dynamic", () => ({
   },
 }));
 vi.mock("@livekit/components-react", () => ({
-  useRoomContext: () => state.room,
+  useRoomContext: () => {
+    state.roomContext();
+    return state.room;
+  },
 }));
 vi.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ getToken: state.token }),
@@ -133,10 +155,15 @@ vi.mock("convex/react", () => ({
               ]),
             )
           : (state.queries(queries) ?? {}),
-  useMutation: (ref: Parameters<typeof getFunctionName>[0]) =>
-    getFunctionName(ref) === "whiteboardSessions:applySceneDelta"
+  useMutation: (ref: Parameters<typeof getFunctionName>[0]) => {
+    const name = getFunctionName(ref);
+    return name === "whiteboardSessions:applySceneDelta" ||
+      name === "courseNotebook:applyDelta"
       ? state.save
-      : state.otherMutation,
+      : name === "courseNotebookFiles:beginPreview"
+        ? state.previewStart
+        : state.otherMutation;
+  },
 }));
 
 type ChangeArgs = Parameters<NonNullable<ExcalidrawProps["onChange"]>>;
@@ -374,6 +401,8 @@ function canvasLifecycle() {
         emit();
       }),
       getSceneElementsIncludingDeleted: () => model.elements,
+      getSceneElements: () =>
+        model.elements.filter((element) => !element.isDeleted),
       getFiles: () => model.files,
       getAppState: () => model.appState,
       onPointerUp: (callback: () => void) => {
@@ -462,6 +491,16 @@ function receiveScene(elements: ChangeArgs[0], pendingBucket?: number) {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  // Keep real SHA-256 values but avoid native crypto I/O crossing fake-timer
+  // test boundaries. Chrome coverage uses the actual Web Crypto implementation.
+  vi.spyOn(crypto.subtle, "digest").mockImplementation(
+    async (_, value) =>
+      Uint8Array.from(
+        createHash("sha256")
+          .update(new Uint8Array(value as ArrayBuffer))
+          .digest(),
+      ).buffer,
+  );
   vi.stubGlobal("indexedDB", undefined);
   state.props = {};
   state.Canvas = undefined;
@@ -493,6 +532,10 @@ beforeEach(() => {
     generation: 1,
     conflictsParts: [],
   });
+  state.previewStart.mockReset().mockResolvedValue(1);
+  state.previewExport
+    .mockReset()
+    .mockResolvedValue(new Blob(["preview"], { type: "image/png" }));
   localStorage.clear();
   vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", "https://example.convex.cloud");
 });
@@ -503,6 +546,883 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.useRealTimers();
+});
+
+test.each([false, true])(
+  "only writable live canvases expose the embedded course Board navigation, readonly=%s",
+  async (readonly) => {
+    render(
+      <SharedWhiteboard
+        roomName="test-room"
+        courseId={"course-id" as Id<"classes">}
+        isReadonly={readonly}
+      />,
+    );
+    await flush(1);
+    if (readonly) expect(state.props.renderTopRightUI).toBeUndefined();
+    else {
+      const control = state.props.renderTopRightUI?.(
+        false,
+        {} as Parameters<NonNullable<ExcalidrawProps["renderTopRightUI"]>>[1],
+      );
+      expect(control?.props).toMatchObject({
+        title: "tab",
+        onClick: expect.any(Function),
+      });
+    }
+  },
+);
+
+test("presented notebook pages share drafts with the course editor and isolate late saves, images and full-storage reload", async () => {
+  const pageA = "page-live-a" as Id<"courseNotebookPages">;
+  const pageB = "page-live-b" as Id<"courseNotebookPages">;
+  const file = imageFile();
+  const image = imageElement(file);
+  localStorage.setItem(
+    `wb_notebook:${pageA}`,
+    JSON.stringify({
+      elements: [shape("pending-stroke"), image],
+      files: { [file.id]: file },
+      saved: false,
+    }),
+  );
+  quota();
+  downloaded(file);
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  state.scene = {
+    ...cloudScene([shape("confirmed"), image]),
+    fileRefs: { [file.id]: imageRef(file) },
+  };
+  state.manifest = {
+    ...state.manifest,
+    sourceId: "source-a",
+    notebookPageId: pageA,
+  };
+  let release!: () => void;
+  const savedArgs: { pageId: string }[] = [];
+  let savedA = state.scene.elements;
+  let held = false;
+  state.save.mockImplementation(async (args) => {
+    savedArgs.push(args);
+    if (args.pageId === pageA && !held) {
+      held = true;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    }
+    if (args.pageId === pageA)
+      savedA = mergeWhiteboardElements(
+        savedA,
+        JSON.parse(joinWhiteboardPayload(args.parts)),
+      );
+    return { conflictsParts: [] };
+  });
+  const view = await mount();
+  await flush(400);
+  expect(savedArgs[0].pageId).toBe(pageA);
+  expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
+  act(() =>
+    lifecycle.current().draw([
+      ...lifecycle.current().api.getSceneElementsIncludingDeleted(),
+      {
+        ...shape("late-local"),
+        index: "a3" as ChangeArgs[0][number]["index"],
+      },
+    ]),
+  );
+  const aElements = lifecycle.current().api.getSceneElementsIncludingDeleted();
+  state.scene = cloudScene([shape("page-b-only")]);
+  state.manifest = {
+    ...state.manifest,
+    sourceId: "source-b",
+    notebookPageId: pageB,
+  };
+  view.rerender(<SharedWhiteboard roomName="test-room" />);
+  await flush(400);
+  expect(
+    lifecycle
+      .current()
+      .api.getSceneElementsIncludingDeleted()
+      .map((element) => element.id),
+  ).toEqual(["page-b-only"]);
+  await act(async () => release());
+  await flush(3100);
+  expect(savedA.map((element) => element.id)).toEqual(
+    expect.arrayContaining([
+      "confirmed",
+      "pending-stroke",
+      "late-local",
+      "image",
+    ]),
+  );
+  expect(savedArgs.every((args) => args.pageId === pageA)).toBe(true);
+  expect(state.previewExport).toHaveBeenCalledTimes(1);
+  expect(state.previewStart).toHaveBeenCalledWith(
+    expect.objectContaining({ pageId: pageA }),
+  );
+  // A full cache retains A's preceding draft; reopening merges it with cloud data.
+  state.scene = {
+    ...cloudScene(savedA),
+    fileRefs: { [file.id]: imageRef(file) },
+  };
+  state.manifest = {
+    ...state.manifest,
+    sourceId: "source-a",
+    notebookPageId: pageA,
+  };
+  view.rerender(<SharedWhiteboard roomName="test-room" />);
+  await flush(400);
+  expect(
+    lifecycle
+      .current()
+      .api.getSceneElementsIncludingDeleted()
+      .map((element) => element.id),
+  ).toEqual(
+    expect.arrayContaining([
+      "confirmed",
+      "pending-stroke",
+      "late-local",
+      "image",
+    ]),
+  );
+  view.unmount();
+  await flush(1);
+  await mount("test-room", true);
+  await flush(400);
+  expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+    aElements,
+  );
+  expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
+  state.save.mockClear();
+  act(() => lifecycle.current().draw([shape("student-cannot-edit")]));
+  await flush(400);
+  expect(state.save).not.toHaveBeenCalled();
+});
+
+test.each([false, true])(
+  "notebook previews wait for delayed images and save replies, preserving full-storage drafts on reload (image first: %s)",
+  async (imageFirst) => {
+    const file = imageFile();
+    const image = imageElement(file);
+    const pending = shape("pending-stroke");
+    localStorage.setItem(
+      "wb_notebook:page-a",
+      JSON.stringify({
+        elements: [pending],
+        files: {},
+        saved: false,
+      }),
+    );
+    quota();
+    state.scene = {
+      ...cloudScene([shape("confirmed"), image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    const fetcher = downloaded(file);
+    const download = fetcher.getMockImplementation()!;
+    let releaseImage!: () => void;
+    fetcher.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => {
+        releaseImage = resolve;
+      });
+      return download(...args);
+    });
+    cloudWrites();
+    const save = state.save.getMockImplementation()!;
+    let releaseSave!: () => void;
+    state.save.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => {
+        releaseSave = resolve;
+      });
+      return save(...args);
+    });
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const view = render(
+      <NotebookPageEditor
+        pageId={"page-a" as Id<"courseNotebookPages">}
+        canEdit
+      />,
+    );
+    await flush(1);
+    await flush(400);
+    expect(releaseImage).toBeTypeOf("function");
+    expect(releaseSave).toBeTypeOf("function");
+    await act(async () => (imageFirst ? releaseImage() : releaseSave()));
+    await flush(4000);
+    expect(state.previewExport).not.toHaveBeenCalled();
+    await act(async () => (imageFirst ? releaseSave() : releaseImage()));
+    await flush(3100);
+    expect(state.previewExport).not.toHaveBeenCalled();
+    expect(state.save).toHaveBeenCalledTimes(1);
+    expect(state.previewStart).not.toHaveBeenCalled();
+    // Repeated file notifications must not save or export the same revision again.
+    act(() => lifecycle.current().api.addFiles([file]));
+    await flush(4000);
+    expect(state.save).toHaveBeenCalledTimes(1);
+    expect(state.previewExport).not.toHaveBeenCalled();
+    // Undo/redo remain versioned scene changes, not a replacement of the editor.
+    const elements = lifecycle.current().api.getSceneElementsIncludingDeleted();
+    act(() =>
+      lifecycle
+        .current()
+        .draw(
+          elements.map((element) =>
+            element.id === pending.id
+              ? { ...element, version: 2, versionNonce: 2, isDeleted: true }
+              : element,
+          ),
+        ),
+    );
+    await flush(3400);
+    expect(state.previewExport).not.toHaveBeenCalled();
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: pending.id, isDeleted: true }),
+      ]),
+    );
+    act(() =>
+      lifecycle
+        .current()
+        .draw(
+          elements.map((element) =>
+            element.id === pending.id
+              ? { ...element, version: 3, versionNonce: 3 }
+              : element,
+          ),
+        ),
+    );
+    await flush(3400);
+    expect(state.previewExport).not.toHaveBeenCalled();
+    view.unmount();
+    await flush(1);
+    expect(state.previewExport).toHaveBeenCalledTimes(1);
+    const exported = state.previewExport.mock.calls[0][0];
+    expect(exported.files[file.id]).toEqual(file);
+    expect(exported.elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: pending.id,
+          version: 3,
+          isDeleted: false,
+        }),
+        image,
+      ]),
+    );
+    const reopened = render(
+      <NotebookPageEditor
+        pageId={"page-a" as Id<"courseNotebookPages">}
+        canEdit
+      />,
+    );
+    await flush(1);
+    await flush(400);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: pending.id,
+          version: 3,
+          isDeleted: false,
+        }),
+        image,
+      ]),
+    );
+    expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
+    reopened.rerender(
+      <NotebookPageEditor
+        pageId={"page-a" as Id<"courseNotebookPages">}
+        canEdit={false}
+      />,
+    );
+    await flush(1);
+    state.save.mockClear();
+    state.previewStart.mockClear();
+    act(() => lifecycle.current().draw([shape("forbidden")]));
+    await flush(4000);
+    expect(state.save).not.toHaveBeenCalled();
+    expect(state.previewStart).not.toHaveBeenCalled();
+  },
+);
+
+test.each([false, true])(
+  "closing before delayed images and saves finish retains the final snapshot with full storage, image first=%s",
+  async (imageFirst) => {
+    const file = imageFile();
+    const image = imageElement(file);
+    localStorage.setItem(
+      "wb_notebook:page-a",
+      JSON.stringify({
+        elements: [shape("pending-stroke")],
+        files: {},
+        saved: false,
+      }),
+    );
+    quota();
+    state.scene = {
+      ...cloudScene([shape("confirmed"), image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    const fetcher = downloaded(file);
+    const download = fetcher.getMockImplementation()!;
+    let releaseImage!: () => void;
+    fetcher.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => {
+        releaseImage = resolve;
+      });
+      return download(...args);
+    });
+    cloudWrites();
+    const save = state.save.getMockImplementation()!;
+    let releaseSave!: () => void;
+    state.save.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => {
+        releaseSave = resolve;
+      });
+      return save(...args);
+    });
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const view = render(
+      <NotebookPageEditor
+        pageId={"page-a" as Id<"courseNotebookPages">}
+        canEdit
+      />,
+    );
+    await flush(1);
+    await flush(400);
+    expect(state.previewStart).not.toHaveBeenCalled();
+    view.unmount();
+    await flush(1);
+    await act(async () => (imageFirst ? releaseImage() : releaseSave()));
+    await flush(4000);
+    expect(state.previewStart).not.toHaveBeenCalled();
+    await act(async () => (imageFirst ? releaseSave() : releaseImage()));
+    await flush(1);
+    expect(state.previewExport).toHaveBeenCalledTimes(1);
+    const snapshot = state.previewExport.mock.calls[0][0];
+    expect(snapshot.files[file.id]).toEqual(file);
+    expect(
+      snapshot.elements.map((element: { id: string }) => element.id),
+    ).toEqual(expect.arrayContaining(["confirmed", "pending-stroke", "image"]));
+    expect(state.previewStart.mock.calls[0][0]).toMatchObject({
+      pageId: "page-a",
+      retireIfEmpty: false,
+    });
+    render(
+      <NotebookPageEditor
+        pageId={"page-a" as Id<"courseNotebookPages">}
+        canEdit
+      />,
+    );
+    await flush(1);
+    await flush(400);
+    expect(
+      lifecycle
+        .current()
+        .api.getSceneElementsIncludingDeleted()
+        .map((element) => element.id),
+    ).toEqual(expect.arrayContaining(["confirmed", "pending-stroke", "image"]));
+    expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
+  },
+);
+
+test.each([false, true])(
+  "image download retry survives closing before/after the failure with full storage, failure after close=%s",
+  async (afterClose) => {
+    const file = imageFile();
+    const image = imageElement(file);
+    localStorage.setItem(
+      "wb_notebook:page-a",
+      JSON.stringify({
+        elements: [shape("pending-stroke")],
+        files: {},
+        saved: false,
+      }),
+    );
+    quota();
+    state.scene = {
+      ...cloudScene([shape("confirmed"), image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    const fetcher = downloaded(file);
+    let release!: () => void;
+    fetcher.mockImplementationOnce(async () => {
+      if (afterClose)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      return { ok: false } as Awaited<ReturnType<typeof fetcher>>;
+    });
+    cloudWrites();
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const view = render(
+      <NotebookPageEditor
+        pageId={"page-a" as Id<"courseNotebookPages">}
+        canEdit
+      />,
+    );
+    await flush(1);
+    await flush(400);
+    view.unmount();
+    if (afterClose) await act(async () => release());
+    await flush(1100);
+    expect(state.previewExport).toHaveBeenCalledTimes(1);
+    const snapshot = state.previewExport.mock.calls[0][0];
+    expect(snapshot.files[file.id]).toEqual(file);
+    expect(
+      snapshot.elements.map((element: { id: string }) => element.id),
+    ).toEqual(expect.arrayContaining(["confirmed", "pending-stroke", "image"]));
+    expect(state.previewStart.mock.calls[0][0]).toMatchObject({
+      pageId: "page-a",
+      retireIfEmpty: false,
+    });
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        String(url).startsWith("/api/whiteboard-image"),
+      ),
+    ).toHaveLength(2);
+    render(
+      <NotebookPageEditor
+        pageId={"page-a" as Id<"courseNotebookPages">}
+        canEdit
+      />,
+    );
+    await flush(1);
+    await flush(400);
+    expect(
+      lifecycle
+        .current()
+        .api.getSceneElementsIncludingDeleted()
+        .map((element) => element.id),
+    ).toEqual(expect.arrayContaining(["confirmed", "pending-stroke", "image"]));
+  },
+);
+
+test("closing drains pending image uploads and their retry before finalizing, preserving full-storage drafts", async () => {
+  const files = [imageFile("file-a"), imageFile("file-b"), imageFile("file-c")];
+  const images = files.map(
+    (file, i) =>
+      ({
+        ...imageElement(file),
+        id: `image-${i}`,
+        index: `a${i + 2}`,
+      }) as ChangeArgs[0][number],
+  );
+  const binaries = Object.fromEntries(files.map((file) => [file.id, file]));
+  localStorage.setItem(
+    "wb_notebook:page-a",
+    JSON.stringify({
+      elements: [shape("pending-stroke"), ...images],
+      files: binaries,
+      saved: false,
+    }),
+  );
+  quota();
+  state.scene = cloudScene([shape("confirmed")]);
+  cloudWrites();
+  const fetcher = downloaded();
+  const fetch = fetcher.getMockImplementation()!;
+  const attempts = new Map<string, number>();
+  let releaseFailure!: () => void, releaseSuccess!: () => void;
+  fetcher.mockImplementation(async (url, options) => {
+    const parsed = String(url).startsWith("http")
+      ? new URL(String(url))
+      : undefined;
+    const id = parsed?.searchParams.get("fileId");
+    if (
+      options?.method !== "POST" ||
+      !id ||
+      parsed?.searchParams.has("previewVersion")
+    )
+      return fetch(url, options);
+    const attempt = (attempts.get(id) ?? 0) + 1;
+    attempts.set(id, attempt);
+    if (id === "file-a" && attempt === 1) {
+      await new Promise<void>((resolve) => {
+        releaseFailure = resolve;
+      });
+      throw new Error("temporary upload failure");
+    }
+    if (id === "file-b" && attempt === 1)
+      await new Promise<void>((resolve) => {
+        releaseSuccess = resolve;
+      });
+    const file = files.find((file) => file.id === id)!;
+    const ref = {
+      ...imageRef(file),
+      storageId: `storage-${id}` as Id<"_storage">,
+    };
+    state.scene = {
+      ...state.scene!,
+      fileRefs: { ...state.scene?.fileRefs, [id]: ref },
+    };
+    return { ok: true, blob: async () => new Blob(), json: async () => ref };
+  });
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  const view = render(
+    <NotebookPageEditor
+      pageId={"page-a" as Id<"courseNotebookPages">}
+      canEdit
+    />,
+  );
+  await flush(1);
+  await flush(400);
+  expect([...attempts.keys()]).toEqual(["file-a", "file-b"]);
+  view.unmount();
+  await act(async () => {
+    releaseFailure();
+    releaseSuccess();
+  });
+  await flush(1100);
+  expect(Object.fromEntries(attempts)).toEqual({
+    "file-a": 2,
+    "file-b": 1,
+    "file-c": 1,
+  });
+  expect(state.previewExport).toHaveBeenCalledTimes(1);
+  expect(state.previewExport.mock.calls[0][0].files).toEqual(binaries);
+  render(
+    <NotebookPageEditor
+      pageId={"page-a" as Id<"courseNotebookPages">}
+      canEdit
+    />,
+  );
+  await flush(1);
+  await flush(400);
+  expect(
+    lifecycle
+      .current()
+      .api.getSceneElementsIncludingDeleted()
+      .map((element) => element.id),
+  ).toEqual(
+    expect.arrayContaining([
+      "pending-stroke",
+      ...images.map((image) => image.id),
+    ]),
+  );
+});
+
+test.each(["offline", "PERMISSION_DENIED"])(
+  "closed image uploads remain bounded and retain the pending binary: %s",
+  async (message) => {
+    const file = imageFile();
+    const image = imageElement(file);
+    const draft = {
+      elements: [image],
+      files: { [file.id]: file },
+      saved: false,
+    };
+    localStorage.setItem("wb_notebook:bounded", JSON.stringify(draft));
+    quota(true);
+    const upload = vi.fn(async () => {
+      throw new Error(message);
+    });
+    const saved = vi.fn(),
+      closed = vi.fn();
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const view = render(
+      <WhiteboardEditor
+        draftKey="notebook:bounded"
+        scene={{ elements: [], fileRefs: {} }}
+        fromLegacy={false}
+        saveDelta={async () => ({ conflictsParts: [] })}
+        uploadImage={upload}
+        onSaved={saved}
+        onClose={closed}
+      />,
+    );
+    await flush(1);
+    await flush(400);
+    view.unmount();
+    await flush(10_000);
+    expect(upload).toHaveBeenCalledTimes(message === "offline" ? 3 : 1);
+    expect(saved).not.toHaveBeenCalled();
+    expect(closed).toHaveBeenCalledWith(whiteboardSceneRevision([image]));
+    expect(
+      JSON.parse(localStorage.getItem("wb_notebook:bounded")!).files,
+    ).toEqual(draft.files);
+    await flush(10_000);
+    expect(upload).toHaveBeenCalledTimes(message === "offline" ? 3 : 1);
+  },
+);
+
+test("closing a reader cancels image retries rather than keeping preview work alive", async () => {
+  const file = imageFile();
+  state.scene = {
+    ...cloudScene([imageElement(file)]),
+    fileRefs: { [file.id]: imageRef(file) },
+  };
+  const fetcher = downloaded(file).mockRejectedValue(new Error("offline"));
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  const view = await mount("test-room", true);
+  await flush(1);
+  view.unmount();
+  await flush(10_000);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(state.previewStart).not.toHaveBeenCalled();
+});
+
+test("saved notifications wait for drawings and pending images, including full-storage drafts", async () => {
+  const file = imageFile();
+  const image = imageElement(file);
+  const elements = [shape("pending-stroke"), image];
+  localStorage.setItem(
+    "wb_notebook:notify",
+    JSON.stringify({ elements, files: { [file.id]: file }, saved: false }),
+  );
+  quota();
+  let releaseImage!: (value: ReturnType<typeof imageRef>) => void;
+  let releaseSave!: (value: { conflictsParts: string[] }) => void;
+  const upload = vi.fn(
+    () =>
+      new Promise<ReturnType<typeof imageRef>>((resolve) => {
+        releaseImage = resolve;
+      }),
+  );
+  const save = vi
+    .fn(
+      async (): Promise<{ conflictsParts: string[] }> => ({
+        conflictsParts: [],
+      }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise<{ conflictsParts: string[] }>((resolve) => {
+          releaseSave = resolve;
+        }),
+    );
+  const saved = vi.fn();
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  render(
+    <WhiteboardEditor
+      draftKey="notebook:notify"
+      scene={{ elements: [], fileRefs: {} }}
+      fromLegacy={false}
+      saveDelta={save}
+      uploadImage={upload}
+      onSaved={saved}
+    />,
+  );
+  await flush(1);
+  await flush(400);
+  expect(save).toHaveBeenCalled();
+  expect(upload).toHaveBeenCalled();
+  expect(saved).not.toHaveBeenCalled();
+  await act(async () => releaseSave({ conflictsParts: [] }));
+  expect(saved).not.toHaveBeenCalled();
+  await act(async () => releaseImage(imageRef(file)));
+  await flush(10);
+  expect(saved).toHaveBeenCalledExactlyOnceWith(
+    whiteboardSceneRevision(
+      lifecycle.current().api.getSceneElementsIncludingDeleted(),
+    ),
+    {
+      elements: lifecycle.current().api.getSceneElementsIncludingDeleted(),
+      files: lifecycle.current().api.getFiles(),
+    },
+  );
+});
+
+test.each([false, true])(
+  "standalone editor preserves recovery, remote edits, images and undo/redo without live providers; full storage=%s",
+  async (full) => {
+    const file = imageFile();
+    const image = imageElement(file);
+    const pending = shape("pending-stroke");
+    const key = "course-notebook:page-a";
+    const draft = JSON.stringify({
+      elements: [pending, image],
+      files: { [file.id]: file },
+      saved: false,
+    });
+    localStorage.setItem(`wb_${key}`, draft);
+    if (full) quota();
+    let scene: NonNullable<WhiteboardEditorProps["scene"]> = {
+      elements: [shape("base")],
+      fileRefs: {},
+    };
+    const saveDelta = vi.fn<WhiteboardEditorProps["saveDelta"]>(
+      async (_bucket, parts) => {
+        scene = {
+          ...scene,
+          elements: mergeWhiteboardElements(
+            scene.elements,
+            JSON.parse(joinWhiteboardPayload(parts)),
+          ) as ChangeArgs[0],
+        };
+        return { conflictsParts: [] };
+      },
+    );
+    const uploadImage = vi.fn(async () => {
+      scene = { ...scene, fileRefs: { [file.id]: imageRef(file) } };
+      return imageRef(file);
+    });
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const editor = (isReadonly = false) => (
+      <WhiteboardEditor
+        draftKey={key}
+        scene={scene}
+        fromLegacy={false}
+        saveDelta={saveDelta}
+        uploadImage={uploadImage}
+        isReadonly={isReadonly}
+      />
+    );
+    const view = render(editor());
+    await flush(1);
+    await flush(400);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([pending, image, shape("base")]),
+    );
+    expect(uploadImage).toHaveBeenCalledExactlyOnceWith(file);
+    const remote = shape("remote-stroke");
+    scene = { ...scene, elements: [...scene.elements, remote] };
+    const mounts = lifecycle.mounts.mock.calls.length;
+    view.rerender(editor());
+    await flush(5);
+    expect(lifecycle.mounts).toHaveBeenCalledTimes(mounts);
+    const local = shape("local-stroke");
+    act(() => lifecycle.current().draw([...scene.elements, local]));
+    await flush(100);
+    for (const [version, isDeleted] of [
+      [2, true],
+      [3, false],
+    ] as const) {
+      act(() =>
+        lifecycle
+          .current()
+          .draw([
+            ...scene.elements.filter((element) => element.id !== local.id),
+            { ...shape(local.id, version), isDeleted },
+          ]),
+      );
+      act(() => lifecycle.current().endStroke());
+      await flush(100);
+    }
+    expect(lifecycle.current().api.updateScene).toHaveBeenCalledWith(
+      expect.objectContaining({ captureUpdate: "NEVER" }),
+    );
+    act(() => window.dispatchEvent(new Event("pagehide")));
+    await flush(100);
+    view.unmount();
+    await flush(1);
+    const reload = render(editor());
+    await flush(1);
+    await flush(400);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining([pending, image, remote, shape(local.id, 3)]),
+    );
+    expect(lifecycle.current().api.getFiles()).toMatchObject({
+      [file.id]: file,
+    });
+    if (full) expect(localStorage.getItem(`wb_${key}`)).toBe(draft);
+    reload.rerender(editor(true));
+    await flush(10);
+    saveDelta.mockClear();
+    uploadImage.mockClear();
+    act(() => lifecycle.current().draw([shape("forbidden")]));
+    await flush(400);
+    expect(state.props.viewModeEnabled).toBe(true);
+    expect(saveDelta).not.toHaveBeenCalled();
+    expect(uploadImage).not.toHaveBeenCalled();
+    expect(state.roomContext).not.toHaveBeenCalled();
+    expect(state.sceneHook).not.toHaveBeenCalled();
+    expect(state.token).not.toHaveBeenCalled();
+    expect(state.save).not.toHaveBeenCalled();
+  },
+);
+
+test("switching editor identity isolates delayed saves and images from the next page with full storage", async () => {
+  const file = imageFile();
+  const image = imageElement(file);
+  const draft = JSON.stringify({
+    elements: [shape("page-a"), image],
+    files: { [file.id]: file },
+    saved: false,
+  });
+  localStorage.setItem("wb_page-a", draft);
+  localStorage.setItem(
+    "wb_page-b",
+    JSON.stringify({
+      elements: [shape("page-b-pending")],
+      files: {},
+      saved: false,
+    }),
+  );
+  quota();
+  let releaseSave!: () => void;
+  let releaseImage!: (value: ReturnType<typeof imageRef>) => void;
+  const pendingSave = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
+  const pendingImage = new Promise<ReturnType<typeof imageRef>>((resolve) => {
+    releaseImage = resolve;
+  });
+  const savedA: ChangeArgs[0][number][] = [];
+  const saveA = vi.fn<WhiteboardEditorProps["saveDelta"]>(
+    async (_bucket, parts) => {
+      await pendingSave;
+      savedA.push(...JSON.parse(joinWhiteboardPayload(parts)));
+      return { conflictsParts: [] };
+    },
+  );
+  const uploadA = vi.fn(() => pendingImage);
+  const saveB = vi.fn<WhiteboardEditorProps["saveDelta"]>(async () => ({
+    conflictsParts: [],
+  }));
+  const uploadB = vi.fn(async () => imageRef(file));
+  const lifecycle = canvasLifecycle();
+  state.Canvas = lifecycle.Canvas;
+  const view = render(
+    <WhiteboardEditor
+      draftKey="page-a"
+      scene={{ elements: [] }}
+      fromLegacy={false}
+      saveDelta={saveA}
+      uploadImage={uploadA}
+    />,
+  );
+  await flush(1);
+  await flush(100);
+  expect(saveA).toHaveBeenCalledTimes(1);
+  expect(uploadA).toHaveBeenCalledTimes(1);
+  view.rerender(
+    <WhiteboardEditor
+      draftKey="page-b"
+      scene={{ elements: [shape("page-b-cloud")] }}
+      fromLegacy={false}
+      saveDelta={saveB}
+      uploadImage={uploadB}
+    />,
+  );
+  await flush(1);
+  await flush(100);
+  expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+    expect.arrayContaining([shape("page-b-cloud"), shape("page-b-pending")]),
+  );
+  await act(async () => {
+    releaseSave();
+    releaseImage(imageRef(file));
+  });
+  await flush(400);
+  expect(savedA).toEqual(expect.arrayContaining([shape("page-a"), image]));
+  expect(
+    lifecycle
+      .current()
+      .api.getSceneElementsIncludingDeleted()
+      .some((element) => element.id === "page-a" || element.id === image.id),
+  ).toBe(false);
+  expect(lifecycle.current().api.getFiles()).toEqual({});
+  expect(uploadB).not.toHaveBeenCalled();
+  expect(localStorage.getItem("wb_page-a")).toBe(draft);
+  expect(state.roomContext).not.toHaveBeenCalled();
 });
 
 test("reload with full storage restores cloud drawings and sends only the new stroke", async () => {
@@ -632,6 +1552,68 @@ test.each([
     expect(state.save).not.toHaveBeenCalled();
   },
 );
+test("live presentation retains trusted pointers and optional viewport following without updating a closed editor", async () => {
+  state.scene = cloudScene([shape("base")]);
+  const view = await mount("test-room", true);
+  const canvas = await attachCanvas();
+  canvas.updateScene.mockClear();
+  const receive = state.room.on.mock.calls.find(
+    ([event]) => event === "dataReceived",
+  )![1];
+  const participant = {
+    identity: "teacher",
+    name: "Teacher",
+    metadata: JSON.stringify({ role: "teacher", isCompanion: true }),
+  };
+  const viewport = {
+    type: "WHITEBOARD_VIEWPORT",
+    scrollX: 42,
+    scrollY: 24,
+    zoom: 2,
+  };
+  const send = (message: object, sender = participant) =>
+    act(() =>
+      receive(new TextEncoder().encode(JSON.stringify(message)), sender),
+    );
+  send(viewport, {
+    ...participant,
+    metadata: JSON.stringify({ role: "student" }),
+  });
+  await flush(1);
+  expect(canvas.updateScene).not.toHaveBeenCalled();
+  send(viewport);
+  await flush(1);
+  expect(canvas.updateScene).toHaveBeenCalledWith({
+    appState: { scrollX: 42, scrollY: 24, zoom: { value: 2 } },
+  });
+  send({
+    type: "WHITEBOARD_POINTER",
+    x: 10,
+    y: 20,
+    button: "down",
+    tool: "laser",
+  });
+  expect(canvas.updateScene).toHaveBeenCalledWith({
+    collaborators: expect.any(Map),
+  });
+  view.rerender(
+    <SharedWhiteboard roomName="test-room" isReadonly followViewport={false} />,
+  );
+  canvas.updateScene.mockClear();
+  send(viewport);
+  await flush(1);
+  expect(canvas.updateScene).not.toHaveBeenCalled();
+  view.rerender(
+    <SharedWhiteboard roomName="test-room" isReadonly followViewport />,
+  );
+  send(viewport);
+  view.unmount();
+  await flush(1);
+  expect(canvas.updateScene).not.toHaveBeenCalled();
+  expect(state.save).not.toHaveBeenCalled();
+  expect(state.token).not.toHaveBeenCalled();
+});
+
 test("viewport-only updates neither save nor postpone a pending drawing", async () => {
   await mount();
   const elements = [shape("a")];
@@ -2602,6 +3584,123 @@ test("a newly received cloud image is downloaded but not reuploaded by the write
     fetcher.mock.calls.filter(([, options]) => options?.method !== "POST"),
   ).toHaveLength(1);
 });
+
+test.each([false, true])(
+  "failed notebook images stop after three attempts despite later drawing updates, and a new storage reference recovers (readonly: %s)",
+  async (isReadonly) => {
+    const file = imageFile();
+    const image = imageElement(file);
+    quota();
+    let scene = {
+      ...cloudScene([image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    const fetcher = downloaded(file);
+    const download = fetcher.getMockImplementation()!;
+    fetcher.mockResolvedValue({ ok: false, status: 503 } as never);
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const editor = () => (
+      <WhiteboardEditor
+        draftKey="notebook:retry-budget"
+        scene={scene}
+        isReadonly={isReadonly}
+        saveDelta={state.save}
+        uploadImage={async () => imageRef(file)}
+      />
+    );
+    const view = render(editor());
+    await flush(1);
+    await flush(4000);
+    await flush(4000);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    for (let version = 1; version <= 5; version++) {
+      scene = {
+        ...scene,
+        elements: [image, shape("remote", version)],
+        fileRefs: { [file.id]: imageRef(file) },
+      };
+      view.rerender(editor());
+      await flush(1);
+    }
+    await flush(10_000);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    fetcher.mockImplementation(download);
+    scene = {
+      ...scene,
+      fileRefs: {
+        [file.id]: {
+          ...imageRef(file),
+          storageId: "replacement" as Id<"_storage">,
+        },
+      },
+    };
+    view.rerender(editor());
+    await flush(1);
+    await flush(1);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
+    expect(
+      lifecycle
+        .current()
+        .api.getSceneElementsIncludingDeleted()
+        .map((e) => e.id),
+    ).toEqual(["image", "remote"]);
+  },
+);
+
+test.each([false, true])(
+  "an obsolete image response cannot replace a new source or consume its retry budget (old fails: %s)",
+  async (fails) => {
+    const file = imageFile();
+    const image = imageElement(file);
+    let scene = {
+      ...cloudScene([image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    const fetcher = downloaded(file);
+    const download = fetcher.getMockImplementation()!;
+    let release!: () => void;
+    fetcher.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      if (fails) throw new Error("old image failed");
+      return download(...args);
+    });
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    const editor = () => (
+      <WhiteboardEditor
+        draftKey="notebook:image-race"
+        scene={scene}
+        isReadonly
+        saveDelta={state.save}
+        uploadImage={async () => imageRef(file)}
+      />
+    );
+    const view = render(editor());
+    await flush(1);
+    scene = {
+      ...scene,
+      fileRefs: {
+        [file.id]: {
+          ...imageRef(file),
+          storageId: "replacement" as Id<"_storage">,
+        },
+      },
+    };
+    view.rerender(editor());
+    await flush(1);
+    await flush(1);
+    expect(lifecycle.current().api.addFiles).toHaveBeenCalledTimes(1);
+    await act(async () => release());
+    await flush(5000);
+    expect(lifecycle.current().api.addFiles).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
+  },
+);
 
 test("a winning backend conflict replaces the rejected version before confirming the draft", async () => {
   state.scene = cloudScene([shape("a")]);

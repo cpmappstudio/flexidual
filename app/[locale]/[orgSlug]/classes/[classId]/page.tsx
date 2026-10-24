@@ -59,6 +59,7 @@ import type { CurriculumLessonProgress } from "@/lib/course-progress";
 import { getExternalClassPlatform } from "@/lib/class-session";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 import { CourseTasksTab } from "@/components/teaching/classes/course-tasks-tab";
+import { CourseNotebook } from "@/components/whiteboard/course-notebook";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -370,6 +371,13 @@ export default function ClassDetailPage() {
                   <CalendarIcon className="size-4" aria-hidden="true" />
                   {t("schedule.sessions")} ({classSchedule?.length || 0})
                 </TabsTrigger>
+                <TabsTrigger
+                  value="notebook"
+                  className={classTabTriggerClassName}
+                >
+                  <BookOpen className="size-4" aria-hidden="true" />
+                  {t("courseNotebook.tab")}
+                </TabsTrigger>
                 <TabsTrigger value="tasks" className={classTabTriggerClassName}>
                   <ClipboardList className="size-4" aria-hidden="true" />
                   {t("courseTasks.tab")}
@@ -516,6 +524,11 @@ export default function ClassDetailPage() {
               />
             </TabsContent>
 
+            <TabsContent value="notebook" className="mt-0">
+              {activeTab === "notebook" && (
+                <CourseNotebook key={classId} classId={classId} />
+              )}
+            </TabsContent>
             <TabsContent value="students" className="mt-0">
               <StudentManager
                 classId={classId}

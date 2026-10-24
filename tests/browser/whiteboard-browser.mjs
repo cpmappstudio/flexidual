@@ -13,17 +13,20 @@ import {
   restoreElements,
 } from "@excalidraw/excalidraw";
 import { SharedWhiteboard } from "../../components/classroom/shared-whiteboard";
+import { CourseNotebook } from "../../components/whiteboard/course-notebook";
 import { whiteboardDraftStorage } from "../../lib/whiteboard-draft-storage";
 
 const listeners = new Set();
 const apis = [];
 const diagnostics = [];
+const pageSelections = [];
 let snapshot;
 let currentApi;
 let ready = 0;
 let tokenRequests = 0;
 let releaseBuckets;
 const readonly = new URLSearchParams(location.search).has("readonly");
+const courseMenu = new URLSearchParams(location.search).has("course-menu");
 const loadCount = Number(new URLSearchParams(location.search).get("load") ?? 0);
 const live = !new URLSearchParams(location.search).has("durable-only");
 let revision = -1;
@@ -110,6 +113,7 @@ async function refresh(reload = false) {
   revision = next.revision;
   const previousIds = new Set(snapshot?.manifest.bucketIds ?? []);
   const merged = {
+    pageTitle: next.pageTitle,
     manifest:
       JSON.stringify(snapshot?.manifest) === JSON.stringify(next.manifest)
         ? snapshot.manifest
@@ -154,8 +158,32 @@ export function useQuery(ref, args) {
   if (args === "skip") return undefined;
   const name = getFunctionName(ref);
   if (name.endsWith(":getSceneManifest")) return value.manifest;
+  if (name === "courseNotebook:getManifest") return value.manifest;
   if (name.endsWith(":getSceneFiles")) return value.files;
+  if (name === "courseNotebook:get")
+    return {
+      initialized: true,
+      archived: false,
+      canEdit: !readonly,
+      canArchive: false,
+      timeZone: "UTC",
+    };
   throw new Error(`Unexpected full-scene query: ${name}`);
+}
+export function usePaginatedQuery() {
+  const current = useSnapshot();
+  return {
+    results: [
+      {
+        _id: "browser-page",
+        _creationTime: 1,
+        title: current.pageTitle ?? "Earlier lesson",
+        previewUrl: null,
+      },
+    ],
+    status: "Exhausted",
+    loadMore() {},
+  };
 }
 export function useQueries(queries) {
   const entries = Object.entries(queries);
@@ -165,7 +193,12 @@ export function useQueries(queries) {
   const audience = entries.some(([, query]) =>
     getFunctionName(query.query).endsWith(":getRealtimeAudience"),
   );
-  if (!access && !audience && entries.length) requestedQueries = queries;
+  const needsBuckets = entries.some(([, query]) =>
+    ["whiteboardSessions:getSceneBucket", "courseNotebook:getBucket"].includes(
+      getFunctionName(query.query),
+    ),
+  );
+  if (needsBuckets) requestedQueries = queries;
   const cursors = JSON.stringify(
     Object.fromEntries(
       Object.entries(queries).flatMap(([id, query]) =>
@@ -174,9 +207,21 @@ export function useQueries(queries) {
     ),
   );
   useEffect(() => {
-    if (cursors !== "{}") refreshQueue = refreshQueue.then(() => refresh(true));
-  }, [cursors]);
+    // A remounted subscription must load its initial snapshot, not reuse an old delta response.
+    if (needsBuckets) refreshQueue = refreshQueue.then(() => refresh(true));
+  }, [cursors, needsBuckets]);
   const current = useSnapshot();
+  if (
+    entries.some(([, query]) =>
+      [
+        "whiteboardSessions:getPresentedFiles",
+        "courseNotebookFiles:getFiles",
+      ].includes(getFunctionName(query.query)),
+    )
+  )
+    return Object.fromEntries(
+      entries.map(([id]) => [id, current.files.fileRefs]),
+    );
   return audience
     ? { audience: ["browser-reader"] }
     : access
@@ -188,18 +233,38 @@ const mutate = async (args) => {
   await refresh();
   return result;
 };
+const beginPreview = (args) => rpc("/preview", args);
 export function useMutation(ref) {
-  return getFunctionName(ref).endsWith(":applySceneDelta")
+  const name = getFunctionName(ref);
+  if (name === "courseNotebook:renamePage")
+    return async (args) => {
+      await rpc("/rename", args);
+      await refresh();
+    };
+  if (name === "whiteboardSessions:selectNotebookPage")
+    return async (args) => {
+      pageSelections.push(args);
+    };
+  return name.endsWith(":applySceneDelta") ||
+    name === "courseNotebook:applyDelta"
     ? mutate
-    : async () => {
-        throw new Error("Unexpected mutation invocation");
-      };
+    : name === "courseNotebookFiles:beginPreview"
+      ? beginPreview
+      : async () => {
+          throw new Error("Unexpected mutation invocation");
+        };
 }
 export function useRoomContext() {
   return room;
 }
 export function useTranslations() {
-  return (key) => key;
+  return (key) => (key === "tab" ? "Board" : key);
+}
+export function useFormatter() {
+  return { dateTime: () => "Date" };
+}
+export function image({ src, alt }) {
+  return React.createElement("img", { src, alt });
 }
 const getToken = async () => {
   tokenRequests++;
@@ -215,14 +280,15 @@ export function reportWhiteboardDiagnostic(context) {
   diagnostics.push(context);
 }
 export function dynamic(loader) {
-  const loaded = loader().then(async (component) => {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    return component;
-  });
+  let loaded;
   return function DelayedEditor(props) {
     const [Component, setComponent] = useState();
     useEffect(() => {
       let active = true;
+      loaded ??= loader().then(async (component) => {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        return component;
+      });
       void loaded.then((value) => {
         if (active) setComponent(() => value);
       });
@@ -320,8 +386,11 @@ if (loadCount) {
     { normalizeIndices: true },
   );
 }
-await rpc("/initialize", { elements: initial, files: imageFiles });
-await refresh();
+// Exported service fixtures must be available before lazy gallery modules load.
+const initialized = rpc("/initialize", {
+  elements: initial,
+  files: imageFiles,
+}).then(() => refresh());
 const events = new EventSource(`/events?readonly=${readonly}`);
 events.onmessage = () => {
   refreshQueue = refreshQueue.then(refresh);
@@ -421,6 +490,32 @@ document.addEventListener("pointerup", () => {
 const root = createRoot(document.getElementById("root"));
 let closedScene;
 window.whiteboardAudit = {
+  selectFirstElement: () => {
+    const element = currentApi.getSceneElements()[0];
+    currentApi.setActiveTool({ type: "selection" });
+    currentApi.updateScene({
+      appState: { selectedElementIds: { [element.id]: true } },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+  },
+  deselect: () =>
+    currentApi.updateScene({
+      appState: { selectedElementIds: {} },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    }),
+  close: () => root.unmount(),
+  clear: () =>
+    currentApi.updateScene({
+      elements: currentApi
+        .getSceneElementsIncludingDeleted()
+        .map((element) => ({
+          ...element,
+          isDeleted: true,
+          version: element.version + 1,
+          versionNonce: element.versionNonce + 1,
+        })),
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    }),
   closedScene: () => closedScene,
   closeOnNextStroke: () => {
     const unsubscribe = currentApi.onPointerUp(() => {
@@ -456,10 +551,17 @@ window.whiteboardAudit = {
       zoom: currentApi.getAppState().zoom.value,
     },
     ready,
+    canvasWidth: currentApi?.getAppState().width,
     tokenRequests,
     diagnostics,
+    pageSelections,
   }),
   pencil: () => currentApi.setActiveTool({ type: "freedraw", locked: true }),
+  panAway: () =>
+    currentApi.updateScene({
+      appState: { scrollX: -10000, scrollY: -10000 },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    }),
   editElement: (id) => {
     let version;
     currentApi.updateScene({
@@ -527,17 +629,25 @@ window.whiteboardAudit = {
       ),
     ),
 };
-root.render(
-  React.createElement(
-    StrictMode,
-    null,
-    React.createElement(SharedWhiteboard, {
-      roomName: "browser-room",
-      isReadonly: readonly,
-      followViewport: false,
-      onReady() {
-        ready++;
-      },
-    }),
+initialized.then(() =>
+  root.render(
+    React.createElement(
+      StrictMode,
+      null,
+      courseMenu
+        ? React.createElement(CourseNotebook, { classId: "browser-course" })
+        : React.createElement(SharedWhiteboard, {
+            roomName: "browser-room",
+            courseId: "browser-course",
+            isReadonly: readonly,
+            presentationMode: new URLSearchParams(location.search).has(
+              "presentation",
+            ),
+            followViewport: false,
+            onReady() {
+              ready++;
+            },
+          }),
+    ),
   ),
 );

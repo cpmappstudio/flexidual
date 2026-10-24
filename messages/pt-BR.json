@@ -1,4 +1,18 @@
 {
+  "courseNotebook": {
+    "livePicker": "Escolher uma folha do quadro para apresentar",
+    "sessionBoard": "Voltar ao quadro da sessão",
+    "tab": "Quadro",
+    "newPage": "Nova folha",
+    "pageName": "Nome da folha",
+    "archive": "Arquivar quadro",
+    "restore": "Restaurar quadro",
+    "archived": "Este quadro está arquivado. Suas folhas são preservadas.",
+    "empty": "Ainda não há folhas.",
+    "loadMore": "Carregar mais",
+    "retry": "Tentar carregar o quadro novamente",
+    "operationFailed": "Não foi possível atualizar o quadro. Tente novamente."
+  },
   "filePreview": {
     "loadingPreview": "Carregando pré-visualização…",
     "previewError": "Não foi possível visualizar este arquivo. Você ainda pode baixá-lo.",

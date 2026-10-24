@@ -93,6 +93,11 @@ test("non-managers request public and assigned courses; cards only link to autho
     true,
   );
   const allCourses = screen.getByRole("region", { name: "catalog.allCourses" });
+  const courseHeading = within(allCourses).getByRole("heading", {
+    name: "Own private course",
+  });
+  expect(courseHeading.closest('[data-slot="preview-card"]')).toBeTruthy();
+  expect(courseHeading.closest('[data-slot="preview-card-media"]')).toBeNull();
   expect(within(allCourses).getAllByRole("link")).toHaveLength(1);
   expect(within(allCourses).getByRole("link").getAttribute("href")).toBe(
     "/campus/classes/own",

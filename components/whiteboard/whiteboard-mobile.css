@@ -1,0 +1,299 @@
+/* shortcut: native menu/property selectors target SDK 0.18.1; review on SDK upgrades. */
+.whiteboard-sdk-host {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  container-type: size;
+  contain: layout;
+}
+.whiteboard-ui-state {
+  display: none;
+}
+/* The native range keeps its accessible value; omit the overlapping visual labels. */
+.flexidual-whiteboard .range-wrapper:has([data-testid="opacity"]) {
+  padding-bottom: 8px;
+}
+.flexidual-whiteboard
+  .range-wrapper:has([data-testid="opacity"])
+  :is(.value-bubble, .zero-label) {
+  display: none;
+}
+.whiteboard-sdk-host > .whiteboard-ui-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: transparent;
+}
+.whiteboard-mobile-toolbar {
+  position: absolute;
+  bottom: max(8px, var(--sab, 0px));
+  left: max(8px, var(--sal, 0px));
+  right: max(8px, var(--sar, 0px));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--border-radius-lg);
+  background: var(--island-bg-color);
+  box-shadow: var(--shadow-island);
+  pointer-events: auto;
+}
+.whiteboard-ui-overlay .whiteboard-tool {
+  width: 32px;
+  height: 32px;
+  min-width: 0;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--icon-fill-color);
+}
+.whiteboard-ui-overlay .whiteboard-tool svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.whiteboard-ui-overlay .whiteboard-tool[aria-pressed="true"] {
+  background: var(--color-surface-primary-container);
+  color: var(--color-on-primary-container);
+}
+.whiteboard-tool-popover {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 8px;
+  pointer-events: auto;
+  background: var(--island-bg-color);
+  box-shadow: var(--shadow-island);
+  color: var(--icon-fill-color);
+  max-height: min(320px, 55cqh);
+  overflow-y: auto;
+  z-index: 6;
+  max-width: calc(100cqw - 16px);
+  box-sizing: border-box;
+}
+.whiteboard-more-tools {
+  flex-direction: column;
+  min-width: 180px;
+}
+.whiteboard-more-tools > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.whiteboard-more-tools > button {
+  color: inherit;
+  white-space: normal;
+  height: auto;
+  min-height: 32px;
+  text-align: left;
+}
+.whiteboard-ui-overlay .whiteboard-more-tools .whiteboard-tool-menu-item {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 8px;
+}
+.whiteboard-wide-tool {
+  display: none;
+}
+.whiteboard-ui-overlay .whiteboard-properties-trigger {
+  position: absolute;
+  bottom: 56px;
+  left: 8px;
+  pointer-events: auto;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  background: var(--color-surface-low);
+  border: 0;
+  border-radius: var(--border-radius-lg);
+  box-shadow: 0 0 0 1px var(--color-surface-lowest);
+}
+.whiteboard-ui-overlay
+  .whiteboard-properties-trigger:not([aria-pressed="true"]):hover {
+  background: var(--color-surface-high);
+}
+.whiteboard-ui-overlay:not(.whiteboard-ui-overlay--compact)
+  .whiteboard-properties-trigger {
+  top: calc(
+    var(--editor-container-padding) + var(--sat, 0px) + var(--lg-button-size) +
+      12px
+  );
+  left: calc(var(--editor-container-padding) + var(--sal, 0px));
+  width: var(--lg-button-size);
+  height: var(--lg-button-size);
+  bottom: auto;
+}
+.whiteboard-ui-overlay:not(.whiteboard-ui-overlay--compact)
+  .whiteboard-properties-trigger
+  svg {
+  width: var(--lg-icon-size);
+  height: var(--lg-icon-size);
+}
+.flexidual-whiteboard:has(.main-menu-trigger + .dropdown-menu)
+  .whiteboard-properties-trigger,
+.flexidual-whiteboard:has(.main-menu-trigger + .dropdown-menu) .App-menu__left,
+.flexidual-whiteboard:has(.main-menu-trigger + .dropdown-menu)
+  .App-mobile-menu {
+  display: none;
+}
+@container (min-width: 332px) {
+  .whiteboard-wide-tool:has([data-testid="compact-tool-text"]) {
+    display: contents;
+  }
+  .whiteboard-overflow-tool:has([data-testid="compact-tool-text"]) {
+    display: none;
+  }
+}
+@container (min-width: 372px) {
+  .whiteboard-wide-tool:has([data-testid="compact-tool-image"]) {
+    display: contents;
+  }
+  .whiteboard-overflow-tool:has([data-testid="compact-tool-image"]) {
+    display: none;
+  }
+}
+@container (max-width: 280px) {
+  .whiteboard-mobile-toolbar {
+    gap: 2px;
+    padding: 2px;
+  }
+  .whiteboard-ui-overlay .whiteboard-tool {
+    /* Seven base tools, including the toolbar's padding and gaps. */
+    width: min(28px, calc((100cqw - 32px) / 7));
+    height: 32px;
+  }
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .App-toolbar-container > .Island,
+.flexidual-whiteboard:has(.whiteboard-compact) .shapes-section,
+.flexidual-whiteboard:has(.whiteboard-compact) .mobile-misc-tools-container,
+.flexidual-whiteboard:has(.whiteboard-compact) .HintViewer,
+.flexidual-whiteboard:has(.whiteboard-compact) .layer-ui__wrapper__footer-right,
+.flexidual-whiteboard:has(.whiteboard-compact) .zoom-actions {
+  display: none;
+}
+.flexidual-whiteboard:has(.whiteboard-compact)
+  .excalidraw--mobile
+  .App-top-bar
+  > section,
+.flexidual-whiteboard:has(.whiteboard-compact)
+  .excalidraw--mobile
+  .App-top-bar
+  > section
+  > .Stack,
+.flexidual-whiteboard:has(.whiteboard-compact)
+  .excalidraw--mobile
+  .App-toolbar-container,
+.flexidual-whiteboard:has(.whiteboard-compact) .App-bottom-bar,
+.flexidual-whiteboard:has(.whiteboard-compact) .App-bottom-bar > .Island,
+.flexidual-whiteboard:has(.whiteboard-compact) footer.App-toolbar {
+  display: contents;
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .FixedSideContainer_side_top {
+  inset: 0;
+  height: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .App-toolbar-container > button,
+.flexidual-whiteboard:has(.whiteboard-compact) .layer-ui__wrapper__top-right {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  pointer-events: auto;
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .layer-ui__wrapper__top-right {
+  width: auto;
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .App-toolbar-content {
+  position: absolute;
+  inset: 0;
+  padding: 0 8px 56px;
+  padding-inline-start: 52px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+  z-index: var(--zIndex-layerUI);
+}
+/* 0.18.1 mobile footer: main menu, native edit, duplicate/finalize, delete, history. */
+.flexidual-whiteboard:has(.whiteboard-compact)
+  .App-toolbar-content
+  > button.ToolIcon_type_button:nth-of-type(2) {
+  display: none;
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .App-toolbar-content > * {
+  pointer-events: auto;
+}
+.flexidual-whiteboard:has(.whiteboard-compact)
+  .App-toolbar-content
+  > div:last-child:not(.dropdown-menu) {
+  display: flex;
+  margin-inline-start: auto;
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .main-menu-trigger {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 32px;
+  height: 32px;
+  pointer-events: auto;
+}
+.flexidual-whiteboard:has(.whiteboard-compact)
+  .main-menu-trigger
+  + .dropdown-menu {
+  top: 48px;
+  bottom: auto;
+  left: 8px;
+  max-width: calc(100cqw - 16px);
+  max-height: calc(100cqh - 64px);
+  overflow-y: auto;
+  pointer-events: auto;
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .App-mobile-menu,
+.flexidual-whiteboard:has(.whiteboard-compact):has(.whiteboard-properties-open)
+  .App-menu__left {
+  position: absolute;
+  bottom: 100px;
+  left: 8px;
+  right: 8px;
+  top: auto;
+  width: auto;
+  max-height: min(320px, 45cqh);
+  overflow-y: auto;
+  background: var(--island-bg-color);
+  z-index: 6;
+  pointer-events: auto;
+}
+.flexidual-whiteboard:not(:has(.whiteboard-properties-open)) .App-menu__left {
+  display: none;
+}
+.flexidual-whiteboard:has(.whiteboard-properties-open):not(
+    :has(.whiteboard-compact)
+  )
+  .App-menu__left {
+  top: calc(var(--lg-button-size) + 12px);
+  left: calc(var(--lg-button-size) + 12px);
+  max-height: calc(100cqh - 96px);
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .layer-ui__wrapper__footer-left {
+  position: absolute;
+  bottom: 48px;
+  right: 0;
+  left: auto;
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .ToolIcon__icon {
+  width: 32px;
+  height: 32px;
+}
+.flexidual-whiteboard:has(.whiteboard-compact) .scroll-back-to-content {
+  bottom: 110px;
+  z-index: 4;
+}

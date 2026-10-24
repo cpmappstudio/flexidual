@@ -18,6 +18,7 @@ import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-ico
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PreviewCard } from "@/components/ui/preview-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
@@ -164,53 +165,57 @@ function CourseTile({
   );
 
   const content = (
-    <article className="min-w-0">
-      <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-sidebar-border bg-sidebar">
-        <span
-          className="absolute inset-0 opacity-10"
-          style={{ backgroundColor: course.curriculumColor }}
-          aria-hidden="true"
-        />
-        <span
-          className="absolute -top-12 -right-8 size-40 rounded-full opacity-15"
-          style={{ backgroundColor: course.curriculumColor }}
-          aria-hidden="true"
-        />
-        <CurriculumIcon
-          iconKey={course.curriculumIconKey}
-          size={96}
-          className="relative size-20 drop-shadow-sm"
-        />
-        {isLive && (
-          <Badge className="absolute top-3 right-3 bg-destructive uppercase text-white">
-            {t("common.live")}
-          </Badge>
-        )}
-        {course.campusName && (
-          <Badge
-            variant="outline"
-            className={cn(
-              "absolute top-3 left-3 min-w-0 bg-background/90",
-              isLive ? "max-w-[calc(100%-6rem)]" : "max-w-[calc(100%-1.5rem)]",
-            )}
-            aria-label={`${course.campusName} · ${
-              course.accessMode === "private"
-                ? t("catalog.private")
-                : t("catalog.institution")
-            }`}
-            title={course.campusName}
-          >
-            {course.accessMode === "private" ? (
-              <LockKeyhole aria-hidden="true" />
-            ) : (
-              <School aria-hidden="true" />
-            )}
-            <span className="truncate">{course.campusName}</span>
-          </Badge>
-        )}
-      </div>
-
-      <div className="mt-3 flex min-w-0 items-start gap-2.5">
+    <PreviewCard
+      title={course.name}
+      media={
+        <>
+          <span
+            className="absolute inset-0 opacity-10"
+            style={{ backgroundColor: course.curriculumColor }}
+            aria-hidden="true"
+          />
+          <span
+            className="absolute -top-12 -right-8 size-40 rounded-full opacity-15"
+            style={{ backgroundColor: course.curriculumColor }}
+            aria-hidden="true"
+          />
+          <CurriculumIcon
+            iconKey={course.curriculumIconKey}
+            size={96}
+            className="relative size-20 drop-shadow-sm"
+          />
+          {isLive && (
+            <Badge className="absolute top-3 right-3 bg-destructive uppercase text-white">
+              {t("common.live")}
+            </Badge>
+          )}
+          {course.campusName && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "absolute top-3 left-3 min-w-0 bg-background/90",
+                isLive
+                  ? "max-w-[calc(100%-6rem)]"
+                  : "max-w-[calc(100%-1.5rem)]",
+              )}
+              aria-label={`${course.campusName} · ${
+                course.accessMode === "private"
+                  ? t("catalog.private")
+                  : t("catalog.institution")
+              }`}
+              title={course.campusName}
+            >
+              {course.accessMode === "private" ? (
+                <LockKeyhole aria-hidden="true" />
+              ) : (
+                <School aria-hidden="true" />
+              )}
+              <span className="truncate">{course.campusName}</span>
+            </Badge>
+          )}
+        </>
+      }
+      leading={
         <Avatar className="size-8 shrink-0">
           {course.teacherImageUrl && (
             <AvatarImage
@@ -223,46 +228,39 @@ function CourseTile({
             {initials || <BookOpen className="size-3.5" aria-hidden="true" />}
           </AvatarFallback>
         </Avatar>
-        <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-sm font-bold leading-snug text-foreground">
-            {course.name}
-          </h3>
-          {session?.title && session.title !== course.name && (
-            <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-              {session.title}
-            </p>
-          )}
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {course.curriculumTitle}
-            {course.teacherName ? ` · ${course.teacherName}` : ""}
-          </p>
-          <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            {scheduleLabel && (
-              <span
-                className={cn(
-                  "flex min-w-0 items-center gap-1 font-medium",
-                  isLive && "text-destructive",
-                )}
-              >
-                <CalendarClock
-                  className="size-3.5 shrink-0"
-                  aria-hidden="true"
-                />
-                <span className="truncate">{scheduleLabel}</span>
-              </span>
+      }
+    >
+      {session?.title && session.title !== course.name && (
+        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+          {session.title}
+        </p>
+      )}
+      <p className="mt-1 truncate text-xs text-muted-foreground">
+        {course.curriculumTitle}
+        {course.teacherName ? ` · ${course.teacherName}` : ""}
+      </p>
+      <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        {scheduleLabel && (
+          <span
+            className={cn(
+              "flex min-w-0 items-center gap-1 font-medium",
+              isLive && "text-destructive",
             )}
-            {scheduleLabel && (course.gradeName ?? course.gradeCode) && (
-              <span aria-hidden="true">·</span>
-            )}
-            {(course.gradeName ?? course.gradeCode) && (
-              <span className="shrink-0">
-                {course.gradeName ?? course.gradeCode}
-              </span>
-            )}
-          </div>
-        </div>
+          >
+            <CalendarClock className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{scheduleLabel}</span>
+          </span>
+        )}
+        {scheduleLabel && (course.gradeName ?? course.gradeCode) && (
+          <span aria-hidden="true">·</span>
+        )}
+        {(course.gradeName ?? course.gradeCode) && (
+          <span className="shrink-0">
+            {course.gradeName ?? course.gradeCode}
+          </span>
+        )}
       </div>
-    </article>
+    </PreviewCard>
   );
   return href ? (
     <Link

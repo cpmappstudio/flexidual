@@ -1,16 +1,45 @@
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { appendWhiteboardBucketHistory } from "../../lib/whiteboard-bucket-updates";
+import { whiteboardPreviewBucketRevision } from "../../lib/whiteboard-preview-revision";
+import {
+  readWhiteboardBucketHistory,
+  appendWhiteboardBucketHistory,
+} from "../../lib/whiteboard-bucket-updates";
 import {
   MAX_WHITEBOARD_PARTS,
+  WHITEBOARD_BUCKET_COUNT,
+  joinWhiteboardPayload,
+  mergeWhiteboardElements,
   parseWhiteboardElements,
   splitWhiteboardPayload,
   whiteboardBucketId,
   whiteboardJsonBytes,
   type WhiteboardElement,
 } from "../../lib/whiteboard-elements";
+
+export const whiteboardCursorValidator = v.object({
+  sourceId: v.string(),
+  generation: v.number(),
+  revision: v.number(),
+});
+export const whiteboardBucketResultValidator = v.union(
+  v.null(),
+  v.object({
+    generation: v.number(),
+    parts: v.array(v.string()),
+    sourceId: v.optional(v.string()),
+    revision: v.optional(v.number()),
+    baseRevision: v.optional(v.union(v.null(), v.number())),
+    checkpoint: v.optional(v.boolean()),
+  }),
+);
+export const whiteboardDeltaResultValidator = v.object({
+  changed: v.boolean(),
+  generation: v.number(),
+  conflictsParts: v.array(v.string()),
+});
 
 export function findWhiteboardManifest(
   ctx: QueryCtx | MutationCtx,
@@ -104,6 +133,7 @@ export async function recordWhiteboardBucketChanges(
   bucketId: number,
   previousRevision: number,
   changes: readonly WhiteboardElement[],
+  merged: readonly WhiteboardElement[],
 ) {
   const previous = await findWhiteboardBucketHistory(
     ctx,
@@ -123,6 +153,52 @@ export async function recordWhiteboardBucketChanges(
       manifestId: manifest._id,
       bucketId,
       ...history,
+    });
+  if (manifest.pageId) {
+    const hasContent = merged.some((element) => !element.isDeleted);
+    await writeWhiteboardPreviewSignature(
+      ctx,
+      manifest,
+      bucketId,
+      await whiteboardPreviewBucketRevision(merged),
+      hasContent,
+    );
+    if (hasContent) {
+      const page = await ctx.db.get("courseNotebookPages", manifest.pageId);
+      if (page?.retiredAt !== undefined)
+        await ctx.db.patch("courseNotebookPages", page._id, {
+          retiredAt: undefined,
+        });
+    }
+  }
+}
+
+/** Same transaction as the canonical merge; never invalidates scene subscriptions. */
+export async function writeWhiteboardPreviewSignature(
+  ctx: MutationCtx,
+  manifest: Doc<"whiteboardSceneManifests">,
+  bucketId: number,
+  signature: string,
+  hasContent: boolean,
+) {
+  const existing = await ctx.db
+    .query("whiteboardScenePreviewSignatures")
+    .withIndex("by_manifestId_and_bucketId", (q) =>
+      q.eq("manifestId", manifest._id).eq("bucketId", bucketId),
+    )
+    .unique();
+  const fields = { generation: manifest.generation, signature, hasContent };
+  if (existing)
+    await ctx.db.patch(
+      "whiteboardScenePreviewSignatures",
+      existing._id,
+      fields,
+    );
+  else
+    await ctx.db.insert("whiteboardScenePreviewSignatures", {
+      manifestId: manifest._id,
+      bucketId,
+      ...fields,
     });
 }
 
@@ -207,15 +283,21 @@ export async function deleteWhiteboardBucketBatch(
     .take(8);
   for (const bucket of buckets)
     await ctx.db.delete("whiteboardSceneBuckets", bucket._id);
-  const updates = await ctx.db
-    .query("whiteboardSceneUpdates")
-    .withIndex("by_manifestId_and_bucketId", (q) =>
-      q.eq("manifestId", manifestId),
-    )
-    .take(8);
-  for (const update of updates)
-    await ctx.db.delete("whiteboardSceneUpdates", update._id);
-  if (buckets.length === 8 || updates.length === 8)
+  let remaining = buckets.length === 8;
+  for (const table of [
+    "whiteboardSceneUpdates",
+    "whiteboardScenePreviewSignatures",
+  ] as const) {
+    const rows = await ctx.db
+      .query(table)
+      .withIndex("by_manifestId_and_bucketId", (q) =>
+        q.eq("manifestId", manifestId),
+      )
+      .take(8);
+    for (const row of rows) await ctx.db.delete(table, row._id);
+    remaining ||= rows.length === 8;
+  }
+  if (remaining)
     await ctx.scheduler.runAfter(
       0,
       internal.whiteboardSessions.cleanupSceneBuckets,
@@ -239,4 +321,136 @@ export async function deleteWhiteboardManifest(
       manifestId: manifest._id,
     },
   );
+}
+
+export async function readWhiteboardBucketResult(
+  ctx: QueryCtx | MutationCtx,
+  manifest: Doc<"whiteboardSceneManifests">,
+  bucketId: number,
+  cursor?: { sourceId: string; generation: number; revision: number },
+) {
+  if (
+    !Number.isInteger(bucketId) ||
+    bucketId < 0 ||
+    bucketId >= WHITEBOARD_BUCKET_COUNT
+  )
+    throw new ConvexError("INVALID_WHITEBOARD_BUCKET");
+  if (
+    cursor?.sourceId === manifest._id &&
+    cursor.generation === manifest.generation
+  ) {
+    const history = await findWhiteboardBucketHistory(
+      ctx,
+      manifest._id,
+      bucketId,
+    );
+    const changes = readWhiteboardBucketHistory(history, cursor);
+    if (changes !== null)
+      return {
+        generation: manifest.generation,
+        sourceId: manifest._id,
+        revision: history!.revision,
+        baseRevision: cursor.revision,
+        ...changes,
+      };
+  }
+  const bucket = await readWhiteboardBucket(ctx, manifest._id, bucketId);
+  const revision = bucket[0]?.revision ?? 0;
+  const unchanged =
+    cursor?.sourceId === manifest._id &&
+    cursor.generation === manifest.generation &&
+    cursor.revision === revision;
+  return bucket.length
+    ? {
+        generation: manifest.generation,
+        sourceId: manifest._id,
+        revision,
+        baseRevision: unchanged ? revision : null,
+        parts: unchanged ? [] : bucket.map((part) => part.jsonPart),
+        checkpoint: false,
+      }
+    : null;
+}
+
+export async function applyWhiteboardSceneDelta(
+  ctx: MutationCtx,
+  manifest: Doc<"whiteboardSceneManifests">,
+  bucketId: number,
+  parts: string[],
+  generation: number,
+) {
+  if (
+    !Number.isInteger(bucketId) ||
+    bucketId < 0 ||
+    bucketId >= WHITEBOARD_BUCKET_COUNT
+  )
+    throw new ConvexError("INVALID_WHITEBOARD_BUCKET");
+  let incoming;
+  try {
+    incoming = parseWhiteboardElements(joinWhiteboardPayload(parts));
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "WHITEBOARD_BUCKET_TOO_LARGE"
+    )
+      throw new ConvexError("WHITEBOARD_BUCKET_TOO_LARGE");
+    throw new ConvexError("INVALID_WHITEBOARD_ELEMENTS");
+  }
+  if (incoming.some((element) => whiteboardBucketId(element.id) !== bucketId))
+    throw new ConvexError("INVALID_WHITEBOARD_BUCKET");
+  if (manifest.generation !== generation)
+    throw new ConvexError("STALE_WHITEBOARD_GENERATION");
+  const existing = await readWhiteboardBucket(ctx, manifest._id, bucketId);
+  const elements = mergeWhiteboardElements(
+    existing.length
+      ? parseWhiteboardElements(
+          joinWhiteboardPayload(existing.map((part) => part.jsonPart)),
+        )
+      : [],
+    incoming,
+    manifest.legacyOrder,
+  );
+  const mergedParts = encodeWhiteboardBucket(elements);
+  const winners = new Map(elements.map((element) => [element.id, element]));
+  // A successful merge is not proof that every submitted revision won. Echo
+  // only rejected revisions so the caller can retain newer local edits while
+  // acknowledging the server's actual result, without rereading the bucket.
+  const conflicts = incoming.flatMap((element) => {
+    const winner = winners.get(element.id)!;
+    return winner.version !== element.version ||
+      winner.versionNonce !== element.versionNonce ||
+      (winner.index ?? null) !== (element.index ?? null)
+      ? [winner]
+      : [];
+  });
+  const changed = existing.length
+    ? existing.length !== mergedParts.length ||
+      existing.some((part, i) => part.jsonPart !== mergedParts[i])
+    : elements.length > 0;
+  if (changed) {
+    await writeWhiteboardBucket(
+      ctx,
+      manifest._id,
+      bucketId,
+      mergedParts,
+      existing,
+    );
+    await recordWhiteboardBucketChanges(
+      ctx,
+      manifest,
+      bucketId,
+      existing[0]?.revision ?? 0,
+      incoming.map((element) => winners.get(element.id)!),
+      elements,
+    );
+    if (!manifest.bucketIds.includes(bucketId))
+      await ctx.db.patch("whiteboardSceneManifests", manifest._id, {
+        bucketIds: [...manifest.bucketIds, bucketId].sort((a, b) => a - b),
+      });
+  }
+  return {
+    changed,
+    generation: manifest.generation,
+    conflictsParts: conflicts.length ? encodeWhiteboardBucket(conflicts) : [],
+  };
 }

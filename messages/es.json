@@ -1,4 +1,18 @@
 {
+  "courseNotebook": {
+    "livePicker": "Elegir una hoja de la pizarra para presentar",
+    "sessionBoard": "Volver a la pizarra de la sesión",
+    "tab": "Pizarra",
+    "newPage": "Nueva hoja",
+    "pageName": "Nombre de la hoja",
+    "archive": "Archivar pizarra",
+    "restore": "Restaurar pizarra",
+    "archived": "Esta pizarra está archivada. Sus hojas se conservan.",
+    "empty": "Todavía no hay hojas.",
+    "loadMore": "Cargar más",
+    "retry": "Reintentar cargar la pizarra",
+    "operationFailed": "No se pudo actualizar la pizarra. Inténtalo de nuevo."
+  },
   "filePreview": {
     "loadingPreview": "Cargando vista previa…",
     "previewError": "No se pudo mostrar este archivo. Aún puedes descargarlo.",

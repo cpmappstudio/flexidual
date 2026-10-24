@@ -1,4 +1,18 @@
 {
+  "courseNotebook": {
+    "livePicker": "Choose a board page to present",
+    "sessionBoard": "Return to the session whiteboard",
+    "tab": "Board",
+    "newPage": "New page",
+    "pageName": "Page name",
+    "archive": "Archive board",
+    "restore": "Restore board",
+    "archived": "This board is archived. Its pages are retained.",
+    "empty": "There are no pages yet.",
+    "loadMore": "Load more",
+    "retry": "Retry loading board",
+    "operationFailed": "Could not update the board. Please try again."
+  },
   "filePreview": {
     "loadingPreview": "Loading preview…",
     "previewError": "Could not preview this file. You can still download it.",

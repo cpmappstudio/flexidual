@@ -18,7 +18,7 @@ import {
   StopCircle,
 } from "lucide-react";
 import { SharedWhiteboard } from "./shared-whiteboard";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { FullscreenButton } from "./fullscreen-button";
@@ -32,11 +32,13 @@ const WB_PRESENTING_KEY = "wb_presenting_";
 
 export function CompanionClassroomUI({
   roomName,
+  courseId,
   countdown,
   isFullscreen = false,
   onToggleFullscreen,
 }: {
   roomName: string;
+  courseId?: Id<"classes">;
   countdown?: ReactNode;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
@@ -56,7 +58,6 @@ export function CompanionClassroomUI({
   });
   const [isPortrait, setIsPortrait] = useState(false);
   const [isPhoneLandscape, setIsPhoneLandscape] = useState(false);
-  const whiteboardApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
 
   // Ref so ParticipantConnected listener always reads the current broadcasting state
   const isBroadcastingRef = useRef(false);
@@ -343,9 +344,9 @@ export function CompanionClassroomUI({
           </div>
         )}
 
-        {/* Phone landscape: compact icon-only controls pill in the top-right corner */}
+        {/* Phone landscape: compact controls below the editor's Board action. */}
         {isPhoneLandscape && (
-          <div className="absolute top-2 right-2 z-[35] flex items-center gap-1.5 bg-inverse/60 backdrop-blur-md rounded-full px-2.5 py-1.5 border border-inverse-foreground/20 shadow-2xl">
+          <div className="absolute bottom-14 right-2 z-[35] flex items-center gap-1.5 bg-inverse/60 backdrop-blur-md rounded-full px-2.5 py-1.5 border border-inverse-foreground/20 shadow-2xl">
             {/* Present / Stop */}
             <button
               onMouseDown={(e) => e.preventDefault()}
@@ -400,9 +401,9 @@ export function CompanionClassroomUI({
         <div className="absolute inset-0 rounded-xl overflow-hidden shadow-2xl ring-1 ring-border touch-none overscroll-none">
           <SharedWhiteboard
             roomName={roomName}
+            courseId={courseId}
             isReadonly={false}
-            onApiReady={(api) => {
-              whiteboardApiRef.current = api;
+            onApiReady={() => {
               // The canvas is ready; re-announce presentation state.
               void restoreBroadcastState();
             }}

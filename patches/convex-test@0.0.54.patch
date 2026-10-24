@@ -1,0 +1,78 @@
+diff --git a/dist/index.js b/dist/index.js
+index 4aaed44325732f08b6fa1857011e68e10134f9c9..33f9c38738ec423e7d0ccae835fdce30e222bc2e 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -3,6 +3,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
+ import { actionGeneric, getFunctionAddress, httpActionGeneric, makeFunctionReference, mutationGeneric, queryGeneric, } from "convex/server";
+ import { compareValues, convexToJson, getConvexSize, getDocumentSize, jsonToConvex, } from "convex/values";
+ import { TransactionMetricsTracker, } from "./transactionMetrics.js";
++// Scheduler pump backport from convex-test v0.0.60. Capture before fake timers.
++const realSetTimeout = globalThis.setTimeout.bind(globalThis);
++const realClearTimeout = globalThis.clearTimeout.bind(globalThis);
+ // Real Convex IDs are 32 characters. IDs may exceed this length for very long
+ // table names or large numbers of documents, but this is the typical target.
+ const TYPICAL_CONVEX_ID_LENGTH = 32;
+@@ -1830,35 +1833,40 @@ function withAuth(auth = authStorage.getStore() ?? new AuthFake()) {
+             // each function.
+             // Stop after a fixed number of iterations to avoid infinite loops.
+             const { scheduler } = getConvexGlobal();
+-            for (let i = 0; i < maxIterations; i++) {
++            const originalSetTimeout = globalThis.setTimeout;
++            const advanceTimersIfActive = () => {
++                if (globalThis.setTimeout !== originalSetTimeout) {
++                    throw new Error("finishAllScheduledFunctions: timers were restored or replaced " +
++                        "while waiting for scheduled functions.");
++                }
+                 advanceTimers();
++            };
++            for (let i = 0; i < maxIterations; i++) {
++                advanceTimersIfActive();
+                 // If no scheduled work fired, there's nothing left to wait for.
+                 if (!scheduler.anyFunctionsRunning()) {
+                     return;
+                 }
+-                // Actions may use setTimeout internally (e.g. for delays).
+-                // Keep advancing timers while waiting so those can resolve.
+-                let done = false;
+-                void scheduler.finishInProgressScheduledFunctions().then(() => {
+-                    done = true;
+-                });
+-                const maxPumps = 10000;
+-                for (let pump = 0; pump < maxPumps && !done; pump++) {
+-                    advanceTimers();
+-                    // Yield through a full event loop iteration so that dynamic
+-                    // import() calls (used to load function modules) can resolve.
+-                    // Using MessageChannel to post to the macrotask queue —
+-                    // it is not faked by vitest and not removed by edge-runtime.
+-                    await new Promise((r) => {
+-                        const { port1, port2 } = new MessageChannel();
+-                        port2.onmessage = () => r();
+-                        port1.postMessage(null);
++                // Advance timers while waiting for scheduled functions to finish.
++                // Stop if teardown restores or replaces the clock.
++                let timer;
++                try {
++                    await new Promise((resolve, reject) => {
++                        const pump = () => {
++                            try {
++                                advanceTimersIfActive();
++                                timer = realSetTimeout(pump, 0);
++                            }
++                            catch (error) {
++                                reject(error);
++                            }
++                        };
++                        void scheduler.finishInProgressScheduledFunctions().then(resolve, reject);
++                        pump();
+                     });
+-                    if (pump === maxPumps - 1 && !done) {
+-                        throw new Error("finishAllScheduledFunctions: scheduled function did not " +
+-                            `complete after ${maxPumps} timer pumps. ` +
+-                            "Does an action have an unresolvable setTimeout or infinite loop?");
+-                    }
++                }
++                finally {
++                    realClearTimeout(timer);
+                 }
+             }
+             throw new Error("finishAllScheduledFunctions: too many iterations. " +

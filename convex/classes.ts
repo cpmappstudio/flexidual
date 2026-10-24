@@ -31,6 +31,7 @@ import {
   utcToLocalDateTime,
 } from "../lib/time-zone";
 import { getClassTimeZone } from "./model/timeZone";
+import { initializeCourseNotebook } from "./courseNotebook";
 import { assertAbekaClassLinkNotMigrating } from "./model/abekaAccess";
 import { getInstitutionGrades, validateGradeCodes } from "./model/grades";
 import {
@@ -133,6 +134,8 @@ const classFields = {
   chatStudentAttachmentsEnabled: v.optional(v.boolean()),
   chatDisabled: v.optional(v.boolean()),
   chatArchivedAt: v.optional(v.number()),
+  notebookArchivedAt: v.optional(v.number()),
+  notebookInitializedAt: v.optional(v.number()),
   chatLastPinnedAt: v.optional(v.number()),
   chatNotificationsClearedThrough: v.optional(v.number()),
   isActive: v.boolean(),
@@ -2291,6 +2294,7 @@ export const createWithSchedule = mutation({
 
     const createdClass = await ctx.db.get("classes", classId);
     if (createdClass) {
+      await initializeCourseNotebook(ctx, createdClass);
       await syncCourseGradeAssignments(ctx, createdClass);
       for (const teacherId of getCourseTeacherIds(createdClass))
         await publishCourseNotification(ctx, {
@@ -2817,6 +2821,9 @@ export const remove = mutation({
 
     await ctx.db.delete(args.id);
     await ctx.scheduler.runAfter(0, internal.courseChatMessages.removeByClass, {
+      classId: args.id,
+    });
+    await ctx.scheduler.runAfter(0, internal.courseNotebook.removeByClass, {
       classId: args.id,
     });
     await ctx.scheduler.runAfter(0, internal.courseTasks.removeByClass, {

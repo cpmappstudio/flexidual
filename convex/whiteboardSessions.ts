@@ -11,25 +11,26 @@ import { getLiveActivationId, getLiveRoomName } from "./model/liveActivation";
 import { revokeWhiteboardRecordingToken } from "./model/whiteboardRecording";
 import { canManageRoom } from "./permissions";
 import { canAccessSchedule } from "./model/scheduleAccess";
+import { requireNotebookPage } from "./model/courseNotebookAccess";
+import { resolveWhiteboardPresentation } from "./model/whiteboardPresentation";
+import { readNotebookFileRefs } from "./model/notebookFiles";
 import {
   deleteWhiteboardBucketBatch,
-  encodeWhiteboardBucket,
   ensureWhiteboardManifest,
   findWhiteboardManifest,
   readWhiteboardBucket,
-  writeWhiteboardBucket,
   whiteboardManifestResult,
-  findWhiteboardBucketHistory,
-  recordWhiteboardBucketChanges,
+  readWhiteboardBucketResult,
+  applyWhiteboardSceneDelta,
+  whiteboardCursorValidator,
+  whiteboardBucketResultValidator,
+  whiteboardDeltaResultValidator,
 } from "./model/whiteboardSceneStorage";
-import { readWhiteboardBucketHistory } from "../lib/whiteboard-bucket-updates";
 import {
   WHITEBOARD_BUCKET_COUNT,
   joinWhiteboardPayload,
-  mergeWhiteboardElements,
   parseWhiteboardElements,
   sortWhiteboardElements,
-  whiteboardBucketId,
   whiteboardJsonBytes,
 } from "../lib/whiteboard-elements";
 
@@ -68,6 +69,7 @@ const manifestValidator = v.object({
   bucketIds: v.array(v.number()),
   legacyOrder: v.array(v.string()),
   sourceId: v.optional(v.string()),
+  notebookPageId: v.optional(v.id("courseNotebookPages")),
 });
 
 export const getSceneManifest = query({
@@ -82,7 +84,11 @@ export const getSceneManifest = query({
         recordingToken,
         manifest.recordingToken,
       );
-      return whiteboardManifestResult(manifest);
+      const presented = await resolveWhiteboardPresentation(ctx, manifest);
+      return {
+        ...whiteboardManifestResult(presented),
+        ...(presented.pageId ? { notebookPageId: presented.pageId } : {}),
+      };
     }
     const legacy = await ctx.db
       .query("whiteboardSessions")
@@ -247,30 +253,64 @@ export const ensureScene = mutation({
   },
 });
 
+export const selectNotebookPage = mutation({
+  args: {
+    roomName: v.string(),
+    expectedLiveRoomName: v.string(),
+    pageId: v.union(v.id("courseNotebookPages"), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, { roomName, expectedLiveRoomName, pageId }) => {
+    const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
+    if (getLiveRoomName(schedule) !== expectedLiveRoomName)
+      throw new ConvexError("STALE_LIVE_ACTIVATION");
+    if (pageId) {
+      const { page } = await requireNotebookPage(ctx, pageId, true);
+      if (page.classId !== schedule.classId)
+        throw new ConvexError("PERMISSION_DENIED");
+    }
+    const manifest = await ensureWhiteboardManifest(ctx, roomName);
+    if (manifest.presentedPageId !== (pageId ?? undefined))
+      await ctx.db.patch("whiteboardSceneManifests", manifest._id, {
+        presentedPageId: pageId ?? undefined,
+      });
+    return null;
+  },
+});
+
+export const getPresentedFiles = query({
+  args: {
+    ...sceneReadArgs,
+    pageId: v.id("courseNotebookPages"),
+    fileIds: v.array(v.string()),
+  },
+  returns: v.record(v.string(), fileRefValidator),
+  handler: async (ctx, { roomName, recordingToken, pageId, fileIds }) => {
+    const room = await findWhiteboardManifest(ctx, roomName);
+    await requireLiveWhiteboardReader(
+      ctx,
+      roomName,
+      recordingToken,
+      room?.recordingToken,
+    );
+    const presented = room && (await resolveWhiteboardPresentation(ctx, room));
+    if (presented?.pageId !== pageId) return {};
+    return readNotebookFileRefs(ctx, pageId, fileIds);
+  },
+});
+
 export const getSceneBucket = query({
   args: {
     ...sceneReadArgs,
     bucketId: v.number(),
-    cursor: v.optional(
-      v.object({
-        sourceId: v.string(),
-        generation: v.number(),
-        revision: v.number(),
-      }),
-    ),
+    cursor: v.optional(whiteboardCursorValidator),
+    expectedPageId: v.optional(v.id("courseNotebookPages")),
   },
-  returns: v.union(
-    v.null(),
-    v.object({
-      generation: v.number(),
-      parts: v.array(v.string()),
-      sourceId: v.optional(v.string()),
-      revision: v.optional(v.number()),
-      baseRevision: v.optional(v.union(v.null(), v.number())),
-      checkpoint: v.optional(v.boolean()),
-    }),
-  ),
-  handler: async (ctx, { roomName, recordingToken, bucketId, cursor }) => {
+  returns: whiteboardBucketResultValidator,
+  handler: async (
+    ctx,
+    { roomName, recordingToken, bucketId, cursor, expectedPageId },
+  ) => {
     if (
       !Number.isInteger(bucketId) ||
       bucketId < 0 ||
@@ -285,41 +325,9 @@ export const getSceneBucket = query({
       manifest?.recordingToken,
     );
     if (!manifest) return null;
-    if (
-      cursor?.sourceId === manifest._id &&
-      cursor.generation === manifest.generation
-    ) {
-      const history = await findWhiteboardBucketHistory(
-        ctx,
-        manifest._id,
-        bucketId,
-      );
-      const changes = readWhiteboardBucketHistory(history, cursor);
-      if (changes !== null)
-        return {
-          generation: manifest.generation,
-          sourceId: manifest._id,
-          revision: history!.revision,
-          baseRevision: cursor.revision,
-          ...changes,
-        };
-    }
-    const bucket = await readWhiteboardBucket(ctx, manifest._id, bucketId);
-    const revision = bucket[0]?.revision ?? 0;
-    const unchanged =
-      cursor?.sourceId === manifest._id &&
-      cursor.generation === manifest.generation &&
-      cursor.revision === revision;
-    return bucket.length
-      ? {
-          generation: manifest.generation,
-          sourceId: manifest._id,
-          revision,
-          baseRevision: unchanged ? revision : null,
-          parts: unchanged ? [] : bucket.map((part) => part.jsonPart),
-          checkpoint: false,
-        }
-      : null;
+    const presented = await resolveWhiteboardPresentation(ctx, manifest);
+    if (presented.pageId !== expectedPageId) return null;
+    return readWhiteboardBucketResult(ctx, presented, bucketId, cursor);
   },
 });
 
@@ -350,11 +358,7 @@ export const applySceneDelta = mutation({
     bucketId: v.number(),
     parts: v.array(v.string()),
   },
-  returns: v.object({
-    changed: v.boolean(),
-    generation: v.number(),
-    conflictsParts: v.array(v.string()),
-  }),
+  returns: whiteboardDeltaResultValidator,
   handler: async (
     ctx,
     { roomName, expectedLiveRoomName, generation, bucketId, parts },
@@ -362,80 +366,14 @@ export const applySceneDelta = mutation({
     const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
     if (getLiveRoomName(schedule) !== expectedLiveRoomName)
       throw new ConvexError("STALE_LIVE_ACTIVATION");
-    if (
-      !Number.isInteger(bucketId) ||
-      bucketId < 0 ||
-      bucketId >= WHITEBOARD_BUCKET_COUNT
-    )
-      throw new ConvexError("INVALID_WHITEBOARD_BUCKET");
-    let incoming;
-    try {
-      incoming = parseWhiteboardElements(joinWhiteboardPayload(parts));
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === "WHITEBOARD_BUCKET_TOO_LARGE"
-      )
-        throw new ConvexError("WHITEBOARD_BUCKET_TOO_LARGE");
-      throw new ConvexError("INVALID_WHITEBOARD_ELEMENTS");
-    }
-    if (incoming.some((element) => whiteboardBucketId(element.id) !== bucketId))
-      throw new ConvexError("INVALID_WHITEBOARD_BUCKET");
     const manifest = await ensureWhiteboardManifest(ctx, roomName);
-    if (manifest.generation !== generation)
-      throw new ConvexError("STALE_WHITEBOARD_GENERATION");
-    const existing = await readWhiteboardBucket(ctx, manifest._id, bucketId);
-    const elements = mergeWhiteboardElements(
-      existing.length
-        ? parseWhiteboardElements(
-            joinWhiteboardPayload(existing.map((part) => part.jsonPart)),
-          )
-        : [],
-      incoming,
-      manifest.legacyOrder,
+    return applyWhiteboardSceneDelta(
+      ctx,
+      manifest,
+      bucketId,
+      parts,
+      generation,
     );
-    const mergedParts = encodeWhiteboardBucket(elements);
-    const winners = new Map(elements.map((element) => [element.id, element]));
-    // A successful merge is not proof that every submitted revision won. Echo
-    // only rejected revisions so the caller can retain newer local edits while
-    // acknowledging the server's actual result, without rereading the bucket.
-    const conflicts = incoming.flatMap((element) => {
-      const winner = winners.get(element.id)!;
-      return winner.version !== element.version ||
-        winner.versionNonce !== element.versionNonce ||
-        (winner.index ?? null) !== (element.index ?? null)
-        ? [winner]
-        : [];
-    });
-    const changed = existing.length
-      ? existing.length !== mergedParts.length ||
-        existing.some((part, i) => part.jsonPart !== mergedParts[i])
-      : elements.length > 0;
-    if (changed) {
-      await writeWhiteboardBucket(
-        ctx,
-        manifest._id,
-        bucketId,
-        mergedParts,
-        existing,
-      );
-      await recordWhiteboardBucketChanges(
-        ctx,
-        manifest,
-        bucketId,
-        existing[0]?.revision ?? 0,
-        incoming.map((element) => winners.get(element.id)!),
-      );
-      if (!manifest.bucketIds.includes(bucketId))
-        await ctx.db.patch("whiteboardSceneManifests", manifest._id, {
-          bucketIds: [...manifest.bucketIds, bucketId].sort((a, b) => a - b),
-        });
-    }
-    return {
-      changed,
-      generation: manifest.generation,
-      conflictsParts: conflicts.length ? encodeWhiteboardBucket(conflicts) : [],
-    };
   },
 });
 
