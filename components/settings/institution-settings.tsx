@@ -27,11 +27,14 @@ export function InstitutionSettings() {
   const [isSaving, setIsSaving] = React.useState(false);
   const formId = React.useId();
 
-  React.useEffect(() => {
-    if (!context?.institution) return;
-    setName(context.institution.name);
-    setTimeZone(context.institution.timeZone ?? getBrowserTimeZone());
-  }, [context?.institution]);
+  const institutionSource = context?.institution;
+  const [previousInstitution, setPreviousInstitution] =
+    React.useState<typeof institutionSource>();
+  if (institutionSource && previousInstitution !== institutionSource) {
+    setPreviousInstitution(institutionSource);
+    setName(institutionSource.name);
+    setTimeZone(institutionSource.timeZone ?? getBrowserTimeZone());
+  }
 
   if (isLoading) {
     return <Skeleton className="h-72 w-full rounded-xl" />;

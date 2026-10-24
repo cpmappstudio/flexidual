@@ -157,6 +157,28 @@ test("switching from preview to correction unlocks the same viewer without reloa
   expect(state.mounts).toBe(1);
 });
 
+test("delayed PDF events use the latest committed callback without remounting", () => {
+  const original = vi.fn();
+  const current = vi.fn();
+  const view = render(
+    <TaskPdfViewer src="blob:pdf" name="work.pdf" onReady={original} />,
+  );
+  view.rerender(
+    <TaskPdfViewer
+      src="blob:pdf"
+      name="work.pdf"
+      onReady={current}
+      readOnly={false}
+    />,
+  );
+  state.pages = { 0: [] };
+  act(() => state.annotationEvent({ type: "loaded" }));
+  expect(original).not.toHaveBeenCalled();
+  expect(current).toHaveBeenCalledOnce();
+  expect(state.mounts).toBe(1);
+  expect(state.setLocked).toHaveBeenLastCalledWith({ type: "none" });
+});
+
 test.each([true, false])(
   "modal scroll locks allow native PDF gestures and still block background scrolling (readOnly=%s)",
   (readOnly) => {

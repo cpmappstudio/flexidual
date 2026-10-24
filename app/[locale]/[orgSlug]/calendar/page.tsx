@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Suspense } from "react";
+import { useMemo, useState, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -70,7 +70,7 @@ function AgendaView({
     const groups: { [key: string]: { date: Date; events: CalendarEvent[] } } =
       {};
 
-    const today = startOfDay(TZDate.tz(displayTimeZone), {
+    const today = startOfDay(new TZDate(now, displayTimeZone), {
       in: tz(displayTimeZone),
     });
 
@@ -97,7 +97,7 @@ function AgendaView({
     });
 
     return groups;
-  }, [displayTimeZone, filteredEvents]);
+  }, [displayTimeZone, filteredEvents, now]);
 
   const sortedDates = Object.keys(groupedEvents).sort();
 
@@ -113,7 +113,7 @@ function AgendaView({
     <div className="space-y-6">
       {sortedDates.map((dateKey) => {
         const { date, events: dayEvents } = groupedEvents[dateKey];
-        const isToday = isSameDay(date, Date.now(), {
+        const isToday = isSameDay(date, now, {
           in: tz(displayTimeZone),
         });
 
@@ -337,11 +337,15 @@ function CalendarContent() {
         }
       : "skip",
   );
-  useEffect(() => {
+  const filtersScope = `${scopeKey ?? "unresolved"}:${classIdParam ?? "all"}`;
+  const [previousFiltersScope, setPreviousFiltersScope] =
+    useState(filtersScope);
+  if (previousFiltersScope !== filtersScope) {
+    setPreviousFiltersScope(filtersScope);
     setSelectedCourseId(classIdParam);
     setSelectedTeacherId(null);
     setSelectedGradeCode(null);
-  }, [classIdParam, scopeKey]);
+  }
 
   const scheduleData = useRetainedQueryResult(
     scheduleResult,

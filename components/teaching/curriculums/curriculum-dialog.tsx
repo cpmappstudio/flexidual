@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -117,7 +117,11 @@ export function CurriculumDialog({
     bulkLessonsText: "",
   });
 
-  useEffect(() => {
+  const [formSource, setFormSource] = useState({ open: false, curriculum });
+  const needsFormReset =
+    formSource.open !== isOpen || formSource.curriculum !== curriculum;
+  if (needsFormReset) {
+    setFormSource({ open: isOpen, curriculum });
     if (isOpen) {
       if (isEditing && curriculum) {
         setFormData({
@@ -142,22 +146,17 @@ export function CurriculumDialog({
         });
       }
     }
-  }, [isOpen, isEditing, curriculum]);
+  }
 
-  useEffect(() => {
-    if (!isOpen || !grades) return;
-
+  if (!needsFormReset && isOpen && grades) {
     const offeredGradeCodes = grades.map((grade) => grade.code);
-    setFormData((current) => {
-      const gradeCodes = retainOfferedGradeCodes(
-        current.gradeCodes,
-        offeredGradeCodes,
-      );
-      return gradeCodes.length === current.gradeCodes.length
-        ? current
-        : { ...current, gradeCodes };
-    });
-  }, [grades, isOpen]);
+    const gradeCodes = retainOfferedGradeCodes(
+      formData.gradeCodes,
+      offeredGradeCodes,
+    );
+    if (gradeCodes.length !== formData.gradeCodes.length)
+      setFormData({ ...formData, gradeCodes });
+  }
 
   const handleAddToQueue = (e: React.FormEvent) => {
     e.preventDefault();

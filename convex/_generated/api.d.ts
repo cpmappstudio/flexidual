@@ -75,6 +75,8 @@ import type * as model_liveLifecycle from "../model/liveLifecycle.js";
 import type * as model_membership from "../model/membership.js";
 import type * as model_notebookFiles from "../model/notebookFiles.js";
 import type * as model_notebookPreview from "../model/notebookPreview.js";
+import type * as model_peopleDirectory from "../model/peopleDirectory.js";
+import type * as model_peopleDirectoryFields from "../model/peopleDirectoryFields.js";
 import type * as model_roles from "../model/roles.js";
 import type * as model_scheduleAccess from "../model/scheduleAccess.js";
 import type * as model_scheduleCancellation from "../model/scheduleCancellation.js";
@@ -86,6 +88,7 @@ import type * as model_studentDashboardAccess from "../model/studentDashboardAcc
 import type * as model_surveyAccess from "../model/surveyAccess.js";
 import type * as model_systemNotificationEvents from "../model/systemNotificationEvents.js";
 import type * as model_systemNotifications from "../model/systemNotifications.js";
+import type * as model_teacherPeopleDirectory from "../model/teacherPeopleDirectory.js";
 import type * as model_timeZone from "../model/timeZone.js";
 import type * as model_userImage from "../model/userImage.js";
 import type * as model_whiteboardAccess from "../model/whiteboardAccess.js";
@@ -93,6 +96,7 @@ import type * as model_whiteboardPresentation from "../model/whiteboardPresentat
 import type * as model_whiteboardRecording from "../model/whiteboardRecording.js";
 import type * as model_whiteboardSceneStorage from "../model/whiteboardSceneStorage.js";
 import type * as organizations from "../organizations.js";
+import type * as people from "../people.js";
 import type * as permissions from "../permissions.js";
 import type * as presence from "../presence.js";
 import type * as recordings from "../recordings.js";
@@ -184,6 +188,8 @@ declare const fullApi: ApiFromModules<{
   "model/membership": typeof model_membership;
   "model/notebookFiles": typeof model_notebookFiles;
   "model/notebookPreview": typeof model_notebookPreview;
+  "model/peopleDirectory": typeof model_peopleDirectory;
+  "model/peopleDirectoryFields": typeof model_peopleDirectoryFields;
   "model/roles": typeof model_roles;
   "model/scheduleAccess": typeof model_scheduleAccess;
   "model/scheduleCancellation": typeof model_scheduleCancellation;
@@ -195,6 +201,7 @@ declare const fullApi: ApiFromModules<{
   "model/surveyAccess": typeof model_surveyAccess;
   "model/systemNotificationEvents": typeof model_systemNotificationEvents;
   "model/systemNotifications": typeof model_systemNotifications;
+  "model/teacherPeopleDirectory": typeof model_teacherPeopleDirectory;
   "model/timeZone": typeof model_timeZone;
   "model/userImage": typeof model_userImage;
   "model/whiteboardAccess": typeof model_whiteboardAccess;
@@ -202,6 +209,7 @@ declare const fullApi: ApiFromModules<{
   "model/whiteboardRecording": typeof model_whiteboardRecording;
   "model/whiteboardSceneStorage": typeof model_whiteboardSceneStorage;
   organizations: typeof organizations;
+  people: typeof people;
   permissions: typeof permissions;
   presence: typeof presence;
   recordings: typeof recordings;

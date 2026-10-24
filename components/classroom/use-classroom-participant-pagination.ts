@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 const MIN_PARTICIPANT_TILE_WIDTH = 96;
 
@@ -114,10 +108,9 @@ export function useClassroomParticipantPagination(itemCount: number) {
   const lastPage = Math.max(pageCount - 1, 0);
   const activePage = Math.min(page, lastPage);
 
-  useEffect(() => {
-    if (capacity === 0 && itemCount > 0) return;
-    setPage((current) => Math.min(current, lastPage));
-  }, [capacity, itemCount, lastPage]);
+  if ((capacity > 0 || itemCount === 0) && page > lastPage) {
+    setPage(lastPage);
+  }
 
   return {
     gridRef,

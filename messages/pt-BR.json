@@ -1870,7 +1870,14 @@
     "invalidDateRange": "Selecione uma data e um intervalo de tempo válidos.",
     "timeZoneRequired": "Configure o fuso horário da instituição ou campus antes de continuar."
   },
+  "people": {
+    "preparing": "Preparando diretório… Tente novamente se demorar demais",
+    "retryPreparation": "Tentar preparar o diretório novamente",
+    "invalidSearch": "Use até 16 palavras e 256 caracteres.",
+    "noPageResults": "Nenhum resultado neste trecho. Continue na próxima página."
+  },
   "table": {
+    "pageNumber": "Página {current}",
     "columns": "Colunas",
     "filters": "Filtros",
     "pageInfo": "Página {current} de {total}",

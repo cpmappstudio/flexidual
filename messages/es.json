@@ -1872,7 +1872,14 @@
     "invalidDateRange": "Selecciona una fecha y una franja horaria válidas.",
     "timeZoneRequired": "Configura la zona horaria de la institución o campus antes de continuar."
   },
+  "people": {
+    "preparing": "Preparando directorio… Reintenta si tarda demasiado",
+    "retryPreparation": "Reintentar preparación del directorio",
+    "invalidSearch": "Usa hasta 16 palabras y 256 caracteres.",
+    "noPageResults": "Sin coincidencias en este tramo. Continúa en la siguiente página."
+  },
   "table": {
+    "pageNumber": "Página {current}",
     "columns": "Columnas",
     "filters": "Filtros",
     "pageInfo": "Página {current} de {total}",

@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -116,7 +110,7 @@ export function CourseTaskDetail({
       ? t(status.submissionsOpen ? "visibleStatus" : "closedStatus")
       : t("scheduledStatus");
   const availabilityDate = task.releasedAt ?? task.availableAt;
-  
+
   return (
     <div className="min-w-0 space-y-4 py-2">
       <section className="min-w-0 space-y-4">
@@ -270,7 +264,7 @@ export function CourseTaskDetail({
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="flex items-center gap-2 font-semibold text-foreground">
             {t("materials")}
-            </h3>
+          </h3>
           {materials.length > 0 && (
             <Badge className="min-w-6 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-primary">
               {materials.length}
@@ -569,11 +563,14 @@ function TeacherTaskSubmissions({
   const [selectedStudent, setSelectedStudent] = useState<
     Id<"users"> | undefined
   >(linkedStudentId ? (linkedStudentId as Id<"users">) : undefined);
-  useEffect(() => {
+  const [previousLinkedStudentId, setPreviousLinkedStudentId] =
+    useState(linkedStudentId);
+  if (previousLinkedStudentId !== linkedStudentId) {
+    setPreviousLinkedStudentId(linkedStudentId);
     setSelectedStudent(
       linkedStudentId ? (linkedStudentId as Id<"users">) : undefined,
     );
-  }, [linkedStudentId]);
+  }
 
   const selectStudent = useCallback(
     (studentId?: Id<"users">) => {

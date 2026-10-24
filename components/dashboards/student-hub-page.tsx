@@ -244,6 +244,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     if (isViewingStudentProfile) return;
     const stored = localStorage.getItem("flexidual_sound_alerts");
     if (stored !== "true") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore the browser-only audio preference while installing the user-gesture AudioContext subscription.
     setSoundEnabled(true);
     soundEnabledRef.current = true;
 

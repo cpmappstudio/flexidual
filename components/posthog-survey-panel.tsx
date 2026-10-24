@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useId, useRef, useState } from "react";
 import type { PostHog } from "posthog-js";
 import { ClipboardList, X } from "lucide-react";
 import {
@@ -32,7 +32,9 @@ export function PostHogSurveyPanel({
   const [state, setState] = useState<SurveyPanelState>("hidden");
   const spanish = locale === "es";
   const callbacks = useRef({ onEligible, onComplete });
-  callbacks.current = { onEligible, onComplete };
+  useLayoutEffect(() => {
+    callbacks.current = { onEligible, onComplete };
+  }, [onEligible, onComplete]);
   const label = spanish ? "Completar encuesta" : "Complete survey";
 
   useEffect(

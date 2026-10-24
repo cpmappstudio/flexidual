@@ -39,6 +39,7 @@ import {
   type ClassSessionType,
 } from "@/lib/class-session";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
+import { useCurrentMinute } from "@/hooks/use-current-minute";
 
 const localeMap = {
   en: enUS,
@@ -127,8 +128,10 @@ export function ScheduleItem({
   variant = "default",
   onEventClick,
   isStudent = false,
-  now = Date.now(),
+  now: providedNow,
 }: ScheduleItemProps) {
+  const currentMinute = useCurrentMinute();
+  const now = providedNow ?? currentMinute;
   const t = useTranslations();
   const locale = useLocale();
   const dateLocale = localeMap[locale as keyof typeof localeMap] || enUS;

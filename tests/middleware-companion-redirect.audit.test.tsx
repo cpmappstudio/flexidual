@@ -9,13 +9,13 @@ vi.mock("next-intl/middleware", () => ({
   default: () => () => NextResponse.next(),
 }));
 
-import middleware from "@/middleware";
+import proxy from "@/proxy";
 
 test("an unauthenticated companion URL survives the redirect to sign-in", async () => {
   const request = new NextRequest(
     "https://app.example/es/school/classroom/live-room?companion=true",
   );
-  const runMiddleware = middleware as unknown as (
+  const runMiddleware = proxy as unknown as (
     auth: () => Promise<{ userId: null }>,
     request: NextRequest,
   ) => Promise<Response>;
@@ -39,7 +39,7 @@ test.each([
   ["principal", "/professors", true],
 ])("%s access to %s is %s", async (role, path, allowed) => {
   const request = new NextRequest(`https://app.example/en/campus${path}`);
-  const run = middleware as unknown as (
+  const run = proxy as unknown as (
     auth: () => Promise<unknown>,
     request: NextRequest,
   ) => Promise<Response>;
@@ -56,3 +56,27 @@ test.each([
       "/en/campus",
     );
 });
+
+test.each([
+  "/api/whiteboard-image",
+  "/api/livekit/token",
+  "/recording",
+  "/en/sign-in",
+])(
+  "proxy preserves the existing public routing contract for %s",
+  async (path) => {
+    const auth = vi
+      .fn()
+      .mockRejectedValue(new Error("must not request a session"));
+    const run = proxy as unknown as (
+      authenticate: () => Promise<unknown>,
+      request: NextRequest,
+    ) => Promise<Response>;
+    const response = await run(
+      auth,
+      new NextRequest(`https://app.example${path}`),
+    );
+    expect(auth).not.toHaveBeenCalled();
+    expect(response.headers.has("location")).toBe(false);
+  },
+);

@@ -12,7 +12,7 @@ export function getClassroomQueryNow(now: number) {
 }
 
 export function useClassroomClock() {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(Date.now);
 
   useEffect(() => {
     const updateNow = () => setNow(Date.now());

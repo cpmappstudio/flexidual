@@ -32,6 +32,7 @@ import {
   sessionLeadershipEventTypeValidator,
 } from "./model/sessionLeadership";
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
+import { peopleDirectoryValidator } from "./model/peopleDirectoryFields";
 
 export const surveyCampaignValidator = v.object({
   surveyId: v.string(),
@@ -237,6 +238,11 @@ export default defineSchema({
       "isActive",
       "enrollmentsMigratedAt",
     ])
+    .index("by_campusId_and_isActive_and_enrollmentsMigratedAt", [
+      "campusId",
+      "isActive",
+      "enrollmentsMigratedAt",
+    ])
     .index("by_school_and_active_and_class_type", [
       "schoolId",
       "isActive",
@@ -249,11 +255,11 @@ export default defineSchema({
       "gradeCode",
       "isActive",
     ])
-    .index("by_teacher_campus_period_active", [
+    .index("by_teacher_campus_active_period", [
       "teacherId",
       "campusId",
-      "academicPeriodId",
       "isActive",
+      "academicPeriodId",
     ])
     .searchIndex("search_catalog_name", {
       searchField: "name",
@@ -893,6 +899,89 @@ export default defineSchema({
    * ROLE ASSIGNMENTS (The Security Junction)
    * Decouples identity from access. Determines who can do what, and where.
    */
+  peopleDirectoryState: defineTable({
+    campusId: v.id("campuses"),
+    teacherId: v.optional(v.id("users")),
+    ready: v.boolean(),
+    jobId: v.optional(v.id("_scheduled_functions")),
+  }).index("by_campusId_and_teacherId", ["campusId", "teacherId"]),
+
+  teacherStudentDirectory: defineTable({
+    campusId: v.id("campuses"),
+    teacherId: v.id("users"),
+    studentId: v.id("users"),
+    directory: peopleDirectoryValidator,
+  })
+    .index("by_studentId", ["studentId"])
+    .index("by_campusId_and_teacherId_and_studentId", [
+      "campusId",
+      "teacherId",
+      "studentId",
+    ])
+    .index("by_scope_name", ["campusId", "teacherId", "directory.name"])
+    .index("by_scope_email", ["campusId", "teacherId", "directory.email"])
+    .index("by_scope_grade", ["campusId", "teacherId", "directory.grade"])
+    .index("by_scope_active", ["campusId", "teacherId", "directory.isActive"])
+    .index("by_scope_grade_name", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.name",
+    ])
+    .index("by_scope_active_name", [
+      "campusId",
+      "teacherId",
+      "directory.isActive",
+      "directory.name",
+    ])
+    .index("by_scope_grade_email", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.email",
+    ])
+    .index("by_scope_grade_active", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.isActive",
+    ])
+    .index("by_scope_active_email", [
+      "campusId",
+      "teacherId",
+      "directory.isActive",
+      "directory.email",
+    ])
+    .index("by_scope_active_grade", [
+      "campusId",
+      "teacherId",
+      "directory.isActive",
+      "directory.grade",
+    ])
+    .index("by_scope_grade_active_name", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.isActive",
+      "directory.name",
+    ])
+    .index("by_scope_grade_active_email", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.isActive",
+      "directory.email",
+    ])
+    .searchIndex("search_people", {
+      searchField: "directory.search",
+      filterFields: [
+        "campusId",
+        "teacherId",
+        "directory.grade",
+        "directory.isActive",
+      ],
+    }),
+
   roleAssignments: defineTable({
     userId: v.id("users"),
 
@@ -919,6 +1008,8 @@ export default defineSchema({
     // A student's grade belongs to this membership, not to their global identity.
     gradeCode: v.optional(v.string()),
 
+    directory: v.optional(peopleDirectoryValidator),
+
     // Audit Trail
     assignedAt: v.number(),
     assignedBy: v.optional(v.id("users")), // Who granted this access
@@ -928,7 +1019,41 @@ export default defineSchema({
     .index("by_org", ["orgId", "orgType"])
     .index("by_org_role", ["orgId", "orgType", "role"])
     .index("by_user_org", ["userId", "orgId", "orgType"])
-    .index("by_school_role_grade", ["schoolId", "role", "gradeCode"]),
+    .index("by_user_org_role", ["userId", "orgId", "orgType", "role"])
+    .index("by_school_role_grade", ["schoolId", "role", "gradeCode"])
+    .index("by_org_role_name", ["orgId", "orgType", "role", "directory.name"])
+    .index("by_org_role_email", ["orgId", "orgType", "role", "directory.email"])
+    .index("by_org_role_grade", ["orgId", "orgType", "role", "directory.grade"])
+    .index("by_org_role_active", [
+      "orgId",
+      "orgType",
+      "role",
+      "directory.isActive",
+    ])
+    .index("by_org_role_grade_name", [
+      "orgId",
+      "orgType",
+      "role",
+      "directory.grade",
+      "directory.name",
+    ])
+    .index("by_org_role_active_name", [
+      "orgId",
+      "orgType",
+      "role",
+      "directory.isActive",
+      "directory.name",
+    ])
+    .searchIndex("search_people", {
+      searchField: "directory.search",
+      filterFields: [
+        "orgId",
+        "orgType",
+        "role",
+        "directory.grade",
+        "directory.isActive",
+      ],
+    }),
 
   /**
    * RECORDINGS

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
@@ -209,9 +209,13 @@ function AttendancePanel({
   const attendanceT = useTranslations("attendance.status");
   const [editingStudentId, setEditingStudentId] = useState<Id<"users">>();
 
-  useEffect(() => {
+  const [previousScheduleId, setPreviousScheduleId] = useState(
+    record.scheduleId,
+  );
+  if (previousScheduleId !== record.scheduleId) {
+    setPreviousScheduleId(record.scheduleId);
     setEditingStudentId(undefined);
-  }, [record.scheduleId]);
+  }
 
   const attendance = record.staffDetails?.attendance;
   const students =
@@ -352,9 +356,13 @@ export function SessionRecordView({
   const [activeTab, setActiveTab] = useState("lessons");
   const isPanel = variant === "panel";
 
-  useEffect(() => {
+  const [previousScheduleId, setPreviousScheduleId] = useState(
+    record?.scheduleId,
+  );
+  if (previousScheduleId !== record?.scheduleId) {
+    setPreviousScheduleId(record?.scheduleId);
     setActiveTab("lessons");
-  }, [record?.scheduleId]);
+  }
 
   if (record === undefined) {
     return (

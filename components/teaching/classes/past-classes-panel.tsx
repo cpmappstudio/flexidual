@@ -97,24 +97,16 @@ export function PastClassesPanel({
       )
     : -1;
 
-  useEffect(() => {
-    if (!orderedSessions.length || !mostRecentSession) {
-      setSelectedScheduleId(null);
-      return;
-    }
-
-    setSelectedScheduleId((current) =>
-      current &&
-      orderedSessions.some((session) => session.scheduleId === current)
-        ? current
-        : mostRecentSession.scheduleId,
-    );
-  }, [mostRecentSession, orderedSessions]);
-
-  useEffect(() => {
+  const effectiveScheduleId = selectedSession?.scheduleId ?? null;
+  if (selectedScheduleId !== effectiveScheduleId)
+    setSelectedScheduleId(effectiveScheduleId);
+  const [previousScheduleId, setPreviousScheduleId] =
+    useState(effectiveScheduleId);
+  if (previousScheduleId !== effectiveScheduleId) {
+    setPreviousScheduleId(effectiveScheduleId);
     setRecordingOpen(false);
     setCloseoutOpen(false);
-  }, [selectedSession?.scheduleId]);
+  }
 
   useEffect(() => {
     if (!carouselApi || selectedSessionIndex < 0) return;

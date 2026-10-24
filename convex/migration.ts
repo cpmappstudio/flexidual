@@ -10,6 +10,7 @@ import type { Id } from "./_generated/dataModel";
 import { toCivilDate } from "../lib/time-zone";
 import { DEFAULT_INSTITUTION_GRADES } from "../lib/grades";
 import { deriveClassTypeFromSchedules } from "./model/classType";
+import { syncPeopleDirectory } from "./model/peopleDirectory";
 
 const ACADEMIC_CLEANUP_CONFIRMATION =
   "DELETE_LEGACY_ACADEMIC_TEST_DATA" as const;
@@ -372,6 +373,9 @@ export const backfillInstitutionMemberships = internalMutation({
             ? (assignment.gradeCode ?? legacyUser?.grade)
             : undefined,
       });
+      await syncPeopleDirectory(ctx, assignment.userId, {
+        refreshRelationships: true,
+      });
     }
 
     if (!result.isDone) {
@@ -724,6 +728,7 @@ export const elevateToSuperadmin = internalMutation({
       role: "superadmin",
       assignedAt: Date.now(),
     });
+    await syncPeopleDirectory(ctx, user._id);
 
     return `Success! ${args.email} is now a Superadmin. Next: Run healAllUserRoles to sync Clerk metadata.`;
   },

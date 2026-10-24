@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef, useMemo } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useRef,
+  useMemo,
+} from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { LiveKitRoom } from "@livekit/components-react";
 import {
@@ -116,7 +123,9 @@ function ClassroomConnectionError({
 function SidebarAutoCollapser({ active = true }: { active?: boolean }) {
   const { setOpen } = useSidebar();
   const activeRef = useRef(active);
-  activeRef.current = active;
+  useLayoutEffect(() => {
+    activeRef.current = active;
+  }, [active]);
 
   // 1. Keep a stable reference to the latest setOpen function
   const setOpenRef = useRef(setOpen);
@@ -249,7 +258,9 @@ export default function FlexiClassroom({
   });
   const connectionScope = `${roomName}:${convexUser?._id ?? "anonymous"}:${isCompanion ? "companion" : "primary"}:${sessionStatus?.activationId ?? sessionStatus?.activationStartedAt ?? "inactive"}`;
   const currentConnectionScopeRef = useRef(connectionScope);
-  currentConnectionScopeRef.current = connectionScope;
+  useLayoutEffect(() => {
+    currentConnectionScopeRef.current = connectionScope;
+  }, [connectionScope]);
   const presenceConnection = useMemo(
     () => ({ id: crypto.randomUUID(), scope: connectionScope }),
     [connectionScope],
@@ -275,22 +286,15 @@ export default function FlexiClassroom({
     reportPersistence?.({ canPersist, needsFullView: isCloseoutOpen });
   }, [reportPersistence, canPersist, isCloseoutOpen]);
 
-  useEffect(() => {
-    if (requiresCloseout) setCloseoutScope(connectionScope);
-    else if (
-      isSessionClosed &&
-      scheduleDetails?.sessionClosureStatus === "completed"
-    ) {
-      setCloseoutScope((current) =>
-        current === connectionScope ? null : current,
-      );
-    }
-  }, [
-    connectionScope,
-    requiresCloseout,
-    isSessionClosed,
-    scheduleDetails?.sessionClosureStatus,
-  ]);
+  if (requiresCloseout && closeoutScope !== connectionScope) {
+    setCloseoutScope(connectionScope);
+  } else if (
+    isSessionClosed &&
+    scheduleDetails?.sessionClosureStatus === "completed" &&
+    closeoutScope === connectionScope
+  ) {
+    setCloseoutScope(null);
+  }
 
   useEffect(() => {
     if (requiresCloseout && document.fullscreenElement) {
@@ -328,18 +332,28 @@ export default function FlexiClassroom({
   const nextRoomRef = useRef<string | null>(null);
   const currentRoomRef = useRef(roomName);
   const sessionClosedRef = useRef(isSessionClosed);
-  currentRoomRef.current = roomName;
-  sessionClosedRef.current = isSessionClosed;
+  useLayoutEffect(() => {
+    currentRoomRef.current = roomName;
+    sessionClosedRef.current = isSessionClosed;
+  }, [roomName, isSessionClosed]);
 
   useEffect(() => {
     loggedScheduleRef.current = null;
   }, [connectionScope]);
 
-  useEffect(() => {
-    if (!isCompanion && !resolvedIsStudentView && sessionStatus?.canStart) {
+  const startDialogScope =
+    !isCompanion && !resolvedIsStudentView && sessionStatus?.canStart
+      ? connectionScope
+      : null;
+  const [previousStartDialogScope, setPreviousStartDialogScope] = useState<
+    string | null
+  >(null);
+  if (previousStartDialogScope !== startDialogScope) {
+    setPreviousStartDialogScope(startDialogScope);
+    if (startDialogScope) {
       setActivationDialogMode("start");
     }
-  }, [isCompanion, resolvedIsStudentView, roomName, sessionStatus?.canStart]);
+  }
 
   const handleCompleteSession = async () => {
     if (!sessionClosedRef.current)
@@ -377,6 +391,8 @@ export default function FlexiClassroom({
     }
   };
 
+  const presenceScheduleId = sessionStatus?.scheduleId;
+  const presenceActivationId = sessionStatus?.activationId;
   const handleConnected = useCallback(async () => {
     if (currentConnectionScopeRef.current === connectionScope)
       setConnectedScope(connectionScope);
@@ -386,8 +402,8 @@ export default function FlexiClassroom({
 
     if (
       !resolvedIsStudentView ||
-      !sessionStatus?.scheduleId ||
-      !sessionStatus.activationId ||
+      !presenceScheduleId ||
+      !presenceActivationId ||
       currentConnectionScopeRef.current !== connectionScope ||
       loggedScheduleRef.current === connectionScope
     ) {
@@ -397,9 +413,9 @@ export default function FlexiClassroom({
     loggedScheduleRef.current = connectionScope;
     try {
       await logPresence({
-        scheduleId: sessionStatus.scheduleId,
+        scheduleId: presenceScheduleId,
         action: "join",
-        activationId: sessionStatus.activationId,
+        activationId: presenceActivationId,
         connectionId: presenceConnection.id,
       });
     } catch (err) {
@@ -411,8 +427,8 @@ export default function FlexiClassroom({
     connectionScope,
     logPresence,
     resolvedIsStudentView,
-    sessionStatus?.scheduleId,
-    sessionStatus?.activationId,
+    presenceScheduleId,
+    presenceActivationId,
     presenceConnection,
   ]);
 
@@ -472,15 +488,15 @@ export default function FlexiClassroom({
 
       if (
         resolvedIsStudentView &&
-        sessionStatus?.scheduleId &&
-        sessionStatus.activationId &&
+        presenceScheduleId &&
+        presenceActivationId &&
         loggedScheduleRef.current === connectionScope
       ) {
         try {
           await logPresence({
-            scheduleId: sessionStatus.scheduleId,
+            scheduleId: presenceScheduleId,
             action: "leave",
-            activationId: sessionStatus.activationId,
+            activationId: presenceActivationId,
             connectionId: presenceConnection.id,
           });
         } catch (e) {
@@ -513,8 +529,8 @@ export default function FlexiClassroom({
       router,
       roomName,
       leaveSession,
-      sessionStatus?.scheduleId,
-      sessionStatus?.activationId,
+      presenceScheduleId,
+      presenceActivationId,
       presenceConnection,
       t,
     ],

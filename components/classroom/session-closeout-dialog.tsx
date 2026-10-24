@@ -128,6 +128,7 @@ export function SessionCloseoutDialog({
   }, [sessionNow]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Opening a closure captures the current wall clock once; subsequent clock ticks must not reset unsaved attendance/notes.
     setActiveStep("lessons");
     setLessonFilter("pending");
     setLessonQuery("");
@@ -165,6 +166,7 @@ export function SessionCloseoutDialog({
     ) {
       return;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Freeze one authorized remote context before editing; later reactive updates must not overwrite this report draft.
     setSnapshot({
       status: "ready",
       roomName: snapshot.roomName,

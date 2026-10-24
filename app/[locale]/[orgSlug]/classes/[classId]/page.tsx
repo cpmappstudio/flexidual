@@ -41,7 +41,7 @@ import { Button } from "@/components/ui/button";
 import { useParams, useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
@@ -123,13 +123,17 @@ export default function ClassDetailPage() {
   );
   const lessons = curriculumProgress?.lessons ?? [];
 
-  useEffect(() => {
-    const taskId = searchParams.get("task");
+  const taskId = searchParams.get("task");
+  const [previousTaskId, setPreviousTaskId] = useState<
+    string | null | undefined
+  >();
+  if (previousTaskId !== taskId) {
+    setPreviousTaskId(taskId);
     setLinkedTaskId(taskId ? (taskId as Id<"courseTasks">) : undefined);
     if (taskId) {
       setActiveTab("tasks");
     }
-  }, [searchParams]);
+  }
 
   function handleTabChange(value: string) {
     setActiveTab(value);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
@@ -70,7 +70,17 @@ export function LessonDialog({
     curriculumId: defaultCurriculumId || "",
   });
 
-  useEffect(() => {
+  const [formSource, setFormSource] = useState({
+    open: false,
+    lesson,
+    defaultCurriculumId,
+  });
+  if (
+    formSource.open !== isOpen ||
+    formSource.lesson !== lesson ||
+    formSource.defaultCurriculumId !== defaultCurriculumId
+  ) {
+    setFormSource({ open: isOpen, lesson, defaultCurriculumId });
     if (isOpen) {
       if (isEditing && lesson) {
         setFormData({
@@ -90,7 +100,7 @@ export function LessonDialog({
         });
       }
     }
-  }, [isOpen, isEditing, lesson, defaultCurriculumId]);
+  }
 
   // --- BATCH HANDLERS ---
   const handleAddToQueue = (e: React.FormEvent) => {

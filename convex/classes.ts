@@ -11,6 +11,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { assignOpenCourseTasksToStudent } from "./model/courseTaskPublication";
+import { syncCoursePeopleDirectory } from "./model/teacherPeopleDirectory";
 import {
   canAccessClass,
   canManageClasses,
@@ -2324,6 +2325,7 @@ export const createWithSchedule = mutation({
           role: "student",
         });
       }
+      await syncCoursePeopleDirectory(ctx, createdClass, undefined, studentIds);
     }
 
     return { classId, classesCreated };
@@ -2567,6 +2569,8 @@ export const update = mutation({
 
     await ctx.db.patch(args.classId, cleanUpdates);
     await syncCourseGradeAssignments(ctx, effectiveCourse);
+    if (args.teacherId !== undefined || args.gradeAssignments !== undefined)
+      await syncCoursePeopleDirectory(ctx, effectiveCourse, classData);
     const previousTeachers = new Set(getCourseTeacherIds(classData));
     const nextTeachers = new Set(getCourseTeacherIds(effectiveCourse));
     for (const teacherId of new Set([...previousTeachers, ...nextTeachers])) {
@@ -2667,6 +2671,9 @@ export const addStudent = mutation({
       enrolledAt: Date.now(),
       enrolledBy: user._id,
     });
+    await syncCoursePeopleDirectory(ctx, classData, undefined, [
+      args.studentId,
+    ]);
     await publishCourseNotification(ctx, {
       recipientId: args.studentId,
       actorId: user._id,
@@ -2720,6 +2727,9 @@ export const removeStudent = mutation({
       .unique();
     if (enrollment) {
       await ctx.db.delete(enrollment._id);
+      await syncCoursePeopleDirectory(ctx, classData, undefined, [
+        args.studentId,
+      ]);
       await publishCourseNotification(ctx, {
         recipientId: args.studentId,
         actorId: user._id,
@@ -2820,6 +2830,14 @@ export const remove = mutation({
     );
 
     await ctx.db.delete(args.id);
+    await syncCoursePeopleDirectory(
+      ctx,
+      classData,
+      undefined,
+      classData.enrollmentsMigratedAt
+        ? enrollments.map((row) => row.studentId)
+        : (classData.students ?? []),
+    );
     await ctx.scheduler.runAfter(0, internal.courseChatMessages.removeByClass, {
       classId: args.id,
     });

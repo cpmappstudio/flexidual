@@ -788,6 +788,45 @@ test("a student link for another assignment does not open a review", () => {
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
+test("changing the linked student resets the review on the same mounted task", () => {
+  const props = {
+    classId: "class-id" as Id<"classes">,
+    taskId: "task-id" as Id<"courseTasks">,
+    timeZone: "UTC",
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+  };
+  window.history.replaceState(
+    null,
+    "",
+    "/campus/classes/class-id?task=task-id&student=student-1",
+  );
+  const view = render(<CourseTaskDetail {...props} />);
+  expect(
+    within(screen.getByRole("dialog")).getByRole("heading", {
+      name: "Student 1",
+    }),
+  ).toBeTruthy();
+  window.history.replaceState(
+    null,
+    "",
+    "/campus/classes/class-id?task=task-id&student=student-2",
+  );
+  view.rerender(<CourseTaskDetail {...props} />);
+  expect(
+    within(screen.getByRole("dialog")).getByRole("heading", {
+      name: "Student 2",
+    }),
+  ).toBeTruthy();
+  window.history.replaceState(
+    null,
+    "",
+    "/campus/classes/class-id?task=task-id",
+  );
+  view.rerender(<CourseTaskDetail {...props} />);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
 test("an unsent comment survives opening the PDF and returning to the same submission", async () => {
   const props = {
     classId: "class-id" as Id<"classes">,

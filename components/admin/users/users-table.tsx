@@ -19,6 +19,8 @@ import {
   createSearchColumn,
 } from "@/components/table/column-helpers";
 import type { FilterConfig } from "@/lib/table/types";
+import { usePeopleDirectory } from "@/hooks/use-people-directory";
+import { Button } from "@/components/ui/button";
 
 export type User = FunctionReturnType<typeof api.users.getUsers>[number];
 
@@ -36,13 +38,15 @@ interface UsersTableProps {
   onRowClick?: (user: User) => void;
 }
 
-function UserAvatar({ user }: { user: User }) {
+function UserAvatar({ user }: { user: User & { avatarUrl?: string | null } }) {
   const avatarUrl = useQuery(
     api.users.getAvatarUrl,
-    user.avatarStorageId ? { storageId: user.avatarStorageId } : "skip",
+    user.avatarStorageId && user.avatarUrl === undefined
+      ? { storageId: user.avatarStorageId }
+      : "skip",
   );
 
-  const finalSrc = avatarUrl || user.imageUrl;
+  const finalSrc = user.avatarUrl || avatarUrl || user.imageUrl;
 
   return (
     <Avatar className="h-8 w-8">
@@ -110,9 +114,16 @@ export function UsersTable({
       ? { schoolId: gradeSchoolId }
       : "skip",
   );
-  const users = useQuery(
+  const directory = usePeopleDirectory(
+    isAuthenticated &&
+      effectiveScope?.orgType === "campus" &&
+      (roleFilter === "student" || roleFilter === "teacher")
+      ? { campusId: effectiveScope.orgId as Id<"campuses">, role: roleFilter }
+      : undefined,
+  );
+  const legacyUsers = useQuery(
     api.users.getUsers,
-    isAuthenticated && (orgContext || scope)
+    !directory.enabled && isAuthenticated && (orgContext || scope)
       ? {
           role: roleFilter,
           roles: allowedRoles,
@@ -121,6 +132,7 @@ export function UsersTable({
         }
       : "skip",
   );
+  const users = directory.enabled ? (directory.data ?? []) : legacyUsers;
 
   const [editingUser, setEditingUser] = React.useState<User | null>(null);
   const isStudentTable = roleFilter === "student";
@@ -158,7 +170,10 @@ export function UsersTable({
     createSearchColumn<User>(["fullName", "email"]),
     {
       accessorKey: "fullName",
-      header: createSortableHeader(userHeader),
+      header: directory.searching
+        ? () => userHeader
+        : createSortableHeader(userHeader),
+      enableSorting: !directory.searching,
       cell: ({ row }) => {
         return (
           <div className="flex items-center gap-3">
@@ -182,14 +197,20 @@ export function UsersTable({
     },
     {
       accessorKey: "email",
-      header: createSortableHeader(t("teacher.email")),
+      header: directory.searching
+        ? t("teacher.email")
+        : createSortableHeader(t("teacher.email")),
+      enableSorting: !directory.searching,
       meta: { className: "hidden lg:table-cell" },
     },
     ...(isStudentTable
       ? [
           {
             accessorKey: "grade",
-            header: createSortableHeader(t("student.grade")),
+            header: directory.searching
+              ? t("student.grade")
+              : createSortableHeader(t("student.grade")),
+            enableSorting: !directory.searching,
             filterFn: (row, id, filterValues: string[]) =>
               filterValues.includes((row.getValue(id) as string) ?? ""),
             cell: ({ row }) => {
@@ -204,7 +225,10 @@ export function UsersTable({
       : []),
     {
       accessorKey: "isActive",
-      header: createSortableHeader(t("common.status")),
+      header: directory.searching
+        ? t("common.status")
+        : createSortableHeader(t("common.status")),
+      enableSorting: !directory.searching,
       filterFn: (row, _id, filterValues: string[]) =>
         filterValues.includes(row.original.isActive ? "active" : "inactive"),
       cell: ({ row }) => (
@@ -218,6 +242,18 @@ export function UsersTable({
   if (isAuthLoading || !isAuthenticated || !users) {
     return <Skeleton className="h-96 w-full" />;
   }
+
+  if (directory.enabled && !directory.ready)
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-96 w-full" />
+        <Button variant="outline" onClick={directory.initialize}>
+          {directory.preparationFailed
+            ? t("people.retryPreparation")
+            : t("people.preparing")}
+        </Button>
+      </div>
+    );
 
   return (
     <div className="min-w-0 space-y-4">
@@ -238,10 +274,17 @@ export function UsersTable({
 
       <DataTable
         data={users}
+        server={directory.enabled ? directory.server : undefined}
         columns={columns}
         filterColumn="search"
         filterPlaceholder={t("common.searchByName")}
-        emptyMessage={t("common.noResults")}
+        emptyMessage={
+          directory.searchInvalid
+            ? t("people.invalidSearch")
+            : directory.enabled && directory.server.hasNext
+              ? t("people.noPageResults")
+              : t("common.noResults")
+        }
         filterConfigs={filterConfigs}
         filterAllLabel={
           isStudentTable ? t("student.allGrades") : t("common.allStatuses")

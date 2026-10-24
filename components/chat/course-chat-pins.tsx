@@ -17,6 +17,7 @@ import { ResponsiveFeedPanel } from "@/components/ui/responsive-feed-panel";
 import { CourseChatMessage } from "./course-chat-message";
 import { UnreadIndicator } from "@/components/notifications/unread-indicator";
 import { useDocumentActive } from "@/hooks/use-document-active";
+import { useBrowserTimeZone } from "@/hooks/use-browser-time-zone";
 
 export function CourseChatPins({ courseId }: { courseId: Id<"classes"> }) {
   const t = useTranslations("classroom");
@@ -80,10 +81,7 @@ function PinnedMessageFeed({ courseId }: { courseId: Id<"classes"> }) {
       );
     }
   }, [active, latestId, latestPinnedAt, markSeen]);
-  const [timeZone, setTimeZone] = useState<string>();
-  useEffect(() => {
-    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  }, []);
+  const timeZone = useBrowserTimeZone();
   useEffect(() => {
     if (results.length === 0 && status === "CanLoadMore") loadMore(20);
   }, [results.length, status, loadMore]);

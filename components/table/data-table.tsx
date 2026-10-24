@@ -57,7 +57,9 @@ export function DataTable<TData>({
   onExport,
   onFilteredRowCountChange,
   onRowClick,
+  server,
 }: DataTableProps<TData>) {
+  "use no memo"; // TanStack Table v8 exposes a mutable table API; React's documented compiler opt-out.
   const resolvedPageSize = pageSize ?? DEFAULT_PAGE_SIZE;
   const [sorting, setSorting] = React.useState<SortingState>(
     initialSorting ?? [],
@@ -75,11 +77,13 @@ export function DataTable<TData>({
     pageSize: resolvedPageSize,
   });
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack v8 is intentionally outside React Compiler (use no memo above); keep its supported table API, pagination and filters.
   const table = useReactTable({
     data: data ?? [],
     columns,
-    onSortingChange: setSorting,
+    onSortingChange: server?.onSortingChange ?? setSorting,
     onColumnFiltersChange: (updater) => {
+      if (server) return server.onColumnFiltersChange(updater);
       setColumnFilters(updater);
       setPagination((current) =>
         current.pageIndex === 0 ? current : { ...current, pageIndex: 0 },
@@ -87,15 +91,19 @@ export function DataTable<TData>({
     },
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: paginate ? getPaginationRowModel() : undefined,
+    getPaginationRowModel:
+      paginate && !server ? getPaginationRowModel() : undefined,
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
     autoResetPageIndex: false,
+    manualPagination: Boolean(server),
+    manualSorting: Boolean(server),
+    manualFiltering: Boolean(server),
     state: {
-      sorting,
-      columnFilters,
+      sorting: server?.sorting ?? sorting,
+      columnFilters: server?.columnFilters ?? columnFilters,
       columnVisibility,
       rowSelection,
       pagination,
@@ -117,18 +125,18 @@ export function DataTable<TData>({
   );
 
   React.useEffect(() => {
-    if (!paginate) return;
+    if (!paginate || server) return;
     const lastPageIndex = Math.max(0, table.getPageCount() - 1);
     setPagination((current) =>
       current.pageIndex > lastPageIndex
         ? { ...current, pageIndex: lastPageIndex }
         : current,
     );
-  }, [filteredRowsCount, paginate, table]);
+  }, [filteredRowsCount, paginate, table, server]);
 
   React.useEffect(() => {
-    onFilteredRowCountChange?.(filteredRowsCount);
-  }, [filteredRowsCount, onFilteredRowCountChange]);
+    if (!server) onFilteredRowCountChange?.(filteredRowsCount);
+  }, [filteredRowsCount, onFilteredRowCountChange, server]);
 
   const renderResultsCount = (withSeparator: boolean) => {
     if (!resolvedResultsCountLabel) {
@@ -233,7 +241,7 @@ export function DataTable<TData>({
       )}
 
       <div className="min-w-0 overflow-hidden rounded-md border">
-        <Table className="bg-card">
+        <Table className="bg-card" aria-busy={server?.isLoading}>
           <TableHeader className="bg-primary/95 sticky top-0 z-10 ">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow
@@ -303,7 +311,7 @@ export function DataTable<TData>({
                   colSpan={columns.length}
                   className="h-24 text-center"
                 >
-                  {emptyMessage}
+                  {server?.isLoading ? t("common.loading") : emptyMessage}
                 </TableCell>
               </TableRow>
             )}
@@ -317,10 +325,12 @@ export function DataTable<TData>({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               {renderResultsCount(true)}
               <span>
-                {t("table.pageInfo", {
-                  current: table.getState().pagination.pageIndex + 1,
-                  total: table.getPageCount(),
-                })}
+                {server
+                  ? t("table.pageNumber", { current: server.pageIndex + 1 })
+                  : t("table.pageInfo", {
+                      current: table.getState().pagination.pageIndex + 1,
+                      total: table.getPageCount(),
+                    })}
               </span>
             </div>
           </div>
@@ -330,8 +340,14 @@ export function DataTable<TData>({
               variant="outline"
               size="icon"
               className="bg-sidebar"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+              onClick={() =>
+                server ? server.onPrevious() : table.previousPage()
+              }
+              disabled={
+                server
+                  ? server.isLoading || server.pageIndex === 0
+                  : !table.getCanPreviousPage()
+              }
             >
               <span className="sr-only">Go to previous page</span>
               <ChevronLeft />
@@ -341,8 +357,12 @@ export function DataTable<TData>({
               variant="outline"
               size="icon"
               className="bg-sidebar"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
+              onClick={() => (server ? server.onNext() : table.nextPage())}
+              disabled={
+                server
+                  ? server.isLoading || !server.hasNext
+                  : !table.getCanNextPage()
+              }
             >
               <span className="sr-only">Go to next page</span>
               <ChevronRight />

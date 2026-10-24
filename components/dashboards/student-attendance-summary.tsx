@@ -444,6 +444,7 @@ export function StudentAttendanceSummary({
 
   useEffect(() => {
     if (!recordingScheduleId || sessionRecord === undefined) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Complete the user's asynchronous playback request only after the authorized recording result arrives.
     if (recordings.length > 0) setRecordingOpen(true);
     else {
       setRecordingScheduleId(undefined);

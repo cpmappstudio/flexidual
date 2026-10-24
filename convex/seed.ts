@@ -9,6 +9,8 @@ import {
 } from "../lib/time-zone";
 import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
 import { canManageClasses } from "./permissions";
+import { syncPeopleDirectory } from "./model/peopleDirectory";
+import { syncCoursePeopleDirectory } from "./model/teacherPeopleDirectory";
 
 const UX_DEMO_CURRICULUM_CODE = "UX-DEMO-01";
 const UX_DEMO_CLASS_NAME = "UX Demo - Integrated Biology Studio";
@@ -427,6 +429,10 @@ export const run = internalMutation({
   handler: async (ctx, args) => {
     // 1. CLEAR EXISTING DATA (Optional)
     if (args.clearExisting) {
+      for (const doc of await ctx.db.query("teacherStudentDirectory").collect())
+        await ctx.db.delete(doc._id);
+      for (const doc of await ctx.db.query("peopleDirectoryState").collect())
+        await ctx.db.delete(doc._id);
       for (const doc of await ctx.db.query("classSchedule").collect())
         await ctx.db.delete(doc._id);
       for (const doc of await ctx.db.query("classes").collect())
@@ -561,6 +567,9 @@ export const run = internalMutation({
       });
     }
 
+    for (const userId of [adminId, teacherId, ...studentIds])
+      await syncPeopleDirectory(ctx, userId, { refreshRelationships: true });
+
     // 5. CREATE CURRICULUM (Attached to School)
     const curriculumId = await ctx.db.insert("curriculums", {
       title: "Magic School Bus Science",
@@ -623,6 +632,10 @@ export const run = internalMutation({
     });
 
     // 8. SCHEDULE LESSONS
+    await syncCoursePeopleDirectory(
+      ctx,
+      (await ctx.db.get("classes", classId))!,
+    );
     const now = Date.now();
     const oneHour = 60 * 60 * 1000;
 
@@ -824,6 +837,10 @@ export const createClassesUxDemo = internalMutation({
       createdBy: admin._id,
     });
 
+    await syncCoursePeopleDirectory(
+      ctx,
+      (await ctx.db.get("classes", classId))!,
+    );
     const schedules = [
       {
         lessonIds: [lessonIds[0]],
@@ -1043,6 +1060,11 @@ export const createClassesTableDemo = internalMutation({
 
       if (existingClass) {
         await ctx.db.patch(existingClass._id, classData);
+        await syncCoursePeopleDirectory(
+          ctx,
+          (await ctx.db.get("classes", existingClass._id))!,
+          existingClass,
+        );
         updatedClassIds.push(existingClass._id);
       } else {
         const classId = await ctx.db.insert("classes", {
@@ -1053,6 +1075,10 @@ export const createClassesTableDemo = internalMutation({
           createdBy: admin._id,
         });
         createdClassIds.push(classId);
+        await syncCoursePeopleDirectory(
+          ctx,
+          (await ctx.db.get("classes", classId))!,
+        );
       }
     }
 
@@ -1851,6 +1877,11 @@ export const createLauraCourseLoadDemo = internalMutation({
         enrolled++;
       }
 
+      await syncCoursePeopleDirectory(
+        ctx,
+        (await ctx.db.get("classes", classId))!,
+        existingClass ?? undefined,
+      );
       lauraClassIds.add(classId);
       courses.push(className);
     }
@@ -2037,6 +2068,11 @@ export const createLauraCalendarProviderDemo = internalMutation({
         await ctx.db.patch(enrollment._id, { enrolledBy: admin._id });
       }
 
+      await syncCoursePeopleDirectory(
+        ctx,
+        (await ctx.db.get("classes", classId))!,
+        existingClass ?? undefined,
+      );
       for (const [slotIndex, slot] of scheduleSlots.entries()) {
         const localDate = addCivilDays(localToday, slot.dayOffset);
         const startHour = course.startHour + slot.hourOffset;
@@ -2235,6 +2271,7 @@ export const clearClassesTableDemo = internalMutation({
       for (const classDoc of classes) {
         await deleteSchedulesForClass(ctx, classDoc._id);
         await ctx.db.delete(classDoc._id);
+        await syncCoursePeopleDirectory(ctx, classDoc);
         deletedClasses += 1;
       }
 
@@ -2282,6 +2319,7 @@ export const clearClassesUxDemo = internalMutation({
     for (const classDoc of classes) {
       await deleteSchedulesForClass(ctx, classDoc._id);
       await ctx.db.delete(classDoc._id);
+      await syncCoursePeopleDirectory(ctx, classDoc);
     }
 
     const lessons = await ctx.db

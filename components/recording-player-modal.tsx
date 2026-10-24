@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -199,9 +199,13 @@ export function ScheduleRecordingPlayer({
   );
   const recordings = providedRecordings ?? queriedRecordings;
 
-  useEffect(() => {
+  const selectionKey = `${scheduleId}:${recordings?.length ?? "loading"}`;
+  const [previousSelectionKey, setPreviousSelectionKey] =
+    useState(selectionKey);
+  if (previousSelectionKey !== selectionKey) {
+    setPreviousSelectionKey(selectionKey);
     setSelectedIndex(0);
-  }, [scheduleId, recordings?.length]);
+  }
 
   const isStudent = variant === "student";
   const isLoading = recordings === undefined;

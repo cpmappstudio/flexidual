@@ -531,6 +531,7 @@ function WhiteboardEditorSession({
     fileRefsRef.current = { ...initialFileRefs, ...receivedScene.fileRefs };
     currentFilesRef.current = initialFiles;
     cachedRevisionRef.current = cachedRevision;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- File refs and recovered binaries must be committed before mounting the imperative SDK, including delayed initial responses.
     setInitialScene(receivedScene);
   }, [
     draft,
@@ -579,6 +580,7 @@ function WhiteboardEditorSession({
     typeof createWhiteboardSync<ExcalidrawElements[number]>
   > = useMemo(
     () =>
+      // eslint-disable-next-line react-hooks/refs -- Factory only stores these callbacks; refs are read later by updates/timers, never by construction/render.
       createWhiteboardSync<ExcalidrawElements[number]>({
         interval: () => saveIntervalRef.current,
         send: async (elements) => {

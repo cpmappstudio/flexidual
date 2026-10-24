@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
@@ -128,11 +128,11 @@ export function CurriculumLessonList({
   const [items, setItems] = useState<typeof lessons>([]);
   const [isPending, setIsPending] = useState(false);
 
-  useEffect(() => {
-    if (lessons) {
-      setItems(lessons);
-    }
-  }, [lessons]);
+  const [previousLessons, setPreviousLessons] = useState<typeof lessons>();
+  if (previousLessons !== lessons) {
+    setPreviousLessons(lessons);
+    if (lessons) setItems(lessons);
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

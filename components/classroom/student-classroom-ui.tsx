@@ -537,29 +537,20 @@ export function StudentClassroomUI({
 
   // Auto-fullscreen: prompt user to go fullscreen when remote content appears.
   // requestFullscreen() requires a user gesture, so we cannot call it from a useEffect directly.
-  const autoFullscreenFiredRef = useRef(false);
-  useEffect(() => {
-    const hasContent = isScreenSharingActive || isWhiteboardActive;
-    if (
-      hasContent &&
-      !isFullscreen &&
-      !autoFullscreenFiredRef.current &&
-      onToggleFullscreen
-    ) {
-      autoFullscreenFiredRef.current = true;
-      setPendingFullscreen(true);
-    }
-    if (!hasContent) {
-      autoFullscreenFiredRef.current = false;
-      setPendingFullscreen(false);
-    }
-    if (isFullscreen) setPendingFullscreen(false);
-  }, [
-    isScreenSharingActive,
-    isWhiteboardActive,
-    isFullscreen,
-    onToggleFullscreen,
-  ]);
+  const [autoFullscreenFired, setAutoFullscreenFired] = useState(false);
+  const hasContent = isScreenSharingActive || isWhiteboardActive;
+  if (
+    hasContent &&
+    !isFullscreen &&
+    !autoFullscreenFired &&
+    onToggleFullscreen
+  ) {
+    setAutoFullscreenFired(true);
+    setPendingFullscreen(true);
+  }
+  if (!hasContent && autoFullscreenFired) setAutoFullscreenFired(false);
+  if ((!hasContent || isFullscreen) && pendingFullscreen)
+    setPendingFullscreen(false);
 
   const selectPreviewState = (state: StudentClassroomPreviewState) => {
     setShowPreviewParticipants(false);

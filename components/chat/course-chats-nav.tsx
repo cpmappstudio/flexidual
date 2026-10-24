@@ -29,7 +29,7 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { ArchiveRestore, LoaderCircle, Search } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { Id } from "@/convex/_generated/dataModel";
 import { UnreadIndicator } from "@/components/notifications/unread-indicator";
@@ -49,7 +49,11 @@ export function CourseChatsNav({
   const setArchived = useMutation(api.courseChatMessages.setArchived);
   const [restoringId, setRestoringId] = useState<string>();
   const [search, setSearch] = useState("");
-  useEffect(() => setSearch(""), [orgSlug]);
+  const [searchOrgSlug, setSearchOrgSlug] = useState(orgSlug);
+  if (searchOrgSlug !== orgSlug) {
+    setSearchOrgSlug(orgSlug);
+    setSearch("");
+  }
   const orgContext = useQuery(
     api.organizations.resolveSlug,
     isAuthenticated ? { slug: orgSlug } : "skip",

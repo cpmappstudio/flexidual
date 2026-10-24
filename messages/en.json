@@ -1872,7 +1872,14 @@
     "invalidDateRange": "Select a valid date and time range.",
     "timeZoneRequired": "Configure the institution or campus time zone before continuing."
   },
+  "people": {
+    "preparing": "Preparing directory… Retry if this takes too long",
+    "retryPreparation": "Retry preparing directory",
+    "invalidSearch": "Use up to 16 words and 256 characters.",
+    "noPageResults": "No matches in this section. Continue to the next page."
+  },
   "table": {
+    "pageNumber": "Page {current}",
     "columns": "Columns",
     "filters": "Filters",
     "pageInfo": "Page {current} of {total}",

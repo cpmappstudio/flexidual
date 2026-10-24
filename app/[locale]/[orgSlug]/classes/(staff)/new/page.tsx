@@ -338,36 +338,25 @@ function CourseEditor({
     setPendingWeeklySlotRemoval(undefined);
   };
 
-  useEffect(() => {
-    if (isEditing) return;
-    if (availablePeriods.some((period) => period._id === academicPeriodId)) {
-      return;
-    }
+  if (
+    !isEditing &&
+    !availablePeriods.some((period) => period._id === academicPeriodId)
+  ) {
     const today = academicSettings?.timeZone
       ? todayInTimeZone(academicSettings.timeZone)
       : "";
     const currentPeriod = availablePeriods.find(
       (period) => period.startDate <= today && period.endDate >= today,
     );
-    setAcademicPeriodId(
+    const nextPeriodId =
       currentPeriod?._id ??
-        (availablePeriods.length === 1 ? availablePeriods[0]._id : ""),
-    );
-  }, [
-    academicPeriodId,
-    academicSettings?.timeZone,
-    availablePeriods,
-    isEditing,
-  ]);
+      (availablePeriods.length === 1 ? availablePeriods[0]._id : "");
+    if (academicPeriodId !== nextPeriodId) setAcademicPeriodId(nextPeriodId);
+  }
 
-  useEffect(() => {
-    if (isEditing || isNameManuallyEdited) return;
-    setFormData((current) =>
-      current.name === suggestedName
-        ? current
-        : { ...current, name: suggestedName },
-    );
-  }, [isEditing, isNameManuallyEdited, suggestedName]);
+  if (!isEditing && !isNameManuallyEdited && formData.name !== suggestedName) {
+    setFormData({ ...formData, name: suggestedName });
+  }
 
   const isSubmitDisabled =
     !formData.name.trim() ||

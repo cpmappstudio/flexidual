@@ -1,0 +1,166 @@
+import { clerkMiddleware } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
+import createIntlMiddleware from "next-intl/middleware";
+import { routing } from "./i18n/routing";
+import { getLocaleFromPathname } from "./lib/locale-setup";
+import {
+  getHighestStaffRole,
+  getRolesFromClaims,
+  isSuperAdmin,
+  getRoleForOrg,
+} from "./lib/rbac";
+
+const intlMiddleware = createIntlMiddleware(routing);
+
+function isPublicPath(pathname: string) {
+  return (
+    pathname === "/" ||
+    pathname === "/pending-role" ||
+    pathname === "/sign-in" ||
+    pathname.startsWith("/sign-in/") ||
+    pathname === "/sign-up" ||
+    pathname.startsWith("/sign-up/")
+  );
+}
+
+export default clerkMiddleware(async (auth, req: NextRequest) => {
+  const { pathname, search } = req.nextUrl;
+
+  // 1. Fast path: static files
+  if (
+    pathname.match(/\.(jpg|jpeg|gif|png|svg|ico|webp|mp4|pdf|js|css|woff2?)$/)
+  ) {
+    return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/recording")) {
+    return NextResponse.next();
+  }
+
+  // API routes must not go through intlMiddleware — it would redirect
+  // /api/... to /en/api/... which doesn't exist as a Next.js route.
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
+  const locale = getLocaleFromPathname(pathname);
+  const pathWithoutLocale =
+    pathname.replace(new RegExp(`^/${locale}(?=/|$)`), "") || "/";
+
+  // 2. Handle public routes
+  if (isPublicPath(pathWithoutLocale)) {
+    return intlMiddleware(req);
+  }
+
+  try {
+    const authObject = await auth();
+
+    // 3. Redirect unauthenticated users
+    if (!authObject.userId) {
+      const signInUrl = new URL(`/${locale}/sign-in`, req.url);
+      const isInternalPath =
+        pathname.startsWith("/") &&
+        !pathname.startsWith("//") &&
+        !pathname.includes("@");
+      if (isInternalPath && pathname !== "/" && pathname !== `/${locale}`) {
+        signInUrl.searchParams.set("redirect_url", pathname + search);
+      }
+      return NextResponse.redirect(signInUrl);
+    }
+
+    const roles = getRolesFromClaims(authObject.sessionClaims);
+    const userIsSuperAdmin = isSuperAdmin(authObject.sessionClaims);
+    const highestStaffRole = getHighestStaffRole(authObject.sessionClaims);
+
+    // Check if they have ANY roles at all
+    if (!roles || Object.keys(roles).length === 0) {
+      if (!pathname.includes("pending-role")) {
+        return NextResponse.redirect(
+          new URL(`/${locale}/pending-role`, req.url),
+        );
+      }
+      return intlMiddleware(req);
+    }
+
+    // 4. The public root is the marketing landing page.
+    if (pathWithoutLocale === "/") {
+      return intlMiddleware(req);
+    }
+
+    // Some Clerk configurations still use /dashboard as the post-sign-in URL.
+    // Send it through the validated campus entry flow instead of treating
+    // "dashboard" as an organization slug.
+    if (pathWithoutLocale === "/dashboard") {
+      return NextResponse.redirect(new URL(`/${locale}/app`, req.url));
+    }
+
+    // Resolve the user's organization before entering the authenticated shell.
+    if (pathWithoutLocale === "/app") {
+      return intlMiddleware(req);
+    }
+
+    // 5. Retire the former shared /admin namespace. Old bookmarks keep their
+    // subpath when the session has a concrete organization assignment.
+    if (
+      pathWithoutLocale === "/admin" ||
+      pathWithoutLocale.startsWith("/admin/")
+    ) {
+      const firstOrgSlug = Object.keys(roles).find((k) => k !== "system");
+      const legacySubPath = pathWithoutLocale.slice("/admin".length);
+      const destination = firstOrgSlug
+        ? `/${locale}/${firstOrgSlug}${legacySubPath}`
+        : `/${locale}`;
+      return NextResponse.redirect(new URL(destination, req.url));
+    }
+
+    // 6. Dynamic Context Routing (/[locale]/[orgSlug]/...)
+    const orgMatch = pathWithoutLocale.match(/^\/([^\/]+)(\/.*)?$/);
+
+    if (orgMatch) {
+      const orgSlug = orgMatch[1];
+      const subPath = orgMatch[2] || "";
+
+      // Ignore standard Next.js / structural folders
+      if (["api", "_next", "sign-in", "pending-role"].includes(orgSlug)) {
+        return intlMiddleware(req);
+      }
+
+      const orgRole = getRoleForOrg(authObject.sessionClaims, orgSlug);
+      const adminMayResolveChildCampus = highestStaffRole === "admin";
+
+      // If they don't have a role in this org, and aren't a superadmin, kick them out
+      if (!orgRole && !userIsSuperAdmin && !adminMayResolveChildCampus) {
+        return NextResponse.redirect(new URL(`/${locale}`, req.url));
+      }
+
+      const isPeopleRoute = /^\/(students|professors)(\/|$)/.test(subPath);
+      const canViewPeople =
+        ["superadmin", "admin", "principal"].includes(
+          orgRole ?? highestStaffRole ?? "",
+        ) ||
+        (orgRole === "teacher" && /^\/students(\/|$)/.test(subPath));
+      if (isPeopleRoute && !canViewPeople) {
+        return NextResponse.redirect(new URL(`/${locale}/${orgSlug}`, req.url));
+      }
+
+      // Base org routing (e.g. they typed /boston-public but no sub-path)
+      if (!subPath || subPath === "/") {
+        return intlMiddleware(req); // Let the organization page choose its default destination
+      }
+    }
+
+    // Access granted or unknown route -> Allow
+    return intlMiddleware(req);
+  } catch (error) {
+    console.error("[Proxy] Critical error:", error);
+    const errorUrl = new URL(`/${locale}/sign-in`, req.url);
+    return NextResponse.redirect(errorUrl);
+  }
+});
+
+export const config = {
+  matcher: [
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
+  ],
+};

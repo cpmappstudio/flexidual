@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { FunctionReturnType } from "convex/server";
 import { useQuery } from "convex/react";
 import { Loader2, Plus, Search, Trash2 } from "lucide-react";
@@ -128,13 +128,12 @@ export function CourseEnrollmentReviewDialog({
       : "skip",
   );
 
-  useEffect(() => {
-    if (!open || !gradeStudents || initializedGradeCode === rosterKey) return;
+  if (open && gradeStudents && initializedGradeCode !== rosterKey) {
     setSelectedStudents(
       new Map(gradeStudents.map((student) => [student._id, student])),
     );
     setInitializedGradeCode(rosterKey);
-  }, [rosterKey, gradeStudents, initializedGradeCode, open]);
+  }
 
   const selected = useMemo(
     () =>

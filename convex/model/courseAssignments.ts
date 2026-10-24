@@ -63,19 +63,24 @@ export async function listTeacherClasses(
   ctx: QueryCtx | MutationCtx,
   teacherId: Id<"users">,
   isActive = true,
-  scope?: { campusId: Id<"campuses">; academicPeriodId: Id<"academicPeriods"> },
+  scope?: {
+    campusId: Id<"campuses">;
+    academicPeriodId?: Id<"academicPeriods">;
+  },
 ) {
   const primary = await (
     scope
       ? ctx.db
           .query("classes")
-          .withIndex("by_teacher_campus_period_active", (q) =>
-            q
+          .withIndex("by_teacher_campus_active_period", (q) => {
+            const scoped = q
               .eq("teacherId", teacherId)
               .eq("campusId", scope.campusId)
-              .eq("academicPeriodId", scope.academicPeriodId)
-              .eq("isActive", isActive),
-          )
+              .eq("isActive", isActive);
+            return scope.academicPeriodId === undefined
+              ? scoped
+              : scoped.eq("academicPeriodId", scope.academicPeriodId);
+          })
       : ctx.db
           .query("classes")
           .withIndex("by_teacher", (q) =>
@@ -86,12 +91,14 @@ export async function listTeacherClasses(
   const assignments = scope
     ? ctx.db
         .query("classGradeAssignments")
-        .withIndex("by_teacherId_and_campusId_and_academicPeriodId", (q) =>
-          q
+        .withIndex("by_teacherId_and_campusId_and_academicPeriodId", (q) => {
+          const scoped = q
             .eq("teacherId", teacherId)
-            .eq("campusId", scope.campusId)
-            .eq("academicPeriodId", scope.academicPeriodId),
-        )
+            .eq("campusId", scope.campusId);
+          return scope.academicPeriodId === undefined
+            ? scoped
+            : scoped.eq("academicPeriodId", scope.academicPeriodId);
+        })
     : ctx.db
         .query("classGradeAssignments")
         .withIndex("by_teacherId_and_classId", (q) =>
@@ -105,7 +112,8 @@ export async function listTeacherClasses(
       isCourseTeacher(course, teacherId) &&
       (!scope ||
         (course.campusId === scope.campusId &&
-          course.academicPeriodId === scope.academicPeriodId))
+          (scope.academicPeriodId === undefined ||
+            course.academicPeriodId === scope.academicPeriodId)))
     )
       classes.set(course._id, course);
   }

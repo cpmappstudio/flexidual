@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -167,14 +167,28 @@ export function UserDialog({
       : "skip",
   );
 
-  useEffect(() => {
-    if (!grades || !formData.grade) return;
-    if (!grades.some((grade) => grade.code === formData.grade)) {
-      setFormData((current) => ({ ...current, grade: "" }));
-    }
-  }, [formData.grade, grades]);
-
-  useEffect(() => {
+  const formInputs = [
+    campusSelectionSchoolId,
+    campuses,
+    defaultRole,
+    isEditing,
+    isOpen,
+    orgContext,
+    defaultDisplayedRole,
+    schools,
+    scopedSchoolId,
+    scope?.orgId,
+    scope?.orgType,
+    user,
+  ];
+  const [previousFormInputs, setPreviousFormInputs] = useState<unknown[]>(() =>
+    isOpen ? [] : formInputs,
+  );
+  const needsFormReset = formInputs.some(
+    (value, index) => !Object.is(value, previousFormInputs[index]),
+  );
+  if (needsFormReset) {
+    setPreviousFormInputs(formInputs);
     if (isOpen) {
       if (isEditing && user) {
         // Safely resolve the existing school and campus IDs for Superadmin edit mode
@@ -236,20 +250,15 @@ export function UserDialog({
         });
       }
     }
-  }, [
-    campusSelectionSchoolId,
-    campuses,
-    defaultRole,
-    isEditing,
-    isOpen,
-    orgContext,
-    defaultDisplayedRole,
-    schools,
-    scopedSchoolId,
-    scope?.orgId,
-    scope?.orgType,
-    user,
-  ]);
+  }
+  if (
+    !needsFormReset &&
+    grades &&
+    formData.grade &&
+    !grades.some((grade) => grade.code === formData.grade)
+  ) {
+    setFormData({ ...formData, grade: "" });
+  }
 
   // --- HANDLERS ---
 

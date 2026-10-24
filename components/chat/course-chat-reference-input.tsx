@@ -1,7 +1,7 @@
 "use client";
 
 import { Autocomplete } from "@base-ui/react/autocomplete";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePaginatedQuery } from "convex/react";
 import { ClipboardList, LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -51,11 +51,13 @@ export function CourseChatReferenceInput({
     entries: [{ body: value, caret: text.length }],
     index: 0,
   });
-  if (history.current.entries[history.current.index].body !== value)
-    history.current = {
-      entries: [{ body: value, caret: text.length }],
-      index: 0,
-    };
+  useLayoutEffect(() => {
+    if (history.current.entries[history.current.index].body !== value)
+      history.current = {
+        entries: [{ body: value, caret: text.length }],
+        index: 0,
+      };
+  }, [value, text.length]);
   const trigger = chatDraftSlashQuery(value, caret);
   const open = !disabled && !dismissed && trigger !== null;
   const search = useDebouncedValue(trigger?.search ?? "", 200);

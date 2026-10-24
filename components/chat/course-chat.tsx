@@ -3,6 +3,7 @@
 import { CourseChatMessage } from "./course-chat-message";
 import { CourseChatReferenceInput } from "./course-chat-reference-input";
 import { useDocumentActive } from "@/hooks/use-document-active";
+import { useBrowserTimeZone } from "@/hooks/use-browser-time-zone";
 import {
   CourseChatUploadProvider,
   PendingChatMessage,
@@ -110,10 +111,7 @@ export function CourseChatMessages({
 }: CourseChatProps) {
   const t = useTranslations("classroom");
   const format = useFormatter();
-  const [timeZone, setTimeZone] = useState<string>();
-  useEffect(() => {
-    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  }, []);
+  const timeZone = useBrowserTimeZone();
   const { isAuthenticated } = useConvexAuth();
   const chatStatus = useQuery(
     api.courseChatMessages.getMyStatus,
@@ -132,7 +130,8 @@ export function CourseChatMessages({
     const chronological = [...results].reverse();
     let previousDay: string | undefined;
     let groupSize = 0;
-    return chronological.map((message, index) => {
+    const grouped = [];
+    for (const [index, message] of chronological.entries()) {
       const day = timeZone
         ? format.dateTime(message._creationTime, {
             timeZone,
@@ -151,8 +150,9 @@ export function CourseChatMessages({
         groupSize === MAX_MESSAGE_GROUP_SIZE;
       groupSize = startsGroup ? 1 : groupSize + 1;
       previousDay = day;
-      return { message, day, startsDay, startsGroup };
-    });
+      grouped.push({ message, day, startsDay, startsGroup });
+    }
+    return grouped;
   }, [results, timeZone, format]);
 
   return (

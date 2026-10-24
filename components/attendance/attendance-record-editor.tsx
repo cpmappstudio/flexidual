@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -41,10 +41,18 @@ export function AttendanceRecordEditor({
   const [draftReason, setDraftReason] = useState(excuseReason ?? "");
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
+  const sourceKey = JSON.stringify([
+    scheduleId,
+    studentId,
+    status,
+    excuseReason,
+  ]);
+  const [previousSourceKey, setPreviousSourceKey] = useState(sourceKey);
+  if (previousSourceKey !== sourceKey) {
+    setPreviousSourceKey(sourceKey);
     setDraftStatus(status);
     setDraftReason(excuseReason ?? "");
-  }, [excuseReason, status]);
+  }
 
   const labels = {
     present: attendanceT("status.present"),

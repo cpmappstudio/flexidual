@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import {
   getClassroomEndingSoonStorageKey,
   shouldShowClassroomEndingSoonNotice,
@@ -43,21 +44,23 @@ export function useClassroomEndingSoonNotice({
 }) {
   const [dismissedNoticeKey, setDismissedNoticeKey] =
     useState<ClassroomEndingSoonNoticeKey | null>(null);
-  const [restoredNoticeKey, setRestoredNoticeKey] =
-    useState<ClassroomEndingSoonNoticeKey | null>(null);
-
-  useEffect(() => {
-    if (!noticeKey) {
-      setDismissedNoticeKey(null);
-      setRestoredNoticeKey(null);
-      return;
-    }
-
-    const wasDismissed =
-      persistDismissal && wasClassroomNoticeDismissed(noticeKey);
-    setDismissedNoticeKey(wasDismissed ? noticeKey : null);
-    setRestoredNoticeKey(noticeKey);
-  }, [noticeKey, persistDismissal]);
+  const hydrated = useHydrated();
+  const subscribe = useCallback((notify: () => void) => {
+    window.addEventListener("storage", notify);
+    return () => window.removeEventListener("storage", notify);
+  }, []);
+  const getSnapshot = useCallback(
+    () =>
+      Boolean(
+        noticeKey && persistDismissal && wasClassroomNoticeDismissed(noticeKey),
+      ),
+    [noticeKey, persistDismissal],
+  );
+  const storedDismissal = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    () => false,
+  );
 
   const dismissNotice = () => {
     if (!noticeKey) return;
@@ -68,11 +71,11 @@ export function useClassroomEndingSoonNotice({
   return {
     dismissNotice,
     shouldShowNotice:
-      restoredNoticeKey === noticeKey &&
+      hydrated &&
       shouldShowClassroomEndingSoonNotice({
         isEndingSoon,
         noticeKey,
-        dismissedNoticeKey,
+        dismissedNoticeKey: storedDismissal ? noticeKey : dismissedNoticeKey,
       }),
   };
 }

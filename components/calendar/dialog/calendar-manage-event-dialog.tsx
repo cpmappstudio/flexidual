@@ -116,14 +116,18 @@ export default function CalendarManageEventDialog({
     shouldLoadSessionRecord,
   );
 
-  useEffect(() => {
+  const [previousScheduleId, setPreviousScheduleId] = useState(
+    selectedEvent?.scheduleId,
+  );
+  if (previousScheduleId !== selectedEvent?.scheduleId) {
+    setPreviousScheduleId(selectedEvent?.scheduleId);
     setCancellationReason("");
     setCancellationScope("single");
     setCancelDialogOpen(false);
     setCloseoutOpen(false);
     setRecordingOpen(false);
     setReopenDialogOpen(false);
-  }, [selectedEvent?.scheduleId]);
+  }
 
   useEffect(() => {
     if (
@@ -132,6 +136,7 @@ export default function CalendarManageEventDialog({
       !reopenedSession.isLive
     )
       return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Consume a confirmed remote activation once, then navigate; navigation must not run during render.
     setReopenedRoomName(null);
     setReopenDialogOpen(false);
     setIsReopening(false);

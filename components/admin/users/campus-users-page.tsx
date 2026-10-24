@@ -25,6 +25,13 @@ export function CampusUsersPage({ type }: { type: "students" | "professors" }) {
   );
   const campusId = orgContext?.type === "campus" ? orgContext._id : undefined;
   const [visibleCount, setVisibleCount] = React.useState<number | null>(null);
+  const countScope = `${campusId ?? "unresolved"}:${type}`;
+  const [previousCountScope, setPreviousCountScope] =
+    React.useState(countScope);
+  if (previousCountScope !== countScope) {
+    setPreviousCountScope(countScope);
+    setVisibleCount(null);
+  }
 
   const title = isStudents ? t("students") : t("teachers");
   const canViewPage = isStudents
