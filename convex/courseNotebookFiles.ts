@@ -3,7 +3,10 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { requireNotebookPage } from "./model/courseNotebookAccess";
 import { validateAndLimitWhiteboardUpload } from "./whiteboardFiles";
 import { fileRefValidator } from "./whiteboardSessions";
-import { readNotebookFileRefs } from "./model/notebookFiles";
+import {
+  attachNotebookFile,
+  readNotebookFileRefs,
+} from "./model/notebookFiles";
 import {
   notebookPreviewSnapshot,
   readNotebookPreview,
@@ -150,54 +153,32 @@ export const complete = internalMutation({
         metadata.contentType !== args.contentType)
     )
       throw new ConvexError("INVALID_WHITEBOARD_FILE");
-    const url = await ctx.storage.getUrl(args.storageId);
-    if (!url) throw new ConvexError("WHITEBOARD_FILE_NOT_FOUND");
-    if (args.previewVersion !== undefined) {
-      const currentPreview = await readNotebookPreview(ctx, page);
-      const preview = currentPreview.state;
-      if (args.previewVersion !== preview.previewVersion)
-        throw new ConvexError("STALE_NOTEBOOK_PREVIEW");
-      if (
-        page.retiredAt !== undefined ||
-        !preview.previewRequestedRevision ||
-        (await notebookPreviewSnapshot(ctx, args.pageId))?.revision !==
-          preview.previewRequestedRevision
-      )
-        throw new ConvexError("STALE_NOTEBOOK_PREVIEW");
-      if (
-        preview.previewStorageId &&
-        preview.previewStorageId !== args.storageId
-      )
-        await ctx.storage.delete(preview.previewStorageId);
-      await writeNotebookPreview(ctx, currentPreview, {
-        previewStorageId: args.storageId,
-        previewRevision: preview.previewRequestedRevision,
-      });
-    } else {
-      const existing = await ctx.db
-        .query("courseNotebookFiles")
-        .withIndex("by_pageId_and_fileId", (q) =>
-          q.eq("pageId", args.pageId).eq("fileId", args.fileId),
-        )
-        .unique();
-      if (existing) {
-        const existingUrl = await ctx.storage.getUrl(existing.storageId);
-        if (!existingUrl) throw new ConvexError("WHITEBOARD_FILE_NOT_FOUND");
-        return {
-          url: existingUrl,
-          mimeType: existing.mimeType,
-          storageId: existing.storageId,
-          created: existing.created,
-        };
-      }
-      await ctx.db.insert("courseNotebookFiles", {
-        pageId: args.pageId,
+    if (args.previewVersion === undefined)
+      return attachNotebookFile(ctx, args.pageId, {
         fileId: args.fileId,
         storageId: args.storageId,
         mimeType: args.contentType,
         created: args.created,
       });
-    }
+    const url = await ctx.storage.getUrl(args.storageId);
+    if (!url) throw new ConvexError("WHITEBOARD_FILE_NOT_FOUND");
+    const currentPreview = await readNotebookPreview(ctx, page);
+    const preview = currentPreview.state;
+    if (args.previewVersion !== preview.previewVersion)
+      throw new ConvexError("STALE_NOTEBOOK_PREVIEW");
+    if (
+      page.retiredAt !== undefined ||
+      !preview.previewRequestedRevision ||
+      (await notebookPreviewSnapshot(ctx, args.pageId))?.revision !==
+        preview.previewRequestedRevision
+    )
+      throw new ConvexError("STALE_NOTEBOOK_PREVIEW");
+    if (preview.previewStorageId && preview.previewStorageId !== args.storageId)
+      await ctx.storage.delete(preview.previewStorageId);
+    await writeNotebookPreview(ctx, currentPreview, {
+      previewStorageId: args.storageId,
+      previewRevision: preview.previewRequestedRevision,
+    });
     return {
       url,
       mimeType: args.contentType,

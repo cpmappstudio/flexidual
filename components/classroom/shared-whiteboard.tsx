@@ -167,7 +167,12 @@ function SharedWhiteboardSession({
     recordingToken,
   );
   const generation = manifest?.format === 2 ? manifest.generation : undefined;
-  const pageId = manifest?.format === 2 ? manifest.notebookPageId : undefined;
+  const pageId =
+    manifest?.format === 2
+      ? (manifest.notebookPageId ?? manifest.sessionPageId)
+      : undefined;
+  const sessionPageId =
+    manifest?.format === 2 ? manifest.sessionPageId : undefined;
   const preview = useNotebookPreview(pageId, !isReadonly, getUploadToken);
   const realtime = useWhiteboardRealtime({
     room,
@@ -183,7 +188,10 @@ function SharedWhiteboardSession({
     isReadonly,
     followViewport,
     presentationMode,
-    pageId && manifest?.format === 2 ? manifest.sourceId : undefined,
+    // Default sessions retain the unscoped pointer format used by older clients.
+    manifest?.format === 2 && manifest.notebookPageId
+      ? manifest.sourceId
+      : undefined,
   );
   const setPresentationApi = presentation.onApiReady;
   const saveDelta = useCallback<WhiteboardEditorProps["saveDelta"]>(
@@ -234,7 +242,10 @@ function SharedWhiteboardSession({
   );
   return (
     <WhiteboardEditor
-      draftKey={pageId ? `notebook:${pageId}` : roomName}
+      draftKey={
+        (manifest?.format === 2 ? manifest.sessionDraftKey : undefined) ??
+        (pageId && pageId !== sessionPageId ? `notebook:${pageId}` : roomName)
+      }
       scene={scene as WhiteboardEditorProps["scene"]}
       remoteElements={realtime.elements as ExcalidrawElements | undefined}
       fromLegacy={manifest?.fromLegacy}

@@ -22,7 +22,16 @@ export async function setupRecordingContext() {
       isActive: true,
       createdAt: now,
     });
+    const schoolId = await ctx.db.insert("schools", {
+      name: "Recording school",
+      slug: "recording-school",
+      timeZone: "America/Tegucigalpa",
+      isActive: true,
+      createdBy: firstLeaderId,
+      createdAt: now,
+    });
     const curriculumId = await ctx.db.insert("curriculums", {
+      schoolId,
       title: "Recording curriculum",
       isActive: true,
       createdAt: now,

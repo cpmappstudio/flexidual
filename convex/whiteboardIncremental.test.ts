@@ -180,7 +180,7 @@ test("a partial edit rewrites only its bucket and repeated/stale versions cause 
       parts: encode([element(first.id, 2)]),
     });
     expect((await ctx.meta.getTransactionMetrics()).documentsWritten.used).toBe(
-      2, // canonical fragment + bounded recent-history document
+      3, // canonical fragment + recent history + course-page preview signature
     );
   });
   expect(await f.bucket(second.id)).toEqual(untouched);
@@ -585,7 +585,7 @@ test("large bucket updates write only changed fragments and shrinking removes ob
       parts: encode([changed]),
     });
     expect((await ctx.meta.getTransactionMetrics()).documentsWritten.used).toBe(
-      3, // changed canonical fragments + bounded recent-history document
+      4, // changed canonical fragments + recent history + course-page preview signature
     );
   });
   expect(
@@ -645,6 +645,12 @@ test("detaching a manifest cleans bounded batches and old cleanup cannot erase a
   for (const id of ids.values()) await f.delta([element(id)]);
   const oldManifest = await f.t.run((ctx) =>
     ctx.db.query("whiteboardSceneManifests").first(),
+  );
+  // This test exercises disposable scenes; adopted course pages have separate retention.
+  await f.t.run((ctx) =>
+    ctx.db.patch("whiteboardSceneManifests", oldManifest!._id, {
+      pageId: undefined,
+    }),
   );
   await f.t.run((ctx) => deleteWhiteboardManifest(ctx, ROOM));
   await f.t.mutation(internal.whiteboardSessions.cleanupSceneBuckets, {

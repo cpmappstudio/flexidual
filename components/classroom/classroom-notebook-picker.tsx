@@ -17,15 +17,11 @@ export function ClassroomNotebookPicker({
 }) {
   const room = useRoomContext();
   const select = useMutation(api.whiteboardSessions.selectNotebookPage);
-  async function present(pageId: Id<"courseNotebookPages"> | null) {
+  async function present(pageId: Id<"courseNotebookPages">) {
     await select({ roomName, expectedLiveRoomName: room.name, pageId });
   }
   return (
-    <NotebookPagePicker
-      classId={classId}
-      onSelectPage={present}
-      onSelectSession={() => present(null)}
-    >
+    <NotebookPagePicker classId={classId} onSelectPage={present}>
       {children}
     </NotebookPagePicker>
   );

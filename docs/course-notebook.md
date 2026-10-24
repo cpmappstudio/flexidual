@@ -8,9 +8,9 @@ nombre no modifica permisos, almacenamiento ni los datos existentes.
 
 ## Fase 1: editor independiente de la clase en vivo
 
-Separación de responsabilidades reutilizada por la fase 2. La pizarra en vivo
-conserva su identidad de ocurrencia, permisos, datos y caducidad; no se convierte
-automáticamente en un cuaderno permanente.
+Separación de responsabilidades reutilizada por las fases siguientes. La llamada
+conserva su identidad de ocurrencia y permisos; los apuntes de la pizarra se
+vinculan al Board del curso y no caducan con la sesión.
 
 - `components/whiteboard/whiteboard-editor.tsx` contiene la integración pública
   de Excalidraw, la reconciliación, el guardado incremental por bloques, las
@@ -98,14 +98,17 @@ físicos ni en Safari.
 
 ## Fase 2: hojas y persistencia
 
-Implementada en local, sin desplegar ni migrar los datos existentes.
+La base está desplegada. La corrección del enlace automático de las sesiones
+descrita aquí está pendiente de publicación; no se ejecutó una migración masiva.
 
 - `convex/courseNotebook.ts` define el cuaderno lógico del curso: inicialización,
   archivo, creación/renombrado y consultas paginadas de hojas. Los cursos nuevos
   se inicializan al crearlos; los existentes, de forma idempotente al abrir el
   cuaderno. No se crean hojas vacías por cada clase.
 - `courseNotebookPages` contiene metadatos y una miniatura opcional, no la escena.
-  Cada hoja tiene un manifiesto propio por `pageId`, separado de `roomName`.
+  Cada hoja tiene un manifiesto propio por `pageId`. El manifiesto predeterminado
+  de una sesión se enlaza a una hoja, sin copiar sus bloques. Al expirar la sesión
+  se retiran `roomName` y el token de grabación, pero no su contenido.
   Comparte los bloques, versiones, conflictos e historial reciente de la pizarra
   mediante `model/whiteboardSceneStorage.ts`, sin duplicar el motor de guardado.
 - `courseNotebookFiles.ts` guarda las imágenes por hoja. El endpoint autenticado
@@ -150,9 +153,11 @@ Implementada en local, sin desplegar ni migrar los datos existentes.
   manuales siguen siendo independientes del chat. Solo eliminar el curso inicia
   la limpieza por lotes de sus hojas, imágenes, miniaturas y bloques.
 
-Esta fase no copia las pizarras antiguas al cuaderno ni añade la
-exportación conjunta de todas las hojas. Se conserva «Save as image» de
-Excalidraw para cada hoja.
+No hay importación masiva de pizarras antiguas. Al abrir una sesión existente
+con permiso de edición (o al guardar un delta en ella), se adopta su manifiesto
+y se transfieren una sola vez sus referencias de imágenes, nunca los bytes.
+La pizarra inicial vacía permanece oculta en la galería hasta su primer contenido.
+Se conserva «Save as image» de Excalidraw; la exportación conjunta es posterior.
 
 ## Fase 3: hojas dentro de la clase en vivo
 
@@ -190,23 +195,33 @@ Excalidraw para cada hoja.
 - La acción manual de archivar está temporalmente oculta para todos. Se mantiene
   la restauración administrativa de Boards archivados y el archivo automático
   al finalizar el curso; ocultar el botón no cambia datos ni permisos del backend.
-- En vivo permite elegir una hoja existente o crear una nueva y volver a la
-  pizarra temporal de la sesión. El botón Presentar conserva su función de
+- En vivo permite elegir una hoja existente o crear una nueva. Atrás reabre la
+  selección actual; no hay un segundo botón de retorno a una pizarra temporal.
+  El botón Presentar conserva su función de
   mostrar u ocultar la pizarra a los participantes.
 - Los espectadores de la llamada y las grabaciones no montan este navegador
   de hojas. La galería no se transmite: los estudiantes reciben la escena
   seleccionada mediante el canal y la persistencia existentes.
-- El manifiesto de la sesión guarda solo `presentedPageId`. No se copian escenas
-  ni imágenes: el editor usa `notebook:<pageId>`, sus borradores y los mismos
+- El manifiesto de la sesión conserva su hoja inicial por `pageId` y la selección
+  alternativa por `presentedPageId`. No se copian escenas
+  ni imágenes: el editor usa la clave estable de la hoja, sus borradores y los mismos
   bloques persistentes, también al editar fuera de la clase.
 - Seleccionar exige gestionar la clase activa y poder editar esa hoja del
   mismo curso. Los guardados conservan los permisos del cuaderno y usan su API de página independiente de
   la selección: un guardado pendiente termina en su hoja original, nunca en la
-  siguiente. La pizarra temporal mantiene su API y activación física. Las
+  siguiente. La hoja inicial mantiene su clave de borrador `roomName`, para
+  recuperar los borradores anteriores incluso con almacenamiento lleno. El campo
+  opcional `sessionDraftKey` conserva esa misma identidad al abrirla desde el
+  curso, al presentarla en otra clase y después de limpiar la sesión. Las hojas
+  creadas fuera de una sesión usan `notebook:<pageId>`. No se mueve ni elimina el borrador local.
+  Las
   lecturas incluyen `expectedPageId` y se suscriben a los
   bloques de la hoja y a sus imágenes visibles en grupos de 64.
 - El canal rápido mantiene sus ámbitos de sala, activación, manifiesto y
-  generación. Puntero y viewport también distinguen la hoja. El guardado durable
+  generación. Puntero y viewport distinguen las hojas seleccionadas mediante
+  `sourceId`; la hoja inicial conserva los paquetes sin ámbito de versiones
+  anteriores, para que clientes ya abiertos sigan viendo puntero y seguimiento.
+  La identidad de persistencia no cambia ese contrato de presentación. El guardado durable
   y las miniaturas siguen usando los motores compartidos.
 - Estudiantes y grabaciones usan los permisos de la clase y solo pueden obtener
   la hoja presentada, no navegar por todo el cuaderno con el token de grabación.

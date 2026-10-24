@@ -12,8 +12,333 @@ import {
 import { applyWhiteboardBucketResult } from "../lib/whiteboard-bucket-updates";
 import { whiteboardPreviewRevision } from "../lib/whiteboard-preview-revision";
 import * as notebookPreview from "./model/notebookPreview";
+import { storeWhiteboardImage } from "../tests/fixtures/whiteboard";
+import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
+import type { Id } from "./_generated/dataModel";
+import { readNotebookFileRefs } from "./model/notebookFiles";
 
 afterEach(() => vi.useRealTimers());
+
+test("an adopted page keeps its original draft identity, drawings and images when presented in another class occurrence", async () => {
+  const s = await setup();
+  const live = (roomName: string) => ({
+    roomName,
+    expectedLiveRoomName: `${roomName}-live`,
+  });
+  const a = live("lesson-a");
+  const b = live("lesson-b");
+  await s.t.run(async (ctx) => {
+    for (const lesson of [a, b])
+      await ctx.db.insert("classSchedule", {
+        classId: s.classId,
+        roomName: lesson.roomName,
+        liveRoomName: lesson.expectedLiveRoomName,
+        scheduledStart: Date.now(),
+        scheduledEnd: Date.now() + 3600000,
+        isLive: true,
+        status: "active",
+        createdBy: s.teacherId,
+        createdAt: Date.now(),
+      });
+  });
+  const first = await s.teacher.mutation(api.whiteboardSessions.ensureScene, a);
+  const second = await s.tutor.mutation(api.whiteboardSessions.ensureScene, b);
+  const pageId = first.sessionPageId!;
+  await s.teacher.mutation(api.courseNotebook.applyDelta, {
+    ...s.draw(pageId),
+    generation: first.generation,
+  });
+  const uploaded = await s.post(pageId);
+  expect(uploaded.status).toBe(200);
+  const image = await uploaded.json();
+  const course = await s.teacher.query(api.courseNotebook.getManifest, {
+    pageId,
+  });
+  expect(course.sessionDraftKey).toBe(a.roomName);
+  await s.tutor.mutation(api.whiteboardSessions.selectNotebookPage, {
+    ...b,
+    pageId,
+  });
+  const selected = await s.student.query(
+    api.whiteboardSessions.getSceneManifest,
+    { roomName: b.roomName },
+  );
+  expect(selected).toMatchObject({
+    notebookPageId: pageId,
+    sessionPageId: second.sessionPageId,
+    sessionDraftKey: course.sessionDraftKey,
+    sourceId: course.sourceId,
+  });
+  const bucketId = whiteboardBucketId("drawing");
+  expect(
+    await s.student.query(api.whiteboardSessions.getSceneBucket, {
+      roomName: b.roomName,
+      bucketId,
+      expectedPageId: pageId,
+    }),
+  ).toEqual(
+    await s.student.query(api.courseNotebook.getBucket, { pageId, bucketId }),
+  );
+  expect(
+    await s.student.query(api.whiteboardSessions.getPresentedFiles, {
+      roomName: b.roomName,
+      pageId,
+      fileIds: ["image-one"],
+    }),
+  ).toEqual({ "image-one": image });
+  await expect(
+    s.student.mutation(api.whiteboardSessions.selectNotebookPage, {
+      ...b,
+      pageId,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    s.outsider.query(api.whiteboardSessions.getSceneManifest, {
+      roomName: b.roomName,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await s.teacher.mutation(api.whiteboardSessions.selectNotebookPage, {
+    ...b,
+    pageId: null,
+  });
+  expect(
+    await s.teacher.query(api.whiteboardSessions.getSceneManifest, {
+      roomName: b.roomName,
+    }),
+  ).toMatchObject({
+    sessionDraftKey: b.roomName,
+    sessionPageId: second.sessionPageId,
+    sourceId: second.sourceId,
+  });
+  expect(
+    (await s.teacher.query(api.courseNotebook.getManifest, { pageId }))
+      .sessionDraftKey,
+  ).toBe(a.roomName);
+});
+
+test("legacy image maps fail explicitly instead of truncating a large page, while indexed image reads remain available", async () => {
+  const s = await setup();
+  const pageId = await s.create();
+  await s.t.run(async (ctx) => {
+    const storageId = await ctx.storage.store(
+      new Blob(["image"], { type: "image/png" }),
+    );
+    for (let index = 0; index < 1025; index++)
+      await ctx.db.insert("courseNotebookFiles", {
+        pageId,
+        fileId: `image-${index}`,
+        storageId,
+        mimeType: "image/png",
+        created: 1,
+      });
+  });
+  await expect(
+    s.t.run((ctx) => readNotebookFileRefs(ctx, pageId)),
+  ).rejects.toThrow("WHITEBOARD_SCENE_REQUIRES_INCREMENTAL_CLIENT");
+  expect(
+    await s.student.query(api.courseNotebookFiles.getFiles, {
+      pageId,
+      fileIds: ["image-1024"],
+    }),
+  ).toHaveProperty("image-1024");
+});
+
+test("the default connected-device scene becomes one course page without copying drawings or images and outlives the session", async () => {
+  const s = await setup();
+  const live = {
+    roomName: "device-board",
+    expectedLiveRoomName: "device-activation",
+  };
+  const scheduleId = await s.t.run((ctx) =>
+    ctx.db.insert("classSchedule", {
+      classId: s.classId,
+      roomName: live.roomName,
+      scheduledStart: Date.now(),
+      scheduledEnd: Date.now() + 3600000,
+      isLive: true,
+      status: "active",
+      liveRoomName: live.expectedLiveRoomName,
+      createdBy: s.teacherId,
+      createdAt: Date.now(),
+    }),
+  );
+  const elements = [
+    {
+      id: "drawing",
+      version: 1,
+      versionNonce: 1,
+      index: "a0",
+      type: "freedraw",
+      isDeleted: false,
+    },
+  ];
+  await s.teacher.mutation(api.whiteboardSessions.upsertScene, {
+    ...live,
+    elements,
+  });
+  const image = await storeWhiteboardImage(
+    s.t,
+    live.roomName,
+    "existing-image",
+    "original-image-bytes",
+  );
+  const manifest = await s.teacher.mutation(
+    api.whiteboardSessions.ensureScene,
+    live,
+  );
+  const pageId = manifest.sessionPageId!;
+  expect(pageId).toBeDefined();
+  expect(manifest.sessionPageId).toBe(pageId);
+  expect(manifest).not.toHaveProperty("notebookPageId");
+  expect(
+    await s.tutor.mutation(api.whiteboardSessions.ensureScene, live),
+  ).toEqual(manifest);
+  const list = await s.student.query(api.courseNotebook.listPages, {
+    classId: s.classId,
+    paginationOpts: { numItems: 20, cursor: null },
+  });
+  expect(list.page.map((page) => page._id)).toEqual([pageId]);
+  const saved = await s.student.query(api.courseNotebook.getBucket, {
+    pageId,
+    bucketId: whiteboardBucketId("drawing"),
+  });
+  expect(JSON.parse(joinWhiteboardPayload(saved!.parts))).toEqual(elements);
+  expect(
+    (await s.student.query(api.courseNotebook.getManifest, { pageId }))
+      .sourceId,
+  ).toBe(manifest.sourceId);
+  expect(
+    await s.t.run((ctx) => ctx.db.query("whiteboardSceneManifests").take(10)),
+  ).toHaveLength(1);
+  expect(
+    await s.student.query(api.courseNotebookFiles.getFiles, {
+      pageId,
+      fileIds: ["existing-image"],
+    }),
+  ).toEqual({ "existing-image": image });
+  // Late old-client uploads go to the original page even while another page is presented.
+  const other = await s.create();
+  await s.teacher.mutation(api.whiteboardSessions.selectNotebookPage, {
+    ...live,
+    pageId: other,
+  });
+  const imageBody = new Blob(
+    [
+      Uint8Array.from(
+        atob(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+        ),
+        (char) => char.charCodeAt(0),
+      ),
+    ],
+    { type: "image/png" },
+  );
+  const params = new URLSearchParams({
+    ...live,
+    fileId: "late-image",
+    created: "2",
+  });
+  const uploaded = await s.teacher.fetch(`/whiteboard-files?${params}`, {
+    method: "POST",
+    body: imageBody,
+    headers: {
+      "Content-Type": imageBody.type,
+      "X-File-Size": String(imageBody.size),
+    },
+  });
+  expect(uploaded.status, await uploaded.clone().text()).toBe(200);
+  const lateRef = await uploaded.json();
+  expect(
+    await s.student.query(api.courseNotebookFiles.getFiles, {
+      pageId: other,
+      fileIds: ["late-image"],
+    }),
+  ).toEqual({});
+  await s.t.run(async (ctx) => {
+    const schedule = await ctx.db.get("classSchedule", scheduleId);
+    await deleteScheduleWithDependencies(ctx, schedule!);
+  });
+  await s.t.mutation(internal.whiteboardSessions.cleanupSceneBuckets, {
+    manifestId: manifest.sourceId! as Id<"whiteboardSceneManifests">,
+  });
+  expect(
+    (await s.student.query(api.courseNotebook.getManifest, { pageId }))
+      .sourceId,
+  ).toBe(manifest.sourceId);
+  expect(
+    await s.student.query(api.courseNotebookFiles.getFiles, {
+      pageId,
+      fileIds: ["existing-image", "late-image"],
+    }),
+  ).toEqual({ "existing-image": image, "late-image": lateRef });
+  expect(
+    await s.t.run(async (ctx) =>
+      (await ctx.storage.get(image.storageId))?.text(),
+    ),
+  ).toBe("original-image-bytes");
+  await s.tutor.mutation(api.courseNotebook.applyDelta, s.draw(pageId, 2));
+  await expect(
+    s.student.mutation(api.courseNotebook.applyDelta, s.draw(pageId, 3)),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  expect(
+    JSON.parse(
+      joinWhiteboardPayload(
+        (await s.student.query(api.courseNotebook.getBucket, {
+          pageId,
+          bucketId: whiteboardBucketId("drawing"),
+        }))!.parts,
+      ),
+    )[0].version,
+  ).toBe(2);
+});
+
+test("a fresh live page remains hidden until content is saved and pending course saves still complete after the class ends", async () => {
+  const s = await setup();
+  const live = {
+    roomName: "new-device-board",
+    expectedLiveRoomName: "new-device-activation",
+  };
+  const scheduleId = await s.t.run((ctx) =>
+    ctx.db.insert("classSchedule", {
+      classId: s.classId,
+      roomName: live.roomName,
+      liveRoomName: live.expectedLiveRoomName,
+      scheduledStart: Date.now(),
+      scheduledEnd: Date.now() + 3600000,
+      isLive: true,
+      status: "active",
+      createdBy: s.teacherId,
+      createdAt: Date.now(),
+    }),
+  );
+  const list = () =>
+    s.student.query(api.courseNotebook.listPages, {
+      classId: s.classId,
+      paginationOpts: { numItems: 20, cursor: null },
+    });
+  await expect(
+    s.student.mutation(api.whiteboardSessions.ensureScene, live),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  const manifest = await s.teacher.mutation(
+    api.whiteboardSessions.ensureScene,
+    live,
+  );
+  const pageId = manifest.sessionPageId!;
+  expect((await list()).page).toEqual([]);
+  await s.teacher.mutation(api.courseNotebook.applyDelta, s.draw(pageId));
+  expect((await list()).page.map((page) => page._id)).toEqual([pageId]);
+  await s.t.run((ctx) =>
+    ctx.db.patch("classSchedule", scheduleId, {
+      isLive: false,
+      status: "completed",
+    }),
+  );
+  await s.teacher.mutation(api.courseNotebook.applyDelta, s.draw(pageId, 2));
+  await expect(
+    s.teacher.mutation(api.whiteboardSessions.ensureScene, live),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  expect((await list()).page.map((page) => page._id)).toEqual([pageId]);
+});
 
 test("empty pages retire only on an authorized confirmed close and remain recoverable", async () => {
   const s = await setup();

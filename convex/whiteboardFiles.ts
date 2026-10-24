@@ -7,6 +7,8 @@ import { internalMutation, mutation } from "./_generated/server";
 import { requireLiveWhiteboardManager } from "./model/whiteboardAccess";
 import { getLiveRoomName } from "./model/liveActivation";
 import { fileRefValidator } from "./whiteboardSessions";
+import { findWhiteboardManifest } from "./model/whiteboardSceneStorage";
+import { attachNotebookFile } from "./model/notebookFiles";
 
 export const MAX_WHITEBOARD_FILE_SIZE = 10 * 1024 * 1024;
 const imageTypes = new Set([
@@ -84,6 +86,15 @@ export const complete = internalMutation({
         metadata.contentType !== args.contentType)
     )
       throw new ConvexError("INVALID_WHITEBOARD_FILE");
+    const manifest = await findWhiteboardManifest(ctx, args.roomName);
+    // An upload started before adoption still belongs to that session's page.
+    if (manifest?.pageId)
+      return attachNotebookFile(ctx, manifest.pageId, {
+        fileId: args.fileId,
+        storageId: args.storageId,
+        mimeType: args.contentType,
+        created: args.created,
+      });
     const session = await ctx.db
       .query("whiteboardSessions")
       .withIndex("by_roomName", (q) => q.eq("roomName", args.roomName))

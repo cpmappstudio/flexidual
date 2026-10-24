@@ -75,12 +75,13 @@ test("selecting a notebook page stays inside the call and waits for the authoriz
   expect(screen.getByTestId("active-editor")).toBeTruthy();
   state.select.mockResolvedValue(null);
   fireEvent.click(screen.getByRole("button", { name: "tab" }));
-  fireEvent.click(screen.getByRole("button", { name: "sessionBoard" }));
+  expect(screen.queryByRole("button", { name: "sessionBoard" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "back" }));
   await act(async () => {});
   expect(state.select).toHaveBeenLastCalledWith({
     roomName: "occurrence",
     expectedLiveRoomName: "physical-activation",
-    pageId: null,
+    pageId: "page-a",
   });
 });
 

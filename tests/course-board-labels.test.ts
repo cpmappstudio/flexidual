@@ -28,7 +28,6 @@ for (const [locale, label] of locales) {
       /\b(notebook|cuaderno|caderno)\b/i,
     );
     for (const key of [
-      "livePicker",
       "archive",
       "restore",
       "archived",

@@ -17,13 +17,21 @@ export function useWhiteboardScene(
     roomName,
     recordingToken,
   });
-  const pageId = manifest?.format === 2 ? manifest.notebookPageId : undefined;
+  const pageId =
+    manifest?.format === 2
+      ? (manifest.notebookPageId ?? manifest.sessionPageId)
+      : undefined;
   const ensure = useMutation(api.whiteboardSessions.ensureScene);
   const [error, setError] = useState<unknown>();
   useEffect(() => {
     // A recovered manifest or a new attempt retires only the preceding attempt's error.
     setError(undefined);
-    if (isReadonly || manifest === undefined || manifest?.format === 2) return;
+    if (
+      isReadonly ||
+      manifest === undefined ||
+      (manifest?.format === 2 && manifest.sessionPageId)
+    )
+      return;
     let active = true;
     void ensure({ roomName, expectedLiveRoomName: liveRoomName }).catch(
       (failure) => {

@@ -9,7 +9,11 @@ import {
   type ComponentType,
 } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { getFunctionName, type FunctionReturnType } from "convex/server";
+import {
+  getFunctionName,
+  type FunctionArgs,
+  type FunctionReturnType,
+} from "convex/server";
 import rateLimiter from "@convex-dev/rate-limiter/test";
 import { api, internal } from "@/convex/_generated/api";
 import type {
@@ -69,6 +73,8 @@ const state = vi.hoisted(() => ({
     fromLegacy: boolean;
     sourceId?: string;
     notebookPageId?: Id<"courseNotebookPages">;
+    sessionPageId?: Id<"courseNotebookPages">;
+    sessionDraftKey?: string;
   },
   recoveryError: undefined as unknown,
   sceneHook: vi.fn(),
@@ -154,7 +160,16 @@ vi.mock("convex/react", () => ({
                 state.permissions[identity],
               ]),
             )
-          : (state.queries(queries) ?? {}),
+          : Object.values(queries).some((entry) =>
+                getFunctionName(entry.query).endsWith(":getPresentedFiles"),
+              )
+            ? Object.fromEntries(
+                Object.keys(queries).map((key) => [
+                  key,
+                  state.scene?.fileRefs ?? {},
+                ]),
+              )
+            : (state.queries(queries) ?? {}),
   useMutation: (ref: Parameters<typeof getFunctionName>[0]) => {
     const name = getFunctionName(ref);
     return name === "whiteboardSessions:applySceneDelta" ||
@@ -167,6 +182,18 @@ vi.mock("convex/react", () => ({
 }));
 
 type ChangeArgs = Parameters<NonNullable<ExcalidrawProps["onChange"]>>;
+function saveRealDelta(
+  writer: ReturnType<
+    Awaited<ReturnType<typeof setupRecordingContext>>["t"]["withIdentity"]
+  >,
+  args:
+    | FunctionArgs<typeof api.courseNotebook.applyDelta>
+    | FunctionArgs<typeof api.whiteboardSessions.applySceneDelta>,
+) {
+  return "pageId" in args
+    ? writer.mutation(api.courseNotebook.applyDelta, args)
+    : writer.mutation(api.whiteboardSessions.applySceneDelta, args);
+}
 const shape = (id: string, version = 1, nonce = version) =>
   ({
     id,
@@ -509,6 +536,7 @@ beforeEach(() => {
   state.recoveryError = undefined;
   state.permissions = {};
   state.audience = ["student"];
+  state.otherMutation.mockReset().mockResolvedValue(null);
   state.room.localParticipant.metadata = undefined;
   state.room.remoteParticipants.clear();
   state.sceneHook.mockImplementation(() => ({
@@ -573,132 +601,141 @@ test.each([false, true])(
   },
 );
 
-test("presented notebook pages share drafts with the course editor and isolate late saves, images and full-storage reload", async () => {
-  const pageA = "page-live-a" as Id<"courseNotebookPages">;
-  const pageB = "page-live-b" as Id<"courseNotebookPages">;
-  const file = imageFile();
-  const image = imageElement(file);
-  localStorage.setItem(
-    `wb_notebook:${pageA}`,
-    JSON.stringify({
-      elements: [shape("pending-stroke"), image],
-      files: { [file.id]: file },
-      saved: false,
-    }),
-  );
-  quota();
-  downloaded(file);
-  const lifecycle = canvasLifecycle();
-  state.Canvas = lifecycle.Canvas;
-  state.scene = {
-    ...cloudScene([shape("confirmed"), image]),
-    fileRefs: { [file.id]: imageRef(file) },
-  };
-  state.manifest = {
-    ...state.manifest,
-    sourceId: "source-a",
-    notebookPageId: pageA,
-  };
-  let release!: () => void;
-  const savedArgs: { pageId: string }[] = [];
-  let savedA = state.scene.elements;
-  let held = false;
-  state.save.mockImplementation(async (args) => {
-    savedArgs.push(args);
-    if (args.pageId === pageA && !held) {
-      held = true;
-      await new Promise<void>((resolve) => {
-        release = resolve;
-      });
-    }
-    if (args.pageId === pageA)
-      savedA = mergeWhiteboardElements(
-        savedA,
-        JSON.parse(joinWhiteboardPayload(args.parts)),
-      );
-    return { conflictsParts: [] };
-  });
-  const view = await mount();
-  await flush(400);
-  expect(savedArgs[0].pageId).toBe(pageA);
-  expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
-  act(() =>
-    lifecycle.current().draw([
-      ...lifecycle.current().api.getSceneElementsIncludingDeleted(),
-      {
-        ...shape("late-local"),
-        index: "a3" as ChangeArgs[0][number]["index"],
-      },
-    ]),
-  );
-  const aElements = lifecycle.current().api.getSceneElementsIncludingDeleted();
-  state.scene = cloudScene([shape("page-b-only")]);
-  state.manifest = {
-    ...state.manifest,
-    sourceId: "source-b",
-    notebookPageId: pageB,
-  };
-  view.rerender(<SharedWhiteboard roomName="test-room" />);
-  await flush(400);
-  expect(
-    lifecycle
+test.each([undefined, "lesson-a"])(
+  "presented notebook pages share drafts across classes and isolate late saves, images and full-storage reload, original room=%s",
+  async (sessionDraftKey) => {
+    const pageA = "page-live-a" as Id<"courseNotebookPages">;
+    const pageB = "page-live-b" as Id<"courseNotebookPages">;
+    const file = imageFile();
+    const image = imageElement(file);
+    localStorage.setItem(
+      `wb_${sessionDraftKey ?? `notebook:${pageA}`}`,
+      JSON.stringify({
+        elements: [shape("pending-stroke"), image],
+        files: { [file.id]: file },
+        saved: false,
+      }),
+    );
+    quota();
+    downloaded(file);
+    const lifecycle = canvasLifecycle();
+    state.Canvas = lifecycle.Canvas;
+    state.scene = {
+      ...cloudScene([shape("confirmed"), image]),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    state.manifest = {
+      ...state.manifest,
+      sourceId: "source-a",
+      notebookPageId: pageA,
+      sessionPageId: "page-current-session" as Id<"courseNotebookPages">,
+      sessionDraftKey,
+    };
+    let release!: () => void;
+    const savedArgs: { pageId: string }[] = [];
+    let savedA = state.scene.elements;
+    let held = false;
+    state.save.mockImplementation(async (args) => {
+      savedArgs.push(args);
+      if (args.pageId === pageA && !held) {
+        held = true;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      if (args.pageId === pageA)
+        savedA = mergeWhiteboardElements(
+          savedA,
+          JSON.parse(joinWhiteboardPayload(args.parts)),
+        );
+      return { conflictsParts: [] };
+    });
+    const view = await mount();
+    await flush(400);
+    expect(savedArgs[0].pageId).toBe(pageA);
+    expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
+    act(() =>
+      lifecycle.current().draw([
+        ...lifecycle.current().api.getSceneElementsIncludingDeleted(),
+        {
+          ...shape("late-local"),
+          index: "a3" as ChangeArgs[0][number]["index"],
+        },
+      ]),
+    );
+    const aElements = lifecycle
       .current()
-      .api.getSceneElementsIncludingDeleted()
-      .map((element) => element.id),
-  ).toEqual(["page-b-only"]);
-  await act(async () => release());
-  await flush(3100);
-  expect(savedA.map((element) => element.id)).toEqual(
-    expect.arrayContaining([
-      "confirmed",
-      "pending-stroke",
-      "late-local",
-      "image",
-    ]),
-  );
-  expect(savedArgs.every((args) => args.pageId === pageA)).toBe(true);
-  expect(state.previewExport).toHaveBeenCalledTimes(1);
-  expect(state.previewStart).toHaveBeenCalledWith(
-    expect.objectContaining({ pageId: pageA }),
-  );
-  // A full cache retains A's preceding draft; reopening merges it with cloud data.
-  state.scene = {
-    ...cloudScene(savedA),
-    fileRefs: { [file.id]: imageRef(file) },
-  };
-  state.manifest = {
-    ...state.manifest,
-    sourceId: "source-a",
-    notebookPageId: pageA,
-  };
-  view.rerender(<SharedWhiteboard roomName="test-room" />);
-  await flush(400);
-  expect(
-    lifecycle
-      .current()
-      .api.getSceneElementsIncludingDeleted()
-      .map((element) => element.id),
-  ).toEqual(
-    expect.arrayContaining([
-      "confirmed",
-      "pending-stroke",
-      "late-local",
-      "image",
-    ]),
-  );
-  view.unmount();
-  await flush(1);
-  await mount("test-room", true);
-  await flush(400);
-  expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
-    aElements,
-  );
-  expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
-  state.save.mockClear();
-  act(() => lifecycle.current().draw([shape("student-cannot-edit")]));
-  await flush(400);
-  expect(state.save).not.toHaveBeenCalled();
-});
+      .api.getSceneElementsIncludingDeleted();
+    state.scene = cloudScene([shape("page-b-only")]);
+    state.manifest = {
+      ...state.manifest,
+      sourceId: "source-b",
+      notebookPageId: pageB,
+      sessionDraftKey: undefined,
+    };
+    view.rerender(<SharedWhiteboard roomName="test-room" />);
+    await flush(400);
+    expect(
+      lifecycle
+        .current()
+        .api.getSceneElementsIncludingDeleted()
+        .map((element) => element.id),
+    ).toEqual(["page-b-only"]);
+    await act(async () => release());
+    await flush(3100);
+    expect(savedA.map((element) => element.id)).toEqual(
+      expect.arrayContaining([
+        "confirmed",
+        "pending-stroke",
+        "late-local",
+        "image",
+      ]),
+    );
+    expect(savedArgs.every((args) => args.pageId === pageA)).toBe(true);
+    expect(state.previewExport).toHaveBeenCalledTimes(1);
+    expect(state.previewStart).toHaveBeenCalledWith(
+      expect.objectContaining({ pageId: pageA }),
+    );
+    // A full cache retains A's preceding draft; reopening merges it with cloud data.
+    state.scene = {
+      ...cloudScene(savedA),
+      fileRefs: { [file.id]: imageRef(file) },
+    };
+    state.manifest = {
+      ...state.manifest,
+      sourceId: "source-a",
+      notebookPageId: pageA,
+      sessionDraftKey,
+    };
+    view.rerender(<SharedWhiteboard roomName="test-room" />);
+    await flush(400);
+    expect(
+      lifecycle
+        .current()
+        .api.getSceneElementsIncludingDeleted()
+        .map((element) => element.id),
+    ).toEqual(
+      expect.arrayContaining([
+        "confirmed",
+        "pending-stroke",
+        "late-local",
+        "image",
+      ]),
+    );
+    view.unmount();
+    await flush(1);
+    await mount("test-room", true);
+    await flush(400);
+    expect(lifecycle.current().api.getSceneElementsIncludingDeleted()).toEqual(
+      aElements,
+    );
+    expect(lifecycle.current().api.getFiles()[file.id]).toEqual(file);
+    state.save.mockClear();
+    act(() => lifecycle.current().draw([shape("student-cannot-edit")]));
+    await flush(400);
+    expect(state.save).not.toHaveBeenCalled();
+  },
+);
 
 test.each([false, true])(
   "notebook previews wait for delayed images and save replies, preserving full-storage drafts on reload (image first: %s)",
@@ -1552,67 +1589,134 @@ test.each([
     expect(state.save).not.toHaveBeenCalled();
   },
 );
-test("live presentation retains trusted pointers and optional viewport following without updating a closed editor", async () => {
-  state.scene = cloudScene([shape("base")]);
-  const view = await mount("test-room", true);
-  const canvas = await attachCanvas();
-  canvas.updateScene.mockClear();
-  const receive = state.room.on.mock.calls.find(
-    ([event]) => event === "dataReceived",
-  )![1];
-  const participant = {
-    identity: "teacher",
-    name: "Teacher",
-    metadata: JSON.stringify({ role: "teacher", isCompanion: true }),
-  };
-  const viewport = {
-    type: "WHITEBOARD_VIEWPORT",
-    scrollX: 42,
-    scrollY: 24,
-    zoom: 2,
-  };
-  const send = (message: object, sender = participant) =>
-    act(() =>
-      receive(new TextEncoder().encode(JSON.stringify(message)), sender),
+test.each([false, true])(
+  "live presentation retains trusted pointers, old-client compatibility and optional viewport following, selected page=%s",
+  async (selected) => {
+    state.scene = cloudScene([shape("base")]);
+    state.manifest = {
+      ...state.manifest,
+      sourceId: "source-a",
+      sessionPageId: "page-session" as Id<"courseNotebookPages">,
+      ...(selected
+        ? { notebookPageId: "page-selected" as Id<"courseNotebookPages"> }
+        : {}),
+    };
+    const scope = selected ? { sourceId: "source-a" } : {};
+    const view = await mount("test-room", true);
+    const canvas = await attachCanvas();
+    canvas.updateScene.mockClear();
+    const receive = state.room.on.mock.calls.find(
+      ([event]) => event === "dataReceived",
+    )![1];
+    const participant = {
+      identity: "teacher",
+      name: "Teacher",
+      metadata: JSON.stringify({ role: "teacher", isCompanion: true }),
+    };
+    const viewport = {
+      ...scope,
+      type: "WHITEBOARD_VIEWPORT",
+      scrollX: 42,
+      scrollY: 24,
+      zoom: 2,
+    };
+    const send = (message: object, sender = participant) =>
+      act(() =>
+        receive(new TextEncoder().encode(JSON.stringify(message)), sender),
+      );
+    // A default packet from an old client must not affect a selected page, nor
+    // may a delayed packet from another page affect the default session.
+    send({ ...viewport, sourceId: selected ? undefined : "stale-source" });
+    send({
+      type: "WHITEBOARD_POINTER",
+      sourceId: selected ? undefined : "stale-source",
+      x: 1,
+      y: 2,
+      button: "down",
+      tool: "laser",
+    });
+    await flush(1);
+    expect(canvas.updateScene).not.toHaveBeenCalled();
+    send(viewport, {
+      ...participant,
+      metadata: JSON.stringify({ role: "student" }),
+    });
+    await flush(1);
+    expect(canvas.updateScene).not.toHaveBeenCalled();
+    send(viewport);
+    await flush(1);
+    expect(canvas.updateScene).toHaveBeenCalledWith({
+      appState: { scrollX: 42, scrollY: 24, zoom: { value: 2 } },
+    });
+    send({
+      ...scope,
+      type: "WHITEBOARD_POINTER",
+      x: 10,
+      y: 20,
+      button: "down",
+      tool: "laser",
+    });
+    expect(canvas.updateScene).toHaveBeenCalledWith({
+      collaborators: expect.any(Map),
+    });
+    view.rerender(
+      <SharedWhiteboard
+        roomName="test-room"
+        isReadonly
+        followViewport={false}
+      />,
     );
-  send(viewport, {
-    ...participant,
-    metadata: JSON.stringify({ role: "student" }),
-  });
-  await flush(1);
-  expect(canvas.updateScene).not.toHaveBeenCalled();
-  send(viewport);
-  await flush(1);
-  expect(canvas.updateScene).toHaveBeenCalledWith({
-    appState: { scrollX: 42, scrollY: 24, zoom: { value: 2 } },
-  });
-  send({
-    type: "WHITEBOARD_POINTER",
-    x: 10,
-    y: 20,
-    button: "down",
-    tool: "laser",
-  });
-  expect(canvas.updateScene).toHaveBeenCalledWith({
-    collaborators: expect.any(Map),
-  });
-  view.rerender(
-    <SharedWhiteboard roomName="test-room" isReadonly followViewport={false} />,
-  );
-  canvas.updateScene.mockClear();
-  send(viewport);
-  await flush(1);
-  expect(canvas.updateScene).not.toHaveBeenCalled();
-  view.rerender(
-    <SharedWhiteboard roomName="test-room" isReadonly followViewport />,
-  );
-  send(viewport);
-  view.unmount();
-  await flush(1);
-  expect(canvas.updateScene).not.toHaveBeenCalled();
-  expect(state.save).not.toHaveBeenCalled();
-  expect(state.token).not.toHaveBeenCalled();
-});
+    canvas.updateScene.mockClear();
+    send(viewport);
+    await flush(1);
+    expect(canvas.updateScene).not.toHaveBeenCalled();
+    view.rerender(
+      <SharedWhiteboard roomName="test-room" isReadonly followViewport />,
+    );
+    send(viewport);
+    view.unmount();
+    await flush(1);
+    expect(canvas.updateScene).not.toHaveBeenCalled();
+    expect(state.save).not.toHaveBeenCalled();
+    expect(state.token).not.toHaveBeenCalled();
+  },
+);
+
+test.each([false, true])(
+  "presentation sends the existing wire scope for old viewers, selected page=%s",
+  async (selected) => {
+    state.manifest = {
+      ...state.manifest,
+      sourceId: "source-a",
+      sessionPageId: "page-session" as Id<"courseNotebookPages">,
+      ...(selected
+        ? { notebookPageId: "page-selected" as Id<"courseNotebookPages"> }
+        : {}),
+    };
+    state.previewStart.mockResolvedValue(null);
+    await mount();
+    change([], 42);
+    act(() =>
+      state.props.onPointerUpdate?.({
+        pointer: { x: 10, y: 20, tool: "laser" },
+        button: "down",
+        pointersMap: new Map(),
+      }),
+    );
+    const messages = state.room.localParticipant.publishData.mock.calls.map(
+      ([bytes]) => JSON.parse(new TextDecoder().decode(bytes)),
+    );
+    expect(messages.map((message) => message.type)).toEqual([
+      "WHITEBOARD_VIEWPORT",
+      "WHITEBOARD_POINTER",
+    ]);
+    for (const message of messages) {
+      if (selected) expect(message.sourceId).toBe("source-a");
+      else expect(message).not.toHaveProperty("sourceId");
+    }
+    expect(state.save).not.toHaveBeenCalled();
+  },
+);
 
 test("viewport-only updates neither save nor postpone a pending drawing", async () => {
   await mount();
@@ -1795,6 +1899,12 @@ test("reopening rejects a delayed real delta and full-storage reload preserves d
     roomName,
     expectedLiveRoomName: oldRoom,
   });
+  // Compatibility: a client that started before adoption still sends room-scoped deltas.
+  state.manifest = {
+    ...state.manifest,
+    notebookPageId: undefined,
+    sessionPageId: undefined,
+  };
   const draft = JSON.stringify({
     elements: pending,
     files: { [file.id]: file },
@@ -1863,9 +1973,7 @@ test("reopening rejects a delayed real delta and full-storage reload preserves d
     elements: pending,
     files: { [file.id]: file },
   });
-  state.save.mockImplementation((args) =>
-    writer.mutation(api.whiteboardSessions.applySceneDelta, args),
-  );
+  state.save.mockImplementation((args) => saveRealDelta(writer, args));
   change(pending, 0, { [file.id]: file });
   await flush();
   expect(await getScene()).toMatchObject({
@@ -1896,9 +2004,139 @@ test("reopening rejects a delayed real delta and full-storage reload preserves d
   view.unmount();
 });
 
+test.each([false, true])(
+  "a connected-device draft with full storage recovers in Board after class end and expiry (offline close: %s)",
+  async (offline) => {
+    const { t, scheduleId, classId } = await setupRecordingContext();
+    const writer = t.withIdentity({ subject: "recording-leader-one" });
+    const roomName = "recording-room";
+    const file = imageFile();
+    const ref = await storeWhiteboardImage(
+      t,
+      roomName,
+      file.id,
+      "keep-connected-image",
+    );
+    const original = [shape("confirmed"), imageElement(file)];
+    const pending = [...original, shape("pending-stroke")];
+    await writer.mutation(api.whiteboardSessions.upsertScene, {
+      roomName,
+      elements: original,
+    });
+    state.manifest = await writer.mutation(api.whiteboardSessions.ensureScene, {
+      roomName,
+      expectedLiveRoomName: roomName,
+    });
+    const pageId = state.manifest.sessionPageId!;
+    state.scene = await writer.query(api.whiteboardSessions.getScene, {
+      roomName,
+    });
+    state.room.name = roomName;
+    localStorage.setItem(
+      `wb_${roomName}`,
+      JSON.stringify({
+        elements: pending,
+        files: { [file.id]: file },
+        fileRefs: { [file.id]: ref },
+        saved: false,
+      }),
+    );
+    quota();
+    downloaded(file);
+    state.previewStart.mockResolvedValue(null);
+    let finish!: () => Promise<void>;
+    state.save.mockImplementation(
+      (args) =>
+        new Promise((resolve, reject) => {
+          finish = async () => {
+            try {
+              if (offline) throw new Error("offline");
+              resolve(await saveRealDelta(writer, args));
+            } catch (error) {
+              reject(error);
+            }
+          };
+        }),
+    );
+    const view = await mount(roomName);
+    const canvas = await attachCanvas();
+    expect(canvas.getSceneElementsIncludingDeleted()).toEqual(
+      expect.arrayContaining(pending),
+    );
+    change(pending, 0, { [file.id]: file });
+    await flush();
+    expect(state.save.mock.calls[0][0]).toMatchObject({ pageId });
+    expect(state.save.mock.calls[0][0]).not.toHaveProperty("roomName");
+    const endedAt = Date.now();
+    await t.run((ctx) =>
+      ctx.db.patch("classSchedule", scheduleId, {
+        status: "completed",
+        isLive: false,
+        sessionReopenUntil: endedAt,
+      }),
+    );
+    view.unmount();
+    await act(async () => finish());
+    await flush();
+    // The session's expiry cannot erase the page or the image it now owns.
+    await t.mutation(internal.schedule.cleanupExpiredWhiteboardSession, {
+      roomName,
+      expectedReopenUntil: endedAt,
+    });
+    const list = await writer.query(api.courseNotebook.listPages, {
+      classId,
+      paginationOpts: { numItems: 20, cursor: null },
+    });
+    expect(list.page.map((page) => page._id)).toContain(pageId);
+    const manifest = await writer.query(api.courseNotebook.getManifest, {
+      pageId,
+    });
+    const buckets = await Promise.all(
+      manifest.bucketIds.map((bucketId) =>
+        writer.query(api.courseNotebook.getBucket, { pageId, bucketId }),
+      ),
+    );
+    const recovered = buckets.flatMap((bucket) =>
+      JSON.parse(joinWhiteboardPayload(bucket!.parts)),
+    );
+    const refs = await writer.query(api.courseNotebookFiles.getFiles, {
+      pageId,
+      fileIds: [file.id],
+    });
+    state.scene = { ...cloudScene(recovered), fileRefs: refs };
+    state.manifest = { ...state.manifest, ...manifest };
+    expect(manifest.sessionDraftKey).toBe(roomName);
+    state.reportError.mockClear();
+    state.save.mockImplementation((args) => saveRealDelta(writer, args));
+    const board = render(<NotebookPageEditor pageId={pageId} canEdit />);
+    await flush(5);
+    expect(state.props.initialData).toMatchObject({
+      elements: expect.arrayContaining(pending),
+    });
+    change(pending, 0, { [file.id]: file });
+    await flush();
+    const saved = await writer.query(api.courseNotebook.getBucket, {
+      pageId,
+      bucketId: whiteboardBucketId("pending-stroke"),
+    });
+    expect(JSON.parse(joinWhiteboardPayload(saved!.parts))).toContainEqual(
+      shape("pending-stroke"),
+    );
+    expect(
+      await t.run(async (ctx) =>
+        (await ctx.storage.get(ref.storageId))?.text(),
+      ),
+    ).toBe("keep-connected-image");
+    expect(state.reportError).not.toHaveBeenCalled();
+    board.unmount();
+  },
+);
+
 test.each(["constructor", "toString", "hasOwnProperty", "valueOf"])(
   "special image ID %s stays pending until authenticated upload and survives full-storage reload",
   async (fileId) => {
+    // This scenario counts content uploads, not independently tested thumbnail uploads.
+    state.previewStart.mockResolvedValue(null);
     const { t } = await setupRecordingContext();
     rateLimiter.register(t);
     const writer = t.withIdentity({ subject: "recording-leader-one" });
@@ -1941,9 +2179,7 @@ test.each(["constructor", "toString", "hasOwnProperty", "valueOf"])(
     state.scene = await writer.query(api.whiteboardSessions.getScene, {
       roomName,
     });
-    state.save.mockImplementation((args) =>
-      writer.mutation(api.whiteboardSessions.applySceneDelta, args),
-    );
+    state.save.mockImplementation((args) => saveRealDelta(writer, args));
     localStorage.setItem(
       key,
       JSON.stringify({
@@ -2171,14 +2407,9 @@ test.each([false, true])(
     });
     const canvas = await attachCanvas();
     let acknowledge!: () => void;
-    state.save.mockImplementation((args) =>
-      writer.mutation(api.whiteboardSessions.applySceneDelta, args),
-    );
+    state.save.mockImplementation((args) => saveRealDelta(writer, args));
     state.save.mockImplementationOnce(async (args) => {
-      const response = await writer.mutation(
-        api.whiteboardSessions.applySceneDelta,
-        args,
-      );
+      const response = await saveRealDelta(writer, args);
       return new Promise((resolve) => {
         acknowledge = () => resolve(response);
       });
@@ -3922,9 +4153,7 @@ test("a freehand stroke larger than 256 KiB reaches the real backend without los
   state.scene = await writer.query(api.whiteboardSessions.getScene, {
     roomName,
   });
-  state.save.mockImplementation((args) =>
-    writer.mutation(api.whiteboardSessions.applySceneDelta, args),
-  );
+  state.save.mockImplementation((args) => saveRealDelta(writer, args));
   const stroke = {
     ...shape("large-freehand"),
     type: "freedraw",

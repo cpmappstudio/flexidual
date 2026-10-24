@@ -215,6 +215,9 @@ const server = createServer(async (request, response) => {
           legacyOrder: [],
           bucketIds: Object.keys(state.buckets).map(Number),
           sourceId: "browser-scene",
+          sessionPageId: notebookPreview
+            ? "browser-session-page"
+            : "browser-page",
           ...(notebookPreview ? { notebookPageId: "browser-page" } : {}),
         },
         files: { fileRefs: state.fileRefs },
@@ -1568,6 +1571,9 @@ try {
         const bounds = await workspace.boundingBox();
         await page.getByRole("button", { name: "Board", exact: true }).click();
         await expect(page.getByRole("dialog")).toHaveCount(0);
+        await expect(
+          page.getByRole("button", { name: "sessionBoard" }),
+        ).toHaveCount(0);
         await expect(
           page.locator(".excalidraw:not(.whiteboard-ui-overlay)"),
         ).toHaveCount(0);

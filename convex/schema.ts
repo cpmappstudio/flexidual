@@ -1099,6 +1099,8 @@ export default defineSchema({
     roomName: v.optional(v.string()),
     presentedPageId: v.optional(v.id("courseNotebookPages")),
     pageId: v.optional(v.id("courseNotebookPages")),
+    // Adopted live pages keep the original device draft identity after session cleanup.
+    sessionDraftKey: v.optional(v.string()),
     fromLegacy: v.boolean(),
     generation: v.number(),
     bucketIds: v.array(v.number()),

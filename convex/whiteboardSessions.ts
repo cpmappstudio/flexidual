@@ -1,5 +1,7 @@
 import { compareValues, ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 import {
@@ -11,7 +13,11 @@ import { getLiveActivationId, getLiveRoomName } from "./model/liveActivation";
 import { revokeWhiteboardRecordingToken } from "./model/whiteboardRecording";
 import { canManageRoom } from "./permissions";
 import { canAccessSchedule } from "./model/scheduleAccess";
-import { requireNotebookPage } from "./model/courseNotebookAccess";
+import {
+  requireCourseNotebookAccess,
+  requireNotebookPage,
+} from "./model/courseNotebookAccess";
+import { createNotebookPage } from "./courseNotebook";
 import { resolveWhiteboardPresentation } from "./model/whiteboardPresentation";
 import { readNotebookFileRefs } from "./model/notebookFiles";
 import {
@@ -70,7 +76,26 @@ const manifestValidator = v.object({
   legacyOrder: v.array(v.string()),
   sourceId: v.optional(v.string()),
   notebookPageId: v.optional(v.id("courseNotebookPages")),
+  sessionPageId: v.optional(v.id("courseNotebookPages")),
+  sessionDraftKey: v.optional(v.string()),
 });
+
+function liveManifestResult(
+  room: Doc<"whiteboardSceneManifests">,
+  presented: Doc<"whiteboardSceneManifests">,
+) {
+  return {
+    ...whiteboardManifestResult(presented),
+    // Old clients must keep their room draft key when its scene becomes a course page.
+    ...(presented.pageId && presented._id !== room._id
+      ? { notebookPageId: presented.pageId }
+      : {}),
+    ...(room.pageId ? { sessionPageId: room.pageId } : {}),
+    ...(presented.sessionDraftKey
+      ? { sessionDraftKey: presented.sessionDraftKey }
+      : {}),
+  };
+}
 
 export const getSceneManifest = query({
   args: sceneReadArgs,
@@ -85,10 +110,7 @@ export const getSceneManifest = query({
         manifest.recordingToken,
       );
       const presented = await resolveWhiteboardPresentation(ctx, manifest);
-      return {
-        ...whiteboardManifestResult(presented),
-        ...(presented.pageId ? { notebookPageId: presented.pageId } : {}),
-      };
+      return liveManifestResult(manifest, presented);
     }
     const legacy = await ctx.db
       .query("whiteboardSessions")
@@ -240,6 +262,49 @@ export const getRealtimeAudience = query({
   },
 });
 
+async function ensureCourseWhiteboardScene(
+  ctx: MutationCtx,
+  schedule: Doc<"classSchedule">,
+) {
+  const roomName = schedule.roomName;
+  const manifest = await ensureWhiteboardManifest(ctx, roomName);
+  if (!manifest.pageId) {
+    const { course, user } = await requireCourseNotebookAccess(
+      ctx,
+      schedule.classId,
+      true,
+    );
+    const pageId = await createNotebookPage(ctx, course, user._id);
+    if (!manifest.bucketIds.length)
+      await ctx.db.patch("courseNotebookPages", pageId, {
+        retiredAt: Date.now(),
+      });
+    const session = await ctx.db
+      .query("whiteboardSessions")
+      .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
+      .unique();
+    // Transfer references once; keep the actual scene blocks and image bytes.
+    for (const [fileId, file] of Object.entries(session?.fileRefs ?? {}))
+      await ctx.db.insert("courseNotebookFiles", {
+        pageId,
+        fileId,
+        storageId: file.storageId,
+        mimeType: file.mimeType,
+        created: file.created,
+      });
+    if (session?.fileRefs)
+      await ctx.db.patch("whiteboardSessions", session._id, {
+        fileRefs: undefined,
+      });
+    await ctx.db.patch("whiteboardSceneManifests", manifest._id, {
+      pageId,
+      sessionDraftKey: roomName,
+    });
+    return { ...manifest, pageId, sessionDraftKey: roomName };
+  }
+  return manifest;
+}
+
 export const ensureScene = mutation({
   args: { roomName: v.string(), expectedLiveRoomName: v.string() },
   returns: manifestValidator,
@@ -247,9 +312,9 @@ export const ensureScene = mutation({
     const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
     if (getLiveRoomName(schedule) !== expectedLiveRoomName)
       throw new ConvexError("STALE_LIVE_ACTIVATION");
-    return whiteboardManifestResult(
-      await ensureWhiteboardManifest(ctx, roomName),
-    );
+    const manifest = await ensureCourseWhiteboardScene(ctx, schedule);
+    const presented = await resolveWhiteboardPresentation(ctx, manifest);
+    return liveManifestResult(manifest, presented);
   },
 });
 
@@ -269,7 +334,7 @@ export const selectNotebookPage = mutation({
       if (page.classId !== schedule.classId)
         throw new ConvexError("PERMISSION_DENIED");
     }
-    const manifest = await ensureWhiteboardManifest(ctx, roomName);
+    const manifest = await ensureCourseWhiteboardScene(ctx, schedule);
     if (manifest.presentedPageId !== (pageId ?? undefined))
       await ctx.db.patch("whiteboardSceneManifests", manifest._id, {
         presentedPageId: pageId ?? undefined,
@@ -326,7 +391,11 @@ export const getSceneBucket = query({
     );
     if (!manifest) return null;
     const presented = await resolveWhiteboardPresentation(ctx, manifest);
-    if (presented.pageId !== expectedPageId) return null;
+    if (
+      presented.pageId !== expectedPageId &&
+      !(expectedPageId === undefined && presented._id === manifest._id)
+    )
+      return null;
     return readWhiteboardBucketResult(ctx, presented, bucketId, cursor);
   },
 });
@@ -346,7 +415,11 @@ export const getSceneFiles = query({
       recordingToken,
       manifest ? manifest.recordingToken : session?.recordingToken,
     );
-    return { fileRefs: session?.fileRefs ?? {} };
+    return {
+      fileRefs: manifest?.pageId
+        ? await readNotebookFileRefs(ctx, manifest.pageId)
+        : (session?.fileRefs ?? {}),
+    };
   },
 });
 
@@ -366,7 +439,7 @@ export const applySceneDelta = mutation({
     const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
     if (getLiveRoomName(schedule) !== expectedLiveRoomName)
       throw new ConvexError("STALE_LIVE_ACTIVATION");
-    const manifest = await ensureWhiteboardManifest(ctx, roomName);
+    const manifest = await ensureCourseWhiteboardScene(ctx, schedule);
     return applyWhiteboardSceneDelta(
       ctx,
       manifest,
@@ -524,7 +597,9 @@ export const getScene = query({
       _creationTime: session._creationTime,
       roomName: session.roomName,
       elements,
-      fileRefs: session.fileRefs,
+      fileRefs: manifest?.pageId
+        ? await readNotebookFileRefs(ctx, manifest.pageId)
+        : session.fileRefs,
       updatedAt,
     };
   },

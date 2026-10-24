@@ -311,6 +311,15 @@ export async function deleteWhiteboardManifest(
 ) {
   const manifest = await findWhiteboardManifest(ctx, roomName);
   if (!manifest) return;
+  // A class ending retires only its routing/recording scope, never course notes.
+  if (manifest.pageId) {
+    await ctx.db.patch("whiteboardSceneManifests", manifest._id, {
+      roomName: undefined,
+      presentedPageId: undefined,
+      recordingToken: undefined,
+    });
+    return;
+  }
   await ctx.db.delete("whiteboardSceneManifests", manifest._id);
   // Schedule rather than loading image-sized buckets in an existing bulk
   // schedule-deletion transaction. Every continuation remains independently bounded.

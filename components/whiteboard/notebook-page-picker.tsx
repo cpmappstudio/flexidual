@@ -18,7 +18,6 @@ const CourseNotebook = dynamic(
 export function NotebookPagePicker({
   classId,
   onSelectPage,
-  onSelectSession,
   children,
 }: {
   classId: Id<"classes">;
@@ -26,7 +25,6 @@ export function NotebookPagePicker({
     pageId: Id<"courseNotebookPages">,
     title: string,
   ) => Promise<void> | void;
-  onSelectSession?: () => Promise<void>;
   children: (
     renderTopRightUI: NonNullable<WhiteboardEditorProps["renderTopRightUI"]>,
   ) => ReactNode;
@@ -76,20 +74,8 @@ export function NotebookPagePicker({
               <ArrowLeft className="size-4" aria-hidden="true" />
               {common("back")}
             </Button>
-            <h2 className="text-lg font-semibold">
-              {t(onSelectSession ? "livePicker" : "tab")}
-            </h2>
+            <h2 className="text-lg font-semibold">{t("tab")}</h2>
           </div>
-          {onSelectSession && (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={() => void select(onSelectSession)}
-            >
-              {t("sessionBoard")}
-            </Button>
-          )}
           <div inert={busy} aria-busy={busy}>
             <CourseNotebook
               classId={classId}

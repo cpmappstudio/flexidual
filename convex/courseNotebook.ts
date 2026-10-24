@@ -138,26 +138,7 @@ export const createPage = mutation({
       classId,
       true,
     );
-    assertNotebookActive(course);
-    const timeZone = await getClassTimeZone(ctx, course);
-    if (!timeZone) throw new ConvexError("INVALID_TIME_ZONE");
-    let title: string;
-    try {
-      title = new Intl.DateTimeFormat("en-CA", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        timeZone,
-      }).format(Date.now());
-    } catch {
-      throw new ConvexError("INVALID_TIME_ZONE");
-    }
-    await initializeCourseNotebook(ctx, course);
-    const pageId = await ctx.db.insert("courseNotebookPages", {
-      classId,
-      title,
-      createdBy: user._id,
-    });
+    const pageId = await createNotebookPage(ctx, course, user._id);
     await ctx.db.insert("whiteboardSceneManifests", {
       pageId,
       fromLegacy: false,
@@ -168,6 +149,34 @@ export const createPage = mutation({
     return pageId;
   },
 });
+
+/** Both manual pages and the default live board use the institutional date. */
+export async function createNotebookPage(
+  ctx: MutationCtx,
+  course: Doc<"classes">,
+  createdBy: Id<"users">,
+) {
+  assertNotebookActive(course);
+  const timeZone = await getClassTimeZone(ctx, course);
+  if (!timeZone) throw new ConvexError("INVALID_TIME_ZONE");
+  let title: string;
+  try {
+    title = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone,
+    }).format(Date.now());
+  } catch {
+    throw new ConvexError("INVALID_TIME_ZONE");
+  }
+  await initializeCourseNotebook(ctx, course);
+  return ctx.db.insert("courseNotebookPages", {
+    classId: course._id,
+    title,
+    createdBy,
+  });
+}
 
 export const renamePage = mutation({
   args: { pageId: v.id("courseNotebookPages"), title: v.string() },
@@ -202,6 +211,9 @@ export const getManifest = query({
     sourceId: v.id("whiteboardSceneManifests"),
     generation: v.number(),
     bucketIds: v.array(v.number()),
+    fromLegacy: v.boolean(),
+    legacyOrder: v.array(v.string()),
+    sessionDraftKey: v.optional(v.string()),
   }),
   handler: async (ctx, { pageId }) => {
     const manifest = await requireManifest(ctx, pageId);
@@ -209,6 +221,9 @@ export const getManifest = query({
       sourceId: manifest._id,
       generation: manifest.generation,
       bucketIds: manifest.bucketIds,
+      fromLegacy: manifest.fromLegacy,
+      legacyOrder: manifest.legacyOrder,
+      sessionDraftKey: manifest.sessionDraftKey,
     };
   },
 });

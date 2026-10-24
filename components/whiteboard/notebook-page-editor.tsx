@@ -80,9 +80,10 @@ function NotebookPageEditorSession({
   const { saved, closed } = useNotebookPreview(pageId, canEdit, getUploadToken);
   return (
     <WhiteboardEditor
-      draftKey={`notebook:${pageId}`}
+      draftKey={manifest?.sessionDraftKey ?? `notebook:${pageId}`}
       scene={scene}
-      fromLegacy={false}
+      fromLegacy={manifest?.fromLegacy}
+      legacyOrder={manifest?.legacyOrder}
       saveDelta={saveDelta}
       uploadImage={uploadImage}
       isReadonly={!canEdit}
