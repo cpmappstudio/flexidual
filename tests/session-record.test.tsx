@@ -232,3 +232,36 @@ test("only authorized pending records expose the completion action", () => {
   fireEvent.click(screen.getByRole("button", { name: "completeReport" }));
   expect(onCompleteReport).toHaveBeenCalledTimes(1);
 });
+
+test("published lessons render in pending records using the shared cards without claiming attendance or report completion", () => {
+  const record: SessionRecordData = {
+    state: "pending",
+    scheduleId: "scheduled-upload" as Id<"classSchedule">,
+    recordings: [],
+    lessons: staffRecord.state === "completed" ? staffRecord.lessons : [],
+    canCompleteReport: false,
+  };
+  const view = render(
+    <SessionRecordView
+      record={record}
+      onWatchRecording={vi.fn()}
+      onCompleteReport={vi.fn()}
+      allowAttendanceEditing
+    />,
+  );
+  expect(screen.getByText("Latitude and longitude")).toBeTruthy();
+  expect(screen.getByText("taught")).toBeTruthy();
+  expect(screen.getByText("pendingTitle")).toBeTruthy();
+  expect(screen.queryByRole("tab")).toBeNull();
+  expect(screen.queryByRole("button", { name: "completeReport" })).toBeNull();
+  expect(screen.queryByText("inline-attendance-editor")).toBeNull();
+  expect(screen.queryByText("Reviewed map coordinates.")).toBeNull();
+  view.rerender(
+    <SessionRecordView
+      record={{ ...record, lessons: undefined }}
+      onWatchRecording={vi.fn()}
+    />,
+  );
+  expect(screen.queryByText("Latitude and longitude")).toBeNull();
+  expect(screen.getByText("pendingTitle")).toBeTruthy();
+});

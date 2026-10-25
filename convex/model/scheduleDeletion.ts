@@ -1,13 +1,23 @@
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { deleteWhiteboardManifest } from "./whiteboardSceneStorage";
+import { retireScheduleVideos } from "./classSessionVideos";
 
 export async function deleteSchedulesWithDependencies(
   ctx: MutationCtx,
   schedules: Doc<"classSchedule">[],
 ) {
-  for (const schedule of schedules)
+  for (const schedule of schedules) {
+    await retireScheduleVideos(ctx, schedule._id);
+    const taughtLessons = await ctx.db
+      .query("classPrerecordedLessonRecords")
+      .withIndex("by_scheduleId_and_lessonId", (q) =>
+        q.eq("scheduleId", schedule._id),
+      )
+      .collect();
+    for (const lesson of taughtLessons) await ctx.db.delete(lesson._id);
     await deleteWhiteboardManifest(ctx, schedule.roomName);
+  }
   const dependencies = await Promise.all(
     schedules.map(async (schedule) => {
       const [sessions, attendanceRecords, recordings, whiteboard] =

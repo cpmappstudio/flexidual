@@ -10,46 +10,74 @@ export const courseProgressFields = {
 };
 
 // Call only after authorizing access to the course or enrolled student profile.
+export async function getCourseLessonHistory(
+  ctx: QueryCtx,
+  classId: Id<"classes">,
+  excludeScheduleId?: Id<"classSchedule">,
+) {
+  const [reports, reportLessons, prerecordedLessons] = await Promise.all([
+    ctx.db
+      .query("classSessionReports")
+      .withIndex("by_class_and_closed_at", (q) => q.eq("classId", classId))
+      .collect(),
+    ctx.db
+      .query("classSessionReportLessons")
+      .withIndex("by_class_and_lesson", (q) => q.eq("classId", classId))
+      .collect(),
+    ctx.db
+      .query("classPrerecordedLessonRecords")
+      .withIndex("by_classId_and_lessonId", (q) => q.eq("classId", classId))
+      .collect(),
+  ]);
+  const closedAtByReport = new Map(
+    reports.map((report) => [report._id, report.closedAt]),
+  );
+  const sessionsByLesson = new Map<
+    Id<"lessons">,
+    Map<Id<"classSchedule">, number>
+  >();
+  const remember = (
+    lessonId: Id<"lessons">,
+    scheduleId: Id<"classSchedule">,
+    taughtAt: number,
+  ) => {
+    if (scheduleId === excludeScheduleId) return;
+    const sessions =
+      sessionsByLesson.get(lessonId) ?? new Map<Id<"classSchedule">, number>();
+    sessions.set(scheduleId, Math.max(sessions.get(scheduleId) ?? 0, taughtAt));
+    sessionsByLesson.set(lessonId, sessions);
+  };
+  for (const reportLesson of reportLessons) {
+    const closedAt = closedAtByReport.get(reportLesson.reportId);
+    if (closedAt === undefined) continue;
+    remember(reportLesson.lessonId, reportLesson.scheduleId, closedAt);
+  }
+  for (const record of prerecordedLessons)
+    remember(record.lessonId, record.scheduleId, record.taughtAt);
+  return new Map(
+    [...sessionsByLesson].map(([lessonId, sessions]) => [
+      lessonId,
+      {
+        count: sessions.size,
+        lastRecordedAt: Math.max(...sessions.values()),
+      },
+    ]),
+  );
+}
+
 export async function getClassCurriculumProgress(
   ctx: QueryCtx,
   classData: Doc<"classes">,
 ) {
-  const [lessons, reports, reportLessons] = await Promise.all([
+  const [lessons, historyByLesson] = await Promise.all([
     ctx.db
       .query("lessons")
       .withIndex("by_curriculum_active", (q) =>
         q.eq("curriculumId", classData.curriculumId).eq("isActive", true),
       )
       .collect(),
-    ctx.db
-      .query("classSessionReports")
-      .withIndex("by_class_and_closed_at", (q) =>
-        q.eq("classId", classData._id),
-      )
-      .collect(),
-    ctx.db
-      .query("classSessionReportLessons")
-      .withIndex("by_class_and_lesson", (q) => q.eq("classId", classData._id))
-      .collect(),
+    getCourseLessonHistory(ctx, classData._id),
   ]);
-  const closedAtByReport = new Map(
-    reports.map((report) => [report._id, report.closedAt]),
-  );
-  const historyByLesson = new Map<
-    Id<"lessons">,
-    { count: number; lastTaughtAt: number }
-  >();
-  for (const reportLesson of reportLessons) {
-    const closedAt = closedAtByReport.get(reportLesson.reportId);
-    if (closedAt === undefined) continue;
-    const history = historyByLesson.get(reportLesson.lessonId) ?? {
-      count: 0,
-      lastTaughtAt: 0,
-    };
-    history.count += 1;
-    history.lastTaughtAt = Math.max(history.lastTaughtAt, closedAt);
-    historyByLesson.set(reportLesson.lessonId, history);
-  }
   const lessonsWithProgress = lessons
     .sort((a, b) => a.order - b.order)
     .map((lesson) => {
@@ -57,7 +85,7 @@ export async function getClassCurriculumProgress(
       return {
         ...lesson,
         sessionCount: history?.count ?? 0,
-        lastTaughtAt: history?.lastTaughtAt,
+        lastTaughtAt: history?.lastRecordedAt,
         status: history ? ("taught" as const) : ("pending" as const),
       };
     });

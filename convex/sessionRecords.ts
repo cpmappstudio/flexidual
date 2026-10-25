@@ -9,7 +9,12 @@ import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
 import { isExternalClassSession } from "../lib/class-session";
 import { isStudentEnrolled } from "./model/enrollments";
-import { getPlayableRecordings } from "./model/sessionContent";
+import {
+  getPlayableRecordings,
+  getSessionLessonDetails,
+  playbackPartValidator,
+} from "./model/sessionContent";
+import { getPrerecordedLessonRecords } from "./model/sessionVideoLessons";
 
 const RECENT_SESSION_LIMIT = 8;
 const RECENT_SESSION_SCAN_LIMIT = 24;
@@ -33,13 +38,6 @@ const recentSessionValidator = v.object({
     v.literal("pending"),
     v.literal("notApplicable"),
   ),
-});
-
-const recordingPartValidator = v.object({
-  _id: v.id("recordings"),
-  url: v.string(),
-  durationMs: v.union(v.number(), v.null()),
-  startedAt: v.number(),
 });
 
 const lessonValidator = v.object({
@@ -67,7 +65,7 @@ const completedRecordValidator = v.object({
   state: v.literal("completed"),
   scheduleId: v.id("classSchedule"),
   lessons: v.array(lessonValidator),
-  recordings: v.array(recordingPartValidator),
+  recordings: v.array(playbackPartValidator),
   ownAttendance: v.optional(
     v.union(
       v.null(),
@@ -92,7 +90,8 @@ const completedRecordValidator = v.object({
 const pendingRecordValidator = v.object({
   state: v.literal("pending"),
   scheduleId: v.id("classSchedule"),
-  recordings: v.array(recordingPartValidator),
+  recordings: v.array(playbackPartValidator),
+  lessons: v.optional(v.array(lessonValidator)),
   canCompleteReport: v.boolean(),
 });
 
@@ -190,13 +189,29 @@ export const get = query({
       return { state: "notApplicable" as const, scheduleId: schedule._id };
     }
 
-    const [report, recordings, schoolId] = await Promise.all([
-      ctx.db
-        .query("classSessionReports")
-        .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
-        .unique(),
-      getPlayableRecordings(ctx, schedule._id),
-      getClassSchoolId(ctx, classData),
+    const [report, recordings, schoolId, prerecordedLessons] =
+      await Promise.all([
+        ctx.db
+          .query("classSessionReports")
+          .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+          .unique(),
+        getPlayableRecordings(
+          ctx,
+          schedule._id,
+          user.isActive && classData.isActive,
+        ),
+        getClassSchoolId(ctx, classData),
+        getPrerecordedLessonRecords(ctx, schedule._id),
+      ]);
+    const reportLessons = report
+      ? await ctx.db
+          .query("classSessionReportLessons")
+          .withIndex("by_report", (q) => q.eq("reportId", report._id))
+          .take(SESSION_LESSON_LIMIT)
+      : [];
+    const lessons = await getSessionLessonDetails(ctx, [
+      ...reportLessons,
+      ...prerecordedLessons,
     ]);
     const canViewAttendance =
       isCourseTeacher(classData, user._id) ||
@@ -208,32 +223,24 @@ export const get = query({
         schedule.status !== "cancelled" &&
         schedule.status !== "active" &&
         !schedule.isLive;
-      if (!isPastSession) {
+      const hasPublishedVideo = recordings.some(
+        (part) => part.prerecordedVideoId !== undefined,
+      );
+      if (
+        !isPastSession &&
+        !hasPublishedVideo &&
+        prerecordedLessons.length === 0
+      ) {
         return { state: "unavailable" as const, scheduleId: schedule._id };
       }
       return {
         state: "pending" as const,
         scheduleId: schedule._id,
         recordings,
-        canCompleteReport: canViewAttendance,
+        ...(lessons.length ? { lessons } : {}),
+        canCompleteReport: isPastSession && canViewAttendance,
       };
     }
-
-    const reportLessons = await ctx.db
-      .query("classSessionReportLessons")
-      .withIndex("by_report", (q) => q.eq("reportId", report._id))
-      .take(SESSION_LESSON_LIMIT);
-    const lessonDocuments = await Promise.all(
-      reportLessons.map(({ lessonId }) => ctx.db.get("lessons", lessonId)),
-    );
-    const lessons = lessonDocuments
-      .filter((lesson) => lesson !== null)
-      .sort((first, second) => first.order - second.order)
-      .map((lesson) => ({
-        lessonId: lesson._id,
-        title: lesson.title,
-        order: lesson.order,
-      }));
 
     if (!canViewAttendance) {
       const isStudent = await isStudentEnrolled(ctx, classData, user._id);

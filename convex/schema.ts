@@ -33,6 +33,7 @@ import {
 } from "./model/sessionLeadership";
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
 import { peopleDirectoryValidator } from "./model/peopleDirectoryFields";
+import { classSessionVideoFields } from "./model/classSessionVideoFields";
 
 export const surveyCampaignValidator = v.object({
   surveyId: v.string(),
@@ -507,6 +508,8 @@ export default defineSchema({
 
     // Completion tracking
     completedAt: v.optional(v.number()),
+    prerecordedVideoId: v.optional(v.id("classSessionVideos")),
+    prerecordedVideoReleased: v.optional(v.boolean()),
 
     // Temporary responsibility for this occurrence only.
     sessionLeaderId: v.optional(v.id("users")),
@@ -1055,11 +1058,23 @@ export default defineSchema({
       ],
     }),
 
-  /**
-   * RECORDINGS
-   * Tracks LiveKit egress recordings for class sessions.
-   * Created when a recording starts; updated via LiveKit egress webhook on completion.
-   */
+  // Uploaded videos and their published lesson confirmations are independent of LiveKit.
+  classSessionVideos: defineTable(classSessionVideoFields).index(
+    "by_scheduleId_and_state",
+    ["scheduleId", "state"],
+  ),
+
+  classPrerecordedLessonRecords: defineTable({
+    classId: v.id("classes"),
+    scheduleId: v.id("classSchedule"),
+    lessonId: v.id("lessons"),
+    taughtAt: v.number(),
+  })
+    .index("by_classId_and_lessonId", ["classId", "lessonId"])
+    .index("by_scheduleId_and_lessonId", ["scheduleId", "lessonId"])
+    .index("by_lessonId", ["lessonId"]),
+
+  /** LiveKit egress recordings, updated by its completion webhook. */
   recordings: defineTable({
     scheduleId: v.id("classSchedule"),
     roomName: v.string(),

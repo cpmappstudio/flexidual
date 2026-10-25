@@ -352,11 +352,17 @@ export const remove = mutation({
       throw new Error("Not authorized to delete this lesson.");
     }
 
-    const recordedLesson = await ctx.db
-      .query("classSessionReportLessons")
-      .withIndex("by_lesson", (q) => q.eq("lessonId", args.id))
-      .first();
-    if (recordedLesson) {
+    const [recordedLesson, prerecordedLesson] = await Promise.all([
+      ctx.db
+        .query("classSessionReportLessons")
+        .withIndex("by_lesson", (q) => q.eq("lessonId", args.id))
+        .first(),
+      ctx.db
+        .query("classPrerecordedLessonRecords")
+        .withIndex("by_lessonId", (q) => q.eq("lessonId", args.id))
+        .first(),
+    ]);
+    if (recordedLesson || prerecordedLesson) {
       throw new ConvexError("RECORDED_LESSON_CANNOT_BE_DELETED");
     }
 

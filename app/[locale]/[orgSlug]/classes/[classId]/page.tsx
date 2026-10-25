@@ -60,6 +60,11 @@ import { getExternalClassPlatform } from "@/lib/class-session";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 import { CourseTasksTab } from "@/components/teaching/classes/course-tasks-tab";
 import { CourseNotebook } from "@/components/whiteboard/course-notebook";
+import {
+  PrerecordedIndicator,
+  SessionPrerecordedControl,
+  SessionPrerecordedDialog,
+} from "@/components/classroom/session-prerecorded-control";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -77,6 +82,13 @@ export default function ClassDetailPage() {
   const [linkedTaskId, setLinkedTaskId] = useState<Id<"courseTasks">>();
   const [isLaunchingClassroom, setIsLaunchingClassroom] = useState(false);
   const [isRestoringChat, setIsRestoringChat] = useState(false);
+  const [prerecordedSession, setPrerecordedSession] = useState<{
+    classId: Id<"classes">;
+    scheduleId: Id<"classSchedule">;
+  } | null>(null);
+  if (prerecordedSession && prerecordedSession.classId !== classId) {
+    setPrerecordedSession(null);
+  }
   const tabsRef = useRef<HTMLDivElement>(null);
   const orgSlug = (params.orgSlug as string) || "system";
   const { access } = useStaffAccess();
@@ -214,6 +226,19 @@ export default function ClassDetailPage() {
         .slice(0, 3)
     : [];
   const totalRoadmapPages = Math.ceil((lessons?.length || 0) / ITEMS_PER_PAGE);
+  function openPrerecordedSession(scheduleId: Id<"classSchedule">) {
+    setPrerecordedSession({ classId, scheduleId });
+  }
+  function formatScheduleDate(schedule: { start: number; timeZone: string }) {
+    return new Intl.DateTimeFormat(locale, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: schedule.timeZone,
+    }).format(schedule.start);
+  }
   const paginatedLessons =
     lessons?.slice(
       (roadmapPage - 1) * ITEMS_PER_PAGE,
@@ -421,10 +446,7 @@ export default function ClassDetailPage() {
                   nextSchedule
                     ? {
                         id: nextSchedule.scheduleId,
-                        title:
-                          nextSchedule.className ||
-                          nextSchedule.title ||
-                          classData.name,
+                        title: formatScheduleDate(nextSchedule),
                         start: nextSchedule.start,
                         end: nextSchedule.end,
                         status: nextSchedule.status,
@@ -476,22 +498,51 @@ export default function ClassDetailPage() {
                   ) : undefined
                 }
                 layout={laterSchedules.length > 0 ? "split" : "stacked"}
+                headerAction={
+                  nextSchedule &&
+                  (nextSchedule.canManagePrerecorded ||
+                    nextSchedule.hasPrerecorded) ? (
+                    <div className="flex items-center gap-2">
+                      {nextSchedule.hasPrerecorded &&
+                        !nextSchedule.canManagePrerecorded && (
+                          <PrerecordedIndicator />
+                        )}
+                      <SessionPrerecordedControl
+                        scheduleId={nextSchedule.scheduleId}
+                        canManage={nextSchedule.canManagePrerecorded}
+                        hasPrerecorded={nextSchedule.hasPrerecorded}
+                        onOpen={openPrerecordedSession}
+                        iconOnly
+                      />
+                    </div>
+                  ) : undefined
+                }
               >
                 <NextClassPreview
                   label={t("schedule.upcoming")}
                   className="md:mt-0 md:h-full md:max-w-none xl:mt-0"
+                  headerAction={
+                    <Link
+                      href={`/${orgSlug}/calendar?classId=${classId}`}
+                      className="shrink-0 rounded-sm text-xs font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      {t("navigation.calendar")}
+                    </Link>
+                  }
                   items={laterSchedules.map((schedule) => ({
                     id: schedule.scheduleId,
-                    title: schedule.title || classData.name,
-                    meta: new Intl.DateTimeFormat(locale, {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                      timeZone: schedule.timeZone,
-                    }).format(schedule.start),
+                    meta: formatScheduleDate(schedule),
                     sessionType: schedule.sessionType ?? "live",
+                    hasPrerecorded: schedule.hasPrerecorded,
+                    action: (
+                      <SessionPrerecordedControl
+                        scheduleId={schedule.scheduleId}
+                        canManage={schedule.canManagePrerecorded}
+                        hasPrerecorded={schedule.hasPrerecorded}
+                        onOpen={openPrerecordedSession}
+                        iconOnly
+                      />
+                    ),
                   }))}
                 />
               </NextClassPanel>
@@ -556,6 +607,16 @@ export default function ClassDetailPage() {
         }
         onViewAllLessons={handleViewAllLessons}
       />
+      {/* Keep uploads mounted when the clock moves a session between cards. */}
+      {prerecordedSession && prerecordedSession.classId === classId && (
+        <SessionPrerecordedDialog
+          key={prerecordedSession.scheduleId}
+          scheduleId={prerecordedSession.scheduleId}
+          onOpenChange={(open) => {
+            if (!open) setPrerecordedSession(null);
+          }}
+        />
+      )}
     </div>
   );
 }

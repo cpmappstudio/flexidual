@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "convex/react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { useAction, useQuery } from "convex/react";
+import { useAuth } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
@@ -29,10 +30,11 @@ import { useIsMobile } from "@/hooks/use-mobile";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type RecordingPlaybackPart = {
-  _id: Id<"recordings">;
+  _id: Id<"recordings"> | Id<"classSessionVideos">;
   url: string | null;
   durationMs: number | null;
   startedAt: number;
+  prerecordedVideoId?: Id<"classSessionVideos">;
 };
 
 export interface RecordingPlayerProps {
@@ -72,7 +74,19 @@ function formatDuration(ms: number | null | undefined): string {
 
 // ─── Inner video player ───────────────────────────────────────────────────────
 
-function VideoPlayer({ url }: { url: string }) {
+function VideoPlayer({
+  url,
+  videoRef,
+  onReady,
+  onMediaError,
+  onSeeking,
+}: {
+  url: string;
+  videoRef?: RefObject<HTMLVideoElement | null>;
+  onReady?: (video: HTMLVideoElement) => void;
+  onMediaError?: () => void;
+  onSeeking?: () => void;
+}) {
   const t = useTranslations();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -106,21 +120,123 @@ function VideoPlayer({ url }: { url: string }) {
         )}
 
         <video
+          ref={videoRef}
           src={url}
           controls
+          playsInline
           preload="metadata"
           className={cn(
             "h-full w-full object-contain",
             (isLoading || hasError) && "opacity-0",
           )}
-          onLoadedMetadata={() => setIsLoading(false)}
+          onLoadedMetadata={(event) => {
+            setIsLoading(false);
+            onReady?.(event.currentTarget);
+          }}
+          onSeeking={onSeeking}
           onError={() => {
             setIsLoading(false);
             setHasError(true);
+            onMediaError?.();
           }}
           onCanPlay={() => setIsLoading(false)}
         />
       </div>
+    </div>
+  );
+}
+
+function PrivateVideoPlayer({ id }: { id: Id<"classSessionVideos"> }) {
+  const t = useTranslations();
+  const { userId, sessionId } = useAuth();
+  const playback = useAction(api.classSessionVideoStorage.playback);
+  const scope = `${userId}:${sessionId}:${id}`;
+  const [revision, setRevision] = useState(0);
+  const [source, setSource] = useState<{
+    scope: string;
+    url: string;
+    expiresAt: number;
+    version: number;
+  } | null>(null);
+  const [failedScope, setFailedScope] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const resume = useRef<{ time: number; playing: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!userId || !sessionId) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      setFailedScope(null);
+      try {
+        const next = await playback({ id });
+        if (!active) return;
+        const video = videoRef.current;
+        resume.current = video
+          ? { time: video.currentTime, playing: !video.paused }
+          : null;
+        setSource({ ...next, scope, version: revision });
+        timer = setTimeout(
+          refresh,
+          Math.max(1_000, next.expiresAt - Date.now() - 5 * 60_000),
+        );
+      } catch {
+        if (active) setFailedScope(scope);
+      }
+    };
+    void refresh();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [id, playback, revision, scope, userId, sessionId]);
+
+  const current = source?.scope === scope ? source : null;
+  const failed = failedScope === scope;
+  const refreshIfExpired = () => {
+    if (current && current.expiresAt <= Date.now() + 30_000)
+      setRevision((value) => value + 1);
+  };
+  return (
+    <div className="space-y-3">
+      {current ? (
+        <VideoPlayer
+          key={`${current.url}:${current.version}`}
+          url={current.url}
+          videoRef={videoRef}
+          onReady={(video) => {
+            const position = resume.current;
+            resume.current = null;
+            if (!position) return;
+            video.currentTime = position.time;
+            if (position.playing) void video.play().catch(() => {});
+          }}
+          onSeeking={refreshIfExpired}
+          onMediaError={() => {
+            setFailedScope(scope);
+            refreshIfExpired();
+          }}
+        />
+      ) : (
+        !failed && <Skeleton className="aspect-video w-full" />
+      )}
+      {failed && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-xl border p-4"
+        >
+          <p className="text-sm text-muted-foreground">
+            {t("recordings.loadError")}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setRevision((value) => value + 1)}
+          >
+            {t("common.retry")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -192,27 +308,38 @@ export function ScheduleRecordingPlayer({
   recordings: providedRecordings,
 }: ScheduleRecordingPlayerProps) {
   const t = useTranslations();
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selection, setSelection] = useState<{
+    scheduleId: Id<"classSchedule">;
+    recordingId: RecordingPlaybackPart["_id"] | null;
+  }>({ scheduleId, recordingId: null });
   const queriedRecordings = useQuery(
-    api.recordings.getBySchedule,
+    api.recordings.getPlayback,
     enabled && providedRecordings === undefined ? { scheduleId } : "skip",
   );
   const recordings = providedRecordings ?? queriedRecordings;
 
-  const selectionKey = `${scheduleId}:${recordings?.length ?? "loading"}`;
-  const [previousSelectionKey, setPreviousSelectionKey] =
-    useState(selectionKey);
-  if (previousSelectionKey !== selectionKey) {
-    setPreviousSelectionKey(selectionKey);
-    setSelectedIndex(0);
-  }
-
   const isStudent = variant === "student";
   const isLoading = recordings === undefined;
   const isEmpty = recordings !== undefined && recordings.length === 0;
-  const activeRecording = recordings
-    ? (recordings[selectedIndex] ?? recordings[0])
-    : null;
+  const selectedIndex = Math.max(
+    0,
+    recordings?.findIndex(
+      (recording) =>
+        selection.scheduleId === scheduleId &&
+        recording._id === selection.recordingId,
+    ) ?? 0,
+  );
+  const activeRecording = recordings?.[selectedIndex] ?? null;
+  // Keep the chosen source stable when another segment is published or reordered.
+  if (
+    activeRecording &&
+    (selection.scheduleId !== scheduleId ||
+      selection.recordingId !== activeRecording._id)
+  ) {
+    setSelection({ scheduleId, recordingId: activeRecording._id });
+  } else if (selection.scheduleId !== scheduleId) {
+    setSelection({ scheduleId, recordingId: null });
+  }
 
   return (
     <div className={cn("min-h-0 space-y-2 overflow-hidden", className)}>
@@ -253,7 +380,9 @@ export function ScheduleRecordingPlayer({
                   type="button"
                   size="sm"
                   variant={selectedIndex === index ? "default" : "outline"}
-                  onClick={() => setSelectedIndex(index)}
+                  onClick={() =>
+                    setSelection({ scheduleId, recordingId: recording._id })
+                  }
                   className={cn(
                     "shrink-0 snap-start gap-2 font-semibold",
                     isStudent ? "rounded-full" : "rounded-lg",
@@ -275,7 +404,12 @@ export function ScheduleRecordingPlayer({
           )}
 
           {activeRecording &&
-            (activeRecording.url ? (
+            (activeRecording.prerecordedVideoId && enabled ? (
+              <PrivateVideoPlayer
+                key={activeRecording._id}
+                id={activeRecording.prerecordedVideoId}
+              />
+            ) : activeRecording.url ? (
               <VideoPlayer
                 key={activeRecording._id}
                 url={activeRecording.url}

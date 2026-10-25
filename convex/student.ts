@@ -291,7 +291,7 @@ async function buildAttendanceHistoryItem(
       )
       .collect(),
     getClassTimeZone(ctx, classData),
-    getSessionContentSummary(ctx, schedule._id),
+    getSessionContentSummary(ctx, schedule),
   ]);
   const attendedSeconds = getConnectedSecondsWithinSchedule(
     sessions,

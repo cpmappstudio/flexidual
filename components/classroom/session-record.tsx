@@ -136,7 +136,7 @@ function LessonsPanel({
   record,
   compact = false,
 }: {
-  record: CompletedSessionRecord;
+  record: Pick<CompletedSessionRecord, "lessons" | "staffDetails">;
   compact?: boolean;
 }) {
   const t = useTranslations("sessionRecord");
@@ -386,6 +386,12 @@ export function SessionRecordView({
           onWatchRecording={onWatchRecording}
           compact={isPanel}
         />
+        {record.lessons && record.lessons.length > 0 && (
+          <LessonsPanel
+            record={{ lessons: record.lessons, staffDetails: null }}
+            compact={isPanel}
+          />
+        )}
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-warning/40 bg-warning/10 p-4">
           <ClipboardClock className="size-5 shrink-0 text-warning-foreground" />
           <div className="min-w-0 flex-1">

@@ -44,6 +44,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
 import { SessionCloseoutDialog } from "@/components/classroom/session-closeout-dialog";
+import { SessionPrerecordedControl } from "@/components/classroom/session-prerecorded-control";
 import {
   getSessionRecordings,
   SessionRecordView,
@@ -105,14 +106,14 @@ export default function CalendarManageEventDialog({
   const shouldLoadSessionRecord = Boolean(
     manageEventDialogOpen &&
       selectedEvent &&
-      !selectedEvent.isLive &&
-      selectedEvent.end.getTime() < now &&
+      (selectedEvent.hasRecording ||
+        (!selectedEvent.isLive && selectedEvent.end.getTime() < now)) &&
       selectedEvent.status !== "cancelled" &&
       selectedEvent.sessionType === "live",
   );
   const sessionRecord = useSessionRecord(
     selectedEvent?.scheduleId,
-    selectedEvent?.end.getTime(),
+    selectedEvent ? Math.min(now, selectedEvent.end.getTime()) : undefined,
     shouldLoadSessionRecord,
   );
 
@@ -381,6 +382,11 @@ export default function CalendarManageEventDialog({
                   )}
                 </p>
               </div>
+              <SessionPrerecordedControl
+                scheduleId={selectedEvent.scheduleId}
+                canManage={selectedEvent.canManagePrerecorded === true}
+                hasPrerecorded={selectedEvent.hasPrerecorded}
+              />
             </div>
 
             {selectedEvent.status === "cancelled" &&

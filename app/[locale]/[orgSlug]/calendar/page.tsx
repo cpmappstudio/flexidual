@@ -182,6 +182,8 @@ function AgendaView({
 }
 
 function CalendarContent() {
+  const searchParams = useSearchParams();
+  const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
   const [selectedMode, setSelectedMode] = useState<Mode | null>(null);
   const [date, setDate] = useState<Date>(new Date());
   const now = useCurrentMinute();
@@ -189,7 +191,7 @@ function CalendarContent() {
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
   const [selectedCourseId, setSelectedCourseId] =
-    useState<Id<"classes"> | null>(null);
+    useState<Id<"classes"> | null>(classIdParam);
   const [selectedGradeCode, setSelectedGradeCode] = useState<string | null>(
     null,
   );
@@ -201,7 +203,6 @@ function CalendarContent() {
     isLoading: isConvexAuthLoading,
   } = useConvexAuth();
 
-  const searchParams = useSearchParams();
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
   const role = getRoleForOrg(sessionClaims, orgSlug);
@@ -216,7 +217,6 @@ function CalendarContent() {
     api.organizations.resolveSlug,
     isCalendarAuthReady ? { slug: orgSlug } : "skip",
   );
-  const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
 
   const { context: settingsContext } = useSettingsContext();
   const { access } = useStaffAccess();
@@ -390,6 +390,9 @@ function CalendarContent() {
       teacherName: e.teacherName,
       teacherImageUrl: e.teacherImageUrl,
       canLeadSession: e.canLeadSession,
+      hasRecording: e.hasRecording,
+      hasPrerecorded: e.hasPrerecorded,
+      canManagePrerecorded: e.canManagePrerecorded,
       sessionStartedAt: e.sessionStartedAt,
       sessionReopenUntil: e.sessionReopenUntil,
       sessionEndedAt: e.sessionEndedAt,

@@ -9,6 +9,7 @@ import { CalendarProviderBadge } from "@/components/calendar/calendar-provider-b
 import { AstronautEncouragement } from "@/components/student/astronaut-encouragement";
 import { isLiveClassSession, type ClassSessionType } from "@/lib/class-session";
 import { cn } from "@/lib/utils";
+import { PrerecordedIndicator } from "@/components/classroom/session-prerecorded-control";
 
 const NEXT_CLASS_ENCOURAGEMENT_KEYS = [
   "smallSteps",
@@ -31,9 +32,11 @@ export type NextClassPanelItem = {
 
 export type NextClassPreviewItem = {
   id: string;
-  title: string;
+  title?: string;
   meta: string;
   sessionType: ClassSessionType;
+  action?: ReactNode;
+  hasPrerecorded?: boolean;
 };
 
 function formatCountdown(start: number, now: number) {
@@ -56,10 +59,12 @@ export function NextClassPreview({
   label,
   items,
   className,
+  headerAction,
 }: {
   label: string;
   items: NextClassPreviewItem[];
   className?: string;
+  headerAction?: ReactNode;
 }) {
   if (items.length === 0) return null;
 
@@ -70,25 +75,34 @@ export function NextClassPreview({
         className,
       )}
     >
-      <p className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground xl:mb-3">
-        {label}
-      </p>
+      <div className="mb-2 flex items-center justify-between gap-3 xl:mb-3">
+        <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+          {label}
+        </p>
+        {headerAction}
+      </div>
       <div className="space-y-2 xl:space-y-3">
         {items.map((item) => (
           <span key={item.id} className="block min-w-0">
             <span className="flex min-w-0 items-center justify-between gap-2">
-              <span className="line-clamp-1 text-sm font-bold text-foreground">
-                {item.title}
+              <span className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="line-clamp-1 text-sm font-bold text-foreground">
+                  {item.title || item.meta}
+                </span>
+                <CalendarProviderBadge
+                  sessionType={item.sessionType}
+                  className="h-5 shrink-0 px-1.5 text-[9px]"
+                  markClassName="size-2.5"
+                />
+                {item.hasPrerecorded && <PrerecordedIndicator />}
               </span>
-              <CalendarProviderBadge
-                sessionType={item.sessionType}
-                className="h-5 shrink-0 px-1.5 text-[9px]"
-                markClassName="size-2.5"
-              />
+              {item.action}
             </span>
-            <span className="mt-0.5 block text-xs font-semibold text-muted-foreground">
-              {item.meta}
-            </span>
+            {item.title && (
+              <span className="mt-0.5 block text-xs font-semibold text-muted-foreground">
+                {item.meta}
+              </span>
+            )}
           </span>
         ))}
       </div>
@@ -99,6 +113,7 @@ export function NextClassPreview({
 export function NextClassPanel({
   nextClass,
   action,
+  headerAction,
   children,
   footer,
   className,
@@ -107,6 +122,7 @@ export function NextClassPanel({
 }: {
   nextClass: NextClassPanelItem | null;
   action?: ReactNode;
+  headerAction?: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
   className?: string;
@@ -152,9 +168,21 @@ export function NextClassPanel({
               layout === "split" && "md:max-w-none",
             )}
           >
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-              {t("student.nextClass")}:
-            </p>
+            <div
+              className={cn(
+                "grid grid-cols-[2.25rem_minmax(0,1fr)_2.25rem] items-center gap-2",
+                nextClass && headerAction && "min-h-9",
+              )}
+            >
+              <p className="col-start-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                {t("student.nextClass")}:
+              </p>
+              {nextClass && headerAction && (
+                <div className="col-start-3 justify-self-end">
+                  {headerAction}
+                </div>
+              )}
+            </div>
             {nextClass && (
               <div className="mt-2 flex flex-wrap justify-center gap-2 xl:mt-3">
                 {isLive ? (

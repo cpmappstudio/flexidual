@@ -75,6 +75,8 @@ export type CalendarEvent = {
 
   // Recordings
   hasRecording?: boolean;
+  hasPrerecorded?: boolean;
+  canManagePrerecorded?: boolean;
 };
 
 export const calendarModes = ["month", "week", "day"] as const;

@@ -32,6 +32,7 @@ import {
   utcToLocalDateTime,
 } from "../lib/time-zone";
 import { getClassTimeZone } from "./model/timeZone";
+import { syncPrerecordedRelease } from "./model/classSessionVideos";
 import { initializeCourseNotebook } from "./courseNotebook";
 import { assertAbekaClassLinkNotMigrating } from "./model/abekaAccess";
 import { getInstitutionGrades, validateGradeCodes } from "./model/grades";
@@ -1625,6 +1626,7 @@ async function insertCourseSchedule(
     gradeCodes,
     occurrencesBySlot,
     metadataByOccurrence = new Map(),
+    preservedByOccurrence = new Map(),
   }: {
     classId: Id<"classes">;
     schoolId: Id<"schools">;
@@ -1636,6 +1638,7 @@ async function insertCourseSchedule(
     gradeCodes?: string[];
     occurrencesBySlot: PlannedCourseOccurrence[][];
     metadataByOccurrence?: Map<string, FutureScheduleMetadata>;
+    preservedByOccurrence?: Map<string, Doc<"classSchedule">>;
   },
 ) {
   const plannedOccurrences = occurrencesBySlot.flat();
@@ -1701,35 +1704,55 @@ async function insertCourseSchedule(
       { scheduledStart: first.start, scheduledEnd: first.end },
       closures,
     );
-    const parentId = await ctx.db.insert("classSchedule", {
-      classId,
-      schoolId,
-      title: firstMetadata?.title,
-      description: firstMetadata?.description,
-      sessionType: first.sessionType,
-      scheduledStart: first.start,
-      scheduledEnd: first.end,
-      roomName: parentRoomName,
-      isLive: false,
-      isRecurring: true,
-      recurrenceRule: JSON.stringify({
-        type: "weekly",
-        daysOfWeek: [first.dayOfWeek],
-        endDate: periodEnd,
-      }),
-      ...(firstClosure
-        ? buildScheduleCancellationFields({
-            actorId: firstClosure.createdBy,
-            reason: firstClosure.reason,
-            scope: "occurrence",
-            effectiveAt: first.start,
-            occurredAt: createdAt,
-            calendarClosureId: firstClosure._id,
-          })
-        : { status: "scheduled" as const }),
-      createdAt,
-      createdBy,
+    const firstStatus = firstClosure
+      ? buildScheduleCancellationFields({
+          actorId: firstClosure.createdBy,
+          reason: firstClosure.reason,
+          scope: "occurrence",
+          effectiveAt: first.start,
+          occurredAt: createdAt,
+          calendarClosureId: firstClosure._id,
+        })
+      : { status: "scheduled" as const };
+    const preservedParent = preservedByOccurrence.get(
+      `${first.slotIndex}:${first.occurrenceIndex}`,
+    );
+    const recurrenceRule = JSON.stringify({
+      type: "weekly",
+      daysOfWeek: [first.dayOfWeek],
+      endDate: periodEnd,
     });
+    const parentId =
+      preservedParent?._id ??
+      (await ctx.db.insert("classSchedule", {
+        classId,
+        schoolId,
+        title: firstMetadata?.title,
+        description: firstMetadata?.description,
+        sessionType: first.sessionType,
+        scheduledStart: first.start,
+        scheduledEnd: first.end,
+        roomName: parentRoomName,
+        isLive: false,
+        isRecurring: true,
+        recurrenceRule,
+        ...firstStatus,
+        createdAt,
+        createdBy,
+      }));
+    if (preservedParent) {
+      await ctx.db.patch(preservedParent._id, {
+        isRecurring: true,
+        recurrenceParentId: undefined,
+        recurrenceRule,
+        ...firstStatus,
+      });
+      if (firstClosure)
+        await syncPrerecordedRelease(ctx, {
+          ...preservedParent,
+          ...firstStatus,
+        });
+    }
     if (firstClosure) {
       await recordClosureCancellation(parentId, first, firstClosure);
     }
@@ -1744,31 +1767,47 @@ async function insertCourseSchedule(
         { scheduledStart: occurrence.start, scheduledEnd: occurrence.end },
         closures,
       );
-      const scheduleId = await ctx.db.insert("classSchedule", {
-        classId,
-        schoolId,
-        title: metadata?.title,
-        description: metadata?.description,
-        sessionType: occurrence.sessionType,
-        scheduledStart: occurrence.start,
-        scheduledEnd: occurrence.end,
-        roomName: `${parentRoomName}-${index}`,
-        isLive: false,
-        isRecurring: true,
-        recurrenceParentId: parentId,
-        ...(closure
-          ? buildScheduleCancellationFields({
-              actorId: closure.createdBy,
-              reason: closure.reason,
-              scope: "occurrence",
-              effectiveAt: occurrence.start,
-              occurredAt: createdAt,
-              calendarClosureId: closure._id,
-            })
-          : { status: "scheduled" as const }),
-        createdAt,
-        createdBy,
-      });
+      const statusUpdates = closure
+        ? buildScheduleCancellationFields({
+            actorId: closure.createdBy,
+            reason: closure.reason,
+            scope: "occurrence",
+            effectiveAt: occurrence.start,
+            occurredAt: createdAt,
+            calendarClosureId: closure._id,
+          })
+        : { status: "scheduled" as const };
+      const preserved = preservedByOccurrence.get(
+        `${occurrence.slotIndex}:${occurrence.occurrenceIndex}`,
+      );
+      const scheduleId =
+        preserved?._id ??
+        (await ctx.db.insert("classSchedule", {
+          classId,
+          schoolId,
+          title: metadata?.title,
+          description: metadata?.description,
+          sessionType: occurrence.sessionType,
+          scheduledStart: occurrence.start,
+          scheduledEnd: occurrence.end,
+          roomName: `${parentRoomName}-${index}`,
+          isLive: false,
+          isRecurring: true,
+          recurrenceParentId: parentId,
+          ...statusUpdates,
+          createdAt,
+          createdBy,
+        }));
+      if (preserved) {
+        await ctx.db.patch(preserved._id, {
+          isRecurring: true,
+          recurrenceParentId: parentId,
+          recurrenceRule: undefined,
+          ...statusUpdates,
+        });
+        if (closure)
+          await syncPrerecordedRelease(ctx, { ...preserved, ...statusUpdates });
+      }
       if (closure) {
         await recordClosureCancellation(scheduleId, occurrence, closure);
       }
@@ -1977,8 +2016,38 @@ async function replaceFutureCourseSchedule(
   const plannedClasses = occurrencesBySlot
     .flat()
     .sort((a, b) => a.start - b.start);
+  const videoSchedules = schedules.filter(
+    (schedule) =>
+      schedule.prerecordedVideoId !== undefined &&
+      schedule.scheduledStart >= now &&
+      schedule.status === "scheduled" &&
+      (schedule.isRecurring === true ||
+        schedule.recurrenceParentId !== undefined),
+  );
+  const plannedByKey = new Map(
+    plannedClasses.map((occurrence) => [
+      scheduleOccurrenceKey({
+        scheduledStart: occurrence.start,
+        scheduledEnd: occurrence.end,
+        sessionType: occurrence.sessionType,
+      }),
+      occurrence,
+    ]),
+  );
+  const preservedByOccurrence = new Map<string, Doc<"classSchedule">>();
+  for (const schedule of videoSchedules) {
+    const occurrence = plannedByKey.get(scheduleOccurrenceKey(schedule));
+    if (!occurrence || curriculum._id !== classData.curriculumId)
+      throw new ConvexError("PRERECORDED_VIDEO_SCHEDULE_CONFLICT");
+    preservedByOccurrence.set(
+      `${occurrence.slotIndex}:${occurrence.occurrenceIndex}`,
+      schedule,
+    );
+  }
+  const preservedIds = new Set(videoSchedules.map(({ _id }) => _id));
   const schedulesToReplace = effectiveSchedules.filter(
     (schedule) =>
+      !preservedIds.has(schedule._id) &&
       schedule.scheduledStart >= now &&
       (schedule.isRecurring === true ||
         schedule.recurrenceParentId !== undefined) &&
@@ -1992,7 +2061,10 @@ async function replaceFutureCourseSchedule(
   );
   assertNoCourseScheduleOverlap(
     plannedClasses,
-    effectiveSchedules.filter((schedule) => !replacedIds.has(schedule._id)),
+    effectiveSchedules.filter(
+      (schedule) =>
+        !replacedIds.has(schedule._id) && !preservedIds.has(schedule._id),
+    ),
   );
   const newScheduleShareIds = teacherId
     ? await validateTeacherScheduleConflicts(ctx, {
@@ -2037,6 +2109,7 @@ async function replaceFutureCourseSchedule(
     }),
     occurrencesBySlot,
     metadataByOccurrence,
+    preservedByOccurrence,
   });
   return newScheduleShareIds;
 }

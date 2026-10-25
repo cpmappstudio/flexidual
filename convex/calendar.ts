@@ -10,6 +10,10 @@ import { query } from "./_generated/server";
 import { listAccessibleScheduleClasses } from "./model/scheduleAccess";
 import { getClassTimeZone } from "./model/timeZone";
 import { getSessionLeaderRoleFromAssignments } from "./model/sessionLeadership";
+import {
+  getSessionVideoFlags,
+  hasReleasedSessionVideo,
+} from "./model/classSessionVideos";
 
 const MAX_CALENDAR_RANGE_MS = 62 * 24 * 60 * 60 * 1_000;
 
@@ -50,6 +54,9 @@ const calendarEventValidator = v.object({
   teacherName: v.optional(v.string()),
   teacherImageUrl: v.optional(v.string()),
   canLeadSession: v.boolean(),
+  hasRecording: v.boolean(),
+  hasPrerecorded: v.boolean(),
+  canManagePrerecorded: v.boolean(),
   sessionStartedAt: v.optional(v.number()),
   sessionReopenUntil: v.optional(v.number()),
   sessionEndedAt: v.optional(v.number()),
@@ -244,6 +251,12 @@ export const listEvents = query({
             teacherName: teacher?.fullName,
             teacherImageUrl: teacher?.imageUrl,
             canLeadSession,
+            hasRecording: hasReleasedSessionVideo(schedule),
+            ...getSessionVideoFlags(
+              schedule,
+              canLeadSession,
+              user.isActive && classData.isActive,
+            ),
             sessionStartedAt: canLeadSession
               ? schedule.sessionStartedAt
               : undefined,
