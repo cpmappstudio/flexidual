@@ -1114,7 +1114,12 @@
         "excused": "Excused",
         "absent": "Absent"
       },
-      "saveConfirmation": "Saving confirms the suggested statuses. Change only the cases that need it.",
+      "saveConfirmation": "Saving confirms the attendance shown here. Change any cases that need it.",
+      "markAllPresent": "Mark everyone present",
+      "restoreSuggestions": "Restore suggestions",
+      "markAllPresentConfirmTitle": "Mark everyone present?",
+      "markAllPresentConfirmDescription": "The {count, plural, one {# student will be} other {# students will be}} marked present. This replaces system-suggested attendance and any manual changes.",
+      "markAllPresentConfirmAction": "Mark everyone present",
       "backToLessons": "Back to lessons",
       "continueToAttendance": "Continue to attendance",
       "submit": "Save and end class",
