@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Loader2,
   MessageSquareText,
-  RotateCcw,
   Search,
   Users,
 } from "lucide-react";
@@ -19,16 +18,6 @@ import {
   type AttendanceStatus,
 } from "@/components/attendance/attendance-status-control";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   ClassSessionTabsList,
   ClassSessionTabsTrigger,
@@ -98,7 +87,6 @@ export function SessionCloseoutDialog({
   const common = useTranslations("common");
   const sessionNowRef = useRef(sessionNow);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const bulkCheckboxRef = useRef<HTMLButtonElement>(null);
   const [snapshot, setSnapshot] = useState<SessionClosureSnapshot>({
     status: "idle",
   });
@@ -109,10 +97,7 @@ export function SessionCloseoutDialog({
       : "skip",
   );
   const submitClosure = useMutation(api.schedule.submitSessionClosure);
-  const context =
-    open && snapshot.status === "ready" && snapshot.roomName === roomName
-      ? snapshot.context
-      : undefined;
+  const context = snapshot.status === "ready" ? snapshot.context : undefined;
   const [activeStep, setActiveStep] = useState<CloseoutStep>("lessons");
   const [attendanceQuery, setAttendanceQuery] = useState("");
   const [selectedLessons, setSelectedLessons] = useState<Set<Id<"lessons">>>(
@@ -126,10 +111,6 @@ export function SessionCloseoutDialog({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReportSaved, setIsReportSaved] = useState(false);
-  const [bulkAttendanceState, setBulkAttendanceState] = useState<
-    "idle" | "applied" | "edited"
-  >("idle");
-  const [isBulkConfirmationOpen, setIsBulkConfirmationOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string>();
 
@@ -147,8 +128,6 @@ export function SessionCloseoutDialog({
     setNotes("");
     setError(undefined);
     setIsReportSaved(false);
-    setBulkAttendanceState("idle");
-    setIsBulkConfirmationOpen(false);
     setSnapshot(
       open
         ? {
@@ -255,34 +234,6 @@ export function SessionCloseoutDialog({
     partial: attendanceT("description.partial"),
     absent: attendanceT("description.absent"),
     excused: attendanceT("description.excused"),
-  };
-
-  const restoreSuggestions = () => {
-    if (!context || !submission.shouldSaveReport || isSubmitting || isReopening)
-      return;
-    setAttendance(
-      Object.fromEntries(
-        context.attendance.map((student) => [
-          student.studentId,
-          student.suggestedStatus,
-        ]),
-      ),
-    );
-    setExcuseReasons({});
-    setBulkAttendanceState("idle");
-  };
-
-  const markAllPresent = () => {
-    if (!context || !submission.shouldSaveReport || isSubmitting || isReopening)
-      return;
-    setAttendance(
-      Object.fromEntries(
-        context.attendance.map((student) => [student.studentId, "present"]),
-      ),
-    );
-    setExcuseReasons({});
-    setBulkAttendanceState("applied");
-    setIsBulkConfirmationOpen(false);
   };
 
   const handleSubmit = async () => {
@@ -402,39 +353,6 @@ export function SessionCloseoutDialog({
                 </div>
 
                 <div className="sticky top-0 z-10 -mx-1 bg-background/95 px-1 py-2 backdrop-blur">
-                  {context &&
-                    context.attendance.length > 0 &&
-                    submission.shouldSaveReport && (
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-                          <Checkbox
-                            ref={bulkCheckboxRef}
-                            checked={bulkAttendanceState === "applied"}
-                            disabled={isSubmitting || isReopening}
-                            onCheckedChange={(checked) => {
-                              if (checked) setIsBulkConfirmationOpen(true);
-                              else restoreSuggestions();
-                            }}
-                          />
-                          {t("markAllPresent")}
-                        </label>
-                        {bulkAttendanceState !== "idle" && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={isSubmitting || isReopening}
-                            onClick={() => {
-                              restoreSuggestions();
-                              bulkCheckboxRef.current?.focus();
-                            }}
-                          >
-                            <RotateCcw className="size-4" aria-hidden="true" />
-                            {t("restoreSuggestions")}
-                          </Button>
-                        )}
-                      </div>
-                    )}
                   <div className="relative">
                     <Search
                       className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -496,15 +414,12 @@ export function SessionCloseoutDialog({
                           reasonLabel={t("excuseReason")}
                           reasonPlaceholder={t("excuseReasonPlaceholder")}
                           className="w-full sm:w-64"
-                          onStatusChange={(value) => {
-                            setBulkAttendanceState((current) =>
-                              current === "idle" ? current : "edited",
-                            );
+                          onStatusChange={(value) =>
                             setAttendance((current) => ({
                               ...current,
                               [student.studentId]: value,
-                            }));
-                          }}
+                            }))
+                          }
                           onExcuseReasonChange={(reason) =>
                             setExcuseReasons((current) => ({
                               ...current,
@@ -587,31 +502,6 @@ export function SessionCloseoutDialog({
             </div>
           </DialogFooter>
         </Tabs>
-        <AlertDialog
-          open={
-            isBulkConfirmationOpen && !!context && submission.shouldSaveReport
-          }
-          onOpenChange={setIsBulkConfirmationOpen}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {t("markAllPresentConfirmTitle")}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("markAllPresentConfirmDescription", {
-                  count: context?.attendance.length ?? 0,
-                })}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{common("cancel")}</AlertDialogCancel>
-              <AlertDialogAction onClick={markAllPresent}>
-                {t("markAllPresentConfirmAction")}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </DialogContent>
     </Dialog>
   );
