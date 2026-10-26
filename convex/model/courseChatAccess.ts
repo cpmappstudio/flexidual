@@ -3,7 +3,6 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { canAccessClass, getCourseChatCapabilities } from "../permissions";
-import { getCurrentUserOrThrow } from "../users";
 import { isStudentEnrolled } from "./enrollments";
 import { canAccessInstitutionalSchedule } from "./scheduleAccess";
 
@@ -100,20 +99,4 @@ export async function canAttachToCourseChat(
     (course.chatStudentAttachmentsEnabled === true &&
       (await isStudentEnrolled(ctx, course, userId)))
   );
-}
-
-export async function requireChatAttachmentAccess(
-  ctx: QueryCtx | MutationCtx,
-  classId: Id<"classes">,
-) {
-  const user = await getCurrentUserOrThrow(ctx);
-  const course = await ctx.db.get("classes", classId);
-  if (!course || !(await canAccessClass(ctx, user._id, course)))
-    throw new ConvexError("PERMISSION_DENIED");
-  assertChatActive(course);
-  if (await isChatMutedForUser(ctx, course, user._id))
-    throw new ConvexError("CHAT_MUTED");
-  if (!(await canAttachToCourseChat(ctx, course, user._id)))
-    throw new ConvexError("CHAT_ATTACHMENTS_DISABLED");
-  return { user, course };
 }

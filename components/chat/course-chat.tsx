@@ -72,7 +72,8 @@ import {
 import { toast } from "sonner";
 
 interface CourseChatProps {
-  courseId: Id<"classes">;
+  courseId?: Id<"classes">;
+  broadcastId?: Id<"broadcasts">;
   scheduleId?: Id<"classSchedule">;
   className?: string;
 }
@@ -81,11 +82,14 @@ const MAX_MESSAGE_GROUP_SIZE = 6;
 
 export function CourseChat({
   courseId,
+  broadcastId,
   scheduleId,
   className,
 }: CourseChatProps) {
   return (
-    <CourseChatUploadProvider key={`${courseId}:${scheduleId ?? "course"}`}>
+    <CourseChatUploadProvider
+      key={`${broadcastId ?? courseId}:${scheduleId ?? "course"}`}
+    >
       <div
         data-course-chat-id={courseId}
         className={cn(
@@ -93,9 +97,14 @@ export function CourseChat({
           className,
         )}
       >
-        <CourseChatMessages courseId={courseId} scheduleId={scheduleId} />
+        <CourseChatMessages
+          courseId={courseId}
+          broadcastId={broadcastId}
+          scheduleId={scheduleId}
+        />
         <CourseChatComposer
           courseId={courseId}
+          broadcastId={broadcastId}
           scheduleId={scheduleId}
           className="border-t border-primary/20"
         />
@@ -106,6 +115,7 @@ export function CourseChat({
 
 export function CourseChatMessages({
   courseId,
+  broadcastId,
   scheduleId,
   className,
 }: CourseChatProps) {
@@ -116,13 +126,19 @@ export function CourseChatMessages({
   const chatStatus = useQuery(
     api.courseChatMessages.getMyStatus,
     isAuthenticated
-      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
+      ? {
+          ...(broadcastId ? { broadcastId } : { classId: courseId }),
+          ...(scheduleId ? { scheduleId } : {}),
+        }
       : "skip",
   );
   const { results, status, loadMore } = usePaginatedQuery(
     api.courseChatMessages.list,
     isAuthenticated
-      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
+      ? {
+          ...(broadcastId ? { broadcastId } : { classId: courseId }),
+          ...(scheduleId ? { scheduleId } : {}),
+        }
       : "skip",
     { initialNumItems: 40 },
   );
@@ -174,7 +190,11 @@ export function CourseChatMessages({
               <MessageScrollerItem messageId="chat-visibility-note">
                 <Marker variant="separator">
                   <MarkerContent className="text-xs leading-relaxed sm:text-sm">
-                    {t("classChatDescription")}
+                    {t(
+                      broadcastId
+                        ? "broadcasts.description"
+                        : "classChatDescription",
+                    )}
                   </MarkerContent>
                 </Marker>
               </MessageScrollerItem>
@@ -283,17 +303,15 @@ function ChatReadReceipt({
 
 export function CourseChatComposer({
   courseId,
+  broadcastId,
   scheduleId,
   className,
-}: {
-  courseId: Id<"classes">;
-  scheduleId?: Id<"classSchedule">;
-  className?: string;
-}) {
+}: CourseChatProps) {
   return (
     <ChatComposer
-      key={`${courseId}:${scheduleId ?? "course"}`}
+      key={`${broadcastId ?? courseId}:${scheduleId ?? "course"}`}
       courseId={courseId}
+      broadcastId={broadcastId}
       scheduleId={scheduleId}
       className={className}
     />
@@ -302,13 +320,10 @@ export function CourseChatComposer({
 
 function ChatComposer({
   courseId,
+  broadcastId,
   scheduleId,
   className,
-}: {
-  courseId: Id<"classes">;
-  scheduleId?: Id<"classSchedule">;
-  className?: string;
-}) {
+}: CourseChatProps) {
   const t = useTranslations("classroom");
   const { isAuthenticated } = useConvexAuth();
   const [body, setBody] = useState("");
@@ -332,7 +347,10 @@ function ChatComposer({
   const chatStatus = useQuery(
     api.courseChatMessages.getMyStatus,
     isAuthenticated
-      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
+      ? {
+          ...(broadcastId ? { broadcastId } : { classId: courseId }),
+          ...(scheduleId ? { scheduleId } : {}),
+        }
       : "skip",
   );
   const isMuted = chatStatus?.isMuted ?? false;
@@ -370,7 +388,7 @@ function ChatComposer({
           const file = await optimizeChatImage(entry.file);
           if (controller.signal.aborted) return;
           const response = await requestFile(
-            { classId: courseId },
+            broadcastId ? { broadcastId } : { classId: courseId! },
             {
               method: "POST",
               signal: controller.signal,
@@ -409,7 +427,7 @@ function ChatComposer({
       if (controller.signal.aborted) return;
       setPending((current) => current && { ...current, cancel: null });
       await sendMessage({
-        classId: courseId,
+        ...(broadcastId ? { broadcastId } : { classId: courseId }),
         ...(scheduleId ? { scheduleId } : {}),
         body: message,
         ...(uploaded.length
@@ -525,7 +543,7 @@ function ChatComposer({
                 isArchived
                   ? t("archivedChat")
                   : isMuted
-                    ? t("chatMuted")
+                    ? t(broadcastId ? "broadcasts.readOnly" : "chatMuted")
                     : t("chatPlaceholder")
               }
             />

@@ -6,6 +6,7 @@ import { canAccessClass } from "../permissions";
 import { getCourseTaskAccess } from "./courseTaskAccess";
 import { getSurveyStaffRole } from "./surveyAccess";
 import { getClassTimeZone } from "./timeZone";
+import { getBroadcastRole } from "./broadcastAccess";
 
 export type SystemNotificationKind =
   | "course_enrollment"
@@ -17,6 +18,7 @@ export type SystemNotificationKind =
   | "role_changed"
   | "organization_membership_changed"
   | "course_chat"
+  | "broadcast_chat"
   | "course_task"
   | "course_task_reminder"
   | "survey_invitation"
@@ -32,6 +34,7 @@ export type SystemNotificationInput = {
   schoolId?: Id<"schools">;
   campusId?: Id<"campuses">;
   classId?: Id<"classes">;
+  broadcastId?: Id<"broadcasts">;
   taskId?: Id<"courseTasks">;
   messageId?: Id<"courseChatMessages">;
   taskTitle?: string;
@@ -157,6 +160,19 @@ async function getVisibleNotification(
         ? { taskTimeZone: timeZone }
         : {}),
     };
+  }
+  if (notification.kind === "broadcast_chat") {
+    const broadcast = notification.broadcastId
+      ? await ctx.db.get("broadcasts", notification.broadcastId)
+      : null;
+    return broadcast &&
+      notification.chatMessageCount &&
+      broadcast.chatArchivedAt === undefined &&
+      notification.createdAt >
+        (broadcast.chatNotificationsClearedThrough ?? 0) &&
+      (await getBroadcastRole(ctx, notification.recipientId, broadcast))
+      ? notification
+      : null;
   }
   if (notification.kind !== "course_chat") return notification;
   if (!notification.classId || !notification.chatMessageCount) return null;

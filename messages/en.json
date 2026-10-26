@@ -564,7 +564,7 @@
       "deleteConfirm": "Delete campus",
       "deleted": "Campus deleted.",
       "deleteError": "Could not delete the campus.",
-      "deleteInUse": "This campus has classes or assigned members. Deactivate it instead.",
+      "deleteInUse": "This campus has classes, broadcasts or assigned members. Deactivate it instead.",
       "cancel": "Cancel",
       "unavailableTitle": "Campus settings are unavailable",
       "unavailableDescription": "Only institution administrators can view and manage campuses."
@@ -777,6 +777,32 @@
     "noResultsDescription": "Try another class name or adjust the filters."
   },
   "classroom": {
+    "broadcasts": {
+      "title": "Broadcast",
+      "new": "New Broadcast",
+      "name": "Name",
+      "campus": "Campus",
+      "grades": "Recipient grades",
+      "professors": "Professors who can write",
+      "searchProfessors": "Search professors…",
+      "retry": "Try again",
+      "campusFilter": "Search professors in campus",
+      "multiCampusHint": "Choose professors from any campus. Your selections remain when you change this filter.",
+      "removeProfessor": "Remove {name}",
+      "editParticipants": "Edit participants",
+      "participantsError": "Could not update participants. Check your permissions and try again.",
+      "writersDescription": "All professors in this scope can read. Only selected professors can write.",
+      "description": "Broadcast: students and other professors can read; only authorized professors and administration can write.",
+      "create": "Create broadcast",
+      "saving": "Saving…",
+      "saveError": "Could not create the broadcast. Check your permissions and try again.",
+      "muteProfessors": "Mute all professors",
+      "allowFiles": "Allow professors files and links",
+      "allowWriting": "Allow participation",
+      "preventWriting": "Disable participation",
+      "participationUpdated": "Participation updated",
+      "readOnly": "Only authorized professors and administration can write."
+    },
     "timeRemaining": "Time remaining: {time}",
     "extensionTimeRemaining": "Extension · Time remaining: {time}",
     "scheduledTimeEnded": "The class time has ended",
@@ -1938,6 +1964,10 @@
       },
       "course_chat": {
         "title": "Course chat",
+        "body": "{count, plural, one {You have # new message} other {You have # new messages}} in {className}."
+      },
+      "broadcast_chat": {
+        "title": "Broadcast",
         "body": "{count, plural, one {You have # new message} other {You have # new messages}} in {className}."
       },
       "course_task": {

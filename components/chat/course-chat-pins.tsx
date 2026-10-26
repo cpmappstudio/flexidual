@@ -19,13 +19,21 @@ import { UnreadIndicator } from "@/components/notifications/unread-indicator";
 import { useDocumentActive } from "@/hooks/use-document-active";
 import { useBrowserTimeZone } from "@/hooks/use-browser-time-zone";
 
-export function CourseChatPins({ courseId }: { courseId: Id<"classes"> }) {
+type ChatPinsProps = {
+  courseId?: Id<"classes">;
+  broadcastId?: Id<"broadcasts">;
+};
+export function CourseChatPins({ courseId, broadcastId }: ChatPinsProps) {
   const t = useTranslations("classroom");
   const [open, setOpen] = useState(false);
   const { isAuthenticated } = useConvexAuth();
   const unread = useQuery(
     api.courseChatMessages.hasUnreadPins,
-    isAuthenticated ? { classId: courseId } : "skip",
+    isAuthenticated
+      ? broadcastId
+        ? { broadcastId }
+        : { classId: courseId }
+      : "skip",
   );
   return (
     <ResponsiveFeedPanel
@@ -54,16 +62,20 @@ export function CourseChatPins({ courseId }: { courseId: Id<"classes"> }) {
         </Button>
       }
     >
-      <PinnedMessageFeed courseId={courseId} />
+      <PinnedMessageFeed courseId={courseId} broadcastId={broadcastId} />
     </ResponsiveFeedPanel>
   );
 }
 
-function PinnedMessageFeed({ courseId }: { courseId: Id<"classes"> }) {
+function PinnedMessageFeed({ courseId, broadcastId }: ChatPinsProps) {
   const t = useTranslations("classroom");
   const common = useTranslations("systemNotifications");
   const { isAuthenticated } = useConvexAuth();
-  const args = isAuthenticated ? { classId: courseId } : "skip";
+  const args = isAuthenticated
+    ? broadcastId
+      ? { broadcastId }
+      : { classId: courseId }
+    : "skip";
   const { results, status, loadMore } = usePaginatedQuery(
     api.courseChatMessages.listPinned,
     args,

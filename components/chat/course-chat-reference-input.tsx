@@ -33,7 +33,7 @@ export function CourseChatReferenceInput({
   disabled,
   placeholder,
 }: {
-  courseId: Id<"classes">;
+  courseId?: Id<"classes">;
   value: string;
   onChange: (body: string) => void;
   disabled: boolean;
@@ -59,12 +59,12 @@ export function CourseChatReferenceInput({
       };
   }, [value, text.length]);
   const trigger = chatDraftSlashQuery(value, caret);
-  const open = !disabled && !dismissed && trigger !== null;
+  const open = Boolean(courseId) && !disabled && !dismissed && trigger !== null;
   const search = useDebouncedValue(trigger?.search ?? "", 200);
   const now = useCurrentMinute();
   const { results, status, loadMore } = usePaginatedQuery(
     api.courseChatMessages.listReferenceTasks,
-    open ? { classId: courseId, now, search } : "skip",
+    open && courseId ? { classId: courseId, now, search } : "skip",
     { initialNumItems: 20 },
   );
   useEffect(() => {

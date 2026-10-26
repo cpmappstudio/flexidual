@@ -564,7 +564,7 @@
       "deleteConfirm": "Eliminar campus",
       "deleted": "Campus eliminado.",
       "deleteError": "No se pudo eliminar el campus.",
-      "deleteInUse": "Este campus tiene clases o miembros asignados. Desactívalo en su lugar.",
+      "deleteInUse": "Este campus tiene clases, broadcasts o miembros asignados. Desactívalo en su lugar.",
       "cancel": "Cancelar",
       "unavailableTitle": "La configuración de campus no está disponible",
       "unavailableDescription": "Sólo los administradores de la institución pueden consultar y administrar campus."
@@ -777,6 +777,32 @@
     "noResultsDescription": "Prueba con otro nombre de clase o ajusta los filtros."
   },
   "classroom": {
+    "broadcasts": {
+      "title": "Broadcast",
+      "new": "Nuevo broadcast",
+      "name": "Nombre",
+      "campus": "Campus",
+      "grades": "Grados destinatarios",
+      "professors": "Profesores que pueden escribir",
+      "searchProfessors": "Buscar profesores…",
+      "retry": "Reintentar",
+      "campusFilter": "Buscar profesores en el campus",
+      "multiCampusHint": "Elige profesores de cualquier campus. La selección se conserva al cambiar este filtro.",
+      "removeProfessor": "Quitar a {name}",
+      "editParticipants": "Editar participantes",
+      "participantsError": "No se pudieron actualizar los participantes. Revisa tus permisos e inténtalo de nuevo.",
+      "writersDescription": "Todos los profesores de este ámbito pueden leer. Solo los seleccionados pueden escribir.",
+      "description": "Broadcast: los estudiantes y demás profesores pueden leer; solo los profesores autorizados y administración pueden escribir.",
+      "create": "Crear broadcast",
+      "saving": "Guardando…",
+      "saveError": "No se pudo crear el broadcast. Revisa tus permisos e inténtalo de nuevo.",
+      "muteProfessors": "Silenciar a todos los profesores",
+      "allowFiles": "Permitir archivos y enlaces de profesores",
+      "allowWriting": "Permitir participación",
+      "preventWriting": "Desactivar participación",
+      "participationUpdated": "Participación actualizada",
+      "readOnly": "Solo los profesores autorizados y administración pueden escribir."
+    },
     "timeRemaining": "Tiempo restante: {time}",
     "extensionTimeRemaining": "Extensión · Tiempo restante: {time}",
     "scheduledTimeEnded": "El tiempo de la clase ha finalizado",
@@ -1938,6 +1964,10 @@
       },
       "course_chat": {
         "title": "Chat del curso",
+        "body": "{count, plural, one {Tienes # mensaje nuevo} other {Tienes # mensajes nuevos}} en {className}."
+      },
+      "broadcast_chat": {
+        "title": "Broadcast",
         "body": "{count, plural, one {Tienes # mensaje nuevo} other {Tienes # mensajes nuevos}} en {className}."
       },
       "course_task": {

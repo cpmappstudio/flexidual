@@ -1,5 +1,10 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import {
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getCurrentUserOrThrow } from "./users";
 import {
@@ -65,7 +70,8 @@ function normalizeCampusSlug(value: string) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     throw new ConvexError({
       code: "INVALID_SLUG",
-      message: "Campus URL identifier must use lowercase letters, numbers, and single hyphens.",
+      message:
+        "Campus URL identifier must use lowercase letters, numbers, and single hyphens.",
     });
   }
   return slug;
@@ -191,9 +197,7 @@ export const get = query({
     const user = await getCurrentUserOrThrow(ctx);
     const campus = await ctx.db.get(args.id);
     if (!campus) return null;
-    if (
-      !(await canAccessCampus(ctx, user._id, campus._id, campus.schoolId))
-    ) {
+    if (!(await canAccessCampus(ctx, user._id, campus._id, campus.schoolId))) {
       throw new ConvexError("PERMISSION_DENIED");
     }
     return campus;
@@ -223,7 +227,9 @@ export const listForInstitutionSettings = query({
     ]);
     const principalByCampus = new Map(
       assignments
-        .filter((assignment) => assignment.orgType === "campus" && assignment.orgId)
+        .filter(
+          (assignment) => assignment.orgType === "campus" && assignment.orgId,
+        )
         .map((assignment) => [assignment.orgId!, assignment.userId]),
     );
     const principals = new Map(
@@ -406,9 +412,7 @@ export const update = mutation({
       ...(slug !== undefined ? { slug } : {}),
       ...(args.code !== undefined ? { code } : {}),
       ...(args.isActive !== undefined ? { isActive: args.isActive } : {}),
-      ...(timeZone !== undefined
-        ? { timeZone: timeZone ?? undefined }
-        : {}),
+      ...(timeZone !== undefined ? { timeZone: timeZone ?? undefined } : {}),
     });
 
     if (args.principalId !== undefined) {
@@ -453,7 +457,7 @@ export const remove = mutation({
 
     await assertCanManageSchool(ctx, user._id, campus.schoolId);
 
-    const [linkedClass, linkedRole] = await Promise.all([
+    const [linkedClass, linkedRole, linkedBroadcast] = await Promise.all([
       ctx.db
         .query("classes")
         .withIndex("by_campus", (q) => q.eq("campusId", campus._id))
@@ -464,9 +468,13 @@ export const remove = mutation({
           q.eq("orgId", campus._id).eq("orgType", "campus"),
         )
         .first(),
+      ctx.db
+        .query("broadcasts")
+        .withIndex("by_campusId", (q) => q.eq("campusId", campus._id))
+        .first(),
     ]);
 
-    if (linkedClass || linkedRole) {
+    if (linkedClass || linkedRole || linkedBroadcast) {
       return { deleted: false, reason: "CAMPUS_IN_USE" } as const;
     }
 

@@ -6,6 +6,7 @@ type NavigableNotification = Pick<
   | "action"
   | "organizationSlug"
   | "classId"
+  | "broadcastId"
   | "roomName"
   | "surveyId"
   | "taskId"
@@ -15,6 +16,8 @@ type NavigableNotification = Pick<
 export function getSystemNotificationHref(notification: NavigableNotification) {
   const orgSlug = notification.organizationSlug;
   if (!orgSlug) return null;
+  if (notification.kind === "broadcast_chat" && notification.broadcastId)
+    return `/${orgSlug}/chats/broadcasts/${notification.broadcastId}`;
   if (
     notification.messageId &&
     notification.classId &&

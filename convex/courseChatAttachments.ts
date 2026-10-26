@@ -2,13 +2,16 @@ import { ConvexError, v } from "convex/values";
 import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
 import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
-import {
-  getCourseChatAccess,
-  requireChatAttachmentAccess,
-} from "./model/courseChatAccess";
+import { getCourseChatAccess } from "./model/courseChatAccess";
 import { deleteChatAttachment } from "./model/courseChatAttachments";
 import { getCurrentUserOrThrow } from "./users";
 import { isValidChatFile } from "../lib/chat-attachments";
+import { chatTarget, chatTargetFields, sameChat } from "./model/chatTarget";
+import {
+  chatPermission,
+  getChatSource,
+  requireChatWriter,
+} from "./model/chatSource";
 
 const limiter = new RateLimiter(components.rateLimiter, {
   chatUploads: { kind: "token bucket", rate: 6, period: MINUTE, capacity: 6 },
@@ -28,14 +31,15 @@ const limiter = new RateLimiter(components.rateLimiter, {
 
 export const reserve = internalMutation({
   args: {
-    classId: v.id("classes"),
+    ...chatTargetFields,
     name: v.string(),
     contentType: v.string(),
     size: v.number(),
   },
   returns: v.id("courseChatAttachments"),
   handler: async (ctx, args) => {
-    const { user } = await requireChatAttachmentAccess(ctx, args.classId);
+    const user = await getCurrentUserOrThrow(ctx);
+    await requireChatWriter(ctx, args, user._id, true);
     if (!isValidChatFile({ ...args, type: args.contentType }))
       throw new ConvexError("INVALID_CHAT_FILE");
     await limiter.limit(ctx, "chatUploads", { key: user._id, throws: true });
@@ -46,7 +50,10 @@ export const reserve = internalMutation({
     });
     const expiresAt = Date.now() + 15 * MINUTE;
     const id = await ctx.db.insert("courseChatAttachments", {
-      ...args,
+      ...chatTarget(args),
+      name: args.name,
+      contentType: args.contentType,
+      size: args.size,
       uploadedBy: user._id,
       expiresAt,
     });
@@ -66,7 +73,8 @@ export const complete = internalMutation({
     const file = await ctx.db.get("courseChatAttachments", args.id);
     if (!file || (!file.messageId && (file.expiresAt ?? 0) <= Date.now()))
       throw new ConvexError("INVALID_CHAT_ATTACHMENTS");
-    const { user } = await requireChatAttachmentAccess(ctx, file.classId);
+    const user = await getCurrentUserOrThrow(ctx);
+    await requireChatWriter(ctx, file, user._id, true);
     if (file.uploadedBy !== user._id)
       throw new ConvexError("PERMISSION_DENIED");
     if (file.storageId === args.storageId) return null;
@@ -111,21 +119,33 @@ export const read = internalMutation({
     const file = await ctx.db.get("courseChatAttachments", id);
     if (!file?.storageId || !file.messageId)
       throw new ConvexError("PERMISSION_DENIED");
-    const [course, message] = await Promise.all([
-      ctx.db.get("classes", file.classId),
+    const [source, message] = await Promise.all([
+      getChatSource(ctx, file),
       ctx.db.get("courseChatMessages", file.messageId),
     ]);
     const access =
-      course && message
-        ? await getCourseChatAccess(ctx, course, user._id, message.scheduleId)
+      source && message
+        ? source.kind === "course"
+          ? await getCourseChatAccess(
+              ctx,
+              source.data,
+              user._id,
+              message.scheduleId,
+            )
+          : {
+              kind: (await chatPermission(ctx, source, user._id, "read"))
+                ? "course"
+                : "none",
+            }
         : { kind: "none" as const };
     if (
-      !course ||
-      course.chatArchivedAt !== undefined ||
+      !source ||
+      source.data.chatArchivedAt !== undefined ||
       !message ||
-      message.classId !== course._id ||
+      !sameChat(message, file) ||
       !message.attachmentIds?.includes(id) ||
-      message._creationTime <= (course.chatNotificationsClearedThrough ?? 0) ||
+      message._creationTime <=
+        (source.data.chatNotificationsClearedThrough ?? 0) ||
       access.kind === "none"
     )
       throw new ConvexError("PERMISSION_DENIED");

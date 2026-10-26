@@ -34,6 +34,7 @@ import {
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
 import { peopleDirectoryValidator } from "./model/peopleDirectoryFields";
 import { classSessionVideoFields } from "./model/classSessionVideoFields";
+import { chatTargetFields } from "./model/chatTarget";
 
 export const surveyCampaignValidator = v.object({
   surveyId: v.string(),
@@ -413,8 +414,40 @@ export default defineSchema({
     .index("by_taskId_and_kind_and_state", ["taskId", "kind", "state"])
     .index("by_recipientId_and_state", ["recipientId", "state"]),
 
+  broadcasts: defineTable({
+    name: v.string(),
+    schoolId: v.id("schools"),
+    campusId: v.optional(v.id("campuses")),
+    mode: v.union(v.literal("private"), v.literal("school")),
+    gradeCodes: v.array(v.string()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    professorsMuted: v.boolean(),
+    professorAttachmentsEnabled: v.boolean(),
+    chatDisabled: v.optional(v.boolean()),
+    chatArchivedAt: v.optional(v.number()),
+    chatNotificationsClearedThrough: v.optional(v.number()),
+    chatLastPinnedAt: v.optional(v.number()),
+  })
+    .index("by_schoolId", ["schoolId"])
+    .index("by_campusId", ["campusId"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["schoolId"],
+    }),
+  broadcastWriters: defineTable({
+    broadcastId: v.id("broadcasts"),
+    userId: v.id("users"),
+    enabled: v.boolean(),
+  }).index("by_broadcastId_and_userId", ["broadcastId", "userId"]),
+  // Delivery identity must survive changes to a recipient's memberships.
+  broadcastMessageDeliveries: defineTable({
+    messageId: v.id("courseChatMessages"),
+    userId: v.id("users"),
+  }).index("by_messageId_and_userId", ["messageId", "userId"]),
+
   courseChatMessages: defineTable({
-    classId: v.id("classes"),
+    ...chatTargetFields,
     scheduleId: v.optional(v.id("classSchedule")),
     authorId: v.optional(v.id("users")),
     body: v.string(),
@@ -436,18 +469,22 @@ export default defineSchema({
     pinnedAt: v.optional(v.number()),
   })
     .index("by_class", ["classId"])
+    .index("by_broadcastId", ["broadcastId"])
+    .index("by_broadcastId_and_pinnedAt", ["broadcastId", "pinnedAt"])
     .index("by_eventKey", ["eventKey"])
     .index("by_classId_and_scheduleId", ["classId", "scheduleId"])
     .index("by_classId_and_pinnedAt", ["classId", "pinnedAt"]),
 
   courseChatPinReads: defineTable({
-    classId: v.id("classes"),
+    ...chatTargetFields,
     userId: v.id("users"),
     seenThrough: v.number(),
-  }).index("by_classId_and_userId", ["classId", "userId"]),
+  })
+    .index("by_classId_and_userId", ["classId", "userId"])
+    .index("by_broadcastId_and_userId", ["broadcastId", "userId"]),
 
   courseChatAttachments: defineTable({
-    classId: v.id("classes"),
+    ...chatTargetFields,
     uploadedBy: v.id("users"),
     name: v.string(),
     contentType: v.string(),
@@ -455,14 +492,18 @@ export default defineSchema({
     storageId: v.optional(v.id("_storage")),
     messageId: v.optional(v.id("courseChatMessages")),
     expiresAt: v.optional(v.number()),
-  }).index("by_classId", ["classId"]),
+  })
+    .index("by_classId", ["classId"])
+    .index("by_broadcastId", ["broadcastId"]),
 
   courseChatMutes: defineTable({
-    classId: v.id("classes"),
+    ...chatTargetFields,
     userId: v.id("users"),
     mutedAt: v.number(),
     mutedBy: v.id("users"),
-  }).index("by_class_and_user", ["classId", "userId"]),
+  })
+    .index("by_class_and_user", ["classId", "userId"])
+    .index("by_broadcastId_and_userId", ["broadcastId", "userId"]),
 
   /**
    * CLASS_SCHEDULE
@@ -670,6 +711,7 @@ export default defineSchema({
       v.literal("organization_membership_changed"),
       v.literal("announcement"),
       v.literal("course_chat"),
+      v.literal("broadcast_chat"),
       v.literal("course_task"),
       v.literal("course_task_reminder"),
       v.literal("survey_invitation"),
@@ -681,6 +723,7 @@ export default defineSchema({
     schoolId: v.optional(v.id("schools")),
     campusId: v.optional(v.id("campuses")),
     classId: v.optional(v.id("classes")),
+    broadcastId: v.optional(v.id("broadcasts")),
     taskId: v.optional(v.id("courseTasks")),
     messageId: v.optional(v.id("courseChatMessages")),
     taskTitle: v.optional(v.string()),
@@ -1021,6 +1064,12 @@ export default defineSchema({
     .index("by_role", ["role", "schoolId"])
     .index("by_org", ["orgId", "orgType"])
     .index("by_org_role", ["orgId", "orgType", "role"])
+    .index("by_orgId_and_orgType_and_role_and_gradeCode", [
+      "orgId",
+      "orgType",
+      "role",
+      "gradeCode",
+    ])
     .index("by_user_org", ["userId", "orgId", "orgType"])
     .index("by_user_org_role", ["userId", "orgId", "orgType", "role"])
     .index("by_school_role_grade", ["schoolId", "role", "gradeCode"])
