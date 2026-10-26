@@ -171,7 +171,7 @@ async function getVisibleNotification(
       notification.createdAt >
         (broadcast.chatNotificationsClearedThrough ?? 0) &&
       (await getBroadcastRole(ctx, notification.recipientId, broadcast))
-      ? notification
+      ? { ...notification, className: broadcast.name }
       : null;
   }
   if (notification.kind !== "course_chat") return notification;

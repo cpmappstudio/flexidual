@@ -50,6 +50,7 @@ import type * as model_abekaStudentProgress from "../model/abekaStudentProgress.
 import type * as model_abekaTransport from "../model/abekaTransport.js";
 import type * as model_abekaValidators from "../model/abekaValidators.js";
 import type * as model_broadcastAccess from "../model/broadcastAccess.js";
+import type * as model_broadcastRateLimits from "../model/broadcastRateLimits.js";
 import type * as model_calendarClosures from "../model/calendarClosures.js";
 import type * as model_catalog from "../model/catalog.js";
 import type * as model_chatNotification from "../model/chatNotification.js";
@@ -173,6 +174,7 @@ declare const fullApi: ApiFromModules<{
   "model/abekaTransport": typeof model_abekaTransport;
   "model/abekaValidators": typeof model_abekaValidators;
   "model/broadcastAccess": typeof model_broadcastAccess;
+  "model/broadcastRateLimits": typeof model_broadcastRateLimits;
   "model/calendarClosures": typeof model_calendarClosures;
   "model/catalog": typeof model_catalog;
   "model/chatNotification": typeof model_chatNotification;

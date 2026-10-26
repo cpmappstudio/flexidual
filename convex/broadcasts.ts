@@ -3,7 +3,12 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import {
+  deleteChatAttachment,
+  deleteChatMessage,
+} from "./model/courseChatAttachments";
 import { getCurrentUserOrThrow } from "./users";
 import {
   addBroadcastParticipants,
@@ -13,6 +18,7 @@ import {
 } from "./model/broadcastAccess";
 import { getUserImageUrl } from "./model/userImage";
 import { validateGradeCodes } from "./model/grades";
+import { broadcastSendLimiter } from "./model/broadcastRateLimits";
 import {
   canAccessCampus,
   canAccessSchool,
@@ -80,6 +86,13 @@ const teacherFields = {
   isMuted: v.boolean(),
 };
 
+function normalizeName(name: string) {
+  const normalized = name.trim();
+  if (!normalized || normalized.length > 120)
+    throw new ConvexError("INVALID_BROADCAST");
+  return normalized;
+}
+
 export const create = mutation({
   args: {
     ...scopeFields,
@@ -103,16 +116,10 @@ export const create = mutation({
       (args.mode === "private" && !campus)
     )
       throw new ConvexError("INVALID_BROADCAST_SCOPE");
-    const name = args.name.trim();
+    const name = normalizeName(args.name);
     const gradeCodes = [...new Set(args.gradeCodes)];
     const teacherIds = [...new Set(args.teacherIds)];
-    if (
-      !name ||
-      name.length > 120 ||
-      !gradeCodes.length ||
-      gradeCodes.length > 30 ||
-      teacherIds.length > 100
-    )
+    if (!gradeCodes.length || gradeCodes.length > 30 || teacherIds.length > 100)
       throw new ConvexError("INVALID_BROADCAST");
     if ((await validateGradeCodes(ctx, school._id, gradeCodes)).length)
       throw new ConvexError("INVALID_GRADE");
@@ -130,6 +137,117 @@ export const create = mutation({
     const broadcast = (await ctx.db.get("broadcasts", id))!;
     await addBroadcastParticipants(ctx, broadcast, teacherIds);
     return id;
+  },
+});
+
+export const rename = mutation({
+  args: { broadcastId: v.id("broadcasts"), name: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const broadcast = await ctx.db.get("broadcasts", args.broadcastId);
+    if (
+      !broadcast ||
+      (await getBroadcastRole(ctx, user._id, broadcast)) !== "admin"
+    )
+      throw new ConvexError("PERMISSION_DENIED");
+    if (broadcast.chatArchivedAt !== undefined)
+      throw new ConvexError("CHAT_ARCHIVED");
+    const name = normalizeName(args.name);
+    if (name !== broadcast.name)
+      await ctx.db.patch("broadcasts", broadcast._id, { name });
+    return null;
+  },
+});
+
+export const remove = mutation({
+  args: { broadcastId: v.id("broadcasts") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const broadcast = await ctx.db.get("broadcasts", args.broadcastId);
+    if (!broadcast) return null;
+    if (!(await canManageBroadcast(ctx, user._id, broadcast)))
+      throw new ConvexError("PERMISSION_DENIED");
+    if (broadcast.deletingAt !== undefined) return null;
+    if ((await getBroadcastRole(ctx, user._id, broadcast)) !== "admin")
+      throw new ConvexError("PERMISSION_DENIED");
+    const now = Date.now();
+    // Revoke access and stop pending notification fanout atomically with cleanup.
+    await ctx.db.patch("broadcasts", broadcast._id, {
+      deletingAt: now,
+      chatArchivedAt: now,
+    });
+    await ctx.scheduler.runAfter(0, internal.broadcasts.continueDelete, args);
+    return null;
+  },
+});
+
+const DELETE_BATCH_SIZE = 50;
+
+export const continueDelete = internalMutation({
+  args: { broadcastId: v.id("broadcasts") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const broadcast = await ctx.db.get("broadcasts", args.broadcastId);
+    if (!broadcast || broadcast.deletingAt === undefined) return null;
+    const next = () =>
+      ctx.scheduler.runAfter(0, internal.broadcasts.continueDelete, args);
+    const messages = await ctx.db
+      .query("courseChatMessages")
+      .withIndex("by_broadcastId", (q) => q.eq("broadcastId", args.broadcastId))
+      .take(DELETE_BATCH_SIZE);
+    if (messages.length) {
+      for (const message of messages) await deleteChatMessage(ctx, message);
+      await next();
+      return null;
+    }
+    // Include reservations and uploaded files not yet attached to a message.
+    const attachments = await ctx.db
+      .query("courseChatAttachments")
+      .withIndex("by_broadcastId", (q) => q.eq("broadcastId", args.broadcastId))
+      .take(DELETE_BATCH_SIZE);
+    if (attachments.length) {
+      for (const attachment of attachments)
+        await deleteChatAttachment(ctx, attachment);
+      await next();
+      return null;
+    }
+    const ownedQueries = [
+      ctx.db
+        .query("broadcastWriters")
+        .withIndex("by_broadcastId_and_userId", (q) =>
+          q.eq("broadcastId", args.broadcastId),
+        ),
+      ctx.db
+        .query("courseChatPinReads")
+        .withIndex("by_broadcastId_and_userId", (q) =>
+          q.eq("broadcastId", args.broadcastId),
+        ),
+      ctx.db
+        .query("courseChatMutes")
+        .withIndex("by_broadcastId_and_userId", (q) =>
+          q.eq("broadcastId", args.broadcastId),
+        ),
+      ctx.db
+        .query("systemNotifications")
+        .withIndex("by_broadcastId", (q) =>
+          q.eq("broadcastId", args.broadcastId),
+        ),
+    ];
+    for (const query of ownedQueries) {
+      const rows = await query.take(DELETE_BATCH_SIZE);
+      if (rows.length) {
+        for (const row of rows) await ctx.db.delete(row._id);
+        await next();
+        return null;
+      }
+    }
+    await broadcastSendLimiter.reset(ctx, "broadcastMessagesByChat", {
+      key: broadcast._id,
+    });
+    await ctx.db.delete("broadcasts", broadcast._id);
+    return null;
   },
 });
 

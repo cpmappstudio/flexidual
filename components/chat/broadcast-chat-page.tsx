@@ -121,7 +121,7 @@ export function BroadcastChatPage({
       </CourseChatUploadProvider>
       {editingParticipants && context.canManage && (
         <EditBroadcastParticipantsDialog
-          key={broadcastId}
+          key={`participants:${broadcastId}`}
           broadcastId={broadcastId}
           schoolId={context.schoolId}
           campusId={context.campusId}

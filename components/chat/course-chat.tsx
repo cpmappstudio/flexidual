@@ -46,6 +46,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { parseConvexError } from "@/lib/error-utils";
+import { isRateLimitError } from "@convex-dev/rate-limiter";
 import { cn } from "@/lib/utils";
 import {
   useConvexAuth,
@@ -444,15 +445,19 @@ function ChatComposer({
       if (code === "INVALID_CHAT_ATTACHMENTS")
         setFiles((current) => current.map(({ file }) => ({ file })));
       toast.error(
-        code === "CHAT_ATTACHMENTS_DISABLED"
-          ? t("attachmentsDisabled")
-          : files.length
-            ? t("attachmentUploadError")
-            : code === "CHAT_MUTED"
-              ? t("chatMuted")
-              : parseConvexError(error)?.code === "CHAT_ARCHIVED"
-                ? t("archivedChat")
-                : t("chatSendError"),
+        isRateLimitError(error)
+          ? t("chatRateLimited", {
+              seconds: Math.max(1, Math.ceil(error.data.retryAfter / 1000)),
+            })
+          : code === "CHAT_ATTACHMENTS_DISABLED"
+            ? t("attachmentsDisabled")
+            : files.length
+              ? t("attachmentUploadError")
+              : code === "CHAT_MUTED"
+                ? t("chatMuted")
+                : parseConvexError(error)?.code === "CHAT_ARCHIVED"
+                  ? t("archivedChat")
+                  : t("chatSendError"),
       );
     } finally {
       setIsSending(false);

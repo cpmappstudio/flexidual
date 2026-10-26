@@ -28,6 +28,7 @@ export async function getBroadcastRole(
   userId: Id<"users">,
   broadcast: Doc<"broadcasts">,
 ) {
+  if (broadcast.deletingAt !== undefined) return null;
   const [user, campus, school] = await Promise.all([
     ctx.db.get("users", userId),
     broadcast.campusId ? ctx.db.get("campuses", broadcast.campusId) : null,

@@ -18,6 +18,7 @@ import { ChatAttachment } from "@/components/chat/course-chat-attachments";
 import { ChatMessageText } from "@/components/chat/course-chat-message-text";
 import type { Id } from "@/convex/_generated/dataModel";
 import { chatTextParts, isValidChatFile } from "@/lib/chat-attachments";
+import { ConvexError } from "convex/values";
 
 const state = vi.hoisted(() => ({
   status: {
@@ -173,6 +174,58 @@ test("uploads before sending a files-only message, using auth rather than public
   );
   await waitFor(() => expect(screen.queryByText("lesson.pdf")).toBeNull());
 });
+
+test.each([false, true])(
+  "rate limiting keeps the draft and reuses uploaded attachments on retry (file=%s)",
+  async (withFile) => {
+    state.send
+      .mockRejectedValueOnce(
+        new ConvexError({
+          kind: "RateLimited",
+          name: "broadcastMessagesByAuthor",
+          retryAfter: 2000,
+        }),
+      )
+      .mockResolvedValue("message");
+    const { container } = render(
+      <CourseChatComposer broadcastId={"broadcast" as Id<"broadcasts">} />,
+    );
+    const form = container.querySelector("form")!;
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Important notes" },
+    });
+    if (withFile)
+      fireEvent.change(form.querySelector('input[type="file"]')!, {
+        target: {
+          files: [
+            new File(["%PDF-1.4"], "lesson.pdf", { type: "application/pdf" }),
+          ],
+        },
+      });
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(state.error).toHaveBeenCalledWith("chatRateLimited"),
+    );
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "Important notes",
+    );
+    if (withFile) expect(screen.getByText("lesson.pdf")).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(withFile ? 1 : 0);
+    fireEvent.submit(form);
+    await waitFor(() => expect(state.send).toHaveBeenCalledTimes(2));
+    expect(state.send).toHaveBeenLastCalledWith({
+      broadcastId: "broadcast",
+      body: "Important notes",
+      ...(withFile ? { attachmentIds: ["attachment"] } : {}),
+    });
+    expect(fetch).toHaveBeenCalledTimes(withFile ? 1 : 0);
+    await waitFor(() =>
+      expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+        "",
+      ),
+    );
+  },
+);
 
 test("rejects excess or mismatched files before any upload", () => {
   const { container } = render(

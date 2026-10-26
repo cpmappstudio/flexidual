@@ -6,6 +6,8 @@ import { modules } from "./test.setup";
 import type { Id } from "./_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import rateLimiter from "@convex-dev/rate-limiter/test";
+import { isRateLimitError } from "@convex-dev/rate-limiter";
+import { broadcastSendLimiter } from "./model/broadcastRateLimits";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -118,6 +120,518 @@ async function setup() {
   const drain = () => t.finishAllScheduledFunctions(vi.runAllTimers);
   return { t, data, as, admin, create, drain };
 }
+
+test("broadcast burst limits apply across tabs and broadcasts, refill over time, and leave no rejected writes", async () => {
+  const f = await setup();
+  const broadcastId = await f.create();
+  const other = await f.create();
+  const writer = f.as("teacher");
+  for (let i = 0; i < 8; i++) {
+    await expect(
+      f
+        .as("student")
+        .mutation(api.courseChatMessages.send, { broadcastId, body: "Denied" }),
+    ).rejects.toThrow("CHAT_MUTED");
+    await expect(
+      writer.mutation(api.courseChatMessages.send, { broadcastId, body: " " }),
+    ).rejects.toThrow("MESSAGE_REQUIRED");
+  }
+  const sends = await Promise.allSettled(
+    Array.from({ length: 12 }, (_, i) =>
+      // Separate clients with the same authenticated identity share the server quota.
+      f.as("teacher").mutation(api.courseChatMessages.send, {
+        broadcastId,
+        body: `Message ${i}`,
+      }),
+    ),
+  );
+  expect(sends.filter((row) => row.status === "fulfilled")).toHaveLength(5);
+  for (const row of sends)
+    if (row.status === "rejected") {
+      expect(isRateLimitError(row.reason)).toBe(true);
+      expect(row.reason.data).toMatchObject({
+        name: "broadcastMessagesByAuthor",
+        retryAfter: 2000,
+      });
+    }
+  await expect(
+    writer.mutation(api.courseChatMessages.send, {
+      broadcastId: other,
+      body: "Cannot evade by switching",
+    }),
+  ).rejects.toThrow();
+  expect(
+    await f.t.run(async (ctx) => ({
+      messages: (await ctx.db.query("courseChatMessages").collect()).length,
+      jobs: (await ctx.db.system.query("_scheduled_functions").collect())
+        .length,
+    })),
+  ).toEqual({ messages: 5, jobs: 5 });
+  const now = Date.now();
+  vi.setSystemTime(now + 1999);
+  await expect(
+    writer.mutation(api.courseChatMessages.send, {
+      broadcastId,
+      body: "Too early",
+    }),
+  ).rejects.toThrow();
+  vi.setSystemTime(now + 2000);
+  await writer.mutation(api.courseChatMessages.send, {
+    broadcastId,
+    body: "Retry succeeds",
+  });
+  await expect(
+    writer.mutation(api.courseChatMessages.send, {
+      broadcastId,
+      body: "Still bounded",
+    }),
+  ).rejects.toThrow();
+  await f.admin.mutation(api.courseChatMessages.send, {
+    broadcastId: other,
+    body: "Other writer is independent",
+  });
+  await f.drain();
+});
+
+test("concurrent authors share a broadcast ceiling; failed chat limits roll back author quota", async () => {
+  const f = await setup();
+  const broadcastId = await f.create("private", [
+    f.data.teacher,
+    f.data.reader,
+  ]);
+  const other = await f.create("private", [f.data.teacher, f.data.reader]);
+  const authors = ["admin", "teacher", "reader"] as const;
+  const outcomes = await Promise.all(
+    authors.flatMap((author) =>
+      Array.from({ length: 5 }, async (_, i) => {
+        try {
+          await f.as(author).mutation(api.courseChatMessages.send, {
+            broadcastId,
+            body: `${author} ${i}`,
+          });
+          return { author, accepted: true, error: null };
+        } catch (error) {
+          return { author, accepted: false, error };
+        }
+      }),
+    ),
+  );
+  expect(outcomes.filter((row) => row.accepted)).toHaveLength(10);
+  for (const row of outcomes.filter((row) => !row.accepted)) {
+    expect(isRateLimitError(row.error)).toBe(true);
+    if (isRateLimitError(row.error))
+      expect(row.error.data.name).toBe("broadcastMessagesByChat");
+  }
+  for (const author of authors) {
+    const used = outcomes.filter(
+      (row) => row.author === author && row.accepted,
+    ).length;
+    for (let i = used; i < 5; i++)
+      await f.as(author).mutation(api.courseChatMessages.send, {
+        broadcastId: other,
+        body: `Unused author capacity ${i}`,
+      });
+    await expect(
+      f.as(author).mutation(api.courseChatMessages.send, {
+        broadcastId: other,
+        body: "Exhausted",
+      }),
+    ).rejects.toThrow();
+  }
+  expect(
+    await f.t.run(async (ctx) => ({
+      messages: (await ctx.db.query("courseChatMessages").collect()).length,
+      jobs: (await ctx.db.system.query("_scheduled_functions").collect())
+        .length,
+    })),
+  ).toEqual({ messages: 15, jobs: 15 });
+  const now = Date.now();
+  vi.setSystemTime(now + 999);
+  await expect(
+    f
+      .as("principal")
+      .mutation(api.courseChatMessages.send, {
+        broadcastId,
+        body: "Chat still full",
+      }),
+  ).rejects.toThrow();
+  vi.setSystemTime(now + 1000);
+  await f
+    .as("principal")
+    .mutation(api.courseChatMessages.send, {
+      broadcastId,
+      body: "Chat refilled one token",
+    });
+  await expect(
+    f
+      .as("principal")
+      .mutation(api.courseChatMessages.send, {
+        broadcastId,
+        body: "No second chat token",
+      }),
+  ).rejects.toThrow();
+  await f.drain();
+});
+
+test("deleting a broadcast removes only its own quota and preserves author and other-chat limits", async () => {
+  const f = await setup();
+  const broadcastId = await f.create();
+  const other = await f.create();
+  const writer = f.as("teacher");
+  for (const id of [broadcastId, other])
+    await writer.mutation(api.courseChatMessages.send, {
+      broadcastId: id,
+      body: "Notice",
+    });
+  const authorQuota = () =>
+    f.t.run((ctx) =>
+      broadcastSendLimiter.getValue(ctx, "broadcastMessagesByAuthor", {
+        key: f.data.teacher,
+      }),
+    );
+  const chatQuota = (key: Id<"broadcasts">) =>
+    f.t.run((ctx) =>
+      broadcastSendLimiter.getValue(ctx, "broadcastMessagesByChat", { key }),
+    );
+  const authorBefore = await authorQuota();
+  const otherBefore = await chatQuota(other);
+  expect(await chatQuota(broadcastId)).toMatchObject({ value: 9 });
+  await f.admin.mutation(api.broadcasts.remove, { broadcastId });
+  await f.drain();
+  expect(await chatQuota(broadcastId)).toMatchObject({ value: 10, ts: 0 });
+  expect(await authorQuota()).toEqual(authorBefore);
+  expect(await chatQuota(other)).toEqual(otherBefore);
+});
+
+test("attachment retries are idempotent even at the limit; rejected sends retain uploaded files for retry", async () => {
+  const f = await setup();
+  const broadcastId = await f.create();
+  const upload = async () => {
+    const id = await f.admin.mutation(internal.courseChatAttachments.reserve, {
+      broadcastId,
+      name: "note.png",
+      contentType: "image/png",
+      size: 3,
+    });
+    const storageId = await f.t.run((ctx) =>
+      ctx.storage.store(new Blob(["123"], { type: "image/png" })),
+    );
+    await f.admin.mutation(internal.courseChatAttachments.complete, {
+      id,
+      storageId,
+    });
+    return { id, storageId };
+  };
+  const attached = await upload();
+  const args = { broadcastId, body: "File", attachmentIds: [attached.id] };
+  const [first, concurrentRetry] = await Promise.all([
+    f.admin.mutation(api.courseChatMessages.send, args),
+    f.admin.mutation(api.courseChatMessages.send, args),
+  ]);
+  expect(concurrentRetry).toBe(first);
+  for (let i = 0; i < 4; i++)
+    await f.admin.mutation(api.courseChatMessages.send, {
+      broadcastId,
+      body: `Fill ${i}`,
+    });
+  expect(await f.admin.mutation(api.courseChatMessages.send, args)).toBe(first);
+  await expect(
+    f.admin.mutation(api.courseChatMessages.send, {
+      ...args,
+      body: "Different payload",
+    }),
+  ).rejects.toThrow("INVALID_CHAT_ATTACHMENTS");
+  const pending = await upload();
+  await expect(
+    f.admin.mutation(api.courseChatMessages.send, {
+      broadcastId,
+      body: "Pending",
+      attachmentIds: [pending.id],
+    }),
+  ).rejects.toThrow();
+  expect(
+    await f.t.run(async (ctx) => ({
+      file: await ctx.db.get("courseChatAttachments", pending.id),
+      stored: Boolean(await ctx.db.system.get("_storage", pending.storageId)),
+      messages: (await ctx.db.query("courseChatMessages").collect()).length,
+    })),
+  ).toMatchObject({
+    file: { storageId: pending.storageId },
+    stored: true,
+    messages: 5,
+  });
+  vi.setSystemTime(Date.now() + 2000);
+  const retried = await f.admin.mutation(api.courseChatMessages.send, {
+    broadcastId,
+    body: "Pending",
+    attachmentIds: [pending.id],
+  });
+  expect(
+    await f.t.run((ctx) => ctx.db.get("courseChatAttachments", pending.id)),
+  ).toMatchObject({ messageId: retried });
+  await f.drain();
+  expect(
+    (
+      await f.as("student").query(api.courseChatNotifications.listUnread, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page,
+  ).toEqual([expect.objectContaining({ broadcastId, count: 6 })]);
+});
+
+test("rename reuses scope permissions, validates names and refreshes search and existing notifications", async () => {
+  const f = await setup();
+  const broadcastId = await f.create();
+  await f.admin.mutation(api.courseChatMessages.send, {
+    broadcastId,
+    body: "Notice",
+  });
+  await f.drain();
+  for (const user of [
+    "student",
+    "teacher",
+    "reader",
+    "outsider",
+    "tutor",
+  ] as const) {
+    await expect(
+      f
+        .as(user)
+        .mutation(api.broadcasts.rename, { broadcastId, name: "Denied" }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await expect(
+      f.as(user).mutation(api.broadcasts.remove, { broadcastId }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+  }
+  for (const name of ["  ", "x".repeat(121)])
+    await expect(
+      f.admin.mutation(api.broadcasts.rename, { broadcastId, name }),
+    ).rejects.toThrow("INVALID_BROADCAST");
+  await f
+    .as("principal")
+    .mutation(api.broadcasts.rename, { broadcastId, name: "  School news  " });
+  expect(
+    await f.admin.query(api.broadcasts.context, { broadcastId }),
+  ).toMatchObject({ name: "School news" });
+  expect(
+    (
+      await f.admin.query(api.broadcasts.list, {
+        schoolId: f.data.schoolId,
+        campusId: f.data.campusId,
+        search: "School news",
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page,
+  ).toEqual([
+    expect.objectContaining({ _id: broadcastId, name: "School news" }),
+  ]);
+  expect(
+    (
+      await f.as("student").query(api.systemNotifications.list, {
+        paginationOpts: { cursor: null, numItems: 20 },
+      })
+    ).page,
+  ).toEqual([
+    expect.objectContaining({ className: "School news", chatMessageCount: 1 }),
+  ]);
+  const schoolId = await f.create("school");
+  for (const action of [
+    () =>
+      f
+        .as("principal")
+        .mutation(api.broadcasts.rename, { broadcastId: schoolId, name: "No" }),
+    () =>
+      f
+        .as("principal")
+        .mutation(api.broadcasts.remove, { broadcastId: schoolId }),
+  ])
+    await expect(action()).rejects.toThrow("PERMISSION_DENIED");
+});
+
+test("permanent deletion revokes access immediately and cleans every owned resource in bounded batches", async () => {
+  const f = await setup();
+  const broadcastId = await f.create();
+  const otherId = await f.create();
+  const otherMessage = await f.admin.mutation(api.courseChatMessages.send, {
+    broadcastId: otherId,
+    body: "Keep",
+  });
+  const seeded = await f.t.run(async (ctx) => {
+    const file = async (target: Id<"broadcasts">, attached = false) => {
+      const storageId = await ctx.storage.store(
+        new Blob(["123"], { type: "image/png" }),
+      );
+      const id = await ctx.db.insert("courseChatAttachments", {
+        broadcastId: target,
+        uploadedBy: f.data.admin,
+        name: "file.png",
+        contentType: "image/png",
+        size: 3,
+        storageId,
+        ...(!attached ? { expiresAt: Date.now() + 60_000 } : {}),
+      });
+      return { id, storageId };
+    };
+    const attached = await file(broadcastId, true);
+    const orphan = await file(broadcastId);
+    const keep = await file(otherId);
+    const first = await ctx.db.insert("courseChatMessages", {
+      broadcastId,
+      authorId: f.data.admin,
+      body: "Attached",
+      attachmentIds: [attached.id],
+      pinnedAt: Date.now(),
+    });
+    await ctx.db.patch("courseChatAttachments", attached.id, {
+      messageId: first,
+    });
+    for (let i = 0; i < 60; i++) {
+      const userId = await ctx.db.insert("users", {
+        clerkId: `recipient-${i}`,
+        fullName: "Recipient",
+        firstName: "Recipient",
+        lastName: String(i),
+        isActive: true,
+        createdAt: Date.now(),
+      });
+      await ctx.db.insert("courseChatMessages", {
+        broadcastId,
+        body: `Message ${i}`,
+      });
+      await ctx.db.insert("broadcastMessageDeliveries", {
+        messageId: first,
+        userId,
+      });
+      await ctx.db.insert("broadcastWriters", {
+        broadcastId,
+        userId,
+        enabled: true,
+      });
+      await ctx.db.insert("courseChatPinReads", {
+        broadcastId,
+        userId,
+        seenThrough: Date.now(),
+      });
+      await ctx.db.insert("courseChatMutes", {
+        broadcastId,
+        userId,
+        mutedAt: Date.now(),
+        mutedBy: f.data.admin,
+      });
+      await ctx.db.insert("systemNotifications", {
+        broadcastId,
+        recipientId: userId,
+        kind: "broadcast_chat",
+        dedupeKey: `delete:${userId}`,
+        createdAt: Date.now(),
+        chatMessageCount: 1,
+      });
+    }
+    return { attached, orphan, keep, first };
+  });
+  // A reserved upload may finish after deletion starts, but cannot be committed.
+  const reservation = await f.admin.mutation(
+    internal.courseChatAttachments.reserve,
+    {
+      broadcastId,
+      name: "late.png",
+      contentType: "image/png",
+      size: 3,
+    },
+  );
+  await f.as("principal").mutation(api.broadcasts.remove, { broadcastId });
+  await f.admin.mutation(api.broadcasts.remove, { broadcastId }); // idempotent retry
+  expect(
+    await f.admin.query(api.broadcasts.context, { broadcastId }),
+  ).toBeNull();
+  await expect(
+    f.admin.mutation(api.broadcasts.rename, { broadcastId, name: "Revive" }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    f.admin.mutation(api.courseChatMessages.setArchived, {
+      broadcastId,
+      archived: false,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    f.admin.mutation(api.courseChatMessages.send, {
+      broadcastId,
+      body: "Late",
+    }),
+  ).rejects.toThrow();
+  await expect(
+    f.admin.mutation(internal.courseChatAttachments.complete, {
+      id: reservation,
+      storageId: seeded.attached.storageId,
+    }),
+  ).rejects.toThrow();
+  await f.t.mutation(internal.courseChatNotifications.publishBroadcastMembers, {
+    messageId: seeded.first,
+    orgId: f.data.campusId,
+    orgType: "campus",
+    role: "student",
+    gradeCode: "01",
+    cursor: null,
+  });
+  await f.drain();
+  const remaining = await f.t.run(async (ctx) => ({
+    broadcast: await ctx.db.get("broadcasts", broadcastId),
+    messages: await ctx.db.query("courseChatMessages").collect(),
+    files: await ctx.db.query("courseChatAttachments").collect(),
+    writers: await ctx.db.query("broadcastWriters").collect(),
+    reads: await ctx.db.query("courseChatPinReads").collect(),
+    mutes: await ctx.db.query("courseChatMutes").collect(),
+    notices: await ctx.db.query("systemNotifications").collect(),
+    receipts: await ctx.db.query("broadcastMessageDeliveries").collect(),
+    deletedFile: await ctx.db.system.get("_storage", seeded.attached.storageId),
+    deletedOrphan: await ctx.db.system.get("_storage", seeded.orphan.storageId),
+    keptFile: Boolean(
+      await ctx.db.system.get("_storage", seeded.keep.storageId),
+    ),
+  }));
+  expect(remaining.broadcast).toBeNull();
+  expect(remaining.messages.map((row) => row._id)).toEqual([otherMessage]);
+  expect(remaining.files.map((row) => row._id)).toEqual([seeded.keep.id]);
+  expect(remaining.writers.every((row) => row.broadcastId === otherId)).toBe(
+    true,
+  );
+  expect(remaining.notices.every((row) => row.broadcastId === otherId)).toBe(
+    true,
+  );
+  expect(
+    remaining.receipts.every((row) => row.messageId === otherMessage),
+  ).toBe(true);
+  expect(remaining.reads).toEqual([]);
+  expect(remaining.mutes).toEqual([]);
+  expect(remaining.deletedFile).toBeNull();
+  expect(remaining.deletedOrphan).toBeNull();
+  expect(remaining.keptFile).toBe(true);
+  await f.admin.mutation(api.broadcasts.remove, { broadcastId }); // deleted retry
+  expect(
+    await f.admin.query(api.broadcasts.context, { broadcastId: otherId }),
+  ).not.toBeNull();
+});
+
+test("cleanup refuses live broadcasts and deletion also handles legacy archived broadcasts", async () => {
+  const f = await setup();
+  const broadcastId = await f.create("school");
+  await f.t.mutation(internal.broadcasts.continueDelete, { broadcastId });
+  expect(
+    await f.admin.query(api.broadcasts.context, { broadcastId }),
+  ).not.toBeNull();
+  await f.admin.mutation(api.courseChatMessages.setArchived, {
+    broadcastId,
+    archived: true,
+  });
+  await expect(
+    f.admin.mutation(api.broadcasts.rename, { broadcastId, name: "No" }),
+  ).rejects.toThrow("CHAT_ARCHIVED");
+  await f.admin.mutation(api.broadcasts.remove, { broadcastId });
+  await f.drain();
+  expect(
+    await f.t.run((ctx) => ctx.db.get("broadcasts", broadcastId)),
+  ).toBeNull();
+});
 
 test("scope matches courses: private campus, institutional school; students read but never write", async () => {
   const f = await setup();
@@ -847,7 +1361,8 @@ test("more than 1,000 recipients are delivered in bounded batches and paginated 
     ).page,
   ).toHaveLength(0);
   for (let index = 0; index < 45; index++) {
-    vi.advanceTimersByTime(1);
+    // Normal human cadence; advance the clock without running pending fanout yet.
+    vi.setSystemTime(Date.now() + 2000);
     await f.admin.mutation(api.courseChatMessages.send, {
       broadcastId,
       body: `Message ${index}`,

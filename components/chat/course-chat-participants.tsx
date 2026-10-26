@@ -70,6 +70,10 @@ import {
 import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import {
+  BroadcastNameSetting,
+  DeleteBroadcastAction,
+} from "./broadcast-settings-actions";
 
 export interface CourseChatParticipant {
   _id: Id<"users">;
@@ -438,6 +442,9 @@ function ChatSettingsPanel({
     <>
       <ScrollArea className="min-h-0 flex-1">
         <div className="divide-y divide-border/70 px-3">
+          {broadcastId && (
+            <BroadcastNameSetting key={broadcastId} broadcastId={broadcastId} />
+          )}
           <div className="flex items-start justify-between gap-4 py-4">
             <Label htmlFor={muteStudentsId} className="cursor-pointer text-sm">
               {t(broadcastId ? "broadcasts.muteProfessors" : "muteAllStudents")}
@@ -536,20 +543,26 @@ function ChatSettingsPanel({
                 </AlertDialogContent>
               </AlertDialog>
 
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={isArchiving}
-                className="h-auto w-full justify-start gap-3 px-0 py-4 text-destructive hover:bg-transparent hover:text-destructive/80"
-                onClick={() => void handleArchiveChat()}
-              >
-                {isArchiving ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : (
-                  <Archive className="size-4" />
-                )}
-                <span className="text-sm font-medium">{t("archiveChat")}</span>
-              </Button>
+              {broadcastId ? (
+                <DeleteBroadcastAction broadcastId={broadcastId} />
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={isArchiving}
+                  className="h-auto w-full justify-start gap-3 px-0 py-4 text-destructive hover:bg-transparent hover:text-destructive/80"
+                  onClick={() => void handleArchiveChat()}
+                >
+                  {isArchiving ? (
+                    <LoaderCircle className="size-4 animate-spin" />
+                  ) : (
+                    <Archive className="size-4" />
+                  )}
+                  <span className="text-sm font-medium">
+                    {t("archiveChat")}
+                  </span>
+                </Button>
+              )}
             </>
           ) : null}
         </div>

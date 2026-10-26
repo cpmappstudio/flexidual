@@ -424,6 +424,7 @@ export default defineSchema({
     createdAt: v.number(),
     professorsMuted: v.boolean(),
     professorAttachmentsEnabled: v.boolean(),
+    deletingAt: v.optional(v.number()),
     chatDisabled: v.optional(v.boolean()),
     chatArchivedAt: v.optional(v.number()),
     chatNotificationsClearedThrough: v.optional(v.number()),
@@ -761,6 +762,7 @@ export default defineSchema({
     ])
     .index("by_dedupe_key", ["dedupeKey"])
     .index("by_taskId", ["taskId"])
+    .index("by_broadcastId", ["broadcastId"])
     .index("by_recipientId_and_classId_and_readAt_and_createdAt", [
       "recipientId",
       "classId",

@@ -12,6 +12,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { broadcastSendLimiter } from "./model/broadcastRateLimits";
 import type { Doc, Id } from "./_generated/dataModel";
 import { canAccessClass, canModerateCourseChat } from "./permissions";
 import { getCurrentUserOrThrow } from "./users";
@@ -622,6 +623,17 @@ export const send = mutation({
       throw new ConvexError("INVALID_CHAT_ATTACHMENTS");
     }
 
+    // Already-committed attachment retries above do not consume quota or notify twice.
+    if (source.kind === "broadcast") {
+      await broadcastSendLimiter.limit(ctx, "broadcastMessagesByAuthor", {
+        key: currentUser._id,
+        throws: true,
+      });
+      await broadcastSendLimiter.limit(ctx, "broadcastMessagesByChat", {
+        key: source.data._id,
+        throws: true,
+      });
+    }
     const messageId = await ctx.db.insert("courseChatMessages", {
       ...sourceTarget(source),
       ...(args.scheduleId ? { scheduleId: args.scheduleId } : {}),
