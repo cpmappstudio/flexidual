@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { useFormatter, useTranslations } from "next-intl";
@@ -59,9 +59,12 @@ export function AbekaSyncSchedule({
   const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time);
   const automatic = draft.mode !== "manual";
   const missingTimeZone = automatic && !timeZone;
-  useEffect(() => {
-    setDraft(JSON.parse(savedKey) as AbekaSchedule);
-  }, [savedKey]);
+  const sourceKey = `${schoolId}:${savedKey}`;
+  const [previousSourceKey, setPreviousSourceKey] = useState(sourceKey);
+  if (previousSourceKey !== sourceKey) {
+    setPreviousSourceKey(sourceKey);
+    setDraft(saved);
+  }
   // ponytail: apply the complete draft once, never schedule intermediate edits.
   async function save() {
     if (

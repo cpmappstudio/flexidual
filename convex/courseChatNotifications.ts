@@ -19,19 +19,47 @@ import {
   type CourseTaskEvent,
 } from "./model/courseChatEvents";
 import type { Doc } from "./_generated/dataModel";
-import { canAccessClass } from "./permissions";
 import { getCurrentUserOrThrow } from "./users";
 import { getClassNotificationContext } from "./model/systemNotificationEvents";
 import {
   filterVisibleNotifications,
   notificationPaginationOptions,
 } from "./model/systemNotifications";
+import {
+  chatPermission,
+  getChatSource,
+  sourceTarget,
+} from "./model/chatSource";
+import {
+  chatNotificationKey,
+  deliverChatNotification,
+} from "./model/chatNotification";
+import { getBroadcastMemberships } from "./model/broadcastAccess";
 
 const CLEANUP_BATCH_SIZE = 50;
 // Smaller delivery transactions limit how many recipients a concurrent read retries.
 const DELIVERY_BATCH_SIZE = 10;
-const notificationKey = (classId: Id<"classes">, userId: Id<"users">) =>
-  `course_chat:${classId}:${userId}`;
+
+async function scheduleBroadcastOrganization(
+  ctx: MutationCtx,
+  messageId: Id<"courseChatMessages">,
+  broadcast: Doc<"broadcasts">,
+  orgId: string,
+  orgType: "campus" | "school",
+) {
+  for (const role of ["teacher", "principal", "admin"] as const)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.courseChatNotifications.publishBroadcastMembers,
+      { messageId, orgId, orgType, role, cursor: null },
+    );
+  for (const gradeCode of [...broadcast.gradeCodes, undefined])
+    await ctx.scheduler.runAfter(
+      0,
+      internal.courseChatNotifications.publishBroadcastMembers,
+      { messageId, orgId, orgType, role: "student", gradeCode, cursor: null },
+    );
+}
 
 async function publishTaskBatch(
   ctx: MutationCtx,
@@ -73,8 +101,7 @@ export const publishTask = internalMutation({
   },
 });
 
-// Scheduled mutations run exactly once. Each message visits each recipient once,
-// in bounded batches, without loading the course's message history.
+// Delivery uses bounded batches without loading a chat's message history.
 export const publish = internalMutation({
   args: {
     messageId: v.id("courseChatMessages"),
@@ -85,6 +112,31 @@ export const publish = internalMutation({
   handler: async (ctx, args) => {
     const message = await ctx.db.get("courseChatMessages", args.messageId);
     if (!message) return null;
+    if (message.broadcastId) {
+      const broadcast = await ctx.db.get("broadcasts", message.broadcastId);
+      if (
+        !broadcast ||
+        broadcast.chatArchivedAt !== undefined ||
+        message._creationTime <=
+          (broadcast.chatNotificationsClearedThrough ?? 0)
+      )
+        return null;
+      await scheduleBroadcastOrganization(
+        ctx,
+        message._id,
+        broadcast,
+        broadcast.mode === "private" ? broadcast.campusId! : broadcast.schoolId,
+        broadcast.mode === "private" ? "campus" : "school",
+      );
+      if (broadcast.mode === "school")
+        await ctx.scheduler.runAfter(
+          0,
+          internal.courseChatNotifications.publishBroadcastCampuses,
+          { messageId: message._id, cursor: null },
+        );
+      return null;
+    }
+    if (!message.classId) return null;
     const course = await ctx.db.get("classes", message.classId);
     if (
       !course ||
@@ -133,33 +185,13 @@ export const publish = internalMutation({
     if (message.authorId) recipients.delete(message.authorId);
     const context = await getClassNotificationContext(ctx, course);
     for (const recipientId of recipients) {
-      const recipient = await ctx.db.get("users", recipientId);
-      if (!recipient?.isActive) continue;
-      const dedupeKey = notificationKey(course._id, recipientId);
-      const existing = await ctx.db
-        .query("systemNotifications")
-        .withIndex("by_dedupe_key", (q) => q.eq("dedupeKey", dedupeKey))
-        .unique();
-      if (message._creationTime <= (existing?.chatReadThrough ?? 0)) continue;
-      const resetCount =
-        !existing ||
-        existing.readAt !== undefined ||
-        existing.createdAt <= (course.chatNotificationsClearedThrough ?? 0);
-      const fields = {
+      await deliverChatNotification(
+        ctx,
+        { kind: "course", data: course },
+        message,
         recipientId,
-        kind: "course_chat" as const,
-        classId: course._id,
-        className: course.name,
-        ...context,
-        dedupeKey,
-        chatMessageCount:
-          (resetCount ? 0 : (existing.chatMessageCount ?? 0)) + 1,
-        createdAt: Math.max(existing?.createdAt ?? 0, message._creationTime),
-        readAt: undefined,
-      };
-      if (existing)
-        await ctx.db.patch("systemNotifications", existing._id, fields);
-      else await ctx.db.insert("systemNotifications", fields);
+        context,
+      );
     }
     const hasMore = page
       ? !page.isDone
@@ -185,24 +217,25 @@ export const markRead = mutation({
     const user = await getCurrentUserOrThrow(ctx);
     const message = await ctx.db.get("courseChatMessages", messageId);
     if (!message) return null;
-    const course = await ctx.db.get("classes", message.classId);
-    if (!course || !(await canAccessClass(ctx, user._id, course))) {
+    const source = await getChatSource(ctx, message);
+    if (!source || !(await chatPermission(ctx, source, user._id, "read"))) {
       throw new ConvexError("PERMISSION_DENIED");
     }
-    if (course.chatArchivedAt !== undefined) return null;
-    const dedupeKey = notificationKey(course._id, user._id);
+    if (source.data.chatArchivedAt !== undefined) return null;
+    const dedupeKey = chatNotificationKey(source, user._id);
     const notification = await ctx.db
       .query("systemNotifications")
       .withIndex("by_dedupe_key", (q) => q.eq("dedupeKey", dedupeKey))
       .unique();
     if ((notification?.chatReadThrough ?? 0) >= message._creationTime)
       return null;
-    await markEventNotificationsRead(
-      ctx,
-      user._id,
-      course._id,
-      message._creationTime,
-    );
+    if (source.kind === "course")
+      await markEventNotificationsRead(
+        ctx,
+        user._id,
+        source.data._id,
+        message._creationTime,
+      );
     const readFields = {
       readAt: Date.now(),
       chatReadThrough: Math.max(
@@ -224,16 +257,151 @@ export const markRead = mutation({
       // notification; a zero-count placeholder is never shown in the feed.
       await ctx.db.insert("systemNotifications", {
         recipientId: user._id,
-        kind: "course_chat",
-        classId: course._id,
-        className: course.name,
-        ...(await getClassNotificationContext(ctx, course)),
+        kind: source.kind === "course" ? "course_chat" : "broadcast_chat",
+        ...sourceTarget(source),
+        className: source.data.name,
+        ...(source.kind === "course"
+          ? await getClassNotificationContext(ctx, source.data)
+          : { schoolId: source.data.schoolId, campusId: source.data.campusId }),
         dedupeKey,
         createdAt: 0,
         chatMessageCount: 0,
         ...readFields,
       });
     }
+    return null;
+  },
+});
+
+export const publishBroadcastCampuses = internalMutation({
+  args: {
+    messageId: v.id("courseChatMessages"),
+    cursor: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get("courseChatMessages", args.messageId);
+    const broadcast = message?.broadcastId
+      ? await ctx.db.get("broadcasts", message.broadcastId)
+      : null;
+    if (
+      !broadcast ||
+      broadcast.mode !== "school" ||
+      broadcast.chatArchivedAt !== undefined
+    )
+      return null;
+    const page = await ctx.db
+      .query("campuses")
+      .withIndex("by_school", (q) => q.eq("schoolId", broadcast.schoolId))
+      .paginate({ cursor: args.cursor, numItems: 10 });
+    for (const campus of page.page)
+      if (campus.isActive)
+        await scheduleBroadcastOrganization(
+          ctx,
+          args.messageId,
+          broadcast,
+          campus._id,
+          "campus",
+        );
+    if (!page.isDone)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.courseChatNotifications.publishBroadcastCampuses,
+        { ...args, cursor: page.continueCursor },
+      );
+    return null;
+  },
+});
+
+export const publishBroadcastMembers = internalMutation({
+  args: {
+    messageId: v.id("courseChatMessages"),
+    orgId: v.string(),
+    orgType: v.union(v.literal("school"), v.literal("campus")),
+    role: v.union(
+      v.literal("teacher"),
+      v.literal("student"),
+      v.literal("principal"),
+      v.literal("admin"),
+    ),
+    gradeCode: v.optional(v.string()),
+    cursor: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get("courseChatMessages", args.messageId);
+    const broadcast = message?.broadcastId
+      ? await ctx.db.get("broadcasts", message.broadcastId)
+      : null;
+    if (
+      !message ||
+      !broadcast ||
+      broadcast.chatArchivedAt !== undefined ||
+      message._creationTime <= (broadcast.chatNotificationsClearedThrough ?? 0)
+    )
+      return null;
+    const page = await ctx.db
+      .query("roleAssignments")
+      .withIndex("by_orgId_and_orgType_and_role_and_gradeCode", (q) =>
+        args.role === "student"
+          ? q
+              .eq("orgId", args.orgId)
+              .eq("orgType", args.orgType)
+              .eq("role", args.role)
+              .eq("gradeCode", args.gradeCode)
+          : q
+              .eq("orgId", args.orgId)
+              .eq("orgType", args.orgType)
+              .eq("role", args.role),
+      )
+      .paginate({
+        cursor: args.cursor,
+        numItems: DELIVERY_BATCH_SIZE,
+        maximumRowsRead: DELIVERY_BATCH_SIZE,
+      });
+    const [school, campus] = await Promise.all([
+      ctx.db.get("schools", broadcast.schoolId),
+      broadcast.campusId ? ctx.db.get("campuses", broadcast.campusId) : null,
+    ]);
+    const context = {
+      schoolId: broadcast.schoolId,
+      campusId: broadcast.campusId,
+      schoolName: school?.name,
+      campusName: campus?.name,
+      organizationSlug: campus?.slug ?? school?.slug,
+    };
+    for (const membership of page.page) {
+      if (
+        !school?.isActive ||
+        campus?.isActive === false ||
+        membership.assignedAt > message._creationTime
+      )
+        continue;
+      // Choose one canonical membership so multi-campus/multi-role readers count once.
+      const { assignments } = await getBroadcastMemberships(
+        ctx,
+        membership.userId,
+        broadcast,
+      );
+      const eligible = assignments.filter(
+        (row) => row.assignedAt <= message._creationTime,
+      );
+      eligible.sort((a, b) => a._id.localeCompare(b._id));
+      if (eligible[0]?._id === membership._id)
+        await deliverChatNotification(
+          ctx,
+          { kind: "broadcast", data: broadcast },
+          message,
+          membership.userId,
+          context,
+        );
+    }
+    if (!page.isDone)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.courseChatNotifications.publishBroadcastMembers,
+        { ...args, cursor: page.continueCursor },
+      );
     return null;
   },
 });
@@ -296,7 +464,8 @@ export const listUnread = query({
   args: { paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(
     v.object({
-      classId: v.id("classes"),
+      classId: v.optional(v.id("classes")),
+      broadcastId: v.optional(v.id("broadcasts")),
       count: v.number(),
       campusId: v.optional(v.id("campuses")),
       schoolId: v.optional(v.id("schools")),
@@ -314,10 +483,14 @@ export const listUnread = query({
     return {
       ...result,
       page: visible.flatMap((item) =>
-        item.classId && (item.kind === "course_chat" || item.messageId)
+        (item.classId || item.broadcastId) &&
+        (item.kind === "course_chat" ||
+          item.kind === "broadcast_chat" ||
+          item.messageId)
           ? [
               {
                 classId: item.classId,
+                broadcastId: item.broadcastId,
                 count: item.messageId ? 1 : (item.chatMessageCount ?? 0),
                 campusId: item.campusId,
                 schoolId: item.schoolId,
@@ -344,6 +517,30 @@ export const removeByClass = internalMutation({
       await ctx.scheduler.runAfter(
         0,
         internal.courseChatNotifications.removeByClass,
+        args,
+      );
+    return null;
+  },
+});
+
+export const removeBroadcastDeliveries = internalMutation({
+  args: { messageId: v.id("courseChatMessages") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // A receipt must remain while its message can still be delivered.
+    if (await ctx.db.get("courseChatMessages", args.messageId)) return null;
+    const rows = await ctx.db
+      .query("broadcastMessageDeliveries")
+      .withIndex("by_messageId_and_userId", (q) =>
+        q.eq("messageId", args.messageId),
+      )
+      .take(CLEANUP_BATCH_SIZE);
+    for (const row of rows)
+      await ctx.db.delete("broadcastMessageDeliveries", row._id);
+    if (rows.length === CLEANUP_BATCH_SIZE)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.courseChatNotifications.removeBroadcastDeliveries,
         args,
       );
     return null;

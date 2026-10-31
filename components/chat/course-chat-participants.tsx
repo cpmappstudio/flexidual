@@ -70,6 +70,10 @@ import {
 import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import {
+  BroadcastNameSetting,
+  DeleteBroadcastAction,
+} from "./broadcast-settings-actions";
 
 export interface CourseChatParticipant {
   _id: Id<"users">;
@@ -81,7 +85,9 @@ export interface CourseChatParticipant {
 }
 
 interface CourseChatParticipantsProps {
-  classId: Id<"classes">;
+  classId?: Id<"classes">;
+  broadcastId?: Id<"broadcasts">;
+  footer?: React.ReactNode;
   participants: CourseChatParticipant[];
   isOpen: boolean;
   canModerate: boolean;
@@ -146,9 +152,11 @@ function ParticipantRow({
 
 function ParticipantActionMenus({
   classId,
+  broadcastId,
   participant,
 }: {
-  classId: Id<"classes">;
+  classId?: Id<"classes">;
+  broadcastId?: Id<"broadcasts">;
   participant: CourseChatParticipant;
 }) {
   const t = useTranslations("classroom");
@@ -157,7 +165,15 @@ function ParticipantActionMenus({
   const setMuted = useMutation(api.courseChatMessages.setMuted);
   const [isUpdating, setIsUpdating] = useState(false);
   const MuteIcon = participant.isMuted ? Volume2 : VolumeX;
-  const muteLabel = participant.isMuted ? t("unmuteStudent") : t("muteStudent");
+  const muteLabel = broadcastId
+    ? t(
+        participant.isMuted
+          ? "broadcasts.allowWriting"
+          : "broadcasts.preventWriting",
+      )
+    : participant.isMuted
+      ? t("unmuteStudent")
+      : t("muteStudent");
 
   const handleViewProfile = () => {
     router.push(`${basePath}/students/${participant._id}`);
@@ -169,11 +185,16 @@ function ParticipantActionMenus({
     try {
       await setMuted({
         classId,
+        broadcastId,
         userId: participant._id,
         muted: !participant.isMuted,
       });
       toast.success(
-        participant.isMuted ? t("studentUnmuted") : t("studentMuted"),
+        broadcastId
+          ? t("broadcasts.participationUpdated")
+          : participant.isMuted
+            ? t("studentUnmuted")
+            : t("studentMuted"),
       );
     } catch {
       toast.error(t("participantActionError"));
@@ -199,10 +220,12 @@ function ParticipantActionMenus({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-44">
-              <DropdownMenuItem onSelect={handleViewProfile}>
-                <UserRound />
-                {t("viewStudentProfile")}
-              </DropdownMenuItem>
+              {!broadcastId && (
+                <DropdownMenuItem onSelect={handleViewProfile}>
+                  <UserRound />
+                  {t("viewStudentProfile")}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 disabled={isUpdating}
                 onSelect={() => void handleToggleMute()}
@@ -219,10 +242,12 @@ function ParticipantActionMenus({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-44">
-        <ContextMenuItem onSelect={handleViewProfile}>
-          <UserRound />
-          {t("viewStudentProfile")}
-        </ContextMenuItem>
+        {!broadcastId && (
+          <ContextMenuItem onSelect={handleViewProfile}>
+            <UserRound />
+            {t("viewStudentProfile")}
+          </ContextMenuItem>
+        )}
         <ContextMenuItem
           disabled={isUpdating}
           onSelect={() => void handleToggleMute()}
@@ -241,12 +266,16 @@ function ParticipantActionMenus({
 
 function ParticipantList({
   classId,
+  broadcastId,
   participants,
   canModerate,
+  footer,
 }: {
-  classId: Id<"classes">;
+  classId?: Id<"classes">;
+  broadcastId?: Id<"broadcasts">;
   participants: CourseChatParticipant[];
   canModerate: boolean;
+  footer?: React.ReactNode;
 }) {
   return (
     <ScrollArea className="min-h-0 flex-1">
@@ -257,11 +286,13 @@ function ParticipantList({
             <ParticipantBatch
               key={index}
               classId={classId}
+              broadcastId={broadcastId}
               participants={participants.slice(index * 100, (index + 1) * 100)}
               canModerate={canModerate}
             />
           ),
         )}
+        {footer}
       </div>
     </ScrollArea>
   );
@@ -269,15 +300,18 @@ function ParticipantList({
 
 function ParticipantBatch({
   classId,
+  broadcastId,
   participants,
   canModerate,
 }: {
-  classId: Id<"classes">;
+  classId?: Id<"classes">;
+  broadcastId?: Id<"broadcasts">;
   participants: CourseChatParticipant[];
   canModerate: boolean;
 }) {
   const statuses = useQuery(api.presence.chatParticipants, {
     classId,
+    broadcastId,
     userIds: participants.map((participant) => participant._id),
   });
   const byUser = new Map(statuses?.map((item) => [item.userId, item.status]));
@@ -285,10 +319,12 @@ function ParticipantBatch({
     <>
       {participants.map((item) => {
         const participant = { ...item, presence: byUser.get(item._id) };
-        return canModerate && participant.role === "student" ? (
+        return canModerate &&
+          (participant.role === "student" || Boolean(broadcastId)) ? (
           <ParticipantActionMenus
             key={participant._id}
             classId={classId}
+            broadcastId={broadcastId}
             participant={participant}
           />
         ) : (
@@ -333,10 +369,12 @@ function ParticipantAvatars({
 
 function ChatSettingsPanel({
   classId,
+  broadcastId,
   canDisableChat,
   settings,
 }: {
-  classId: Id<"classes">;
+  classId?: Id<"classes">;
+  broadcastId?: Id<"broadcasts">;
   canDisableChat: boolean;
   settings: CourseChatParticipantsProps["chatSettings"];
 }) {
@@ -365,7 +403,7 @@ function ChatSettingsPanel({
     if (pendingSetting) return;
     setPendingSetting(setting);
     try {
-      await setSetting({ classId, setting, enabled });
+      await setSetting({ classId, broadcastId, setting, enabled });
     } catch {
       toast.error(t("chatSettingsError"));
     } finally {
@@ -377,7 +415,7 @@ function ChatSettingsPanel({
     if (isClearing) return;
     setIsClearing(true);
     try {
-      await clearChat({ classId });
+      await clearChat({ classId, broadcastId });
       setIsClearDialogOpen(false);
       toast.success(t("chatCleared"));
     } catch {
@@ -391,7 +429,7 @@ function ChatSettingsPanel({
     if (isArchiving) return;
     setIsArchiving(true);
     try {
-      await setArchived({ classId, archived: true });
+      await setArchived({ classId, broadcastId, archived: true });
       toast.success(t("chatArchived"));
       router.replace(basePath);
     } catch {
@@ -404,9 +442,12 @@ function ChatSettingsPanel({
     <>
       <ScrollArea className="min-h-0 flex-1">
         <div className="divide-y divide-border/70 px-3">
+          {broadcastId && (
+            <BroadcastNameSetting key={broadcastId} broadcastId={broadcastId} />
+          )}
           <div className="flex items-start justify-between gap-4 py-4">
             <Label htmlFor={muteStudentsId} className="cursor-pointer text-sm">
-              {t("muteAllStudents")}
+              {t(broadcastId ? "broadcasts.muteProfessors" : "muteAllStudents")}
             </Label>
             <Switch
               id={muteStudentsId}
@@ -420,7 +461,11 @@ function ChatSettingsPanel({
 
           <div className="flex items-start justify-between gap-4 py-4">
             <Label htmlFor={attachmentsId} className="cursor-pointer text-sm">
-              {t("studentAttachmentsEnabled")}
+              {t(
+                broadcastId
+                  ? "broadcasts.allowFiles"
+                  : "studentAttachmentsEnabled",
+              )}
             </Label>
             <Switch
               id={attachmentsId}
@@ -498,20 +543,26 @@ function ChatSettingsPanel({
                 </AlertDialogContent>
               </AlertDialog>
 
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={isArchiving}
-                className="h-auto w-full justify-start gap-3 px-0 py-4 text-destructive hover:bg-transparent hover:text-destructive/80"
-                onClick={() => void handleArchiveChat()}
-              >
-                {isArchiving ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : (
-                  <Archive className="size-4" />
-                )}
-                <span className="text-sm font-medium">{t("archiveChat")}</span>
-              </Button>
+              {broadcastId ? (
+                <DeleteBroadcastAction broadcastId={broadcastId} />
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={isArchiving}
+                  className="h-auto w-full justify-start gap-3 px-0 py-4 text-destructive hover:bg-transparent hover:text-destructive/80"
+                  onClick={() => void handleArchiveChat()}
+                >
+                  {isArchiving ? (
+                    <LoaderCircle className="size-4 animate-spin" />
+                  ) : (
+                    <Archive className="size-4" />
+                  )}
+                  <span className="text-sm font-medium">
+                    {t("archiveChat")}
+                  </span>
+                </Button>
+              )}
             </>
           ) : null}
         </div>
@@ -522,10 +573,12 @@ function ChatSettingsPanel({
 
 function CourseChatPanelContent({
   classId,
+  broadcastId,
   participants,
   canModerate,
   canDisableChat,
   chatSettings,
+  footer,
 }: Omit<CourseChatParticipantsProps, "isOpen">) {
   const t = useTranslations("classroom");
 
@@ -543,8 +596,10 @@ function CourseChatPanelContent({
         </div>
         <ParticipantList
           classId={classId}
+          broadcastId={broadcastId}
           participants={participants}
           canModerate={false}
+          footer={footer}
         />
       </>
     );
@@ -571,8 +626,10 @@ function CourseChatPanelContent({
       >
         <ParticipantList
           classId={classId}
+          broadcastId={broadcastId}
           participants={participants}
           canModerate
+          footer={footer}
         />
       </TabsContent>
       <TabsContent
@@ -581,6 +638,7 @@ function CourseChatPanelContent({
       >
         <ChatSettingsPanel
           classId={classId}
+          broadcastId={broadcastId}
           canDisableChat={canDisableChat}
           settings={chatSettings}
         />
@@ -591,11 +649,13 @@ function CourseChatPanelContent({
 
 export function CourseChatParticipants({
   classId,
+  broadcastId,
   participants,
   isOpen,
   canModerate,
   canDisableChat,
   chatSettings,
+  footer,
 }: CourseChatParticipantsProps) {
   const t = useTranslations("classroom");
   const isMobile = useIsMobile();
@@ -630,10 +690,12 @@ export function CourseChatParticipants({
           {isOpen && !isMobile && (
             <CourseChatPanelContent
               classId={classId}
+              broadcastId={broadcastId}
               participants={participants}
               canModerate={canModerate}
               canDisableChat={canDisableChat}
               chatSettings={chatSettings}
+              footer={footer}
             />
           )}
         </div>
@@ -650,10 +712,12 @@ export function CourseChatParticipants({
           </SheetHeader>
           <CourseChatPanelContent
             classId={classId}
+            broadcastId={broadcastId}
             participants={participants}
             canModerate={canModerate}
             canDisableChat={canDisableChat}
             chatSettings={chatSettings}
+            footer={footer}
           />
         </SheetContent>
       </Sheet>

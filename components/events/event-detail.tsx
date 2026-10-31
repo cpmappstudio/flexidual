@@ -97,6 +97,7 @@ export function EventDetail({
       ? { eventId, recordingId }
       : "skip",
   );
+  /* eslint-disable react-hooks/set-state-in-effect -- Preserve the history pagination boundary when a live session finishes. */
   useEffect(() => {
     if (historyCutoff.eventId !== eventId) {
       lastNext.current = null;
@@ -115,6 +116,7 @@ export function EventDetail({
       ? { eventId, id: next._id, end: next.end, status: next.status }
       : null;
   }, [eventId, historyCutoff, next, now]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const upcoming = usePaginatedQuery(
     api.events.listOccurrences,
     event ? { eventId, category: "upcoming", now: historyNow } : "skip",

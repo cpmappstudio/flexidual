@@ -144,6 +144,37 @@ const scheduleProps = {
   disabled: false,
 };
 
+test("schedule drafts survive equivalent server objects but never leak to another institution", () => {
+  const content = (schoolId: string, time = "08:00") => (
+    <NextIntlClientProvider
+      locale="es"
+      messages={messages}
+      timeZone="America/Bogota"
+    >
+      <dl>
+        <AbekaSyncSchedule
+          {...scheduleProps}
+          schoolId={schoolId as Id<"schools">}
+          schedule={{ ...scheduleProps.schedule, time }}
+        />
+      </dl>
+    </NextIntlClientProvider>
+  );
+  const view = render(content("school"));
+  const timeInput = () =>
+    screen.getByLabelText(
+      messages.settings.integrations.schedule.time,
+    ) as HTMLInputElement;
+  fireEvent.change(timeInput(), { target: { value: "20:00" } });
+  view.rerender(content("school"));
+  expect(timeInput().value).toBe("20:00");
+  view.rerender(content("other-school"));
+  expect(timeInput().value).toBe("08:00");
+  view.rerender(content("other-school", "19:30"));
+  expect(timeInput().value).toBe("19:30");
+  expect(mocks.mutate).not.toHaveBeenCalled();
+});
+
 test("missing institution timezone stays visible in an automatic draft and prevents an invalid save", async () => {
   const t = messages.settings.integrations;
   renderSettings(

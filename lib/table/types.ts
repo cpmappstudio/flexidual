@@ -2,6 +2,7 @@ import type {
   ColumnDef,
   ColumnFiltersState,
   SortingState,
+  OnChangeFn,
 } from "@tanstack/react-table";
 
 export interface FilterOption {
@@ -22,6 +23,8 @@ export interface DataTableProps<TData> {
   filterPlaceholder?: string;
   emptyMessage?: string;
   columnsMenuLabel?: string;
+  /** Opt-in browser preference key, scoped by the caller to the user and table. */
+  columnVisibilityKey?: string;
   exportButtonLabel?: string;
   filterConfigs?: FilterConfig[];
   filterAllLabel?: string;
@@ -43,6 +46,17 @@ export interface DataTableProps<TData> {
   onExport?: (rows: TData[]) => void;
   onFilteredRowCountChange?: (count: number) => void;
   onRowClick?: (row: TData) => void;
+  server?: {
+    sorting: SortingState;
+    columnFilters: ColumnFiltersState;
+    onSortingChange: OnChangeFn<SortingState>;
+    onColumnFiltersChange: OnChangeFn<ColumnFiltersState>;
+    pageIndex: number;
+    hasNext: boolean;
+    isLoading: boolean;
+    onPrevious: () => void;
+    onNext: () => void;
+  };
 }
 
 export type Translator = (key: string) => string;

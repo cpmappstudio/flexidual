@@ -114,6 +114,7 @@ export function ChatFilePreview({
   useEffect(() => {
     if (!file.type.startsWith("image/")) return;
     const preview = URL.createObjectURL(file);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Allocate/revoke the browser resource only after commit, including StrictMode cleanup.
     setUrl(preview);
     return () => URL.revokeObjectURL(preview);
   }, [file]);
@@ -182,6 +183,14 @@ export function ChatAttachment({
   const [url, setUrl] = useState<string>();
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
+  const requestScope = `${file.id}:${retry}`;
+  const [previousRequestScope, setPreviousRequestScope] =
+    useState(requestScope);
+  if (previousRequestScope !== requestScope) {
+    setPreviousRequestScope(requestScope);
+    setFailed(false);
+    setUrl(undefined);
+  }
   const [downloading, setDownloading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const isImage = file.contentType.startsWith("image/");
@@ -203,7 +212,6 @@ export function ChatAttachment({
     if (!isImage || !visible) return;
     const controller = new AbortController();
     let objectUrl: string | undefined;
-    setFailed(false);
     void request({ id: file.id }, { signal: controller.signal })
       .then((r) => r.blob())
       .then((blob) => {

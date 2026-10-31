@@ -16,7 +16,6 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["tests/**/*.test.tsx"],
-    // Exercise the real presence hook with mocked Convex transport.
     server: { deps: { inline: ["@convex-dev/presence", "next-intl"] } },
   },
 });

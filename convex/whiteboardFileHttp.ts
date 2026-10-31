@@ -22,22 +22,46 @@ export const upload = httpAction(async (ctx, request) => {
   try {
     const params = new URL(request.url).searchParams;
     const roomName = params.get("roomName");
+    const pageId = params.get("pageId");
     const expectedLiveRoomName = params.get("expectedLiveRoomName");
     const fileId = params.get("fileId");
     const created = Number(params.get("created"));
     const size = Number(request.headers.get("X-File-Size"));
     const contentType = request.headers.get("Content-Type") ?? "";
-    if (!roomName || !expectedLiveRoomName || !fileId || !params.has("created"))
+    if (
+      (!pageId && (!roomName || !expectedLiveRoomName)) ||
+      (pageId && (roomName || expectedLiveRoomName)) ||
+      !fileId ||
+      !params.has("created")
+    )
       throw new ConvexError("INVALID_WHITEBOARD_FILE");
     const args = {
-      roomName,
-      expectedLiveRoomName,
       fileId,
       created,
       size,
       contentType,
     };
-    await ctx.runMutation(internal.whiteboardFiles.authorizeUpload, args);
+    const notebookArgs = pageId
+      ? {
+          ...args,
+          pageId: pageId as Id<"courseNotebookPages">,
+          ...(params.has("previewVersion")
+            ? { previewVersion: Number(params.get("previewVersion")) }
+            : {}),
+        }
+      : undefined;
+    const liveArgs = {
+      ...args,
+      roomName: roomName!,
+      expectedLiveRoomName: expectedLiveRoomName!,
+    };
+    if (notebookArgs)
+      await ctx.runMutation(
+        internal.courseNotebookFiles.authorizeUpload,
+        notebookArgs,
+      );
+    else
+      await ctx.runMutation(internal.whiteboardFiles.authorizeUpload, liveArgs);
     const blob = await readVerifiedUploadBody(
       request,
       size,
@@ -47,10 +71,15 @@ export const upload = httpAction(async (ctx, request) => {
     );
     if (!blob) throw new ConvexError("INVALID_WHITEBOARD_FILE");
     storageId = await ctx.storage.store(blob);
-    const ref = await ctx.runMutation(internal.whiteboardFiles.complete, {
-      ...args,
-      storageId,
-    });
+    const ref = notebookArgs
+      ? await ctx.runMutation(internal.courseNotebookFiles.complete, {
+          ...notebookArgs,
+          storageId,
+        })
+      : await ctx.runMutation(internal.whiteboardFiles.complete, {
+          ...liveArgs,
+          storageId,
+        });
     if (ref.storageId !== storageId) await ctx.storage.delete(storageId);
     storageId = undefined;
     return Response.json(ref, { headers });

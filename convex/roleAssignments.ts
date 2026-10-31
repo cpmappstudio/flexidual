@@ -23,6 +23,10 @@ import { resolveMembershipSchoolId } from "./model/membership";
 import { isRoleValidForOrganization, roleValidator } from "./model/roles";
 import { createSystemNotification } from "./model/systemNotifications";
 import { reconcileStudentGradeEnrollments } from "./model/enrollments";
+import {
+  peopleDirectoryValidator,
+  syncPeopleDirectory,
+} from "./model/peopleDirectory";
 
 const roleAssignmentValidator = v.object({
   _id: v.id("roleAssignments"),
@@ -37,6 +41,7 @@ const roleAssignmentValidator = v.object({
   role: roleValidator,
   schoolId: v.optional(v.id("schools")),
   gradeCode: v.optional(v.string()),
+  directory: v.optional(peopleDirectoryValidator),
   assignedAt: v.number(),
   assignedBy: v.optional(v.id("users")),
 });
@@ -328,6 +333,11 @@ export async function upsertRoleAssignment(
       assignedBy,
     });
   }
+
+  await syncPeopleDirectory(ctx, args.userId, {
+    refreshRelationships:
+      args.role === "student" && existing?.role !== "student",
+  });
 
   if (!options?.skipNotification && assignedBy !== args.userId) {
     const notificationContext = {
@@ -662,33 +672,21 @@ export const assignRoleInternal = internalMutation({
 
 export const getUserRoles = query({
   args: { userId: v.id("users") },
-  returns: v.array(
-    v.object({
-      _id: v.id("roleAssignments"),
-      _creationTime: v.number(),
-      userId: v.id("users"),
-      orgId: v.optional(v.string()),
-      orgType: v.union(
-        v.literal("system"),
-        v.literal("school"),
-        v.literal("campus"),
-      ),
-      role: roleValidator,
-      schoolId: v.optional(v.id("schools")),
-      gradeCode: v.optional(v.string()),
-      assignedAt: v.number(),
-      assignedBy: v.optional(v.id("users")),
-    }),
-  ),
+  returns: v.array(roleAssignmentValidator.omit("directory")),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
     const isSuperadmin = await hasSystemRole(ctx, currentUser._id, [
       "superadmin",
     ]);
-    const assignments = await ctx.db
-      .query("roleAssignments")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
+    const assignments = (
+      await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .collect()
+    ).map(({ directory, ...assignment }) => {
+      void directory;
+      return assignment;
+    });
     if (isSuperadmin) return assignments;
 
     const visible = [];
@@ -765,6 +763,7 @@ export const removeRole = mutation({
     );
 
     await ctx.db.delete(args.assignmentId);
+    await syncPeopleDirectory(ctx, assignment.userId);
     await publishAssignmentRemoved(
       ctx,
       assignment,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { CalendarContext } from "./calendar-context";
 import { CalendarEvent, Mode } from "./calendar-types";
 import { Id } from "@/convex/_generated/dataModel";
@@ -45,15 +45,16 @@ export default function CalendarProvider({
   children,
 }: CalendarProviderProps) {
   const [manageEventDialogOpen, setManageEventDialogOpen] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
+  const [selectedSnapshot, setSelectedEvent] = useState<CalendarEvent | null>(
     null,
   );
-  const selectedEventId = selectedEvent?.id;
-  useEffect(() => {
-    if (!selectedEventId) return;
-    const currentEvent = events.find((event) => event.id === selectedEventId);
-    if (currentEvent) setSelectedEvent(currentEvent);
-  }, [events, selectedEventId]);
+  const currentEvent = selectedSnapshot
+    ? events.find((event) => event.id === selectedSnapshot.id)
+    : undefined;
+  // Keep the last confirmed snapshot if the selected event leaves the visible range.
+  if (currentEvent && currentEvent !== selectedSnapshot)
+    setSelectedEvent(currentEvent);
+  const selectedEvent = currentEvent ?? selectedSnapshot;
   const visibleScheduleWindow = useMemo(() => {
     const eventStartMinutes = events.map(
       (event) => event.start.getHours() * 60 + event.start.getMinutes(),

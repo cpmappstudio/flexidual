@@ -4,6 +4,22 @@ import { toCivilDate, todayInTimeZone } from "../../lib/time-zone";
 import { getClassTimeZone } from "./timeZone";
 import { getCourseGradeCodes } from "./courseAssignments";
 
+function activeLegacyCourses(ctx: QueryCtx, campusId?: Id<"campuses">) {
+  const courses = ctx.db.query("classes");
+  return campusId
+    ? courses.withIndex(
+        "by_campusId_and_isActive_and_enrollmentsMigratedAt",
+        (q) =>
+          q
+            .eq("campusId", campusId)
+            .eq("isActive", true)
+            .lte("enrollmentsMigratedAt", 0),
+      )
+    : courses.withIndex("by_isActive_and_enrollmentsMigratedAt", (q) =>
+        q.eq("isActive", true).lte("enrollmentsMigratedAt", 0),
+      );
+}
+
 export async function listActiveStudentClasses(
   ctx: QueryCtx,
   studentId: Id<"users">,
@@ -17,12 +33,7 @@ export async function listActiveStudentClasses(
     Promise.all(
       enrollments.map(({ classId }) => ctx.db.get("classes", classId)),
     ),
-    ctx.db
-      .query("classes")
-      .withIndex("by_isActive_and_enrollmentsMigratedAt", (q) =>
-        q.eq("isActive", true).lte("enrollmentsMigratedAt", 0),
-      )
-      .collect(),
+    activeLegacyCourses(ctx, campusId).collect(),
   ]);
   // Missing/zero migration timestamps retain the existing legacy roster semantics.
   const legacyEnrolled = legacy.filter(
@@ -132,15 +143,10 @@ export async function reconcileStudentGradeEnrollments(
     }
   }
   // Legacy rosters have no student index; scoped to this campus until their backfill is complete.
-  const legacyCourses = await ctx.db
-    .query("classes")
-    .withIndex("by_campus", (q) =>
-      q.eq("campusId", campusId).eq("isActive", true),
-    )
-    .filter((q) => q.eq(q.field("enrollmentsMigratedAt"), undefined))
-    .collect();
+  const legacyCourses = await activeLegacyCourses(ctx, campusId).collect();
   for (const course of legacyCourses) {
     if (
+      !course.enrollmentsMigratedAt &&
       course.students?.includes(studentId) &&
       (await hasCurrentGradeMismatch(ctx, course, gradeCode))
     ) {

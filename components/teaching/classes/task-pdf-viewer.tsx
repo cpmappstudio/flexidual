@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -89,13 +90,15 @@ export default function TaskPdfViewer({
   const registry = useRef<PluginRegistry | null>(null);
   const unsubscribe = useRef<(() => void)[]>([]);
   const mode = useRef(readOnly);
-  mode.current = readOnly;
   // EmbedPDF only reads config at mount; change tools without reopening the PDF.
-  useEffect(() => {
+  useLayoutEffect(() => {
+    mode.current = readOnly;
     if (registry.current) applyReadOnly(registry.current, readOnly);
   }, [readOnly]);
   const callbacks = useRef({ onReady, onChange, onError });
-  callbacks.current = { onReady, onChange, onError };
+  useLayoutEffect(() => {
+    callbacks.current = { onReady, onChange, onError };
+  }, [onReady, onChange, onError]);
   useEffect(() => () => unsubscribe.current.forEach((stop) => stop()), []);
   useImperativeHandle(
     viewerRef,

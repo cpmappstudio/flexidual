@@ -12,12 +12,9 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { broadcastSendLimiter } from "./model/broadcastRateLimits";
 import type { Doc, Id } from "./_generated/dataModel";
-import {
-  canAccessClass,
-  canModerateCourseChat,
-  getCourseChatCapabilities,
-} from "./permissions";
+import { canAccessClass, canModerateCourseChat } from "./permissions";
 import { getCurrentUserOrThrow } from "./users";
 import { getUserImageUrl } from "./model/userImage";
 import { isStudentEnrolled } from "./model/enrollments";
@@ -47,13 +44,31 @@ import {
 import { chatReferenceParts } from "../lib/chat-references";
 import { getClassTimeZone } from "./model/timeZone";
 import { isValidTimeZone } from "../lib/time-zone";
+import {
+  chatTarget,
+  chatTargetFields,
+  type ChatTarget,
+} from "./model/chatTarget";
+import {
+  chatCapabilities,
+  chatPermission,
+  chatMessages,
+  getChatSource,
+  patchChat,
+  pinnedChatMessages,
+  requireActiveChat,
+  requireChatWriter,
+  sourceTarget,
+  type ChatSource,
+} from "./model/chatSource";
+import { getBroadcastRole, getBroadcastWriter } from "./model/broadcastAccess";
 
 const DELETE_BATCH_SIZE = 100;
 
 const messageValidator = v.object({
   _id: v.id("courseChatMessages"),
   _creationTime: v.number(),
-  classId: v.id("classes"),
+  ...chatTargetFields,
   scheduleId: v.optional(v.id("classSchedule")),
   authorId: v.optional(v.id("users")),
   body: v.string(),
@@ -97,43 +112,61 @@ function getAuthorRole(
 
 async function deleteMessageBatch(
   ctx: MutationCtx,
-  classId: Id<"classes">,
+  target: ChatTarget,
   throughCreationTime: number,
 ) {
-  const messages = await ctx.db
-    .query("courseChatMessages")
-    .withIndex("by_class", (q) =>
-      q.eq("classId", classId).lte("_creationTime", throughCreationTime),
-    )
-    .take(DELETE_BATCH_SIZE);
+  const messages = await chatMessages(ctx, target, {
+    through: throughCreationTime,
+  }).take(DELETE_BATCH_SIZE);
 
   await Promise.all(messages.map((message) => deleteChatMessage(ctx, message)));
 
   return messages.length === DELETE_BATCH_SIZE;
 }
 
-async function getChatClearThrough(ctx: MutationCtx, course: Doc<"classes">) {
-  const latest = await ctx.db
-    .query("courseChatMessages")
-    .withIndex("by_class", (q) => q.eq("classId", course._id))
+async function getChatClearThrough(ctx: MutationCtx, source: ChatSource) {
+  const latest = await chatMessages(ctx, sourceTarget(source))
     .order("desc")
     .first();
   return Math.max(
-    course.chatNotificationsClearedThrough ?? 0,
+    source.data.chatNotificationsClearedThrough ?? 0,
     latest?._creationTime ?? 0,
   );
 }
 
 export const list = query({
   args: {
-    classId: v.id("classes"),
+    ...chatTargetFields,
     scheduleId: v.optional(v.id("classSchedule")),
     paginationOpts: paginationOptsValidator,
   },
   returns: paginationResultValidator(messageValidator),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
-    const classData = await ctx.db.get("classes", args.classId);
+    if (args.broadcastId) {
+      const source = await getChatSource(ctx, args);
+      if (
+        !source ||
+        !(await chatPermission(ctx, source, currentUser._id, "read"))
+      )
+        throw new ConvexError("PERMISSION_DENIED");
+      if (args.scheduleId) throw new ConvexError("INVALID_CHAT_TARGET");
+      const result = await chatMessages(ctx, args, {
+        after:
+          source.data.chatArchivedAt !== undefined
+            ? Number.MAX_SAFE_INTEGER
+            : (source.data.chatNotificationsClearedThrough ?? 0),
+      })
+        .order("desc")
+        .paginate(args.paginationOpts);
+      return {
+        ...result,
+        page: await hydrateMessages(ctx, result.page, null, currentUser),
+      };
+    }
+    chatTarget(args);
+    const classId = args.classId!;
+    const classData = await ctx.db.get("classes", classId);
     if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
     const access = await getCourseChatAccess(
       ctx,
@@ -149,7 +182,7 @@ export const list = query({
         ? await ctx.db
             .query("courseChatMessages")
             .withIndex("by_classId_and_scheduleId", (q) =>
-              q.eq("classId", args.classId).eq("scheduleId", access.scheduleId),
+              q.eq("classId", classId).eq("scheduleId", access.scheduleId),
             )
             .order("desc")
             .paginate(args.paginationOpts)
@@ -157,8 +190,8 @@ export const list = query({
             .query("courseChatMessages")
             .withIndex("by_class", (q) =>
               access.kind === "course" && classData.chatArchivedAt === undefined
-                ? q.eq("classId", args.classId)
-                : q.eq("classId", args.classId).lt("_creationTime", 0),
+                ? q.eq("classId", classId)
+                : q.eq("classId", classId).lt("_creationTime", 0),
             )
             .order("desc")
             .paginate(args.paginationOpts);
@@ -178,7 +211,7 @@ export const list = query({
 async function hydrateMessages(
   ctx: QueryCtx,
   messages: Doc<"courseChatMessages">[],
-  classData: Doc<"classes">,
+  classData: Doc<"classes"> | null,
   currentUser: Doc<"users">,
   includeCourseOnlyContent = true,
 ): Promise<Infer<typeof messageValidator>[]> {
@@ -208,7 +241,7 @@ async function hydrateMessages(
     let result = availableTasks.get(id);
     if (!result) {
       result = (async () => {
-        if (!includeCourseOnlyContent) return null;
+        if (!includeCourseOnlyContent || !classData) return null;
         const taskId = ctx.db.normalizeId("courseTasks", id);
         const task = taskId ? await ctx.db.get("courseTasks", taskId) : null;
         if (!task || task.classId !== classData._id) return null;
@@ -229,9 +262,10 @@ async function hydrateMessages(
       if (message.event) {
         const task = await getAvailableTask(message.event.taskId);
         const available = task !== null;
-        const timeZone = available
-          ? await getClassTimeZone(ctx, classData)
-          : undefined;
+        const timeZone =
+          available && classData
+            ? await getClassTimeZone(ctx, classData)
+            : undefined;
         event = {
           kind: message.event.kind,
           taskId: message.event.taskId,
@@ -299,7 +333,9 @@ async function hydrateMessages(
         authorImageUrl: author?.imageUrl,
         authorRole: message.event
           ? ("system" as const)
-          : getAuthorRole(classData, message.authorId),
+          : classData
+            ? getAuthorRole(classData, message.authorId)
+            : ("member" as const),
         isOwn: message.authorId === currentUser._id,
       };
     }),
@@ -314,42 +350,53 @@ export const get = query({
     const id = ctx.db.normalizeId("courseChatMessages", args.messageId);
     const message = id ? await ctx.db.get("courseChatMessages", id) : null;
     if (!message) return null;
-    const course = await ctx.db.get("classes", message.classId);
+    const source = await getChatSource(ctx, message);
     if (
-      !course ||
-      course.chatArchivedAt !== undefined ||
-      message._creationTime <= (course.chatNotificationsClearedThrough ?? 0) ||
-      !(await canAccessClass(ctx, user._id, course))
+      !source ||
+      source.data.chatArchivedAt !== undefined ||
+      message._creationTime <=
+        (source.data.chatNotificationsClearedThrough ?? 0) ||
+      !(await chatPermission(ctx, source, user._id, "read"))
     )
       return null;
-    return (await hydrateMessages(ctx, [message], course, user))[0];
+    return (
+      await hydrateMessages(
+        ctx,
+        [message],
+        source.kind === "course" ? source.data : null,
+        user,
+      )
+    )[0];
   },
 });
 
 export const listPinned = query({
-  args: { classId: v.id("classes"), paginationOpts: paginationOptsValidator },
+  args: { ...chatTargetFields, paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(messageValidator),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
-    const course = await ctx.db.get("classes", args.classId);
-    if (!course || !(await canAccessClass(ctx, currentUser._id, course)))
+    const source = await getChatSource(ctx, args);
+    if (
+      !source ||
+      !(await chatPermission(ctx, source, currentUser._id, "read"))
+    )
       throw new ConvexError("PERMISSION_DENIED");
-    const result = await ctx.db
-      .query("courseChatMessages")
-      .withIndex("by_classId_and_pinnedAt", (q) =>
-        course.chatArchivedAt === undefined
-          ? q.eq("classId", course._id).gt("pinnedAt", 0)
-          : q.eq("classId", course._id).lt("pinnedAt", undefined),
-      )
+    const result = await pinnedChatMessages(ctx, source)
       .order("desc")
       .paginate(args.paginationOpts);
     const visible = result.page.filter(
       (message) =>
-        message._creationTime > (course.chatNotificationsClearedThrough ?? 0),
+        message._creationTime >
+        (source.data.chatNotificationsClearedThrough ?? 0),
     );
     return {
       ...result,
-      page: await hydrateMessages(ctx, visible, course, currentUser),
+      page: await hydrateMessages(
+        ctx,
+        visible,
+        source.kind === "course" ? source.data : null,
+        currentUser,
+      ),
     };
   },
 });
@@ -361,59 +408,64 @@ export const setPinned = mutation({
     const user = await getCurrentUserOrThrow(ctx);
     const message = await ctx.db.get("courseChatMessages", args.messageId);
     if (!message) throw new ConvexError("MESSAGE_NOT_FOUND");
-    const course = await ctx.db.get("classes", message.classId);
-    if (!course || !(await canManageCourseChatContent(ctx, course, user._id)))
+    const source = await getChatSource(ctx, message);
+    if (!source || !(await chatPermission(ctx, source, user._id, "pin")))
       throw new ConvexError("PERMISSION_DENIED");
-    assertChatActive(course);
-    if (message._creationTime <= (course.chatNotificationsClearedThrough ?? 0))
+    requireActiveChat(source);
+    if (
+      message._creationTime <=
+      (source.data.chatNotificationsClearedThrough ?? 0)
+    )
       throw new ConvexError("MESSAGE_NOT_FOUND");
     if ((message.pinnedAt !== undefined) === args.pinned) return null;
     const pinnedAt = args.pinned
-      ? Math.max(Date.now(), (course.chatLastPinnedAt ?? 0) + 1)
+      ? Math.max(Date.now(), (source.data.chatLastPinnedAt ?? 0) + 1)
       : undefined;
     if (pinnedAt !== undefined)
-      await ctx.db.patch("classes", course._id, { chatLastPinnedAt: pinnedAt });
+      await patchChat(ctx, source, { chatLastPinnedAt: pinnedAt });
     await ctx.db.patch("courseChatMessages", message._id, { pinnedAt });
     return null;
   },
 });
 
 export const hasUnreadPins = query({
-  args: { classId: v.id("classes") },
+  args: chatTargetFields,
   returns: v.boolean(),
-  handler: async (ctx, { classId }) => {
+  handler: async (ctx, target) => {
     const user = await getCurrentUserOrThrow(ctx);
-    const course = await ctx.db.get("classes", classId);
-    if (!course || !(await canAccessClass(ctx, user._id, course))) return false;
-    if (course.chatArchivedAt !== undefined) return false;
-    const latest = await ctx.db
-      .query("courseChatMessages")
-      .withIndex("by_classId_and_pinnedAt", (q) =>
-        q.eq("classId", classId).gt("pinnedAt", 0),
-      )
-      .order("desc")
-      .first();
+    const source = await getChatSource(ctx, target);
+    if (!source || !(await chatPermission(ctx, source, user._id, "read")))
+      return false;
+    if (source.data.chatArchivedAt !== undefined) return false;
+    const latest = await pinnedChatMessages(ctx, source).order("desc").first();
     if (
       !latest ||
-      latest._creationTime <= (course.chatNotificationsClearedThrough ?? 0)
+      latest._creationTime <= (source.data.chatNotificationsClearedThrough ?? 0)
     )
       return false;
-    const receipt = await getPinRead(ctx, classId, user._id);
+    const receipt = await getPinRead(ctx, target, user._id);
     return latest.pinnedAt! > (receipt?.seenThrough ?? 0);
   },
 });
 
 function getPinRead(
   ctx: QueryCtx | MutationCtx,
-  classId: Id<"classes">,
+  target: ChatTarget,
   userId: Id<"users">,
 ) {
-  return ctx.db
-    .query("courseChatPinReads")
-    .withIndex("by_classId_and_userId", (q) =>
-      q.eq("classId", classId).eq("userId", userId),
-    )
-    .unique();
+  return target.broadcastId
+    ? ctx.db
+        .query("courseChatPinReads")
+        .withIndex("by_broadcastId_and_userId", (q) =>
+          q.eq("broadcastId", target.broadcastId).eq("userId", userId),
+        )
+        .unique()
+    : ctx.db
+        .query("courseChatPinReads")
+        .withIndex("by_classId_and_userId", (q) =>
+          q.eq("classId", target.classId).eq("userId", userId),
+        )
+        .unique();
 }
 
 export const markPinsSeen = mutation({
@@ -428,15 +480,16 @@ export const markPinsSeen = mutation({
       message.pinnedAt !== args.pinnedAt
     )
       return null;
-    const course = await ctx.db.get("classes", message.classId);
-    if (!course || !(await canAccessClass(ctx, user._id, course)))
+    const source = await getChatSource(ctx, message);
+    if (!source || !(await chatPermission(ctx, source, user._id, "read")))
       throw new ConvexError("PERMISSION_DENIED");
     if (
-      course.chatArchivedAt !== undefined ||
-      message._creationTime <= (course.chatNotificationsClearedThrough ?? 0)
+      source.data.chatArchivedAt !== undefined ||
+      message._creationTime <=
+        (source.data.chatNotificationsClearedThrough ?? 0)
     )
       return null;
-    const receipt = await getPinRead(ctx, course._id, user._id);
+    const receipt = await getPinRead(ctx, message, user._id);
     if ((receipt?.seenThrough ?? 0) >= args.pinnedAt) return null;
     if (receipt)
       await ctx.db.patch("courseChatPinReads", receipt._id, {
@@ -444,7 +497,7 @@ export const markPinsSeen = mutation({
       });
     else
       await ctx.db.insert("courseChatPinReads", {
-        classId: course._id,
+        ...sourceTarget(source),
         userId: user._id,
         seenThrough: args.pinnedAt,
       });
@@ -502,7 +555,7 @@ export const listReferenceTasks = query({
 
 export const send = mutation({
   args: {
-    classId: v.id("classes"),
+    ...chatTargetFields,
     scheduleId: v.optional(v.id("classSchedule")),
     body: v.string(),
     attachmentIds: v.optional(v.array(v.id("courseChatAttachments"))),
@@ -510,20 +563,22 @@ export const send = mutation({
   returns: v.id("courseChatMessages"),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
-    const classData = await ctx.db.get("classes", args.classId);
-    if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
-    if (!(await canAccessClass(ctx, currentUser._id, classData))) {
-      throw new ConvexError("PERMISSION_DENIED");
-    }
+    const { source } = await requireChatWriter(
+      ctx,
+      args,
+      currentUser._id,
+      Boolean(args.attachmentIds?.length) || containsChatLink(args.body),
+    );
     if (
       args.scheduleId &&
-      !(await getActiveLiveChatSchedule(ctx, classData._id, args.scheduleId))
+      (source.kind !== "course" ||
+        !(await getActiveLiveChatSchedule(
+          ctx,
+          source.data._id,
+          args.scheduleId,
+        )))
     ) {
       throw new ConvexError("CHAT_SESSION_NOT_LIVE");
-    }
-    assertChatActive(classData);
-    if (await isChatMutedForUser(ctx, classData, currentUser._id)) {
-      throw new ConvexError("CHAT_MUTED");
     }
 
     const body = args.body.trim();
@@ -543,22 +598,18 @@ export const send = mutation({
       const task = taskId && (await ctx.db.get("courseTasks", taskId));
       if (
         !task ||
-        task.classId !== classData._id ||
+        source.kind !== "course" ||
+        task.classId !== source.data._id ||
         task.releasedAt === undefined ||
         task.releasedAt > Date.now() ||
         (await getCourseTaskAccess(ctx, task, currentUser._id)).kind === "none"
       )
         throw new ConvexError("INVALID_CHAT_REFERENCE");
     }
-    if (
-      (attachmentIds.length || containsChatLink(body)) &&
-      !(await canAttachToCourseChat(ctx, classData, currentUser._id))
-    )
-      throw new ConvexError("CHAT_ATTACHMENTS_DISABLED");
     const attachments = await getSendAttachments(
       ctx,
       attachmentIds,
-      classData._id,
+      sourceTarget(source),
       currentUser._id,
     );
     const previousId = attachments.find((file) => file.messageId)?.messageId;
@@ -574,8 +625,19 @@ export const send = mutation({
       throw new ConvexError("INVALID_CHAT_ATTACHMENTS");
     }
 
+    // Already-committed attachment retries above do not consume quota or notify twice.
+    if (source.kind === "broadcast") {
+      await broadcastSendLimiter.limit(ctx, "broadcastMessagesByAuthor", {
+        key: currentUser._id,
+        throws: true,
+      });
+      await broadcastSendLimiter.limit(ctx, "broadcastMessagesByChat", {
+        key: source.data._id,
+        throws: true,
+      });
+    }
     const messageId = await ctx.db.insert("courseChatMessages", {
-      classId: classData._id,
+      ...sourceTarget(source),
       ...(args.scheduleId ? { scheduleId: args.scheduleId } : {}),
       authorId: currentUser._id,
       body,
@@ -598,7 +660,7 @@ export const send = mutation({
 
 export const getMyStatus = query({
   args: {
-    classId: v.id("classes"),
+    ...chatTargetFields,
     scheduleId: v.optional(v.id("classSchedule")),
   },
   returns: v.object({
@@ -610,7 +672,23 @@ export const getMyStatus = query({
   }),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
-    const classData = await ctx.db.get("classes", args.classId);
+    if (args.broadcastId) {
+      const source = await getChatSource(ctx, args);
+      if (!source || source.kind !== "broadcast" || args.scheduleId)
+        throw new ConvexError("PERMISSION_DENIED");
+      const caps = await chatCapabilities(ctx, source, currentUser._id);
+      if (!caps.read) throw new ConvexError("PERMISSION_DENIED");
+      const archived = source.data.chatArchivedAt !== undefined;
+      return {
+        isMuted: !caps.write || archived,
+        archived,
+        canAttach: caps.attach && !archived,
+        canPin: caps.pin && !archived,
+        readOnly: false,
+      };
+    }
+    chatTarget(args);
+    const classData = await ctx.db.get("classes", args.classId!);
     if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
     const access = await getCourseChatAccess(
       ctx,
@@ -652,7 +730,7 @@ export const getMyStatus = query({
 
 export const setSetting = mutation({
   args: {
-    classId: v.id("classes"),
+    ...chatTargetFields,
     setting: v.union(
       v.literal("studentsMuted"),
       v.literal("disabled"),
@@ -663,20 +741,29 @@ export const setSetting = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
-    const classData = await ctx.db.get("classes", args.classId);
-    if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
-
-    const capabilities = await getCourseChatCapabilities(
+    const source = await getChatSource(ctx, args);
+    if (!source) throw new ConvexError("PERMISSION_DENIED");
+    const isAllowed = await chatPermission(
       ctx,
+      source,
       currentUser._id,
-      classData,
+      args.setting === "disabled" ? "manage" : "moderate",
     );
-    const isAllowed =
-      args.setting === "disabled"
-        ? capabilities.canDisable
-        : capabilities.canModerate;
     if (!isAllowed) throw new ConvexError("PERMISSION_DENIED");
-    assertChatActive(classData);
+    requireActiveChat(source);
+    if (source.kind === "broadcast") {
+      await ctx.db.patch(
+        "broadcasts",
+        source.data._id,
+        args.setting === "disabled"
+          ? { chatDisabled: args.enabled }
+          : args.setting === "studentsMuted"
+            ? { professorsMuted: args.enabled }
+            : { professorAttachmentsEnabled: args.enabled },
+      );
+      return null;
+    }
+    const classData = source.data;
 
     if (args.setting === "disabled") {
       await ctx.db.patch("classes", classData._id, {
@@ -697,14 +784,43 @@ export const setSetting = mutation({
 
 export const setMuted = mutation({
   args: {
-    classId: v.id("classes"),
+    ...chatTargetFields,
     userId: v.id("users"),
     muted: v.boolean(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
-    const classData = await ctx.db.get("classes", args.classId);
+    if (args.broadcastId) {
+      const source = await getChatSource(ctx, args);
+      if (
+        !source ||
+        source.kind !== "broadcast" ||
+        !(await chatPermission(ctx, source, currentUser._id, "manage"))
+      )
+        throw new ConvexError("PERMISSION_DENIED");
+      requireActiveChat(source);
+      if ((await getBroadcastRole(ctx, args.userId, source.data)) !== "teacher")
+        throw new ConvexError("INVALID_CHAT_PARTICIPANT");
+      const writer = await getBroadcastWriter(
+        ctx,
+        source.data._id,
+        args.userId,
+      );
+      if (writer)
+        await ctx.db.patch("broadcastWriters", writer._id, {
+          enabled: !args.muted,
+        });
+      else if (!args.muted)
+        await ctx.db.insert("broadcastWriters", {
+          broadcastId: source.data._id,
+          userId: args.userId,
+          enabled: true,
+        });
+      return null;
+    }
+    chatTarget(args);
+    const classData = await ctx.db.get("classes", args.classId!);
     if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
     if (!(await canModerateCourseChat(ctx, currentUser._id, classData))) {
       throw new ConvexError("PERMISSION_DENIED");
@@ -733,32 +849,29 @@ export const setMuted = mutation({
 });
 
 export const clear = mutation({
-  args: { classId: v.id("classes") },
+  args: chatTargetFields,
   returns: v.null(),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
-    const classData = await ctx.db.get("classes", args.classId);
-    if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
-
-    const capabilities = await getCourseChatCapabilities(
-      ctx,
-      currentUser._id,
-      classData,
-    );
-    if (!capabilities.canDisable) {
+    const source = await getChatSource(ctx, args);
+    if (
+      !source ||
+      !(await chatPermission(ctx, source, currentUser._id, "manage"))
+    ) {
       throw new ConvexError("PERMISSION_DENIED");
     }
-    assertChatActive(classData);
-
-    const throughCreationTime = await getChatClearThrough(ctx, classData);
-    await ctx.db.patch("classes", classData._id, {
+    requireActiveChat(source);
+    const throughCreationTime = await getChatClearThrough(ctx, source);
+    await patchChat(ctx, source, {
       chatNotificationsClearedThrough: throughCreationTime,
     });
-    if (await deleteMessageBatch(ctx, classData._id, throughCreationTime)) {
+    if (
+      await deleteMessageBatch(ctx, sourceTarget(source), throughCreationTime)
+    ) {
       await ctx.scheduler.runAfter(
         0,
         internal.courseChatMessages.continueClear,
-        { classId: classData._id, throughCreationTime },
+        { ...sourceTarget(source), throughCreationTime },
       );
     }
     return null;
@@ -767,32 +880,28 @@ export const clear = mutation({
 
 export const setArchived = mutation({
   args: {
-    classId: v.id("classes"),
+    ...chatTargetFields,
     archived: v.boolean(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const currentUser = await getCurrentUserOrThrow(ctx);
-    const classData = await ctx.db.get("classes", args.classId);
-    if (!classData) throw new ConvexError("CLASS_NOT_FOUND");
-
-    const { canDisable } = await getCourseChatCapabilities(
-      ctx,
-      currentUser._id,
-      classData,
-    );
-    if (!canDisable) throw new ConvexError("PERMISSION_DENIED");
-
-    const isArchived = classData.chatArchivedAt !== undefined;
+    const source = await getChatSource(ctx, args);
+    if (
+      !source ||
+      !(await chatPermission(ctx, source, currentUser._id, "manage"))
+    )
+      throw new ConvexError("PERMISSION_DENIED");
+    const isArchived = source.data.chatArchivedAt !== undefined;
     if (isArchived === args.archived) return null;
 
-    await ctx.db.patch("classes", classData._id, {
+    await patchChat(ctx, source, {
       chatArchivedAt: args.archived ? Date.now() : undefined,
       ...(args.archived
         ? {
             chatNotificationsClearedThrough: await getChatClearThrough(
               ctx,
-              classData,
+              source,
             ),
           }
         : {}),
@@ -820,10 +929,10 @@ export const archiveAtCourseEnd = internalMutation({
 
     await ctx.db.patch("classes", classData._id, {
       chatArchivedAt: Date.now(),
-      chatNotificationsClearedThrough: await getChatClearThrough(
-        ctx,
-        classData,
-      ),
+      chatNotificationsClearedThrough: await getChatClearThrough(ctx, {
+        kind: "course",
+        data: classData,
+      }),
     });
     return null;
   },
@@ -831,12 +940,12 @@ export const archiveAtCourseEnd = internalMutation({
 
 export const continueClear = internalMutation({
   args: {
-    classId: v.id("classes"),
+    ...chatTargetFields,
     throughCreationTime: v.number(),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    if (await deleteMessageBatch(ctx, args.classId, args.throughCreationTime)) {
+    if (await deleteMessageBatch(ctx, args, args.throughCreationTime)) {
       await ctx.scheduler.runAfter(
         0,
         internal.courseChatMessages.continueClear,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { CalendarOff, Loader2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
@@ -63,7 +63,7 @@ export default function CalendarClosureDialog({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [localDate, setLocalDate] = useState(selectedDate);
   const [reason, setReason] = useState("");
-  const [previewNow, setPreviewNow] = useState(Date.now());
+  const [previewNow, setPreviewNow] = useState(Date.now);
   const [submitting, setSubmitting] = useState(false);
   const createClosure = useMutation(api.calendarClosures.create);
   const previewArgs =
@@ -78,11 +78,18 @@ export default function CalendarClosureDialog({
       : "skip";
   const preview = useQuery(api.calendarClosures.preview, previewArgs);
 
-  useEffect(() => {
-    if (!open) return;
+  const [previousSelectedDate, setPreviousSelectedDate] =
+    useState(selectedDate);
+  if (previousSelectedDate !== selectedDate) {
+    setPreviousSelectedDate(selectedDate);
+    if (open) setLocalDate(selectedDate);
+  }
+
+  function openClosure() {
     setLocalDate(selectedDate);
     setPreviewNow(Date.now());
-  }, [open, selectedDate]);
+    setOpen(true);
+  }
 
   const affectedSchedules = preview
     ? [...preview.contained, ...preview.partial].sort(
@@ -255,7 +262,7 @@ export default function CalendarClosureDialog({
       <Button
         variant="outline"
         size="sm"
-        onClick={() => setOpen(true)}
+        onClick={openClosure}
         className="shrink-0"
         aria-label={t("action")}
         title={t("action")}

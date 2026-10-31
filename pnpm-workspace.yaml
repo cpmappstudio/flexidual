@@ -1,7 +1,9 @@
 allowBuilds:
-  '@clerk/shared': true
-  '@posthog/cli': true
-  '@tailwindcss/oxide': true
+  "@parcel/watcher": true
+  "@swc/core": true
+  "@clerk/shared": true
+  "@posthog/cli": true
+  "@tailwindcss/oxide": true
   core-js: false
   esbuild: true
   sharp: true
@@ -9,7 +11,10 @@ allowBuilds:
 patchedDependencies:
   # Recovery fix for https://github.com/get-convex/presence/issues/54.
   # Remove when upgrading to an upstream release with equivalent recovery tests.
-  '@convex-dev/presence@0.4.0': patches/@convex-dev__presence@0.4.0.patch
+  "@convex-dev/presence@0.4.0": patches/@convex-dev__presence@0.4.0.patch
+  # Dev-only scheduler backport from convex-test v0.0.60 (false hangs / orphan timer pumps).
+  # Remove when Convex can be upgraded with a compatible convex-test >=0.0.60.
+  convex-test@0.0.54: patches/convex-test@0.0.54.patch
   # Official LiveKit #2167/#2168 backport: cancel discarded incoming streams.
   # Remove when an upstream release passes whiteboard-stream-sdk tests.
   livekit-client@2.22.4: patches/livekit-client@2.22.4.patch

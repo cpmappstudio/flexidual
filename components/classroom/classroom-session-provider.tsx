@@ -70,6 +70,7 @@ export function ClassroomSessionProvider({
     const container = document.createElement("div");
     container.className = "flex h-full min-h-0 w-full flex-col overflow-hidden";
     hostRef.current = container;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- This portal owns a browser DOM resource; create/clean it after commit, never during SSR/render.
     setHost(container);
     return () => {
       container.remove();
@@ -169,6 +170,7 @@ export function ClassroomSessionProvider({
   }, [host, outlet, externalWindow, minimized, restoreHost]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reconcile the room lifetime with its external portal/outlet and navigation, without remounting the connected room.
     if (!persistence.canPersist) setMinimized(false);
     if (persistence.needsFullView) returnToClassroom();
     if (
@@ -251,6 +253,8 @@ export function ClassroomSessionProvider({
           !session || (Boolean(outlet) && !minimized) || Boolean(externalWindow)
         }
       />
+      {/* host is React state, not hostRef.current; the portal callbacks capture refs but do not read them during render. */}
+      {/* eslint-disable-next-line react-hooks/refs -- False positive: rendering a state-owned DOM portal, with deferred imperative callbacks. */}
       {host &&
         session &&
         presentation &&

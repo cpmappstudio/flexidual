@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { tz } from "@date-fns/tz";
 import { cn } from "@/lib/utils";
 import { Video, PlayCircle } from "lucide-react";
+import { PrerecordedIndicator } from "@/components/classroom/session-prerecorded-control";
 import { getCalendarEventAppearanceClasses } from "@/components/calendar/calendar-tailwind-classes";
 import {
   CalendarTimeScale,
@@ -308,6 +309,9 @@ export default function CalendarEvent({
           )}
         </div>
 
+        {month && event.kind === "class" && event.hasPrerecorded && (
+          <PrerecordedIndicator />
+        )}
         {month && showRecordingIndicator && (
           <span
             className="inline-flex shrink-0 items-center justify-center rounded-full bg-primary/10 p-0.5 text-primary"
@@ -367,6 +371,7 @@ export default function CalendarEvent({
                 )}
               />
             )}
+            {event.hasPrerecorded && <PrerecordedIndicator />}
             {showRecordingIndicator && (
               <span
                 className="inline-flex shrink-0 items-center justify-center rounded-full bg-primary/15 p-0.5 text-primary shadow-sm ring-1 ring-primary/20"

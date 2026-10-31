@@ -32,6 +32,9 @@ import {
   sessionLeadershipEventTypeValidator,
 } from "./model/sessionLeadership";
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
+import { peopleDirectoryValidator } from "./model/peopleDirectoryFields";
+import { classSessionVideoFields } from "./model/classSessionVideoFields";
+import { chatTargetFields } from "./model/chatTarget";
 
 export const surveyCampaignValidator = v.object({
   surveyId: v.string(),
@@ -210,6 +213,8 @@ export default defineSchema({
     chatStudentAttachmentsEnabled: v.optional(v.boolean()),
     chatDisabled: v.optional(v.boolean()),
     chatArchivedAt: v.optional(v.number()),
+    notebookArchivedAt: v.optional(v.number()),
+    notebookInitializedAt: v.optional(v.number()),
     chatLastPinnedAt: v.optional(v.number()),
     chatNotificationsClearedThrough: v.optional(v.number()),
 
@@ -235,6 +240,11 @@ export default defineSchema({
       "isActive",
       "enrollmentsMigratedAt",
     ])
+    .index("by_campusId_and_isActive_and_enrollmentsMigratedAt", [
+      "campusId",
+      "isActive",
+      "enrollmentsMigratedAt",
+    ])
     .index("by_school_and_active_and_class_type", [
       "schoolId",
       "isActive",
@@ -247,11 +257,11 @@ export default defineSchema({
       "gradeCode",
       "isActive",
     ])
-    .index("by_teacher_campus_period_active", [
+    .index("by_teacher_campus_active_period", [
       "teacherId",
       "campusId",
-      "academicPeriodId",
       "isActive",
+      "academicPeriodId",
     ])
     .searchIndex("search_catalog_name", {
       searchField: "name",
@@ -404,8 +414,41 @@ export default defineSchema({
     .index("by_taskId_and_kind_and_state", ["taskId", "kind", "state"])
     .index("by_recipientId_and_state", ["recipientId", "state"]),
 
+  broadcasts: defineTable({
+    name: v.string(),
+    schoolId: v.id("schools"),
+    campusId: v.optional(v.id("campuses")),
+    mode: v.union(v.literal("private"), v.literal("school")),
+    gradeCodes: v.array(v.string()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    professorsMuted: v.boolean(),
+    professorAttachmentsEnabled: v.boolean(),
+    deletingAt: v.optional(v.number()),
+    chatDisabled: v.optional(v.boolean()),
+    chatArchivedAt: v.optional(v.number()),
+    chatNotificationsClearedThrough: v.optional(v.number()),
+    chatLastPinnedAt: v.optional(v.number()),
+  })
+    .index("by_schoolId", ["schoolId"])
+    .index("by_campusId", ["campusId"])
+    .searchIndex("search_name", {
+      searchField: "name",
+      filterFields: ["schoolId"],
+    }),
+  broadcastWriters: defineTable({
+    broadcastId: v.id("broadcasts"),
+    userId: v.id("users"),
+    enabled: v.boolean(),
+  }).index("by_broadcastId_and_userId", ["broadcastId", "userId"]),
+  // Delivery identity must survive changes to a recipient's memberships.
+  broadcastMessageDeliveries: defineTable({
+    messageId: v.id("courseChatMessages"),
+    userId: v.id("users"),
+  }).index("by_messageId_and_userId", ["messageId", "userId"]),
+
   courseChatMessages: defineTable({
-    classId: v.id("classes"),
+    ...chatTargetFields,
     scheduleId: v.optional(v.id("classSchedule")),
     authorId: v.optional(v.id("users")),
     body: v.string(),
@@ -427,18 +470,22 @@ export default defineSchema({
     pinnedAt: v.optional(v.number()),
   })
     .index("by_class", ["classId"])
+    .index("by_broadcastId", ["broadcastId"])
+    .index("by_broadcastId_and_pinnedAt", ["broadcastId", "pinnedAt"])
     .index("by_eventKey", ["eventKey"])
     .index("by_classId_and_scheduleId", ["classId", "scheduleId"])
     .index("by_classId_and_pinnedAt", ["classId", "pinnedAt"]),
 
   courseChatPinReads: defineTable({
-    classId: v.id("classes"),
+    ...chatTargetFields,
     userId: v.id("users"),
     seenThrough: v.number(),
-  }).index("by_classId_and_userId", ["classId", "userId"]),
+  })
+    .index("by_classId_and_userId", ["classId", "userId"])
+    .index("by_broadcastId_and_userId", ["broadcastId", "userId"]),
 
   courseChatAttachments: defineTable({
-    classId: v.id("classes"),
+    ...chatTargetFields,
     uploadedBy: v.id("users"),
     name: v.string(),
     contentType: v.string(),
@@ -446,14 +493,18 @@ export default defineSchema({
     storageId: v.optional(v.id("_storage")),
     messageId: v.optional(v.id("courseChatMessages")),
     expiresAt: v.optional(v.number()),
-  }).index("by_classId", ["classId"]),
+  })
+    .index("by_classId", ["classId"])
+    .index("by_broadcastId", ["broadcastId"]),
 
   courseChatMutes: defineTable({
-    classId: v.id("classes"),
+    ...chatTargetFields,
     userId: v.id("users"),
     mutedAt: v.number(),
     mutedBy: v.id("users"),
-  }).index("by_class_and_user", ["classId", "userId"]),
+  })
+    .index("by_class_and_user", ["classId", "userId"])
+    .index("by_broadcastId_and_userId", ["broadcastId", "userId"]),
 
   events: defineTable({
     schoolId: v.id("schools"),
@@ -645,6 +696,8 @@ export default defineSchema({
 
     // Completion tracking
     completedAt: v.optional(v.number()),
+    prerecordedVideoId: v.optional(v.id("classSessionVideos")),
+    prerecordedVideoReleased: v.optional(v.boolean()),
 
     // Temporary responsibility for this occurrence only.
     sessionLeaderId: v.optional(v.id("users")),
@@ -809,6 +862,7 @@ export default defineSchema({
       v.literal("event_chat"),
       v.literal("event_schedule"),
       v.literal("event_deleted"),
+      v.literal("broadcast_chat"),
       v.literal("course_task"),
       v.literal("course_task_reminder"),
       v.literal("survey_invitation"),
@@ -823,6 +877,7 @@ export default defineSchema({
     eventId: v.optional(v.id("events")),
     eventTitle: v.optional(v.string()),
     eventChatMessageId: v.optional(v.id("eventChatMessages")),
+    broadcastId: v.optional(v.id("broadcasts")),
     taskId: v.optional(v.id("courseTasks")),
     messageId: v.optional(v.id("courseChatMessages")),
     taskTitle: v.optional(v.string()),
@@ -860,6 +915,7 @@ export default defineSchema({
     ])
     .index("by_dedupe_key", ["dedupeKey"])
     .index("by_taskId", ["taskId"])
+    .index("by_broadcastId", ["broadcastId"])
     .index("by_recipientId_and_classId_and_readAt_and_createdAt", [
       "recipientId",
       "classId",
@@ -1045,6 +1101,89 @@ export default defineSchema({
    * ROLE ASSIGNMENTS (The Security Junction)
    * Decouples identity from access. Determines who can do what, and where.
    */
+  peopleDirectoryState: defineTable({
+    campusId: v.id("campuses"),
+    teacherId: v.optional(v.id("users")),
+    ready: v.boolean(),
+    jobId: v.optional(v.id("_scheduled_functions")),
+  }).index("by_campusId_and_teacherId", ["campusId", "teacherId"]),
+
+  teacherStudentDirectory: defineTable({
+    campusId: v.id("campuses"),
+    teacherId: v.id("users"),
+    studentId: v.id("users"),
+    directory: peopleDirectoryValidator,
+  })
+    .index("by_studentId", ["studentId"])
+    .index("by_campusId_and_teacherId_and_studentId", [
+      "campusId",
+      "teacherId",
+      "studentId",
+    ])
+    .index("by_scope_name", ["campusId", "teacherId", "directory.name"])
+    .index("by_scope_email", ["campusId", "teacherId", "directory.email"])
+    .index("by_scope_grade", ["campusId", "teacherId", "directory.grade"])
+    .index("by_scope_active", ["campusId", "teacherId", "directory.isActive"])
+    .index("by_scope_grade_name", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.name",
+    ])
+    .index("by_scope_active_name", [
+      "campusId",
+      "teacherId",
+      "directory.isActive",
+      "directory.name",
+    ])
+    .index("by_scope_grade_email", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.email",
+    ])
+    .index("by_scope_grade_active", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.isActive",
+    ])
+    .index("by_scope_active_email", [
+      "campusId",
+      "teacherId",
+      "directory.isActive",
+      "directory.email",
+    ])
+    .index("by_scope_active_grade", [
+      "campusId",
+      "teacherId",
+      "directory.isActive",
+      "directory.grade",
+    ])
+    .index("by_scope_grade_active_name", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.isActive",
+      "directory.name",
+    ])
+    .index("by_scope_grade_active_email", [
+      "campusId",
+      "teacherId",
+      "directory.grade",
+      "directory.isActive",
+      "directory.email",
+    ])
+    .searchIndex("search_people", {
+      searchField: "directory.search",
+      filterFields: [
+        "campusId",
+        "teacherId",
+        "directory.grade",
+        "directory.isActive",
+      ],
+    }),
+
   roleAssignments: defineTable({
     userId: v.id("users"),
 
@@ -1071,6 +1210,8 @@ export default defineSchema({
     // A student's grade belongs to this membership, not to their global identity.
     gradeCode: v.optional(v.string()),
 
+    directory: v.optional(peopleDirectoryValidator),
+
     // Audit Trail
     assignedAt: v.number(),
     assignedBy: v.optional(v.id("users")), // Who granted this access
@@ -1079,14 +1220,66 @@ export default defineSchema({
     .index("by_role", ["role", "schoolId"])
     .index("by_org", ["orgId", "orgType"])
     .index("by_org_role", ["orgId", "orgType", "role"])
+    .index("by_orgId_and_orgType_and_role_and_gradeCode", [
+      "orgId",
+      "orgType",
+      "role",
+      "gradeCode",
+    ])
     .index("by_user_org", ["userId", "orgId", "orgType"])
-    .index("by_school_role_grade", ["schoolId", "role", "gradeCode"]),
+    .index("by_user_org_role", ["userId", "orgId", "orgType", "role"])
+    .index("by_school_role_grade", ["schoolId", "role", "gradeCode"])
+    .index("by_org_role_name", ["orgId", "orgType", "role", "directory.name"])
+    .index("by_org_role_email", ["orgId", "orgType", "role", "directory.email"])
+    .index("by_org_role_grade", ["orgId", "orgType", "role", "directory.grade"])
+    .index("by_org_role_active", [
+      "orgId",
+      "orgType",
+      "role",
+      "directory.isActive",
+    ])
+    .index("by_org_role_grade_name", [
+      "orgId",
+      "orgType",
+      "role",
+      "directory.grade",
+      "directory.name",
+    ])
+    .index("by_org_role_active_name", [
+      "orgId",
+      "orgType",
+      "role",
+      "directory.isActive",
+      "directory.name",
+    ])
+    .searchIndex("search_people", {
+      searchField: "directory.search",
+      filterFields: [
+        "orgId",
+        "orgType",
+        "role",
+        "directory.grade",
+        "directory.isActive",
+      ],
+    }),
 
-  /**
-   * RECORDINGS
-   * Tracks LiveKit egress recordings for class and event sessions.
-   * Created when a recording starts; updated via LiveKit egress webhook on completion.
-   */
+  // Uploaded videos and their published lesson confirmations are independent of LiveKit.
+  classSessionVideos: defineTable(classSessionVideoFields).index(
+    "by_scheduleId_and_state",
+    ["scheduleId", "state"],
+  ),
+
+  classPrerecordedLessonRecords: defineTable({
+    classId: v.id("classes"),
+    scheduleId: v.id("classSchedule"),
+    lessonId: v.id("lessons"),
+    taughtAt: v.number(),
+  })
+    .index("by_classId_and_lessonId", ["classId", "lessonId"])
+    .index("by_scheduleId_and_lessonId", ["scheduleId", "lessonId"])
+    .index("by_lessonId", ["lessonId"]),
+
+  /** LiveKit egress recordings for class and event sessions, updated by its completion webhook. */
   recordings: defineTable({
     scheduleId: v.optional(v.id("classSchedule")),
     eventOccurrenceId: v.optional(v.id("eventOccurrences")),
@@ -1125,13 +1318,54 @@ export default defineSchema({
    * upgraded writers cannot overwrite buckets with a stale legacy snapshot.
    */
   whiteboardSceneManifests: defineTable({
-    roomName: v.string(),
+    roomName: v.optional(v.string()),
+    presentedPageId: v.optional(v.id("courseNotebookPages")),
+    pageId: v.optional(v.id("courseNotebookPages")),
+    // Adopted live pages keep the original device draft identity after session cleanup.
+    sessionDraftKey: v.optional(v.string()),
     fromLegacy: v.boolean(),
     generation: v.number(),
     bucketIds: v.array(v.number()),
     legacyOrder: v.array(v.string()),
     recordingToken: v.optional(v.string()),
-  }).index("by_roomName", ["roomName"]),
+  })
+    .index("by_roomName", ["roomName"])
+    .index("by_pageId", ["pageId"]),
+
+  courseNotebookPages: defineTable({
+    classId: v.id("classes"),
+    title: v.string(),
+    createdBy: v.id("users"),
+    // Hidden, not destroyed: pending drafts and undo in another editor can revive it.
+    retiredAt: v.optional(v.number()),
+    // Legacy previews remain readable until their first write to courseNotebookPreviews.
+    previewStorageId: v.optional(v.id("_storage")),
+    previewVersion: v.optional(v.number()),
+    previewRevision: v.optional(v.string()),
+    previewRequestedRevision: v.optional(v.string()),
+  })
+    .index("by_classId", ["classId"])
+    .index("by_classId_and_retiredAt", ["classId", "retiredAt"])
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["classId", "retiredAt"],
+    }),
+
+  courseNotebookPreviews: defineTable({
+    pageId: v.id("courseNotebookPages"),
+    previewStorageId: v.optional(v.id("_storage")),
+    previewVersion: v.optional(v.number()),
+    previewRevision: v.optional(v.string()),
+    previewRequestedRevision: v.optional(v.string()),
+  }).index("by_pageId", ["pageId"]),
+
+  courseNotebookFiles: defineTable({
+    pageId: v.id("courseNotebookPages"),
+    fileId: v.string(),
+    storageId: v.id("_storage"),
+    mimeType: v.string(),
+    created: v.number(),
+  }).index("by_pageId_and_fileId", ["pageId", "fileId"]),
 
   whiteboardSceneBuckets: defineTable({
     manifestId: v.id("whiteboardSceneManifests"),
@@ -1158,6 +1392,15 @@ export default defineSchema({
     entries: v.array(
       v.object({ revision: v.number(), parts: v.array(v.string()) }),
     ),
+  }).index("by_manifestId_and_bucketId", ["manifestId", "bucketId"]),
+
+  // Small preview consistency metadata, independent of drawing-sized history.
+  whiteboardScenePreviewSignatures: defineTable({
+    manifestId: v.id("whiteboardSceneManifests"),
+    bucketId: v.number(),
+    generation: v.number(),
+    signature: v.string(),
+    hasContent: v.optional(v.boolean()),
   }).index("by_manifestId_and_bucketId", ["manifestId", "bucketId"]),
 
   whiteboardSessions: defineTable({

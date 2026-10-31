@@ -16,6 +16,8 @@ const testState = vi.hoisted(() => ({
   setManageEventDialogOpen: vi.fn(),
   setSelectedEvent: vi.fn(),
   toastError: vi.fn(),
+  sessionRecord: vi.fn(),
+  eventOverrides: {} as Record<string, unknown>,
 }));
 
 vi.mock("@/convex/_generated/api", () => ({
@@ -55,7 +57,7 @@ vi.mock("@/hooks/use-current-minute", () => ({
 }));
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 vi.mock("@/components/classroom/session-record", () => ({
-  useSessionRecord: () => null,
+  useSessionRecord: testState.sessionRecord,
   getSessionRecordings: () => [],
   SessionRecordView: () => null,
 }));
@@ -103,6 +105,7 @@ vi.mock("@/components/calendar/calendar-context", () => ({
       sessionStartedAt: Date.UTC(2026, 9, 2, 12),
       sessionReopenUntil: Date.UTC(2026, 9, 2, 12, 15),
       isRecurring: false,
+      ...testState.eventOverrides,
     },
     setSelectedEvent: testState.setSelectedEvent,
     displayTimeZone: "UTC",
@@ -117,11 +120,83 @@ beforeEach(() => {
   testState.router.push.mockReset();
   testState.setManageEventDialogOpen.mockReset();
   testState.toastError.mockReset();
+  testState.sessionRecord.mockReset().mockReturnValue(null);
+  testState.eventOverrides = {};
 });
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+
+it("exposes the shared prerecorded manager only for authorized classroom events", () => {
+  testState.eventOverrides = {
+    canManagePrerecorded: true,
+    hasPrerecorded: true,
+  };
+  const view = render(<CalendarManageEventDialog />);
+  const action = screen.getByRole("button", { name: "manage" });
+  expect(
+    action.parentElement?.previousElementSibling
+      ?.querySelector("svg")
+      ?.classList.contains("lucide-calendar-days"),
+  ).toBe(true);
+  expect(
+    action.parentElement?.previousElementSibling?.querySelector(
+      ".lucide-clock-3",
+    ),
+  ).toBeTruthy();
+  testState.eventOverrides = {
+    canManagePrerecorded: false,
+    hasPrerecorded: true,
+  };
+  view.rerender(<CalendarManageEventDialog />);
+  expect(screen.queryByRole("button", { name: "manage" })).toBeNull();
+});
+
+it("loads released prerecorded content during a live class using the current clock, not its future end", () => {
+  testState.eventOverrides = {
+    hasRecording: true,
+    isLive: true,
+    status: "active",
+  };
+  render(<CalendarManageEventDialog />);
+  expect(testState.sessionRecord).toHaveBeenCalledWith(
+    "schedule-1",
+    Date.UTC(2026, 9, 2, 12, 1),
+    true,
+  );
+});
+
+it.each([
+  { hasRecording: false, isLive: true, status: "active", sessionType: "live" },
+  {
+    hasRecording: true,
+    isLive: false,
+    status: "cancelled",
+    sessionType: "live",
+  },
+  {
+    hasRecording: true,
+    isLive: false,
+    status: "scheduled",
+    sessionType: "abeka",
+  },
+])("does not load a replay for an unavailable current class: %j", (event) => {
+  testState.eventOverrides = event;
+  render(<CalendarManageEventDialog />);
+  expect(testState.sessionRecord).toHaveBeenCalledWith(
+    "schedule-1",
+    expect.any(Number),
+    false,
+  );
+});
+
+it("keeps past session reads anchored to their end without adding minute-based invalidations", () => {
+  const end = Date.UTC(2026, 9, 2, 11);
+  testState.eventOverrides = { end: new Date(end), isLive: false };
+  render(<CalendarManageEventDialog />);
+  expect(testState.sessionRecord).toHaveBeenCalledWith("schedule-1", end, true);
 });
 
 it("confirms reopening in the calendar and enters only after the class is active", async () => {

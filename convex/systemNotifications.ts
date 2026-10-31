@@ -32,6 +32,7 @@ const notificationKindValidator = v.union(
   v.literal("event_chat"),
   v.literal("event_schedule"),
   v.literal("event_deleted"),
+  v.literal("broadcast_chat"),
   v.literal("course_task"),
   v.literal("course_task_reminder"),
   v.literal("survey_invitation"),
@@ -54,6 +55,7 @@ const notificationPayloadFields = {
   eventId: v.optional(v.id("events")),
   eventTitle: v.optional(v.string()),
   eventChatMessageId: v.optional(v.id("eventChatMessages")),
+  broadcastId: v.optional(v.id("broadcasts")),
   taskId: v.optional(v.id("courseTasks")),
   messageId: v.optional(v.id("courseChatMessages")),
   taskTitle: v.optional(v.string()),
@@ -173,7 +175,8 @@ export const markRead = mutation({
     // Chat navigation acknowledges only messages actually displayed in the chat.
     if (
       notification.kind === "course_chat" ||
-      notification.kind === "event_chat"
+      notification.kind === "event_chat" ||
+      notification.kind === "broadcast_chat"
     )
       return null;
     if (notification.readAt === undefined) {
@@ -205,7 +208,8 @@ async function markUnreadBatch(
       ctx.db.patch("systemNotifications", notification._id, {
         readAt,
         ...(notification.kind === "course_chat" ||
-        notification.kind === "event_chat"
+        notification.kind === "event_chat" ||
+        notification.kind === "broadcast_chat"
           ? { chatReadThrough: through }
           : {}),
       }),

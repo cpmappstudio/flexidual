@@ -42,6 +42,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RecordingPlayerModal } from "@/components/recording-player-modal";
 import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
 import { SessionCloseoutDialog } from "@/components/classroom/session-closeout-dialog";
+import { SessionPrerecordedControl } from "@/components/classroom/session-prerecorded-control";
 import {
   getSessionRecordings,
   SessionRecordView,
@@ -107,25 +108,34 @@ export default function CalendarManageEventDialog({
   const shouldLoadSessionRecord = Boolean(
     manageEventDialogOpen &&
       selectedEvent &&
-      !selectedEvent.isLive &&
-      selectedEvent.end.getTime() < now &&
+      selectedEvent.kind === "class" &&
+      (selectedEvent.hasRecording ||
+        (!selectedEvent.isLive && selectedEvent.end.getTime() < now)) &&
       selectedEvent.status !== "cancelled" &&
       selectedEvent.sessionType === "live",
   );
   const sessionRecord = useSessionRecord(
     selectedEvent?.kind === "class" ? selectedEvent.scheduleId : undefined,
-    selectedEvent?.end.getTime(),
+    selectedEvent?.kind === "class"
+      ? Math.min(now, selectedEvent.end.getTime())
+      : undefined,
     shouldLoadSessionRecord,
   );
 
-  useEffect(() => {
+  const [previousScheduleId, setPreviousScheduleId] = useState(
+    selectedEvent?.kind === "class" ? selectedEvent.scheduleId : undefined,
+  );
+  const selectedScheduleId =
+    selectedEvent?.kind === "class" ? selectedEvent.scheduleId : undefined;
+  if (previousScheduleId !== selectedScheduleId) {
+    setPreviousScheduleId(selectedScheduleId);
     setCancellationReason("");
     setCancellationScope("single");
     setCancelDialogOpen(false);
     setCloseoutOpen(false);
     setRecordingOpen(false);
     setReopenDialogOpen(false);
-  }, [selectedEvent?.id]);
+  }
 
   useEffect(() => {
     if (
@@ -134,6 +144,7 @@ export default function CalendarManageEventDialog({
       !reopenedSession.isLive
     )
       return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Consume a confirmed remote activation once, then navigate; navigation must not run during render.
     setReopenedRoomName(null);
     setReopenDialogOpen(false);
     setIsReopening(false);
@@ -351,6 +362,15 @@ export default function CalendarManageEventDialog({
               minutesLabel={t("schedule.minutes")}
               showDuration={!isStudent}
             />
+            {selectedEvent.canManagePrerecorded && (
+              <div className="border-b border-border/70">
+                <SessionPrerecordedControl
+                  scheduleId={selectedEvent.scheduleId}
+                  canManage
+                  hasPrerecorded={selectedEvent.hasPrerecorded}
+                />
+              </div>
+            )}
 
             {selectedEvent.status === "cancelled" &&
               selectedEvent.cancellationReason && (

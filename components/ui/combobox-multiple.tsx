@@ -14,10 +14,13 @@ function ComboboxContent({
   className,
   anchor,
   side = "bottom",
+  portalContainer,
   ...props
 }: ComboboxPrimitive.Popup.Props &
-  Pick<ComboboxPrimitive.Positioner.Props, "anchor" | "side">) {
-  const container = getFullscreenPortalContainer();
+  Pick<ComboboxPrimitive.Positioner.Props, "anchor" | "side"> & {
+    portalContainer?: HTMLElement | null;
+  }) {
+  const container = portalContainer ?? getFullscreenPortalContainer();
   return (
     <ComboboxPrimitive.Portal
       container={
@@ -158,6 +161,15 @@ function useComboboxAnchor() {
   return React.useRef<HTMLDivElement | null>(null);
 }
 
+// Base UI closes its popup; a containing Radix dialog must not close on the same Escape.
+function preventComboboxDialogDismiss(event: KeyboardEvent) {
+  if (
+    event.target instanceof HTMLElement &&
+    event.target.closest('[role="combobox"][aria-expanded="true"]')
+  )
+    event.preventDefault();
+}
+
 export {
   Combobox,
   ComboboxValue,
@@ -169,4 +181,5 @@ export {
   ComboboxChip,
   ComboboxChipsInput,
   useComboboxAnchor,
+  preventComboboxDialogDismiss,
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -72,16 +72,20 @@ export function ManageScheduleDialog({
   const updateSchedule = useMutation(api.schedule.updateSchedule);
   const deleteSchedule = useMutation(api.schedule.deleteSchedule);
 
-  useEffect(() => {
-    if (!open) return;
-
-    setTitle(initialData.title || "");
-    setDescription(initialData.description || "");
-    setSessionType(initialData.sessionType);
-    setStartDate(utcToLocalDateTime(initialData.start, initialData.timeZone));
-    setDuration(Math.round((initialData.end - initialData.start) / 1000 / 60));
-    setUpdateSeries(false);
-  }, [open, initialData]);
+  const [formSource, setFormSource] = useState({ open: false, initialData });
+  if (formSource.open !== open || formSource.initialData !== initialData) {
+    setFormSource({ open, initialData });
+    if (open) {
+      setTitle(initialData.title || "");
+      setDescription(initialData.description || "");
+      setSessionType(initialData.sessionType);
+      setStartDate(utcToLocalDateTime(initialData.start, initialData.timeZone));
+      setDuration(
+        Math.round((initialData.end - initialData.start) / 1000 / 60),
+      );
+      setUpdateSeries(false);
+    }
+  }
 
   const handleSubmit = async () => {
     setIsSubmitting(true);

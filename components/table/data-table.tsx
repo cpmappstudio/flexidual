@@ -13,7 +13,13 @@ import {
   useReactTable,
   VisibilityState,
 } from "@tanstack/react-table";
-import { Download, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import {
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  Columns3,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -34,8 +40,15 @@ import {
 } from "@/components/ui/table";
 import type { DataTableProps } from "@/lib/table/types";
 import { shouldHandleRowClick } from "@/lib/table/utils";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_COLUMN_VISIBILITY: VisibilityState = { search: false };
 
 export function DataTable<TData>({
   data,
@@ -43,6 +56,8 @@ export function DataTable<TData>({
   filterColumn,
   filterPlaceholder,
   emptyMessage,
+  columnsMenuLabel,
+  columnVisibilityKey,
   exportButtonLabel,
   filterConfigs,
   filterAllLabel,
@@ -57,7 +72,9 @@ export function DataTable<TData>({
   onExport,
   onFilteredRowCountChange,
   onRowClick,
+  server,
 }: DataTableProps<TData>) {
+  "use no memo"; // TanStack Table v8 exposes a mutable table API; React's documented compiler opt-out.
   const resolvedPageSize = pageSize ?? DEFAULT_PAGE_SIZE;
   const [sorting, setSorting] = React.useState<SortingState>(
     initialSorting ?? [],
@@ -65,21 +82,29 @@ export function DataTable<TData>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     initialColumnFilters ?? [],
   );
-  const [columnVisibility, setColumnVisibility] =
-    React.useState<VisibilityState>({
-      search: false,
-    });
+  const [visibility, setVisibility] = React.useState<{
+    key?: string;
+    value: VisibilityState;
+    changed?: boolean;
+  }>({ value: DEFAULT_COLUMN_VISIBILITY });
+  // Never render another account/campus's preferences while its replacement loads.
+  const columnVisibility =
+    visibility.key === columnVisibilityKey
+      ? visibility.value
+      : DEFAULT_COLUMN_VISIBILITY;
   const [rowSelection, setRowSelection] = React.useState({});
   const [pagination, setPagination] = React.useState<PaginationState>({
     pageIndex: 0,
     pageSize: resolvedPageSize,
   });
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack v8 is intentionally outside React Compiler (use no memo above); keep its supported table API, pagination and filters.
   const table = useReactTable({
     data: data ?? [],
     columns,
-    onSortingChange: setSorting,
+    onSortingChange: server?.onSortingChange ?? setSorting,
     onColumnFiltersChange: (updater) => {
+      if (server) return server.onColumnFiltersChange(updater);
       setColumnFilters(updater);
       setPagination((current) =>
         current.pageIndex === 0 ? current : { ...current, pageIndex: 0 },
@@ -87,15 +112,31 @@ export function DataTable<TData>({
     },
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: paginate ? getPaginationRowModel() : undefined,
+    getPaginationRowModel:
+      paginate && !server ? getPaginationRowModel() : undefined,
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onColumnVisibilityChange: setColumnVisibility,
+    onColumnVisibilityChange: (updater) => {
+      setVisibility((current) => {
+        const previous =
+          current.key === columnVisibilityKey
+            ? current.value
+            : DEFAULT_COLUMN_VISIBILITY;
+        return {
+          key: columnVisibilityKey,
+          value: typeof updater === "function" ? updater(previous) : updater,
+          changed: true,
+        };
+      });
+    },
     onRowSelectionChange: setRowSelection,
     autoResetPageIndex: false,
+    manualPagination: Boolean(server),
+    manualSorting: Boolean(server),
+    manualFiltering: Boolean(server),
     state: {
-      sorting,
-      columnFilters,
+      sorting: server?.sorting ?? sorting,
+      columnFilters: server?.columnFilters ?? columnFilters,
       columnVisibility,
       rowSelection,
       pagination,
@@ -103,6 +144,47 @@ export function DataTable<TData>({
   });
 
   const t = useTranslations();
+
+  React.useEffect(() => {
+    if (!columnVisibilityKey) return;
+    const value = { ...DEFAULT_COLUMN_VISIBILITY };
+    try {
+      const raw = localStorage.getItem(columnVisibilityKey);
+      const stored: unknown = raw ? JSON.parse(raw) : null;
+      if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+        const preferences = stored as Record<string, unknown>;
+        for (const column of table.getAllLeafColumns()) {
+          if (
+            column.getCanHide() &&
+            Object.hasOwn(preferences, column.id) &&
+            typeof preferences[column.id] === "boolean"
+          )
+            value[column.id] = preferences[column.id] as boolean;
+        }
+      }
+    } catch {
+      // Malformed or unavailable browser storage must not block the directory.
+    }
+    setVisibility({ key: columnVisibilityKey, value });
+  }, [columnVisibilityKey, table]);
+
+  React.useEffect(() => {
+    // Persist only committed local changes, never the initial load or another scope.
+    if (
+      !columnVisibilityKey ||
+      visibility.key !== columnVisibilityKey ||
+      !visibility.changed
+    )
+      return;
+    try {
+      localStorage.setItem(
+        columnVisibilityKey,
+        JSON.stringify(visibility.value),
+      );
+    } catch {
+      // Optional UI preference: keep working in memory if storage is full/blocked.
+    }
+  }, [columnVisibilityKey, visibility]);
 
   const filterColumnInstance = filterColumn
     ? table.getColumn(filterColumn)
@@ -117,18 +199,18 @@ export function DataTable<TData>({
   );
 
   React.useEffect(() => {
-    if (!paginate) return;
+    if (!paginate || server) return;
     const lastPageIndex = Math.max(0, table.getPageCount() - 1);
     setPagination((current) =>
       current.pageIndex > lastPageIndex
         ? { ...current, pageIndex: lastPageIndex }
         : current,
     );
-  }, [filteredRowsCount, paginate, table]);
+  }, [filteredRowsCount, paginate, table, server]);
 
   React.useEffect(() => {
-    onFilteredRowCountChange?.(filteredRowsCount);
-  }, [filteredRowsCount, onFilteredRowCountChange]);
+    if (!server) onFilteredRowCountChange?.(filteredRowsCount);
+  }, [filteredRowsCount, onFilteredRowCountChange, server]);
 
   const renderResultsCount = (withSeparator: boolean) => {
     if (!resolvedResultsCountLabel) {
@@ -173,6 +255,40 @@ export function DataTable<TData>({
     onExport(rows);
   }, [onExport, table]);
 
+  const columnSelector = columnVisibilityKey ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="bg-card"
+          aria-label={columnsMenuLabel ?? t("table.columns")}
+        >
+          <Columns3 aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {table
+          .getAllLeafColumns()
+          .filter((column) => column.getCanHide())
+          .map((column) => (
+            <DropdownMenuCheckboxItem
+              key={column.id}
+              checked={column.getIsVisible()}
+              onSelect={(event) => event.preventDefault()}
+              onCheckedChange={(value) =>
+                column.toggleVisibility(value === true)
+              }
+            >
+              {(column.columnDef.meta as { label?: string } | undefined)
+                ?.label ?? column.id}
+            </DropdownMenuCheckboxItem>
+          ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null;
+
   return (
     <div className="min-w-0 w-full">
       <div className="flex min-w-0 items-center gap-2 pb-4">
@@ -192,6 +308,7 @@ export function DataTable<TData>({
           </InputGroup>
         ) : null}
         {(customFilter ||
+          columnVisibilityKey ||
           !!filterConfigs?.length ||
           onExport ||
           createAction) && (
@@ -217,8 +334,13 @@ export function DataTable<TData>({
               </Button>
             )}
 
-            {createAction && (
-              <ResponsivePageAction>{createAction}</ResponsivePageAction>
+            {createAction ? (
+              <ResponsivePageAction className="flex items-center gap-2">
+                {columnSelector}
+                {createAction}
+              </ResponsivePageAction>
+            ) : (
+              columnSelector
             )}
           </div>
         )}
@@ -233,7 +355,7 @@ export function DataTable<TData>({
       )}
 
       <div className="min-w-0 overflow-hidden rounded-md border">
-        <Table className="bg-card">
+        <Table className="bg-card" aria-busy={server?.isLoading}>
           <TableHeader className="bg-primary/95 sticky top-0 z-10 ">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow
@@ -300,10 +422,10 @@ export function DataTable<TData>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
-                  {emptyMessage}
+                  {server?.isLoading ? t("common.loading") : emptyMessage}
                 </TableCell>
               </TableRow>
             )}
@@ -317,10 +439,12 @@ export function DataTable<TData>({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               {renderResultsCount(true)}
               <span>
-                {t("table.pageInfo", {
-                  current: table.getState().pagination.pageIndex + 1,
-                  total: table.getPageCount(),
-                })}
+                {server
+                  ? t("table.pageNumber", { current: server.pageIndex + 1 })
+                  : t("table.pageInfo", {
+                      current: table.getState().pagination.pageIndex + 1,
+                      total: table.getPageCount(),
+                    })}
               </span>
             </div>
           </div>
@@ -330,8 +454,14 @@ export function DataTable<TData>({
               variant="outline"
               size="icon"
               className="bg-sidebar"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+              onClick={() =>
+                server ? server.onPrevious() : table.previousPage()
+              }
+              disabled={
+                server
+                  ? server.isLoading || server.pageIndex === 0
+                  : !table.getCanPreviousPage()
+              }
             >
               <span className="sr-only">Go to previous page</span>
               <ChevronLeft />
@@ -341,8 +471,12 @@ export function DataTable<TData>({
               variant="outline"
               size="icon"
               className="bg-sidebar"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
+              onClick={() => (server ? server.onNext() : table.nextPage())}
+              disabled={
+                server
+                  ? server.isLoading || !server.hasNext
+                  : !table.getCanNextPage()
+              }
             >
               <span className="sr-only">Go to next page</span>
               <ChevronRight />

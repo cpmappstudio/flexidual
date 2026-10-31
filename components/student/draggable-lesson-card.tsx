@@ -43,7 +43,7 @@ export function DraggableLessonCard({
   const startDate = new TZDate(lesson.start, lesson.timeZone);
   const endDate = new TZDate(lesson.end, lesson.timeZone);
 
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(Date.now);
 
   const timeToStart = lesson.start - now;
 

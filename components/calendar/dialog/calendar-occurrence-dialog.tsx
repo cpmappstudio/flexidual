@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -93,15 +93,11 @@ export function EventOccurrenceDialog({
     api.events.hasActiveRoom,
     open && event ? { eventId: event.eventId } : "skip",
   );
-  useEffect(() => {
-    if (activeRoom) setCancelDialogOpen(false);
-  }, [activeRoom]);
-  useEffect(() => {
-    if (!open) {
-      setCancelDialogOpen(false);
-      setReopenDialogOpen(false);
-    }
-  }, [open]);
+  if (activeRoom && cancelDialogOpen) setCancelDialogOpen(false);
+  if (!open && (cancelDialogOpen || reopenDialogOpen)) {
+    setCancelDialogOpen(false);
+    setReopenDialogOpen(false);
+  }
   const eventStart = event?.actualStart;
   const roomStatus = useQuery(
     api.eventRoom.getSessionStatus,
@@ -116,12 +112,14 @@ export function EventOccurrenceDialog({
       : "skip",
   );
 
-  useEffect(() => {
-    if (!eventId || eventStart === undefined) return;
+  const eventScope = `${eventId ?? ""}:${eventStart ?? ""}`;
+  const [previousEventScope, setPreviousEventScope] = useState(eventScope);
+  if (previousEventScope !== eventScope) {
+    setPreviousEventScope(eventScope);
     setCancelDialogOpen(false);
     setReason("");
     setCancelScope("one");
-  }, [eventId, eventStart]);
+  }
 
   if (!event) return null;
   const isFuture = event.status === "scheduled" && event.actualStart > now;

@@ -8,6 +8,8 @@ import { canAccessClass } from "./permissions";
 import { isStudentEnrolled } from "./model/enrollments";
 import { isCourseTeacher } from "./model/courseAssignments";
 import { resolveStudentDashboardAccess } from "./model/studentDashboardAccess";
+import { chatTarget, chatTargetFields } from "./model/chatTarget";
+import { getBroadcastRole } from "./model/broadcastAccess";
 
 const presence = new Presence(components.presence);
 const statusValidator = v.object({
@@ -81,7 +83,7 @@ export const studentProfile = query({
 });
 
 export const chatParticipants = query({
-  args: { classId: v.id("classes"), userIds: v.array(v.id("users")) },
+  args: { ...chatTargetFields, userIds: v.array(v.id("users")) },
   returns: v.array(
     v.object({
       userId: v.id("users"),
@@ -91,7 +93,25 @@ export const chatParticipants = query({
   handler: async (ctx, args) => {
     if (args.userIds.length > 100) throw new ConvexError("TOO_MANY_USERS");
     const viewer = await getCurrentUserOrThrow(ctx);
-    const course = await ctx.db.get("classes", args.classId);
+    chatTarget(args);
+    if (args.broadcastId) {
+      const broadcast = await ctx.db.get("broadcasts", args.broadcastId);
+      if (
+        !broadcast ||
+        broadcast.chatArchivedAt !== undefined ||
+        !(await getBroadcastRole(ctx, viewer._id, broadcast))
+      )
+        return [];
+      const results = await Promise.all(
+        [...new Set(args.userIds)].map(async (userId) =>
+          (await getBroadcastRole(ctx, userId, broadcast)) === "teacher"
+            ? { userId, status: await getStatus(ctx, userId) }
+            : null,
+        ),
+      );
+      return results.filter((row) => row !== null);
+    }
+    const course = await ctx.db.get("classes", args.classId!);
     if (
       !course ||
       course.chatArchivedAt !== undefined ||

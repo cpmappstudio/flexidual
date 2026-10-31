@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
-  BookOpenCheck,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -13,13 +12,12 @@ import {
   Search,
   Users,
 } from "lucide-react";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 
 import {
   AttendanceStatusControl,
   type AttendanceStatus,
 } from "@/components/attendance/attendance-status-control";
-import { LESSON_STATUS_STYLES } from "@/components/teaching/classes/lesson-status-styles";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -35,6 +33,7 @@ import {
   ClassSessionTabsList,
   ClassSessionTabsTrigger,
 } from "@/components/classroom/class-session-tabs";
+import { SessionLessonPicker } from "@/components/classroom/session-lesson-picker";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -48,11 +47,9 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getSessionCloseoutSubmission } from "@/lib/session-closeout-policy";
-import { cn } from "@/lib/utils";
 
 interface SessionCloseoutDialogProps {
   open: boolean;
@@ -67,7 +64,6 @@ interface SessionCloseoutDialogProps {
 }
 
 type CloseoutStep = "lessons" | "attendance";
-type LessonFilter = "pending" | "taught" | "all";
 type SessionClosureContext = FunctionReturnType<
   typeof api.schedule.getSessionClosureContext
 >;
@@ -100,9 +96,7 @@ export function SessionCloseoutDialog({
   const t = useTranslations("classroom.closeout");
   const classroomT = useTranslations("classroom");
   const attendanceT = useTranslations("attendance");
-  const classT = useTranslations("class");
   const common = useTranslations("common");
-  const format = useFormatter();
   const sessionNowRef = useRef(sessionNow);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const bulkCheckboxRef = useRef<HTMLButtonElement>(null);
@@ -121,8 +115,6 @@ export function SessionCloseoutDialog({
       ? snapshot.context
       : undefined;
   const [activeStep, setActiveStep] = useState<CloseoutStep>("lessons");
-  const [lessonFilter, setLessonFilter] = useState<LessonFilter>("pending");
-  const [lessonQuery, setLessonQuery] = useState("");
   const [attendanceQuery, setAttendanceQuery] = useState("");
   const [selectedLessons, setSelectedLessons] = useState<Set<Id<"lessons">>>(
     new Set(),
@@ -147,9 +139,8 @@ export function SessionCloseoutDialog({
   }, [sessionNow]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Opening a closure captures the current wall clock once; subsequent clock ticks must not reset unsaved attendance/notes.
     setActiveStep("lessons");
-    setLessonFilter("pending");
-    setLessonQuery("");
     setAttendanceQuery("");
     setSelectedLessons(new Set());
     setAttendance({});
@@ -186,6 +177,7 @@ export function SessionCloseoutDialog({
     ) {
       return;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Freeze one authorized remote context before editing; later reactive updates must not overwrite this report draft.
     setSnapshot({
       status: "ready",
       roomName: snapshot.roomName,
@@ -217,27 +209,6 @@ export function SessionCloseoutDialog({
     );
     setNotes(requestedContext.notes ?? "");
   }, [open, requestedContext, roomName, snapshot]);
-
-  const lessonCounts = useMemo(() => {
-    const total = context?.lessons.length ?? 0;
-    const taught =
-      context?.lessons.filter((lesson) => lesson.previousSessionCount > 0)
-        .length ?? 0;
-    return { total, taught, pending: total - taught };
-  }, [context?.lessons]);
-
-  const filteredLessons = useMemo(() => {
-    const normalizedQuery = lessonQuery.trim().toLocaleLowerCase();
-    return (context?.lessons ?? []).filter((lesson) => {
-      const status = lesson.previousSessionCount > 0 ? "taught" : "pending";
-      const matchesStatus = lessonFilter === "all" || lessonFilter === status;
-      const matchesQuery =
-        !normalizedQuery ||
-        lesson.title.toLocaleLowerCase().includes(normalizedQuery) ||
-        String(lesson.order).includes(normalizedQuery);
-      return matchesStatus && matchesQuery;
-    });
-  }, [context?.lessons, lessonFilter, lessonQuery]);
 
   const sortedAttendance = useMemo(
     () =>
@@ -380,7 +351,12 @@ export function SessionCloseoutDialog({
           </DialogHeader>
 
           <ScrollArea ref={scrollAreaRef} className="min-h-0">
-            <TabsContent value="lessons" className="m-0 space-y-5 p-6">
+            <TabsContent
+              value="lessons"
+              forceMount
+              hidden={activeStep !== "lessons"}
+              className="m-0 space-y-5 p-6"
+            >
               <section className="space-y-3" aria-labelledby="session-notes">
                 <div className="flex items-start gap-3">
                   <MessageSquareText className="mt-0.5 size-5 shrink-0 text-primary" />
@@ -401,145 +377,12 @@ export function SessionCloseoutDialog({
                   rows={3}
                 />
               </section>
-              <section className="space-y-4" aria-labelledby="taught-lessons">
-                <div className="flex items-start gap-3">
-                  <BookOpenCheck className="mt-0.5 size-5 shrink-0 text-primary" />
-                  <div>
-                    <h3 id="taught-lessons" className="font-semibold">
-                      {t("lessonsTitle")}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {t("lessonsDescription")}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="sticky top-0 z-10 -mx-1 grid gap-3 bg-background/95 px-1 py-2 backdrop-blur lg:grid-cols-[minmax(0,1fr)_auto]">
-                  <div className="relative">
-                    <Search
-                      className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <Input
-                      type="search"
-                      value={lessonQuery}
-                      onChange={(event) => setLessonQuery(event.target.value)}
-                      placeholder={t("searchLessons")}
-                      className="pl-9"
-                    />
-                  </div>
-                  <ToggleGroup
-                    type="single"
-                    value={lessonFilter}
-                    variant="outline"
-                    size="sm"
-                    aria-label={t("filterLabel")}
-                    className="grid grid-cols-3"
-                    onValueChange={(value) => {
-                      if (value) setLessonFilter(value as LessonFilter);
-                    }}
-                  >
-                    {(
-                      [
-                        ["pending", lessonCounts.pending],
-                        ["taught", lessonCounts.taught],
-                        ["all", lessonCounts.total],
-                      ] as const
-                    ).map(([filter, count]) => (
-                      <ToggleGroupItem
-                        key={filter}
-                        value={filter}
-                        className="group h-9 min-w-0 px-3"
-                      >
-                        <span className="truncate">
-                          {t(`filter.${filter}`)}
-                        </span>
-                        <span className="tabular-nums text-muted-foreground group-data-[state=on]:text-accent-foreground/70">
-                          {count}
-                        </span>
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
-                </div>
-
-                {context === undefined ? (
-                  <div className="flex h-24 items-center justify-center">
-                    <Loader2 className="size-5 animate-spin text-primary" />
-                  </div>
-                ) : context?.lessons.length === 0 ? (
-                  <p className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning-foreground">
-                    {t("noLessons")}
-                  </p>
-                ) : filteredLessons.length === 0 ? (
-                  <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    {t("noMatchingLessons")}
-                  </p>
-                ) : (
-                  <div className="grid gap-2">
-                    {filteredLessons.map((lesson) => {
-                      const status =
-                        lesson.previousSessionCount > 0 ? "taught" : "pending";
-                      const isSelected = selectedLessons.has(lesson.lessonId);
-                      const history = lesson.lastRecordedAt
-                        ? t("previouslyRecordedDetails", {
-                            count: lesson.previousSessionCount,
-                            date: format.dateTime(lesson.lastRecordedAt, {
-                              dateStyle: "medium",
-                            }),
-                          })
-                        : undefined;
-                      return (
-                        <label
-                          key={lesson.lessonId}
-                          className={cn(
-                            "grid cursor-pointer grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 rounded-2xl border p-3 transition-colors",
-                            isSelected
-                              ? "border-success/50 bg-success/5"
-                              : "hover:bg-muted/50",
-                          )}
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={(checked) => {
-                              setSelectedLessons((current) => {
-                                const next = new Set(current);
-                                if (checked) next.add(lesson.lessonId);
-                                else next.delete(lesson.lessonId);
-                                return next;
-                              });
-                            }}
-                          />
-                          <span
-                            className={cn(
-                              "grid size-8 shrink-0 place-items-center rounded-full text-sm font-bold",
-                              LESSON_STATUS_STYLES[status].indicator,
-                            )}
-                          >
-                            {lesson.order}
-                          </span>
-                          <span className="min-w-0">
-                            <span className="line-clamp-2 break-words text-sm font-medium leading-snug">
-                              {lesson.title}
-                            </span>
-                            <span
-                              className={cn(
-                                "mt-1 block text-xs",
-                                LESSON_STATUS_STYLES[status].label,
-                              )}
-                            >
-                              {status === "taught"
-                                ? [classT("lessonTaught"), history]
-                                    .filter(Boolean)
-                                    .join(" · ")
-                                : classT("lessonPending")}
-                            </span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
+              <SessionLessonPicker
+                key={`${roomName}:${open}`}
+                lessons={context?.lessons}
+                selectedLessons={selectedLessons}
+                onSelectedLessonsChange={setSelectedLessons}
+              />
             </TabsContent>
 
             <TabsContent value="attendance" className="m-0 space-y-6 p-6">

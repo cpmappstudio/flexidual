@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
@@ -136,7 +136,7 @@ function LessonsPanel({
   record,
   compact = false,
 }: {
-  record: CompletedSessionRecord;
+  record: Pick<CompletedSessionRecord, "lessons" | "staffDetails">;
   compact?: boolean;
 }) {
   const t = useTranslations("sessionRecord");
@@ -209,9 +209,13 @@ function AttendancePanel({
   const attendanceT = useTranslations("attendance.status");
   const [editingStudentId, setEditingStudentId] = useState<Id<"users">>();
 
-  useEffect(() => {
+  const [previousScheduleId, setPreviousScheduleId] = useState(
+    record.scheduleId,
+  );
+  if (previousScheduleId !== record.scheduleId) {
+    setPreviousScheduleId(record.scheduleId);
     setEditingStudentId(undefined);
-  }, [record.scheduleId]);
+  }
 
   const attendance = record.staffDetails?.attendance;
   const students =
@@ -352,9 +356,13 @@ export function SessionRecordView({
   const [activeTab, setActiveTab] = useState("lessons");
   const isPanel = variant === "panel";
 
-  useEffect(() => {
+  const [previousScheduleId, setPreviousScheduleId] = useState(
+    record?.scheduleId,
+  );
+  if (previousScheduleId !== record?.scheduleId) {
+    setPreviousScheduleId(record?.scheduleId);
     setActiveTab("lessons");
-  }, [record?.scheduleId]);
+  }
 
   if (record === undefined) {
     return (
@@ -378,6 +386,12 @@ export function SessionRecordView({
           onWatchRecording={onWatchRecording}
           compact={isPanel}
         />
+        {record.lessons && record.lessons.length > 0 && (
+          <LessonsPanel
+            record={{ lessons: record.lessons, staffDetails: null }}
+            compact={isPanel}
+          />
+        )}
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-warning/40 bg-warning/10 p-4">
           <ClipboardClock className="size-5 shrink-0 text-warning-foreground" />
           <div className="min-w-0 flex-1">

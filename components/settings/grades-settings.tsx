@@ -93,48 +93,52 @@ function SortableGradeRow({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={isDragging ? "relative z-10 bg-muted shadow-sm" : undefined}
     >
-      {!readOnly && <TableCell className="w-12">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
-          aria-label={t("move", { name: grade.name })}
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical />
-        </Button>
-      </TableCell>}
+      {!readOnly && (
+        <TableCell className="w-12">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+            aria-label={t("move", { name: grade.name })}
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical />
+          </Button>
+        </TableCell>
+      )}
       <TableCell className="w-24 text-muted-foreground">{position}</TableCell>
       <TableCell className="font-medium">{grade.name}</TableCell>
-      {!readOnly && <TableCell className="w-20 text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 text-muted-foreground data-[state=open]:bg-muted"
-              aria-label={`${t("actions")}: ${grade.name}`}
-            >
-              <EllipsisVertical />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuItem onSelect={() => onEdit(grade)}>
-              {commonT("edit")}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={() => onDelete(grade)}
-            >
-              {commonT("delete")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </TableCell>}
+      {!readOnly && (
+        <TableCell className="w-20 text-right">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 text-muted-foreground data-[state=open]:bg-muted"
+                aria-label={`${t("actions")}: ${grade.name}`}
+              >
+                <EllipsisVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuItem onSelect={() => onEdit(grade)}>
+                {commonT("edit")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => onDelete(grade)}
+              >
+                {commonT("delete")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      )}
     </TableRow>
   );
 }
@@ -168,11 +172,16 @@ export function GradesSettings() {
     }),
   );
 
-  React.useEffect(() => {
+  const [previousGrades, setPreviousGrades] = React.useState<typeof grades>();
+  if (previousGrades !== grades) {
+    setPreviousGrades(grades);
     if (grades) setOrderedGrades(grades);
-  }, [grades]);
+  }
 
-  if (isLoading || (context?.canViewInstitutionSettings && grades === undefined)) {
+  if (
+    isLoading ||
+    (context?.canViewInstitutionSettings && grades === undefined)
+  ) {
     return <Skeleton className="h-72 w-full rounded-xl" />;
   }
 
@@ -329,77 +338,81 @@ export function GradesSettings() {
         </DndContext>
       </div>
 
-      {!readOnly && <EntityDialog
-        open={dialogOpen}
-        onOpenChange={(open) => {
-          if (!isSubmitting) setDialogOpen(open);
-        }}
-        title={editingGrade ? t("editTitle") : t("createTitle")}
-        onSubmit={handleSubmit}
-        isSubmitting={isSubmitting}
-        submitDisabled={
-          !name.trim() || !Number.isInteger(position) || position < 1
-        }
-        submitLabel={editingGrade ? commonT("saveChanges") : t("create")}
-        maxWidth="sm:max-w-md"
-      >
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="grade-name">{t("name")}</Label>
-            <Input
-              id="grade-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              maxLength={80}
-              required
-            />
+      {!readOnly && (
+        <EntityDialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            if (!isSubmitting) setDialogOpen(open);
+          }}
+          title={editingGrade ? t("editTitle") : t("createTitle")}
+          onSubmit={handleSubmit}
+          isSubmitting={isSubmitting}
+          submitDisabled={
+            !name.trim() || !Number.isInteger(position) || position < 1
+          }
+          submitLabel={editingGrade ? commonT("saveChanges") : t("create")}
+          maxWidth="sm:max-w-md"
+        >
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="grade-name">{t("name")}</Label>
+              <Input
+                id="grade-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                maxLength={80}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="grade-position">{t("position")}</Label>
+              <Input
+                id="grade-position"
+                type="number"
+                min={1}
+                max={Math.max(1, orderedGrades.length + (editingGrade ? 0 : 1))}
+                value={position}
+                onChange={(event) => setPosition(Number(event.target.value))}
+                required
+              />
+            </div>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="grade-position">{t("position")}</Label>
-            <Input
-              id="grade-position"
-              type="number"
-              min={1}
-              max={Math.max(1, orderedGrades.length + (editingGrade ? 0 : 1))}
-              value={position}
-              onChange={(event) => setPosition(Number(event.target.value))}
-              required
-            />
-          </div>
-        </div>
-      </EntityDialog>}
+        </EntityDialog>
+      )}
 
-      {!readOnly && <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !isDeleting) setDeleteTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("deleteDescription", { name: deleteTarget?.name ?? "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>
-              {commonT("cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(event) => {
-                event.preventDefault();
-                void handleDelete();
-              }}
-            >
-              {isDeleting && <Loader2 className="animate-spin" />}
-              {commonT("delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>}
+      {!readOnly && (
+        <AlertDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => {
+            if (!open && !isDeleting) setDeleteTarget(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("deleteTitle")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("deleteDescription", { name: deleteTarget?.name ?? "" })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>
+                {commonT("cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isDeleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void handleDelete();
+                }}
+              >
+                {isDeleting && <Loader2 className="animate-spin" />}
+                {commonT("delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </section>
   );
 }

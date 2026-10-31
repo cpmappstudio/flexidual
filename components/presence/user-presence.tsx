@@ -1,7 +1,7 @@
 "use client";
 
 import { useFormatter, useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useBrowserTimeZone } from "@/hooks/use-browser-time-zone";
 import { AvatarBadge } from "@/components/ui/avatar";
 
 export type UserPresenceStatus = {
@@ -19,10 +19,7 @@ export function UserPresenceDot({ status }: { status?: UserPresenceStatus }) {
 export function UserPresenceText({ status }: { status?: UserPresenceStatus }) {
   const t = useTranslations("presence");
   const format = useFormatter();
-  const [timeZone, setTimeZone] = useState<string>();
-  useEffect(() => {
-    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  }, []);
+  const timeZone = useBrowserTimeZone();
   if (status === undefined) return null;
   if (status?.online)
     return <span className="text-success">{t("online")}</span>;

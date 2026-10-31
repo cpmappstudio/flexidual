@@ -30,9 +30,12 @@ export function SidebarWorkspace() {
     isChatRoute ? "chats" : "navigation",
   );
 
-  React.useEffect(() => {
+  const [previousIsChatRoute, setPreviousIsChatRoute] =
+    React.useState(isChatRoute);
+  if (previousIsChatRoute !== isChatRoute) {
+    setPreviousIsChatRoute(isChatRoute);
     setActiveTab(isChatRoute ? "chats" : "navigation");
-  }, [isChatRoute]);
+  }
 
   return (
     <Tabs

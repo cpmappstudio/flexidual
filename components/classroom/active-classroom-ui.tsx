@@ -7,6 +7,7 @@ import {
 import { ClassroomVideoPipSource } from "./classroom-video-pip-source";
 import { reportWhiteboardDiagnostic } from "@/lib/error-tracking";
 import { useNotificationChime } from "@/hooks/use-notification-chime";
+import { useHydrated } from "@/hooks/use-hydrated";
 
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -237,14 +238,10 @@ export function ActiveClassroomUI({
   const room = useRoomContext();
   const setScreenShareEnabled = useClassroomScreenShare(room);
 
-  const [companionUrl, setCompanionUrl] = useState("");
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setCompanionUrl(
-        `${window.location.origin}${classroomPath}?companion=true`,
-      );
-    }
-  }, [classroomPath]);
+  const hydrated = useHydrated();
+  const companionUrl = hydrated
+    ? `${window.location.origin}${classroomPath}?companion=true`
+    : "";
   const markLive = useMutation(api.schedule.markLive);
   const startEvent = useMutation(api.eventRoom.start);
   const confirmLiveExtension = useMutation(
@@ -655,6 +652,7 @@ export function ActiveClassroomUI({
 
   useEffect(() => {
     if (pinnedStudentIdentity && !pinnedStudent) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- A departing LiveKit participant must release the pin and restore the previous stage view together.
       setPinnedStudentIdentity(undefined);
       restoreViewBeforePin();
     }
@@ -820,6 +818,7 @@ export function ActiveClassroomUI({
   useEffect(() => {
     if (!isStoppingRecording || isRecording) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- The remote recorder acknowledgement, not the button click, completes this command and its toast.
     setIsStoppingRecording(false);
     toast.success(t("classroom.recordingStopped"));
   }, [isRecording, isStoppingRecording, t]);
@@ -1225,6 +1224,7 @@ export function ActiveClassroomUI({
   // Auto-close QR dialog when a companion device successfully joins the room
   useEffect(() => {
     if (hasCompanion && showQR) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- A remote device's arrival completes pairing and closes the invitation exactly once.
       setShowQR(false);
       toast.success(
         t("classroom.companionConnected") || "Companion device connected!",
@@ -1234,26 +1234,22 @@ export function ActiveClassroomUI({
 
   // Auto-fullscreen: prompt user to go fullscreen when remote content becomes active.
   // We cannot call requestFullscreen() from a useEffect (no user gesture), so we prompt instead.
-  const autoFullscreenFiredRef = useRef(false);
-  useEffect(() => {
-    const hasRemoteContent =
-      screenTracks.some((t) => !t.participant.isLocal) || isWhiteboardActive;
-    if (
-      hasRemoteContent &&
-      !isFullscreen &&
-      !autoFullscreenFiredRef.current &&
-      onToggleFullscreen
-    ) {
-      autoFullscreenFiredRef.current = true;
-      setPendingFullscreen(true);
-    }
-    if (!hasRemoteContent) {
-      autoFullscreenFiredRef.current = false;
-      setPendingFullscreen(false);
-    }
-    // Clear the prompt once already fullscreen
-    if (isFullscreen) setPendingFullscreen(false);
-  }, [screenTracks, isWhiteboardActive, isFullscreen, onToggleFullscreen]);
+  const [autoFullscreenFired, setAutoFullscreenFired] = useState(false);
+  const hasRemoteContent =
+    screenTracks.some((t) => !t.participant.isLocal) || isWhiteboardActive;
+  if (
+    hasRemoteContent &&
+    !isFullscreen &&
+    !autoFullscreenFired &&
+    onToggleFullscreen
+  ) {
+    setAutoFullscreenFired(true);
+    setPendingFullscreen(true);
+  }
+  if (!hasRemoteContent && autoFullscreenFired) setAutoFullscreenFired(false);
+  // Clear the prompt once already fullscreen
+  if ((!hasRemoteContent || isFullscreen) && pendingFullscreen)
+    setPendingFullscreen(false);
 
   const selectPreviewState = (state: ActiveClassroomPreviewState) => {
     setShowPreviewParticipants(false);

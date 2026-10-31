@@ -7,6 +7,7 @@ import { canAccessEvent } from "./eventAccess";
 import { getCourseTaskAccess } from "./courseTaskAccess";
 import { getSurveyStaffRole } from "./surveyAccess";
 import { getClassTimeZone } from "./timeZone";
+import { getBroadcastRole } from "./broadcastAccess";
 
 export type SystemNotificationKind =
   | "course_enrollment"
@@ -21,6 +22,7 @@ export type SystemNotificationKind =
   | "event_chat"
   | "event_schedule"
   | "event_deleted"
+  | "broadcast_chat"
   | "course_task"
   | "course_task_reminder"
   | "survey_invitation"
@@ -39,6 +41,7 @@ export type SystemNotificationInput = {
   eventId?: Id<"events">;
   eventTitle?: string;
   eventChatMessageId?: Id<"eventChatMessages">;
+  broadcastId?: Id<"broadcasts">;
   taskId?: Id<"courseTasks">;
   messageId?: Id<"courseChatMessages">;
   taskTitle?: string;
@@ -197,6 +200,19 @@ async function getVisibleNotification(
       recording.url &&
       (await canAccessEvent(ctx, notification.recipientId, event))
       ? notification
+      : null;
+  }
+  if (notification.kind === "broadcast_chat") {
+    const broadcast = notification.broadcastId
+      ? await ctx.db.get("broadcasts", notification.broadcastId)
+      : null;
+    return broadcast &&
+      notification.chatMessageCount &&
+      broadcast.chatArchivedAt === undefined &&
+      notification.createdAt >
+        (broadcast.chatNotificationsClearedThrough ?? 0) &&
+      (await getBroadcastRole(ctx, notification.recipientId, broadcast))
+      ? { ...notification, className: broadcast.name }
       : null;
   }
   if (notification.kind !== "course_chat") return notification;

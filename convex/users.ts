@@ -22,6 +22,7 @@ import { isRoleValidForOrganization, roleValidator } from "./model/roles";
 import { isPasswordLongEnough } from "../lib/password";
 import { listTeacherClasses } from "./model/courseAssignments";
 import { listClassStudentIds } from "./model/enrollments";
+import { syncPeopleDirectory } from "./model/peopleDirectory";
 
 const publicUserFields = {
   _id: v.id("users"),
@@ -40,7 +41,7 @@ const publicUserFields = {
   grade: v.optional(v.string()),
   school: v.optional(v.string()),
 };
-const publicUserValidator = v.object(publicUserFields);
+export const publicUserValidator = v.object(publicUserFields);
 const internalUserValidator = v.object({
   ...publicUserFields,
   externalPassword: v.optional(v.string()),
@@ -107,7 +108,7 @@ function getClerkErrorReason(error: unknown) {
       : null;
 }
 
-function toPublicUser(user: Doc<"users">) {
+export function toPublicUser(user: Doc<"users">) {
   const { externalPassword, ...publicUser } = user;
   void externalPassword;
   return publicUser;
@@ -136,6 +137,7 @@ async function deactivateUser(ctx: MutationCtx, user: Doc<"users">) {
     school: undefined,
     isActive: false,
   });
+  await syncPeopleDirectory(ctx, user._id);
 }
 
 function toUserJSON(clerkUser: {
@@ -435,6 +437,7 @@ export const updateUserInternal = internalMutation({
     if (updates.avatarStorageId === null) updates.avatarStorageId = undefined;
 
     await ctx.db.patch(args.userId, updates);
+    await syncPeopleDirectory(ctx, args.userId);
     return null;
   },
 });
@@ -507,6 +510,7 @@ export const upsertFromClerk = internalMutation({
 
     if (existingUser) {
       await ctx.db.patch(existingUser._id, userData);
+      await syncPeopleDirectory(ctx, existingUser._id);
     } else {
       await ctx.db.insert("users", {
         ...userData,

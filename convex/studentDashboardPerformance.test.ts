@@ -143,7 +143,7 @@ async function setup() {
   };
 }
 
-test("enrollment lookup skips migrated unrelated courses and retains missing/zero legacy rosters", async () => {
+test("enrollment lookup skips other campuses and migrated unrelated courses and retains missing/zero legacy rosters", async () => {
   const { t, ids, student } = await setup();
   const legacy = await t.run(async (ctx) => {
     const rows = [];
@@ -160,7 +160,7 @@ test("enrollment lookup skips migrated unrelated courses and retains missing/zer
           createdBy: ids.teacher,
         }),
       );
-    for (let i = 0; i < 100; i++)
+    for (let i = 0; i < 100; i++) {
       await ctx.db.insert("classes", {
         name: `Unrelated ${i}`,
         description: "x".repeat(10_000),
@@ -171,6 +171,16 @@ test("enrollment lookup skips migrated unrelated courses and retains missing/zer
         createdAt: FROM,
         createdBy: ids.teacher,
       });
+      await ctx.db.insert("classes", {
+        name: `Unscoped legacy ${i}`,
+        description: "x".repeat(10_000),
+        curriculumId: ids.curriculum,
+        students: [ids.student],
+        isActive: true,
+        createdAt: FROM,
+        createdBy: ids.teacher,
+      });
+    }
     return rows;
   });
   const read = await student.query(async (ctx) => {

@@ -71,7 +71,11 @@ function getNotificationTone(notification: SystemNotification) {
 }
 
 function NotificationIcon({ kind }: Pick<SystemNotification, "kind">) {
-  if (kind === "course_chat" || kind === "event_chat")
+  if (
+    kind === "course_chat" ||
+    kind === "event_chat" ||
+    kind === "broadcast_chat"
+  )
     return (
       <Image
         src="/chat-icon.svg"

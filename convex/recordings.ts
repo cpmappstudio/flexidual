@@ -1,6 +1,16 @@
 import { ConvexError, v } from "convex/values";
-import { internalMutation, internalQuery, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import {
+  internalMutation,
+  internalQuery,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import {
+  getPlayableRecordings,
+  playbackPartValidator,
+} from "./model/sessionContent";
 import { getCurrentUserFromAuth } from "./users";
 import { canAccessClass } from "./permissions";
 import { canAccessEvent } from "./model/eventAccess";
@@ -310,12 +320,45 @@ export const getByRoom = internalQuery({
 // PUBLIC QUERIES
 // ============================================================================
 
-/**
- * Get all complete recordings for a given schedule.
- * Access rules:
- *  - Teachers and admins: always allowed
- *  - Students: only if enrolled in the class
- */
+/** Preserve historical LiveKit access; private uploads require current course access. */
+async function getScheduleRecordingAccess(
+  ctx: QueryCtx,
+  scheduleId: Id<"classSchedule">,
+) {
+  const user = await getCurrentUserFromAuth(ctx);
+  if (!user) return null;
+  const schedule = await ctx.db.get("classSchedule", scheduleId);
+  if (!schedule || isExternalClassSession(schedule.sessionType)) return null;
+  const classData = await ctx.db.get("classes", schedule.classId);
+  if (!classData) return null;
+  if (await canAccessClass(ctx, user._id, classData))
+    return { includePrerecorded: user.isActive && classData.isActive };
+  const historicalAccess = Boolean(
+    await ctx.db
+      .query("class_sessions")
+      .withIndex("by_student_schedule", (q) =>
+        q.eq("studentId", user._id).eq("scheduleId", scheduleId),
+      )
+      .first(),
+  );
+  return historicalAccess ? { includePrerecorded: false } : null;
+}
+
+export const getPlayback = query({
+  args: { scheduleId: v.id("classSchedule") },
+  returns: v.array(playbackPartValidator),
+  handler: async (ctx, args) => {
+    const access = await getScheduleRecordingAccess(ctx, args.scheduleId);
+    return access
+      ? await getPlayableRecordings(
+          ctx,
+          args.scheduleId,
+          access.includePrerecorded,
+        )
+      : [];
+  },
+});
+
 export const getBySchedule = query({
   args: { scheduleId: v.id("classSchedule") },
   returns: v.array(
@@ -330,26 +373,7 @@ export const getBySchedule = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const user = await getCurrentUserFromAuth(ctx);
-    if (!user) return [];
-
-    const schedule = await ctx.db.get(args.scheduleId);
-    if (!schedule) return [];
-
-    const classData = await ctx.db.get(schedule.classId);
-    if (!classData) return [];
-
-    if (!(await canAccessClass(ctx, user._id, classData))) {
-      const attendedSession = await ctx.db
-        .query("class_sessions")
-        .withIndex("by_student_schedule", (q) =>
-          q.eq("studentId", user._id).eq("scheduleId", args.scheduleId),
-        )
-        .first();
-      if (!attendedSession) return [];
-    }
-
-    if (isExternalClassSession(schedule.sessionType)) return [];
+    if (!(await getScheduleRecordingAccess(ctx, args.scheduleId))) return [];
 
     const recordings = await ctx.db
       .query("recordings")

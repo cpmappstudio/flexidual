@@ -41,7 +41,7 @@ import { Button } from "@/components/ui/button";
 import { useParams, useSearchParams } from "next/navigation";
 import { Link, useRouter } from "@/i18n/navigation";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useStaffAccess } from "@/hooks/use-staff-access";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useRetainedQueryResult } from "@/hooks/use-retained-query-result";
@@ -59,6 +59,12 @@ import type { CurriculumLessonProgress } from "@/lib/course-progress";
 import { getExternalClassPlatform } from "@/lib/class-session";
 import { getCalendarEventPrimaryAction } from "@/lib/calendar-event-action";
 import { CourseTasksTab } from "@/components/teaching/classes/course-tasks-tab";
+import { CourseNotebook } from "@/components/whiteboard/course-notebook";
+import {
+  PrerecordedIndicator,
+  SessionPrerecordedControl,
+  SessionPrerecordedDialog,
+} from "@/components/classroom/session-prerecorded-control";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -76,6 +82,13 @@ export default function ClassDetailPage() {
   const [linkedTaskId, setLinkedTaskId] = useState<Id<"courseTasks">>();
   const [isLaunchingClassroom, setIsLaunchingClassroom] = useState(false);
   const [isRestoringChat, setIsRestoringChat] = useState(false);
+  const [prerecordedSession, setPrerecordedSession] = useState<{
+    classId: Id<"classes">;
+    scheduleId: Id<"classSchedule">;
+  } | null>(null);
+  if (prerecordedSession && prerecordedSession.classId !== classId) {
+    setPrerecordedSession(null);
+  }
   const tabsRef = useRef<HTMLDivElement>(null);
   const orgSlug = (params.orgSlug as string) || "system";
   const { access } = useStaffAccess();
@@ -122,13 +135,17 @@ export default function ClassDetailPage() {
   );
   const lessons = curriculumProgress?.lessons ?? [];
 
-  useEffect(() => {
-    const taskId = searchParams.get("task");
+  const taskId = searchParams.get("task");
+  const [previousTaskId, setPreviousTaskId] = useState<
+    string | null | undefined
+  >();
+  if (previousTaskId !== taskId) {
+    setPreviousTaskId(taskId);
     setLinkedTaskId(taskId ? (taskId as Id<"courseTasks">) : undefined);
     if (taskId) {
       setActiveTab("tasks");
     }
-  }, [searchParams]);
+  }
 
   function handleTabChange(value: string) {
     setActiveTab(value);
@@ -209,6 +226,19 @@ export default function ClassDetailPage() {
         .slice(0, 3)
     : [];
   const totalRoadmapPages = Math.ceil((lessons?.length || 0) / ITEMS_PER_PAGE);
+  function openPrerecordedSession(scheduleId: Id<"classSchedule">) {
+    setPrerecordedSession({ classId, scheduleId });
+  }
+  function formatScheduleDate(schedule: { start: number; timeZone: string }) {
+    return new Intl.DateTimeFormat(locale, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: schedule.timeZone,
+    }).format(schedule.start);
+  }
   const paginatedLessons =
     lessons?.slice(
       (roadmapPage - 1) * ITEMS_PER_PAGE,
@@ -370,6 +400,13 @@ export default function ClassDetailPage() {
                   <CalendarIcon className="size-4" aria-hidden="true" />
                   {t("schedule.sessions")} ({classSchedule?.length || 0})
                 </TabsTrigger>
+                <TabsTrigger
+                  value="notebook"
+                  className={classTabTriggerClassName}
+                >
+                  <BookOpen className="size-4" aria-hidden="true" />
+                  {t("courseNotebook.tab")}
+                </TabsTrigger>
                 <TabsTrigger value="tasks" className={classTabTriggerClassName}>
                   <ClipboardList className="size-4" aria-hidden="true" />
                   {t("courseTasks.tab")}
@@ -409,10 +446,7 @@ export default function ClassDetailPage() {
                   nextSchedule
                     ? {
                         id: nextSchedule.scheduleId,
-                        title:
-                          nextSchedule.className ||
-                          nextSchedule.title ||
-                          classData.name,
+                        title: formatScheduleDate(nextSchedule),
                         start: nextSchedule.start,
                         end: nextSchedule.end,
                         status: nextSchedule.status,
@@ -464,22 +498,51 @@ export default function ClassDetailPage() {
                   ) : undefined
                 }
                 layout={laterSchedules.length > 0 ? "split" : "stacked"}
+                headerAction={
+                  nextSchedule &&
+                  (nextSchedule.canManagePrerecorded ||
+                    nextSchedule.hasPrerecorded) ? (
+                    <div className="flex items-center gap-2">
+                      {nextSchedule.hasPrerecorded &&
+                        !nextSchedule.canManagePrerecorded && (
+                          <PrerecordedIndicator />
+                        )}
+                      <SessionPrerecordedControl
+                        scheduleId={nextSchedule.scheduleId}
+                        canManage={nextSchedule.canManagePrerecorded}
+                        hasPrerecorded={nextSchedule.hasPrerecorded}
+                        onOpen={openPrerecordedSession}
+                        iconOnly
+                      />
+                    </div>
+                  ) : undefined
+                }
               >
                 <NextClassPreview
                   label={t("schedule.upcoming")}
                   className="md:mt-0 md:h-full md:max-w-none xl:mt-0"
+                  headerAction={
+                    <Link
+                      href={`/${orgSlug}/calendar?classId=${classId}`}
+                      className="shrink-0 rounded-sm text-xs font-semibold text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      {t("navigation.calendar")}
+                    </Link>
+                  }
                   items={laterSchedules.map((schedule) => ({
                     id: schedule.scheduleId,
-                    title: schedule.title || classData.name,
-                    meta: new Intl.DateTimeFormat(locale, {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                      timeZone: schedule.timeZone,
-                    }).format(schedule.start),
+                    meta: formatScheduleDate(schedule),
                     sessionType: schedule.sessionType ?? "live",
+                    hasPrerecorded: schedule.hasPrerecorded,
+                    action: (
+                      <SessionPrerecordedControl
+                        scheduleId={schedule.scheduleId}
+                        canManage={schedule.canManagePrerecorded}
+                        hasPrerecorded={schedule.hasPrerecorded}
+                        onOpen={openPrerecordedSession}
+                        iconOnly
+                      />
+                    ),
                   }))}
                 />
               </NextClassPanel>
@@ -516,6 +579,11 @@ export default function ClassDetailPage() {
               />
             </TabsContent>
 
+            <TabsContent value="notebook" className="mt-0">
+              {activeTab === "notebook" && (
+                <CourseNotebook key={classId} classId={classId} />
+              )}
+            </TabsContent>
             <TabsContent value="students" className="mt-0">
               <StudentManager
                 classId={classId}
@@ -539,6 +607,16 @@ export default function ClassDetailPage() {
         }
         onViewAllLessons={handleViewAllLessons}
       />
+      {/* Keep uploads mounted when the clock moves a session between cards. */}
+      {prerecordedSession && prerecordedSession.classId === classId && (
+        <SessionPrerecordedDialog
+          key={prerecordedSession.scheduleId}
+          scheduleId={prerecordedSession.scheduleId}
+          onOpenChange={(open) => {
+            if (!open) setPrerecordedSession(null);
+          }}
+        />
+      )}
     </div>
   );
 }

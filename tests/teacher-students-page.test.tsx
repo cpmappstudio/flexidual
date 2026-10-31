@@ -6,6 +6,7 @@ import { NavMain } from "@/components/nav-main";
 
 const state = vi.hoisted(() => ({
   role: "teacher",
+  userId: "teacher-id" as string | null,
   canViewPeople: false,
   canViewStudents: true,
   canManagePeople: false,
@@ -13,6 +14,7 @@ const state = vi.hoisted(() => ({
   replace: vi.fn(),
   table: vi.fn(),
 }));
+vi.mock("@clerk/nextjs", () => ({ useAuth: () => ({ userId: state.userId }) }));
 vi.mock("@/hooks/use-staff-access", () => ({
   useStaffAccess: () => ({ access: state, isLoading: false }),
 }));
@@ -69,6 +71,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   state.role = "teacher";
+  state.userId = "teacher-id";
   state.canViewPeople = false;
   state.canViewStudents = true;
   state.canManagePeople = false;
@@ -81,6 +84,8 @@ test("teacher gets the student page and profile link without student editing", (
       roleFilter: "student",
       allowedRoles: ["student"],
       readOnly: true,
+      columnVisibilityKey:
+        "flexidual:table-columns:v1:teacher-id:campus-id:students",
       scope: { orgType: "campus", orgId: "campus-id" },
     }),
   );
@@ -114,5 +119,30 @@ test("administrative student editing is retained", () => {
   render(<CampusUsersPage type="students" />);
   expect(state.table).toHaveBeenLastCalledWith(
     expect.objectContaining({ readOnly: false }),
+  );
+});
+
+test("student column preferences use the signed-in account, never an anonymous or shared key", () => {
+  const view = render(<CampusUsersPage type="students" />);
+  state.userId = "second-user";
+  view.rerender(<CampusUsersPage type="students" />);
+  expect(state.table).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      columnVisibilityKey:
+        "flexidual:table-columns:v1:second-user:campus-id:students",
+    }),
+  );
+  state.userId = null;
+  view.rerender(<CampusUsersPage type="students" />);
+  expect(state.table).toHaveBeenLastCalledWith(
+    expect.objectContaining({ columnVisibilityKey: undefined }),
+  );
+});
+
+test("the professor table is unchanged by the student-only visibility opt-in", () => {
+  state.canViewPeople = true;
+  render(<CampusUsersPage type="professors" />);
+  expect(state.table).toHaveBeenLastCalledWith(
+    expect.objectContaining({ columnVisibilityKey: undefined }),
   );
 });

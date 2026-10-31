@@ -73,6 +73,32 @@ afterEach(() => {
 });
 
 describe("floating classroom chat message", () => {
+  it("attaches to a delayed or replaced stage ref only after commit", () => {
+    const targetRef = { current: null as HTMLDivElement | null };
+    const content = () => (
+      <NextIntlClientProvider locale="es" timeZone="UTC" messages={messages}>
+        <ClassroomChatNotification
+          courseId={"course" as Id<"classes">}
+          chatVisible={false}
+          targetRef={targetRef}
+          onOpenChat={vi.fn()}
+        />
+      </NextIntlClientProvider>
+    );
+    const view = render(content());
+    expect(target.querySelector('[role="status"]')).toBeNull();
+    targetRef.current = target;
+    view.rerender(content());
+    expect(target.querySelector('[role="status"]')).not.toBeNull();
+    const replacement = document.createElement("div");
+    document.body.append(replacement);
+    targetRef.current = replacement;
+    view.rerender(content());
+    expect(target.querySelector('[role="status"]')).toBeNull();
+    expect(replacement.querySelector('[role="status"]')).not.toBeNull();
+    view.unmount();
+    replacement.remove();
+  });
   it.each([
     ["teacher", "default"],
     ["tutor", "tinted"],

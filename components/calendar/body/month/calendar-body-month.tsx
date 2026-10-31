@@ -74,8 +74,8 @@ export default function CalendarBodyMonth({
 
   const today = TZDate.tz(displayTimeZone);
 
-  const calendarStartTime = calendarStart.getTime();
-  const calendarEndTime = calendarEnd.getTime();
+  const calendarStartTime = +calendarStart;
+  const calendarEndTime = +calendarEnd;
   const visibleEvents = useMemo(
     () =>
       events.filter(

@@ -253,10 +253,13 @@ async function createRecordingWhiteboard(
     fileId: "image-1",
   };
   const bucketId = whiteboardBucketId(element.id);
-  await f.teacher.mutation(api.whiteboardSessions.ensureScene, {
-    roomName: ROOM,
-    expectedLiveRoomName: activation.liveRoomName,
-  });
+  const manifest = await f.teacher.mutation(
+    api.whiteboardSessions.ensureScene,
+    {
+      roomName: ROOM,
+      expectedLiveRoomName: activation.liveRoomName,
+    },
+  );
   await f.teacher.mutation(api.whiteboardSessions.applySceneDelta, {
     roomName: ROOM,
     expectedLiveRoomName: activation.liveRoomName,
@@ -271,13 +274,18 @@ async function createRecordingWhiteboard(
     const fileRefs = {
       "image-1": {
         storageId,
-        url: "https://files.invalid/image.png",
+        url: (await ctx.storage.getUrl(storageId))!,
         mimeType: "image/png",
         created: START,
       },
     };
-    const session = (await ctx.db.query("whiteboardSessions").first())!;
-    await ctx.db.patch("whiteboardSessions", session._id, { fileRefs });
+    await ctx.db.insert("courseNotebookFiles", {
+      pageId: manifest.sessionPageId!,
+      fileId: "image-1",
+      storageId,
+      mimeType: "image/png",
+      created: START,
+    });
     return fileRefs;
   });
   await f.t.mutation(internal.whiteboardSessions.setRecordingToken, {
@@ -829,14 +837,17 @@ describe("reopening audit: supported flows", () => {
     expect((await f.schedule())?.liveActivationId).toBeDefined();
   });
 
-  test("incremental buckets survive real close/reopen, revoke recording access and expire with the occurrence", async () => {
+  test("incremental buckets survive real close/reopen and session expiry in the course Board, without retaining recording access", async () => {
     const f = await setup();
     await f.start();
     const oldRoom = (await f.lifecycle())!.liveRoomName;
-    await f.teacher.mutation(api.whiteboardSessions.ensureScene, {
-      roomName: ROOM,
-      expectedLiveRoomName: oldRoom,
-    });
+    const manifest = await f.teacher.mutation(
+      api.whiteboardSessions.ensureScene,
+      {
+        roomName: ROOM,
+        expectedLiveRoomName: oldRoom,
+      },
+    );
     const bucketId = whiteboardBucketId("incremental-stroke");
     await f.teacher.mutation(api.whiteboardSessions.applySceneDelta, {
       roomName: ROOM,
@@ -891,12 +902,20 @@ describe("reopening audit: supported flows", () => {
     await f.close();
     await vi.advanceTimersByTimeAsync(70 * 60_000);
     await f.t.finishAllScheduledFunctions(vi.runAllTimers);
-    expect(
-      await f.t.run((ctx) => ctx.db.query("whiteboardSceneManifests").take(1)),
-    ).toEqual([]);
-    expect(
-      await f.t.run((ctx) => ctx.db.query("whiteboardSceneBuckets").take(1)),
-    ).toEqual([]);
+    const retained = await f.t.run((ctx) =>
+      ctx.db.query("whiteboardSceneManifests").take(2),
+    );
+    expect(retained).toHaveLength(1);
+    expect(retained[0]).toMatchObject({ pageId: manifest.sessionPageId });
+    expect(retained[0]).not.toHaveProperty("roomName");
+    expect(retained[0]).not.toHaveProperty("recordingToken");
+    const courseNotes = await f.student.query(api.courseNotebook.getBucket, {
+      pageId: manifest.sessionPageId!,
+      bucketId,
+    });
+    expect(JSON.parse(joinWhiteboardPayload(courseNotes!.parts))).toEqual([
+      { id: "incremental-stroke", version: 1, versionNonce: 1 },
+    ]);
   });
 
   test("whiteboard and images survive reopen, cannot be read while closed and expire after final closure", async () => {

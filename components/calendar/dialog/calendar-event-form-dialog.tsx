@@ -87,10 +87,8 @@ export function CalendarEventFormDialog({
 }) {
   const t = useTranslations("events");
   const now = useCurrentMinute();
-  const editingNow = useMemo(
-    () => (open && event?._id ? Date.now() : now),
-    [now, open, event?._id],
-  );
+  const [initialNow] = useState(Date.now);
+  const editingNow = Math.max(initialNow, now);
   const audienceId = useId();
   const locale = useLocale();
   const router = useRouter();

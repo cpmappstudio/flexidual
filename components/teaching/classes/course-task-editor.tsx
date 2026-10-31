@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useCurrentMinute } from "@/hooks/use-current-minute";
 import { useConvex, useMutation } from "convex/react";
 import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -61,6 +62,7 @@ export function CourseTaskEditor({
   onSaved: (id: Id<"courseTasks">) => void;
 }) {
   const t = useTranslations("courseTasks");
+  const now = useCurrentMinute();
   const format = useFormatter();
   const convex = useConvex();
   const request = useTaskFileRequest();
@@ -423,7 +425,7 @@ export function CourseTaskEditor({
                       ? "publish"
                       : "save"
                     : availableAt &&
-                        availableAt > utcToLocalDateTime(Date.now(), timeZone)
+                        availableAt > utcToLocalDateTime(now, timeZone)
                       ? "scheduleTask"
                       : "publish",
                 )}
@@ -470,7 +472,7 @@ export function CourseTaskEditor({
             </div>
             {(task?.manuallyClosedAt !== undefined ||
               (previewDeadlineAt !== undefined &&
-                previewDeadlineAt <= Date.now())) && (
+                previewDeadlineAt <= now)) && (
               <p className="text-muted-foreground">
                 {task?.manuallyClosedAt !== undefined
                   ? t("deadlineChangeAlreadyClosed")

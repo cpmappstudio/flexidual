@@ -55,6 +55,7 @@ function AbekaSummary({
   useEffect(() => {
     // Wait for the reactive connection, not just HTTP acceptance, before entering.
     if (accepted && state && !disconnected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Consume HTTP acceptance only after the reactive backend confirms the connection, then navigate once.
       setAccepted(false);
       router.push(href);
     }

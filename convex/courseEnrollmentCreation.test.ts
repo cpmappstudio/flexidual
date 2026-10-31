@@ -241,6 +241,20 @@ test("private multi-grade courses retain campus enrollments, per-grade teachers 
     api.classes.createWithSchedule,
     args,
   );
+  const directory = await t.run((ctx) =>
+    ctx.db.query("teacherStudentDirectory").collect(),
+  );
+  expect(
+    new Set(directory.map((row) => `${row.teacherId}:${row.studentId}`)),
+  ).toEqual(
+    new Set(
+      [data.teacherId, data.gradeTeacherId].flatMap((teacherId) =>
+        [data.studentId, data.secondStudentId].map(
+          (studentId) => `${teacherId}:${studentId}`,
+        ),
+      ),
+    ),
+  );
   const range = {
     campusId: data.campusId,
     from: Date.parse("2026-09-01T00:00Z"),

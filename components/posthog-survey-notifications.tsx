@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ComponentProps } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -18,6 +24,7 @@ export function PostHogSurveyNotifications(
   const acknowledge = useMutation(api.surveyNotifications.acknowledge);
   const eligible = useRef(false);
   const locallyCompleted = useRef(false);
+  const [showThankYou, setShowThankYou] = useState(false);
   const syncing = useRef(false);
   const acknowledged = useRef<"eligible" | "complete" | null>(null);
   const storageKey = `flexidual:survey-panel:${props.userId}:${props.surveyId}`;
@@ -61,8 +68,7 @@ export function PostHogSurveyNotifications(
 
   // Wait for account-scoped completion before mounting. Preserve the thank-you
   // screen in the tab that submitted; other tabs/devices remove the invitation.
-  if (!state?.enabled || (state.completed && !locallyCompleted.current))
-    return null;
+  if (!state?.enabled || (state.completed && !showThankYou)) return null;
   return (
     <PostHogSurveyPanel
       {...props}
@@ -72,6 +78,7 @@ export function PostHogSurveyNotifications(
       }}
       onComplete={() => {
         locallyCompleted.current = true;
+        setShowThankYou(true);
         void sync();
       }}
     />

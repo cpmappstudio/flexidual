@@ -23,14 +23,22 @@ export const upload = httpAction(async (ctx, request) => {
   let storageId: Id<"_storage"> | undefined;
   try {
     const classId = new URL(request.url).searchParams.get("classId");
-    if (!classId)
+    const broadcastId = new URL(request.url).searchParams.get("broadcastId");
+    if (Boolean(classId) === Boolean(broadcastId))
       return new Response("INVALID_CHAT_FILE", { status: 400, headers });
     const size = Number(request.headers.get("X-File-Size"));
     const contentType = request.headers.get("Content-Type") ?? "";
     const name = decodeURIComponent(request.headers.get("X-File-Name") ?? "");
     const id: Id<"courseChatAttachments"> = await ctx.runMutation(
       internal.courseChatAttachments.reserve,
-      { classId: classId as Id<"classes">, name, size, contentType },
+      {
+        ...(broadcastId
+          ? { broadcastId: broadcastId as Id<"broadcasts"> }
+          : { classId: classId as Id<"classes"> }),
+        name,
+        size,
+        contentType,
+      },
     );
     const blob = await readVerifiedUploadBody(
       request,

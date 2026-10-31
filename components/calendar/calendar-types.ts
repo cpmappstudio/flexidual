@@ -76,6 +76,8 @@ export type ClassCalendarEvent = {
 
   // Recordings
   hasRecording?: boolean;
+  hasPrerecorded?: boolean;
+  canManagePrerecorded?: boolean;
 };
 
 export type InstitutionalCalendarEvent = {

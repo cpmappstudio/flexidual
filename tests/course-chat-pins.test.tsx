@@ -79,7 +79,7 @@ test("pin dot uses the shared indicator and marks only the loaded snapshot seen 
   const focus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
   state.unread = true;
   state.messages = [{ ...message, pinnedAt: 123 }];
-  const { rerender } = render(<CourseChatPins courseId={message.classId} />);
+  const { rerender } = render(<CourseChatPins courseId={message.classId!} />);
   expect(screen.getByText("unreadPinnedMessages")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "pinnedMessages" }));
   expect(await screen.findByText(message.body)).toBeTruthy();
@@ -93,7 +93,7 @@ test("pin dot uses the shared indicator and marks only the loaded snapshot seen 
     }),
   );
   state.unread = false;
-  rerender(<CourseChatPins courseId={message.classId} />);
+  rerender(<CourseChatPins courseId={message.classId!} />);
   expect(screen.queryByText("unreadPinnedMessages")).toBeNull();
 });
 

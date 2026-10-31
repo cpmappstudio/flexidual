@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
@@ -13,11 +14,9 @@ export function AstronautEncouragement({
   className?: string;
   imageSrc?: string;
 }) {
-  const [messageIndex, setMessageIndex] = useState(0);
-
-  useEffect(() => {
-    setMessageIndex(Math.floor(Math.random() * messages.length));
-  }, [messages.length]);
+  const [random] = useState(Math.random);
+  const hydrated = useHydrated();
+  const messageIndex = hydrated ? Math.floor(random * messages.length) : 0;
 
   return (
     <div

@@ -158,17 +158,21 @@ function RecordingLayout({ recordingToken }: { recordingToken: string }) {
     Track.Source.Camera,
   )?.trackSid;
 
-  useEffect(() => {
+  const cameraScope = `${presenter?.identity}:${presenterCameraTrackSid}:${presenterVideoOn}`;
+  const [previousCameraScope, setPreviousCameraScope] = useState(cameraScope);
+  if (previousCameraScope !== cameraScope) {
+    setPreviousCameraScope(cameraScope);
     setIsPresenterVideoReady(false);
-  }, [presenter?.identity, presenterCameraTrackSid, presenterVideoOn]);
+  }
 
-  useEffect(() => {
+  const screenScope = activeScreenTrack?.publication.trackSid;
+  const [previousScreenScope, setPreviousScreenScope] = useState(screenScope);
+  if (previousScreenScope !== screenScope) {
+    setPreviousScreenScope(screenScope);
     setIsScreenShareVideoReady(false);
-  }, [activeScreenTrack?.publication.trackSid]);
+  }
 
-  useEffect(() => {
-    if (!isWhiteboardActive) setIsWhiteboardReady(false);
-  }, [isWhiteboardActive]);
+  if (!isWhiteboardActive && isWhiteboardReady) setIsWhiteboardReady(false);
 
   if (!recordingContext) {
     return <div className="h-screen w-screen bg-inverse" />;

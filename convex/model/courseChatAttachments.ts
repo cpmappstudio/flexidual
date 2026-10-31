@@ -5,6 +5,8 @@ import {
   MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_MESSAGE_BYTES,
 } from "../../lib/chat-attachments";
+import { sameChat, type ChatTarget } from "./chatTarget";
+import { internal } from "../_generated/api";
 
 export const attachmentSummary = v.object({
   id: v.id("courseChatAttachments"),
@@ -16,7 +18,7 @@ export const attachmentSummary = v.object({
 export async function getSendAttachments(
   ctx: MutationCtx,
   ids: Id<"courseChatAttachments">[],
-  classId: Id<"classes">,
+  target: ChatTarget,
   userId: Id<"users">,
 ) {
   if (ids.length > MAX_CHAT_ATTACHMENTS || new Set(ids).size !== ids.length)
@@ -28,7 +30,7 @@ export async function getSendAttachments(
   for (const file of files) {
     if (
       !file ||
-      file.classId !== classId ||
+      !sameChat(file, target) ||
       file.uploadedBy !== userId ||
       !file.storageId ||
       (!file.messageId && (file.expiresAt ?? 0) <= Date.now())
@@ -58,4 +60,10 @@ export async function deleteChatMessage(
     if (file?.messageId === message._id) await deleteChatAttachment(ctx, file);
   }
   await ctx.db.delete("courseChatMessages", message._id);
+  if (message.broadcastId)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.courseChatNotifications.removeBroadcastDeliveries,
+      { messageId: message._id },
+    );
 }

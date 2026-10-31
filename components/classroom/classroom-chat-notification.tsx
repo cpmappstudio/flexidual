@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useLayoutEffect, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
@@ -40,7 +40,11 @@ export function ClassroomChatNotification({
     chatVisible,
     onNotify: play,
   });
-  const target = targetRef.current;
+  const [target, setTarget] = useState<HTMLDivElement | null>(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Ref targets are not reactive; compare after every commit, with an identity guard to avoid update loops.
+  useLayoutEffect(() => {
+    if (target !== targetRef.current) setTarget(targetRef.current);
+  });
   if (!target) return null;
 
   return createPortal(

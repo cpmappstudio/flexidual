@@ -161,6 +161,42 @@
     "newerSessions": "Newer sessions",
     "type": "Type"
   },
+  "sessionVideo": {
+    "title": "Prerecorded class",
+    "description": "Upload a video and select the lessons taught. It becomes available to students at the scheduled start, without changing attendance.",
+    "upload": "Upload prerecorded class",
+    "manage": "Manage prerecorded class",
+    "available": "Prerecorded class attached",
+    "preview": "Watch video",
+    "hidePreview": "Hide video",
+    "file": "Video file",
+    "replace": "Replace video",
+    "fileHint": "MP4 · up to 2 GiB. The current video stays available until its replacement is confirmed.",
+    "releaseAt": "Available to students from {date}.",
+    "releaseAtStart": "Available to students from the scheduled start.",
+    "unavailable": "You cannot manage a prerecorded video for this session.",
+    "uploading": "Uploading video…",
+    "processing": "Verifying and saving video…",
+    "save": "Upload and save",
+    "saved": "Prerecorded class saved.",
+    "invalidFile": "Choose a readable MP4 video of up to 2 GiB and twelve hours.",
+    "storageNotConfigured": "Video uploads are not configured yet. Contact your administrator.",
+    "conflict": "The video changed during your upload. Review the current video before trying again.",
+    "expired": "The upload expired. Please select the video and try again.",
+    "invalidLessons": "Some selected lessons are no longer available in this curriculum. Review the selection."
+  },
+  "courseNotebook": {
+    "tab": "Board",
+    "newPage": "New page",
+    "pageName": "Page name",
+    "archive": "Archive board",
+    "restore": "Restore board",
+    "archived": "This board is archived. Its pages are retained.",
+    "empty": "There are no pages yet.",
+    "loadMore": "Load more",
+    "retry": "Retry loading board",
+    "operationFailed": "Could not update the board. Please try again."
+  },
   "filePreview": {
     "loadingPreview": "Loading preview…",
     "previewError": "Could not preview this file. You can still download it.",
@@ -339,7 +375,7 @@
       "courseLabel": "Course",
       "expandViewer": "Expand viewer",
       "restoreViewer": "Restore viewer size",
-      "edit": "Correct PDF",
+      "edit": "Grade PDF",
       "availability": "Correction available for PDFs · More formats coming soon.",
       "correctedAt": "Corrected on {date}",
       "submissionChanged": "The student submitted again. This comment belongs to the previous submission and cannot be saved to the new one.",
@@ -690,7 +726,7 @@
       "deleteConfirm": "Delete campus",
       "deleted": "Campus deleted.",
       "deleteError": "Could not delete the campus.",
-      "deleteInUse": "This campus has classes or assigned members. Deactivate it instead.",
+      "deleteInUse": "This campus has classes, broadcasts or assigned members. Deactivate it instead.",
       "cancel": "Cancel",
       "unavailableTitle": "Campus settings are unavailable",
       "unavailableDescription": "Only institution administrators can view and manage campuses."
@@ -903,6 +939,39 @@
     "noResultsDescription": "Try another class name or adjust the filters."
   },
   "classroom": {
+    "broadcasts": {
+      "title": "Broadcast",
+      "new": "New Broadcast",
+      "name": "Name",
+      "renamed": "Broadcast renamed",
+      "renameError": "Could not rename the broadcast. Check your permissions and try again.",
+      "delete": "Delete broadcast",
+      "deleteTitle": "Delete this broadcast?",
+      "deleteConfirmation": "This permanently deletes the broadcast, its messages, attachments and notifications for everyone. This cannot be undone.",
+      "deleted": "Broadcast deleted",
+      "deleteError": "Could not delete the broadcast. Check your permissions and try again.",
+      "campus": "Campus",
+      "grades": "Recipient grades",
+      "professors": "Professors who can write",
+      "searchProfessors": "Search professors…",
+      "retry": "Try again",
+      "campusFilter": "Search professors in campus",
+      "multiCampusHint": "Choose professors from any campus. Your selections remain when you change this filter.",
+      "removeProfessor": "Remove {name}",
+      "editParticipants": "Edit participants",
+      "participantsError": "Could not update participants. Check your permissions and try again.",
+      "writersDescription": "All professors in this scope can read. Only selected professors can write.",
+      "description": "Broadcast: students and other professors can read; only authorized professors and administration can write.",
+      "create": "Create broadcast",
+      "saving": "Saving…",
+      "saveError": "Could not create the broadcast. Check your permissions and try again.",
+      "muteProfessors": "Mute all professors",
+      "allowFiles": "Allow professors files and links",
+      "allowWriting": "Allow participation",
+      "preventWriting": "Disable participation",
+      "participationUpdated": "Participation updated",
+      "readOnly": "Only authorized professors and administration can write."
+    },
     "timeRemaining": "Time remaining: {time}",
     "extensionTimeRemaining": "Extension · Time remaining: {time}",
     "scheduledTimeEnded": "The class time has ended",
@@ -1134,6 +1203,7 @@
     "chatPlaceholder": "Write a message...",
     "sendMessage": "Send message",
     "chatSendError": "The message could not be sent. Please try again.",
+    "chatRateLimited": "Too many messages. Wait {seconds} seconds and try again. Your message and attachments are still here.",
     "loadEarlierMessages": "Load earlier messages",
     "loadingMessages": "Loading messages...",
     "emptyChat": "No messages yet. Start the conversation.",
@@ -1369,6 +1439,7 @@
     "repeatOnDays": "Repeat on days",
     "selectScheduleDays": "Select at least one day.",
     "invalidScheduleTime": "Choose a valid time within the schedule window.",
+    "prerecordedVideoScheduleConflict": "This change would move or remove a class with a prerecorded video. Reschedule that class individually, or remove its video before changing the course schedule or curriculum.",
     "liveAccess": "Live class access",
     "liveAccessDescription": "This setting applies to every live class in the course.",
     "privateAccess": "Private",
@@ -2025,7 +2096,14 @@
     "invalidDateRange": "Select a valid date and time range.",
     "timeZoneRequired": "Configure the institution or campus time zone before continuing."
   },
+  "people": {
+    "preparing": "Preparing directory… Retry if this takes too long",
+    "retryPreparation": "Retry preparing directory",
+    "invalidSearch": "Use up to 16 words and 256 characters.",
+    "noPageResults": "No matches in this section. Continue to the next page."
+  },
   "table": {
+    "pageNumber": "Page {current}",
     "columns": "Columns",
     "filters": "Filters",
     "pageInfo": "Page {current} of {total}",
@@ -2079,6 +2157,10 @@
       "event_deleted": {
         "title": "Event deleted",
         "body": "{eventTitle} and its upcoming dates were deleted."
+      },
+      "broadcast_chat": {
+        "title": "Broadcast",
+        "body": "{count, plural, one {You have # new message} other {You have # new messages}} in {className}."
       },
       "course_task": {
         "title": "New assignment",

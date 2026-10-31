@@ -37,6 +37,8 @@ interface ScheduleItemType {
   };
 }
 
+import { useCurrentMinute } from "@/hooks/use-current-minute";
+
 interface AdminClassTrackingCardProps {
   classData: {
     name: string;
@@ -51,12 +53,13 @@ export function AdminClassTrackingCard({
   schedules,
 }: AdminClassTrackingCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const now = useCurrentMinute();
   const locale = useLocale();
   const t = useTranslations();
   const dateLocale = locale === "es" ? es : locale === "pt-BR" ? ptBR : enUS;
 
   const pastSchedules = schedules
-    .filter((s) => s.start < Date.now())
+    .filter((s) => s.start < now)
     .sort((a, b) => b.start - a.start);
 
   // Teacher Stats

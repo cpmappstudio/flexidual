@@ -17,6 +17,7 @@ const state = vi.hoisted(() => ({
     legacyOrder: string[];
     fromLegacy: boolean;
     sourceId?: string;
+    sessionPageId?: string;
   },
   buckets: {} as Record<string, unknown>,
   files: { fileRefs: {} },
@@ -36,7 +37,8 @@ vi.mock("convex/react", () => ({
     return state.legacy;
   },
   useQueries: (queries: unknown) => {
-    state.queries(queries);
+    // Record occupied bucket subscriptions, not the disabled notebook-image hook.
+    if (Object.keys(queries as object).length) state.queries(queries);
     return state.buckets;
   },
 }));
@@ -82,6 +84,32 @@ test("subscribes only to occupied buckets, never to the complete legacy scene", 
     "b",
   ]);
   expect(state.ensure).not.toHaveBeenCalled();
+});
+
+test("an existing incremental session is adopted once without hiding drawings or leaving an initialization loop", async () => {
+  const { result, rerender } = renderHook(() =>
+    useWhiteboardScene("room", "activation", false),
+  );
+  await act(async () => {});
+  expect(state.ensure).toHaveBeenCalledExactlyOnceWith({
+    roomName: "room",
+    expectedLiveRoomName: "activation",
+  });
+  expect(result.current.scene?.elements.map((element) => element.id)).toEqual([
+    "a",
+    "b",
+  ]);
+  state.manifest = { ...state.manifest!, sessionPageId: "default-page" };
+  rerender();
+  expect(state.ensure).toHaveBeenCalledTimes(1);
+  expect(result.current.scene?.elements.map((element) => element.id)).toEqual([
+    "a",
+    "b",
+  ]);
+  expect(state.queries.mock.calls.at(-1)![0][4].args.expectedPageId).toBe(
+    "default-page",
+  );
+  expect(result.current.error).toBeUndefined();
 });
 
 test("an image-only update preserves the drawing array and bucket subscriptions", () => {

@@ -120,6 +120,27 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+test.each([true, false])(
+  "places the course heading outside the card and preserves management visibility (canManage: %s)",
+  (canManage) => {
+    render(
+      <CourseTasksTab
+        classId={"class-id" as Id<"classes">}
+        canManage={canManage}
+        timeZone="UTC"
+      />,
+    );
+    const heading = screen.getByRole("heading", { level: 2, name: "heading" });
+    expect(heading.closest('[data-slot="card"]')).toBeNull();
+    expect(screen.getAllByText("heading")).toHaveLength(1);
+    expect(heading.className).toBe("text-lg font-semibold");
+    const newTask = screen.queryByRole("button", { name: "newTask" });
+    expect(Boolean(newTask)).toBe(canManage);
+    if (newTask) expect(newTask.parentElement).toBe(heading.parentElement);
+    expect(screen.getByRole("region", { name: "heading" })).toBeTruthy();
+  },
+);
+
 test("shows earlier availability on the left and selects the latest on the right", () => {
   render(
     <CourseTasksTab

@@ -161,6 +161,42 @@
     "newerSessions": "Sessões recentes",
     "type": "Tipo"
   },
+  "sessionVideo": {
+    "title": "Aula pré-gravada",
+    "description": "Envie um vídeo e selecione as lições ensinadas. Ele ficará disponível aos alunos no início agendado, sem alterar a frequência.",
+    "upload": "Enviar aula pré-gravada",
+    "manage": "Gerenciar aula pré-gravada",
+    "available": "Aula pré-gravada anexada",
+    "preview": "Assistir ao vídeo",
+    "hidePreview": "Ocultar vídeo",
+    "file": "Arquivo de vídeo",
+    "replace": "Substituir vídeo",
+    "fileHint": "MP4 · até 2 GiB. O vídeo atual continua disponível até a confirmação da substituição.",
+    "releaseAt": "Disponível aos alunos a partir de {date}.",
+    "releaseAtStart": "Disponível aos alunos a partir do início agendado.",
+    "unavailable": "Você não pode gerenciar uma pré-gravação para esta sessão.",
+    "uploading": "Enviando vídeo…",
+    "processing": "Verificando e salvando o vídeo…",
+    "save": "Enviar e salvar",
+    "saved": "Aula pré-gravada salva.",
+    "invalidFile": "Escolha um vídeo MP4 legível de até 2 GiB e doze horas.",
+    "storageNotConfigured": "O envio de vídeos ainda não está configurado. Entre em contato com a administração.",
+    "conflict": "O vídeo mudou durante o envio. Confira o vídeo atual antes de tentar novamente.",
+    "expired": "O envio expirou. Selecione o vídeo e tente novamente.",
+    "invalidLessons": "Algumas lições selecionadas não estão mais disponíveis neste currículo. Confira a seleção."
+  },
+  "courseNotebook": {
+    "tab": "Quadro",
+    "newPage": "Nova folha",
+    "pageName": "Nome da folha",
+    "archive": "Arquivar quadro",
+    "restore": "Restaurar quadro",
+    "archived": "Este quadro está arquivado. Suas folhas são preservadas.",
+    "empty": "Ainda não há folhas.",
+    "loadMore": "Carregar mais",
+    "retry": "Tentar carregar o quadro novamente",
+    "operationFailed": "Não foi possível atualizar o quadro. Tente novamente."
+  },
   "filePreview": {
     "loadingPreview": "Carregando pré-visualização…",
     "previewError": "Não foi possível visualizar este arquivo. Você ainda pode baixá-lo.",
@@ -339,7 +375,7 @@
       "courseLabel": "Curso",
       "expandViewer": "Ampliar visualizador",
       "restoreViewer": "Restaurar tamanho do visualizador",
-      "edit": "Corrigir PDF",
+      "edit": "Avaliar PDF",
       "availability": "Correção disponível para PDF · Mais formatos em breve.",
       "correctedAt": "Corrigido em {date}",
       "submissionChanged": "O estudante enviou novamente. Este comentário pertence à entrega anterior e não pode ser salvo na nova.",
@@ -688,7 +724,7 @@
       "deleteConfirm": "Excluir campus",
       "deleted": "Campus excluído.",
       "deleteError": "Não foi possível excluir o campus.",
-      "deleteInUse": "Este campus possui turmas ou membros vinculados. Desative-o.",
+      "deleteInUse": "Este campus possui turmas, broadcasts ou membros vinculados. Desative-o.",
       "cancel": "Cancelar",
       "unavailableTitle": "As configurações de campus não estão disponíveis",
       "unavailableDescription": "Somente administradores da instituição podem consultar e gerenciar campi."
@@ -901,6 +937,39 @@
     "noResultsDescription": "Tente outro nome de aula ou ajuste os filtros."
   },
   "classroom": {
+    "broadcasts": {
+      "title": "Broadcast",
+      "new": "Novo broadcast",
+      "name": "Nome",
+      "renamed": "Broadcast renomeado",
+      "renameError": "Não foi possível renomear o broadcast. Verifique suas permissões e tente novamente.",
+      "delete": "Excluir broadcast",
+      "deleteTitle": "Excluir este broadcast?",
+      "deleteConfirmation": "O broadcast, suas mensagens, anexos e notificações serão excluídos permanentemente para todos. Esta ação não pode ser desfeita.",
+      "deleted": "Broadcast excluído",
+      "deleteError": "Não foi possível excluir o broadcast. Verifique suas permissões e tente novamente.",
+      "campus": "Campus",
+      "grades": "Séries destinatárias",
+      "professors": "Professores que podem escrever",
+      "searchProfessors": "Buscar professores…",
+      "retry": "Tentar novamente",
+      "campusFilter": "Buscar professores no campus",
+      "multiCampusHint": "Escolha professores de qualquer campus. A seleção é mantida ao mudar este filtro.",
+      "removeProfessor": "Remover {name}",
+      "editParticipants": "Editar participantes",
+      "participantsError": "Não foi possível atualizar os participantes. Verifique suas permissões e tente novamente.",
+      "writersDescription": "Todos os professores deste âmbito podem ler. Apenas os selecionados podem escrever.",
+      "description": "Broadcast: alunos e demais professores podem ler; apenas professores autorizados e administração podem escrever.",
+      "create": "Criar broadcast",
+      "saving": "Salvando…",
+      "saveError": "Não foi possível criar o broadcast. Verifique suas permissões e tente novamente.",
+      "muteProfessors": "Silenciar todos os professores",
+      "allowFiles": "Permitir arquivos e links dos professores",
+      "allowWriting": "Permitir participação",
+      "preventWriting": "Desativar participação",
+      "participationUpdated": "Participação atualizada",
+      "readOnly": "Apenas professores autorizados e administração podem escrever."
+    },
     "timeRemaining": "Tempo restante: {time}",
     "extensionTimeRemaining": "Prorrogação · Tempo restante: {time}",
     "scheduledTimeEnded": "O tempo da aula terminou",
@@ -1132,6 +1201,7 @@
     "chatPlaceholder": "Escreva uma mensagem...",
     "sendMessage": "Enviar mensagem",
     "chatSendError": "Não foi possível enviar a mensagem. Tente novamente.",
+    "chatRateLimited": "Muitas mensagens. Aguarde {seconds} segundos e tente novamente. Sua mensagem e seus anexos foram mantidos.",
     "loadEarlierMessages": "Carregar mensagens anteriores",
     "loadingMessages": "Carregando mensagens...",
     "emptyChat": "Ainda não há mensagens. Inicie a conversa.",
@@ -1367,6 +1437,7 @@
     "repeatOnDays": "Repetir nos dias",
     "selectScheduleDays": "Selecione pelo menos um dia.",
     "invalidScheduleTime": "Escolha um horário válido dentro da faixa configurada.",
+    "prerecordedVideoScheduleConflict": "Esta alteração moveria ou removeria uma aula com um vídeo pré-gravado. Reagende essa aula individualmente ou remova seu vídeo antes de alterar o horário ou currículo do curso.",
     "liveAccess": "Acesso às aulas ao vivo",
     "liveAccessDescription": "Esta configuração se aplica a todas as aulas ao vivo do curso.",
     "privateAccess": "Privado",
@@ -2023,7 +2094,14 @@
     "invalidDateRange": "Selecione uma data e um intervalo de tempo válidos.",
     "timeZoneRequired": "Configure o fuso horário da instituição ou campus antes de continuar."
   },
+  "people": {
+    "preparing": "Preparando diretório… Tente novamente se demorar demais",
+    "retryPreparation": "Tentar preparar o diretório novamente",
+    "invalidSearch": "Use até 16 palavras e 256 caracteres.",
+    "noPageResults": "Nenhum resultado neste trecho. Continue na próxima página."
+  },
   "table": {
+    "pageNumber": "Página {current}",
     "columns": "Colunas",
     "filters": "Filtros",
     "pageInfo": "Página {current} de {total}",
@@ -2077,6 +2155,10 @@
       "event_deleted": {
         "title": "Evento excluído",
         "body": "{eventTitle} e suas próximas datas foram excluídos."
+      },
+      "broadcast_chat": {
+        "title": "Broadcast",
+        "body": "{count, plural, one {Você tem # nova mensagem} other {Você tem # novas mensagens}} em {className}."
       },
       "course_task": {
         "title": "Nova tarefa",

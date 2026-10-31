@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { getFunctionName } from "convex/server";
 import { afterEach, expect, test, vi } from "vitest";
@@ -9,6 +9,18 @@ import type { Id } from "@/convex/_generated/dataModel";
 
 const state = vi.hoisted(() => ({
   slug: "campus",
+  broadcastScope: null as null | {
+    schoolId: Id<"schools">;
+    campusId: Id<"campuses">;
+    canCreate: boolean;
+    canInstitution: boolean;
+  },
+  broadcasts: [] as {
+    _id: string;
+    name: string;
+    archived: boolean;
+    canManage: boolean;
+  }[],
   queries: vi.fn(),
   chats: [
     { _id: "algebra", name: "Algebra I · Teacher", archived: false },
@@ -28,17 +40,29 @@ vi.mock("convex/react", () => ({
   useQuery: (query: Parameters<typeof getFunctionName>[0], args: unknown) => {
     const name = getFunctionName(query);
     state.queries(name, args);
-    return name === "organizations:resolveSlug"
-      ? { type: "campus", _id: state.slug }
-      : name === "campuses:get"
-        ? { schoolId: "school" }
-        : state.chats;
+    return name === "broadcasts:scope"
+      ? state.broadcastScope
+      : name === "organizations:resolveSlug"
+        ? { type: "campus", _id: state.slug }
+        : name === "campuses:get"
+          ? { schoolId: "school" }
+          : state.chats;
   },
-  usePaginatedQuery: (query: Parameters<typeof getFunctionName>[0]) => ({
+  usePaginatedQuery: (
+    query: Parameters<typeof getFunctionName>[0],
+    args: { search?: string } | "skip",
+  ) => ({
     results:
       getFunctionName(query) === "eventChatContext:listOptions"
         ? state.events
-        : [],
+        : getFunctionName(query) === "broadcasts:list"
+          ? state.broadcasts.filter(
+              (row) =>
+                args === "skip" ||
+                !args.search ||
+                row.name.toLowerCase().includes(args.search),
+            )
+          : [],
     status: "Exhausted",
     loadMore: vi.fn(),
   }),
@@ -73,8 +97,48 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   state.slug = "campus";
+  state.broadcastScope = null;
+  state.broadcasts = [];
   state.queries.mockClear();
   state.events = [];
+});
+
+test("broadcast creation is an admin icon button beside search; broadcasts share search and unread dots", async () => {
+  state.broadcastScope = {
+    schoolId: "school" as Id<"schools">,
+    campusId: "campus" as Id<"campuses">,
+    canCreate: true,
+    canInstitution: true,
+  };
+  state.broadcasts = [
+    {
+      _id: "broadcast",
+      name: "School announcements",
+      archived: false,
+      canManage: true,
+    },
+  ];
+  const view = () => (
+    <SidebarProvider>
+      <CourseChatsNav unreadChats={new Map([["broadcast", 2]])} />
+    </SidebarProvider>
+  );
+  const { getByRole, queryByRole, rerender } = render(view());
+  const create = getByRole("button", { name: "new" });
+  expect(create.textContent).toBe("");
+  expect(
+    create.parentElement?.querySelector('input[type="search"]'),
+  ).toBeTruthy();
+  expect(
+    getByRole("link", { name: /School announcements/ }).getAttribute("href"),
+  ).toBe("/campus/chats/broadcasts/broadcast");
+  fireEvent.change(getByRole("searchbox"), { target: { value: "algebra" } });
+  await waitFor(() =>
+    expect(queryByRole("link", { name: /School announcements/ })).toBeNull(),
+  );
+  state.broadcastScope = { ...state.broadcastScope, canCreate: false };
+  rerender(view());
+  expect(queryByRole("button", { name: "new" })).toBeNull();
 });
 
 test("chat sidebar uses the shared ScrollArea without a second native scroll container", () => {

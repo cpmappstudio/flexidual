@@ -7,6 +7,7 @@ import {
 } from "./course-chat-message";
 import { CourseChatReferenceInput } from "./course-chat-reference-input";
 import { useDocumentActive } from "@/hooks/use-document-active";
+import { useBrowserTimeZone } from "@/hooks/use-browser-time-zone";
 import {
   CourseChatUploadProvider,
   PendingChatMessage,
@@ -50,6 +51,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { parseConvexError } from "@/lib/error-utils";
+import { isRateLimitError } from "@convex-dev/rate-limiter";
 import { cn } from "@/lib/utils";
 import {
   useConvexAuth,
@@ -76,7 +78,8 @@ import {
 import { toast } from "sonner";
 
 interface CourseChatProps {
-  courseId: Id<"classes">;
+  courseId?: Id<"classes">;
+  broadcastId?: Id<"broadcasts">;
   scheduleId?: Id<"classSchedule">;
   className?: string;
 }
@@ -86,18 +89,33 @@ type ChatTarget =
       courseId: Id<"classes">;
       scheduleId?: Id<"classSchedule">;
       eventId?: never;
+      broadcastId?: never;
     }
-  | { eventId: Id<"events">; courseId?: never; scheduleId?: never };
+  | {
+      eventId: Id<"events">;
+      courseId?: never;
+      scheduleId?: never;
+      broadcastId?: never;
+    }
+  | {
+      broadcastId: Id<"broadcasts">;
+      courseId?: never;
+      scheduleId?: never;
+      eventId?: never;
+    };
 
 const MAX_MESSAGE_GROUP_SIZE = 6;
 
 export function CourseChat({
   courseId,
+  broadcastId,
   scheduleId,
   className,
 }: CourseChatProps) {
   return (
-    <CourseChatUploadProvider key={`${courseId}:${scheduleId ?? "course"}`}>
+    <CourseChatUploadProvider
+      key={`${broadcastId ?? courseId}:${scheduleId ?? "course"}`}
+    >
       <div
         data-course-chat-id={courseId}
         className={cn(
@@ -105,9 +123,14 @@ export function CourseChat({
           className,
         )}
       >
-        <CourseChatMessages courseId={courseId} scheduleId={scheduleId} />
+        <CourseChatMessages
+          courseId={courseId}
+          broadcastId={broadcastId}
+          scheduleId={scheduleId}
+        />
         <CourseChatComposer
           courseId={courseId}
+          broadcastId={broadcastId}
           scheduleId={scheduleId}
           className="border-t border-primary/20"
         />
@@ -144,16 +167,21 @@ export function EventChat({
 
 export function CourseChatMessages({
   courseId,
+  broadcastId,
   scheduleId,
   className,
 }: CourseChatProps) {
-  return (
-    <ChatMessages
-      courseId={courseId}
-      scheduleId={scheduleId}
-      className={className}
-    />
-  );
+  if (broadcastId)
+    return <ChatMessages broadcastId={broadcastId} className={className} />;
+  if (courseId)
+    return (
+      <ChatMessages
+        courseId={courseId}
+        scheduleId={scheduleId}
+        className={className}
+      />
+    );
+  return null;
 }
 
 export function EventChatMessages({
@@ -168,6 +196,7 @@ export function EventChatMessages({
 
 function ChatMessages({
   courseId,
+  broadcastId,
   scheduleId,
   eventId,
   className,
@@ -175,26 +204,23 @@ function ChatMessages({
   const t = useTranslations("classroom");
   const eventT = useTranslations("events");
   const format = useFormatter();
-  const [timeZone, setTimeZone] = useState<string>();
-  useEffect(() => {
-    setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-  }, []);
+  const timeZone = useBrowserTimeZone();
   const { isAuthenticated } = useConvexAuth();
-  const courseStatus = useQuery(
-    api.courseChatMessages.getMyStatus,
-    isAuthenticated && courseId
-      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
-      : "skip",
-  );
+  const courseArgs =
+    isAuthenticated && (courseId || broadcastId)
+      ? {
+          ...(broadcastId ? { broadcastId } : { classId: courseId! }),
+          ...(scheduleId ? { scheduleId } : {}),
+        }
+      : "skip";
+  const courseStatus = useQuery(api.courseChatMessages.getMyStatus, courseArgs);
   const eventStatus = useQuery(
     api.eventChatMessages.getMyStatus,
     isAuthenticated && eventId ? { eventId } : "skip",
   );
   const coursePage = usePaginatedQuery(
     api.courseChatMessages.list,
-    isAuthenticated && courseId
-      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
-      : "skip",
+    courseArgs,
     { initialNumItems: 40 },
   );
   const eventPage = usePaginatedQuery(
@@ -208,7 +234,8 @@ function ChatMessages({
     const chronological = [...results].reverse();
     let previousDay: string | undefined;
     let groupSize = 0;
-    return chronological.map((message, index) => {
+    const grouped = [];
+    for (const [index, message] of chronological.entries()) {
       const previous = chronological[index - 1];
       const day = timeZone
         ? format.dateTime(message._creationTime, {
@@ -228,8 +255,9 @@ function ChatMessages({
         groupSize === MAX_MESSAGE_GROUP_SIZE;
       groupSize = startsGroup ? 1 : groupSize + 1;
       previousDay = day;
-      return { message, day, startsDay, startsGroup };
-    });
+      grouped.push({ message, day, startsDay, startsGroup });
+    }
+    return grouped;
   }, [results, timeZone, format]);
 
   return (
@@ -259,7 +287,11 @@ function ChatMessages({
                   <MarkerContent className="text-xs leading-relaxed sm:text-sm">
                     {eventId
                       ? eventT("chatDescription")
-                      : t("classChatDescription")}
+                      : t(
+                          broadcastId
+                            ? "broadcasts.description"
+                            : "classChatDescription",
+                        )}
                   </MarkerContent>
                 </Marker>
               </MessageScrollerItem>
@@ -385,18 +417,15 @@ function ChatReadReceipt({
 
 export function CourseChatComposer({
   courseId,
+  broadcastId,
   scheduleId,
   className,
-}: {
-  courseId: Id<"classes">;
-  scheduleId?: Id<"classSchedule">;
-  className?: string;
-}) {
+}: CourseChatProps) {
+  if (!courseId && !broadcastId) return null;
   return (
     <ChatComposer
-      key={`${courseId}:${scheduleId ?? "course"}`}
-      courseId={courseId}
-      scheduleId={scheduleId}
+      key={`${broadcastId ?? courseId}:${scheduleId ?? "course"}`}
+      {...(broadcastId ? { broadcastId } : { courseId: courseId!, scheduleId })}
       className={className}
     />
   );
@@ -414,6 +443,7 @@ export function EventChatComposer({
 
 function ChatComposer({
   courseId,
+  broadcastId,
   scheduleId,
   eventId,
   className,
@@ -444,8 +474,11 @@ function ChatComposer({
   const sendEventMessage = useMutation(api.eventChatMessages.send);
   const courseStatus = useQuery(
     api.courseChatMessages.getMyStatus,
-    isAuthenticated && courseId
-      ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
+    isAuthenticated && (courseId || broadcastId)
+      ? {
+          ...(broadcastId ? { broadcastId } : { classId: courseId! }),
+          ...(scheduleId ? { scheduleId } : {}),
+        }
       : "skip",
   );
   const eventStatus = useQuery(
@@ -488,7 +521,11 @@ function ChatComposer({
           const file = await optimizeChatImage(entry.file);
           if (controller.signal.aborted) return;
           const response = await requestFile(
-            eventId ? { eventId } : { classId: courseId! },
+            eventId
+              ? { eventId }
+              : broadcastId
+                ? { broadcastId }
+                : { classId: courseId! },
             {
               method: "POST",
               signal: controller.signal,
@@ -542,7 +579,7 @@ function ChatComposer({
         });
       else
         await sendCourseMessage({
-          classId: courseId!,
+          ...(broadcastId ? { broadcastId } : { classId: courseId! }),
           ...(scheduleId ? { scheduleId } : {}),
           body: message,
           ...(uploaded.length
@@ -563,15 +600,19 @@ function ChatComposer({
       if (code === "INVALID_CHAT_ATTACHMENTS")
         setFiles((current) => current.map(({ file }) => ({ file })));
       toast.error(
-        code === "CHAT_ATTACHMENTS_DISABLED"
-          ? t("attachmentsDisabled")
-          : files.length
-            ? t("attachmentUploadError")
-            : code === "CHAT_MUTED"
-              ? t("chatMuted")
-              : parseConvexError(error)?.code === "CHAT_ARCHIVED"
-                ? t("archivedChat")
-                : t("chatSendError"),
+        isRateLimitError(error)
+          ? t("chatRateLimited", {
+              seconds: Math.max(1, Math.ceil(error.data.retryAfter / 1000)),
+            })
+          : code === "CHAT_ATTACHMENTS_DISABLED"
+            ? t("attachmentsDisabled")
+            : files.length
+              ? t("attachmentUploadError")
+              : code === "CHAT_MUTED"
+                ? t("chatMuted")
+                : parseConvexError(error)?.code === "CHAT_ARCHIVED"
+                  ? t("archivedChat")
+                  : t("chatSendError"),
       );
     } finally {
       setIsSending(false);
@@ -677,7 +718,7 @@ function ChatComposer({
                   isArchived
                     ? t("archivedChat")
                     : isMuted
-                      ? t("chatMuted")
+                      ? t(broadcastId ? "broadcasts.readOnly" : "chatMuted")
                       : t("chatPlaceholder")
                 }
               />

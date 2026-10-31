@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ClassroomEntryLoader } from "./classroom-entry-loader";
 
@@ -19,11 +19,21 @@ export function ClassroomEntryTransition({
   const shouldReduceMotion = Boolean(useReducedMotion());
   const completeAnimation = useCallback(() => setIsAnimationComplete(true), []);
 
-  useEffect(() => {
+  const [previousInput, setPreviousInput] = useState({
+    enabled: false,
+    loading: false,
+    shouldReduceMotion: false,
+  });
+  if (
+    previousInput.enabled !== enabled ||
+    previousInput.loading !== loading ||
+    previousInput.shouldReduceMotion !== shouldReduceMotion
+  ) {
+    setPreviousInput({ enabled, loading, shouldReduceMotion });
     if (!enabled) setIsAnimationComplete(false);
     else if (shouldReduceMotion) setIsAnimationComplete(true);
     else if (loading) setIsAnimationComplete(false);
-  }, [enabled, loading, shouldReduceMotion]);
+  }
 
   const showEntry =
     enabled && (loading || (!shouldReduceMotion && !isAnimationComplete));

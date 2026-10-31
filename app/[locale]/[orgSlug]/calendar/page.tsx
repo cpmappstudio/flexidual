@@ -86,7 +86,7 @@ function AgendaView({
     const groups: { [key: string]: { date: Date; events: CalendarEvent[] } } =
       {};
 
-    const today = startOfDay(TZDate.tz(displayTimeZone), {
+    const today = startOfDay(new TZDate(now, displayTimeZone), {
       in: tz(displayTimeZone),
     });
 
@@ -113,7 +113,7 @@ function AgendaView({
     });
 
     return groups;
-  }, [displayTimeZone, filteredEvents]);
+  }, [displayTimeZone, filteredEvents, now]);
 
   const sortedDates = Object.keys(groupedEvents).sort();
 
@@ -129,7 +129,7 @@ function AgendaView({
     <div className="space-y-6">
       {sortedDates.map((dateKey) => {
         const { date, events: dayEvents } = groupedEvents[dateKey];
-        const isToday = isSameDay(date, Date.now(), {
+        const isToday = isSameDay(date, now, {
           in: tz(displayTimeZone),
         });
 
@@ -203,6 +203,8 @@ function AgendaView({
 }
 
 function CalendarContent() {
+  const searchParams = useSearchParams();
+  const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
   const [selectedMode, setSelectedMode] = useState<Mode | null>(null);
   const [date, setDate] = useState<Date>(new Date());
   const now = useCurrentMinute();
@@ -210,7 +212,7 @@ function CalendarContent() {
   const [selectedTeacherId, setSelectedTeacherId] =
     useState<Id<"users"> | null>(null);
   const [selectedCourseId, setSelectedCourseId] =
-    useState<Id<"classes"> | null>(null);
+    useState<Id<"classes"> | null>(classIdParam);
   const [selectedGradeCode, setSelectedGradeCode] = useState<string | null>(
     null,
   );
@@ -244,7 +246,6 @@ function CalendarContent() {
     isLoading: isConvexAuthLoading,
   } = useConvexAuth();
 
-  const searchParams = useSearchParams();
   const router = useRouter();
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
@@ -253,14 +254,22 @@ function CalendarContent() {
   const eventRecordingIdParam = searchParams.get(
     "recordingId",
   ) as Id<"recordings"> | null;
-  useEffect(() => {
-    if (!eventIdParam) return;
-    setEventExplorerEventId(eventIdParam);
-    setEventExplorerFocusRecordings(focusEventRecordings);
-    setEventExplorerRecordingId(eventRecordingIdParam);
-    setEventExplorerLoaded(true);
-    setEventExplorerOpen(true);
-  }, [eventIdParam, focusEventRecordings, eventRecordingIdParam]);
+  const eventLink = eventIdParam
+    ? `${eventIdParam}:${focusEventRecordings}:${eventRecordingIdParam ?? ""}`
+    : null;
+  const [previousEventLink, setPreviousEventLink] = useState<string | null>(
+    null,
+  );
+  if (previousEventLink !== eventLink) {
+    setPreviousEventLink(eventLink);
+    if (eventIdParam) {
+      setEventExplorerEventId(eventIdParam);
+      setEventExplorerFocusRecordings(focusEventRecordings);
+      setEventExplorerRecordingId(eventRecordingIdParam);
+      setEventExplorerLoaded(true);
+      setEventExplorerOpen(true);
+    }
+  }
 
   function handleEventExplorerOpenChange(open: boolean) {
     setEventExplorerOpen(open);
@@ -286,7 +295,6 @@ function CalendarContent() {
     api.organizations.resolveSlug,
     isCalendarAuthReady ? { slug: orgSlug } : "skip",
   );
-  const classIdParam = searchParams.get("classId") as Id<"classes"> | null;
 
   const { context: settingsContext } = useSettingsContext();
   const { access } = useStaffAccess();
@@ -475,11 +483,15 @@ function CalendarContent() {
         }
       : "skip",
   );
-  useEffect(() => {
+  const filtersScope = `${scopeKey ?? "unresolved"}:${classIdParam ?? "all"}`;
+  const [previousFiltersScope, setPreviousFiltersScope] =
+    useState(filtersScope);
+  if (previousFiltersScope !== filtersScope) {
+    setPreviousFiltersScope(filtersScope);
     setSelectedCourseId(classIdParam);
     setSelectedTeacherId(null);
     setSelectedGradeCode(null);
-  }, [classIdParam, scopeKey]);
+  }
 
   const scheduleData = useRetainedQueryResult(
     scheduleResult,
@@ -539,6 +551,9 @@ function CalendarContent() {
       teacherName: e.teacherName,
       teacherImageUrl: e.teacherImageUrl,
       canLeadSession: e.canLeadSession,
+      hasRecording: e.hasRecording,
+      hasPrerecorded: e.hasPrerecorded,
+      canManagePrerecorded: e.canManagePrerecorded,
       sessionStartedAt: e.sessionStartedAt,
       sessionReopenUntil: e.sessionReopenUntil,
       sessionEndedAt: e.sessionEndedAt,

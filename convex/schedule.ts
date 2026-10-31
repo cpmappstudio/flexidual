@@ -5,6 +5,7 @@ import {
   listTeacherClasses,
 } from "./model/courseAssignments";
 import { v } from "convex/values";
+import { getCourseLessonHistory } from "./model/courseProgress";
 import {
   internalMutation,
   internalQuery,
@@ -48,6 +49,11 @@ import {
 } from "./model/membership";
 import { isStudentEnrolled, listClassStudentIds } from "./model/enrollments";
 import { deleteScheduleWithDependencies } from "./model/scheduleDeletion";
+import {
+  hasReleasedSessionVideo,
+  getSessionVideoFlags,
+  syncPrerecordedRelease,
+} from "./model/classSessionVideos";
 import { syncClassTypeFromSchedules } from "./model/classType";
 import { recordClassCancellationEvent } from "./model/classCancellationEvents";
 import {
@@ -272,6 +278,8 @@ const scheduleEventValidator = v.object({
     }),
   ),
   hasRecording: v.boolean(),
+  hasPrerecorded: v.boolean(),
+  canManagePrerecorded: v.boolean(),
   canLeadSession: v.boolean(),
   sessionStartedAt: v.optional(v.number()),
   sessionReopenUntil: v.optional(v.number()),
@@ -1251,7 +1259,16 @@ export const getMySchedule = query({
             ? attendanceSummary
             : undefined
           : undefined,
-        hasRecording: scheduleIdsWithRecordings.has(item._id),
+        hasRecording:
+          scheduleIdsWithRecordings.has(item._id) ||
+          (includeRecordings &&
+            effectiveStatus !== "cancelled" &&
+            hasReleasedSessionVideo(item)),
+        ...getSessionVideoFlags(
+          { ...item, status: effectiveStatus },
+          canLeadSession,
+          user.isActive && classData.isActive,
+        ),
         canLeadSession,
         sessionStartedAt: canLeadSession ? item.sessionStartedAt : undefined,
         sessionReopenUntil: canLeadSession
@@ -1782,32 +1799,20 @@ export const getSessionClosureContext = query({
 
     if (isExternalClassSession(schedule.sessionType)) return null;
 
-    const [lessons, attendance, report, classReports, classReportLessons] =
-      await Promise.all([
-        ctx.db
-          .query("lessons")
-          .withIndex("by_curriculum_active", (q) =>
-            q.eq("curriculumId", classData.curriculumId).eq("isActive", true),
-          )
-          .collect(),
-        getAttendanceDetailsData(ctx, schedule, classData, args.now),
-        ctx.db
-          .query("classSessionReports")
-          .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
-          .first(),
-        ctx.db
-          .query("classSessionReports")
-          .withIndex("by_class_and_closed_at", (q) =>
-            q.eq("classId", classData._id),
-          )
-          .collect(),
-        ctx.db
-          .query("classSessionReportLessons")
-          .withIndex("by_class_and_lesson", (q) =>
-            q.eq("classId", classData._id),
-          )
-          .collect(),
-      ]);
+    const [lessons, attendance, report, historyByLesson] = await Promise.all([
+      ctx.db
+        .query("lessons")
+        .withIndex("by_curriculum_active", (q) =>
+          q.eq("curriculumId", classData.curriculumId).eq("isActive", true),
+        )
+        .collect(),
+      getAttendanceDetailsData(ctx, schedule, classData, args.now),
+      ctx.db
+        .query("classSessionReports")
+        .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
+        .first(),
+      getCourseLessonHistory(ctx, classData._id, schedule._id),
+    ]);
     const reportLessons = report
       ? await ctx.db
           .query("classSessionReportLessons")
@@ -1817,28 +1822,6 @@ export const getSessionClosureContext = query({
     const selectedLessonIds = new Set(
       reportLessons.map(({ lessonId }) => lessonId),
     );
-    const reportClosedAt = new Map(
-      classReports.map((classReport) => [
-        classReport._id,
-        classReport.closedAt,
-      ]),
-    );
-    const historyByLesson = new Map<
-      Id<"lessons">,
-      { count: number; lastRecordedAt?: number }
-    >();
-    for (const reportLesson of classReportLessons) {
-      if (reportLesson.scheduleId === schedule._id) continue;
-      const closedAt = reportClosedAt.get(reportLesson.reportId);
-      if (closedAt === undefined) continue;
-      const history = historyByLesson.get(reportLesson.lessonId) ?? {
-        count: 0,
-      };
-      history.count += 1;
-      history.lastRecordedAt = Math.max(history.lastRecordedAt ?? 0, closedAt);
-      historyByLesson.set(reportLesson.lessonId, history);
-    }
-
     return {
       scheduleId: schedule._id,
       className: classData.name,
@@ -2358,6 +2341,13 @@ export const updateSchedule = mutation({
 
         if (needsTimeUpdate || Object.keys(metadataUpdates).length > 0) {
           await ctx.db.patch(item._id, updatePatch);
+          if (
+            item.prerecordedVideoId &&
+            (needsTimeUpdate ||
+              args.status !== undefined ||
+              args.sessionType !== undefined)
+          )
+            await syncPrerecordedRelease(ctx, { ...item, ...updatePatch });
         }
         if (
           needsTimeUpdate &&
@@ -2383,6 +2373,13 @@ export const updateSchedule = mutation({
         singleUpdates.scheduledEnd = newEnd;
       }
       await ctx.db.patch(args.id, singleUpdates);
+      if (
+        schedule.prerecordedVideoId &&
+        (args.localStart !== undefined ||
+          args.status !== undefined ||
+          args.sessionType !== undefined)
+      )
+        await syncPrerecordedRelease(ctx, { ...schedule, ...singleUpdates });
       if (args.sessionType !== undefined) {
         await syncClassTypeFromSchedules(ctx, classData._id);
       }
@@ -2464,17 +2461,19 @@ export const cancelSchedule = mutation({
           item.isLive !== true,
       );
       for (const item of futureScheduledItems) {
-        await ctx.db.patch(
-          "classSchedule",
-          item._id,
-          buildScheduleCancellationFields({
-            actorId: user._id,
-            reason,
-            scope: "series",
-            effectiveAt: schedule.scheduledStart,
-            occurredAt: now,
-          }),
-        );
+        const cancellationUpdates = buildScheduleCancellationFields({
+          actorId: user._id,
+          reason,
+          scope: "series",
+          effectiveAt: schedule.scheduledStart,
+          occurredAt: now,
+        });
+        await ctx.db.patch("classSchedule", item._id, cancellationUpdates);
+        if (item.prerecordedVideoId)
+          await syncPrerecordedRelease(ctx, {
+            ...item,
+            ...cancellationUpdates,
+          });
       }
       if (futureScheduledItems.length > 0) {
         await recordClassCancellationEvent(ctx, {
@@ -2505,6 +2504,8 @@ export const cancelSchedule = mutation({
       occurredAt: now,
       source: "calendar",
     });
+    if (schedule.prerecordedVideoId)
+      await syncPrerecordedRelease(ctx, { ...schedule, status: "cancelled" });
     return { cancelled: 1, type: "single" as const };
   },
 });

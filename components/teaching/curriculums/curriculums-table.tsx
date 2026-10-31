@@ -56,19 +56,15 @@ export function CurriculumsTable({
   const [editingCurriculum, setEditingCurriculum] =
     useState<Doc<"curriculums"> | null>(null);
 
-  React.useEffect(() => {
-    if (!data || !requestedCurriculumId) {
-      return;
-    }
-
-    const requestedCurriculum = data.find(
-      (curriculum) => curriculum._id === requestedCurriculumId,
-    );
-
-    if (requestedCurriculum) {
-      setEditingCurriculum(requestedCurriculum);
-    }
-  }, [data, requestedCurriculumId]);
+  const requestedCurriculum = requestedCurriculumId
+    ? data?.find((curriculum) => curriculum._id === requestedCurriculumId)
+    : undefined;
+  const [previousRequestedCurriculum, setPreviousRequestedCurriculum] =
+    useState<typeof requestedCurriculum>();
+  if (previousRequestedCurriculum !== requestedCurriculum) {
+    setPreviousRequestedCurriculum(requestedCurriculum);
+    if (requestedCurriculum) setEditingCurriculum(requestedCurriculum);
+  }
 
   const handleDialogOpenChange = React.useCallback(
     (open: boolean) => {

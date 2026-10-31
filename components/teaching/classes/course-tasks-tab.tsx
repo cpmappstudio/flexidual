@@ -64,9 +64,12 @@ export function CourseTasksTab({
     () => new Set(),
   );
 
-  useEffect(() => {
+  const [previousInitialTaskId, setPreviousInitialTaskId] =
+    useState(initialTaskId);
+  if (previousInitialTaskId !== initialTaskId) {
+    setPreviousInitialTaskId(initialTaskId);
     setSelectedId(initialTaskId);
-  }, [initialTaskId]);
+  }
 
   const visibleTasks = results.filter((task) => !deletedTaskIds.has(task._id));
   const orderedTasks = [...visibleTasks].reverse();
@@ -125,16 +128,18 @@ export function CourseTasksTab({
 
   return (
     <div className="space-y-5">
-      {canManage && (
-        <div className="flex justify-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-lg font-semibold">{t("heading")}</h2>
+        {canManage && (
           <Button type="button" onClick={() => setEditor({ materials: [] })}>
             <Plus className="size-4" />
             {t("newTask")}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       <DetailCarousel
         title={t("heading")}
+        showTitle={false}
         olderLabel={t("olderTasks")}
         newerLabel={t("newerTasks")}
         showNavigation={visibleTasks.length > 1}

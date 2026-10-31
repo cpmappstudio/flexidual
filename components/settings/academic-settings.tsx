@@ -3,12 +3,7 @@
 import * as React from "react";
 import { useMutation, useQuery } from "convex/react";
 import { format } from "date-fns";
-import {
-  CalendarDays,
-  Clock3,
-  EllipsisVertical,
-  Loader2,
-} from "lucide-react";
+import { CalendarDays, Clock3, EllipsisVertical, Loader2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import type { DateRange } from "react-day-picker";
 import { toast } from "sonner";
@@ -110,18 +105,27 @@ export function AcademicSettings() {
   const [startTime, setStartTime] = React.useState("");
   const [endTime, setEndTime] = React.useState("");
 
-  React.useEffect(() => {
-    if (!settings) return;
+  const windowSource = settings
+    ? `${context?.institution._id}:${settings.scheduleStartMinutes}:${settings.scheduleEndMinutes}`
+    : null;
+  const [previousWindowSource, setPreviousWindowSource] = React.useState<
+    string | null
+  >(null);
+  if (settings && previousWindowSource !== windowSource) {
+    setPreviousWindowSource(windowSource);
     setStartTime(toTimeInput(settings.scheduleStartMinutes));
     setEndTime(toTimeInput(settings.scheduleEndMinutes));
-  }, [settings]);
+  }
 
   const dateFormatter = React.useMemo(
     () => new Intl.DateTimeFormat(locale, { dateStyle: "medium" }),
     [locale],
   );
 
-  if (isLoading || (context?.canViewInstitutionSettings && settings === undefined)) {
+  if (
+    isLoading ||
+    (context?.canViewInstitutionSettings && settings === undefined)
+  ) {
     return <Skeleton className="h-72 w-full rounded-xl" />;
   }
 
@@ -294,35 +298,37 @@ export function AcademicSettings() {
                           {t(status)}
                         </Badge>
                       </TableCell>
-                      {!readOnly && <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-8 text-muted-foreground data-[state=open]:bg-muted"
-                              aria-label={`${t("actions")}: ${period.name}`}
-                            >
-                              <EllipsisVertical />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-36">
-                            <DropdownMenuItem
-                              onSelect={() => openPeriodDialog(period)}
-                            >
-                              {commonT("edit")}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onSelect={() => setDeleteTarget(period)}
-                            >
-                              {commonT("delete")}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>}
+                      {!readOnly && (
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-8 text-muted-foreground data-[state=open]:bg-muted"
+                                aria-label={`${t("actions")}: ${period.name}`}
+                              >
+                                <EllipsisVertical />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-36">
+                              <DropdownMenuItem
+                                onSelect={() => openPeriodDialog(period)}
+                              >
+                                {commonT("edit")}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => setDeleteTarget(period)}
+                              >
+                                {commonT("delete")}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })
@@ -341,94 +347,98 @@ export function AcademicSettings() {
         </div>
       </div>
 
-      {!readOnly && <EntityDialog
-        open={periodDialogOpen}
-        onOpenChange={(open) => {
-          if (!isSubmittingPeriod) setPeriodDialogOpen(open);
-          if (!open && !isSubmittingPeriod) resetPeriodForm();
-        }}
-        title={editingPeriod ? t("editPeriod") : t("createPeriod")}
-        onSubmit={handleSavePeriod}
-        isSubmitting={isSubmittingPeriod}
-        submitDisabled={
-          !periodName.trim() || !periodRange?.from || !periodRange.to
-        }
-        submitLabel={editingPeriod ? commonT("saveChanges") : t("create")}
-        maxWidth="sm:max-w-[720px]"
-      >
-        <div className="grid gap-5">
-          <div className="grid gap-2">
-            <Label htmlFor="academic-period-name">{t("name")}</Label>
-            <Input
-              id="academic-period-name"
-              value={periodName}
-              onChange={(event) => setPeriodName(event.target.value)}
-              maxLength={100}
-              required
-            />
+      {!readOnly && (
+        <EntityDialog
+          open={periodDialogOpen}
+          onOpenChange={(open) => {
+            if (!isSubmittingPeriod) setPeriodDialogOpen(open);
+            if (!open && !isSubmittingPeriod) resetPeriodForm();
+          }}
+          title={editingPeriod ? t("editPeriod") : t("createPeriod")}
+          onSubmit={handleSavePeriod}
+          isSubmitting={isSubmittingPeriod}
+          submitDisabled={
+            !periodName.trim() || !periodRange?.from || !periodRange.to
+          }
+          submitLabel={editingPeriod ? commonT("saveChanges") : t("create")}
+          maxWidth="sm:max-w-[720px]"
+        >
+          <div className="grid gap-5">
+            <div className="grid gap-2">
+              <Label htmlFor="academic-period-name">{t("name")}</Label>
+              <Input
+                id="academic-period-name"
+                value={periodName}
+                onChange={(event) => setPeriodName(event.target.value)}
+                maxLength={100}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>{t("dateRange")}</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="justify-start bg-sidebar text-left font-normal"
+                  >
+                    <CalendarDays />
+                    {periodRange?.from && periodRange.to
+                      ? `${dateFormatter.format(periodRange.from)} – ${dateFormatter.format(periodRange.to)}`
+                      : t("selectDates")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={periodRange}
+                    onSelect={setPeriodRange}
+                    defaultMonth={periodRange?.from}
+                    numberOfMonths={2}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
-          <div className="grid gap-2">
-            <Label>{t("dateRange")}</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="justify-start bg-sidebar text-left font-normal"
-                >
-                  <CalendarDays />
-                  {periodRange?.from && periodRange.to
-                    ? `${dateFormatter.format(periodRange.from)} – ${dateFormatter.format(periodRange.to)}`
-                    : t("selectDates")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="range"
-                  selected={periodRange}
-                  onSelect={setPeriodRange}
-                  defaultMonth={periodRange?.from}
-                  numberOfMonths={2}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-      </EntityDialog>}
+        </EntityDialog>
+      )}
 
-      {!readOnly && <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !isDeletingPeriod) setDeleteTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("deletePeriodTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("deletePeriodDescription", {
-                name: deleteTarget?.name ?? "",
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingPeriod}>
-              {commonT("cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isDeletingPeriod}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(event) => {
-                event.preventDefault();
-                void handleDeletePeriod();
-              }}
-            >
-              {isDeletingPeriod && <Loader2 className="animate-spin" />}
-              {commonT("delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>}
+      {!readOnly && (
+        <AlertDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => {
+            if (!open && !isDeletingPeriod) setDeleteTarget(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("deletePeriodTitle")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("deletePeriodDescription", {
+                  name: deleteTarget?.name ?? "",
+                })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeletingPeriod}>
+                {commonT("cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isDeletingPeriod}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void handleDeletePeriod();
+                }}
+              >
+                {isDeletingPeriod && <Loader2 className="animate-spin" />}
+                {commonT("delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
       <form className="grid gap-3" onSubmit={handleSaveWindow}>
         <h3 className="text-lg font-semibold">

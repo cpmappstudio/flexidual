@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 type PipVideo = HTMLVideoElement & {
   webkitPresentationMode?: string;
@@ -119,9 +125,11 @@ export function useClassroomFloatingWindow({
   const requestRef = useRef(0);
   const openingRef = useRef(false);
   const enabledRef = useRef(enabled);
-  enabledRef.current = enabled;
   const videoRef = useRef(video);
-  videoRef.current = video;
+  useLayoutEffect(() => {
+    enabledRef.current = enabled;
+    videoRef.current = video;
+  }, [enabled, video]);
   const activeVideoRef = useRef<PipVideo | null>(null);
 
   useEffect(() => {
@@ -315,6 +323,7 @@ export function useClassroomFloatingWindow({
   }, [video]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Revocation must close the external window/PiP and synchronize its SDK-owned state after commit.
     if (!enabled) close();
   }, [enabled, close]);
 

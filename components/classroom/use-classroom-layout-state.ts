@@ -20,7 +20,10 @@ export function usePhoneLandscapeStageControls() {
     const mediaQuery = (ownerWindow ?? window).matchMedia(
       "(orientation: landscape) and (max-height: 500px)",
     );
-    const handleChange = () => setIsPhoneLandscape(mediaQuery.matches);
+    const handleChange = () => {
+      setIsPhoneLandscape(mediaQuery.matches);
+      if (mediaQuery.matches) showStageControls();
+    };
 
     handleChange();
     mediaQuery.addEventListener("change", handleChange);
@@ -28,11 +31,7 @@ export function usePhoneLandscapeStageControls() {
       mediaQuery.removeEventListener("change", handleChange);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [ownerWindow]);
-
-  useEffect(() => {
-    if (isPhoneLandscape) showStageControls();
-  }, [isPhoneLandscape, showStageControls]);
+  }, [ownerWindow, showStageControls]);
 
   return {
     isPhoneLandscape:

@@ -32,6 +32,12 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
       const knownCodes = [
         "CLASS_NOT_FOUND",
         "PERMISSION_DENIED",
+        "SESSION_VIDEO_STORAGE_NOT_CONFIGURED",
+        "SESSION_VIDEO_UPLOAD_EXPIRED",
+        "SESSION_VIDEO_UNAVAILABLE",
+        "SESSION_VIDEO_CONFLICT",
+        "INVALID_SESSION_VIDEO",
+        "INVALID_TAUGHT_LESSON_SELECTION",
         "INVALID_STUDENT",
         "INVALID_STUDENTS",
         "INVALID_GRADE",
@@ -42,6 +48,7 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
         "INVALID_CURRICULUM_TITLE",
         "COURSE_CLASS_OVERLAP",
         "INVALID_WEEKLY_SCHEDULE",
+        "PRERECORDED_VIDEO_SCHEDULE_CONFLICT",
         "CANCELLATION_REASON_REQUIRED",
         "SCHEDULE_CANNOT_BE_CANCELLED",
         "SCHEDULE_IS_NOT_RECURRING",
@@ -92,6 +99,18 @@ export function getErrorMessage(
   locale?: string,
 ): string {
   switch (error.code) {
+    case "SESSION_VIDEO_STORAGE_NOT_CONFIGURED":
+      return t("sessionVideo.storageNotConfigured");
+    case "SESSION_VIDEO_UPLOAD_EXPIRED":
+      return t("sessionVideo.expired");
+    case "SESSION_VIDEO_UNAVAILABLE":
+      return t("sessionVideo.unavailable");
+    case "SESSION_VIDEO_CONFLICT":
+      return t("sessionVideo.conflict");
+    case "INVALID_SESSION_VIDEO":
+      return t("sessionVideo.invalidFile");
+    case "INVALID_TAUGHT_LESSON_SELECTION":
+      return t("sessionVideo.invalidLessons");
     case "CURRICULUM_CONFLICT":
       return t("errors.curriculumConflict", {
         className: error.className || "",
@@ -115,6 +134,8 @@ export function getErrorMessage(
       return t("class.classTimeOverlap");
     case "INVALID_WEEKLY_SCHEDULE":
       return t("class.invalidScheduleTime");
+    case "PRERECORDED_VIDEO_SCHEDULE_CONFLICT":
+      return t("class.prerecordedVideoScheduleConflict");
     case "CLASS_NOT_FOUND":
       return t("errors.classNotFound");
     case "PERMISSION_DENIED":
