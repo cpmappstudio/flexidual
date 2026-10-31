@@ -8,11 +8,17 @@ import {
   requireLiveWhiteboardManager,
   requireLiveWhiteboardReader,
   hasWhiteboardRecordingAccess,
+  getWhiteboardRoom,
+  canManageWhiteboardRoom,
+  canReadWhiteboardRoom,
 } from "./model/whiteboardAccess";
-import { getLiveActivationId, getLiveRoomName } from "./model/liveActivation";
+import {
+  getEventActivationId,
+  getLiveActivationId,
+  getLiveRoomName,
+} from "./model/liveActivation";
+import { findEventRoom } from "./model/eventRoomAccess";
 import { revokeWhiteboardRecordingToken } from "./model/whiteboardRecording";
-import { canManageRoom } from "./permissions";
-import { canAccessSchedule } from "./model/scheduleAccess";
 import {
   requireCourseNotebookAccess,
   requireNotebookPage,
@@ -159,22 +165,19 @@ export const getRealtimeWriter = query({
       manifest ? manifest.recordingToken : legacy?.recordingToken,
     );
 
-    const schedule = await ctx.db
-      .query("classSchedule")
-      .withIndex("by_room", (q) => q.eq("roomName", roomName))
-      .first();
+    const room = await getWhiteboardRoom(ctx, roomName);
     if (
-      !schedule ||
-      schedule.status !== "active" ||
-      !schedule.isLive ||
-      getLiveRoomName(schedule) !== expectedLiveRoomName
+      !room ||
+      room.schedule.status !== "active" ||
+      !room.schedule.isLive ||
+      getLiveRoomName(room.schedule) !== expectedLiveRoomName
     )
       return false;
 
     // writerId is the inspected LiveKit sender, never the caller's identity.
     const writer = await ctx.db.get("users", writerId);
     return Boolean(
-      writer?.isActive && (await canManageRoom(ctx, writerId, roomName)),
+      writer?.isActive && (await canManageWhiteboardRoom(ctx, writerId, room)),
     );
   },
 });
@@ -189,7 +192,8 @@ export const getRealtimeAudience = query({
   },
   returns: v.array(v.string()),
   handler: async (ctx, { roomName, expectedLiveRoomName, participants }) => {
-    const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
+    const room = await requireLiveWhiteboardManager(ctx, roomName);
+    const { schedule } = room;
     if (getLiveRoomName(schedule) !== expectedLiveRoomName) return [];
     if (
       participants.length > 256 ||
@@ -205,7 +209,7 @@ export const getRealtimeAudience = query({
           const user = await ctx.db.get("users", userId);
           if (
             !user?.isActive ||
-            !(await canAccessSchedule(ctx, userId, schedule))
+            !(await canReadWhiteboardRoom(ctx, userId, room))
           )
             return;
           const identities = new Set([user.clerkId]);
@@ -217,7 +221,7 @@ export const getRealtimeAudience = query({
                 participant.userId === userId &&
                 participant.identity === companion,
             ) &&
-            (await canManageRoom(ctx, userId, roomName))
+            (await canManageWhiteboardRoom(ctx, userId, room))
           )
             identities.add(companion);
         },
@@ -240,19 +244,32 @@ export const getRealtimeAudience = query({
     if (token) {
       const recordings = await Promise.all(
         (["starting", "active"] as const).map((status) =>
-          ctx.db
-            .query("recordings")
-            .withIndex("by_schedule", (q) =>
-              q.eq("scheduleId", schedule._id).eq("status", status),
-            )
-            .order("desc")
-            .take(32),
+          room.kind === "class"
+            ? ctx.db
+                .query("recordings")
+                .withIndex("by_schedule", (q) =>
+                  q.eq("scheduleId", room.schedule._id).eq("status", status),
+                )
+                .order("desc")
+                .take(32)
+            : ctx.db
+                .query("recordings")
+                .withIndex("by_event_occurrence", (q) =>
+                  q
+                    .eq("eventOccurrenceId", room.schedule._id)
+                    .eq("status", status),
+                )
+                .order("desc")
+                .take(32),
         ),
       );
       for (const recording of recordings.flat())
         if (
           recording.roomName === roomName &&
-          recording.activationId === getLiveActivationId(schedule) &&
+          recording.activationId ===
+            (room.kind === "class"
+              ? getLiveActivationId(room.schedule)
+              : getEventActivationId(room.schedule)) &&
           recording.recordingToken === token
         )
           // LiveKit BuildEgressToken uses egressID as its hidden participant identity.
@@ -309,10 +326,14 @@ export const ensureScene = mutation({
   args: { roomName: v.string(), expectedLiveRoomName: v.string() },
   returns: manifestValidator,
   handler: async (ctx, { roomName, expectedLiveRoomName }) => {
-    const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
+    const room = await requireLiveWhiteboardManager(ctx, roomName);
+    const { schedule } = room;
     if (getLiveRoomName(schedule) !== expectedLiveRoomName)
       throw new ConvexError("STALE_LIVE_ACTIVATION");
-    const manifest = await ensureCourseWhiteboardScene(ctx, schedule);
+    const manifest =
+      room.kind === "class"
+        ? await ensureCourseWhiteboardScene(ctx, room.schedule)
+        : await ensureWhiteboardManifest(ctx, roomName);
     const presented = await resolveWhiteboardPresentation(ctx, manifest);
     return liveManifestResult(manifest, presented);
   },
@@ -326,7 +347,9 @@ export const selectNotebookPage = mutation({
   },
   returns: v.null(),
   handler: async (ctx, { roomName, expectedLiveRoomName, pageId }) => {
-    const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
+    const room = await requireLiveWhiteboardManager(ctx, roomName);
+    if (room.kind !== "class") throw new ConvexError("PERMISSION_DENIED");
+    const { schedule } = room;
     if (getLiveRoomName(schedule) !== expectedLiveRoomName)
       throw new ConvexError("STALE_LIVE_ACTIVATION");
     if (pageId) {
@@ -436,10 +459,14 @@ export const applySceneDelta = mutation({
     ctx,
     { roomName, expectedLiveRoomName, generation, bucketId, parts },
   ) => {
-    const { schedule } = await requireLiveWhiteboardManager(ctx, roomName);
+    const room = await requireLiveWhiteboardManager(ctx, roomName);
+    const { schedule } = room;
     if (getLiveRoomName(schedule) !== expectedLiveRoomName)
       throw new ConvexError("STALE_LIVE_ACTIVATION");
-    const manifest = await ensureCourseWhiteboardScene(ctx, schedule);
+    const manifest =
+      room.kind === "class"
+        ? await ensureCourseWhiteboardScene(ctx, room.schedule)
+        : await ensureWhiteboardManifest(ctx, roomName);
     return applyWhiteboardSceneDelta(
       ctx,
       manifest,
@@ -618,6 +645,11 @@ export const getRecordingContext = query({
       className: v.string(),
       curriculumIconKey: curriculumIconValidator,
     }),
+    v.object({
+      leaderParticipantIdentity: v.union(v.string(), v.null()),
+      eventId: v.id("events"),
+      eventTitle: v.string(),
+    }),
   ),
   handler: async (ctx, { roomName, recordingToken }) => {
     const session = await ctx.db
@@ -633,7 +665,18 @@ export const getRecordingContext = query({
       .query("classSchedule")
       .withIndex("by_room", (q) => q.eq("roomName", roomName))
       .first();
-    if (!schedule) return null;
+    if (!schedule) {
+      const room = await findEventRoom(ctx, roomName);
+      if (!room) return null;
+      const leader = room.occurrence.sessionLeaderId
+        ? await ctx.db.get("users", room.occurrence.sessionLeaderId)
+        : null;
+      return {
+        leaderParticipantIdentity: leader?.clerkId ?? null,
+        eventId: room.event._id,
+        eventTitle: room.event.title,
+      };
+    }
 
     const classData = await ctx.db.get("classes", schedule.classId);
     if (!classData) return null;
@@ -667,11 +710,16 @@ export const setRecordingToken = internalMutation({
       .query("classSchedule")
       .withIndex("by_room", (q) => q.eq("roomName", roomName))
       .unique();
+    const eventRoom = schedule ? null : await findEventRoom(ctx, roomName);
+    const target = schedule ?? eventRoom?.occurrence;
     if (
-      !schedule ||
+      !target ||
       (expectedActivationId &&
-        getLiveActivationId(schedule) !== expectedActivationId) ||
-      (recordingToken && (!schedule.isLive || schedule.status !== "active"))
+        (schedule
+          ? getLiveActivationId(schedule)
+          : getEventActivationId(eventRoom!.occurrence)) !==
+          expectedActivationId) ||
+      (recordingToken && (!target.isLive || target.status !== "active"))
     )
       return false;
     if (recordingToken && expectedActivationId) {

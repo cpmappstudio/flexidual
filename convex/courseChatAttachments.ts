@@ -1,33 +1,18 @@
 import { ConvexError, v } from "convex/values";
-import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
-import { components, internal } from "./_generated/api";
+import { MINUTE } from "@convex-dev/rate-limiter";
+import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { getCourseChatAccess } from "./model/courseChatAccess";
 import { deleteChatAttachment } from "./model/courseChatAttachments";
 import { getCurrentUserOrThrow } from "./users";
 import { isValidChatFile } from "../lib/chat-attachments";
+import { chatAttachmentLimiter as limiter } from "./model/chatAttachmentLimits";
 import { chatTarget, chatTargetFields, sameChat } from "./model/chatTarget";
 import {
   chatPermission,
   getChatSource,
   requireChatWriter,
 } from "./model/chatSource";
-
-const limiter = new RateLimiter(components.rateLimiter, {
-  chatUploads: { kind: "token bucket", rate: 6, period: MINUTE, capacity: 6 },
-  chatUploadBytes: {
-    kind: "token bucket",
-    rate: 100 * 1024 * 1024,
-    period: HOUR,
-    capacity: 100 * 1024 * 1024,
-  },
-  chatDownloadBytes: {
-    kind: "token bucket",
-    rate: 500 * 1024 * 1024,
-    period: HOUR,
-    capacity: 500 * 1024 * 1024,
-  },
-});
 
 export const reserve = internalMutation({
   args: {

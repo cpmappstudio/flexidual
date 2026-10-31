@@ -19,6 +19,7 @@ import {
   clearCampusPrincipalAssignments,
   upsertRoleAssignment,
 } from "./roleAssignments";
+import { deleteCampusEvents } from "./model/eventDeletion";
 
 const campusValidator = v.object({
   _id: v.id("campuses"),
@@ -478,6 +479,7 @@ export const remove = mutation({
       return { deleted: false, reason: "CAMPUS_IN_USE" } as const;
     }
 
+    await deleteCampusEvents(ctx, args.id);
     await ctx.db.delete(args.id);
     return { deleted: true } as const;
   },

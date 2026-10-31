@@ -43,9 +43,10 @@ import {
   ClassroomParticipantRoster,
   ClassroomParticipantRosterSheet,
 } from "./classroom-participant-roster-sheet";
-import { CourseChat } from "@/components/chat/course-chat";
+import { CourseChat, EventChat } from "@/components/chat/course-chat";
 import { UnreadIndicator } from "@/components/notifications/unread-indicator";
 import { useUnreadCourseChats } from "@/hooks/use-unread-course-chats";
+import { useUnreadEventChats } from "@/hooks/use-unread-event-chats";
 import { useTranslations } from "next-intl";
 import { ClassroomLayoutSidebar } from "./classroom-layout";
 import { useClassroomParticipantPagination } from "./use-classroom-participant-pagination";
@@ -59,7 +60,8 @@ const classroomPanelTabTriggerClassName =
   "relative h-full min-w-0 rounded-none text-xs font-medium text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-transparent data-[state=active]:after:bg-primary";
 
 interface ClassroomParticipantsPanelProps {
-  courseId: Id<"classes">;
+  courseId?: Id<"classes">;
+  eventId?: Id<"events">;
   scheduleId?: Id<"classSchedule">;
   heading: string;
   compactHeading: string;
@@ -103,14 +105,33 @@ export function ClassroomParticipantsPanel({
     );
   }
 
+  if (props.eventId)
+    return <ClassroomParticipantsPanelWithEventUnread {...props} />;
+
   return <ClassroomParticipantsPanelWithUnread {...props} />;
+}
+
+function ClassroomParticipantsPanelWithEventUnread(
+  props: ClassroomParticipantsPanelProps,
+) {
+  const notificationT = useTranslations("systemNotifications");
+  const unread = useUnreadEventChats();
+  const unreadCount = props.eventId ? (unread.get(props.eventId) ?? 0) : 0;
+  return (
+    <ClassroomParticipantsPanelContent
+      {...props}
+      unreadCount={unreadCount}
+      unreadLabel={notificationT("unreadMessages", { count: unreadCount })}
+    />
+  );
 }
 
 function ClassroomParticipantsPanelWithUnread(
   props: ClassroomParticipantsPanelProps,
 ) {
   const notificationT = useTranslations("systemNotifications");
-  const unreadCount = useUnreadCourseChats().get(props.courseId) ?? 0;
+  const unread = useUnreadCourseChats();
+  const unreadCount = props.courseId ? (unread.get(props.courseId) ?? 0) : 0;
   const unreadLabel = notificationT("unreadMessages", { count: unreadCount });
 
   return (
@@ -130,6 +151,7 @@ interface ClassroomParticipantsPanelContentProps
 
 function ClassroomParticipantsPanelContent({
   courseId,
+  eventId,
   scheduleId,
   heading,
   compactHeading,
@@ -159,6 +181,7 @@ function ClassroomParticipantsPanelContent({
   notificationTargetRef,
   onOpenChange,
 }: ClassroomParticipantsPanelContentProps) {
+  const hasChat = Boolean(courseId || eventId);
   const chatTabLabel =
     unreadCount > 0 ? `${chatLabel}. ${unreadLabel}` : chatLabel;
   const chatIcon = (
@@ -185,6 +208,7 @@ function ClassroomParticipantsPanelContent({
   const [mobileTab, setMobileTab] = useState<ClassroomPanelTab>("participants");
   const previousMobileTabRef = useRef<ClassroomPanelTab | null>(null);
   useEffect(() => {
+    if (!hasChat) return;
     if (viewMode === "mosaic") {
       setMobileTab((current) => {
         if (previousMobileTabRef.current === null) {
@@ -196,7 +220,7 @@ function ClassroomParticipantsPanelContent({
       setMobileTab(previousMobileTabRef.current);
       previousMobileTabRef.current = null;
     }
-  }, [viewMode]);
+  }, [viewMode, hasChat]);
   const presentation = useClassroomPresentation();
   const ownerWindow = presentation?.ownerWindow;
   const [isDesktop, setIsDesktop] = useState(false);
@@ -209,6 +233,7 @@ function ClassroomParticipantsPanelContent({
     return () => query.removeEventListener("change", update);
   }, [ownerWindow, notificationTargetRef, layoutMode]);
   const chatVisible =
+    hasChat &&
     presentation?.mode !== "compact" &&
     (isDesktop
       ? isOpen && activeTab === "chat"
@@ -345,16 +370,20 @@ function ClassroomParticipantsPanelContent({
 
   return (
     <>
-      {layoutMode === "responsive" && notificationTargetRef && (
-        <ClassroomChatNotification
-          key={`${courseId}:${scheduleId}`}
-          courseId={courseId}
-          scheduleId={scheduleId}
-          chatVisible={chatVisible}
-          targetRef={notificationTargetRef}
-          onOpenChat={openChat}
-        />
-      )}
+      {layoutMode === "responsive" &&
+        notificationTargetRef &&
+        (courseId || eventId) &&
+        hasChat && (
+          <ClassroomChatNotification
+            key={eventId ?? `${courseId}:${scheduleId}`}
+            courseId={courseId}
+            eventId={eventId}
+            scheduleId={scheduleId}
+            chatVisible={chatVisible}
+            targetRef={notificationTargetRef}
+            onOpenChat={openChat}
+          />
+        )}
       <ClassroomLayoutSidebar
         id="classroom-interaction-panel"
         layoutMode={layoutMode}
@@ -393,7 +422,7 @@ function ClassroomParticipantsPanelContent({
         </button>
 
         <Tabs
-          value={activeTab}
+          value={hasChat ? activeTab : "participants"}
           onValueChange={(value) => onTabChange(value as ClassroomPanelTab)}
           className={cn(
             "h-full min-h-0 gap-0",
@@ -414,14 +443,16 @@ function ClassroomParticipantsPanelContent({
               <Users className="size-4" />
               <span className="truncate">{heading}</span>
             </TabsTrigger>
-            <TabsTrigger
-              value="chat"
-              aria-label={chatTabLabel}
-              className={classroomPanelTabTriggerClassName}
-            >
-              {chatIcon}
-              <span className="truncate">{chatLabel}</span>
-            </TabsTrigger>
+            {hasChat && (
+              <TabsTrigger
+                value="chat"
+                aria-label={chatTabLabel}
+                className={classroomPanelTabTriggerClassName}
+              >
+                {chatIcon}
+                <span className="truncate">{chatLabel}</span>
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent
@@ -527,12 +558,18 @@ function ClassroomParticipantsPanelContent({
             )}
           </TabsContent>
 
-          <TabsContent
-            value="chat"
-            className="m-0 min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
-          >
-            <CourseChat courseId={courseId} scheduleId={scheduleId} />
-          </TabsContent>
+          {hasChat && (courseId || eventId) && (
+            <TabsContent
+              value="chat"
+              className="m-0 min-h-0 flex-1 overflow-hidden data-[state=inactive]:hidden"
+            >
+              {eventId ? (
+                <EventChat eventId={eventId} />
+              ) : (
+                <CourseChat courseId={courseId!} scheduleId={scheduleId} />
+              )}
+            </TabsContent>
+          )}
         </Tabs>
       </ClassroomLayoutSidebar>
 
@@ -549,7 +586,7 @@ function ClassroomParticipantsPanelContent({
               <SheetDescription>{compactPanelLabel}</SheetDescription>
             </SheetHeader>
             <Tabs
-              value={mobileTab}
+              value={hasChat ? mobileTab : "participants"}
               onValueChange={(value) => {
                 previousMobileTabRef.current = null;
                 setMobileTab(value as ClassroomPanelTab);
@@ -564,14 +601,16 @@ function ClassroomParticipantsPanelContent({
                   <Users />
                   {heading}
                 </TabsTrigger>
-                <TabsTrigger
-                  value="chat"
-                  aria-label={chatTabLabel}
-                  className={classroomPanelTabTriggerClassName}
-                >
-                  {chatIcon}
-                  {chatLabel}
-                </TabsTrigger>
+                {hasChat && (
+                  <TabsTrigger
+                    value="chat"
+                    aria-label={chatTabLabel}
+                    className={classroomPanelTabTriggerClassName}
+                  >
+                    {chatIcon}
+                    {chatLabel}
+                  </TabsTrigger>
+                )}
               </TabsList>
               <TabsContent
                 value="participants"
@@ -585,12 +624,18 @@ function ClassroomParticipantsPanelContent({
                   roster
                 )}
               </TabsContent>
-              <TabsContent
-                value="chat"
-                className="m-0 min-h-0 flex-1 overflow-hidden"
-              >
-                <CourseChat courseId={courseId} scheduleId={scheduleId} />
-              </TabsContent>
+              {hasChat && (courseId || eventId) && (
+                <TabsContent
+                  value="chat"
+                  className="m-0 min-h-0 flex-1 overflow-hidden"
+                >
+                  {eventId ? (
+                    <EventChat eventId={eventId} />
+                  ) : (
+                    <CourseChat courseId={courseId!} scheduleId={scheduleId} />
+                  )}
+                </TabsContent>
+              )}
             </Tabs>
           </SheetContent>
         </Sheet>

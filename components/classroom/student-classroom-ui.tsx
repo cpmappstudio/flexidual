@@ -109,7 +109,8 @@ const STUDENT_PREVIEW_LAYERS: Partial<
 };
 
 interface StudentClassroomUIProps {
-  courseId: Id<"classes">;
+  courseId?: Id<"classes">;
+  eventId?: Id<"events">;
   scheduleId?: Id<"classSchedule">;
   roomName: string;
   sessionNow: number;
@@ -125,6 +126,7 @@ interface StudentClassroomUIProps {
 
 export function StudentClassroomUI({
   courseId,
+  eventId,
   scheduleId,
   roomName,
   sessionNow,
@@ -164,21 +166,30 @@ export function StudentClassroomUI({
   const { isPhoneLandscape, stageControlsVisible, showStageControls } =
     usePhoneLandscapeStageControls();
 
-  const extensionContextResult = useQuery(
+  const classExtensionContext = useQuery(
     api.schedule.getStudentExtensionContext,
-    {
-      roomName,
-      now: getClassroomQueryNow(sessionNow),
-    },
+    eventId ? "skip" : { roomName, now: getClassroomQueryNow(sessionNow) },
   );
+  const eventExtensionContext = useQuery(
+    api.eventRoom.getAttendeeExtensionContext,
+    eventId ? { roomName, now: getClassroomQueryNow(sessionNow) } : "skip",
+  );
+  const extensionContextResult = eventId
+    ? eventExtensionContext
+    : classExtensionContext;
   const extensionContext = useRetainedQueryResult(
     extensionContextResult,
     roomName,
   );
-  const sessionLeadershipResult = useQuery(api.schedule.getSessionLeadership, {
-    roomName,
-    now: getClassroomQueryNow(sessionNow),
-  });
+  const classLeadership = useQuery(
+    api.schedule.getSessionLeadership,
+    eventId ? "skip" : { roomName, now: getClassroomQueryNow(sessionNow) },
+  );
+  const eventLeadership = useQuery(
+    api.eventRoom.getSessionLeadership,
+    eventId ? { roomName, now: getClassroomQueryNow(sessionNow) } : "skip",
+  );
+  const sessionLeadershipResult = eventId ? eventLeadership : classLeadership;
   const sessionLeadership = useRetainedQueryResult(
     sessionLeadershipResult,
     roomName,
@@ -533,7 +544,7 @@ export function StudentClassroomUI({
     unlockAudio();
   }, [room]);
 
-  useClassroomMediaInitialization(localParticipant, true, handleMediaError);
+  useClassroomMediaInitialization(localParticipant, !eventId, handleMediaError);
 
   // Auto-fullscreen: prompt user to go fullscreen when remote content appears.
   // requestFullscreen() requires a user gesture, so we cannot call it from a useEffect directly.
@@ -1087,15 +1098,20 @@ export function StudentClassroomUI({
       {/* 4. Classmates: horizontal below the stage, vertical beside it */}
       <ClassroomParticipantsPanel
         courseId={courseId}
+        eventId={eventId}
         scheduleId={scheduleId}
         notificationTargetRef={stageRef}
         onOpenChange={setIsClassroomPanelOpen}
         heading={
-          viewMode === "mosaic"
+          eventId || viewMode === "mosaic"
             ? t("classroom.participants")
             : t("classroom.classmates")
         }
-        compactHeading={t("classroom.classmatesAndChat")}
+        compactHeading={
+          eventId
+            ? t("classroom.participants")
+            : t("classroom.classmatesAndChat")
+        }
         compactOpenLabel={t("classroom.openPanelAction")}
         chatLabel={t("classroom.chat")}
         isOpen={isClassroomPanelOpen}

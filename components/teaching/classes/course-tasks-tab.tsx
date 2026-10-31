@@ -28,7 +28,7 @@ import { carouselCardStyles } from "@/components/ui/carousel-card-styles";
 import { cn } from "@/lib/utils";
 import { CourseTaskDetail } from "./course-task-detail";
 import { CourseTaskEditor } from "./course-task-editor";
-import { DetailCarousel } from "./detail-carousel";
+import { DetailCarousel } from "@/components/detail-carousel";
 import type { TaskAttachment } from "./course-task-attachments";
 
 export function CourseTasksTab({

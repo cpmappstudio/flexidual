@@ -15,10 +15,8 @@ import {
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import {
-  deleteWhiteboardManifest,
-  findWhiteboardManifest,
-} from "./model/whiteboardSceneStorage";
+import { clearWhiteboardRecordingTokens } from "./model/whiteboardRecording";
+import { deleteWhiteboardSession } from "./model/whiteboardCleanup";
 import {
   ensureLiveActivation,
   getLiveActivationId,
@@ -29,6 +27,7 @@ import {
   liveLifecycleSnapshotValidator,
   matchesLiveLifecycleSnapshot,
 } from "./model/liveLifecycle";
+import { scheduleLiveReconciliation } from "./model/liveReconciliation";
 import { getCurrentUserOrThrow, getCurrentUserFromAuth } from "./users";
 import { Doc, Id } from "./_generated/dataModel";
 import { ConvexError } from "convex/values";
@@ -295,25 +294,6 @@ const scheduleEventValidator = v.object({
 // HELPERS
 // ============================================================================
 
-async function scheduleLiveReconciliation(
-  ctx: MutationCtx,
-  roomName: string,
-  scheduledEnd: number,
-  activationId: string,
-  firstCheckAt = scheduledEnd,
-) {
-  await ctx.scheduler.runAt(
-    Math.max(Date.now(), firstCheckAt),
-    internal.livekit.reconcileLiveSession,
-    { roomName, expectedActivationId: activationId },
-  );
-  await ctx.scheduler.runAt(
-    Math.max(Date.now(), getLiveSessionHardEnd(scheduledEnd)),
-    internal.livekit.reconcileLiveSession,
-    { roomName, expectedActivationId: activationId },
-  );
-}
-
 async function validateScheduleOverlap(
   ctx: MutationCtx,
   {
@@ -471,22 +451,6 @@ async function validateClassScheduleTime(
   ) {
     throw new ConvexError("OUTSIDE_SCHEDULE_WINDOW");
   }
-}
-
-async function deleteWhiteboardSession(ctx: MutationCtx, roomName: string) {
-  await deleteWhiteboardManifest(ctx, roomName);
-  const whiteboard = await ctx.db
-    .query("whiteboardSessions")
-    .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
-    .unique();
-  if (!whiteboard) return;
-
-  await Promise.allSettled(
-    Object.values(whiteboard.fileRefs ?? {}).map((file) =>
-      ctx.storage.delete(file.storageId),
-    ),
-  );
-  await ctx.db.delete(whiteboard._id);
 }
 
 async function listSchedulesStartingBetween(
@@ -3259,21 +3223,7 @@ async function claimLiveSessionEndState(
     }),
   );
 
-  const whiteboard = await ctx.db
-    .query("whiteboardSessions")
-    .withIndex("by_roomName", (q) => q.eq("roomName", schedule.roomName))
-    .unique();
-  if (whiteboard?.recordingToken) {
-    await ctx.db.patch(whiteboard._id, { recordingToken: undefined });
-  }
-  const whiteboardManifest = await findWhiteboardManifest(
-    ctx,
-    schedule.roomName,
-  );
-  if (whiteboardManifest?.recordingToken)
-    await ctx.db.patch("whiteboardSceneManifests", whiteboardManifest._id, {
-      recordingToken: undefined,
-    });
+  await clearWhiteboardRecordingTokens(ctx, schedule.roomName);
   const reopenUntil = getLiveSessionReopenUntil(
     schedule.scheduledEnd,
     schedule.liveExtensionEndsAt,

@@ -118,6 +118,23 @@ test("an assigned teacher takes priority over the provider label", () => {
   assert.equal(event.secondaryLabel, "Professor Betancourt");
 });
 
+test("institutional events display their own title and responsible teacher", () => {
+  const display = getCalendarEventDisplay(
+    {
+      kind: "event",
+      title: "Flag ceremony",
+      responsibleName: "Professor López",
+      gradeLabel: "5th and 6th grade",
+    },
+    { showGrade: true, includeGradeInPrimary: true },
+  );
+  assert.deepEqual(display, {
+    primaryLabel: "Flag ceremony (5th and 6th grade)",
+    secondaryLabel: "Professor López",
+    gradeLabel: "5th and 6th grade",
+  });
+});
+
 test("recordings replace the provider identity on past classes", () => {
   assert.deepEqual(
     getCalendarEventIndicators({ hasRecording: true, isLive: false }, true),

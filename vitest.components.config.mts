@@ -16,7 +16,6 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["tests/**/*.test.tsx"],
-    // Let Vite resolve Next.js imports in the real intl and presence hooks.
     server: { deps: { inline: ["@convex-dev/presence", "next-intl"] } },
   },
 });

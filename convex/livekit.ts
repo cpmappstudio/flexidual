@@ -37,14 +37,35 @@ async function requireActiveUser(ctx: ActionCtx) {
   return { identity, user };
 }
 
+async function getRoomAccess(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+  roomName: string,
+) {
+  const args = { userId, roomName, now: Date.now() };
+  return (
+    (await ctx.runQuery(internal.schedule.checkLiveKitAccess, args)) ??
+    (await ctx.runQuery(internal.eventRoom.checkLiveKitAccess, args))
+  );
+}
+
+async function getRoomLifecycleState(ctx: ActionCtx, roomName: string) {
+  const classState = await ctx.runQuery(
+    internal.schedule.getLiveLifecycleState,
+    { roomName },
+  );
+  if (classState) return { kind: "class" as const, session: classState };
+  const eventState = await ctx.runQuery(
+    internal.eventRoom.getLiveLifecycleState,
+    { roomName },
+  );
+  return eventState ? { kind: "event" as const, session: eventState } : null;
+}
+
 async function requireRoomAdministrator(ctx: ActionCtx, roomName: string) {
   const { user } = await requireActiveUser(ctx);
 
-  const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, {
-    userId: user._id,
-    roomName,
-    now: Date.now(),
-  });
+  const access = await getRoomAccess(ctx, user._id, roomName);
   if (!access?.authorized || !access.roomAdmin) {
     throw new ConvexError("Only a room administrator can perform this action");
   }
@@ -53,13 +74,11 @@ async function requireRoomAdministrator(ctx: ActionCtx, roomName: string) {
 
 async function requireSessionLeader(ctx: ActionCtx, roomName: string) {
   const { user } = await requireActiveUser(ctx);
-  const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, {
-    userId: user._id,
-    roomName,
-    now: Date.now(),
-  });
+  const access = await getRoomAccess(ctx, user._id, roomName);
   if (!access?.authorized || !access.isSessionLeader) {
-    throw new ConvexError("Only the session leader can end this class");
+    throw new ConvexError(
+      `Only the session leader can end this ${access && "occurrenceId" in access.session ? "event" : "class"}`,
+    );
   }
   return { access, user };
 }
@@ -140,14 +159,20 @@ async function finalizeLiveSession(
   expectedState?: ReturnType<typeof getLiveLifecycleSnapshot>,
 ) {
   const claimId = randomUUID();
-  const claimed = await ctx.runMutation(internal.schedule.claimLiveSessionEnd, {
+  const lifecycle = await getRoomLifecycleState(ctx, roomName);
+  if (!lifecycle) return false;
+  const claimArgs = {
     roomName,
     expectedActivationId,
     claimId,
     endedAt,
     endedBy,
     expectedState,
-  });
+  };
+  const claimed =
+    lifecycle.kind === "event"
+      ? await ctx.runMutation(internal.eventRoom.claimLiveSessionEnd, claimArgs)
+      : await ctx.runMutation(internal.schedule.claimLiveSessionEnd, claimArgs);
   if (!claimed && expectedState) {
     await ctx.scheduler.runAfter(1_000, internal.livekit.reconcileLiveSession, {
       roomName,
@@ -196,9 +221,8 @@ async function reconcileRoom(
   clients: LiveKitClients | null,
   expectedActivationId?: string,
 ) {
-  const session = await ctx.runQuery(internal.schedule.getLiveLifecycleState, {
-    roomName,
-  });
+  const lifecycle = await getRoomLifecycleState(ctx, roomName);
+  const session = lifecycle?.session;
   if (!session || session.status !== "active" || !session.isLive) return;
   if (expectedActivationId === undefined && session.hasReopened) return;
   if (
@@ -256,22 +280,29 @@ async function reconcileRoom(
     return;
   }
 
-  const updated = await ctx.runMutation(
-    internal.schedule.updateLiveLifecycleState,
-    {
-      roomName,
-      expectedActivationId: session.activationId,
-      expectedState: getLiveLifecycleSnapshot(session),
-      reconciledAt: now,
-      expectedLeaderAbsentSince: session.liveLeaderAbsentSince ?? null,
-      expectedExtensionEndsAt: session.liveExtensionEndsAt ?? null,
-      expectedDecisionEndsAt: session.liveDecisionEndsAt ?? null,
-      leaderAbsentSince: decision.leaderAbsentSince ?? null,
-      extensionEndsAt: decision.extensionEndsAt ?? null,
-      decisionEndsAt: decision.decisionEndsAt ?? null,
-      nextCheckAt: decision.nextCheckAt,
-    },
-  );
+  const updateArgs = {
+    roomName,
+    expectedActivationId: session.activationId,
+    expectedState: getLiveLifecycleSnapshot(session),
+    reconciledAt: now,
+    expectedLeaderAbsentSince: session.liveLeaderAbsentSince ?? null,
+    expectedExtensionEndsAt: session.liveExtensionEndsAt ?? null,
+    expectedDecisionEndsAt: session.liveDecisionEndsAt ?? null,
+    leaderAbsentSince: decision.leaderAbsentSince ?? null,
+    extensionEndsAt: decision.extensionEndsAt ?? null,
+    decisionEndsAt: decision.decisionEndsAt ?? null,
+    nextCheckAt: decision.nextCheckAt,
+  };
+  const updated =
+    lifecycle?.kind === "event"
+      ? await ctx.runMutation(
+          internal.eventRoom.updateLiveLifecycleState,
+          updateArgs,
+        )
+      : await ctx.runMutation(
+          internal.schedule.updateLiveLifecycleState,
+          updateArgs,
+        );
   if (!updated) {
     await ctx.scheduler.runAfter(1_000, internal.livekit.reconcileLiveSession, {
       roomName,
@@ -292,11 +323,7 @@ export const getToken = action({
     const { identity, user } = await requireActiveUser(ctx);
 
     // Check backend authorization to join this specific room
-    const access = await ctx.runQuery(internal.schedule.checkLiveKitAccess, {
-      userId: user._id,
-      roomName: args.roomName,
-      now: Date.now(),
-    });
+    const access = await getRoomAccess(ctx, user._id, args.roomName);
 
     if (!access || !access.authorized) {
       throw new ConvexError("You are not authorized to join this session.");
@@ -390,7 +417,8 @@ export const startRecording = internalAction({
     if (
       !activation ||
       activation.status !== "active" ||
-      activation.recordingToken !== args.recordingToken
+      activation.recordingToken !== args.recordingToken ||
+      (!activation.scheduleId && !activation.eventOccurrenceId)
     )
       return null;
     const config = getLiveKitConfig();
@@ -446,7 +474,7 @@ export const startRecording = internalAction({
 
     const fileOutput = new EncodedFileOutput({
       fileType: EncodedFileType.MP4,
-      filepath: `recordings/${activation.scheduleId}/${Date.now()}-${randomUUID()}.mp4`,
+      filepath: `recordings/${activation.scheduleId ?? activation.eventOccurrenceId}/${Date.now()}-${randomUUID()}.mp4`,
       output: { case: "s3", value: s3Upload },
     });
 
@@ -489,7 +517,9 @@ export const startRecording = internalAction({
         throw new Error("LiveKit did not return an egress identifier.");
       }
       await ctx.runMutation(internal.recordings.createRecording, {
-        scheduleId: activation.scheduleId,
+        ...(activation.scheduleId
+          ? { scheduleId: activation.scheduleId }
+          : { eventOccurrenceId: activation.eventOccurrenceId! }),
         roomName: args.roomName,
         egressId: egressInfo.egressId,
         startedAt: Date.now(),
@@ -573,10 +603,8 @@ export const toggleRecording = action({
         roomName: access.session.liveRoomName,
       });
 
-      const current = await ctx.runQuery(
-        internal.schedule.getLiveLifecycleState,
-        { roomName: args.roomName },
-      );
+      const current = (await getRoomLifecycleState(ctx, args.roomName))
+        ?.session;
       if (
         !current?.isLive ||
         current.activationId !== access.session.activationId
@@ -667,11 +695,11 @@ export const endSession = action({
   handler: async (ctx, args) => {
     const { user, access } = await requireSessionLeader(ctx, args.roomName);
     assertActivation(access.session, args.expectedActivationId);
-    const session = await ctx.runQuery(
-      internal.schedule.getLiveLifecycleState,
-      { roomName: args.roomName },
-    );
-    if (session?.sessionClosureStatus !== "completed") {
+    const lifecycle = await getRoomLifecycleState(ctx, args.roomName);
+    if (
+      lifecycle?.kind === "class" &&
+      lifecycle.session.sessionClosureStatus !== "completed"
+    ) {
       throw new ConvexError(
         "Complete the lesson and attendance report before ending the class",
       );
@@ -690,10 +718,8 @@ export const endSession = action({
       user._id,
     );
     if (!closed) {
-      const current = await ctx.runQuery(
-        internal.schedule.getLiveLifecycleState,
-        { roomName: args.roomName },
-      );
+      const current = (await getRoomLifecycleState(ctx, args.roomName))
+        ?.session;
       if (
         current?.activationId !== access.session.activationId ||
         current.status !== "completed"
@@ -756,10 +782,11 @@ export const reconcileActiveSessions = internalAction({
   handler: async (ctx) => {
     await ctx.runMutation(internal.liveRoomLifecycle.recoverClosures, {});
     const now = Date.now();
-    const activeSessions = await ctx.runQuery(
-      internal.schedule.listActiveLiveSessions,
-      { limit: 100 },
-    );
+    const [activeClasses, activeEvents] = await Promise.all([
+      ctx.runQuery(internal.schedule.listActiveLiveSessions, { limit: 100 }),
+      ctx.runQuery(internal.eventRoom.listActiveLiveSessions, { limit: 100 }),
+    ]);
+    const activeSessions = [...activeClasses, ...activeEvents];
     if (activeSessions.length === 0) return null;
 
     const config = getLiveKitConfig();

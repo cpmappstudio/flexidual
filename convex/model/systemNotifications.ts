@@ -3,6 +3,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { isValidTimeZone } from "../../lib/time-zone";
 import { canAccessClass } from "../permissions";
+import { canAccessEvent } from "./eventAccess";
 import { getCourseTaskAccess } from "./courseTaskAccess";
 import { getSurveyStaffRole } from "./surveyAccess";
 import { getClassTimeZone } from "./timeZone";
@@ -18,6 +19,9 @@ export type SystemNotificationKind =
   | "role_changed"
   | "organization_membership_changed"
   | "course_chat"
+  | "event_chat"
+  | "event_schedule"
+  | "event_deleted"
   | "broadcast_chat"
   | "course_task"
   | "course_task_reminder"
@@ -34,6 +38,9 @@ export type SystemNotificationInput = {
   schoolId?: Id<"schools">;
   campusId?: Id<"campuses">;
   classId?: Id<"classes">;
+  eventId?: Id<"events">;
+  eventTitle?: string;
+  eventChatMessageId?: Id<"eventChatMessages">;
   broadcastId?: Id<"broadcasts">;
   taskId?: Id<"courseTasks">;
   messageId?: Id<"courseChatMessages">;
@@ -160,6 +167,40 @@ async function getVisibleNotification(
         ? { taskTimeZone: timeZone }
         : {}),
     };
+  }
+  if (notification.kind === "event_chat") {
+    if (!notification.eventId || !notification.chatMessageCount) return null;
+    const event = await ctx.db.get("events", notification.eventId);
+    return event &&
+      event.chatArchivedAt === undefined &&
+      notification.createdAt > (event.chatNotificationsClearedThrough ?? 0) &&
+      (await canAccessEvent(ctx, notification.recipientId, event))
+      ? notification
+      : null;
+  }
+  if (notification.kind === "event_schedule") {
+    const event = notification.eventId
+      ? await ctx.db.get("events", notification.eventId)
+      : null;
+    return event && (await canAccessEvent(ctx, notification.recipientId, event))
+      ? notification
+      : null;
+  }
+  if (notification.kind === "recording_available" && notification.eventId) {
+    const event = await ctx.db.get("events", notification.eventId);
+    const recording = notification.recordingId
+      ? await ctx.db.get("recordings", notification.recordingId)
+      : null;
+    const occurrence = recording?.eventOccurrenceId
+      ? await ctx.db.get("eventOccurrences", recording.eventOccurrenceId)
+      : null;
+    return event &&
+      occurrence?.eventId === event._id &&
+      recording?.status === "complete" &&
+      recording.url &&
+      (await canAccessEvent(ctx, notification.recipientId, event))
+      ? notification
+      : null;
   }
   if (notification.kind === "broadcast_chat") {
     const broadcast = notification.broadcastId

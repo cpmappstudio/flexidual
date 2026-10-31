@@ -6,7 +6,9 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { getFunctionName } from "convex/server";
 import type { Id } from "@/convex/_generated/dataModel";
+import { api } from "@/convex/_generated/api";
 import {
   ScheduleRecordingPlayer,
   type RecordingPlaybackPart,
@@ -84,6 +86,44 @@ test("newly published and reordered parts do not replace the currently selected 
     live.url,
   );
   expect(mocks.playback).not.toHaveBeenCalled();
+});
+
+test("event recordings use their occurrence and reset selection for a different event", () => {
+  const firstOccurrence = "event-one" as Id<"eventOccurrences">;
+  const secondOccurrence = "event-two" as Id<"eventOccurrences">;
+  const other = {
+    ...live,
+    _id: "other" as Id<"recordings">,
+    url: "https://video.test/other.mp4",
+  };
+  mocks.query.mockImplementation((query) => {
+    if (
+      getFunctionName(query) !==
+      getFunctionName(api.recordings.getByEventOccurrence)
+    )
+      return undefined;
+    return [live, other];
+  });
+  const view = render(
+    <ScheduleRecordingPlayer occurrenceId={firstOccurrence} />,
+  );
+  expect(mocks.query).toHaveBeenCalledWith(api.recordings.getPlayback, "skip");
+  expect(mocks.query).toHaveBeenCalledWith(
+    api.recordings.getByEventOccurrence,
+    { occurrenceId: firstOccurrence },
+  );
+  fireEvent.click(screen.getByRole("button", { name: /recordings.part 2/ }));
+  expect(view.container.querySelector("video")?.getAttribute("src")).toBe(
+    other.url,
+  );
+  view.rerender(<ScheduleRecordingPlayer occurrenceId={secondOccurrence} />);
+  expect(mocks.query).toHaveBeenCalledWith(
+    api.recordings.getByEventOccurrence,
+    { occurrenceId: secondOccurrence },
+  );
+  expect(view.container.querySelector("video")?.getAttribute("src")).toBe(
+    live.url,
+  );
 });
 
 test("signs only the selected uploaded video and ignores a late response after changing parts", async () => {

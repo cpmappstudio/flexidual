@@ -27,6 +27,7 @@ interface EndClassButtonProps {
   previewOpen?: boolean;
   onPreviewOpenChange?: (open: boolean) => void;
   confirmBeforeEnd?: boolean;
+  isEvent?: boolean;
 }
 
 export function EndClassButton({
@@ -40,13 +41,16 @@ export function EndClassButton({
   previewOpen = false,
   onPreviewOpenChange,
   confirmBeforeEnd = true,
+  isEvent = false,
 }: EndClassButtonProps) {
   const t = useTranslations("classroom");
+  const eventT = useTranslations("events");
   const common = useTranslations("common");
+  const endLabel = isEvent ? eventT("endRoom") : t("endClass");
   const trigger =
     appearance === "toolbar" ? (
       <ClassroomActionButton
-        label={t("endClass")}
+        label={endLabel}
         icon={disabled ? <Loader2 className="animate-spin" /> : <PhoneOff />}
         tone="destructive"
         emphasis="strong"
@@ -56,8 +60,8 @@ export function EndClassButton({
     ) : appearance === "header" ? (
       <button
         type="button"
-        title={t(confirmBeforeEnd ? "leave" : "endClass")}
-        aria-label={t(confirmBeforeEnd ? "leave" : "endClass")}
+        title={confirmBeforeEnd ? t("leave") : endLabel}
+        aria-label={confirmBeforeEnd ? t("leave") : endLabel}
         className="inline-flex h-9 items-center gap-1.5 rounded-md border border-destructive bg-destructive px-3 text-xs font-semibold text-white transition-colors hover:bg-destructive/90 disabled:cursor-wait disabled:opacity-60 [&_svg]:text-white"
         disabled={disabled}
         onClick={confirmBeforeEnd ? undefined : () => void onConfirm()}
@@ -67,13 +71,13 @@ export function EndClassButton({
         ) : (
           <PhoneOff className="size-4" />
         )}
-        <span>{t(confirmBeforeEnd ? "leave" : "endClass")}</span>
+        <span>{confirmBeforeEnd ? t("leave") : endLabel}</span>
       </button>
     ) : (
       <button
         type="button"
-        title={t("endClass")}
-        aria-label={t("endClass")}
+        title={endLabel}
+        aria-label={endLabel}
         className={className}
         disabled={disabled}
         onClick={confirmBeforeEnd ? undefined : () => void onConfirm()}
@@ -104,12 +108,18 @@ export function EndClassButton({
         </AlertDialogCancel>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {onLeave ? t("leaveOrEndClassTitle") : t("endClassTitle")}
+            {isEvent
+              ? eventT(onLeave ? "leaveOrEndTitle" : "endTitle")
+              : onLeave
+                ? t("leaveOrEndClassTitle")
+                : t("endClassTitle")}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {onLeave
-              ? t("leaveOrEndClassDescription")
-              : t("endClassDescription")}
+            {isEvent
+              ? eventT(onLeave ? "leaveOrEndDescription" : "endDescription")
+              : onLeave
+                ? t("leaveOrEndClassDescription")
+                : t("endClassDescription")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter
@@ -142,7 +152,11 @@ export function EndClassButton({
               void onConfirm();
             }}
           >
-            {onLeave ? t("endClassForEveryone") : t("endClass")}
+            {onLeave
+              ? isEvent
+                ? eventT("endForEveryone")
+                : t("endClassForEveryone")
+              : endLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

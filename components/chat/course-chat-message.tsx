@@ -29,6 +29,9 @@ import { CourseEventAvatar, CourseEventContent } from "./course-event";
 export type ChatMessage = FunctionReturnType<
   typeof api.courseChatMessages.list
 >["page"][number];
+export type EventChatMessage = FunctionReturnType<
+  typeof api.eventChatMessages.list
+>["page"][number];
 
 export function CourseChatMessage({
   message,
@@ -37,7 +40,7 @@ export function CourseChatMessage({
   canPin = false,
   preview = false,
 }: {
-  message: ChatMessage;
+  message: ChatMessage | EventChatMessage;
   startsGroup?: boolean;
   timeZone?: string;
   canPin?: boolean;
@@ -46,8 +49,11 @@ export function CourseChatMessage({
   const t = useTranslations("classroom");
   const format = useFormatter();
   const isOwn = message.isOwn;
-  const isEvent = Boolean(message.event);
-  const authorName = isEvent ? t("courseEvents.sender") : message.authorName;
+  const isCourseEvent = "event" in message && Boolean(message.event);
+  const isEventChat = "eventId" in message;
+  const authorName = isCourseEvent
+    ? t("courseEvents.sender")
+    : message.authorName;
   const isTeacher = message.authorRole === "teacher";
   const variant =
     isOwn || isTeacher
@@ -61,7 +67,7 @@ export function CourseChatMessage({
       {!preview && (
         <MessageAvatar className="bg-transparent">
           {startsGroup &&
-            (isEvent ? (
+            (isCourseEvent ? (
               <CourseEventAvatar />
             ) : (
               <Avatar size="sm" className="shrink-0 shadow-sm">
@@ -86,10 +92,10 @@ export function CourseChatMessage({
       )}
       <MessageContent className="gap-1">
         <Bubble
-          variant={isEvent ? "event" : variant}
+          variant={isCourseEvent ? "event" : variant}
           className={cn(
             preview ? "max-w-full" : "max-w-[82%]",
-            isEvent && "w-full max-w-[min(24rem,100%)]",
+            isCourseEvent && "w-full max-w-[min(24rem,100%)]",
           )}
         >
           <BubbleContent
@@ -97,7 +103,7 @@ export function CourseChatMessage({
               "flex flex-col gap-0.5 px-2.5 py-1.5 text-sm leading-snug shadow-sm sm:text-base",
               startsGroup && (isOwn ? "rounded-br-sm" : "rounded-bl-sm"),
               preview && "px-3 py-2 shadow-lg",
-              isEvent && "w-full",
+              isCourseEvent && "w-full",
             )}
           >
             {startsGroup && (
@@ -126,18 +132,25 @@ export function CourseChatMessage({
             )}
             {!preview &&
               message.attachments?.map((file) => (
-                <ChatAttachment key={file.id} file={file} />
+                <ChatAttachment
+                  key={file.id}
+                  file={file}
+                  kind={isEventChat ? "event" : "course"}
+                />
               ))}
-            {isEvent && (
-              <CourseEventContent message={message} preview={preview} />
+            {isCourseEvent && (
+              <CourseEventContent
+                message={message as ChatMessage}
+                preview={preview}
+              />
             )}
             <div
               className={cn(
                 "flex min-w-0 items-end gap-2",
-                isEvent && "justify-end",
+                isCourseEvent && "justify-end",
               )}
             >
-              {!isEvent && (
+              {!isCourseEvent && (
                 <p
                   className={cn(
                     "min-w-0 flex-1 text-left whitespace-pre-wrap [overflow-wrap:anywhere]",
@@ -147,8 +160,13 @@ export function CourseChatMessage({
                   <ChatMessageText
                     body={message.body}
                     enabled={!preview && message.linksEnabled === true}
-                    classId={preview ? undefined : message.classId}
-                    availableTaskIds={message.availableTaskIds}
+                    classId={
+                      preview || isEventChat ? undefined : message.classId
+                    }
+                    availableTaskIds={
+                      isEventChat ? undefined : message.availableTaskIds
+                    }
+                    plain={isEventChat}
                   />
                 </p>
               )}
@@ -181,16 +199,23 @@ export function CourseChatMessage({
   );
 }
 
-function MessagePinMenu({ message }: { message: ChatMessage }) {
+function MessagePinMenu({
+  message,
+}: {
+  message: ChatMessage | EventChatMessage;
+}) {
   const t = useTranslations("classroom");
-  const setPinned = useMutation(api.courseChatMessages.setPinned);
+  const setCoursePinned = useMutation(api.courseChatMessages.setPinned);
+  const setEventPinned = useMutation(api.eventChatMessages.setPinned);
   const [saving, setSaving] = useState(false);
   const pinned = message.pinnedAt !== undefined;
   const toggle = async () => {
     if (saving) return;
     setSaving(true);
     try {
-      await setPinned({ messageId: message._id, pinned: !pinned });
+      if ("eventId" in message)
+        await setEventPinned({ messageId: message._id, pinned: !pinned });
+      else await setCoursePinned({ messageId: message._id, pinned: !pinned });
     } catch {
       toast.error(t("pinMessageError"));
     } finally {

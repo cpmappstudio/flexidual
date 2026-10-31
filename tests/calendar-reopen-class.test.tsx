@@ -91,6 +91,7 @@ vi.mock("@/components/calendar/calendar-context", () => ({
     manageEventDialogOpen: true,
     setManageEventDialogOpen: testState.setManageEventDialogOpen,
     selectedEvent: {
+      kind: "class",
       scheduleId: "schedule-1",
       roomName: "room-1",
       classId: "class-1",
@@ -135,12 +136,16 @@ it("exposes the shared prerecorded manager only for authorized classroom events"
   };
   const view = render(<CalendarManageEventDialog />);
   const action = screen.getByRole("button", { name: "manage" });
-  expect(action.parentElement?.classList.contains("divide-y")).toBe(true);
   expect(
-    action.previousElementSibling
+    action.parentElement?.previousElementSibling
       ?.querySelector("svg")
-      ?.classList.contains("lucide-clock-3"),
+      ?.classList.contains("lucide-calendar-days"),
   ).toBe(true);
+  expect(
+    action.parentElement?.previousElementSibling?.querySelector(
+      ".lucide-clock-3",
+    ),
+  ).toBeTruthy();
   testState.eventOverrides = {
     canManagePrerecorded: false,
     hasPrerecorded: true,

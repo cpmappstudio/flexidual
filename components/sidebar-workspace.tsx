@@ -9,6 +9,7 @@ import { LayoutGrid, MessageCircle } from "lucide-react";
 import { usePathname } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import { useUnreadCourseChats } from "@/hooks/use-unread-course-chats";
+import { useUnreadEventChats } from "@/hooks/use-unread-event-chats";
 import { UnreadIndicator } from "@/components/notifications/unread-indicator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -21,6 +22,7 @@ export function SidebarWorkspace() {
   const t = useTranslations("navigation");
   const notificationT = useTranslations("systemNotifications");
   const unreadChats = useUnreadCourseChats();
+  const unreadEventChats = useUnreadEventChats();
   const pathname = usePathname();
   const basePath = useOrgBasePath();
   const isChatRoute = pathname.startsWith(`${basePath}/chats/`);
@@ -62,9 +64,11 @@ export function SidebarWorkspace() {
           <span className="relative shrink-0">
             <MessageCircle className="size-4 group-data-[collapsible=icon]:size-5" />
             <UnreadIndicator
-              count={unreadChats.size}
+              count={unreadChats.size + unreadEventChats.size}
               dot
-              label={notificationT("unreadChats", { count: unreadChats.size })}
+              label={notificationT("unreadChats", {
+                count: unreadChats.size + unreadEventChats.size,
+              })}
             />
           </span>
           <span className="group-data-[collapsible=icon]:hidden">
@@ -86,7 +90,10 @@ export function SidebarWorkspace() {
           type="auto"
           className="h-full w-full [&_[data-slot=scroll-area-viewport]>div]:block!"
         >
-          <CourseChatsNav unreadChats={unreadChats} />
+          <CourseChatsNav
+            unreadChats={unreadChats}
+            unreadEventChats={unreadEventChats}
+          />
         </ScrollArea>
       </TabsContent>
     </Tabs>

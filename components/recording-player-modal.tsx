@@ -37,8 +37,11 @@ export type RecordingPlaybackPart = {
   prerecordedVideoId?: Id<"classSessionVideos">;
 };
 
-export interface RecordingPlayerProps {
-  scheduleId: Id<"classSchedule">;
+type RecordingTarget =
+  | { scheduleId: Id<"classSchedule">; occurrenceId?: never }
+  | { occurrenceId: Id<"eventOccurrences">; scheduleId?: never };
+
+export type RecordingPlayerProps = RecordingTarget & {
   title: string;
   secondaryLabel?: string | null;
   gradeLabel?: string | null;
@@ -49,15 +52,14 @@ export interface RecordingPlayerProps {
   onOpenChange: (open: boolean) => void;
   variant?: "student" | "default";
   recordings?: RecordingPlaybackPart[];
-}
+};
 
-export interface ScheduleRecordingPlayerProps {
-  scheduleId: Id<"classSchedule">;
+export type ScheduleRecordingPlayerProps = RecordingTarget & {
   enabled?: boolean;
   variant?: "student" | "default";
   className?: string;
   recordings?: RecordingPlaybackPart[];
-}
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -302,21 +304,32 @@ function RecordingHeader({
 
 export function ScheduleRecordingPlayer({
   scheduleId,
+  occurrenceId,
   enabled = true,
   variant = "default",
   className,
   recordings: providedRecordings,
 }: ScheduleRecordingPlayerProps) {
   const t = useTranslations();
+  const targetId = occurrenceId ?? scheduleId!;
   const [selection, setSelection] = useState<{
-    scheduleId: Id<"classSchedule">;
+    targetId: string;
     recordingId: RecordingPlaybackPart["_id"] | null;
-  }>({ scheduleId, recordingId: null });
-  const queriedRecordings = useQuery(
+  }>({ targetId, recordingId: null });
+  const courseRecordings = useQuery(
     api.recordings.getPlayback,
-    enabled && providedRecordings === undefined ? { scheduleId } : "skip",
+    enabled && providedRecordings === undefined && scheduleId
+      ? { scheduleId }
+      : "skip",
   );
-  const recordings = providedRecordings ?? queriedRecordings;
+  const eventRecordings = useQuery(
+    api.recordings.getByEventOccurrence,
+    enabled && providedRecordings === undefined && occurrenceId
+      ? { occurrenceId }
+      : "skip",
+  );
+  const recordings =
+    providedRecordings ?? (occurrenceId ? eventRecordings : courseRecordings);
 
   const isStudent = variant === "student";
   const isLoading = recordings === undefined;
@@ -325,7 +338,7 @@ export function ScheduleRecordingPlayer({
     0,
     recordings?.findIndex(
       (recording) =>
-        selection.scheduleId === scheduleId &&
+        selection.targetId === targetId &&
         recording._id === selection.recordingId,
     ) ?? 0,
   );
@@ -333,12 +346,12 @@ export function ScheduleRecordingPlayer({
   // Keep the chosen source stable when another segment is published or reordered.
   if (
     activeRecording &&
-    (selection.scheduleId !== scheduleId ||
+    (selection.targetId !== targetId ||
       selection.recordingId !== activeRecording._id)
   ) {
-    setSelection({ scheduleId, recordingId: activeRecording._id });
-  } else if (selection.scheduleId !== scheduleId) {
-    setSelection({ scheduleId, recordingId: null });
+    setSelection({ targetId, recordingId: activeRecording._id });
+  } else if (selection.targetId !== targetId) {
+    setSelection({ targetId, recordingId: null });
   }
 
   return (
@@ -381,7 +394,7 @@ export function ScheduleRecordingPlayer({
                   size="sm"
                   variant={selectedIndex === index ? "default" : "outline"}
                   onClick={() =>
-                    setSelection({ scheduleId, recordingId: recording._id })
+                    setSelection({ targetId, recordingId: recording._id })
                   }
                   className={cn(
                     "shrink-0 snap-start gap-2 font-semibold",
@@ -404,7 +417,9 @@ export function ScheduleRecordingPlayer({
           )}
 
           {activeRecording &&
-            (activeRecording.prerecordedVideoId && enabled ? (
+            ("prerecordedVideoId" in activeRecording &&
+            activeRecording.prerecordedVideoId &&
+            enabled ? (
               <PrivateVideoPlayer
                 key={activeRecording._id}
                 id={activeRecording.prerecordedVideoId}
@@ -437,6 +452,7 @@ export function ScheduleRecordingPlayer({
 
 export function RecordingPlayerModal({
   scheduleId,
+  occurrenceId,
   title,
   secondaryLabel,
   gradeLabel,
@@ -474,7 +490,7 @@ export function RecordingPlayerModal({
 
   const content = (
     <ScheduleRecordingPlayer
-      scheduleId={scheduleId}
+      {...(occurrenceId ? { occurrenceId } : { scheduleId: scheduleId! })}
       enabled={open}
       variant={variant}
       recordings={recordings}

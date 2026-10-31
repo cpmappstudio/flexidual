@@ -28,7 +28,7 @@ import { Separator } from "@/components/ui/separator";
 import { carouselCardStyles } from "@/components/ui/carousel-card-styles";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { DetailCarousel } from "./detail-carousel";
+import { DetailCarousel } from "@/components/detail-carousel";
 import {
   getExternalClassPlatform,
   isExternalClassSession,

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import Link from "next/link";
 import {
@@ -69,6 +69,48 @@ test("the panel follows broadcast state through start and early closure", () => 
     />,
   );
   expect(screen.queryByText("student.liveNow")).toBeNull();
+});
+
+test("event labels can reuse the panel without changing course defaults", () => {
+  const view = render(<NextClassPanel nextClass={lesson} currentTime={now} />);
+  expect(screen.getByText("student.nextClass:")).toBeTruthy();
+  expect(screen.getByText("class.typeStandardShort")).toBeTruthy();
+
+  view.rerender(
+    <NextClassPanel
+      nextClass={lesson}
+      currentTime={now}
+      heading="Next session"
+      showProviderBadge={false}
+    />,
+  );
+  expect(screen.getByText("Next session:")).toBeTruthy();
+  expect(screen.queryByText("class.typeStandardShort")).toBeNull();
+});
+
+test("event previews can open a date while course previews remain plain text", () => {
+  const item = {
+    id: "date-1",
+    title: "Monday, Nov 2",
+    meta: "8:00 AM–10:00 AM",
+    sessionType: "live" as const,
+  };
+  const onSelect = vi.fn();
+  const view = render(<NextClassPreview label="Upcoming" items={[item]} />);
+  expect(screen.queryByRole("button", { name: /Monday, Nov 2/ })).toBeNull();
+  expect(screen.getByText("class.typeStandardShort")).toBeTruthy();
+
+  view.rerender(
+    <NextClassPreview
+      label="Upcoming"
+      items={[item]}
+      showProviderBadge={false}
+      onSelect={onSelect}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Monday, Nov 2/ }));
+  expect(onSelect).toHaveBeenCalledWith(item);
+  expect(screen.queryByText("class.typeStandardShort")).toBeNull();
 });
 
 test("upcoming sessions keep their own management action and prerecorded marker", () => {

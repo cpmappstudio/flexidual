@@ -4,14 +4,22 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import CalendarPage from "@/app/[locale]/[orgSlug]/calendar/page";
 
 const state = vi.hoisted(() => ({ course: "course", queries: vi.fn() }));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
   useParams: () => ({ orgSlug: "campus" }),
+  useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () =>
     new URLSearchParams(state.course ? { classId: state.course } : {}),
+}));
+vi.mock("@/i18n/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
 vi.mock("@/components/schedule/schedule-item", () => ({
   ScheduleItem: () => null,
+}));
+vi.mock("@/components/calendar/dialog/calendar-occurrence-dialog", () => ({
+  CalendarOccurrenceDialog: () => null,
 }));
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
@@ -35,6 +43,11 @@ vi.mock("@/hooks/use-settings-context", () => ({
 }));
 vi.mock("convex/react", () => ({
   useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
+  usePaginatedQuery: () => ({
+    results: [],
+    status: "Exhausted",
+    loadMore: vi.fn(),
+  }),
   useQuery: (
     reference: Parameters<typeof getFunctionName>[0],
     args: unknown,

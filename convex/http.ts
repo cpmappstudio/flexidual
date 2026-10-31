@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import * as abekaHttp from "./abekaHttp";
 import * as chatFiles from "./courseChatAttachmentHttp";
+import * as eventChatFiles from "./eventChatAttachmentHttp";
 import * as taskFiles from "./courseTaskFileHttp";
 import * as whiteboardFiles from "./whiteboardFileHttp";
 import { verifyWebhook, type WebhookEvent } from "@clerk/backend/webhooks";
@@ -62,6 +63,21 @@ http.route({
   path: "/course-chat-files",
   method: "OPTIONS",
   handler: chatFiles.options,
+});
+http.route({
+  path: "/event-chat-files",
+  method: "POST",
+  handler: eventChatFiles.upload,
+});
+http.route({
+  path: "/event-chat-files",
+  method: "GET",
+  handler: eventChatFiles.download,
+});
+http.route({
+  path: "/event-chat-files",
+  method: "OPTIONS",
+  handler: eventChatFiles.options,
 });
 http.route({
   path: "/course-task-files",

@@ -1,6 +1,7 @@
 import { chatReferenceParts } from "./chat-references";
 
 export const MAX_CHAT_ATTACHMENTS = 3;
+export const MAX_CHAT_TEXT_LENGTH = 2_000;
 export const MAX_CHAT_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_CHAT_MESSAGE_BYTES = 20 * 1024 * 1024;
 export const CHAT_FILE_TYPES = [

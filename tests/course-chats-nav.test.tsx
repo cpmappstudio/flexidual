@@ -27,20 +27,16 @@ const state = vi.hoisted(() => ({
     { _id: "biology", name: "Biology · Teacher", archived: false },
     { _id: "old", name: "Algebra 2025", archived: true },
   ],
+  events: [] as {
+    eventId: string;
+    title: string;
+    archived: boolean;
+    canRestore: boolean;
+  }[],
 }));
 vi.mock("convex/react", () => ({
   useConvexAuth: () => ({ isAuthenticated: true }),
   useMutation: () => vi.fn(),
-  usePaginatedQuery: (_query: unknown, args: { search?: string } | "skip") => ({
-    results: state.broadcasts.filter(
-      (row) =>
-        args === "skip" ||
-        !args.search ||
-        row.name.toLowerCase().includes(args.search),
-    ),
-    status: "Exhausted",
-    loadMore: vi.fn(),
-  }),
   useQuery: (query: Parameters<typeof getFunctionName>[0], args: unknown) => {
     const name = getFunctionName(query);
     state.queries(name, args);
@@ -48,8 +44,28 @@ vi.mock("convex/react", () => ({
       ? state.broadcastScope
       : name === "organizations:resolveSlug"
         ? { type: "campus", _id: state.slug }
-        : state.chats;
+        : name === "campuses:get"
+          ? { schoolId: "school" }
+          : state.chats;
   },
+  usePaginatedQuery: (
+    query: Parameters<typeof getFunctionName>[0],
+    args: { search?: string } | "skip",
+  ) => ({
+    results:
+      getFunctionName(query) === "eventChatContext:listOptions"
+        ? state.events
+        : getFunctionName(query) === "broadcasts:list"
+          ? state.broadcasts.filter(
+              (row) =>
+                args === "skip" ||
+                !args.search ||
+                row.name.toLowerCase().includes(args.search),
+            )
+          : [],
+    status: "Exhausted",
+    loadMore: vi.fn(),
+  }),
 }));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("next/navigation", () => ({
@@ -58,6 +74,9 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 vi.mock("@/hooks/use-unread-course-chats", () => ({
   useUnreadCourseChats: () => new Map(),
+}));
+vi.mock("@/hooks/use-unread-event-chats", () => ({
+  useUnreadEventChats: () => new Map(),
 }));
 vi.mock("@/components/nav-main", () => ({ NavMain: () => null }));
 vi.mock("@/hooks/use-org-base-path", () => ({
@@ -81,6 +100,7 @@ afterEach(() => {
   state.broadcastScope = null;
   state.broadcasts = [];
   state.queries.mockClear();
+  state.events = [];
 });
 
 test("broadcast creation is an admin icon button beside search; broadcasts share search and unread dots", async () => {
@@ -211,4 +231,45 @@ test("preserves reactive activity order while searching without sorting by name 
   } finally {
     state.chats = original;
   }
+});
+
+test("event conversations share Chats navigation and its search", () => {
+  state.events = [
+    {
+      eventId: "devotional",
+      title: "Devotional",
+      archived: false,
+      canRestore: false,
+    },
+    {
+      eventId: "old-event",
+      title: "Old assembly",
+      archived: true,
+      canRestore: true,
+    },
+  ];
+  const { getByRole, queryByRole } = render(
+    <SidebarProvider>
+      <CourseChatsNav
+        unreadChats={new Map()}
+        unreadEventChats={new Map([["devotional" as Id<"events">, 2]])}
+      />
+    </SidebarProvider>,
+  );
+  expect(getByRole("link", { name: "Devotional" }).getAttribute("href")).toBe(
+    "/campus/chats/events/devotional",
+  );
+  expect(
+    getByRole("link", { name: "Devotional" })
+      .querySelector("img")
+      ?.getAttribute("src"),
+  ).toBe("/event-calendar-star.svg");
+  expect(
+    getByRole("button", { name: "Old assembly" })
+      .querySelector("img")
+      ?.getAttribute("src"),
+  ).toBe("/event-calendar-star.svg");
+  fireEvent.change(getByRole("searchbox"), { target: { value: "Devotional" } });
+  expect(getByRole("link", { name: "Devotional" })).toBeTruthy();
+  expect(queryByRole("button", { name: "Old assembly" })).toBeNull();
 });

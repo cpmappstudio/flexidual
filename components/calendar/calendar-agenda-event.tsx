@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import Image from "next/image";
 import { tz } from "@date-fns/tz";
 
 import { cn } from "@/lib/utils";
@@ -58,11 +59,26 @@ export function CalendarAgendaEvent({
           <span className="line-clamp-2 min-w-0 text-xs font-semibold leading-tight">
             {primaryLabel}
           </span>
-          <CalendarProviderMark
-            sessionType={event.sessionType}
-            isPast={isPast}
-            className="mt-0.5 size-3 shrink-0"
-          />
+          {event.kind === "class" && (
+            <CalendarProviderMark
+              sessionType={event.sessionType}
+              isPast={isPast}
+              className="mt-0.5 size-3 shrink-0"
+            />
+          )}
+          {event.kind === "event" && (
+            <Image
+              src="/event-calendar-star.svg"
+              alt=""
+              width={12}
+              height={12}
+              aria-hidden="true"
+              className={cn(
+                "mt-0.5 size-3 shrink-0 object-contain",
+                isPast && "opacity-60 saturate-50",
+              )}
+            />
+          )}
         </span>
         <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground">
           {timeLabel}

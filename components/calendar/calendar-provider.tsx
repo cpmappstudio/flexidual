@@ -48,8 +48,8 @@ export default function CalendarProvider({
   const [selectedSnapshot, setSelectedEvent] = useState<CalendarEvent | null>(
     null,
   );
-  const currentEvent = selectedSnapshot?.scheduleId
-    ? events.find((event) => event.scheduleId === selectedSnapshot.scheduleId)
+  const currentEvent = selectedSnapshot
+    ? events.find((event) => event.id === selectedSnapshot.id)
     : undefined;
   // Keep the last confirmed snapshot if the selected event leaves the visible range.
   if (currentEvent && currentEvent !== selectedSnapshot)

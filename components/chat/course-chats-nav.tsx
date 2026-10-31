@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Link, usePathname } from "@/i18n/navigation";
 import { useOrgBasePath } from "@/hooks/use-org-base-path";
 import { useStaffAccess } from "@/hooks/use-staff-access";
@@ -25,6 +26,7 @@ import {
   SidebarMenuSkeleton,
 } from "@/components/ui/sidebar";
 import { CurriculumIcon } from "@/components/teaching/curriculums/curriculum-icon";
+import type { Id } from "@/convex/_generated/dataModel";
 import {
   useConvexAuth,
   useMutation,
@@ -40,7 +42,7 @@ import {
 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { toast } from "sonner";
 import type { FunctionReturnType } from "convex/server";
@@ -55,16 +57,22 @@ const NewBroadcastDialog = dynamic(() =>
 
 export function CourseChatsNav({
   unreadChats,
+  unreadEventChats = new Map(),
 }: {
   unreadChats: ReadonlyMap<string, number>;
+  unreadEventChats?: ReadonlyMap<Id<"events">, number>;
 }) {
   const t = useTranslations("navigation");
+  const eventT = useTranslations("events");
+  const notificationT = useTranslations("systemNotifications");
   const broadcastT = useTranslations("classroom.broadcasts");
   const pathname = usePathname();
   const basePath = useOrgBasePath();
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const { isAuthenticated } = useConvexAuth();
   const { access } = useStaffAccess();
+  const setEventArchived = useMutation(api.eventChatMessages.setArchived);
+  const [restoringId, setRestoringId] = useState<string>();
   const [search, setSearch] = useState("");
   const [creatingBroadcast, setCreatingBroadcast] = useState(false);
   const scope = useQuery(
@@ -91,7 +99,34 @@ export function CourseChatsNav({
           ? { schoolId: orgContext._id }
           : {},
   );
+  const campus = useQuery(
+    api.campuses.get,
+    orgContext?.type === "campus" ? { id: orgContext._id } : "skip",
+  );
+  const eventSchoolId =
+    orgContext?.type === "school"
+      ? orgContext._id
+      : orgContext?.type === "campus"
+        ? campus?.schoolId
+        : undefined;
+  const eventOptions = usePaginatedQuery(
+    api.eventChatContext.listOptions,
+    isAuthenticated && eventSchoolId
+      ? {
+          schoolId: eventSchoolId,
+          ...(orgContext?.type === "campus"
+            ? { campusId: orgContext._id }
+            : {}),
+        }
+      : "skip",
+    { initialNumItems: 50 },
+  );
   const normalizedSearch = search.trim().toLocaleLowerCase();
+  const eventChats = [
+    ...new Map(
+      eventOptions.results.map((item) => [item.eventId, item]),
+    ).values(),
+  ].filter((item) => item.title.toLocaleLowerCase().includes(normalizedSearch));
   const broadcastSearch = useDebouncedValue(normalizedSearch, 200);
   const broadcastFeed = usePaginatedQuery(
     api.broadcasts.list,
@@ -111,15 +146,12 @@ export function CourseChatsNav({
     if (scope && broadcasts.length === 0 && broadcastStatus === "CanLoadMore")
       loadMoreBroadcasts(30);
   }, [scope, broadcasts.length, broadcastStatus, loadMoreBroadcasts]);
-  const { activeChats, archivedChats } = useMemo(() => {
-    const activeChats: NonNullable<typeof chats> = [];
-    const archivedChats: NonNullable<typeof chats> = [];
-    for (const chat of chats ?? []) {
-      if (!chat.name.toLocaleLowerCase().includes(normalizedSearch)) continue;
-      (chat.archived ? archivedChats : activeChats).push(chat);
-    }
-    return { activeChats, archivedChats };
-  }, [chats, normalizedSearch]);
+  const activeChats: NonNullable<typeof chats> = [];
+  const archivedChats: NonNullable<typeof chats> = [];
+  for (const chat of chats ?? []) {
+    if (!chat.name.toLocaleLowerCase().includes(normalizedSearch)) continue;
+    (chat.archived ? archivedChats : activeChats).push(chat);
+  }
   const canRestoreChats = access?.canManageCampus ?? false;
 
   return (
@@ -174,6 +206,7 @@ export function CourseChatsNav({
               ))
             ) : activeChats.length === 0 &&
               archivedChats.length === 0 &&
+              eventChats.length === 0 &&
               broadcasts.length === 0 &&
               (!scope || broadcastFeed.status === "Exhausted") ? (
               <li className="px-2 py-3 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
@@ -237,6 +270,121 @@ export function CourseChatsNav({
           </SidebarGroupContent>
         </SidebarGroup>
       ) : null}
+
+      {eventChats.some((item) => !item.archived) && (
+        <SidebarGroup>
+          <SidebarGroupLabel>{eventT("name")}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {eventChats
+                .filter((item) => !item.archived)
+                .map((item) => {
+                  const href = `${basePath}/chats/events/${item.eventId}`;
+                  const count = unreadEventChats.get(item.eventId) ?? 0;
+                  return (
+                    <SidebarMenuItem key={item.eventId}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname === href}
+                        tooltip={item.title}
+                        aria-label={item.title}
+                        className="h-11 gap-3 px-2 text-sm group-data-[collapsible=icon]:p-1!"
+                      >
+                        <Link href={href}>
+                          <span className="relative shrink-0">
+                            <Image
+                              src="/event-calendar-star.svg"
+                              alt=""
+                              width={28}
+                              height={28}
+                              className="size-7"
+                              aria-hidden="true"
+                            />
+                            <UnreadIndicator
+                              count={count}
+                              dot
+                              label={notificationT("unreadMessages", { count })}
+                            />
+                          </span>
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
+
+      {eventChats.some((item) => item.archived) && (
+        <SidebarGroup>
+          <SidebarGroupLabel>
+            {t("archivedChats")}: {eventT("name")}
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {eventChats
+                .filter((item) => item.archived)
+                .map((item) => (
+                  <SidebarMenuItem key={item.eventId}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <SidebarMenuButton
+                          tooltip={item.title}
+                          aria-label={item.title}
+                          className="h-11 gap-3 px-2 text-sm opacity-60"
+                        >
+                          <Image
+                            src="/event-calendar-star.svg"
+                            alt=""
+                            width={28}
+                            height={28}
+                            className="size-7"
+                            aria-hidden="true"
+                          />
+                          <span>{item.title}</span>
+                        </SidebarMenuButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right" align="start">
+                        <DropdownMenuItem
+                          disabled={
+                            !item.canRestore || restoringId !== undefined
+                          }
+                          onSelect={() => {
+                            setRestoringId(item.eventId);
+                            void setEventArchived({
+                              eventId: item.eventId,
+                              archived: false,
+                            })
+                              .then(() => toast.success(t("chatRestored")))
+                              .catch(() => toast.error(t("restoreChatError")))
+                              .finally(() => setRestoringId(undefined));
+                          }}
+                        >
+                          <ArchiveRestore />
+                          {t("unarchiveChat")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </SidebarMenuItem>
+                ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
+
+      {eventOptions.status === "CanLoadMore" && (
+        <SidebarGroup>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => eventOptions.loadMore(50)}
+          >
+            {eventT("loadMore")}
+          </Button>
+        </SidebarGroup>
+      )}
     </>
   );
 }

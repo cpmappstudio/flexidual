@@ -45,6 +45,7 @@ import { SessionCloseoutDialog } from "./session-closeout-dialog";
 import { useClassroomPresentation } from "./classroom-presentation";
 import { toast } from "sonner";
 import { reportRuntimeError } from "@/lib/error-tracking";
+import { ROUTES } from "@/lib/navigation/routes";
 import { SessionClosureProgress } from "./session-closure-progress";
 import {
   AlertDialog,
@@ -187,6 +188,7 @@ export default function FlexiClassroom({
 
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
+  const isEventRoom = roomName.startsWith("event-");
 
   const {
     user: currentUserResult,
@@ -202,6 +204,8 @@ export default function FlexiClassroom({
   const logPresence = useMutation(api.schedule.logStudentPresence);
   const markLive = useMutation(api.schedule.markLive);
   const reopenLiveSession = useMutation(api.schedule.reopenLiveSession);
+  const startEvent = useMutation(api.eventRoom.start);
+  const reopenEvent = useMutation(api.eventRoom.reopen);
   const endSession = useAction(api.livekit.endSession);
   const [closeoutScope, setCloseoutScope] = useState<string | null>(null);
   const [reopenedScope, setReopenedScope] = useState<string | null>(null);
@@ -210,17 +214,31 @@ export default function FlexiClassroom({
   >(null);
   const [isActivating, setIsActivating] = useState(false);
 
-  const sessionStatusResult = useQuery(api.schedule.getSessionStatus, {
-    sessionId: roomName,
-    now: Math.floor(now / 60_000) * 60_000,
-  });
+  const queryNow = Math.floor(now / 60_000) * 60_000;
+  const classStatus = useQuery(
+    api.schedule.getSessionStatus,
+    isEventRoom ? "skip" : { sessionId: roomName, now: queryNow },
+  );
+  const eventStatus = useQuery(
+    api.eventRoom.getSessionStatus,
+    isEventRoom ? { roomName, now: queryNow } : "skip",
+  );
+  const sessionStatusResult = isEventRoom ? eventStatus : classStatus;
   const sessionStatus = useRetainedQueryResult(sessionStatusResult, roomName);
+  const classScheduleId =
+    sessionStatus && "scheduleId" in sessionStatus
+      ? sessionStatus.scheduleId
+      : undefined;
+  const eventId =
+    sessionStatus && "eventId" in sessionStatus
+      ? sessionStatus.eventId
+      : undefined;
 
   const scheduleDetailsResult = useQuery(
     api.schedule.getWithDetails,
-    sessionStatus?.scheduleId ? { id: sessionStatus.scheduleId } : "skip",
+    classScheduleId ? { id: classScheduleId } : "skip",
   );
-  const scheduleDetailsScope = `${roomName}:${sessionStatus?.scheduleId ?? "pending"}`;
+  const scheduleDetailsScope = `${roomName}:${classScheduleId ?? "pending"}`;
   const scheduleDetails = useRetainedQueryResult(
     scheduleDetailsResult,
     scheduleDetailsScope,
@@ -233,7 +251,9 @@ export default function FlexiClassroom({
         ? "admin"
         : "student"
     : undefined;
-  const resolvedIsStudentView = isStudentView || role === "student";
+  const resolvedIsStudentView = isEventRoom
+    ? role === "student"
+    : isStudentView || role === "student";
   const uiPreviewEnabled =
     process.env.NODE_ENV !== "production" &&
     (presentation?.uiPreviewEnabled ?? searchParams.get("uiPreview") === "1");
@@ -268,6 +288,7 @@ export default function FlexiClassroom({
   const [connectedScope, setConnectedScope] = useState<string>();
   const [leavingScope, setLeavingScope] = useState<string>();
   const hasPendingCloseout =
+    !isEventRoom &&
     !isCompanion &&
     !resolvedIsStudentView &&
     !!convexUser &&
@@ -277,9 +298,15 @@ export default function FlexiClassroom({
   const requiresCloseout =
     hasPendingCloseout && reopenedScope !== connectionScope;
   const isCloseoutOpen =
-    !!convexUser && (closeoutScope === connectionScope || requiresCloseout);
+    !isEventRoom &&
+    !!convexUser &&
+    (closeoutScope === connectionScope || requiresCloseout);
   const canPersist = Boolean(
-    convexUser && sessionStatus && scheduleDetails && token && !isSessionClosed,
+    convexUser &&
+      sessionStatus &&
+      (isEventRoom || scheduleDetails) &&
+      token &&
+      !isSessionClosed,
   );
   const reportPersistence = presentation?.reportPersistence;
   useEffect(() => {
@@ -321,13 +348,13 @@ export default function FlexiClassroom({
   const isEntryEnabled =
     !error &&
     leavingScope !== connectionScope &&
-    scheduleDetails !== null &&
+    (isEventRoom || scheduleDetails !== null) &&
     (isCheckingEntry || isReopeningEntry || shouldConnect);
   const isEntryLoading =
     isCheckingEntry ||
     isReopeningEntry ||
     !token ||
-    !scheduleDetails ||
+    (!isEventRoom && !scheduleDetails) ||
     connectedScope !== connectionScope;
   const nextRoomRef = useRef<string | null>(null);
   const currentRoomRef = useRef(roomName);
@@ -371,19 +398,25 @@ export default function FlexiClassroom({
     setIsActivating(true);
     try {
       if (mode === "reopen") {
-        await reopenLiveSession({ roomName });
+        if (isEventRoom) await reopenEvent({ roomName });
+        else await reopenLiveSession({ roomName });
         setReopenedScope(connectionScope);
         setCloseoutScope(null);
-      } else await markLive({ roomName, isLive: true });
+      } else if (isEventRoom) await startEvent({ roomName });
+      else await markLive({ roomName, isLive: true });
       clearToken();
       setActivationDialogMode(null);
     } catch (activationError) {
-      console.error(`Failed to ${mode} class:`, activationError);
+      console.error(`Failed to ${mode} session:`, activationError);
       toast.error(
         t(
-          mode === "reopen"
-            ? "classroom.reopenClassError"
-            : "classroom.startClassError",
+          isEventRoom
+            ? mode === "reopen"
+              ? "events.reopenError"
+              : "events.startError"
+            : mode === "reopen"
+              ? "classroom.reopenClassError"
+              : "classroom.startClassError",
         ),
       );
     } finally {
@@ -391,7 +424,6 @@ export default function FlexiClassroom({
     }
   };
 
-  const presenceScheduleId = sessionStatus?.scheduleId;
   const presenceActivationId = sessionStatus?.activationId;
   const handleConnected = useCallback(async () => {
     if (currentConnectionScopeRef.current === connectionScope)
@@ -401,8 +433,9 @@ export default function FlexiClassroom({
     );
 
     if (
+      isEventRoom ||
       !resolvedIsStudentView ||
-      !presenceScheduleId ||
+      !classScheduleId ||
       !presenceActivationId ||
       currentConnectionScopeRef.current !== connectionScope ||
       loggedScheduleRef.current === connectionScope
@@ -413,7 +446,7 @@ export default function FlexiClassroom({
     loggedScheduleRef.current = connectionScope;
     try {
       await logPresence({
-        scheduleId: presenceScheduleId,
+        scheduleId: classScheduleId,
         action: "join",
         activationId: presenceActivationId,
         connectionId: presenceConnection.id,
@@ -425,9 +458,10 @@ export default function FlexiClassroom({
     }
   }, [
     connectionScope,
+    classScheduleId,
+    isEventRoom,
     logPresence,
     resolvedIsStudentView,
-    presenceScheduleId,
     presenceActivationId,
     presenceConnection,
   ]);
@@ -438,10 +472,17 @@ export default function FlexiClassroom({
       onLeave();
       return;
     }
+    if (eventId) {
+      router.push(
+        `/${params.locale}${ROUTES.org.events.detail(orgSlug, eventId)}`,
+      );
+      return;
+    }
     router.push(`/${params.locale}/${orgSlug}`);
   }, [
     onLeave,
     orgSlug,
+    eventId,
     params.locale,
     resolvedIsStudentView,
     router,
@@ -487,14 +528,15 @@ export default function FlexiClassroom({
       }
 
       if (
+        !isEventRoom &&
         resolvedIsStudentView &&
-        presenceScheduleId &&
+        classScheduleId &&
         presenceActivationId &&
         loggedScheduleRef.current === connectionScope
       ) {
         try {
           await logPresence({
-            scheduleId: presenceScheduleId,
+            scheduleId: classScheduleId,
             action: "leave",
             activationId: presenceActivationId,
             connectionId: presenceConnection.id,
@@ -523,13 +565,14 @@ export default function FlexiClassroom({
       connectionScope,
       exitClassroom,
       logPresence,
+      classScheduleId,
+      isEventRoom,
       orgSlug,
       params.locale,
       resolvedIsStudentView,
       router,
       roomName,
       leaveSession,
-      presenceScheduleId,
       presenceActivationId,
       presenceConnection,
       t,
@@ -565,19 +608,25 @@ export default function FlexiClassroom({
     if (isCheckingEntry) return null;
 
     // Room Not Found
-    if (!sessionStatus || scheduleDetails === null) {
+    if (!sessionStatus || (!isEventRoom && scheduleDetails === null)) {
       return (
         <div
           className={`flex h-full w-full items-center justify-center bg-background/90 backdrop-blur-md rounded-lg ${className}`}
         >
           <div className="text-center p-8 max-w-md">
-            <School className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" />
+            {isEventRoom ? (
+              <CalendarClock className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" />
+            ) : (
+              <School className="w-16 h-16 text-muted-foreground/40 mx-auto mb-4" />
+            )}
             <h3 className="text-xl font-bold text-foreground">
-              {t("classroom.notFound")}
+              {t(isEventRoom ? "events.notFound" : "classroom.notFound")}
             </h3>
-            <p className="text-muted-foreground mt-2">
-              {t("classroom.notFoundDescription")}
-            </p>
+            {!isEventRoom && (
+              <p className="text-muted-foreground mt-2">
+                {t("classroom.notFoundDescription")}
+              </p>
+            )}
 
             {resolvedIsStudentView ? (
               <Button
@@ -619,7 +668,7 @@ export default function FlexiClassroom({
             <CalendarClock className="mx-auto mb-4 size-16 text-muted-foreground/40" />
             <h3 className="text-xl font-bold text-foreground">
               {sessionStatus.status === "completed"
-                ? t("classroom.classEnded")
+                ? t(isEventRoom ? "events.ended" : "classroom.classEnded")
                 : t("classroom.notActive")}
             </h3>
             {!resolvedIsStudentView && endedTime && (
@@ -644,7 +693,7 @@ export default function FlexiClassroom({
                 sessionStatus.canReopen && (
                   <Button onClick={() => setActivationDialogMode("reopen")}>
                     <RotateCcw className="mr-2 size-4" />
-                    {t("classroom.reopenClass")}
+                    {t(isEventRoom ? "events.reopen" : "classroom.reopenClass")}
                   </Button>
                 )}
               <Button variant="outline" onClick={exitClassroom}>
@@ -686,7 +735,7 @@ export default function FlexiClassroom({
               {!isCompanion && sessionStatus.canStart && (
                 <Button onClick={() => setActivationDialogMode("start")}>
                   <PlayCircle className="mr-2 size-4" />
-                  {t("classroom.startClass")}
+                  {t(isEventRoom ? "events.startRoom" : "classroom.startClass")}
                 </Button>
               )}
               <Button variant="outline" onClick={exitClassroom}>
@@ -814,7 +863,7 @@ export default function FlexiClassroom({
     }
 
     // Error State
-    if (error && (!token || !scheduleDetails)) {
+    if (error && (!token || (!isEventRoom && !scheduleDetails))) {
       return (
         <ClassroomConnectionError
           className={className}
@@ -828,7 +877,7 @@ export default function FlexiClassroom({
     }
 
     // Connecting
-    if (!token || !scheduleDetails) return null;
+    if (!token || (!isEventRoom && !scheduleDetails)) return null;
 
     const countdown = isClassLive ? (
       <ClassroomCountdown
@@ -865,7 +914,7 @@ export default function FlexiClassroom({
           onDisconnected={handleDisconnect}
           onError={handleRoomError}
         >
-          {isCompanion ? (
+          {isCompanion && scheduleDetails ? (
             <CompanionClassroomUI
               courseId={scheduleDetails.class._id}
               countdown={countdown}
@@ -878,13 +927,20 @@ export default function FlexiClassroom({
           ) : resolvedIsStudentView ? (
             <StudentClassroomUI
               countdown={countdown}
-              courseId={scheduleDetails.class._id}
-              scheduleId={sessionStatus.scheduleId}
+              courseId={scheduleDetails?.class._id}
+              eventId={eventId}
+              scheduleId={classScheduleId}
               roomName={roomName}
               sessionNow={now}
-              className={scheduleDetails?.class?.name}
-              curriculumIconKey={scheduleDetails.class.curriculumIconKey}
-              onSwitchClassroom={handleSwitchClassroom}
+              className={
+                isEventRoom && "eventTitle" in sessionStatus
+                  ? sessionStatus.eventTitle
+                  : scheduleDetails?.class.name
+              }
+              curriculumIconKey={scheduleDetails?.class.curriculumIconKey}
+              onSwitchClassroom={
+                isEventRoom ? undefined : handleSwitchClassroom
+              }
               isFullscreen={isFullscreen}
               onToggleFullscreen={
                 canFullscreen ? handleToggleFullscreen : undefined
@@ -894,19 +950,32 @@ export default function FlexiClassroom({
           ) : (
             <ActiveClassroomUI
               countdown={countdown}
-              courseId={scheduleDetails.class._id}
-              scheduleId={sessionStatus.scheduleId}
+              courseId={scheduleDetails?.class._id}
+              eventId={eventId}
+              scheduleId={classScheduleId}
               currentUserRole={role}
               activationId={sessionStatus.activationId}
               canLeadSession={sessionStatus?.leadershipRole != null}
               roomName={roomName}
               sessionNow={now}
-              className={scheduleDetails?.class?.name}
-              curriculumIconKey={scheduleDetails.class.curriculumIconKey}
+              className={
+                isEventRoom && "eventTitle" in sessionStatus
+                  ? sessionStatus.eventTitle
+                  : scheduleDetails?.class.name
+              }
+              curriculumIconKey={scheduleDetails?.class.curriculumIconKey}
               sessionIsLive={isClassLive}
               sessionTimeZone={sessionStatus.timeZone}
               isCloseoutOpen={isCloseoutOpen}
-              onRequestCloseout={() => setCloseoutScope(connectionScope)}
+              onRequestCloseout={
+                isEventRoom
+                  ? () => {
+                      void handleCompleteSession().catch(() =>
+                        toast.error(t("events.endError")),
+                      );
+                    }
+                  : () => setCloseoutScope(connectionScope)
+              }
               isFullscreen={isFullscreen}
               onToggleFullscreen={
                 canFullscreen ? handleToggleFullscreen : undefined
@@ -941,27 +1010,29 @@ export default function FlexiClassroom({
       >
         {renderClassroom()}
       </ClassroomEntryTransition>
-      <SessionCloseoutDialog
-        key={connectionScope}
-        open={isCloseoutOpen}
-        roomName={roomName}
-        sessionNow={now}
-        required={requiresCloseout}
-        alreadyEnded={isSessionClosed}
-        onReopen={
-          requiresCloseout && sessionStatus?.canReopen
-            ? () => handleActivateSession("reopen")
-            : undefined
-        }
-        isReopening={isActivating}
-        onOpenChange={(open) => {
-          setCloseoutScope((current) => {
-            if (open) return connectionScope;
-            return current === connectionScope ? null : current;
-          });
-        }}
-        onComplete={handleCompleteSession}
-      />
+      {!isEventRoom && (
+        <SessionCloseoutDialog
+          key={connectionScope}
+          open={isCloseoutOpen}
+          roomName={roomName}
+          sessionNow={now}
+          required={requiresCloseout}
+          alreadyEnded={isSessionClosed}
+          onReopen={
+            requiresCloseout && sessionStatus?.canReopen
+              ? () => handleActivateSession("reopen")
+              : undefined
+          }
+          isReopening={isActivating}
+          onOpenChange={(open) => {
+            setCloseoutScope((current) => {
+              if (open) return connectionScope;
+              return current === connectionScope ? null : current;
+            });
+          }}
+          onComplete={handleCompleteSession}
+        />
+      )}
       <AlertDialog
         open={activationDialogMode !== null}
         onOpenChange={(open) => {
@@ -971,25 +1042,38 @@ export default function FlexiClassroom({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {activationDialogMode === "reopen"
-                ? t("classroom.reopenClassTitle")
-                : t(
-                    sessionStatus?.isPrimaryTeacher
-                      ? "classroom.startClassTitle"
-                      : "classroom.startClassAsLeaderTitle",
-                  )}
+              {isEventRoom
+                ? t(
+                    activationDialogMode === "reopen"
+                      ? "events.reopenTitle"
+                      : "events.startTitle",
+                  )
+                : activationDialogMode === "reopen"
+                  ? t("classroom.reopenClassTitle")
+                  : t(
+                      sessionStatus?.isPrimaryTeacher
+                        ? "classroom.startClassTitle"
+                        : "classroom.startClassAsLeaderTitle",
+                    )}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {activationDialogMode === "reopen"
-                ? t("classroom.reopenClassDescription")
-                : t(
-                    sessionStatus?.isPrimaryTeacher
-                      ? "classroom.startClassDescription"
-                      : "classroom.startClassAsLeaderDescription",
-                  )}
+              {isEventRoom
+                ? t(
+                    activationDialogMode === "reopen"
+                      ? "events.reopenDescription"
+                      : "events.startDescription",
+                  )
+                : activationDialogMode === "reopen"
+                  ? t("classroom.reopenClassDescription")
+                  : t(
+                      sessionStatus?.isPrimaryTeacher
+                        ? "classroom.startClassDescription"
+                        : "classroom.startClassAsLeaderDescription",
+                    )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {activationDialogMode === "start" &&
+          {!isEventRoom &&
+            activationDialogMode === "start" &&
             !sessionStatus?.isPrimaryTeacher && (
               <p className="border-t pt-3 text-xs leading-relaxed text-muted-foreground">
                 {t("classroom.startClassAsLeaderDisclosure")}
@@ -1010,11 +1094,15 @@ export default function FlexiClassroom({
             >
               {isActivating && <Loader2 className="mr-2 size-4 animate-spin" />}
               {t(
-                activationDialogMode === "reopen"
-                  ? "classroom.confirmReopenClass"
-                  : sessionStatus?.isPrimaryTeacher
-                    ? "classroom.confirmStartClass"
-                    : "classroom.confirmStartClassAsLeader",
+                isEventRoom
+                  ? activationDialogMode === "reopen"
+                    ? "events.confirmReopen"
+                    : "events.confirmStart"
+                  : activationDialogMode === "reopen"
+                    ? "classroom.confirmReopenClass"
+                    : sessionStatus?.isPrimaryTeacher
+                      ? "classroom.confirmStartClass"
+                      : "classroom.confirmStartClassAsLeader",
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

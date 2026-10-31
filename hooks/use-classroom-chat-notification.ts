@@ -4,31 +4,44 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useConvexAuth, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { ChatMessage } from "@/components/chat/course-chat-message";
+import type {
+  ChatMessage,
+  EventChatMessage,
+} from "@/components/chat/course-chat-message";
 
 const NOTIFICATION_DURATION = 6_000;
 const SOUND_INTERVAL = 3_000;
 
 export function useClassroomChatNotification({
   courseId,
+  eventId,
   scheduleId,
   chatVisible,
   onNotify,
 }: {
-  courseId: Id<"classes">;
+  courseId?: Id<"classes">;
+  eventId?: Id<"events">;
   scheduleId?: Id<"classSchedule">;
   chatVisible: boolean;
   onNotify: () => void;
 }) {
   const { isAuthenticated } = useConvexAuth();
-  const { results, status } = usePaginatedQuery(
+  const coursePage = usePaginatedQuery(
     api.courseChatMessages.list,
-    isAuthenticated
+    isAuthenticated && courseId
       ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
       : "skip",
     { initialNumItems: 10 },
   );
-  const [message, setMessage] = useState<ChatMessage | null>(null);
+  const eventPage = usePaginatedQuery(
+    api.eventChatMessages.list,
+    isAuthenticated && eventId ? { eventId } : "skip",
+    { initialNumItems: 10 },
+  );
+  const { results, status } = eventId ? eventPage : coursePage;
+  const [message, setMessage] = useState<ChatMessage | EventChatMessage | null>(
+    null,
+  );
   const baselineRef = useRef<{
     courseId: string;
     time: number;
@@ -47,7 +60,7 @@ export function useClassroomChatNotification({
     if (status === "LoadingFirstPage") return;
     const baseline = baselineRef.current;
     const latestTime = results[0]?._creationTime ?? 0;
-    const scope = `${courseId}:${scheduleId}`;
+    const scope = eventId ? `event:${eventId}` : `${courseId}:${scheduleId}`;
     if (!baseline || baseline.courseId !== scope) {
       baselineRef.current = {
         courseId: scope,
@@ -88,6 +101,7 @@ export function useClassroomChatNotification({
     }
   }, [
     courseId,
+    eventId,
     scheduleId,
     isAuthenticated,
     results,
@@ -105,7 +119,12 @@ export function useClassroomChatNotification({
 
   return {
     message:
-      isAuthenticated && !chatVisible && message?.classId === courseId
+      isAuthenticated &&
+      !chatVisible &&
+      message &&
+      (eventId
+        ? "eventId" in message && message.eventId === eventId
+        : "classId" in message && message.classId === courseId)
         ? message
         : null,
     dismiss,

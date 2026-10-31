@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -21,8 +21,19 @@ const grades = [
 ];
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function PrivateGrades() {
   const [value, setValue] = useState<CourseGradeAssignmentInput[]>([
@@ -65,7 +76,11 @@ function SchoolGrades() {
   );
 }
 
-function PrivateCourseForm() {
+function PrivateCourseForm({
+  teachers = [],
+}: {
+  teachers?: ComponentProps<typeof CourseFormFields>["teachers"];
+}) {
   const [value, setValue] = useState<CourseFormData>({
     name: "Course",
     description: "",
@@ -93,7 +108,7 @@ function PrivateCourseForm() {
             },
           ] as Doc<"curriculums">[]
         }
-        teachers={[]}
+        teachers={teachers}
         grades={
           [...grades, { code: "07", name: "Séptimo" }].map((grade, index) => ({
             ...grade,
@@ -105,6 +120,46 @@ function PrivateCourseForm() {
     </>
   );
 }
+
+test("course teacher selection still searches by email and keeps the role badge", async () => {
+  render(
+    <NextIntlClientProvider locale="es" timeZone="UTC" messages={messages}>
+      <PrivateCourseForm
+        teachers={[
+          {
+            _id: "teacher-1" as Doc<"users">["_id"],
+            fullName: "Profesora Uno",
+            email: "one@example.com",
+            role: "teacher",
+          },
+          {
+            _id: "teacher-2" as Doc<"users">["_id"],
+            fullName: "Director Dos",
+            email: "principal@example.com",
+            role: "principal",
+          },
+        ]}
+      />
+    </NextIntlClientProvider>,
+  );
+  const picker = screen.getByRole("combobox", {
+    name: new RegExp(messages.class.assignTeacher),
+  });
+  expect(picker.textContent).toContain("Profesora Uno");
+  fireEvent.click(picker);
+  fireEvent.change(
+    screen.getByPlaceholderText(
+      messages.classDialog.placeholders.searchTeacher,
+    ),
+    { target: { value: "principal@example.com" } },
+  );
+  fireEvent.click(await screen.findByRole("option", { name: /Director Dos/ }));
+  expect(JSON.parse(screen.getByTestId("form").textContent!).teacherId).toBe(
+    "teacher-2",
+  );
+  expect(picker.getAttribute("aria-expanded")).toBe("false");
+  expect(picker.textContent).toContain(messages.class.principalRole);
+});
 
 test("changing the primary grade keeps compatible grade teachers and does not offer grades outside the curriculum", async () => {
   render(

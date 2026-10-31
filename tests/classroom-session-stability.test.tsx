@@ -133,6 +133,20 @@ vi.mock("@/convex/_generated/api", () => ({
       requestSessionLeadershipTransfer: "requestSessionLeadershipTransfer",
       takeOverSessionLeadership: "takeOverSessionLeadership",
     },
+    eventRoom: {
+      acceptSessionLeadershipTransfer: "acceptSessionLeadershipTransfer",
+      cancelSessionLeadershipTransfer: "cancelSessionLeadershipTransfer",
+      claimSessionLeadership: "claimSessionLeadership",
+      confirmLiveExtension: "confirmLiveExtension",
+      getAttendeeExtensionContext: "getStudentExtensionContext",
+      getLiveExtensionContext: "getLiveExtensionContext",
+      getSessionLeadership: "getSessionLeadership",
+      recoverSessionLeadership: "recoverSessionLeadership",
+      rejectSessionLeadershipTransfer: "rejectSessionLeadershipTransfer",
+      requestSessionLeadershipTransfer: "requestSessionLeadershipTransfer",
+      start: "markLive",
+      takeOverSessionLeadership: "takeOverSessionLeadership",
+    },
   },
 }));
 
@@ -421,17 +435,24 @@ vi.mock("@/components/classroom/end-class-button", () => ({
     appearance,
     confirmBeforeEnd = true,
     onLeave,
+    isEvent,
   }: {
     appearance?: string;
     confirmBeforeEnd?: boolean;
     onLeave?: () => void;
+    isEvent?: boolean;
   }) =>
     appearance === "header"
       ? createElement("button", {
           "data-testid": "header-end-class-action",
           "data-combined": String(confirmBeforeEnd && Boolean(onLeave)),
         })
-      : null,
+      : isEvent
+        ? createElement("span", {
+            "data-testid": "event-end-action",
+            "data-confirm": String(confirmBeforeEnd),
+          })
+        : null,
 }));
 vi.mock("@/components/classroom/leave-class-button", () => ({
   LeaveClassButton: ({ appearance }: { appearance?: string }) =>
@@ -514,6 +535,27 @@ describe("classroom session stability", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("requires confirmation for every event end control", () => {
+    render(
+      createElement(ActiveClassroomUI, {
+        eventId: "event-1" as never,
+        currentUserRole: "admin",
+        roomName: "room-1",
+        sessionNow: INITIAL_NOW,
+        sessionIsLive: true,
+        sessionTimeZone: "America/Bogota",
+        isCloseoutOpen: false,
+        onRequestCloseout: vi.fn(),
+      }),
+    );
+    expect(screen.getAllByTestId("event-end-action").length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getAllByTestId("event-end-action")
+        .every((button) => button.getAttribute("data-confirm") === "true"),
+    ).toBe(true);
   });
 
   it("lets session authorities share without granting new permissions", async () => {
@@ -806,6 +848,49 @@ describe("classroom session stability", () => {
     expect(
       testState.localParticipant.setMicrophoneEnabled,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves event staff camera and microphone off on entry", () => {
+    render(
+      createElement(ActiveClassroomUI, {
+        isCloseoutOpen: false,
+        onRequestCloseout: vi.fn(),
+        eventId: "event-1" as never,
+        currentUserRole: "admin",
+        roomName: "event-room-1",
+        sessionNow: INITIAL_NOW,
+        sessionIsLive: true,
+        sessionTimeZone: "America/Bogota",
+      }),
+    );
+
+    expect(testState.localParticipant.setCameraEnabled).not.toHaveBeenCalled();
+    expect(
+      testState.localParticipant.setMicrophoneEnabled,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("leaves event student camera and microphone off on entry", () => {
+    testState.localParticipant = testState.studentParticipant;
+    testState.room.localParticipant = testState.studentParticipant;
+    testState.participants = [
+      testState.studentParticipant,
+      testState.remoteAdministrativeParticipant,
+    ];
+    render(
+      createElement(StudentClassroomUI, {
+        eventId: "event-1" as never,
+        roomName: "event-room-1",
+        sessionNow: INITIAL_NOW,
+      }),
+    );
+
+    expect(
+      testState.studentParticipant.setCameraEnabled,
+    ).not.toHaveBeenCalled();
+    expect(
+      testState.studentParticipant.setMicrophoneEnabled,
+    ).not.toHaveBeenCalled();
   });
 
   it("does not restart camera or microphone when a student changes classroom views", async () => {

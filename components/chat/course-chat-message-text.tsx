@@ -11,12 +11,15 @@ export function ChatMessageText({
   enabled,
   classId,
   availableTaskIds,
+  plain = false,
 }: {
   body: string;
   enabled: boolean;
   classId?: Id<"classes">;
   availableTaskIds?: Id<"courseTasks">[];
+  plain?: boolean;
 }) {
+  if (plain) return <>{renderChatLinks(body, enabled)}</>;
   const availableTasks = new Set<string>(availableTaskIds);
   return chatReferenceParts(body).map((reference, index) =>
     reference.taskId ? (
@@ -33,25 +36,28 @@ export function ChatMessageText({
     ) : !enabled ? (
       <span key={index}>{reference.text}</span>
     ) : (
+      <span key={index}>{renderChatLinks(reference.text, enabled)}</span>
+    ),
+  );
+}
+
+function renderChatLinks(body: string, enabled: boolean) {
+  if (!enabled) return body;
+  return chatTextParts(body).map((part, index) =>
+    part.href ? (
       <span key={index}>
-        {chatTextParts(reference.text).map((part, index) =>
-          part.href ? (
-            <span key={index}>
-              <a
-                href={part.href}
-                target="_blank"
-                rel="noopener noreferrer nofollow"
-                className="underline underline-offset-2"
-              >
-                {part.label}
-              </a>
-              {part.suffix}
-            </span>
-          ) : (
-            <span key={index}>{part.text}</span>
-          ),
-        )}
+        <a
+          href={part.href}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="underline underline-offset-2"
+        >
+          {part.label}
+        </a>
+        {part.suffix}
       </span>
+    ) : (
+      <span key={index}>{part.text}</span>
     ),
   );
 }

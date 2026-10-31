@@ -10,7 +10,7 @@ import { ClassroomStageSurface } from "./classroom-stage";
 import { ClassroomView } from "./classroom-view";
 
 interface ClassroomRecordingViewProps {
-  courseId: Id<"classes">;
+  courseId?: Id<"classes">;
   title: string;
   curriculumIconKey?: string;
   isActive: boolean;
