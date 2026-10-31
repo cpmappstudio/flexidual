@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { CalendarDays, Loader2 } from "lucide-react";
+import { CalendarOff, Loader2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
@@ -244,7 +244,7 @@ export default function CalendarClosureDialog({
         {t("cancel")}
       </Button>
       <Button disabled={!canSubmit} onClick={() => setConfirmOpen(true)}>
-        <CalendarDays className="size-4" />
+        <CalendarOff className="size-4" />
         {t("review")}
       </Button>
     </>
@@ -260,7 +260,7 @@ export default function CalendarClosureDialog({
         aria-label={t("action")}
         title={t("action")}
       >
-        <CalendarDays className="size-4" />
+        <CalendarOff className="size-4" />
         <span className="hidden xl:inline">{t("action")}</span>
       </Button>
 
@@ -304,7 +304,7 @@ export default function CalendarClosureDialog({
         <AlertDialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
           <AlertDialogHeader className="items-center bg-warning/10 px-6 py-6 text-center sm:text-center">
             <div className="flex size-12 items-center justify-center rounded-full bg-warning/20 text-warning-foreground">
-              <CalendarDays className="size-6" />
+              <CalendarOff className="size-6" />
             </div>
             <AlertDialogTitle>{t("confirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>

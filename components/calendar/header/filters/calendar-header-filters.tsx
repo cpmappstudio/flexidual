@@ -22,9 +22,11 @@ export type CalendarHeaderFiltersProps = {
   selectedCourseId: Id<"classes"> | null;
   selectedTeacherId: Id<"users"> | null;
   selectedGradeCode: string | null;
+  selectedKind: "all" | "class" | "event";
   onCourseChange: (id: Id<"classes"> | null) => void;
   onTeacherChange: (id: Id<"users"> | null) => void;
   onGradeChange: (code: string | null) => void;
+  onKindChange: (kind: "all" | "class" | "event") => void;
 };
 
 export default function CalendarHeaderFilters({
@@ -36,12 +38,26 @@ export default function CalendarHeaderFilters({
   selectedCourseId,
   selectedTeacherId,
   selectedGradeCode,
+  selectedKind,
   onCourseChange,
   onTeacherChange,
   onGradeChange,
+  onKindChange,
 }: CalendarHeaderFiltersProps) {
   const t = useTranslations();
   const visibleFilters: ResponsiveFilter[] = [
+    {
+      key: "kind",
+      label: t("events.type"),
+      allLabel: t("events.all"),
+      value: selectedKind === "all" ? null : selectedKind,
+      options: [
+        { value: "class", label: t("events.classes") },
+        { value: "event", label: t("events.name") },
+      ],
+      onChange: (value) =>
+        onKindChange((value ?? "all") as "all" | "class" | "event"),
+    },
     {
       key: "courses",
       label: t("class.class"),
@@ -82,7 +98,7 @@ export default function CalendarHeaderFilters({
       filters={visibleFilters}
       menuLabel={t("table.filters")}
       clearLabel={t("table.clearFilters")}
-      desktopClassName="grid w-full grid-cols-2 gap-2 [&>*:first-child]:col-span-2 sm:grid-cols-3 sm:[&>*:first-child]:col-span-1 xl:flex xl:flex-wrap"
+      desktopClassName="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 xl:flex xl:flex-wrap"
       mobileClassName="hidden"
       selectClassName="w-full xl:w-56"
     />

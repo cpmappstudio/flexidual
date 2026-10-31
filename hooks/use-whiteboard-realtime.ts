@@ -103,32 +103,38 @@ export function useWhiteboardRealtime<T extends WhiteboardElement>({
     [participants, room.name, roomName, recordingToken],
   );
   const permissions = useQueries(queries);
-  const audienceQueries = useMemo(
-    (): Parameters<typeof useQueries>[0] =>
-      !isReadonly && sourceId && generation !== undefined
-        ? {
-            audience: {
-              query: api.whiteboardSessions.getRealtimeAudience,
-              args: {
-                roomName,
-                expectedLiveRoomName: room.name,
-                participants: participants.flatMap((participant) => {
-                  const userId = participantUserId(participant.metadata);
-                  return userId &&
-                    participant.identity !== room.localParticipant.identity
-                    ? [{ identity: participant.identity, userId }]
-                    : [];
-                }),
-              },
-            },
-          }
-        : {},
-    [isReadonly, sourceId, generation, roomName, room, participants],
-  );
-  const audienceResult = useQueries(audienceQueries).audience;
-  const audience = Array.isArray(audienceResult)
-    ? (audienceResult as string[])
-    : undefined;
+  const audienceQueries = useMemo((): Parameters<typeof useQueries>[0] => {
+    if (isReadonly || !sourceId || generation === undefined) return {};
+    const recipients = participants.flatMap((participant) => {
+      const userId = participantUserId(participant.metadata);
+      return userId && participant.identity !== room.localParticipant.identity
+        ? [{ identity: participant.identity, userId }]
+        : [];
+    });
+    const batches = Math.max(1, Math.ceil(recipients.length / 128));
+    return Object.fromEntries(
+      Array.from({ length: batches }, (_, index) => [
+        index === 0 ? "audience" : `audience-${index}`,
+        {
+          query: api.whiteboardSessions.getRealtimeAudience,
+          args: {
+            roomName,
+            expectedLiveRoomName: room.name,
+            participants: recipients.slice(index * 128, (index + 1) * 128),
+          },
+        },
+      ]),
+    );
+  }, [isReadonly, sourceId, generation, roomName, room, participants]);
+  const audienceResults = useQueries(audienceQueries);
+  const audience =
+    Object.keys(audienceQueries).every((key) =>
+      Array.isArray(audienceResults[key]),
+    ) && Object.keys(audienceQueries).length
+      ? Object.keys(audienceQueries).flatMap(
+          (key) => audienceResults[key] as string[],
+        )
+      : undefined;
   const canBroadcast =
     Boolean(sourceId) &&
     generation !== undefined &&

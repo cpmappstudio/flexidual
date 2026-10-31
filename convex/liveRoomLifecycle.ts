@@ -8,11 +8,15 @@ import {
 import type { Doc } from "./_generated/dataModel";
 import { getCurrentUserFromAuth } from "./users";
 import { canAccessSchedule } from "./model/scheduleAccess";
+import { canAccessEvent } from "./model/eventAccess";
+import { findEventRoom } from "./model/eventRoomAccess";
 import { internal } from "./_generated/api";
 import { getLiveSessionReopenUntil } from "../lib/live-session-policy";
 import {
   ensureLiveActivation,
+  ensureEventActivation,
   findLiveActivation,
+  getEventActivationId,
   getLiveActivationId,
   liveRoomActivationFields,
 } from "./model/liveActivation";
@@ -57,15 +61,32 @@ export const finishCleanup = internalMutation({
     const activation = await findLiveActivation(ctx, activationId);
     if (!activation || activation.status !== "closing") return null;
     if (error) {
-      const schedule = await ctx.db.get("classSchedule", activation.scheduleId);
-      if (
-        schedule &&
-        schedule.liveEndClaimId === activation.claimId &&
-        !schedule.liveCleanupRetrying
-      ) {
-        await ctx.db.patch("classSchedule", schedule._id, {
-          liveCleanupRetrying: true,
-        });
+      if (activation.scheduleId) {
+        const schedule = await ctx.db.get(
+          "classSchedule",
+          activation.scheduleId,
+        );
+        if (
+          schedule &&
+          schedule.liveEndClaimId === activation.claimId &&
+          !schedule.liveCleanupRetrying
+        )
+          await ctx.db.patch("classSchedule", schedule._id, {
+            liveCleanupRetrying: true,
+          });
+      } else if (activation.eventOccurrenceId) {
+        const occurrence = await ctx.db.get(
+          "eventOccurrences",
+          activation.eventOccurrenceId,
+        );
+        if (
+          occurrence &&
+          occurrence.liveEndClaimId === activation.claimId &&
+          !occurrence.liveCleanupRetrying
+        )
+          await ctx.db.patch("eventOccurrences", occurrence._id, {
+            liveCleanupRetrying: true,
+          });
       }
       const attempts = activation.cleanupAttempts + 1;
       const nextCleanupAt =
@@ -86,16 +107,40 @@ export const finishCleanup = internalMutation({
       });
       return null;
     }
-    await ctx.runMutation(internal.schedule.completeLiveSessionEnd, {
+    const completeArgs = {
       roomName: activation.roomName,
       expectedActivationId: activationId,
       claimId: activation.claimId!,
-    });
+    };
+    if (activation.eventOccurrenceId)
+      await ctx.runMutation(
+        internal.eventRoom.completeLiveSessionEnd,
+        completeArgs,
+      );
+    else
+      await ctx.runMutation(
+        internal.schedule.completeLiveSessionEnd,
+        completeArgs,
+      );
     await ctx.db.patch("liveRoomActivations", activation._id, {
       status: "closed",
       cleanupError: undefined,
       recordingToken: undefined,
     });
+    if (activation.eventOccurrenceId) {
+      const occurrence = await ctx.db.get(
+        "eventOccurrences",
+        activation.eventOccurrenceId,
+      );
+      if (occurrence && !(await ctx.db.get("events", occurrence.eventId)))
+        await ctx.scheduler.runAfter(
+          0,
+          internal.events.removeOccurrencesByEvent,
+          {
+            eventId: occurrence.eventId,
+          },
+        );
+    }
     return null;
   },
 });
@@ -112,11 +157,15 @@ export const getRecordingOperation = query({
       .query("classSchedule")
       .withIndex("by_room", (q) => q.eq("roomName", roomName))
       .unique();
+    const eventRoom = schedule ? null : await findEventRoom(ctx, roomName);
     if (
       !user ||
-      !schedule ||
-      getLiveActivationId(schedule) !== activationId ||
-      !(await canAccessSchedule(ctx, user._id, schedule))
+      (schedule
+        ? getLiveActivationId(schedule) !== activationId ||
+          !(await canAccessSchedule(ctx, user._id, schedule))
+        : !eventRoom ||
+          getEventActivationId(eventRoom.occurrence) !== activationId ||
+          !(await canAccessEvent(ctx, user._id, eventRoom.event)))
     )
       return null;
     const activation = await findLiveActivation(ctx, activationId);
@@ -207,13 +256,19 @@ export const requestRecording = internalMutation({
       .query("classSchedule")
       .withIndex("by_room", (q) => q.eq("roomName", args.roomName))
       .unique();
+    const eventRoom = schedule ? null : await findEventRoom(ctx, args.roomName);
+    const session = schedule ?? eventRoom?.occurrence;
     if (
-      !schedule?.isLive ||
-      schedule.status !== "active" ||
-      getLiveActivationId(schedule) !== args.activationId
+      !session?.isLive ||
+      session.status !== "active" ||
+      (schedule
+        ? getLiveActivationId(schedule)
+        : getEventActivationId(eventRoom!.occurrence)) !== args.activationId
     )
       return false;
-    const activation = await ensureLiveActivation(ctx, schedule);
+    const activation = schedule
+      ? await ensureLiveActivation(ctx, schedule)
+      : await ensureEventActivation(ctx, eventRoom!.occurrence);
     if (activation.recordingJobId) {
       const job = await ctx.db.system.get(activation.recordingJobId);
       if (job?.state.kind === "pending" || job?.state.kind === "inProgress")
@@ -240,7 +295,14 @@ export const stopRecordingIntent = internalMutation({
       .query("classSchedule")
       .withIndex("by_room", (q) => q.eq("roomName", roomName))
       .unique();
-    if (!schedule || getLiveActivationId(schedule) !== activationId)
+    const eventRoom = schedule ? null : await findEventRoom(ctx, roomName);
+    if (
+      (schedule
+        ? getLiveActivationId(schedule)
+        : eventRoom
+          ? getEventActivationId(eventRoom.occurrence)
+          : null) !== activationId
+    )
       return null;
     const whiteboard = await ctx.db
       .query("whiteboardSessions")
@@ -296,13 +358,24 @@ export const requestReconciliation = internalMutation({
         .query("classSchedule")
         .withIndex("by_room", (q) => q.eq("roomName", liveRoomName))
         .unique());
+    const occurrence = schedule
+      ? null
+      : await ctx.db
+          .query("eventOccurrences")
+          .withIndex("by_live_room_name", (q) =>
+            q.eq("liveRoomName", liveRoomName),
+          )
+          .unique();
+    const liveSession = schedule ?? occurrence;
     if (
-      !schedule?.isLive ||
-      schedule.status !== "active" ||
-      (schedule.liveRoomName ?? schedule.roomName) !== liveRoomName
+      !liveSession?.isLive ||
+      liveSession.status !== "active" ||
+      (liveSession.liveRoomName ?? liveSession.roomName) !== liveRoomName
     )
       return null;
-    const activation = await ensureLiveActivation(ctx, schedule);
+    const activation = schedule
+      ? await ensureLiveActivation(ctx, schedule)
+      : await ensureEventActivation(ctx, occurrence!);
     const job = activation.reconcileJobId
       ? await ctx.db.system.get(activation.reconcileJobId)
       : null;

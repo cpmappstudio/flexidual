@@ -12,7 +12,8 @@ export const liveDecisionSnapshotValidator = v.object({
 export type LiveDecisionSnapshot = Infer<typeof liveDecisionSnapshotValidator>;
 
 export const liveRoomActivationFields = {
-  scheduleId: v.id("classSchedule"),
+  scheduleId: v.optional(v.id("classSchedule")),
+  eventOccurrenceId: v.optional(v.id("eventOccurrences")),
   activationId: v.string(),
   roomName: v.string(),
   liveRoomName: v.string(),
@@ -44,8 +45,40 @@ export function getLiveActivationId(schedule: Doc<"classSchedule">) {
   );
 }
 
-export function getLiveRoomName(schedule: Doc<"classSchedule">) {
+export function getLiveRoomName(
+  schedule: Pick<
+    Doc<"classSchedule"> | Doc<"eventOccurrences">,
+    "liveRoomName" | "roomName"
+  >,
+) {
   return schedule.liveRoomName ?? schedule.roomName;
+}
+
+export function getEventActivationId(occurrence: Doc<"eventOccurrences">) {
+  return occurrence.liveActivationId ?? `event:${occurrence._id}`;
+}
+
+export function getEventLiveRoomName(occurrence: Doc<"eventOccurrences">) {
+  return occurrence.liveRoomName ?? occurrence.roomName;
+}
+
+export async function ensureEventActivation(
+  ctx: MutationCtx,
+  occurrence: Doc<"eventOccurrences">,
+) {
+  const activationId = getEventActivationId(occurrence);
+  const existing = await findLiveActivation(ctx, activationId);
+  if (existing) return existing;
+  const id = await ctx.db.insert("liveRoomActivations", {
+    eventOccurrenceId: occurrence._id,
+    activationId,
+    roomName: occurrence.roomName,
+    liveRoomName: getEventLiveRoomName(occurrence),
+    status: "active",
+    cleanupAttempts: 0,
+    nextCleanupAt: 0,
+  });
+  return (await ctx.db.get("liveRoomActivations", id))!;
 }
 
 export async function ensureLiveActivation(

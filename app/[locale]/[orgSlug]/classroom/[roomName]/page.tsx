@@ -36,8 +36,21 @@ export async function generateMetadata(props: ClassroomPageProps) {
     const classData = schedule
       ? await fetchQuery(api.classes.get, { id: schedule.classId }, { token })
       : null;
+    const eventStatus = schedule
+      ? null
+      : await fetchQuery(
+          api.eventRoom.getSessionStatus,
+          { roomName, now: Date.now() },
+          { token },
+        );
 
-    return { title: classData ? `${classData.name} | FlexiDual` : "Classroom" };
+    return {
+      title: classData
+        ? `${classData.name} | FlexiDual`
+        : eventStatus
+          ? `${eventStatus.eventTitle} | FlexiDual`
+          : "Classroom | FlexiDual",
+    };
   } catch {
     return { title: "Classroom | FlexiDual" };
   }

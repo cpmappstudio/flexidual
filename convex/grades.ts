@@ -11,6 +11,7 @@ import {
   validateGradeCodes,
 } from "./model/grades";
 import { listInstitutionStudentMemberships } from "./model/membership";
+import { removeGradeFromEvents } from "./model/eventDeletion";
 
 const gradeValidator = v.object({
   _id: v.id("institutionGrades"),
@@ -238,6 +239,7 @@ export const remove = mutation({
       return { deleted: false };
     }
 
+    await removeGradeFromEvents(ctx, grade.schoolId, grade.code);
     await ctx.db.delete(grade._id);
     await applyOrder(
       ctx,

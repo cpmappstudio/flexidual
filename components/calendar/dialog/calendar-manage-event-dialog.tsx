@@ -9,8 +9,6 @@ import { useMutation, useQuery } from "convex/react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   ArrowUpRight,
-  CalendarDays,
-  Clock3,
   ExternalLink,
   Loader2,
   MoveRight,
@@ -58,6 +56,10 @@ import { getCalendarCancellationCapabilities } from "../calendar-cancellation";
 import { useCalendarContext } from "../calendar-context";
 import { getCalendarEventDisplay } from "../calendar-event-display";
 import { CalendarProviderBadge } from "../calendar-provider-badge";
+import {
+  CalendarCancellationSummary,
+  CalendarOccurrenceSchedule,
+} from "./calendar-occurrence-schedule";
 
 type CancellationScope = "single" | "series";
 const REOPEN_STATUS_TIMEOUT_MS = 10_000;
@@ -111,7 +113,7 @@ export default function CalendarManageEventDialog({
       selectedEvent.sessionType === "live",
   );
   const sessionRecord = useSessionRecord(
-    selectedEvent?.scheduleId,
+    selectedEvent?.kind === "class" ? selectedEvent.scheduleId : undefined,
     selectedEvent?.end.getTime(),
     shouldLoadSessionRecord,
   );
@@ -123,7 +125,7 @@ export default function CalendarManageEventDialog({
     setCloseoutOpen(false);
     setRecordingOpen(false);
     setReopenDialogOpen(false);
-  }, [selectedEvent?.scheduleId]);
+  }, [selectedEvent?.id]);
 
   useEffect(() => {
     if (
@@ -156,7 +158,7 @@ export default function CalendarManageEventDialog({
     return () => window.clearTimeout(timeout);
   }, [reopenedRoomName, isReopenStatusDelayed]);
 
-  if (!selectedEvent) return null;
+  if (!selectedEvent || selectedEvent.kind !== "class") return null;
 
   const isSeries =
     selectedEvent.isRecurring || !!selectedEvent.recurrenceParentId;
@@ -171,9 +173,6 @@ export default function CalendarManageEventDialog({
     isLive: selectedEvent.isLive,
     isRecurring: isSeries,
   });
-  const duration = Math.round(
-    (selectedEvent.end.getTime() - selectedEvent.start.getTime()) / 60_000,
-  );
   const { primaryLabel, secondaryLabel, gradeLabel } = getCalendarEventDisplay(
     selectedEvent,
     { showGrade: !isStudent },
@@ -186,23 +185,6 @@ export default function CalendarManageEventDialog({
     : selectedEvent.sessionType === "live"
       ? secondaryLabel
       : null;
-  const displayDate = selectedEvent.start.toLocaleDateString(locale, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: displayTimeZone,
-  });
-  const displayStartTime = selectedEvent.start.toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: displayTimeZone,
-  });
-  const displayEndTime = selectedEvent.end.toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: displayTimeZone,
-  });
   const primaryAction = getCalendarEventPrimaryAction({
     isStudent: Boolean(isStudent),
     now,
@@ -235,7 +217,8 @@ export default function CalendarManageEventDialog({
 
   async function handleCancellation() {
     const reason = cancellationReason.trim();
-    const scheduleId = selectedEvent?.scheduleId;
+    const scheduleId =
+      selectedEvent?.kind === "class" ? selectedEvent.scheduleId : undefined;
     if (!reason || !scheduleId) return;
 
     setIsSubmitting(true);
@@ -360,23 +343,14 @@ export default function CalendarManageEventDialog({
           </DialogHeader>
 
           <div className="w-full min-w-0 space-y-5 px-6 pb-6 pt-5">
-            <div className="divide-y divide-border/70 border-y border-border/70 text-sm">
-              <div className="flex min-w-0 items-center gap-3 py-3">
-                <CalendarDays className="size-5 shrink-0 text-primary" />
-                <p className="font-semibold text-foreground">{displayDate}</p>
-              </div>
-              <div className="flex min-w-0 items-center gap-3 py-3">
-                <Clock3 className="size-5 shrink-0 text-primary" />
-                <p className="font-semibold text-foreground">
-                  {displayStartTime} - {displayEndTime}
-                  {!isStudent && (
-                    <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      ({duration} {t("schedule.minutes")})
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
+            <CalendarOccurrenceSchedule
+              start={selectedEvent.start.getTime()}
+              end={selectedEvent.end.getTime()}
+              locale={locale}
+              timeZone={displayTimeZone}
+              minutesLabel={t("schedule.minutes")}
+              showDuration={!isStudent}
+            />
 
             {selectedEvent.status === "cancelled" &&
               selectedEvent.cancellationReason && (
@@ -588,23 +562,14 @@ export default function CalendarManageEventDialog({
           </AlertDialogHeader>
 
           <AlertDialogDescription asChild>
-            <div className="rounded-md border bg-muted/40 p-3 text-left">
-              <p className="font-semibold text-foreground">
-                {primaryLabel}
-                {gradeLabel && ` (${gradeLabel})`}
-              </p>
-              <div className="mt-2 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-                <div className="flex items-center gap-2">
-                  <CalendarDays className="size-4 shrink-0 text-primary" />
-                  <span>{displayDate}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock3 className="size-4 shrink-0 text-primary" />
-                  <span>
-                    {displayStartTime} - {displayEndTime}
-                  </span>
-                </div>
-              </div>
+            <div>
+              <CalendarCancellationSummary
+                title={`${primaryLabel}${gradeLabel ? ` (${gradeLabel})` : ""}`}
+                start={selectedEvent.start.getTime()}
+                end={selectedEvent.end.getTime()}
+                locale={locale}
+                timeZone={displayTimeZone}
+              />
             </div>
           </AlertDialogDescription>
 

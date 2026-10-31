@@ -26,3 +26,24 @@ export async function revokeWhiteboardRecordingToken(
     });
   return revokeSession || revokeManifest;
 }
+
+export async function clearWhiteboardRecordingTokens(
+  ctx: MutationCtx,
+  roomName: string,
+) {
+  const [session, manifest] = await Promise.all([
+    ctx.db
+      .query("whiteboardSessions")
+      .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
+      .unique(),
+    findWhiteboardManifest(ctx, roomName),
+  ]);
+  if (session?.recordingToken)
+    await ctx.db.patch("whiteboardSessions", session._id, {
+      recordingToken: undefined,
+    });
+  if (manifest?.recordingToken)
+    await ctx.db.patch("whiteboardSceneManifests", manifest._id, {
+      recordingToken: undefined,
+    });
+}

@@ -49,6 +49,16 @@ const createSessionStatus = () => ({
   endedAutomatically: false,
 });
 
+const createEventSessionStatus = () => ({
+  ...createSessionStatus(),
+  eventId: "event-1",
+  eventTitle: "Flag ceremony",
+  leadershipRole: "teacher" as string | null,
+  canStart: false,
+  isPrimaryTeacher: true,
+  isSessionLeader: true,
+});
+
 const createScheduleDetails = (roomName = "room-1") => ({
   sessionLeaderId: "user-1",
   sessionClosureStatus: "pending",
@@ -77,6 +87,10 @@ const testState = vi.hoisted(() => ({
     | ReturnType<typeof createSessionStatus>
     | null
     | undefined,
+  eventSessionStatus: undefined as
+    | ReturnType<typeof createEventSessionStatus>
+    | null
+    | undefined,
   scheduleDetails: undefined as
     | ReturnType<typeof createScheduleDetails>
     | null
@@ -90,6 +104,8 @@ const testState = vi.hoisted(() => ({
   endSession: vi.fn(async () => null),
   markLive: vi.fn(async () => null),
   reopenLiveSession: vi.fn(async () => null),
+  startEvent: vi.fn(async () => null),
+  reopenEvent: vi.fn(async () => null),
   logPresence: vi.fn(async () => null),
   setSidebarOpen: vi.fn(),
   translate: vi.fn((key: string) => key),
@@ -120,6 +136,11 @@ vi.mock("@/convex/_generated/api", () => ({
       markLive: "markLive",
       reopenLiveSession: "reopenLiveSession",
     },
+    eventRoom: {
+      getSessionStatus: "getEventSessionStatus",
+      start: "startEvent",
+      reopen: "reopenEvent",
+    },
   },
 }));
 
@@ -134,8 +155,14 @@ vi.mock("convex/react", async () => {
         ? testState.markLive
         : mutation === "reopenLiveSession"
           ? testState.reopenLiveSession
-          : testState.logPresence,
+          : mutation === "startEvent"
+            ? testState.startEvent
+            : mutation === "reopenEvent"
+              ? testState.reopenEvent
+              : testState.logPresence,
     useQuery: (query: string, args: unknown) => {
+      if (query === "getEventSessionStatus")
+        return args === "skip" ? undefined : testState.eventSessionStatus;
       const isSessionStatus = query === "getSessionStatus";
 
       const queryKey =
@@ -410,6 +437,7 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
     testState.queryErrors.scheduleDetails = undefined;
     testState.queryErrors.sessionStatus = undefined;
     testState.sessionStatus = createSessionStatus();
+    testState.eventSessionStatus = undefined;
     testState.scheduleDetails = createScheduleDetails();
     testState.currentUser = {
       user: { _id: "user-1" },
@@ -569,6 +597,56 @@ describe("FlexiClassroom LiveKit lifecycle", () => {
       isLive: true,
     });
     expect(testState.getToken).not.toHaveBeenCalled();
+  });
+
+  it("starts an event without class presence or schedule details", async () => {
+    testState.eventSessionStatus = {
+      ...createEventSessionStatus(),
+      status: "scheduled",
+      isLive: false,
+      canStart: true,
+    };
+    render(createElement(FlexiClassroom, { roomName: "event-room-1" }));
+    await flushPromises();
+    fireEvent.click(screen.getByText("events.confirmStart"));
+    await flushPromises();
+    expect(testState.startEvent).toHaveBeenCalledWith({
+      roomName: "event-room-1",
+    });
+    expect(testState.markLive).not.toHaveBeenCalled();
+    expect(testState.logPresence).not.toHaveBeenCalled();
+  });
+
+  it("ends an active event without opening the class report", async () => {
+    testState.eventSessionStatus = createEventSessionStatus();
+    render(createElement(FlexiClassroom, { roomName: "event-room-1" }));
+    await flushPromises();
+    expect(testState.roomLifecycle.mounts).toBe(1);
+    fireEvent.click(screen.getByText("Open report"));
+    await flushPromises();
+    expect(testState.endSession).toHaveBeenCalledWith({
+      roomName: "event-room-1",
+      expectedActivationId: "activation-1",
+    });
+    expect(screen.queryByText("SessionCloseoutDialog")).toBeNull();
+    expect(testState.logPresence).not.toHaveBeenCalled();
+  });
+
+  it("keeps the event connection when leadership transfers between room administrators", async () => {
+    testState.eventSessionStatus = createEventSessionStatus();
+    const view = render(
+      createElement(FlexiClassroom, { roomName: "event-room-1" }),
+    );
+    await flushPromises();
+    expect(testState.getToken).toHaveBeenCalledOnce();
+    testState.eventSessionStatus = {
+      ...createEventSessionStatus(),
+      isSessionLeader: false,
+    };
+    view.rerender(createElement(FlexiClassroom, { roomName: "event-room-1" }));
+    await flushPromises();
+    expect(testState.getToken).toHaveBeenCalledOnce();
+    expect(testState.roomLifecycle.unmounts).toBe(0);
   });
 
   it("reopens an eligible completed class from its closed state", async () => {

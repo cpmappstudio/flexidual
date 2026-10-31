@@ -36,7 +36,10 @@ import {
   deleteChatMessage,
   deleteChatAttachment,
 } from "./model/courseChatAttachments";
-import { containsChatLink } from "../lib/chat-attachments";
+import {
+  containsChatLink,
+  MAX_CHAT_TEXT_LENGTH,
+} from "../lib/chat-attachments";
 import {
   canSubmitCourseTask,
   getCourseTaskAccess,
@@ -45,7 +48,6 @@ import { chatReferenceParts } from "../lib/chat-references";
 import { getClassTimeZone } from "./model/timeZone";
 import { isValidTimeZone } from "../lib/time-zone";
 
-const MAX_MESSAGE_LENGTH = 2_000;
 const DELETE_BATCH_SIZE = 100;
 
 const messageValidator = v.object({
@@ -528,7 +530,7 @@ export const send = mutation({
     const attachmentIds = args.attachmentIds ?? [];
     if (!body && !attachmentIds.length)
       throw new ConvexError("MESSAGE_REQUIRED");
-    if (body.length > MAX_MESSAGE_LENGTH) {
+    if (body.length > MAX_CHAT_TEXT_LENGTH) {
       throw new ConvexError("MESSAGE_TOO_LONG");
     }
     const referencedTaskIds = new Set(

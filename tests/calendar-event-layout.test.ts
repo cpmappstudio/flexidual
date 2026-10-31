@@ -4,6 +4,7 @@ import {
   getCalendarEventColumnLayouts,
   getMaxCalendarEventConcurrency,
   groupCalendarEventsByDay,
+  splitCalendarEventAcrossDays,
 } from "../components/calendar/calendar-event-layout";
 
 function event(id: string, start: string, end: string) {
@@ -82,6 +83,21 @@ test("events are grouped and ordered in the displayed time zone", () => {
     groups.get("2026-07-30")?.map(({ id }) => id),
     ["next-day"],
   );
+});
+
+test("an event crossing midnight appears in both day and week groups", () => {
+  const original = event(
+    "assembly",
+    "2030-10-24T04:30:00Z",
+    "2030-10-24T05:30:00Z",
+  );
+  const fragments = splitCalendarEventAcrossDays(original, "America/Bogota");
+  const days = groupCalendarEventsByDay(fragments, "America/Bogota");
+  assert.equal(fragments.length, 2);
+  assert.deepEqual([...days.keys()], ["2030-10-23", "2030-10-24"]);
+  assert.equal(fragments[0].end.getTime(), fragments[1].start.getTime());
+  assert.equal(fragments[0].start.getTime(), original.start.getTime());
+  assert.equal(fragments[1].end.getTime(), original.end.getTime());
 });
 
 test("production-sized calendar fixtures are laid out in one batch", () => {

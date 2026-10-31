@@ -150,7 +150,9 @@ function RecordingLayout({ recordingToken }: { recordingToken: string }) {
     ? isWhiteboardReady
     : screenShareReady;
   const isSceneReady = Boolean(
-    recordingContext && presenter && presenterReady && selectedSceneReady,
+    recordingContext &&
+      ("eventId" in recordingContext ||
+        (presenter && presenterReady && selectedSceneReady)),
   );
   const presenterCameraTrackSid = presenter?.getTrackPublication(
     Track.Source.Camera,
@@ -175,9 +177,15 @@ function RecordingLayout({ recordingToken }: { recordingToken: string }) {
   return (
     <div className="h-screen w-screen">
       <ClassroomRecordingView
-        courseId={recordingContext.courseId}
-        title={recordingContext.className}
-        curriculumIconKey={recordingContext.curriculumIconKey}
+        courseId={
+          "courseId" in recordingContext ? recordingContext.courseId : undefined
+        }
+        title={recordingContext.className ?? recordingContext.eventTitle ?? ""}
+        curriculumIconKey={
+          "curriculumIconKey" in recordingContext
+            ? recordingContext.curriculumIconKey
+            : undefined
+        }
         isActive={Boolean(presenter)}
         presenter={
           <ClassroomPresenterContent

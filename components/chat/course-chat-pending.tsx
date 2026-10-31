@@ -10,7 +10,6 @@ import {
 } from "react";
 import { useTranslations } from "next-intl";
 import { X } from "lucide-react";
-import type { Id } from "@/convex/_generated/dataModel";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +24,7 @@ import { ChatFilePreview } from "./course-chat-attachments";
 export interface PendingChatUpload {
   body: string;
   files: File[];
-  attachmentIds: Id<"courseChatAttachments">[];
+  attachmentIds: string[];
   cancel: (() => void) | null;
 }
 

@@ -8,7 +8,7 @@ import { AbekaCourseReport } from "@/components/abeka/abeka-course-report";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useQuery } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
 import { RocketLaunchButtonContent } from "@/components/student/rocket-transition";
@@ -222,6 +222,21 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     api.student.getStudentDashboardSchedule,
     studentId ? { studentId, orgSlug, from: dayStart, to: dayEnd } : "skip",
   );
+  const studentEventArgs = {
+    ...(studentId ? { studentId, orgSlug } : {}),
+    from: dayStart,
+    to: dayEnd,
+  };
+  const schoolEvents = usePaginatedQuery(
+    api.student.getStudentDashboardEvents,
+    { ...studentEventArgs, scope: "school" },
+    { initialNumItems: 16 },
+  );
+  const campusEvents = usePaginatedQuery(
+    api.student.getStudentDashboardEvents,
+    { ...studentEventArgs, scope: "campus" },
+    { initialNumItems: 16 },
+  );
   const dashboardScopeKey = studentId ? `${orgSlug}:${studentId}` : "self";
   const ownEvents = useRetainedQueryResult(ownEventsResult, "self");
   const dashboardData = useRetainedQueryResult(
@@ -303,11 +318,48 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     ? (studentSchedule?.filter(isLiveClassSession) ?? [])
     : (accessibleLiveClasses ?? []);
   const nextLesson = liveLessons[0] ?? todayLessons[0] ?? null;
+  const lessonsForOverlap = [...todayLessons, ...liveLessons];
+  const eligibleEvent = (event: (typeof schoolEvents.results)[number]) =>
+    (event.end > now || event.isLive) &&
+    !lessonsForOverlap.some(
+      (lesson) => event.start < lesson.end && lesson.start < event.end,
+    );
+  const nextSchoolEvent = schoolEvents.results.find(eligibleEvent);
+  const nextCampusEvent = campusEvents.results.find(eligibleEvent);
+  const { status: schoolEventStatus, loadMore: loadSchoolEvents } =
+    schoolEvents;
+  const { status: campusEventStatus, loadMore: loadCampusEvents } =
+    campusEvents;
+  useEffect(() => {
+    if (events === undefined) return;
+    if (!nextSchoolEvent && schoolEventStatus === "CanLoadMore")
+      loadSchoolEvents(16);
+  }, [events, nextSchoolEvent, schoolEventStatus, loadSchoolEvents]);
+  useEffect(() => {
+    if (events === undefined) return;
+    if (!nextCampusEvent && campusEventStatus === "CanLoadMore")
+      loadCampusEvents(16);
+  }, [events, nextCampusEvent, campusEventStatus, loadCampusEvents]);
+  const nextEvent =
+    (nextSchoolEvent || schoolEventStatus === "Exhausted") &&
+    (nextCampusEvent || campusEventStatus === "Exhausted")
+      ? [nextSchoolEvent, nextCampusEvent]
+          .filter((event) => event !== undefined)
+          .sort((a, b) => a.start - b.start)[0]
+      : undefined;
+  const focusedEvent =
+    nextEvent &&
+    (!nextLesson ||
+      (!isLiveClassSession(nextLesson) && nextEvent.start < nextLesson.start))
+      ? nextEvent
+      : null;
   const nextLessonExternalPlatform = getExternalClassPlatform(
     nextLesson?.sessionType,
   );
   const laterTodayLessons = todayLessons
-    .filter((lesson) => lesson.scheduleId !== nextLesson?.scheduleId)
+    .filter(
+      (lesson) => focusedEvent || lesson.scheduleId !== nextLesson?.scheduleId,
+    )
     .slice(0, 3);
   const clerkDisplayName =
     user?.fullName?.trim() ||
@@ -714,22 +766,45 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
           <aside className="order-2 grid xl:order-none xl:min-h-0">
             <NextClassPanel
               nextClass={
-                nextLesson
+                focusedEvent
                   ? {
-                      id: nextLesson.scheduleId,
-                      title: nextLesson.className || nextLesson.title,
-                      start: nextLesson.start,
-                      end: nextLesson.end,
-                      status: nextLesson.status,
-                      isLive: nextLesson.isLive,
-                      sessionType: nextLesson.sessionType ?? "live",
+                      id: focusedEvent.occurrenceId,
+                      title: focusedEvent.title,
+                      start: focusedEvent.start,
+                      end: focusedEvent.end,
+                      status: focusedEvent.status,
+                      isLive: focusedEvent.isLive,
+                      sessionType: "live",
                     }
-                  : null
+                  : nextLesson
+                    ? {
+                        id: nextLesson.scheduleId,
+                        title: nextLesson.className || nextLesson.title,
+                        start: nextLesson.start,
+                        end: nextLesson.end,
+                        status: nextLesson.status,
+                        isLive: nextLesson.isLive,
+                        sessionType: nextLesson.sessionType ?? "live",
+                      }
+                    : null
               }
+              heading={focusedEvent ? t("events.nextSession") : undefined}
+              showProviderBadge={!focusedEvent}
               action={
-                nextLesson &&
-                !isViewingStudentProfile &&
-                nextLessonExternalPlatform ? (
+                focusedEvent && !isViewingStudentProfile ? (
+                  <Button
+                    asChild
+                    className="mt-4 h-10 rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
+                  >
+                    <Link
+                      href={`${basePath}/calendar?eventId=${focusedEvent.eventId}`}
+                    >
+                      {t("events.viewEvent")}
+                    </Link>
+                  </Button>
+                ) : nextLesson &&
+                  !isViewingStudentProfile &&
+                  nextLessonExternalPlatform ? (
                   <Button
                     asChild
                     className="mt-4 h-10 rounded-full bg-info px-6 text-sm font-bold text-info-foreground shadow-lg hover:bg-info/90 xl:mt-5 xl:h-11 xl:px-8 xl:text-base"
@@ -789,7 +864,8 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                   }))}
                 />
               ) : (
-                nextLesson && (
+                nextLesson &&
+                !focusedEvent && (
                   <p className="mt-4 rounded-full bg-card/75 px-4 py-2 text-sm font-semibold text-foreground/75">
                     {t("student.today.doneForToday")}
                   </p>

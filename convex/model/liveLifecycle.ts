@@ -13,7 +13,7 @@ export const liveLifecycleSnapshotValidator = v.object({
 
 export function getLiveLifecycleSnapshot(
   session: Pick<
-    Doc<"classSchedule">,
+    Doc<"classSchedule"> | Doc<"eventOccurrences">,
     | "scheduledEnd"
     | "sessionStartedAt"
     | "sessionLeaderId"

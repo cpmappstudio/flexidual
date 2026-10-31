@@ -1,4 +1,5 @@
 import type { Doc } from "@/convex/_generated/dataModel";
+import { ROUTES } from "@/lib/navigation/routes";
 
 type NavigableNotification = Pick<
   Doc<"systemNotifications">,
@@ -6,6 +7,8 @@ type NavigableNotification = Pick<
   | "action"
   | "organizationSlug"
   | "classId"
+  | "eventId"
+  | "recordingId"
   | "roomName"
   | "surveyId"
   | "taskId"
@@ -27,6 +30,19 @@ export function getSystemNotificationHref(notification: NavigableNotification) {
   }
   if (notification.kind === "course_chat" && notification.classId) {
     return `/${orgSlug}/chats/${notification.classId}`;
+  }
+  if (notification.kind === "event_chat" && notification.eventId) {
+    return ROUTES.org.events.chat(orgSlug, notification.eventId);
+  }
+  if (notification.kind === "event_schedule" && notification.eventId) {
+    return ROUTES.org.events.detail(orgSlug, notification.eventId);
+  }
+  if (notification.kind === "recording_available" && notification.eventId) {
+    return ROUTES.org.events.recordings(
+      orgSlug,
+      notification.eventId,
+      notification.recordingId,
+    );
   }
 
   if (notification.kind === "class_starting_soon" && notification.roomName) {

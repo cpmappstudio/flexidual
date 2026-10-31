@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import dynamic from "next/dynamic";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import Calendar from "@/components/calendar/calendar";
@@ -13,16 +13,25 @@ import { CircleAlert } from "lucide-react";
 import { format, isSameDay, startOfDay } from "date-fns";
 import { enUS, es, ptBR } from "date-fns/locale";
 import { useParams, useSearchParams } from "next/navigation";
+import { useRouter } from "@/i18n/navigation";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import CalendarProvider from "@/components/calendar/calendar-provider";
 
 import { useCalendarContext } from "@/components/calendar/calendar-context";
 import { useTranslations, useLocale } from "next-intl";
 import { useAuth } from "@clerk/nextjs";
+import CalendarEventActions from "@/components/calendar/header/actions/calendar-event-actions";
+import { CalendarOccurrenceDialog } from "@/components/calendar/dialog/calendar-occurrence-dialog";
 
-import { CalendarEvent, Mode } from "@/components/calendar/calendar-types";
+import {
+  CalendarEvent,
+  InstitutionalCalendarEvent,
+  Mode,
+} from "@/components/calendar/calendar-types";
+import { splitCalendarEventAcrossDays } from "@/components/calendar/calendar-event-layout";
 import { TZDate, tz } from "@date-fns/tz";
 import { ScheduleItem } from "@/components/schedule/schedule-item";
+import { CalendarAgendaEvent } from "@/components/calendar/calendar-agenda-event";
 
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { useStaffAccess } from "@/hooks/use-staff-access";
@@ -37,6 +46,13 @@ import { dateInTimeZone } from "@/lib/time-zone";
 
 const CalendarManageEventDialog = dynamic(
   () => import("@/components/calendar/dialog/calendar-manage-event-dialog"),
+);
+const CalendarEventExplorerDialog = dynamic(
+  () =>
+    import("@/components/events/event-explorer-dialog").then(
+      (module) => module.EventExplorerDialog,
+    ),
+  { ssr: false },
 );
 const CalendarClosureDialog = dynamic(
   () => import("@/components/calendar/dialog/calendar-closure-dialog"),
@@ -136,43 +152,48 @@ function AgendaView({
             </div>
 
             <div className="space-y-2">
-              {dayEvents.map((event) => (
-                <ScheduleItem
-                  key={event.scheduleId}
-                  schedule={{
-                    scheduleId: event.scheduleId,
-                    classId: event.classId,
-                    title: event.title || event.className,
-                    description: event.description,
-                    start: event.start,
-                    end: event.end,
-                    timeZone: event.timeZone,
-                    roomName: event.roomName || "",
-                    sessionType: event.sessionType,
-                    isLive: event.isLive,
-                    status: event.status,
-                    className: event.className,
-                    curriculumTitle: event.curriculumTitle,
-                    canLeadSession: event.canLeadSession,
-                    sessionStartedAt: event.sessionStartedAt,
-                    sessionReopenUntil: event.sessionReopenUntil,
-                    sessionEndedAt: event.sessionEndedAt,
-                    sessionEndedByName: event.sessionEndedByName,
-                    sessionClosing: event.sessionClosing,
-                    sessionCloseRetrying: event.sessionCloseRetrying,
-                    sessionEndedAutomatically: event.sessionEndedAutomatically,
-                  }}
-                  showDate={false}
-                  showEdit={false}
-                  showDescription={false}
-                  isStudent={Boolean(isStudent)}
-                  now={now}
-                  onEventClick={() => {
-                    setSelectedEvent(event);
-                    setManageEventDialogOpen(true);
-                  }}
-                />
-              ))}
+              {dayEvents.map((event) =>
+                event.kind === "event" ? (
+                  <CalendarAgendaEvent key={event.id} event={event} />
+                ) : (
+                  <ScheduleItem
+                    key={event.id}
+                    schedule={{
+                      scheduleId: event.scheduleId,
+                      classId: event.classId,
+                      title: event.title || event.className,
+                      description: event.description,
+                      start: event.start,
+                      end: event.end,
+                      timeZone: event.timeZone,
+                      roomName: event.roomName || "",
+                      sessionType: event.sessionType,
+                      isLive: event.isLive,
+                      status: event.status,
+                      className: event.className,
+                      curriculumTitle: event.curriculumTitle,
+                      canLeadSession: event.canLeadSession,
+                      sessionStartedAt: event.sessionStartedAt,
+                      sessionReopenUntil: event.sessionReopenUntil,
+                      sessionEndedAt: event.sessionEndedAt,
+                      sessionEndedByName: event.sessionEndedByName,
+                      sessionClosing: event.sessionClosing,
+                      sessionCloseRetrying: event.sessionCloseRetrying,
+                      sessionEndedAutomatically:
+                        event.sessionEndedAutomatically,
+                    }}
+                    showDate={false}
+                    showEdit={false}
+                    showDescription={false}
+                    isStudent={Boolean(isStudent)}
+                    now={now}
+                    onEventClick={() => {
+                      setSelectedEvent(event);
+                      setManageEventDialogOpen(true);
+                    }}
+                  />
+                ),
+              )}
             </div>
           </div>
         );
@@ -193,6 +214,28 @@ function CalendarContent() {
   const [selectedGradeCode, setSelectedGradeCode] = useState<string | null>(
     null,
   );
+  const [selectedKind, setSelectedKind] = useState<"all" | "class" | "event">(
+    "all",
+  );
+  const [eventExplorerOpen, setEventExplorerOpen] = useState(false);
+  const [eventExplorerLoaded, setEventExplorerLoaded] = useState(false);
+  const [eventExplorerEventId, setEventExplorerEventId] =
+    useState<Id<"events"> | null>(null);
+  const [eventExplorerFocusRecordings, setEventExplorerFocusRecordings] =
+    useState(false);
+  const [eventExplorerRecordingId, setEventExplorerRecordingId] =
+    useState<Id<"recordings"> | null>(null);
+
+  function openEventExplorer(
+    eventId: Id<"events"> | null = null,
+    target?: "recordings",
+  ) {
+    setEventExplorerEventId(eventId);
+    setEventExplorerFocusRecordings(target === "recordings");
+    setEventExplorerRecordingId(null);
+    setEventExplorerLoaded(true);
+    setEventExplorerOpen(true);
+  }
 
   const { user } = useCurrentUser();
   const { isLoaded: isClerkLoaded, isSignedIn, sessionClaims } = useAuth();
@@ -202,8 +245,35 @@ function CalendarContent() {
   } = useConvexAuth();
 
   const searchParams = useSearchParams();
+  const router = useRouter();
   const params = useParams();
   const orgSlug = (params.orgSlug as string) || "system";
+  const eventIdParam = searchParams.get("eventId") as Id<"events"> | null;
+  const focusEventRecordings = searchParams.get("tab") === "recordings";
+  const eventRecordingIdParam = searchParams.get(
+    "recordingId",
+  ) as Id<"recordings"> | null;
+  useEffect(() => {
+    if (!eventIdParam) return;
+    setEventExplorerEventId(eventIdParam);
+    setEventExplorerFocusRecordings(focusEventRecordings);
+    setEventExplorerRecordingId(eventRecordingIdParam);
+    setEventExplorerLoaded(true);
+    setEventExplorerOpen(true);
+  }, [eventIdParam, focusEventRecordings, eventRecordingIdParam]);
+
+  function handleEventExplorerOpenChange(open: boolean) {
+    setEventExplorerOpen(open);
+    if (open || !eventIdParam) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("eventId");
+    next.delete("tab");
+    next.delete("recordingId");
+    const query = next.toString();
+    router.replace(`/${orgSlug}/calendar${query ? `?${query}` : ""}`, {
+      scroll: false,
+    });
+  }
   const role = getRoleForOrg(sessionClaims, orgSlug);
   const isStudent = role === "student";
   const mode = selectedMode ?? (isStudent ? "day" : "week");
@@ -247,6 +317,28 @@ function CalendarContent() {
         }
       : "skip",
   );
+  const eventTeachers = useQuery(
+    api.events.listTeacherOptions,
+    canViewAllCampusCourses && calendarSchoolId && orgContext
+      ? {
+          schoolId: calendarSchoolId,
+          campusId: calendarCampusId,
+        }
+      : "skip",
+  );
+  const teacherOptions = useMemo(() => {
+    const values = new Map(
+      [...(filterOptions?.teachers ?? []), ...(eventTeachers ?? [])].map(
+        (teacher) => [
+          teacher._id,
+          { value: teacher._id, label: teacher.fullName },
+        ],
+      ),
+    );
+    return [...values.values()].sort((first, second) =>
+      first.label.localeCompare(second.label),
+    );
+  }, [eventTeachers, filterOptions?.teachers]);
   const grades = useQuery(
     api.grades.list,
     calendarSchoolId ? { schoolId: calendarSchoolId } : "skip",
@@ -326,6 +418,52 @@ function CalendarContent() {
         }
       : "skip",
   );
+  const {
+    results: eventResults,
+    status: eventStatus,
+    loadMore: loadMoreEvents,
+  } = usePaginatedQuery(
+    api.events.listForCalendar,
+    calendarSchoolId && visibleRange
+      ? {
+          schoolId: calendarSchoolId,
+          campusId: calendarCampusId,
+          scope: calendarCampusId ? "campus" : "school",
+          from: visibleRange.from,
+          to: visibleRange.to - 1,
+          teacherId: selectedTeacherId ?? undefined,
+          gradeCode: selectedGradeCode ?? undefined,
+        }
+      : "skip",
+    { initialNumItems: 100 },
+  );
+  const {
+    results: institutionEventResults,
+    status: institutionEventStatus,
+    loadMore: loadMoreInstitutionEvents,
+  } = usePaginatedQuery(
+    api.events.listForCalendar,
+    calendarSchoolId && calendarCampusId && visibleRange
+      ? {
+          schoolId: calendarSchoolId,
+          campusId: calendarCampusId,
+          scope: "institution",
+          from: visibleRange.from,
+          to: visibleRange.to - 1,
+          teacherId: selectedTeacherId ?? undefined,
+          gradeCode: selectedGradeCode ?? undefined,
+        }
+      : "skip",
+    { initialNumItems: 100 },
+  );
+  // shortcut: load the displayed date range; revisit if a month becomes slow.
+  useEffect(() => {
+    if (eventStatus === "CanLoadMore") loadMoreEvents(100);
+  }, [eventStatus, loadMoreEvents]);
+  useEffect(() => {
+    if (institutionEventStatus === "CanLoadMore")
+      loadMoreInstitutionEvents(100);
+  }, [institutionEventStatus, loadMoreInstitutionEvents]);
   const closureResult = useQuery(
     api.calendarClosures.listForRange,
     closureSchoolId && visibleRange
@@ -347,12 +485,27 @@ function CalendarContent() {
     scheduleResult,
     scopeKey ?? "unresolved",
   );
+  const eventData = useMemo(
+    () =>
+      eventStatus === "Exhausted" &&
+      (!calendarCampusId || institutionEventStatus === "Exhausted")
+        ? [...eventResults, ...institutionEventResults]
+        : undefined,
+    [
+      calendarCampusId,
+      eventResults,
+      eventStatus,
+      institutionEventResults,
+      institutionEventStatus,
+    ],
+  );
   const tCalendar = useTranslations("calendar");
 
   const allEvents = useMemo(() => {
-    if (!scheduleData) return [];
+    if (!scheduleData || !displayTimeZone || !visibleRange) return [];
 
-    return scheduleData.map((e) => ({
+    const classes: CalendarEvent[] = scheduleData.map((e) => ({
+      kind: "class",
       id: e.scheduleId,
       _id: e.scheduleId,
       scheduleId: e.scheduleId,
@@ -394,33 +547,91 @@ function CalendarContent() {
       sessionCloseRetrying: e.sessionCloseRetrying,
       sessionEndedAutomatically: e.sessionEndedAutomatically,
     }));
-  }, [displayTimeZone, gradeNameByCode, scheduleData]);
+    const institutionEvents: CalendarEvent[] = (eventData ?? []).flatMap(
+      (item) =>
+        splitCalendarEventAcrossDays(
+          {
+            kind: "event",
+            id: item._id,
+            eventId: item.eventId,
+            schoolId: item.event.schoolId,
+            occurrenceId: item._id,
+            title: item.event.title,
+            description: item.event.description,
+            start: new TZDate(item.start, displayTimeZone),
+            end: new TZDate(item.end, displayTimeZone),
+            actualStart: item.start,
+            actualEnd: item.end,
+            timeZone: item.event.timeZone,
+            color: "amber",
+            status: item.status,
+            isLive: item.status === "active",
+            sessionType: "live",
+            roomName: item.roomName,
+            gradeCodes: item.event.gradeCodes,
+            gradeLabel: item.event.gradeCodes
+              ?.map((code: string) => gradeNameByCode.get(code) ?? code)
+              .join(", "),
+            teacherIds: [item.event.responsibleId, ...item.event.teacherIds],
+            responsibleName: item.event.responsibleName,
+            campusId: item.event.campusId,
+            campusName: item.event.campusName,
+            canManage: item.event.canManage,
+            canEdit: item.event.canEdit,
+            canCancelOccurrence: item.event.canCancelOccurrence,
+            cancellationReason: item.cancellationReason,
+          } satisfies InstitutionalCalendarEvent,
+          displayTimeZone,
+        ),
+    );
+    return [
+      ...classes,
+      ...institutionEvents.filter(
+        (event) =>
+          event.start.getTime() < visibleRange.to &&
+          event.end.getTime() > visibleRange.from,
+      ),
+    ].sort((a, b) => a.start.getTime() - b.start.getTime());
+  }, [displayTimeZone, eventData, gradeNameByCode, scheduleData, visibleRange]);
 
   const filteredEvents = useMemo(() => {
-    let result = allEvents;
+    let result = allEvents.filter(
+      (event) => selectedKind === "all" || event.kind === selectedKind,
+    );
 
     if (selectedCourseId) {
-      result = result.filter((event) => event.classId === selectedCourseId);
+      result = result.filter(
+        (event) => event.kind === "class" && event.classId === selectedCourseId,
+      );
     }
 
     if (selectedTeacherId) {
       result = result.filter((event) =>
-        (
-          event.teacherIds ?? (event.teacherId ? [event.teacherId] : [])
+        (event.kind === "event"
+          ? event.teacherIds
+          : (event.teacherIds ?? (event.teacherId ? [event.teacherId] : []))
         ).includes(selectedTeacherId),
       );
     }
 
     if (selectedGradeCode) {
       result = result.filter((event) =>
-        (
-          event.gradeCodes ?? (event.gradeCode ? [event.gradeCode] : [])
-        ).includes(selectedGradeCode),
+        event.kind === "event"
+          ? !event.gradeCodes || event.gradeCodes.includes(selectedGradeCode)
+          : (
+              event.gradeCodes ?? (event.gradeCode ? [event.gradeCode] : [])
+            ).includes(selectedGradeCode),
       );
     }
 
     return result;
-  }, [allEvents, selectedCourseId, selectedGradeCode, selectedTeacherId]);
+  }, [
+    allEvents,
+    selectedCourseId,
+    selectedGradeCode,
+    selectedTeacherId,
+    selectedKind,
+  ]);
   const visibleClosures = useMemo(() => {
     if (!closureResult) return [];
     if (selectedGradeCode) {
@@ -431,9 +642,10 @@ function CalendarContent() {
     }
     if (canViewAllCampusCourses) return closureResult;
     const visibleGradeCodes = new Set(
-      allEvents.flatMap(
-        (event) =>
-          event.gradeCodes ?? (event.gradeCode ? [event.gradeCode] : []),
+      allEvents.flatMap((event) =>
+        event.kind === "event"
+          ? (event.gradeCodes ?? [])
+          : (event.gradeCodes ?? (event.gradeCode ? [event.gradeCode] : [])),
       ),
     );
     return closureResult.filter(
@@ -463,7 +675,8 @@ function CalendarContent() {
     !displayTimeZone ||
     !schedulingTimeZone ||
     !visibleRange ||
-    scheduleData === undefined
+    scheduleData === undefined ||
+    (calendarSchoolId && eventData === undefined)
   ) {
     return <Skeleton className="h-full min-h-0 w-full" />;
   }
@@ -496,21 +709,44 @@ function CalendarContent() {
               isStudent={isStudent}
               closures={visibleClosures}
               headerAction={
-                access?.canManageCampus &&
-                closureSchoolId &&
-                schedulingTimeZone &&
-                orgContext?.type !== "system" ? (
-                  <CalendarClosureDialog
-                    schoolId={closureSchoolId}
+                <>
+                  <CalendarEventActions
+                    schoolId={calendarSchoolId}
                     campusId={calendarCampusId}
-                    scopeLabel={orgContext?.name ?? ""}
-                    schedulingTimeZone={schedulingTimeZone}
+                    schoolTimeZone={
+                      settingsContext?.institution.timeZone ??
+                      schedulingTimeZone
+                    }
                     selectedDate={dateInTimeZone(
                       date.getTime(),
                       schedulingTimeZone,
                     )}
+                    canCreate={Boolean(
+                      settingsContext?.canManageInstitution ||
+                        access?.canManageCampus,
+                    )}
+                    canCreateInstitution={
+                      settingsContext?.canManageInstitution ?? false
+                    }
+                    onViewEvents={() => openEventExplorer()}
+                    onCreated={(eventId) => openEventExplorer(eventId)}
                   />
-                ) : undefined
+                  {access?.canManageCampus &&
+                  closureSchoolId &&
+                  schedulingTimeZone &&
+                  orgContext?.type !== "system" ? (
+                    <CalendarClosureDialog
+                      schoolId={closureSchoolId}
+                      campusId={calendarCampusId}
+                      scopeLabel={orgContext?.name ?? ""}
+                      schedulingTimeZone={schedulingTimeZone}
+                      selectedDate={dateInTimeZone(
+                        date.getTime(),
+                        schedulingTimeZone,
+                      )}
+                    />
+                  ) : undefined}
+                </>
               }
               filters={{
                 courses:
@@ -518,20 +754,21 @@ function CalendarContent() {
                     value: course._id,
                     label: course.name,
                   })) ?? [],
-                teachers:
-                  filterOptions?.teachers.map((teacher) => ({
-                    value: teacher._id,
-                    label: teacher.fullName,
-                  })) ?? [],
+                teachers: teacherOptions,
                 grades: gradeOptions,
                 showTeacherFilter: canViewAllCampusCourses,
                 showGradeFilter: !isStudent,
                 selectedCourseId,
                 selectedTeacherId,
                 selectedGradeCode,
+                selectedKind,
                 onCourseChange: setSelectedCourseId,
                 onTeacherChange: setSelectedTeacherId,
                 onGradeChange: setSelectedGradeCode,
+                onKindChange: (kind) => {
+                  setSelectedKind(kind);
+                  if (kind === "event") setSelectedCourseId(null);
+                },
               }}
             />
           </TabsContent>
@@ -551,6 +788,17 @@ function CalendarContent() {
         <CalendarManageEventDialog
           canManageSeries={access?.canManageCampus ?? false}
         />
+        <CalendarOccurrenceDialog onViewEvent={openEventExplorer} />
+        {eventExplorerLoaded && (
+          <CalendarEventExplorerDialog
+            open={eventExplorerOpen}
+            onOpenChange={handleEventExplorerOpenChange}
+            orgSlug={orgSlug}
+            initialEventId={eventExplorerEventId}
+            focusRecordings={eventExplorerFocusRecordings}
+            recordingId={eventExplorerRecordingId}
+          />
+        )}
       </div>
     </CalendarProvider>
   );

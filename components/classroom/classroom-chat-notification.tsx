@@ -12,12 +12,14 @@ import { useClassroomPresentation } from "./classroom-presentation";
 
 export function ClassroomChatNotification({
   courseId,
+  eventId,
   scheduleId,
   chatVisible,
   targetRef,
   onOpenChat,
 }: {
-  courseId: Id<"classes">;
+  courseId?: Id<"classes">;
+  eventId?: Id<"events">;
   scheduleId?: Id<"classSchedule">;
   chatVisible: boolean;
   targetRef: RefObject<HTMLDivElement | null>;
@@ -33,6 +35,7 @@ export function ClassroomChatNotification({
   });
   const { message, dismiss } = useClassroomChatNotification({
     courseId,
+    eventId,
     scheduleId,
     chatVisible,
     onNotify: play,
@@ -58,7 +61,7 @@ export function ClassroomChatNotification({
             transition={{ duration: reducedMotion ? 0 : 0.15 }}
             className="pointer-events-auto block w-fit max-w-full cursor-pointer rounded-xl text-left text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={`${t("openChat")}. ${
-              message.event
+              "event" in message && message.event
                 ? `${eventT("sender")}: ${eventT(message.event.kind === "course_task" ? "taskPublished" : "taskReminder")} ${message.event.title}`
                 : `${message.authorName}: ${message.body || message.attachments?.map((file) => file.name).join(", ")}`
             }`}

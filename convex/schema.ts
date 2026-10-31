@@ -455,6 +455,152 @@ export default defineSchema({
     mutedBy: v.id("users"),
   }).index("by_class_and_user", ["classId", "userId"]),
 
+  events: defineTable({
+    schoolId: v.id("schools"),
+    campusId: v.optional(v.id("campuses")),
+    gradeCodes: v.optional(v.array(v.string())),
+    title: v.string(),
+    description: v.optional(v.string()),
+    responsibleId: v.id("users"),
+    teacherIds: v.array(v.id("users")),
+    timeZone: v.string(),
+    weeklySlots: v.optional(
+      v.array(
+        v.object({
+          dayOfWeek: v.number(),
+          startMinutes: v.number(),
+          durationMinutes: v.number(),
+        }),
+      ),
+    ),
+    recurrenceStartDate: v.optional(v.string()),
+    recurrenceEndDate: v.optional(v.string()),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+    chatStudentsMuted: v.optional(v.boolean()),
+    chatStudentAttachmentsEnabled: v.optional(v.boolean()),
+    chatDisabled: v.optional(v.boolean()),
+    chatArchivedAt: v.optional(v.number()),
+    chatLastPinnedAt: v.optional(v.number()),
+    chatNotificationsClearedThrough: v.optional(v.number()),
+    chatClearedThrough: v.optional(v.number()),
+  })
+    .index("by_schoolId_and_createdAt", ["schoolId", "createdAt"])
+    .index("by_campusId_and_createdAt", ["campusId", "createdAt"])
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["schoolId"],
+    }),
+
+  eventChatMessages: defineTable({
+    eventId: v.id("events"),
+    authorId: v.id("users"),
+    body: v.string(),
+    linksEnabled: v.optional(v.boolean()),
+    attachmentIds: v.optional(v.array(v.id("eventChatAttachments"))),
+    pinnedAt: v.optional(v.number()),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_eventId_and_pinnedAt", ["eventId", "pinnedAt"]),
+
+  eventChatThreads: defineTable({
+    eventId: v.id("events"),
+    schoolId: v.id("schools"),
+    campusId: v.optional(v.id("campuses")),
+    lastMessageAt: v.number(),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_schoolId_and_lastMessageAt", ["schoolId", "lastMessageAt"]),
+
+  eventChatAttachments: defineTable({
+    eventId: v.id("events"),
+    uploadedBy: v.id("users"),
+    name: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    storageId: v.optional(v.id("_storage")),
+    messageId: v.optional(v.id("eventChatMessages")),
+    expiresAt: v.optional(v.number()),
+  }).index("by_eventId", ["eventId"]),
+
+  eventChatMutes: defineTable({
+    eventId: v.id("events"),
+    userId: v.id("users"),
+    mutedAt: v.number(),
+    mutedBy: v.id("users"),
+  }).index("by_eventId_and_userId", ["eventId", "userId"]),
+
+  eventChatPinReads: defineTable({
+    eventId: v.id("events"),
+    userId: v.id("users"),
+    seenThrough: v.number(),
+  }).index("by_eventId_and_userId", ["eventId", "userId"]),
+
+  eventOccurrences: defineTable({
+    eventId: v.id("events"),
+    schoolId: v.id("schools"),
+    campusId: v.optional(v.id("campuses")),
+    scheduledStart: v.number(),
+    scheduledEnd: v.number(),
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("active"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+    ),
+    cancellationReason: v.optional(v.string()),
+    roomName: v.string(),
+    isLive: v.optional(v.boolean()),
+    liveActivationId: v.optional(v.string()),
+    liveActivationGeneration: v.optional(v.number()),
+    liveRoomName: v.optional(v.string()),
+    liveEndClaimId: v.optional(v.string()),
+    liveCleanupRetrying: v.optional(v.boolean()),
+    sessionLeaderId: v.optional(v.id("users")),
+    sessionLeaderRole: v.optional(sessionLeaderRoleValidator),
+    sessionLeaderSince: v.optional(v.number()),
+    sessionStartedAt: v.optional(v.number()),
+    sessionReopenedAt: v.optional(v.number()),
+    sessionReopenUntil: v.optional(v.number()),
+    sessionEndedBy: v.optional(v.id("users")),
+    completedAt: v.optional(v.number()),
+    sessionTransferToId: v.optional(v.id("users")),
+    sessionTransferRequestedBy: v.optional(v.id("users")),
+    sessionTransferRequestedAt: v.optional(v.number()),
+    sessionTransferOutcomeSequence: v.optional(v.number()),
+    sessionTransferOutcome: v.optional(
+      v.object({
+        requesterId: v.id("users"),
+        responderId: v.id("users"),
+        status: v.union(v.literal("accepted"), v.literal("rejected")),
+        at: v.number(),
+      }),
+    ),
+    liveLeaderAbsentSince: v.optional(v.number()),
+    liveExtensionEndsAt: v.optional(v.number()),
+    liveDecisionEndsAt: v.optional(v.number()),
+    liveLastReconciledAt: v.optional(v.number()),
+    recordingsCleanupStartedAt: v.optional(v.number()),
+    recordingsCleanupFinishedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  })
+    .index("by_eventId_and_scheduledStart", ["eventId", "scheduledStart"])
+    .index("by_room", ["roomName"])
+    .index("by_live_room_name", ["liveRoomName"])
+    .index("by_status_and_is_live", ["status", "isLive"])
+    .index("by_eventId_and_status_and_scheduledStart", [
+      "eventId",
+      "status",
+      "scheduledStart",
+    ])
+    .index("by_schoolId_and_scheduledStart", ["schoolId", "scheduledStart"])
+    .index("by_schoolId_and_campusId_and_scheduledStart", [
+      "schoolId",
+      "campusId",
+      "scheduledStart",
+    ]),
+
   /**
    * CLASS_SCHEDULE
    * The bridge: "When does Class Y meet?" (lesson is now optional)
@@ -566,9 +712,10 @@ export default defineSchema({
     .index("by_status_and_is_live", ["status", "isLive"])
     .index("by_recurrence_parent", ["recurrenceParentId"]),
 
-  // Transport lifecycles only. Every activation belongs to the same academic occurrence.
+  // Transport lifecycles for class and event occurrences.
   liveRoomActivations: defineTable(liveRoomActivationFields)
     .index("by_activation_id", ["activationId"])
+    .index("by_event_occurrence", ["eventOccurrenceId"])
     .index("by_status_and_next_cleanup_at", ["status", "nextCleanupAt"]),
 
   classSessionLeadershipEvents: defineTable({
@@ -659,6 +806,9 @@ export default defineSchema({
       v.literal("organization_membership_changed"),
       v.literal("announcement"),
       v.literal("course_chat"),
+      v.literal("event_chat"),
+      v.literal("event_schedule"),
+      v.literal("event_deleted"),
       v.literal("course_task"),
       v.literal("course_task_reminder"),
       v.literal("survey_invitation"),
@@ -670,6 +820,9 @@ export default defineSchema({
     schoolId: v.optional(v.id("schools")),
     campusId: v.optional(v.id("campuses")),
     classId: v.optional(v.id("classes")),
+    eventId: v.optional(v.id("events")),
+    eventTitle: v.optional(v.string()),
+    eventChatMessageId: v.optional(v.id("eventChatMessages")),
     taskId: v.optional(v.id("courseTasks")),
     messageId: v.optional(v.id("courseChatMessages")),
     taskTitle: v.optional(v.string()),
@@ -719,6 +872,7 @@ export default defineSchema({
       "readAt",
     ])
     .index("by_class_and_kind", ["classId", "kind"])
+    .index("by_event_and_kind", ["eventId", "kind"])
     .index("by_schedule_and_kind", ["scheduleId", "kind"]),
 
   calendarClosures: defineTable({
@@ -930,11 +1084,12 @@ export default defineSchema({
 
   /**
    * RECORDINGS
-   * Tracks LiveKit egress recordings for class sessions.
+   * Tracks LiveKit egress recordings for class and event sessions.
    * Created when a recording starts; updated via LiveKit egress webhook on completion.
    */
   recordings: defineTable({
-    scheduleId: v.id("classSchedule"),
+    scheduleId: v.optional(v.id("classSchedule")),
+    eventOccurrenceId: v.optional(v.id("eventOccurrences")),
     roomName: v.string(),
     activationId: v.optional(v.string()),
     recordingToken: v.optional(v.string()),
@@ -957,6 +1112,7 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("by_schedule", ["scheduleId", "status"])
+    .index("by_event_occurrence", ["eventOccurrenceId", "status"])
     .index("by_egress_id", ["egressId"])
     .index("by_room", ["roomName"]),
 

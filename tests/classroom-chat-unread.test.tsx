@@ -15,9 +15,19 @@ import {
 } from "@/components/classroom/classroom-presentation";
 import type { Id } from "@/convex/_generated/dataModel";
 
-const state = vi.hoisted(() => ({ unread: new Map<string, number>() }));
+const state = vi.hoisted(() => ({
+  unread: new Map<string, number>(),
+  eventUnread: new Map<string, number>(),
+  unreadCalls: 0,
+}));
+vi.mock("@/hooks/use-unread-event-chats", () => ({
+  useUnreadEventChats: () => state.eventUnread,
+}));
 vi.mock("@/hooks/use-unread-course-chats", () => ({
-  useUnreadCourseChats: () => state.unread,
+  useUnreadCourseChats: () => {
+    state.unreadCalls++;
+    return state.unread;
+  },
 }));
 vi.mock("next-intl", () => ({
   useTranslations: () => (_key: string, values: { count: number }) =>
@@ -25,6 +35,7 @@ vi.mock("next-intl", () => ({
 }));
 vi.mock("@/components/chat/course-chat", () => ({
   CourseChat: () => <div>Course chat</div>,
+  EventChat: () => <div>Event chat</div>,
 }));
 vi.mock("@/components/classroom/classroom-chat-notification", () => ({
   ClassroomChatNotification: ({
@@ -52,6 +63,7 @@ vi.mock("@/components/classroom/use-classroom-participant-pagination", () => ({
 
 function Panel({
   courseId = "course",
+  eventId,
   notification = false,
   activeTab = "participants",
   viewMode,
@@ -64,6 +76,7 @@ function Panel({
   onSelectMosaicParticipant,
 }: {
   courseId?: string;
+  eventId?: string;
   notification?: boolean;
   activeTab?: "participants" | "chat";
   viewMode?: "presenter" | "mosaic";
@@ -78,6 +91,7 @@ function Panel({
   return (
     <ClassroomParticipantsPanel
       courseId={courseId as Id<"classes">}
+      eventId={eventId as Id<"events"> | undefined}
       heading="Classmates"
       compactHeading="Classmates and chat"
       compactOpenLabel="Open panel"
@@ -107,6 +121,17 @@ function Panel({
 
 beforeEach(() => {
   state.unread = new Map();
+  state.eventUnread = new Map();
+  state.unreadCalls = 0;
+});
+
+test("event participants use the event thread and its unread count", () => {
+  state.eventUnread.set("event-1", 2);
+  render(<Panel eventId="event-1" />);
+  expect(state.unreadCalls).toBe(0);
+  expect(
+    screen.getByRole("tab", { name: "Chat. 2 mensajes pendientes" }),
+  ).toBeTruthy();
 });
 afterEach(() => {
   cleanup();

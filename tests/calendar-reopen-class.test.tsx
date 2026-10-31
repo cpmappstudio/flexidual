@@ -89,6 +89,7 @@ vi.mock("@/components/calendar/calendar-context", () => ({
     manageEventDialogOpen: true,
     setManageEventDialogOpen: testState.setManageEventDialogOpen,
     selectedEvent: {
+      kind: "class",
       scheduleId: "schedule-1",
       roomName: "room-1",
       classId: "class-1",

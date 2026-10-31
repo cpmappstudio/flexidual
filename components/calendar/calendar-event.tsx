@@ -1,4 +1,5 @@
 import { CalendarEvent as CalendarEventType } from "@/components/calendar/calendar-types";
+import Image from "next/image";
 import { useCalendarContext } from "@/components/calendar/calendar-context";
 import { format } from "date-fns";
 import { tz } from "@date-fns/tz";
@@ -222,13 +223,27 @@ export default function CalendarEvent({
                 primaryLabel
               )}
             </p>
-            {month && showProviderIdentity && (
-              <CalendarProviderMark
-                sessionType={event.sessionType}
-                isPast={isPast}
-                className="size-2.5"
-              />
-            )}
+            {month &&
+              showProviderIdentity &&
+              (event.kind === "class" ? (
+                <CalendarProviderMark
+                  sessionType={event.sessionType}
+                  isPast={isPast}
+                  className="size-2.5"
+                />
+              ) : (
+                <Image
+                  src="/event-calendar-star.svg"
+                  alt=""
+                  width={10}
+                  height={10}
+                  aria-hidden="true"
+                  className={cn(
+                    "size-2.5 shrink-0 object-contain",
+                    isPast && "opacity-60 saturate-50",
+                  )}
+                />
+              ))}
           </div>
 
           {!month && secondaryLabel && (
@@ -316,7 +331,21 @@ export default function CalendarEvent({
             </span>
           )}
 
-        {showCornerIndicators && (
+        {showCornerIndicators && event.kind === "event" && (
+          <Image
+            src="/event-calendar-star.svg"
+            alt=""
+            width={12}
+            height={12}
+            aria-hidden="true"
+            className={cn(
+              "absolute right-0 top-0 size-3 object-contain",
+              (compact || responsiveCompact) && "size-2.5 lg:size-3",
+              isPast && "opacity-60 saturate-50",
+            )}
+          />
+        )}
+        {showCornerIndicators && event.kind === "class" && (
           <div className="absolute right-0 top-0 flex items-center gap-1">
             {canExpandProviderIdentity && (
               <CalendarProviderBadge

@@ -52,6 +52,12 @@ function getNotificationTone(notification: SystemNotification) {
   )
     return "warning";
   if (notification.kind === "class_cancelled") return "destructive";
+  if (
+    notification.kind === "event_deleted" ||
+    (notification.kind === "event_schedule" &&
+      notification.action === "removed")
+  )
+    return "destructive";
   if (notification.kind === "recording_available") return "success";
   if (
     notification.kind === "course_task" ||
@@ -65,7 +71,7 @@ function getNotificationTone(notification: SystemNotification) {
 }
 
 function NotificationIcon({ kind }: Pick<SystemNotification, "kind">) {
-  if (kind === "course_chat")
+  if (kind === "course_chat" || kind === "event_chat")
     return (
       <Image
         src="/chat-icon.svg"
@@ -85,7 +91,9 @@ function NotificationIcon({ kind }: Pick<SystemNotification, "kind">) {
         ? AlarmClock
         : kind === "class_cancelled"
           ? CalendarX2
-          : kind === "calendar_closure"
+          : kind === "calendar_closure" ||
+              kind === "event_schedule" ||
+              kind === "event_deleted"
             ? CalendarDays
             : kind === "recording_available"
               ? CirclePlay
@@ -102,6 +110,10 @@ function NotificationIcon({ kind }: Pick<SystemNotification, "kind">) {
 }
 
 function getTranslationKey(notification: SystemNotification) {
+  if (notification.kind === "event_schedule")
+    return notification.action === "removed"
+      ? "eventDateCancelled"
+      : "eventDateChanged";
   if (notification.kind === "course_enrollment") {
     return notification.action === "removed"
       ? "courseEnrollmentRemoved"
@@ -151,6 +163,7 @@ function NotificationItem({
   const bodyValues = {
     count: notification.chatMessageCount ?? 0,
     className: notification.className ?? t("fallbackClassName"),
+    eventTitle: notification.eventTitle ?? t("fallbackEventTitle"),
     taskTitle: notification.taskTitle ?? t("fallbackTaskTitle"),
     organizationName: organizationName || t("fallbackOrganizationName"),
     previousOrganizationName:

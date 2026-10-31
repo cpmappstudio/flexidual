@@ -13,6 +13,7 @@ import { ConvexError, v } from "convex/values";
 import { getInstitutionGrades } from "./model/grades";
 import { getStudentGradeCode } from "./model/membership";
 import { resolveStudentDashboardAccess } from "./model/studentDashboardAccess";
+import { canAccessEvent } from "./model/eventAccess";
 import {
   isStudentEnrolled,
   listActiveStudentClasses,
@@ -169,6 +170,87 @@ export const getStudentDashboardSchedule = query({
       }),
     );
     return events.flat().sort((a, b) => a.start - b.start);
+  },
+});
+
+export const getStudentDashboardEvents = query({
+  args: {
+    ...studentDashboardTargetValidator.fields,
+    from: v.number(),
+    to: v.number(),
+    scope: v.union(v.literal("school"), v.literal("campus")),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(
+    v.object({
+      occurrenceId: v.id("eventOccurrences"),
+      eventId: v.id("events"),
+      title: v.string(),
+      start: v.number(),
+      end: v.number(),
+      status: v.union(v.literal("scheduled"), v.literal("active")),
+      isLive: v.boolean(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    if (
+      !Number.isSafeInteger(args.from) ||
+      !Number.isSafeInteger(args.to) ||
+      args.from > args.to ||
+      args.to - args.from > 2 * 24 * 60 * 60_000
+    )
+      throw new ConvexError("INVALID_DATE_RANGE");
+    const access = await resolveStudentDashboardAccess(ctx, args);
+    if (!access?.campus) return { page: [], continueCursor: "", isDone: true };
+    const { campus } = access;
+
+    const rows = await ctx.db
+      .query("eventOccurrences")
+      .withIndex("by_schoolId_and_campusId_and_scheduledStart", (q) =>
+        q
+          .eq("schoolId", campus.schoolId)
+          .eq("campusId", args.scope === "campus" ? campus._id : undefined)
+          .gte("scheduledStart", args.from - 24 * 60 * 60_000)
+          .lte("scheduledStart", args.to),
+      )
+      .paginate(args.paginationOpts);
+    const eligibleRows = rows.page.filter(
+      (row) =>
+        row.scheduledEnd > args.from &&
+        (row.status === "scheduled" || row.status === "active"),
+    );
+    const events = new Map(
+      await Promise.all(
+        [...new Set(eligibleRows.map((row) => row.eventId))].map(
+          async (eventId) => [eventId, await ctx.db.get(eventId)] as const,
+        ),
+      ),
+    );
+    const visibleEvents = new Set(
+      (
+        await Promise.all(
+          [...events.values()].map(async (event) =>
+            event && (await canAccessEvent(ctx, access.student._id, event))
+              ? event._id
+              : null,
+          ),
+        )
+      ).filter((id) => id !== null),
+    );
+
+    const page = eligibleRows
+      .filter((row) => visibleEvents.has(row.eventId))
+      .map((row) => ({
+        occurrenceId: row._id,
+        eventId: row.eventId,
+        title: events.get(row.eventId)!.title,
+        start: row.scheduledStart,
+        end: row.scheduledEnd,
+        status: row.status as "scheduled" | "active",
+        isLive: row.status === "active" && row.isLive === true,
+      }))
+      .sort((a, b) => a.start - b.start);
+    return { ...rows, page };
   },
 });
 

@@ -35,8 +35,11 @@ export type RecordingPlaybackPart = {
   startedAt: number;
 };
 
-export interface RecordingPlayerProps {
-  scheduleId: Id<"classSchedule">;
+type RecordingTarget =
+  | { scheduleId: Id<"classSchedule">; occurrenceId?: never }
+  | { occurrenceId: Id<"eventOccurrences">; scheduleId?: never };
+
+export type RecordingPlayerProps = RecordingTarget & {
   title: string;
   secondaryLabel?: string | null;
   gradeLabel?: string | null;
@@ -47,15 +50,14 @@ export interface RecordingPlayerProps {
   onOpenChange: (open: boolean) => void;
   variant?: "student" | "default";
   recordings?: RecordingPlaybackPart[];
-}
+};
 
-export interface ScheduleRecordingPlayerProps {
-  scheduleId: Id<"classSchedule">;
+export type ScheduleRecordingPlayerProps = RecordingTarget & {
   enabled?: boolean;
   variant?: "student" | "default";
   className?: string;
   recordings?: RecordingPlaybackPart[];
-}
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -186,6 +188,7 @@ function RecordingHeader({
 
 export function ScheduleRecordingPlayer({
   scheduleId,
+  occurrenceId,
   enabled = true,
   variant = "default",
   className,
@@ -193,15 +196,24 @@ export function ScheduleRecordingPlayer({
 }: ScheduleRecordingPlayerProps) {
   const t = useTranslations();
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const queriedRecordings = useQuery(
+  const courseRecordings = useQuery(
     api.recordings.getBySchedule,
-    enabled && providedRecordings === undefined ? { scheduleId } : "skip",
+    enabled && providedRecordings === undefined && scheduleId
+      ? { scheduleId }
+      : "skip",
   );
-  const recordings = providedRecordings ?? queriedRecordings;
+  const eventRecordings = useQuery(
+    api.recordings.getByEventOccurrence,
+    enabled && providedRecordings === undefined && occurrenceId
+      ? { occurrenceId }
+      : "skip",
+  );
+  const recordings =
+    providedRecordings ?? (occurrenceId ? eventRecordings : courseRecordings);
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [scheduleId, recordings?.length]);
+  }, [scheduleId, occurrenceId, recordings?.length]);
 
   const isStudent = variant === "student";
   const isLoading = recordings === undefined;
@@ -299,6 +311,7 @@ export function ScheduleRecordingPlayer({
 
 export function RecordingPlayerModal({
   scheduleId,
+  occurrenceId,
   title,
   secondaryLabel,
   gradeLabel,
@@ -336,7 +349,7 @@ export function RecordingPlayerModal({
 
   const content = (
     <ScheduleRecordingPlayer
-      scheduleId={scheduleId}
+      {...(occurrenceId ? { occurrenceId } : { scheduleId: scheduleId! })}
       enabled={open}
       variant={variant}
       recordings={recordings}

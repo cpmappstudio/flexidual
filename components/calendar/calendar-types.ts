@@ -22,7 +22,8 @@ export type CalendarContextType = {
   setSelectedEvent: (event: CalendarEvent | null) => void;
 };
 
-export type CalendarEvent = {
+export type ClassCalendarEvent = {
+  kind: "class";
   id: string;
   _id: Id<"classSchedule">;
 
@@ -76,6 +77,38 @@ export type CalendarEvent = {
   // Recordings
   hasRecording?: boolean;
 };
+
+export type InstitutionalCalendarEvent = {
+  kind: "event";
+  id: string;
+  eventId: Id<"events">;
+  schoolId: Id<"schools">;
+  occurrenceId: Id<"eventOccurrences">;
+  title: string;
+  description?: string;
+  start: Date;
+  end: Date;
+  actualStart: number;
+  actualEnd: number;
+  timeZone: string;
+  color: string;
+  status: "scheduled" | "active" | "completed" | "cancelled";
+  isLive: boolean;
+  sessionType: "live";
+  roomName: string;
+  gradeCodes?: string[];
+  gradeLabel?: string;
+  teacherIds: Id<"users">[];
+  responsibleName: string;
+  campusId?: Id<"campuses">;
+  campusName?: string;
+  canManage: boolean;
+  canEdit: boolean;
+  canCancelOccurrence: boolean;
+  cancellationReason?: string;
+};
+
+export type CalendarEvent = ClassCalendarEvent | InstitutionalCalendarEvent;
 
 export const calendarModes = ["month", "week", "day"] as const;
 export type Mode = (typeof calendarModes)[number];

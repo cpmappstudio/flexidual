@@ -48,14 +48,12 @@ export default function CalendarProvider({
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
     null,
   );
-  const selectedScheduleId = selectedEvent?.scheduleId;
+  const selectedEventId = selectedEvent?.id;
   useEffect(() => {
-    if (!selectedScheduleId) return;
-    const currentEvent = events.find(
-      (event) => event.scheduleId === selectedScheduleId,
-    );
+    if (!selectedEventId) return;
+    const currentEvent = events.find((event) => event.id === selectedEventId);
     if (currentEvent) setSelectedEvent(currentEvent);
-  }, [events, selectedScheduleId]);
+  }, [events, selectedEventId]);
   const visibleScheduleWindow = useMemo(() => {
     const eventStartMinutes = events.map(
       (event) => event.start.getHours() * 60 + event.start.getMinutes(),

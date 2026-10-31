@@ -192,11 +192,11 @@ function sanitizeUrl(value: string) {
   try {
     const url = new URL(value);
     for (const key of [...url.searchParams.keys()]) {
-      if (/token|ticket|key|secret/i.test(key)) url.searchParams.set(key, "[redacted]");
+      if (/token|ticket|key|secret|join_request/i.test(key)) url.searchParams.set(key, "[redacted]");
     }
     return `${url.origin}${url.pathname}${url.search}`;
   } catch {
-    return value.replace(/(token|ticket|key|secret)=([^&\s]+)/gi, "$1=[redacted]");
+    return value.replace(/(token|ticket|key|secret|join_request)=([^&\s]+)/gi, "$1=[redacted]");
   }
 }
 

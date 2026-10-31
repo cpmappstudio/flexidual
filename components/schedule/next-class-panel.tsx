@@ -32,7 +32,7 @@ export type NextClassPanelItem = {
 export type NextClassPreviewItem = {
   id: string;
   title: string;
-  meta: string;
+  meta?: string;
   sessionType: ClassSessionType;
 };
 
@@ -56,10 +56,14 @@ export function NextClassPreview({
   label,
   items,
   className,
+  showProviderBadge = true,
+  onSelect,
 }: {
   label: string;
   items: NextClassPreviewItem[];
   className?: string;
+  showProviderBadge?: boolean;
+  onSelect?: (item: NextClassPreviewItem) => void;
 }) {
   if (items.length === 0) return null;
 
@@ -74,23 +78,39 @@ export function NextClassPreview({
         {label}
       </p>
       <div className="space-y-2 xl:space-y-3">
-        {items.map((item) => (
-          <span key={item.id} className="block min-w-0">
-            <span className="flex min-w-0 items-center justify-between gap-2">
-              <span className="line-clamp-1 text-sm font-bold text-foreground">
-                {item.title}
+        {items.map((item) => {
+          const Item = onSelect ? "button" : "span";
+          return (
+            <Item
+              key={item.id}
+              type={onSelect ? "button" : undefined}
+              className={cn(
+                "block min-w-0",
+                onSelect &&
+                  "w-full cursor-pointer rounded-md text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              )}
+              onClick={onSelect ? () => onSelect(item) : undefined}
+            >
+              <span className="flex min-w-0 items-center justify-between gap-2">
+                <span className="line-clamp-1 text-sm font-bold text-foreground">
+                  {item.title}
+                </span>
+                {showProviderBadge && (
+                  <CalendarProviderBadge
+                    sessionType={item.sessionType}
+                    className="h-5 shrink-0 px-1.5 text-[9px]"
+                    markClassName="size-2.5"
+                  />
+                )}
               </span>
-              <CalendarProviderBadge
-                sessionType={item.sessionType}
-                className="h-5 shrink-0 px-1.5 text-[9px]"
-                markClassName="size-2.5"
-              />
-            </span>
-            <span className="mt-0.5 block text-xs font-semibold text-muted-foreground">
-              {item.meta}
-            </span>
-          </span>
-        ))}
+              {item.meta && (
+                <span className="mt-0.5 block text-xs font-semibold text-muted-foreground">
+                  {item.meta}
+                </span>
+              )}
+            </Item>
+          );
+        })}
       </div>
     </div>
   );
@@ -104,6 +124,8 @@ export function NextClassPanel({
   className,
   currentTime,
   layout = "stacked",
+  heading,
+  showProviderBadge = true,
 }: {
   nextClass: NextClassPanelItem | null;
   action?: ReactNode;
@@ -112,6 +134,8 @@ export function NextClassPanel({
   className?: string;
   currentTime?: number;
   layout?: "stacked" | "split";
+  heading?: string;
+  showProviderBadge?: boolean;
 }) {
   const t = useTranslations();
   const [internalTime, setInternalTime] = useState(Date.now);
@@ -153,7 +177,7 @@ export function NextClassPanel({
             )}
           >
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-              {t("student.nextClass")}:
+              {heading ?? t("student.nextClass")}:
             </p>
             {nextClass && (
               <div className="mt-2 flex flex-wrap justify-center gap-2 xl:mt-3">
@@ -179,10 +203,12 @@ export function NextClassPanel({
                     </span>
                   </Badge>
                 )}
-                <CalendarProviderBadge
-                  sessionType={nextClass.sessionType}
-                  className="rounded-full"
-                />
+                {showProviderBadge && (
+                  <CalendarProviderBadge
+                    sessionType={nextClass.sessionType}
+                    className="rounded-full"
+                  />
+                )}
               </div>
             )}
             <h3 className="mt-3 text-balance text-lg font-bold leading-tight text-foreground sm:text-xl xl:mt-4 xl:font-normal">

@@ -110,6 +110,42 @@ test("routes class notifications to their contextual destinations", () => {
   );
 });
 
+test("event notifications open the consolidated calendar view", () => {
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "event_schedule",
+      organizationSlug: "main-campus",
+      eventId: "event-id" as never,
+    }),
+    "/main-campus/calendar?eventId=event-id",
+  );
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "recording_available",
+      organizationSlug: "main-campus",
+      eventId: "event-id" as never,
+    }),
+    "/main-campus/calendar?eventId=event-id&tab=recordings",
+  );
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "recording_available",
+      organizationSlug: "main-campus",
+      eventId: "event-id" as never,
+      recordingId: "recording-id" as never,
+    }),
+    "/main-campus/calendar?eventId=event-id&tab=recordings&recordingId=recording-id",
+  );
+  assert.equal(
+    getSystemNotificationHref({
+      kind: "event_chat",
+      organizationSlug: "main-campus",
+      eventId: "event-id" as never,
+    }),
+    "/main-campus/chats/events/event-id",
+  );
+});
+
 test("removed memberships do not navigate to inaccessible organizations", () => {
   assert.equal(
     getSystemNotificationHref({

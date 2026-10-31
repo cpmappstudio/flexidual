@@ -1,5 +1,5 @@
-import { format } from "date-fns";
-import { tz } from "@date-fns/tz";
+import { addDays, format, startOfDay } from "date-fns";
+import { TZDate, tz } from "@date-fns/tz";
 
 export type CalendarEventInterval = {
   id: string;
@@ -9,6 +9,33 @@ export type CalendarEventInterval = {
 
 export function getCalendarEventDayKey(date: Date, timeZone: string) {
   return format(date, "yyyy-MM-dd", { in: tz(timeZone) });
+}
+
+export function splitCalendarEventAcrossDays<T extends CalendarEventInterval>(
+  event: T,
+  timeZone: string,
+): T[] {
+  if (
+    event.end <= event.start ||
+    getCalendarEventDayKey(event.start, timeZone) ===
+      getCalendarEventDayKey(new Date(event.end.getTime() - 1), timeZone)
+  )
+    return [event];
+  const midnight = addDays(startOfDay(event.start, { in: tz(timeZone) }), 1, {
+    in: tz(timeZone),
+  });
+  return [
+    {
+      ...event,
+      id: `${event.id}:0`,
+      end: new TZDate(midnight.getTime(), timeZone),
+    },
+    {
+      ...event,
+      id: `${event.id}:1`,
+      start: new TZDate(midnight.getTime(), timeZone),
+    },
+  ];
 }
 
 export function groupCalendarEventsByDay<T extends CalendarEventInterval>(

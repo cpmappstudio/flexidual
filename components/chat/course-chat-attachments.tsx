@@ -62,7 +62,7 @@ export async function optimizeChatImage(file: File): Promise<File> {
   }
 }
 
-export function useChatFileRequest() {
+export function useChatFileRequest(kind: "course" | "event" = "course") {
   const { getToken } = useAuth();
   return useCallback(
     async (params: Record<string, string>, init?: RequestInit) => {
@@ -75,7 +75,10 @@ export function useChatFileRequest() {
           ".convex.site",
         );
       if (!site) throw new Error("UPLOAD_FAILED");
-      const url = new URL("/course-chat-files", site);
+      const url = new URL(
+        kind === "event" ? "/event-chat-files" : "/course-chat-files",
+        site,
+      );
       url.search = new URLSearchParams(params).toString();
       const response = await fetch(url, {
         ...init,
@@ -91,7 +94,7 @@ export function useChatFileRequest() {
       }
       return response;
     },
-    [getToken],
+    [getToken, kind],
   );
 }
 
@@ -162,16 +165,18 @@ export function ChatFilePreview({
 
 export function ChatAttachment({
   file,
+  kind = "course",
 }: {
   file: {
-    id: Id<"courseChatAttachments">;
+    id: Id<"courseChatAttachments"> | Id<"eventChatAttachments">;
     name: string;
     contentType: string;
     size: number;
   };
+  kind?: "course" | "event";
 }) {
   const t = useTranslations("classroom");
-  const request = useChatFileRequest();
+  const request = useChatFileRequest(kind);
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState<string>();

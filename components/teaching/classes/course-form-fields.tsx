@@ -3,8 +3,8 @@
 import { Dispatch, ReactNode, SetStateAction, useState } from "react";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import type { LiveAccess } from "@/convex/model/liveAccess";
+import { TeacherAssignmentPicker } from "@/components/teacher-assignment-picker";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Command,
   CommandEmpty,
@@ -95,7 +95,6 @@ export function CourseFormFields({
 }: CourseFormFieldsProps) {
   const t = useTranslations();
   const [openCurriculum, setOpenCurriculum] = useState(false);
-  const [openTeacher, setOpenTeacher] = useState(false);
   const availableCurriculums = formData.gradeCode
     ? curriculums?.filter((curriculum) =>
         isCurriculumAvailableForGrade(
@@ -110,15 +109,6 @@ export function CourseFormFields({
   const selectedCurriculumTitle =
     curriculums?.find((curriculum) => curriculum._id === formData.curriculumId)
       ?.title ?? selectedLabels?.curriculum;
-  const selectedTeacher = teachers?.find(
-    (teacher) => teacher._id === formData.teacherId,
-  );
-  const selectedTeacherName =
-    selectedTeacher?.fullName ?? selectedLabels?.teacher;
-  const roleLabels = {
-    teacher: t("class.teacherRole"),
-    principal: t("class.principalRole"),
-  };
 
   return (
     <div className="grid gap-4 py-2">
@@ -293,91 +283,25 @@ export function CourseFormFields({
 
         {isAdmin && (
           <div className="grid gap-2">
-            <Label>
+            <Label id="course-assigned-teacher-label">
               {t("class.assignTeacher")}{" "}
               <span className="text-destructive">*</span>
             </Label>
             <div className="flex gap-2">
-              <Popover open={openTeacher} onOpenChange={setOpenTeacher}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={openTeacher}
-                    className="flex-1 justify-between overflow-hidden bg-sidebar text-left font-normal"
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className="truncate">
-                        {selectedTeacherName || t("class.selectTeacher")}
-                      </span>
-                      {(selectedTeacher?.role === "teacher" ||
-                        selectedTeacher?.role === "principal") && (
-                        <Badge variant="role">
-                          {roleLabels[selectedTeacher.role]}
-                        </Badge>
-                      )}
-                    </span>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0" align="start">
-                  <Command>
-                    <CommandInput
-                      placeholder={t("classDialog.placeholders.searchTeacher")}
-                    />
-                    <CommandList>
-                      <CommandEmpty>
-                        {t("class.noAssignableTeachers")}
-                      </CommandEmpty>
-                      <CommandGroup>
-                        {teachers
-                          ?.slice()
-                          .sort((a, b) => a.fullName.localeCompare(b.fullName))
-                          .map((teacher) => (
-                            <CommandItem
-                              key={teacher._id}
-                              value={`${teacher.fullName} ${teacher.email || ""}`}
-                              onSelect={() => {
-                                setFormData((current) => ({
-                                  ...current,
-                                  teacherId: teacher._id,
-                                }));
-                                setOpenTeacher(false);
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4 shrink-0",
-                                  formData.teacherId === teacher._id
-                                    ? "opacity-100"
-                                    : "opacity-0",
-                                )}
-                              />
-                              <div className="flex min-w-0 flex-1 items-center gap-2">
-                                <div className="flex min-w-0 flex-1 flex-col">
-                                  <span className="truncate font-medium">
-                                    {teacher.fullName}
-                                  </span>
-                                  {teacher.email && (
-                                    <span className="truncate text-[10px] text-muted-foreground">
-                                      {teacher.email}
-                                    </span>
-                                  )}
-                                </div>
-                                {(teacher.role === "teacher" ||
-                                  teacher.role === "principal") && (
-                                  <Badge variant="role">
-                                    {roleLabels[teacher.role]}
-                                  </Badge>
-                                )}
-                              </div>
-                            </CommandItem>
-                          ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <TeacherAssignmentPicker
+                teachers={teachers}
+                value={formData.teacherId ? [formData.teacherId] : []}
+                onValueChange={([teacherId]) =>
+                  setFormData((current) => ({
+                    ...current,
+                    teacherId: teacherId ?? "",
+                  }))
+                }
+                placeholder={t("class.selectTeacher")}
+                fallbackName={selectedLabels?.teacher}
+                labelId="course-assigned-teacher-label"
+                contentClassName="w-[400px]"
+              />
             </div>
             {teachers?.length === 0 && teacherEmptyState}
           </div>

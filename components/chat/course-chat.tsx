@@ -1,6 +1,10 @@
 "use client";
 
-import { CourseChatMessage } from "./course-chat-message";
+import {
+  CourseChatMessage,
+  type ChatMessage,
+  type EventChatMessage,
+} from "./course-chat-message";
 import { CourseChatReferenceInput } from "./course-chat-reference-input";
 import { useDocumentActive } from "@/hooks/use-document-active";
 import {
@@ -24,6 +28,7 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
+  InputGroupInput,
 } from "@/components/ui/input-group";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import {
@@ -76,6 +81,14 @@ interface CourseChatProps {
   className?: string;
 }
 
+type ChatTarget =
+  | {
+      courseId: Id<"classes">;
+      scheduleId?: Id<"classSchedule">;
+      eventId?: never;
+    }
+  | { eventId: Id<"events">; courseId?: never; scheduleId?: never };
+
 const MAX_MESSAGE_GROUP_SIZE = 6;
 
 export function CourseChat({
@@ -103,36 +116,100 @@ export function CourseChat({
   );
 }
 
+export function EventChat({
+  eventId,
+  className,
+}: {
+  eventId: Id<"events">;
+  className?: string;
+}) {
+  return (
+    <CourseChatUploadProvider key={eventId}>
+      <div
+        data-event-chat-id={eventId}
+        className={cn(
+          "flex h-full min-h-0 flex-col overflow-hidden bg-card",
+          className,
+        )}
+      >
+        <EventChatMessages eventId={eventId} />
+        <EventChatComposer
+          eventId={eventId}
+          className="border-t border-primary/20"
+        />
+      </div>
+    </CourseChatUploadProvider>
+  );
+}
+
 export function CourseChatMessages({
   courseId,
   scheduleId,
   className,
 }: CourseChatProps) {
+  return (
+    <ChatMessages
+      courseId={courseId}
+      scheduleId={scheduleId}
+      className={className}
+    />
+  );
+}
+
+export function EventChatMessages({
+  eventId,
+  className,
+}: {
+  eventId: Id<"events">;
+  className?: string;
+}) {
+  return <ChatMessages eventId={eventId} className={className} />;
+}
+
+function ChatMessages({
+  courseId,
+  scheduleId,
+  eventId,
+  className,
+}: ChatTarget & { className?: string }) {
   const t = useTranslations("classroom");
+  const eventT = useTranslations("events");
   const format = useFormatter();
   const [timeZone, setTimeZone] = useState<string>();
   useEffect(() => {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
   }, []);
   const { isAuthenticated } = useConvexAuth();
-  const chatStatus = useQuery(
+  const courseStatus = useQuery(
     api.courseChatMessages.getMyStatus,
-    isAuthenticated
+    isAuthenticated && courseId
       ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
       : "skip",
   );
-  const { results, status, loadMore } = usePaginatedQuery(
+  const eventStatus = useQuery(
+    api.eventChatMessages.getMyStatus,
+    isAuthenticated && eventId ? { eventId } : "skip",
+  );
+  const coursePage = usePaginatedQuery(
     api.courseChatMessages.list,
-    isAuthenticated
+    isAuthenticated && courseId
       ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
       : "skip",
     { initialNumItems: 40 },
   );
+  const eventPage = usePaginatedQuery(
+    api.eventChatMessages.list,
+    isAuthenticated && eventId ? { eventId } : "skip",
+    { initialNumItems: 40 },
+  );
+  const chatStatus = eventId ? eventStatus : courseStatus;
+  const { results, status, loadMore } = eventId ? eventPage : coursePage;
   const messages = useMemo(() => {
     const chronological = [...results].reverse();
     let previousDay: string | undefined;
     let groupSize = 0;
     return chronological.map((message, index) => {
+      const previous = chronological[index - 1];
       const day = timeZone
         ? format.dateTime(message._creationTime, {
             timeZone,
@@ -145,9 +222,9 @@ export function CourseChatMessages({
       const startsGroup =
         index === 0 ||
         startsDay ||
-        Boolean(message.event) ||
-        Boolean(chronological[index - 1]?.event) ||
-        message.authorId !== chronological[index - 1].authorId ||
+        ("event" in message && Boolean(message.event)) ||
+        (previous && "event" in previous && Boolean(previous.event)) ||
+        message.authorId !== previous?.authorId ||
         groupSize === MAX_MESSAGE_GROUP_SIZE;
       groupSize = startsGroup ? 1 : groupSize + 1;
       previousDay = day;
@@ -158,6 +235,7 @@ export function CourseChatMessages({
   return (
     <div
       data-course-chat-id={courseId}
+      data-event-chat-id={eventId}
       className={cn(
         "flex min-h-0 flex-1 flex-col overflow-hidden bg-background",
         className,
@@ -165,7 +243,12 @@ export function CourseChatMessages({
     >
       <MessageScrollerProvider autoScroll defaultScrollPosition="end">
         <ChatReadReceipt
-          messageId={results[0]?._id}
+          messageId={
+            eventId
+              ? (results[0]?._id as Id<"eventChatMessages"> | undefined)
+              : (results[0]?._id as Id<"courseChatMessages"> | undefined)
+          }
+          kind={eventId ? "event" : "course"}
           enabled={chatStatus !== undefined && chatStatus.readOnly !== true}
         />
         <MessageScroller className="min-h-0 flex-1">
@@ -174,7 +257,9 @@ export function CourseChatMessages({
               <MessageScrollerItem messageId="chat-visibility-note">
                 <Marker variant="separator">
                   <MarkerContent className="text-xs leading-relaxed sm:text-sm">
-                    {t("classChatDescription")}
+                    {eventId
+                      ? eventT("chatDescription")
+                      : t("classChatDescription")}
                   </MarkerContent>
                 </Marker>
               </MessageScrollerItem>
@@ -233,7 +318,7 @@ export function CourseChatMessages({
                       className={startsGroup && !startsDay ? "pt-3" : undefined}
                     >
                       <CourseChatMessage
-                        message={message}
+                        message={message as ChatMessage | EventChatMessage}
                         startsGroup={startsGroup}
                         timeZone={timeZone}
                         canPin={chatStatus?.canPin === true}
@@ -263,21 +348,38 @@ export function CourseChatMessages({
 function ChatReadReceipt({
   messageId,
   enabled,
+  kind,
 }: {
-  messageId?: Id<"courseChatMessages">;
+  messageId?: Id<"courseChatMessages"> | Id<"eventChatMessages">;
   enabled: boolean;
+  kind: "course" | "event";
 }) {
   const { visibleMessageIds } = useMessageScrollerVisibility();
-  const markRead = useMutation(api.courseChatNotifications.markRead);
+  const markCourseRead = useMutation(api.courseChatNotifications.markRead);
+  const markEventRead = useMutation(api.eventChatNotifications.markRead);
   const isFocused = useDocumentActive();
   const isVisible = Boolean(messageId && visibleMessageIds.includes(messageId));
   useEffect(() => {
     if (enabled && messageId && isVisible && isFocused) {
-      void markRead({ messageId }).catch((error) =>
+      const receipt =
+        kind === "event"
+          ? markEventRead({ messageId: messageId as Id<"eventChatMessages"> })
+          : markCourseRead({
+              messageId: messageId as Id<"courseChatMessages">,
+            });
+      void receipt.catch((error) =>
         console.error("Chat read receipt failed", error),
       );
     }
-  }, [enabled, messageId, isVisible, isFocused, markRead]);
+  }, [
+    enabled,
+    messageId,
+    isVisible,
+    isFocused,
+    kind,
+    markCourseRead,
+    markEventRead,
+  ]);
   return null;
 }
 
@@ -300,27 +402,37 @@ export function CourseChatComposer({
   );
 }
 
+export function EventChatComposer({
+  eventId,
+  className,
+}: {
+  eventId: Id<"events">;
+  className?: string;
+}) {
+  return <ChatComposer key={eventId} eventId={eventId} className={className} />;
+}
+
 function ChatComposer({
   courseId,
   scheduleId,
+  eventId,
   className,
-}: {
-  courseId: Id<"classes">;
-  scheduleId?: Id<"classSchedule">;
-  className?: string;
-}) {
+}: ChatTarget & { className?: string }) {
   const t = useTranslations("classroom");
   const { isAuthenticated } = useConvexAuth();
   const [body, setBody] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [files, setFiles] = useState<
-    { file: File; id?: Id<"courseChatAttachments"> }[]
+    {
+      file: File;
+      id?: Id<"courseChatAttachments"> | Id<"eventChatAttachments">;
+    }[]
   >([]);
   const { setPending } = usePendingChatUpload();
   const inputRef = useRef<HTMLInputElement>(null);
   const sendingRef = useRef(false);
   const controllerRef = useRef<AbortController | null>(null);
-  const requestFile = useChatFileRequest();
+  const requestFile = useChatFileRequest(eventId ? "event" : "course");
   useEffect(
     () => () => {
       controllerRef.current?.abort();
@@ -328,13 +440,19 @@ function ChatComposer({
     },
     [setPending],
   );
-  const sendMessage = useMutation(api.courseChatMessages.send);
-  const chatStatus = useQuery(
+  const sendCourseMessage = useMutation(api.courseChatMessages.send);
+  const sendEventMessage = useMutation(api.eventChatMessages.send);
+  const courseStatus = useQuery(
     api.courseChatMessages.getMyStatus,
-    isAuthenticated
+    isAuthenticated && courseId
       ? { classId: courseId, ...(scheduleId ? { scheduleId } : {}) }
       : "skip",
   );
+  const eventStatus = useQuery(
+    api.eventChatMessages.getMyStatus,
+    isAuthenticated && eventId ? { eventId } : "skip",
+  );
+  const chatStatus = eventId ? eventStatus : courseStatus;
   const isMuted = chatStatus?.isMuted ?? false;
   const isArchived = chatStatus?.archived ?? false;
   const canAttach = chatStatus?.canAttach === true;
@@ -370,7 +488,7 @@ function ChatComposer({
           const file = await optimizeChatImage(entry.file);
           if (controller.signal.aborted) return;
           const response = await requestFile(
-            { classId: courseId },
+            eventId ? { eventId } : { classId: courseId! },
             {
               method: "POST",
               signal: controller.signal,
@@ -392,7 +510,9 @@ function ChatComposer({
             throw new Error("UPLOAD_FAILED");
           uploaded[index] = {
             file,
-            id: result.id as Id<"courseChatAttachments">,
+            id: result.id as
+              | Id<"courseChatAttachments">
+              | Id<"eventChatAttachments">,
           };
           setFiles([...uploaded]);
           setPending(
@@ -408,14 +528,31 @@ function ChatComposer({
       }
       if (controller.signal.aborted) return;
       setPending((current) => current && { ...current, cancel: null });
-      await sendMessage({
-        classId: courseId,
-        ...(scheduleId ? { scheduleId } : {}),
-        body: message,
-        ...(uploaded.length
-          ? { attachmentIds: uploaded.map((entry) => entry.id!) }
-          : {}),
-      });
+      if (eventId)
+        await sendEventMessage({
+          eventId,
+          body: message,
+          ...(uploaded.length
+            ? {
+                attachmentIds: uploaded.map(
+                  (entry) => entry.id! as Id<"eventChatAttachments">,
+                ),
+              }
+            : {}),
+        });
+      else
+        await sendCourseMessage({
+          classId: courseId!,
+          ...(scheduleId ? { scheduleId } : {}),
+          body: message,
+          ...(uploaded.length
+            ? {
+                attachmentIds: uploaded.map(
+                  (entry) => entry.id! as Id<"courseChatAttachments">,
+                ),
+              }
+            : {}),
+        });
       setBody("");
       setFiles([]);
     } catch (error) {
@@ -516,19 +653,35 @@ function ChatComposer({
             </DropdownMenu>
           )}
           <InputGroup className="h-11 min-w-0 flex-1 overflow-hidden bg-background sm:h-12">
-            <CourseChatReferenceInput
-              courseId={courseId}
-              value={isSending && files.length ? "" : body}
-              onChange={setBody}
-              disabled={isComposerDisabled}
-              placeholder={
-                isArchived
-                  ? t("archivedChat")
-                  : isMuted
-                    ? t("chatMuted")
-                    : t("chatPlaceholder")
-              }
-            />
+            {eventId ? (
+              <InputGroupInput
+                value={isSending && files.length ? "" : body}
+                onChange={(change) => setBody(change.target.value)}
+                disabled={isComposerDisabled}
+                maxLength={2000}
+                placeholder={
+                  isArchived
+                    ? t("archivedChat")
+                    : isMuted
+                      ? t("chatMuted")
+                      : t("chatPlaceholder")
+                }
+              />
+            ) : (
+              <CourseChatReferenceInput
+                courseId={courseId!}
+                value={isSending && files.length ? "" : body}
+                onChange={setBody}
+                disabled={isComposerDisabled}
+                placeholder={
+                  isArchived
+                    ? t("archivedChat")
+                    : isMuted
+                      ? t("chatMuted")
+                      : t("chatPlaceholder")
+                }
+              />
+            )}
             <InputGroupAddon
               align="inline-end"
               className="h-full shrink-0 py-0 pr-0 has-[>button]:mr-0"

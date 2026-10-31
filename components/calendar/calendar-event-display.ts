@@ -1,4 +1,8 @@
-import { CalendarEvent } from "./calendar-types";
+import {
+  CalendarEvent,
+  ClassCalendarEvent,
+  InstitutionalCalendarEvent,
+} from "./calendar-types";
 
 export function isCalendarEventPast(
   event: Pick<CalendarEvent, "end" | "isLive">,
@@ -8,7 +12,7 @@ export function isCalendarEventPast(
 }
 
 export function getCalendarEventIndicators(
-  event: Pick<CalendarEvent, "hasRecording" | "isLive">,
+  event: { hasRecording?: boolean; isLive: boolean },
   isPast: boolean,
 ) {
   const showRecording = isPast && Boolean(event.hasRecording) && !event.isLive;
@@ -20,18 +24,34 @@ export function getCalendarEventIndicators(
 }
 
 export function getCalendarEventDisplay(
-  event: Pick<
-    CalendarEvent,
-    | "className"
-    | "curriculumTitle"
-    | "title"
-    | "sessionType"
-    | "teacherName"
-    | "gradeLabel"
-    | "gradeCode"
-  >,
+  event:
+    | (Pick<
+        ClassCalendarEvent,
+        | "className"
+        | "curriculumTitle"
+        | "title"
+        | "sessionType"
+        | "teacherName"
+        | "gradeLabel"
+        | "gradeCode"
+      > & { kind?: "class" })
+    | Pick<
+        InstitutionalCalendarEvent,
+        "kind" | "title" | "responsibleName" | "gradeLabel"
+      >,
   options?: { showGrade?: boolean; includeGradeInPrimary?: boolean },
 ) {
+  if (event.kind === "event") {
+    const gradeLabel = event.gradeLabel ?? null;
+    return {
+      primaryLabel:
+        options?.showGrade && options.includeGradeInPrimary && gradeLabel
+          ? `${event.title} (${gradeLabel})`
+          : event.title,
+      secondaryLabel: event.responsibleName,
+      gradeLabel: options?.showGrade ? gradeLabel : null,
+    };
+  }
   const platformLabel =
     event.sessionType === "ignitia"
       ? "Ignitia"
