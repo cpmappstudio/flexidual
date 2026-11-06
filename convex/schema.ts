@@ -53,6 +53,12 @@ export default defineSchema({
     phase: v.number(),
     cursor: v.union(v.string(), v.null()),
   }).index("by_key", ["key"]),
+  // Operational cursor changes must not invalidate readers of the ready flag.
+  dashboardSummaryBackfill: defineTable({
+    key: v.literal("v1"),
+    phase: v.number(),
+    cursor: v.union(v.string(), v.null()),
+  }).index("by_key", ["key"]),
   // Only provider backoff metadata. Existing connections and reports are unchanged.
   abekaProviderBackoff: defineTable({ until: v.number() }),
   abekaCourses: defineTable(abekaCourseFields).index(

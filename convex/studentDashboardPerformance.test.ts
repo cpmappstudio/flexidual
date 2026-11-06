@@ -408,6 +408,80 @@ test("summary backfill is resumable, preserves totals and removes historical das
   ).rejects.toThrow("PERMISSION_DENIED");
 });
 
+test("backfill cursor updates do not change the readiness document observed by dashboards", async () => {
+  const { t, ids, student } = await setup();
+  aggregate.register(t, "dashboardAggregate");
+  for (let i = 0; i < 25; i++)
+    await t.run((ctx) =>
+      ctx.db.insert("classSchedule", {
+        classId: ids.course,
+        scheduledStart: FROM,
+        scheduledEnd: NOW,
+        roomName: `readiness-${i}`,
+        status: "scheduled",
+        createdAt: FROM,
+        createdBy: ids.teacher,
+      }),
+    );
+  const canonical = await student.query(api.student.getStudentDashboardStats, {});
+  await t.mutation(internal.dashboardSummaries.backfill, {});
+  const readState = () =>
+    t.run((ctx) => ctx.db.query("dashboardSummaryState").unique());
+  const initialState = await readState();
+  expect(initialState?.ready).toBe(false);
+  let result = await t.mutation(internal.dashboardSummaries.backfill, {});
+  expect(await readState()).toEqual(initialState);
+  for (let i = 0; i < 100 && !result.done; i++) {
+    result = await t.mutation(internal.dashboardSummaries.backfill, {});
+    if (!result.done) expect(await readState()).toEqual(initialState);
+  }
+  expect(result.done).toBe(true);
+  expect((await readState())?.ready).toBe(true);
+  const summarized = await student.query(api.student.getStudentDashboardStats, {
+    summaryOnly: true,
+  });
+  expect(summarized!.overall).toEqual(canonical!.overall);
+});
+
+test("backfill resumes an earlier backend cursor without resetting sources or repeating a completed initialization", async () => {
+  const { t, student } = await setup();
+  aggregate.register(t, "dashboardAggregate");
+  const canonical = await student.query(api.student.getStudentDashboardStats, {});
+  await t.mutation(internal.dashboardSummaries.backfill, {});
+  const legacyState = await t.run(async (ctx) => {
+    const state = (await ctx.db.query("dashboardSummaryState").unique())!;
+    const progress = (await ctx.db.query("dashboardSummaryBackfill").unique())!;
+    await ctx.db.patch("dashboardSummaryState", state._id, {
+      phase: progress.phase,
+      cursor: progress.cursor,
+    });
+    await ctx.db.delete("dashboardSummaryBackfill", progress._id);
+    return ctx.db.get("dashboardSummaryState", state._id);
+  });
+  let result = await t.mutation(internal.dashboardSummaries.backfill, {});
+  expect(
+    await t.run((ctx) => ctx.db.query("dashboardSummaryState").unique()),
+  ).toEqual(legacyState);
+  const resumed = await t.run((ctx) =>
+    ctx.db.query("dashboardSummaryBackfill").unique(),
+  );
+  expect(resumed?.phase).toBe(result.phase);
+  expect(resumed?.cursor).not.toBe(legacyState?.cursor);
+  for (let i = 0; i < 100 && !result.done; i++)
+    result = await t.mutation(internal.dashboardSummaries.backfill, {});
+  expect(result.done).toBe(true);
+  expect(
+    (await student.query(api.student.getStudentDashboardStats, { summaryOnly: true }))!
+      .overall,
+  ).toEqual(canonical!.overall);
+  const repeated = await t.mutation(async (ctx) => {
+    const final = await ctx.runMutation(internal.dashboardSummaries.backfill, {});
+    return { ...final, metrics: await ctx.meta.getTransactionMetrics() };
+  });
+  expect(repeated.done).toBe(true);
+  expect(repeated.metrics.documentsWritten.used).toBe(0);
+});
+
 test("attendance backfill bounds indirect schedule reads and preserves native resume cursors", async () => {
   const { t, ids, student } = await setup();
   aggregate.register(t, "dashboardAggregate");
@@ -440,7 +514,7 @@ test("attendance backfill bounds indirect schedule reads and preserves native re
   let maxRead = 0;
   for (let i = 0; i < 100 && !done; i++) {
     const state = await t.run((ctx) =>
-      ctx.db.query("dashboardSummaryState").unique(),
+      ctx.db.query("dashboardSummaryBackfill").unique(),
     );
     const batch = await t.mutation(async (ctx) => {
       const result = await ctx.runMutation(

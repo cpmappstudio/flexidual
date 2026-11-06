@@ -28,33 +28,46 @@ export const backfill = internalMutation({
       });
       state = (await ctx.db.get("dashboardSummaryState", id))!;
     }
+    let progress = await ctx.db
+      .query("dashboardSummaryBackfill")
+      .withIndex("by_key", (q) => q.eq("key", "v1"))
+      .unique();
+    if (!progress) {
+      // Resume the cursor of an initialization started by the earlier backend.
+      const id = await ctx.db.insert("dashboardSummaryBackfill", {
+        key: "v1",
+        phase: state.phase,
+        cursor: state.cursor,
+      });
+      progress = (await ctx.db.get("dashboardSummaryBackfill", id))!;
+    }
     // Page byte limits cover source rows, not documents hydrated afterwards.
     // Attendance loads a schedule; taught sources load a lesson + class and may
     // load a report. Each document can be 1 MiB: leave transaction headroom for
     // aggregate maintenance, rather than applying the 20-row batch everywhere.
-    const batchSize = state.phase === 1 ? 4 : state.phase >= 3 ? 3 : 20;
+    const batchSize = progress.phase === 1 ? 4 : progress.phase >= 3 ? 3 : 20;
     const options = {
-      cursor: state.cursor,
+      cursor: progress.cursor,
       numItems: batchSize,
       maximumRowsRead: batchSize,
       maximumBytesRead: 500_000,
     };
     let isDone: boolean, continueCursor: string;
-    if (state.phase === 0) {
+    if (progress.phase === 0) {
       const page = await ctx.db.query("classSchedule").paginate(options);
       for (const row of page.page) await syncDashboardSchedule(ctx, row);
       ({ isDone, continueCursor } = page);
-    } else if (state.phase === 1) {
+    } else if (progress.phase === 1) {
       const page = await ctx.db
         .query("studentAttendanceRecords")
         .paginate(options);
       for (const row of page.page) await syncDashboardAttendance(ctx, row);
       ({ isDone, continueCursor } = page);
-    } else if (state.phase === 2) {
+    } else if (progress.phase === 2) {
       const page = await ctx.db.query("lessons").paginate(options);
       for (const row of page.page) await syncDashboardLesson(ctx, row);
       ({ isDone, continueCursor } = page);
-    } else if (state.phase === 3) {
+    } else if (progress.phase === 3) {
       const page = await ctx.db
         .query("classSessionReportLessons")
         .paginate(options);
@@ -69,13 +82,18 @@ export const backfill = internalMutation({
         await backfillDashboardTaughtLesson(ctx, row);
       ({ isDone, continueCursor } = page);
     }
-    const done = state.phase === 4 && isDone;
-    const phase = isDone ? state.phase + 1 : state.phase;
-    await ctx.db.patch("dashboardSummaryState", state._id, {
+    const done = progress.phase === 4 && isDone;
+    const phase = isDone ? progress.phase + 1 : progress.phase;
+    await ctx.db.patch("dashboardSummaryBackfill", progress._id, {
       phase,
       cursor: isDone ? null : continueCursor,
-      ready: done,
     });
+    if (done)
+      await ctx.db.patch("dashboardSummaryState", state._id, {
+        phase,
+        cursor: null,
+        ready: true,
+      });
     return { done, phase };
   },
 });

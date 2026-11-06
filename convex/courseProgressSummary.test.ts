@@ -260,7 +260,7 @@ test.each(["live", "prerecorded"] as const)(
     let insertedDuringBackfill = false;
     for (let i = 0; i < 100 && !done; i++) {
       const state = await f.t.run((ctx) =>
-        ctx.db.query("dashboardSummaryState").unique(),
+        ctx.db.query("dashboardSummaryBackfill").unique(),
       );
       if (state?.phase === targetPhase && sourceBatches === 0) {
         const factCount = () =>
@@ -278,7 +278,7 @@ test.each(["live", "prerecorded"] as const)(
         ).rejects.toThrow("test rollback before cursor commit");
         expect(
           await f.t.run((ctx) =>
-            ctx.db.query("dashboardSummaryState").unique(),
+            ctx.db.query("dashboardSummaryBackfill").unique(),
           ),
         ).toEqual(state);
         expect(await factCount()).toBe(beforeCount);
@@ -292,9 +292,13 @@ test.each(["live", "prerecorded"] as const)(
       });
       maxRead = Math.max(maxRead, batch.metrics.bytesRead.used);
       const after = await f.t.run((ctx) =>
-        ctx.db.query("dashboardSummaryState").unique(),
+        ctx.db.query("dashboardSummaryBackfill").unique(),
       );
-      expect(after?.ready).toBe(batch.done);
+      expect(
+        await f.t.run((ctx) =>
+          ctx.db.query("dashboardSummaryState").unique(),
+        ),
+      ).toMatchObject({ ready: batch.done });
       if (state?.phase === targetPhase) {
         sourceBatches++;
         // Every partial page commits a native cursor, including after resuming
