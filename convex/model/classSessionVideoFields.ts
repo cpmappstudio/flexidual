@@ -9,6 +9,8 @@ export const classSessionVideoFields = v.object({
   contentType: v.string(),
   size: v.number(),
   durationMs: v.number(),
+  verifiedDurationMs: v.optional(v.number()),
+  progressDurationUnavailable: v.optional(v.boolean()),
   state: v.union(
     v.literal("uploading"),
     v.literal("ready"),

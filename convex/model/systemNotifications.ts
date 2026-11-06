@@ -76,6 +76,21 @@ type VisibleNotification = Doc<"systemNotifications"> & {
   taskTimeZone?: string;
 };
 
+// Includes independent task/event notices, not only human chat singletons.
+export function isChatBadgeNotification(
+  notification: Pick<
+    SystemNotificationInput,
+    "kind" | "classId" | "broadcastId" | "messageId"
+  >,
+) {
+  return Boolean(
+    (notification.classId || notification.broadcastId) &&
+      (notification.kind === "course_chat" ||
+        notification.kind === "broadcast_chat" ||
+        notification.messageId),
+  );
+}
+
 // Re-check course access on reads as enrollment/assignments can change independently.
 async function getVisibleNotification(
   ctx: QueryCtx,
@@ -268,6 +283,7 @@ export async function createSystemNotification(
   const { createdAt = Date.now(), ...notification } = input;
   return await ctx.db.insert("systemNotifications", {
     ...notification,
+    chatBadgeRelevant: isChatBadgeNotification(notification),
     createdAt,
   });
 }

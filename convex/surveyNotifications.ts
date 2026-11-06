@@ -5,14 +5,8 @@ import {
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import {
-  internalAction,
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-  type QueryCtx,
-} from "./_generated/server";
+import { internalAction, internalQuery, query, type QueryCtx } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import { surveyCampaignValidator } from "./schema";
 import { getCurrentUserOrThrow } from "./users";
 import { createSystemNotification } from "./model/systemNotifications";

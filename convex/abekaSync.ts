@@ -5,12 +5,8 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { cleanup, vWorkflowId, vResultValidator } from "@convex-dev/workflow";
-import {
-  internalMutation,
-  internalQuery,
-  type QueryCtx,
-  type MutationCtx,
-} from "./_generated/server";
+import { internalQuery, type QueryCtx, type MutationCtx } from "./_generated/server";
+import { internalMutation } from "./functions";
 import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -33,6 +29,10 @@ import { MAX_SUBJECTS } from "../lib/abeka/report";
 import { dateInTimeZone } from "../lib/time-zone";
 import { abekaProgressPercentage } from "../lib/abeka/progress-percentage";
 import { saveAbekaProgressHistory } from "./model/abekaProgressHistory";
+import {
+  deleteAbekaProgressSummary,
+  saveAbekaProgressSummary,
+} from "./model/abekaProgressSummary";
 
 const providerLimiter = new RateLimiter(components.rateLimiter, {
   abekaOutbound: {
@@ -422,6 +422,7 @@ export const saveProgress = internalMutation({
     const reportId =
       existing?._id ?? (await ctx.db.insert("abekaProgress", fields));
     if (existing) await ctx.db.patch(existing._id, fields);
+    await saveAbekaProgressSummary(ctx, { ...fields, _id: reportId });
     await saveAbekaProgressHistory(ctx, {
       reportId,
       date: dateInTimeZone(fields.syncedAt, state.school.timeZone ?? "UTC"),
@@ -498,6 +499,7 @@ async function cleanStudentProgress(
       (writtenBy !== undefined && writtenBy < run._creationTime)
     ) {
       await ctx.db.delete(report._id);
+      await deleteAbekaProgressSummary(ctx, report);
       await ctx.scheduler.runAfter(0, internal.abekaSync.clearProgressHistory, {
         reportId: report._id,
       });
@@ -515,6 +517,29 @@ export const cleanupStudentProgress = internalMutation({
   args: progressCleanupArgs,
   returns: v.null(),
   handler: cleanStudentProgress,
+});
+
+// Deliberately not scheduled: an operator explicitly advances each bounded batch.
+// Existing dashboards retain their legacy fallback until their summary exists.
+export const backfillProgressSummaries = internalMutation({
+  args: { cursor: v.union(v.string(), v.null()) },
+  returns: v.object({
+    continueCursor: v.string(),
+    isDone: v.boolean(),
+    processed: v.number(),
+  }),
+  handler: async (ctx, { cursor }) => {
+    const page = await ctx.db
+      .query("abekaProgress")
+      .withIndex("by_student_subject")
+      .paginate({ cursor, numItems: 10, maximumBytesRead: 1_000_000 });
+    for (const report of page.page) await saveAbekaProgressSummary(ctx, report);
+    return {
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+      processed: page.page.length,
+    };
+  },
 });
 
 export const clearProgressHistory = internalMutation({

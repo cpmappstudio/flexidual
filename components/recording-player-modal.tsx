@@ -26,6 +26,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { TZDate } from "@date-fns/tz";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useVideoViewingProgress } from "@/hooks/use-video-viewing-progress";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -82,12 +83,14 @@ function VideoPlayer({
   onReady,
   onMediaError,
   onSeeking,
+  playbackReady = true,
 }: {
   url: string;
   videoRef?: RefObject<HTMLVideoElement | null>;
   onReady?: (video: HTMLVideoElement) => void;
   onMediaError?: () => void;
   onSeeking?: () => void;
+  playbackReady?: boolean;
 }) {
   const t = useTranslations();
   const [isLoading, setIsLoading] = useState(true);
@@ -100,7 +103,7 @@ function VideoPlayer({
         className="relative mx-auto max-h-[calc(100dvh-15rem)] w-full overflow-hidden rounded-xl bg-inverse"
         style={{ aspectRatio: "16/9" }}
       >
-        {isLoading && !hasError && (
+        {(isLoading || !playbackReady) && !hasError && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-inverse/80">
             <div className="flex flex-col items-center gap-3 text-inverse-foreground/70">
               <PlayCircle className="h-12 w-12 animate-pulse" />
@@ -124,7 +127,7 @@ function VideoPlayer({
         <video
           ref={videoRef}
           src={url}
-          controls
+          controls={playbackReady}
           playsInline
           preload="metadata"
           className={cn(
@@ -159,10 +162,26 @@ function PrivateVideoPlayer({ id }: { id: Id<"classSessionVideos"> }) {
     url: string;
     expiresAt: number;
     version: number;
+    trackable?: boolean;
   } | null>(null);
   const [failedScope, setFailedScope] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const resume = useRef<{ time: number; playing: boolean } | null>(null);
+  const [observed, setObserved] = useState<{
+    scope: string;
+    sourceKey: string;
+    video: HTMLVideoElement;
+    resumeFromProgress: boolean;
+  } | null>(null);
+  const { pending: progressPending, ready: progressReady } =
+    useVideoViewingProgress(
+      id,
+      observed?.scope === scope ? observed.video : null,
+      source?.scope === scope && source.trackable === true,
+      `${userId}:${sessionId}`,
+      userId ?? "",
+      observed?.resumeFromProgress ?? false,
+    );
 
   useEffect(() => {
     if (!userId || !sessionId) return;
@@ -206,9 +225,21 @@ function PrivateVideoPlayer({ id }: { id: Id<"classSessionVideos"> }) {
           key={`${current.url}:${current.version}`}
           url={current.url}
           videoRef={videoRef}
+          playbackReady={
+            !current.trackable ||
+            (observed?.scope === scope &&
+              observed.sourceKey === `${current.url}:${current.version}` &&
+              progressReady)
+          }
           onReady={(video) => {
             const position = resume.current;
             resume.current = null;
+            setObserved({
+              scope,
+              sourceKey: `${current.url}:${current.version}`,
+              video,
+              resumeFromProgress: position === null,
+            });
             if (!position) return;
             video.currentTime = position.time;
             if (position.playing) void video.play().catch(() => {});
@@ -221,6 +252,11 @@ function PrivateVideoPlayer({ id }: { id: Id<"classSessionVideos"> }) {
         />
       ) : (
         !failed && <Skeleton className="aspect-video w-full" />
+      )}
+      {progressPending && current?.trackable && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t("recordings.progressPending")}
+        </p>
       )}
       {failed && (
         <div

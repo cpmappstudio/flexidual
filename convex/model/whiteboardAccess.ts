@@ -93,4 +93,5 @@ export async function requireLiveWhiteboardReader(
     !(await canReadWhiteboardRoom(ctx, user._id, room))
   )
     throw new ConvexError("PERMISSION_DENIED");
+  return room;
 }

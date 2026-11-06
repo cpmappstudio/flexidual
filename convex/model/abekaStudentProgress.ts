@@ -1,14 +1,18 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { abekaProgressPercentage } from "../../lib/abeka/progress-percentage";
+import { summarizeAbekaProgress } from "./abekaProgressSummary";
 
 // Only call with the enrolled classes already authorized by the student dashboard.
-export async function getAbekaStudentCourseReports(
+async function getAbekaStudentCourseData<T>(
   ctx: QueryCtx,
   userId: Id<"users">,
   classes: Doc<"classes">[],
+  readProgress: (
+    studentId: Id<"abekaStudents">,
+    subjectId: string,
+  ) => Promise<T | null>,
 ) {
-  const result = new Map<Id<"classes">, Doc<"abekaProgress">>();
+  const result = new Map<Id<"classes">, T>();
   const campusIds = [
     ...new Set(classes.flatMap((c) => (c.campusId ? [c.campusId] : []))),
   ];
@@ -34,10 +38,7 @@ export async function getAbekaStudentCourseReports(
         .unique();
       if (!student || student.rosterRunId !== connection.rosterRunId) return;
       const byCurriculum = connection.curriculumLinksMigratedAt !== undefined;
-      const reportCache = new Map<
-        string,
-        Promise<Doc<"abekaProgress"> | null>
-      >();
+      const reportCache = new Map<string, Promise<T | null>>();
       async function readReport(c: Doc<"classes">) {
         const link = byCurriculum
           ? await ctx.db
@@ -62,13 +63,7 @@ export async function getAbekaStudentCourseReports(
         const course = await ctx.db.get("abekaCourses", link.courseId);
         if (!course?.available || course.connectionId !== connection!._id)
           return null;
-        const progress = await ctx.db
-          .query("abekaProgress")
-          .withIndex("by_student_subject", (q) =>
-            q.eq("studentId", student!._id).eq("subjectId", course.subjectId),
-          )
-          .unique();
-        return progress?.lessons.length ? progress : null;
+        return readProgress(student!._id, course.subjectId);
       }
       await Promise.all(
         classes
@@ -91,25 +86,58 @@ export async function getAbekaStudentCourseReports(
   return result;
 }
 
+async function readAbekaProgressReport(
+  ctx: QueryCtx,
+  studentId: Id<"abekaStudents">,
+  subjectId: string,
+) {
+  const report = await ctx.db
+    .query("abekaProgress")
+    .withIndex("by_student_subject", (q) =>
+      q.eq("studentId", studentId).eq("subjectId", subjectId),
+    )
+    .unique();
+  return report?.lessons.length ? report : null;
+}
+
+export async function getAbekaStudentCourseReports(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  classes: Doc<"classes">[],
+) {
+  return getAbekaStudentCourseData(
+    ctx,
+    userId,
+    classes,
+    (studentId, subjectId) =>
+      readAbekaProgressReport(ctx, studentId, subjectId),
+  );
+}
+
 export async function getAbekaStudentCourseProgress(
   ctx: QueryCtx,
   userId: Id<"users">,
   classes: Doc<"classes">[],
 ) {
-  const reports = await getAbekaStudentCourseReports(ctx, userId, classes);
-  return new Map(
-    [...reports].map(([classId, report]) => {
-      const total = report.lessons.length;
-      const percentage = abekaProgressPercentage(report.lessons);
-      return [
-        classId,
-        {
-          completed: report.lessons.filter((lesson) => lesson.completed).length,
-          total,
-          percentage: Math.round(percentage * 100) / 100,
-          syncedAt: report.syncedAt,
-        },
-      ];
-    }),
+  return getAbekaStudentCourseData(
+    ctx,
+    userId,
+    classes,
+    async (studentId, subjectId) => {
+      const summary = await ctx.db
+        .query("abekaProgressSummaries")
+        .withIndex("by_studentId_and_subjectId", (q) =>
+          q.eq("studentId", studentId).eq("subjectId", subjectId),
+        )
+        .unique();
+      if (summary) {
+        if (!summary.total) return null;
+        const { completed, total, percentage, syncedAt } = summary;
+        return { completed, total, percentage, syncedAt };
+      }
+      // Additive rollout: never replace legacy reports with missing/zero progress.
+      const report = await readAbekaProgressReport(ctx, studentId, subjectId);
+      return report ? summarizeAbekaProgress(report) : null;
+    },
   );
 }

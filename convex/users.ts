@@ -1,13 +1,6 @@
 import { ConvexError, v } from "convex/values";
-import {
-  query,
-  internalMutation,
-  QueryCtx,
-  MutationCtx,
-  action,
-  internalQuery,
-  internalAction,
-} from "./_generated/server";
+import { query, QueryCtx, MutationCtx, action, internalQuery, internalAction } from "./_generated/server";
+import { internalMutation } from "./functions";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { createClerkClient } from "@clerk/backend";

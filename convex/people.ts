@@ -3,12 +3,8 @@ import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
-import {
-  internalMutation,
-  mutation,
-  query,
-  type QueryCtx,
-} from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {

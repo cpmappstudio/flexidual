@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import type { ChatSource } from "./chatSource";
+import { isChatBadgeNotification } from "./systemNotifications";
 
 export function chatNotificationKey(source: ChatSource, userId: Id<"users">) {
   return `${source.kind === "course" ? "course_chat" : "broadcast_chat"}:${source.data._id}:${userId}`;
@@ -62,6 +63,11 @@ export async function deliverChatNotification(
     createdAt: Math.max(existing?.createdAt ?? 0, message._creationTime),
     readAt: undefined,
   };
-  if (existing) await ctx.db.patch("systemNotifications", existing._id, fields);
-  else await ctx.db.insert("systemNotifications", fields);
+  const indexedFields = {
+    ...fields,
+    chatBadgeRelevant: isChatBadgeNotification(fields),
+  };
+  if (existing)
+    await ctx.db.patch("systemNotifications", existing._id, indexedFields);
+  else await ctx.db.insert("systemNotifications", indexedFields);
 }

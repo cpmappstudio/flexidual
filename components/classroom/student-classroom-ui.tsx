@@ -181,18 +181,17 @@ export function StudentClassroomUI({
     extensionContextResult,
     roomName,
   );
-  const classLeadership = useQuery(
-    api.schedule.getSessionLeadership,
-    eventId ? "skip" : { roomName, now: getClassroomQueryNow(sessionNow) },
+  const classLeader = useQuery(
+    api.schedule.getSessionLeader,
+    eventId ? "skip" : { roomName },
   );
-  const eventLeadership = useQuery(
-    api.eventRoom.getSessionLeadership,
-    eventId ? { roomName, now: getClassroomQueryNow(sessionNow) } : "skip",
+  const eventLeader = useQuery(
+    api.eventRoom.getSessionLeader,
+    eventId ? { roomName } : "skip",
   );
-  const sessionLeadershipResult = eventId ? eventLeadership : classLeadership;
-  const sessionLeadership = useRetainedQueryResult(
-    sessionLeadershipResult,
-    roomName,
+  const sessionLeader = useRetainedQueryResult(
+    eventId ? eventLeader : classLeader,
+    `${eventId ? "event" : "class"}:${roomName}`,
   );
   const hasActivePreview =
     uiPreviewEnabled && (uiPreviewState !== "none" || showPreviewParticipants);
@@ -262,14 +261,13 @@ export function StudentClassroomUI({
   const { localParticipant } = useLocalParticipant();
 
   const teacher =
-    (sessionLeadership?.leader
+    (sessionLeader
       ? participants.find(
           (participant) =>
-            participant.identity ===
-            sessionLeadership.leader?.participantIdentity,
+            participant.identity === sessionLeader.participantIdentity,
         )
       : undefined) ||
-    (!sessionLeadership?.leader
+    (!sessionLeader
       ? participants.find((p) => getRole(p) === "teacher")
       : undefined) ||
     undefined;

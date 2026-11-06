@@ -1,7 +1,8 @@
 import { HOUR } from "@convex-dev/rate-limiter";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import {
   canSubmitCourseTask,
   getCourseEndAt,

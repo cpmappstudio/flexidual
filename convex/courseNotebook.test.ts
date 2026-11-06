@@ -116,6 +116,86 @@ test("an adopted page keeps its original draft identity, drawings and images whe
   ).toBe(a.roomName);
 });
 
+test("presented bucket reads reuse the authorized schedule and preserve recording, image and cursor recovery", async () => {
+  const s = await setup();
+  const pageId = await s.create();
+  const live = {
+    roomName: "bounded-context",
+    expectedLiveRoomName: "bounded-live",
+  };
+  await s.t.run((ctx) =>
+    ctx.db.insert("classSchedule", {
+      classId: s.classId,
+      roomName: live.roomName,
+      liveRoomName: live.expectedLiveRoomName,
+      description: "x".repeat(200_000),
+      scheduledStart: Date.now(),
+      scheduledEnd: Date.now() + 3600000,
+      isLive: true,
+      status: "active",
+      createdBy: s.teacherId,
+      createdAt: Date.now(),
+    }),
+  );
+  await s.teacher.mutation(api.whiteboardSessions.ensureScene, live);
+  await s.teacher.mutation(api.courseNotebook.applyDelta, s.draw(pageId));
+  expect((await s.post(pageId)).status).toBe(200);
+  await s.teacher.mutation(api.whiteboardSessions.selectNotebookPage, {
+    ...live,
+    pageId,
+  });
+  await s.t.mutation(internal.whiteboardSessions.setRecordingToken, {
+    roomName: live.roomName,
+    recordingToken: "bounded-recording",
+  });
+  const args = {
+    roomName: live.roomName,
+    expectedPageId: pageId,
+    bucketId: whiteboardBucketId("drawing"),
+  };
+  const read = await s.student.query(async (ctx) => {
+    const result = await ctx.runQuery(
+      api.whiteboardSessions.getSceneBucket,
+      args,
+    );
+    return { result, metrics: await ctx.meta.getTransactionMetrics() };
+  });
+  console.log("WHITEBOARD_CONTEXT_READ", read.metrics.bytesRead.used);
+  expect(read.metrics.bytesRead.used).toBeLessThan(250_000);
+  expect(read.metrics.documentsWritten.used).toBe(0);
+  expect(
+    await s.t.query(api.whiteboardSessions.getSceneBucket, {
+      ...args,
+      recordingToken: "bounded-recording",
+    }),
+  ).toEqual(read.result);
+  expect(
+    await s.student.query(api.whiteboardSessions.getPresentedFiles, {
+      roomName: live.roomName,
+      pageId,
+      fileIds: ["image-one"],
+    }),
+  ).toHaveProperty("image-one");
+  await s.teacher.mutation(api.courseNotebook.applyDelta, s.draw(pageId, 2));
+  const updated = await s.student.query(api.whiteboardSessions.getSceneBucket, {
+    ...args,
+    cursor: {
+      sourceId: read.result!.sourceId!,
+      generation: 0,
+      revision: read.result!.revision!,
+    },
+  });
+  expect(
+    applyWhiteboardBucketResult(
+      applyWhiteboardBucketResult(undefined, read.result!),
+      updated!,
+    )?.elements[0].version,
+  ).toBe(2);
+  await expect(
+    s.outsider.query(api.whiteboardSessions.getSceneBucket, args),
+  ).rejects.toThrow("PERMISSION_DENIED");
+});
+
 test("legacy image maps fail explicitly instead of truncating a large page, while indexed image reads remain available", async () => {
   const s = await setup();
   const pageId = await s.create();

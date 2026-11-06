@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { MINUTE } from "@convex-dev/rate-limiter";
 import { internal } from "./_generated/api";
-import { internalMutation } from "./_generated/server";
+import { internalMutation } from "./functions";
 import { getCourseChatAccess } from "./model/courseChatAccess";
 import { deleteChatAttachment } from "./model/courseChatAttachments";
 import { getCurrentUserOrThrow } from "./users";

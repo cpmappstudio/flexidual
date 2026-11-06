@@ -4,14 +4,10 @@ import {
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { getCourseTeacherIds } from "./model/courseAssignments";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import {
-  internalMutation,
-  mutation,
-  query,
-  type MutationCtx,
-} from "./_generated/server";
+import { query, type MutationCtx } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import {
   courseTaskEventValidator,
   deliverCourseTaskEvent,
@@ -23,6 +19,7 @@ import { getCurrentUserOrThrow } from "./users";
 import { getClassNotificationContext } from "./model/systemNotificationEvents";
 import {
   filterVisibleNotifications,
+  isChatBadgeNotification,
   notificationPaginationOptions,
 } from "./model/systemNotifications";
 import {
@@ -258,6 +255,7 @@ export const markRead = mutation({
       await ctx.db.insert("systemNotifications", {
         recipientId: user._id,
         kind: source.kind === "course" ? "course_chat" : "broadcast_chat",
+        chatBadgeRelevant: true,
         ...sourceTarget(source),
         className: source.data.name,
         ...(source.kind === "course"
@@ -460,17 +458,28 @@ export const acknowledgeEvents = internalMutation({
   },
 });
 
+const unreadChatFields = {
+  classId: v.optional(v.id("classes")),
+  broadcastId: v.optional(v.id("broadcasts")),
+  count: v.number(),
+  campusId: v.optional(v.id("campuses")),
+  schoolId: v.optional(v.id("schools")),
+};
+
+function chatBadgeItem(item: Doc<"systemNotifications">) {
+  return {
+    classId: item.classId,
+    broadcastId: item.broadcastId,
+    count: item.messageId ? 1 : (item.chatMessageCount ?? 0),
+    campusId: item.campusId,
+    schoolId: item.schoolId,
+  };
+}
+
+// Preserve the cursor/index contract for clients already open before this release.
 export const listUnread = query({
   args: { paginationOpts: paginationOptsValidator },
-  returns: paginationResultValidator(
-    v.object({
-      classId: v.optional(v.id("classes")),
-      broadcastId: v.optional(v.id("broadcasts")),
-      count: v.number(),
-      campusId: v.optional(v.id("campuses")),
-      schoolId: v.optional(v.id("schools")),
-    }),
-  ),
+  returns: paginationResultValidator(v.object(unreadChatFields)),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
     const result = await ctx.db
@@ -479,25 +488,108 @@ export const listUnread = query({
         q.eq("recipientId", user._id).eq("readAt", undefined),
       )
       .paginate(notificationPaginationOptions(args.paginationOpts));
-    const visible = await filterVisibleNotifications(ctx, result.page);
+    const visible = await filterVisibleNotifications(
+      ctx,
+      result.page.filter(isChatBadgeNotification),
+    );
     return {
       ...result,
-      page: visible.flatMap((item) =>
-        (item.classId || item.broadcastId) &&
-        (item.kind === "course_chat" ||
-          item.kind === "broadcast_chat" ||
-          item.messageId)
-          ? [
-              {
-                classId: item.classId,
-                broadcastId: item.broadcastId,
-                count: item.messageId ? 1 : (item.chatMessageCount ?? 0),
-                campusId: item.campusId,
-                schoolId: item.schoolId,
-              },
-            ]
-          : [],
-      ),
+      page: visible.map(chatBadgeItem),
+    };
+  },
+});
+
+// The two lanes are disjoint indexed ranges, each using exactly one native
+// pagination. Undefined rows stay readable until an explicitly run backfill.
+export const listUnreadForBadges = query({
+  args: {
+    orgSlug: v.string(),
+    legacy: v.boolean(),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(
+    v.object({
+      notificationId: v.id("systemNotifications"),
+      ...unreadChatFields,
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    // Reuse the same organization authorization as navigation, on every page.
+    const organization = await ctx.runQuery(api.organizations.resolveSlug, {
+      slug: args.orgSlug,
+    });
+    if (!organization) return { page: [], continueCursor: "", isDone: true };
+    const campus =
+      organization?.type === "campus"
+        ? await ctx.db.get("campuses", organization._id)
+        : null;
+    const schoolId =
+      organization?.type === "school" ? organization._id : campus?.schoolId;
+    const result = await ctx.db
+      .query("systemNotifications")
+      .withIndex(
+        "by_recipientId_and_chatBadgeRelevant_and_readAt_and_createdAt",
+        (q) =>
+          q
+            .eq("recipientId", user._id)
+            .eq("chatBadgeRelevant", args.legacy ? undefined : true)
+            .eq("readAt", undefined),
+      )
+      .paginate(notificationPaginationOptions(args.paginationOpts));
+    const candidates = result.page.filter(
+      (item) =>
+        isChatBadgeNotification(item) &&
+        organization &&
+        (organization.type === "system" ||
+          (organization.type === "school"
+            ? item.schoolId === schoolId
+            : item.campusId === campus?._id ||
+              Boolean(
+                item.broadcastId &&
+                  !item.campusId &&
+                  item.schoolId === schoolId,
+              ))),
+    );
+    const visible = await filterVisibleNotifications(ctx, candidates);
+    return {
+      ...result,
+      page: visible.map((item) => ({
+        notificationId: item._id,
+        ...chatBadgeItem(item),
+      })),
+    };
+  },
+});
+
+// Operator-driven only: no cron, scheduler, or public endpoint activates this.
+// It may be resumed/repeated safely while deliveries and reads continue.
+export const backfillChatBadgeRelevance = internalMutation({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: v.object({
+    continueCursor: v.string(),
+    isDone: v.boolean(),
+    updated: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("systemNotifications")
+      .withIndex("by_creation_time")
+      .paginate(notificationPaginationOptions(args.paginationOpts));
+    let updated = 0;
+    for (const item of result.page) {
+      const chatBadgeRelevant = isChatBadgeNotification(item);
+      if (item.chatBadgeRelevant !== chatBadgeRelevant) {
+        await ctx.db.patch("systemNotifications", item._id, {
+          chatBadgeRelevant,
+        });
+        updated++;
+      }
+    }
+    return {
+      continueCursor: result.continueCursor,
+      isDone: result.isDone,
+      updated,
     };
   },
 });

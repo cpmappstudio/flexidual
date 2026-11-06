@@ -1,12 +1,6 @@
 import { ConvexError, v } from "convex/values";
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-  type MutationCtx,
-  type QueryCtx,
-} from "./_generated/server";
+import { internalQuery, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./users";
@@ -36,7 +30,11 @@ import {
   LIVE_EXTENSION_PROMPT_LEAD_MS,
   STUDENT_ONLY_GRACE_MS,
 } from "../lib/live-session-policy";
-import { sessionLeaderRoleValidator } from "./model/sessionLeadership";
+import {
+  sessionLeaderRoleValidator,
+  sessionLeaderValidator,
+  getSessionLeaderData,
+} from "./model/sessionLeadership";
 import { scheduleLiveReconciliation } from "./model/liveReconciliation";
 import { deleteWhiteboardSession } from "./model/whiteboardCleanup";
 import { clearWhiteboardRecordingTokens } from "./model/whiteboardRecording";
@@ -366,17 +364,7 @@ const leadershipValidator = v.union(
   v.null(),
   v.object({
     occurrenceId: v.id("eventOccurrences"),
-    leader: v.union(
-      v.null(),
-      v.object({
-        userId: v.id("users"),
-        participantIdentity: v.string(),
-        fullName: v.string(),
-        imageUrl: v.optional(v.string()),
-        role: sessionLeaderRoleValidator,
-        since: v.number(),
-      }),
-    ),
+    leader: sessionLeaderValidator,
     pendingTransfer: v.union(
       v.null(),
       v.object({
@@ -408,6 +396,22 @@ const leadershipValidator = v.union(
   }),
 );
 
+export const getSessionLeader = query({
+  args: { roomName: v.string() },
+  returns: sessionLeaderValidator,
+  handler: async (ctx, { roomName }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const room = await findEventRoom(ctx, roomName);
+    if (!room) return null;
+    if (!(await canAccessEvent(ctx, user._id, room.event)))
+      throw new ConvexError("PERMISSION_DENIED");
+    const leader = room.occurrence.sessionLeaderId
+      ? await ctx.db.get("users", room.occurrence.sessionLeaderId)
+      : null;
+    return getSessionLeaderData(room.occurrence, leader);
+  },
+});
+
 export const getSessionLeadership = query({
   args: { roomName: v.string(), now: v.number() },
   returns: leadershipValidator,
@@ -436,17 +440,7 @@ export const getSessionLeadership = query({
     const isLeader = access.isSessionLeader;
     return {
       occurrenceId: occurrence._id,
-      leader:
-        leader && occurrence.sessionLeaderRole && occurrence.sessionLeaderSince
-          ? {
-              userId: leader._id,
-              participantIdentity: leader.clerkId,
-              fullName: leader.fullName,
-              imageUrl: leader.imageUrl,
-              role: occurrence.sessionLeaderRole,
-              since: occurrence.sessionLeaderSince,
-            }
-          : null,
+      leader: getSessionLeaderData(occurrence, leader),
       pendingTransfer:
         target && requester && occurrence.sessionTransferRequestedAt
           ? {

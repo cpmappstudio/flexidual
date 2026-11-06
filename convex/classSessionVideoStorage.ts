@@ -19,6 +19,10 @@ import { action, internalAction, type ActionCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { classSessionVideoFields } from "./model/classSessionVideoFields";
 import {
+  readStoredVideoDuration,
+  VideoDurationUnavailable,
+} from "../lib/server/video-duration";
+import {
   SESSION_VIDEO_PART_BYTES,
   sessionVideoObjectKey,
   sessionVideoPartSize,
@@ -26,6 +30,28 @@ import {
 
 const PART_URL_TTL_SECONDS = 15 * 60;
 const PLAYBACK_URL_TTL_SECONDS = 2 * 60 * 60;
+
+async function storedDuration(
+  client: S3Client,
+  Bucket: string,
+  id: Id<"classSessionVideos">,
+  size: number,
+) {
+  return await readStoredVideoDuration(size, async (start, end) => {
+    const object = await client.send(
+      new GetObjectCommand({
+        Bucket,
+        Key: sessionVideoObjectKey(id),
+        Range: `bytes=${start}-${end}`,
+      }),
+    );
+    if (object.ContentLength !== end - start + 1)
+      throw new Error("Invalid metadata response length");
+    const bytes = await object.Body?.transformToByteArray();
+    if (!bytes) throw new Error("Missing video metadata");
+    return bytes;
+  });
+}
 
 function storage(bucket?: string) {
   const privateBucket = process.env.PRERECORDED_S3_BUCKET;
@@ -226,7 +252,29 @@ export const complete = action({
       const bytes = await header.Body?.transformToByteArray();
       if (!bytes || (await fileTypeFromBuffer(bytes))?.mime !== "video/mp4")
         throw new ConvexError("INVALID_SESSION_VIDEO");
-      await ctx.runMutation(internal.classSessionVideos.commit, { id });
+      let verifiedDurationMs: number | undefined;
+      let progressDurationUnavailable: boolean | undefined;
+      try {
+        verifiedDurationMs = await storedDuration(
+          client,
+          Bucket,
+          id,
+          video.size,
+        );
+      } catch (error) {
+        // Preserve playback of supported uploads whose container lacks a usable duration.
+        if (!(error instanceof VideoDurationUnavailable)) throw error;
+        progressDurationUnavailable = true;
+        console.warn(
+          "Video uploaded without verifiable duration; viewing progress unavailable",
+          { id },
+        );
+      }
+      await ctx.runMutation(internal.classSessionVideos.commit, {
+        id,
+        verifiedDurationMs,
+        progressDurationUnavailable,
+      });
       return null;
     } catch (error) {
       // Retryable network failures retain the staged upload; invalid/conflicting data does not.
@@ -240,8 +288,15 @@ export const complete = action({
 
 export const playback = action({
   args: { id: v.id("classSessionVideos") },
-  returns: v.object({ url: v.string(), expiresAt: v.number() }),
-  handler: async (ctx, { id }): Promise<{ url: string; expiresAt: number }> => {
+  returns: v.object({
+    url: v.string(),
+    expiresAt: v.number(),
+    trackable: v.optional(v.boolean()),
+  }),
+  handler: async (
+    ctx,
+    { id },
+  ): Promise<{ url: string; expiresAt: number; trackable?: boolean }> => {
     const access = await ctx.runQuery(
       internal.classSessionVideos.playbackContext,
       { id },
@@ -261,7 +316,54 @@ export const playback = action({
       }),
       { expiresIn: PLAYBACK_URL_TTL_SECONDS },
     );
-    return { url, expiresAt };
+    return { url, expiresAt, ...(access.trackable ? { trackable: true } : {}) };
+  },
+});
+
+// Separate from playback: metadata verification never delays or blocks the video URL.
+export const prepareProgress = action({
+  args: { id: v.id("classSessionVideos") },
+  returns: v.object({
+    id: v.id("videoViewingProgress"),
+    durationMs: v.number(),
+    coverage: v.bytes(),
+  }),
+  handler: async (
+    ctx,
+    { id },
+  ): Promise<{
+    id: Id<"videoViewingProgress">;
+    durationMs: number;
+    coverage: ArrayBuffer;
+  }> => {
+    const access = await ctx.runMutation(
+      internal.videoViewingProgress.context,
+      {
+        videoId: id,
+      },
+    );
+    if (access.scheduledStart > Date.now())
+      throw new ConvexError("PERMISSION_DENIED");
+    let durationMs = access.verifiedDurationMs;
+    if (durationMs === undefined) {
+      const { client, Bucket } = storage(access.bucket);
+      try {
+        durationMs = await storedDuration(client, Bucket, id, access.size);
+      } catch (error) {
+        if (error instanceof VideoDurationUnavailable) {
+          await ctx.runMutation(
+            internal.videoViewingProgress.markDurationUnavailable,
+            { videoId: id },
+          );
+          throw new ConvexError("VIDEO_PROGRESS_DURATION_UNAVAILABLE");
+        }
+        throw error;
+      }
+    }
+    return await ctx.runMutation(internal.videoViewingProgress.initialize, {
+      videoId: id,
+      durationMs,
+    });
   },
 });
 

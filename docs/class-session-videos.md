@@ -82,6 +82,12 @@ límite inicial es 2 GiB. La duración declarada debe estar entre cero y doce ho
 es metadato del cliente, **no** evidencia para asistencia. No se hace transcodificación
 ni se garantiza la compatibilidad de todos los códecs que pueden vivir en MP4.
 
+El seguimiento propio de visualización se describe en
+[`video-viewing-progress.md`](video-viewing-progress.md). Verifica la duración del
+contenedor por separado, agrupa avances del estudiante y conserva las reglas de
+acceso y reproducción anteriores. No registra asistencia ni reutiliza el progreso
+de enseñanza para representar vídeos vistos.
+
 Cancelar, agotar las 24 horas de una reserva o retirar un vídeo encola su limpieza.
 Se abortan las partes incompletas y se elimina el objeto antes de borrar sus
 metadatos. Los fallos de limpieza se reintentan con espera creciente, hasta una

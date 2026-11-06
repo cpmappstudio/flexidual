@@ -3,7 +3,7 @@ import { RateLimiter, HOUR, MINUTE } from "@convex-dev/rate-limiter";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { components } from "./_generated/api";
-import { internalMutation, mutation } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import { requireLiveWhiteboardManager } from "./model/whiteboardAccess";
 import { getLiveRoomName } from "./model/liveActivation";
 import { fileRefValidator } from "./whiteboardSessions";

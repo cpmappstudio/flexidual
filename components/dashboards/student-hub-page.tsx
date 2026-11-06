@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { RadialChart } from "@/components/ui/radial-chart";
 import { AbekaCourseReport } from "@/components/abeka/abeka-course-report";
+import { PrerecordedProgressReport } from "@/components/recordings/prerecorded-progress-report";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -216,6 +217,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
     isViewingStudentProfile ? "skip" : {},
   );
   const dashboardResult = useQuery(api.student.getStudentDashboardStats, {
+    summaryOnly: true,
     ...(studentId ? { studentId, orgSlug } : {}),
   });
   const studentScheduleResult = useQuery(
@@ -573,9 +575,7 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                       counts={attendanceCounts}
                       verifiedSessions={verifiedSessions}
                       pendingVerification={pendingVerification}
-                      pendingSessions={
-                        dashboardData?.pendingAttendanceSessions ?? []
-                      }
+                      loadPendingOnDemand
                       courses={classStats.map((classStat) => ({
                         classId: classStat.classId,
                         className: classStat.className,
@@ -662,6 +662,14 @@ export default function StudentHubPage({ studentId }: { studentId?: string }) {
                           </div>
                         </Link>
                         <div className="relative z-10 ml-auto flex shrink-0 items-center gap-0">
+                          {classItem.canViewPrerecordedProgress && (
+                            <PrerecordedProgressReport
+                              key={`${user?.id}:${studentId ?? "self"}:${classItem.classId}`}
+                              course={classItem}
+                              studentId={studentId}
+                              orgSlug={orgSlug}
+                            />
+                          )}
                           {classItem.abekaProgress && (
                             <RadialChart
                               value={classItem.abekaProgress.percentage}

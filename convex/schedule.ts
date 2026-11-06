@@ -7,13 +7,12 @@ import {
 import { v } from "convex/values";
 import { getCourseLessonHistory } from "./model/courseProgress";
 import {
-  internalMutation,
   internalQuery,
   MutationCtx,
-  mutation,
   QueryCtx,
   query,
 } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import { internal } from "./_generated/api";
 import { clearWhiteboardRecordingTokens } from "./model/whiteboardRecording";
 import { deleteWhiteboardSession } from "./model/whiteboardCleanup";
@@ -90,6 +89,8 @@ import { DEFAULT_CURRICULUM_ICON } from "../lib/curriculum-icons";
 import {
   sessionClosureStatusValidator,
   sessionLeaderRoleValidator,
+  sessionLeaderValidator,
+  getSessionLeaderData,
   getSessionLeaderRoleFromAssignments,
   type SessionLeaderRole,
 } from "./model/sessionLeadership";
@@ -711,11 +712,10 @@ async function getLiveLeadershipMutationContext(
   return { user, schedule, classData, schoolId, leaderRole };
 }
 
-async function getLiveKitAccessData(
+async function getLiveKitAccessContext(
   ctx: QueryCtx,
   userId: Id<"users">,
   schedule: Doc<"classSchedule">,
-  now: number,
 ) {
   const classData = await ctx.db.get(schedule.classId);
   if (!classData) return null;
@@ -727,6 +727,7 @@ async function getLiveKitAccessData(
   ]);
   if (!user) return null;
 
+  const scope = { curriculum, campus };
   const isPrimaryTeacher = isCourseTeacher(classData, userId);
   const isDirectInstructor = isPrimaryTeacher || classData.tutorId === userId;
   const classSchoolId = classData.campusId
@@ -739,7 +740,8 @@ async function getLiveKitAccessData(
     classSchoolId,
   );
   const roomAdmin = isDirectInstructor || isAuthorizedAdmin;
-  const { schoolId } = await getScheduleLeadershipContext(ctx, schedule);
+  const schoolId =
+    classData.schoolId ?? campus?.schoolId ?? curriculum?.schoolId;
   const leadershipRole = await getEligibleSessionLeaderRole(
     ctx,
     userId,
@@ -754,25 +756,43 @@ async function getLiveKitAccessData(
       userId,
       schedule,
       classData,
+      scope,
     );
   }
 
   return {
-    authorized,
-    roomAdmin,
-    isPrimaryTeacher,
-    isSessionLeader: schedule.sessionLeaderId === userId,
-    leadershipRole,
-    canJoinEarly: roomAdmin,
-    // ponytail: visiting staff reuse attendee permissions, never room administration.
-    computedRole: isPrimaryTeacher
-      ? ("teacher" as const)
-      : roomAdmin
-        ? ("admin" as const)
-        : ("student" as const),
+    classData,
+    scope,
+    access: {
+      authorized,
+      roomAdmin,
+      isPrimaryTeacher,
+      isSessionLeader: schedule.sessionLeaderId === userId,
+      leadershipRole,
+      canJoinEarly: roomAdmin,
+      // ponytail: visiting staff reuse attendee permissions, never room administration.
+      computedRole: isPrimaryTeacher
+        ? ("teacher" as const)
+        : roomAdmin
+          ? ("admin" as const)
+          : ("student" as const),
+    },
+  };
+}
+
+async function getLiveKitAccessData(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  schedule: Doc<"classSchedule">,
+  now: number,
+) {
+  const context = await getLiveKitAccessContext(ctx, userId, schedule);
+  if (!context) return null;
+  return {
+    ...context.access,
     session: getSessionStatusData(
       schedule,
-      (await getClassTimeZone(ctx, classData)) ?? "UTC",
+      (await getClassTimeZone(ctx, context.classData, context.scope)) ?? "UTC",
       now,
     ),
   };
@@ -1554,6 +1574,26 @@ export const getSessionStatus = query({
   },
 });
 
+/** Reactive observer data: no clock key, transfer history or temporal rights. */
+export const getSessionLeader = query({
+  args: { roomName: v.string() },
+  returns: sessionLeaderValidator,
+  handler: async (ctx, { roomName }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const schedule = await ctx.db
+      .query("classSchedule")
+      .withIndex("by_room", (q) => q.eq("roomName", roomName))
+      .first();
+    if (!schedule) return null;
+    const context = await getLiveKitAccessContext(ctx, user._id, schedule);
+    if (!context?.access.authorized) throw new ConvexError("PERMISSION_DENIED");
+    const leader = schedule.sessionLeaderId
+      ? await ctx.db.get("users", schedule.sessionLeaderId)
+      : null;
+    return getSessionLeaderData(schedule, leader);
+  },
+});
+
 export const getSessionLeadership = query({
   args: { roomName: v.string(), now: v.number() },
   returns: v.union(
@@ -1561,17 +1601,7 @@ export const getSessionLeadership = query({
     v.object({
       scheduleId: v.id("classSchedule"),
       closureStatus: v.optional(sessionClosureStatusValidator),
-      leader: v.union(
-        v.null(),
-        v.object({
-          userId: v.id("users"),
-          participantIdentity: v.string(),
-          fullName: v.string(),
-          imageUrl: v.optional(v.string()),
-          role: sessionLeaderRoleValidator,
-          since: v.number(),
-        }),
-      ),
+      leader: sessionLeaderValidator,
       pendingTransfer: v.union(
         v.null(),
         v.object({
@@ -1618,16 +1648,7 @@ export const getSessionLeadership = query({
     );
     if (!access?.authorized) throw new ConvexError("PERMISSION_DENIED");
 
-    const { classData, schoolId } = await getScheduleLeadershipContext(
-      ctx,
-      schedule,
-    );
-    const viewerRole = await getEligibleSessionLeaderRole(
-      ctx,
-      user._id,
-      classData,
-      schoolId,
-    );
+    const viewerRole = access.leadershipRole;
     const recentLeadershipEvents = await ctx.db
       .query("classSessionLeadershipEvents")
       .withIndex("by_schedule", (q) => q.eq("scheduleId", schedule._id))
@@ -1656,7 +1677,7 @@ export const getSessionLeadership = query({
           : null,
       ]);
     const isLeader = schedule.sessionLeaderId === user._id;
-    const isPrimaryTeacher = isCourseTeacher(classData, user._id);
+    const isPrimaryTeacher = access.isPrimaryTeacher;
     const isLiveSession =
       schedule.status === "active" && schedule.isLive === true;
     const leaderAbsentLongEnough =
@@ -1666,17 +1687,7 @@ export const getSessionLeadership = query({
     return {
       scheduleId: schedule._id,
       closureStatus: schedule.sessionClosureStatus,
-      leader:
-        leaderUser && schedule.sessionLeaderRole && schedule.sessionLeaderSince
-          ? {
-              userId: leaderUser._id,
-              participantIdentity: leaderUser.clerkId,
-              fullName: leaderUser.fullName,
-              imageUrl: leaderUser.imageUrl,
-              role: schedule.sessionLeaderRole,
-              since: schedule.sessionLeaderSince,
-            }
-          : null,
+      leader: getSessionLeaderData(schedule, leaderUser),
       pendingTransfer:
         transferTarget &&
         transferRequester &&

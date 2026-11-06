@@ -2380,6 +2380,15 @@ test("task events are canonical chat messages with independent, idempotent notif
     paginationOpts: { cursor: null, numItems: 20 },
   });
   expect(unread.page.map((item) => item.count)).toEqual([1, 1]);
+  const badges = await s.student.query(
+    api.courseChatNotifications.listUnreadForBadges,
+    {
+      orgSlug: "campus",
+      legacy: false,
+      paginationOpts: { cursor: null, numItems: 50 },
+    },
+  );
+  expect(badges.page.map((item) => item.count)).toEqual([1, 1]);
   expect(
     await s.student.query(api.courseChatMessages.get, { messageId: "bad-id" }),
   ).toBeNull();
@@ -2405,6 +2414,62 @@ test("task events are canonical chat messages with independent, idempotent notif
       })
     )?.event?.timeZone,
   ).toBeUndefined();
+});
+
+test("indexed badges skip 1000 task notices without a chat message and preserve task/reminder visibility", async () => {
+  const s = await setup();
+  const taskId = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Badge task",
+    dueAt: NOW + 2 * DAY,
+  });
+  await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+  for (let batch = 0; batch < 10; batch++) {
+    await s.t.run(async (ctx) => {
+      for (let i = 0; i < 100; i++) {
+        await ctx.runMutation(internal.systemNotifications.publish, {
+          recipientId: s.users.student,
+          kind: "course_task",
+          taskId,
+          classId: s.classId,
+          campusId: s.campusId,
+          schoolId: s.schoolId,
+          taskTitle: "x".repeat(1000),
+          dedupeKey: `standalone-task-${batch}-${i}`,
+        });
+      }
+    });
+  }
+  const read = () =>
+    s.student.query(async (ctx) => {
+      const page = await ctx.runQuery(
+        api.courseChatNotifications.listUnreadForBadges,
+        {
+          orgSlug: "campus",
+          legacy: false,
+          paginationOpts: { cursor: null, numItems: 50 },
+        },
+      );
+      return { page, metrics: await ctx.meta.getTransactionMetrics() };
+    });
+  const visible = await read();
+  expect(visible.page.isDone).toBe(true);
+  expect(visible.page.page.map((item) => item.count)).toEqual([1, 1]);
+  expect(visible.metrics.documentsRead.used).toBeLessThan(35);
+  expect(visible.metrics.bytesRead.used).toBeLessThan(20_000);
+  await s.teacher.mutation(api.courseTasks.setClosed, { taskId, closed: true });
+  // Closing invalidates the reminder but not the original task announcement.
+  expect((await read()).page.page.map((item) => item.count)).toEqual([1]);
+  await s.t.run(async (ctx) => {
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", taskId).eq("studentId", s.users.student),
+      )
+      .unique();
+    await ctx.db.delete("courseTaskRecipients", recipient!._id);
+  });
+  expect((await read()).page.page).toEqual([]);
 });
 
 test("legacy released tasks lazily create one announcement and notify only newly assigned students", async () => {

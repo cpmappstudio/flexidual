@@ -2,6 +2,12 @@ import type { QueryCtx } from "../_generated/server";
 import { getCurrentUserFromAuth } from "../users";
 import { canViewStudentProfile } from "../permissions";
 import { getSoleStudentCampusId } from "./membership";
+import { v } from "convex/values";
+
+export const studentDashboardTargetValidator = v.object({
+  studentId: v.optional(v.string()),
+  orgSlug: v.optional(v.string()),
+});
 
 export async function resolveStudentDashboardAccess(
   ctx: QueryCtx,

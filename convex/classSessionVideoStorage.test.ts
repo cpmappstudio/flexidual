@@ -19,8 +19,25 @@ import {
 import { SESSION_VIDEO_PART_BYTES } from "../lib/class-session-video";
 import { getSessionContentSummary } from "./model/sessionContent";
 import { retireScheduleVideos } from "./model/classSessionVideos";
+import {
+  readStoredVideoDuration,
+  VideoDurationUnavailable,
+} from "../lib/server/video-duration";
+import {
+  invalidDurationMp4,
+  sampleHeavyMp4,
+} from "../tests/fixtures/mp4";
+import { addPlayedRange, coverageSize } from "../lib/video-progress";
 
-const mocks = vi.hoisted(() => ({ send: vi.fn(), sign: vi.fn(), client: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  send: vi.fn(),
+  sign: vi.fn(),
+  client: vi.fn(),
+}));
+vi.mock("../lib/server/video-duration", async (original) => ({
+  ...(await original<typeof import("../lib/server/video-duration")>()),
+  readStoredVideoDuration: vi.fn(async () => 60_000),
+}));
 vi.mock("@aws-sdk/client-s3", async (original) => ({
   ...(await original<typeof import("@aws-sdk/client-s3")>()),
   S3Client: class {
@@ -43,7 +60,31 @@ mp4.writeUInt32BE(24, 0);
 mp4.write("ftypisom", 4);
 mp4.write("isomiso2", 16);
 
+async function useStoredMp4(body: Uint8Array) {
+  const actual = await vi.importActual<
+    typeof import("../lib/server/video-duration")
+  >("../lib/server/video-duration");
+  vi.mocked(readStoredVideoDuration).mockImplementation(
+    actual.readStoredVideoDuration,
+  );
+  mocks.send.mockImplementation(async (command) => {
+    if (command instanceof HeadObjectCommand)
+      return { ContentLength: body.length, ContentType: "video/mp4" };
+    if (command instanceof GetObjectCommand) {
+      const range = /^bytes=(\d+)-(\d+)$/.exec(command.input.Range!);
+      expect(range).not.toBeNull();
+      const bytes = body.slice(Number(range![1]), Number(range![2]) + 1);
+      return {
+        ContentLength: bytes.length,
+        Body: { transformToByteArray: async () => bytes },
+      };
+    }
+    return {};
+  });
+}
+
 beforeEach(() => {
+  vi.mocked(readStoredVideoDuration).mockReset().mockResolvedValue(60_000);
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   vi.stubEnv("PRERECORDED_S3_BUCKET", "private-prerecorded");
@@ -66,6 +107,278 @@ beforeEach(() => {
     return {};
   });
   mocks.sign.mockReset().mockResolvedValue("https://private.test/signed");
+});
+
+test("disabled accounts receive terminal denials through actions before storage work, preserving progress for reactivation", async () => {
+  const s = await setup();
+  const id = await s.ready();
+  vi.setSystemTime(NOW + HOUR);
+  await s.t.mutation(internal.classSessionVideos.publish, {
+    id,
+    scheduledStart: NOW + HOUR,
+  });
+  const progress = await s.student.action(
+    api.classSessionVideoStorage.prepareProgress,
+    { id },
+  );
+  const saved = await s.t.run((ctx) => ctx.db.get(progress.id));
+  await s.t.run((ctx) => ctx.db.patch(s.users.student, { isActive: false }));
+  mocks.sign.mockClear();
+  mocks.send.mockClear();
+  vi.mocked(readStoredVideoDuration).mockClear();
+  for (const action of [
+    api.classSessionVideoStorage.playback,
+    api.classSessionVideoStorage.prepareProgress,
+  ])
+    await expect(s.student.action(action, { id })).rejects.toMatchObject({
+      data: "PERMISSION_DENIED",
+    });
+  expect(mocks.sign).not.toHaveBeenCalled();
+  expect(mocks.send).not.toHaveBeenCalled();
+  expect(readStoredVideoDuration).not.toHaveBeenCalled();
+  expect(await s.t.run((ctx) => ctx.db.get(progress.id))).toEqual(saved);
+  await s.t.run((ctx) => ctx.db.patch(s.users.student, { isActive: true }));
+  await expect(
+    s.student.action(api.classSessionVideoStorage.prepareProgress, { id }),
+  ).resolves.toMatchObject({ id: progress.id });
+});
+
+test("verifies duration at upload once, reuses it for progress and never tracks staff previews", async () => {
+  const s = await setup();
+  vi.mocked(readStoredVideoDuration).mockResolvedValueOnce(45_000);
+  const { id } = await s.teacher.action(api.classSessionVideoStorage.begin, {
+    scheduleId: s.scheduleId,
+    ...metadata,
+  });
+  await s.teacher.action(api.classSessionVideoStorage.complete, { id, parts });
+  expect(await s.t.run((ctx) => ctx.db.get(id))).toMatchObject({
+    durationMs: 60_000,
+    verifiedDurationMs: 45_000,
+  });
+  expect(vi.mocked(readStoredVideoDuration)).toHaveBeenCalledTimes(1);
+  expect(
+    await s.teacher.action(api.classSessionVideoStorage.playback, { id }),
+  ).not.toHaveProperty("trackable");
+  await expect(
+    s.teacher.action(api.classSessionVideoStorage.prepareProgress, { id }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  vi.setSystemTime(NOW + HOUR);
+  await s.t.mutation(internal.classSessionVideos.publish, {
+    id,
+    scheduledStart: NOW + HOUR,
+  });
+  expect(
+    await s.student.action(api.classSessionVideoStorage.playback, { id }),
+  ).toHaveProperty("trackable", true);
+  const first = await s.student.action(
+    api.classSessionVideoStorage.prepareProgress,
+    { id },
+  );
+  const second = await s.student.action(
+    api.classSessionVideoStorage.prepareProgress,
+    { id },
+  );
+  expect(first).toEqual(second);
+  expect(first.durationMs).toBe(45_000);
+  expect(vi.mocked(readStoredVideoDuration)).toHaveBeenCalledTimes(1);
+});
+
+test("unverifiable duration never breaks existing playback or falls back to client percentages", async () => {
+  const s = await setup();
+  vi.mocked(readStoredVideoDuration).mockRejectedValue(
+    new VideoDurationUnavailable("No duration"),
+  );
+  const id = await s.ready();
+  vi.setSystemTime(NOW + HOUR);
+  await s.t.mutation(internal.classSessionVideos.publish, {
+    id,
+    scheduledStart: NOW + HOUR,
+  });
+  await expect(
+    s.student.action(api.classSessionVideoStorage.prepareProgress, { id }),
+  ).rejects.toThrow("VIDEO_PROGRESS_DURATION_UNAVAILABLE");
+  await expect(
+    s.student.action(api.classSessionVideoStorage.prepareProgress, { id }),
+  ).rejects.toThrow("VIDEO_PROGRESS_DURATION_UNAVAILABLE");
+  expect(vi.mocked(readStoredVideoDuration)).toHaveBeenCalledTimes(1);
+  expect(await s.t.run((ctx) => ctx.db.get(id))).toMatchObject({
+    progressDurationUnavailable: true,
+  });
+  await expect(
+    s.student.action(api.classSessionVideoStorage.playback, { id }),
+  ).resolves.toHaveProperty("url");
+  expect(
+    await s.t.run((ctx) => ctx.db.query("videoViewingProgress").collect()),
+  ).toEqual([]);
+});
+
+test("a burst of legacy metadata preparations is throttled before storage reads; a transient failure retries after refill", async () => {
+  const s = await setup();
+  const id = await s.ready();
+  vi.setSystemTime(NOW + HOUR);
+  await s.t.mutation(internal.classSessionVideos.publish, {
+    id,
+    scheduledStart: NOW + HOUR,
+  });
+  vi.mocked(readStoredVideoDuration).mockRejectedValueOnce(
+    new Error("Storage temporarily offline"),
+  );
+  const attempts = await Promise.allSettled(
+    Array.from({ length: 30 }, () =>
+      s.student.action(api.classSessionVideoStorage.prepareProgress, { id }),
+    ),
+  );
+  expect(attempts.every((result) => result.status === "rejected")).toBe(true);
+  expect(vi.mocked(readStoredVideoDuration)).toHaveBeenCalledTimes(1);
+  expect(await s.t.run((ctx) => ctx.db.get(id))).not.toHaveProperty(
+    "progressDurationUnavailable",
+  );
+  vi.setSystemTime(NOW + HOUR + 30_000);
+  const progress = await s.student.action(
+    api.classSessionVideoStorage.prepareProgress,
+    { id },
+  );
+  expect(progress.durationMs).toBe(60_000);
+  expect(vi.mocked(readStoredVideoDuration)).toHaveBeenCalledTimes(2);
+  await s.student.action(api.classSessionVideoStorage.prepareProgress, { id });
+  expect(vi.mocked(readStoredVideoDuration)).toHaveBeenCalledTimes(2);
+});
+
+test("new uploads without a verifiable duration retain playback and do not repeatedly analyze on preparation", async () => {
+  const s = await setup();
+  vi.mocked(readStoredVideoDuration).mockRejectedValueOnce(
+    new VideoDurationUnavailable("Unsupported duration"),
+  );
+  const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const { id } = await s.teacher.action(api.classSessionVideoStorage.begin, {
+      scheduleId: s.scheduleId,
+      ...metadata,
+    });
+    await s.teacher.action(api.classSessionVideoStorage.complete, {
+      id,
+      parts,
+    });
+    expect(await s.t.run((ctx) => ctx.db.get(id))).toMatchObject({
+      state: "ready",
+      progressDurationUnavailable: true,
+    });
+    vi.setSystemTime(NOW + HOUR);
+    await s.t.mutation(internal.classSessionVideos.publish, {
+      id,
+      scheduledStart: NOW + HOUR,
+    });
+    await expect(
+      s.student.action(api.classSessionVideoStorage.prepareProgress, { id }),
+    ).rejects.toThrow("VIDEO_PROGRESS_DURATION_UNAVAILABLE");
+    await expect(
+      s.student.action(api.classSessionVideoStorage.playback, { id }),
+    ).resolves.toHaveProperty("url");
+    expect(vi.mocked(readStoredVideoDuration)).toHaveBeenCalledTimes(1);
+  } finally {
+    log.mockRestore();
+  }
+});
+
+test("the real parser reads duration through bounded S3 ranges at upload completion", async () => {
+  const body = sampleHeavyMp4();
+  await useStoredMp4(body);
+  const s = await setup();
+  const id = await s.reserve();
+  await s.t.run((ctx) => ctx.db.patch(id, { size: body.length }));
+  await s.teacher.action(api.classSessionVideoStorage.complete, { id, parts });
+  expect(await s.t.run((ctx) => ctx.db.get(id))).toMatchObject({
+    state: "ready",
+    durationMs: 60_000,
+    verifiedDurationMs: 42_000,
+  });
+});
+
+test("students prepare existing videos with real track metadata once, retaining playback, progress and permissions", async () => {
+  const body = sampleHeavyMp4();
+  await useStoredMp4(body);
+  const s = await setup();
+  const id = await s.ready();
+  await s.t.run((ctx) => ctx.db.patch(id, { size: body.length }));
+  await expect(
+    s.student.action(api.classSessionVideoStorage.prepareProgress, { id }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  vi.setSystemTime(NOW + HOUR);
+  await s.t.mutation(internal.classSessionVideos.publish, {
+    id,
+    scheduledStart: NOW + HOUR,
+  });
+  for (const client of [
+    s.teacher,
+    s.tutor,
+    s.admin,
+    s.unassigned,
+    s.outsideAdmin,
+  ])
+    await expect(
+      client.action(api.classSessionVideoStorage.prepareProgress, { id }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+  expect(mocks.send).not.toHaveBeenCalled();
+  await expect(
+    s.student.action(api.classSessionVideoStorage.playback, { id }),
+  ).resolves.toMatchObject({
+    url: "https://private.test/signed",
+    trackable: true,
+  });
+  const progress = await s.student.action(
+    api.classSessionVideoStorage.prepareProgress,
+    { id },
+  );
+  expect(progress.durationMs).toBe(42_000);
+  const coverage = new Uint8Array(coverageSize(progress.durationMs));
+  addPlayedRange(coverage, 0, 10_000, progress.durationMs);
+  await expect(
+    s.student.mutation(api.videoViewingProgress.record, {
+      id: progress.id,
+      coverage: coverage.buffer,
+    }),
+  ).resolves.toHaveProperty("watchedMs", 10_000);
+  const reopened = await s.student.action(
+    api.classSessionVideoStorage.prepareProgress,
+    { id },
+  );
+  expect(reopened).toEqual({ ...progress, coverage: coverage.buffer });
+  expect(vi.mocked(readStoredVideoDuration)).toHaveBeenCalledTimes(1);
+  expect(mocks.send).toHaveBeenCalledTimes(1);
+  expect(mocks.send.mock.calls[0][0].input).toMatchObject({
+    Bucket: "private-prerecorded",
+    Key: `prerecorded/${id}.mp4`,
+    Range: `bytes=0-${body.length - 1}`,
+  });
+  expect(await s.t.run((ctx) => ctx.db.get(id))).toMatchObject({
+    state: "ready",
+    verifiedDurationMs: 42_000,
+  });
+});
+
+test("real malformed metadata disables only progress and is not re-read on every opening", async () => {
+  const body = invalidDurationMp4();
+  await useStoredMp4(body);
+  const s = await setup();
+  const id = await s.ready();
+  await s.t.run((ctx) => ctx.db.patch(id, { size: body.length }));
+  vi.setSystemTime(NOW + HOUR);
+  await s.t.mutation(internal.classSessionVideos.publish, {
+    id,
+    scheduledStart: NOW + HOUR,
+  });
+  for (let i = 0; i < 2; i++)
+    await expect(
+      s.student.action(api.classSessionVideoStorage.prepareProgress, { id }),
+    ).rejects.toThrow("VIDEO_PROGRESS_DURATION_UNAVAILABLE");
+  expect(mocks.send).toHaveBeenCalledTimes(1);
+  expect(await s.t.run((ctx) => ctx.db.get(id))).toMatchObject({
+    state: "ready",
+    progressDurationUnavailable: true,
+  });
+  await expect(
+    s.student.action(api.classSessionVideoStorage.playback, { id }),
+  ).resolves.toHaveProperty("url");
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -124,7 +437,10 @@ test("keeps prerecording credentials independent from existing LiveKit recording
     expect.objectContaining({
       endpoint: "https://storage.test",
       region: "auto",
-      credentials: { accessKeyId: "test-access", secretAccessKey: "test-secret" },
+      credentials: {
+        accessKeyId: "test-access",
+        secretAccessKey: "test-secret",
+      },
     }),
   );
   expect(process.env.S3_ACCESS_KEY).toBe("livekit-access");

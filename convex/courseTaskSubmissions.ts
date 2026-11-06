@@ -4,7 +4,8 @@ import {
 } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, query, type QueryCtx } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
+import { mutation } from "./functions";
 import {
   canSubmitCourseTask,
   getCourseTaskAccess,

@@ -17,14 +17,12 @@ vi.mock("convex/react", () => ({
   useConvexAuth: () => ({ isAuthenticated: true }),
   useMutation: () => vi.fn(),
   useQuery: () => ({ type: "campus", _id: "campus" }),
-  usePaginatedQuery: () => ({
+  usePaginatedQuery: (_query: unknown, args: { legacy: boolean }) => ({
     status: "Exhausted",
     loadMore: vi.fn(),
-    results: [
-      { classId: "course", campusId: "campus", count: 2 },
-      { classId: "course", campusId: "campus", count: 1 },
-      { classId: "course", campusId: "other", count: 5 },
-    ],
+    results: args.legacy
+      ? [{ notificationId: "task", classId: "course", count: 1 }]
+      : [{ notificationId: "chat", classId: "course", count: 2 }],
   }),
 }));
 afterEach(cleanup);

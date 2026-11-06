@@ -1,44 +1,38 @@
 "use client";
 
 import { useEffect } from "react";
-import { useConvexAuth, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvexAuth, usePaginatedQuery } from "convex/react";
 import { useParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 
 export function useUnreadCourseChats() {
   const { isAuthenticated } = useConvexAuth();
   const { orgSlug } = useParams<{ orgSlug: string }>();
-  const context = useQuery(
-    api.organizations.resolveSlug,
-    isAuthenticated ? { slug: orgSlug } : "skip",
-  );
-  const broadcastScope = useQuery(
-    api.broadcasts.scope,
-    isAuthenticated ? { orgSlug } : "skip",
-  );
-  const { results, status, loadMore } = usePaginatedQuery(
-    api.courseChatNotifications.listUnread,
-    isAuthenticated ? {} : "skip",
+  const indexed = usePaginatedQuery(
+    api.courseChatNotifications.listUnreadForBadges,
+    isAuthenticated && orgSlug ? { orgSlug, legacy: false } : "skip",
     { initialNumItems: 50 },
   );
+  const legacy = usePaginatedQuery(
+    api.courseChatNotifications.listUnreadForBadges,
+    isAuthenticated && orgSlug ? { orgSlug, legacy: true } : "skip",
+    { initialNumItems: 50 },
+  );
+  const { status, loadMore } = indexed;
+  const { status: legacyStatus, loadMore: loadMoreLegacy } = legacy;
   useEffect(() => {
     if (status === "CanLoadMore") loadMore(50);
   }, [status, loadMore]);
+  useEffect(() => {
+    if (legacyStatus === "CanLoadMore") loadMoreLegacy(50);
+  }, [legacyStatus, loadMoreLegacy]);
   const counts = new Map<string, number>();
-  for (const item of results.filter(
-    (item) =>
-      context &&
-      (context.type === "campus"
-        ? item.campusId === context._id ||
-          Boolean(
-            item.broadcastId &&
-              !item.campusId &&
-              item.schoolId === broadcastScope?.schoolId,
-          )
-        : context.type === "school"
-          ? item.schoolId === context._id
-          : true),
-  )) {
+  // A backfilled row can briefly appear in both reactive snapshots. Count its
+  // source notification once, while retaining independent task notices.
+  const seen = new Set<string>();
+  for (const item of [...indexed.results, ...legacy.results]) {
+    if (seen.has(item.notificationId)) continue;
+    seen.add(item.notificationId);
     const id = item.classId ?? item.broadcastId;
     if (id) counts.set(id, (counts.get(id) ?? 0) + item.count);
   }

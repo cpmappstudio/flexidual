@@ -6,12 +6,20 @@ import {
   within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
+import type { FunctionReturnType } from "convex/server";
+import type { api as TypedApi } from "@/convex/_generated/api";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   canEditAttendance: false,
   isMobile: false,
   recordings: [{ _id: "recording-1" }],
+  pendingStatus: "Exhausted",
+  pendingResults: [] as FunctionReturnType<
+    typeof TypedApi.student.listStudentPendingAttendance
+  >["page"],
+  loadPending: vi.fn(),
+  pendingArgs: [] as unknown[],
 }));
 
 vi.mock("@/convex/_generated/api", () => ({
@@ -19,14 +27,23 @@ vi.mock("@/convex/_generated/api", () => ({
     student: {
       listStudentAttendanceHistory: "attendance-history",
       getStudentDashboardStats: "student-dashboard",
+      listStudentPendingAttendance: "pending-attendance",
     },
   },
 }));
 vi.mock("convex/react", () => ({
   usePaginatedQuery: (
-    _query: unknown,
+    query: unknown,
     args: "skip" | { status?: string; classId?: string },
   ) => {
+    if (query === "pending-attendance") {
+      state.pendingArgs.push(args);
+      return {
+        results: args === "skip" ? [] : state.pendingResults,
+        status: state.pendingStatus,
+        loadMore: state.loadPending,
+      };
+    }
     const allResults = [
       {
         scheduleId: "schedule-1",
@@ -139,6 +156,10 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   state.canEditAttendance = false;
   state.isMobile = false;
+  state.pendingStatus = "Exhausted";
+  state.pendingResults = [];
+  state.pendingArgs = [];
+  state.loadPending.mockClear();
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -325,4 +346,56 @@ test("mobile history owns its scroll and stacks attendance actions", () => {
   expect(
     screen.getByText("Geography 9").closest("article")?.className,
   ).toContain("max-w-full");
+});
+
+test("on-demand pending history advances an empty filtered page to reach older pending sessions", () => {
+  state.pendingStatus = "CanLoadMore";
+  const element = () => (
+    <StudentAttendanceSummary
+      {...props}
+      pendingVerification={1}
+      loadPendingOnDemand
+    />
+  );
+  const { rerender } = render(element());
+  expect(state.pendingArgs.at(-1)).toBe("skip");
+  expect(state.loadPending).not.toHaveBeenCalled();
+
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: /student.profile.pendingVerificationSummary/,
+    }),
+  );
+  expect(state.pendingArgs.at(-1)).toEqual({
+    studentId: "student-1",
+    orgSlug: "leadership-campus",
+  });
+  // The first bounded page may contain only newer, already verified sessions.
+  expect(state.loadPending).toHaveBeenCalledWith(12);
+  expect(state.loadPending).toHaveBeenCalledTimes(1);
+  state.pendingStatus = "LoadingMore";
+  rerender(element());
+  expect(state.loadPending).toHaveBeenCalledTimes(1);
+
+  state.pendingStatus = "Exhausted";
+  state.pendingResults = [
+    {
+      scheduleId: "older-pending" as never,
+      classId: "class-2" as never,
+      className: "Algebra 1",
+      curriculumIconKey: "books",
+      sessionTitle: "Older unverified session",
+      start: Date.UTC(2026, 8, 8, 14, 20),
+      end: Date.UTC(2026, 8, 8, 15),
+      timeZone: "America/Bogota",
+      roomName: "older-room",
+      canCompleteReport: false,
+    },
+  ];
+  rerender(element());
+  expect(screen.getByText("Older unverified session")).toBeTruthy();
+  expect(
+    screen.queryByText("student.attendanceHistory.pendingEmptyTitle"),
+  ).toBeNull();
+  expect(state.loadPending).toHaveBeenCalledTimes(1);
 });

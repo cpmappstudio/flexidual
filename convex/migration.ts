@@ -1,10 +1,7 @@
 // convex/migration.ts
 import { v } from "convex/values";
-import {
-  internalMutation,
-  internalAction,
-  type MutationCtx,
-} from "./_generated/server";
+import { internalAction, type MutationCtx } from "./_generated/server";
+import { internalMutation } from "./functions";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { toCivilDate } from "../lib/time-zone";

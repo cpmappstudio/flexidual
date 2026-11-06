@@ -14,6 +14,7 @@ import {
   canStudentAccessLiveClass,
 } from "./liveAccess";
 import { isStudentEnrolled, listActiveStudentClasses } from "./enrollments";
+import type { ClassScopeDocuments } from "./timeZone";
 import {
   getCourseGradeCodes,
   isCourseTeacher,
@@ -41,10 +42,17 @@ export async function canAccessInstitutionalSchedule(
   userId: Id<"users">,
   schedule: Doc<"classSchedule">,
   classData: Doc<"classes">,
+  loadedScope?: ClassScopeDocuments,
 ) {
   const [curriculum, campus, studentSchoolIds, isEnrolled] = await Promise.all([
-    ctx.db.get(classData.curriculumId),
-    classData.campusId ? ctx.db.get(classData.campusId) : null,
+    // Reuse only documents loaded by this caller in the current transaction.
+    // A loaded null is intentional and must not trigger another lookup.
+    loadedScope ? loadedScope.curriculum : ctx.db.get(classData.curriculumId),
+    loadedScope
+      ? loadedScope.campus
+      : classData.campusId
+        ? ctx.db.get(classData.campusId)
+        : null,
     getStudentSchoolIds(ctx, userId),
     isStudentEnrolled(ctx, classData, userId),
   ]);

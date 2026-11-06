@@ -21,6 +21,11 @@ import {
 } from "../lib/class-session-video";
 
 const mocks = vi.hoisted(() => ({ send: vi.fn() }));
+// These tests exercise multipart races; container parsing has separate real-parser tests.
+vi.mock("../lib/server/video-duration", async (original) => ({
+  ...(await original<typeof import("../lib/server/video-duration")>()),
+  readStoredVideoDuration: vi.fn(async () => 60_000),
+}));
 const mp4 = Buffer.alloc(32);
 mp4.writeUInt32BE(24, 0);
 mp4.write("ftypisom", 4);

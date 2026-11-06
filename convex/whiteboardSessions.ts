@@ -1,5 +1,6 @@
 import { compareValues, ConvexError, v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { curriculumIconValidator } from "./model/curriculumIcons";
@@ -109,13 +110,17 @@ export const getSceneManifest = query({
   handler: async (ctx, { roomName, recordingToken }) => {
     const manifest = await findWhiteboardManifest(ctx, roomName);
     if (manifest) {
-      await requireLiveWhiteboardReader(
+      const room = await requireLiveWhiteboardReader(
         ctx,
         roomName,
         recordingToken,
         manifest.recordingToken,
       );
-      const presented = await resolveWhiteboardPresentation(ctx, manifest);
+      const presented = await resolveWhiteboardPresentation(
+        ctx,
+        manifest,
+        room,
+      );
       return liveManifestResult(manifest, presented);
     }
     const legacy = await ctx.db
@@ -158,14 +163,14 @@ export const getRealtimeWriter = query({
           .query("whiteboardSessions")
           .withIndex("by_roomName", (q) => q.eq("roomName", roomName))
           .unique();
-    await requireLiveWhiteboardReader(
+    const authorizedRoom = await requireLiveWhiteboardReader(
       ctx,
       roomName,
       recordingToken,
       manifest ? manifest.recordingToken : legacy?.recordingToken,
     );
 
-    const room = await getWhiteboardRoom(ctx, roomName);
+    const room = authorizedRoom ?? (await getWhiteboardRoom(ctx, roomName));
     if (
       !room ||
       room.schedule.status !== "active" ||
@@ -334,7 +339,7 @@ export const ensureScene = mutation({
       room.kind === "class"
         ? await ensureCourseWhiteboardScene(ctx, room.schedule)
         : await ensureWhiteboardManifest(ctx, roomName);
-    const presented = await resolveWhiteboardPresentation(ctx, manifest);
+    const presented = await resolveWhiteboardPresentation(ctx, manifest, room);
     return liveManifestResult(manifest, presented);
   },
 });
@@ -375,13 +380,14 @@ export const getPresentedFiles = query({
   returns: v.record(v.string(), fileRefValidator),
   handler: async (ctx, { roomName, recordingToken, pageId, fileIds }) => {
     const room = await findWhiteboardManifest(ctx, roomName);
-    await requireLiveWhiteboardReader(
+    const authorizedRoom = await requireLiveWhiteboardReader(
       ctx,
       roomName,
       recordingToken,
       room?.recordingToken,
     );
-    const presented = room && (await resolveWhiteboardPresentation(ctx, room));
+    const presented =
+      room && (await resolveWhiteboardPresentation(ctx, room, authorizedRoom));
     if (presented?.pageId !== pageId) return {};
     return readNotebookFileRefs(ctx, pageId, fileIds);
   },
@@ -406,14 +412,14 @@ export const getSceneBucket = query({
     )
       throw new ConvexError("INVALID_WHITEBOARD_BUCKET");
     const manifest = await findWhiteboardManifest(ctx, roomName);
-    await requireLiveWhiteboardReader(
+    const room = await requireLiveWhiteboardReader(
       ctx,
       roomName,
       recordingToken,
       manifest?.recordingToken,
     );
     if (!manifest) return null;
-    const presented = await resolveWhiteboardPresentation(ctx, manifest);
+    const presented = await resolveWhiteboardPresentation(ctx, manifest, room);
     if (
       presented.pageId !== expectedPageId &&
       !(expectedPageId === undefined && presented._id === manifest._id)

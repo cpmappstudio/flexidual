@@ -12,6 +12,38 @@ export const sessionLeaderRoleValidator = v.union(
   v.literal("superadmin"),
 );
 
+export const sessionLeaderValidator = v.union(
+  v.null(),
+  v.object({
+    userId: v.id("users"),
+    participantIdentity: v.string(),
+    fullName: v.string(),
+    imageUrl: v.optional(v.string()),
+    role: sessionLeaderRoleValidator,
+    since: v.number(),
+  }),
+);
+
+/** One projection for class/event observers and the detailed staff controls. */
+export function getSessionLeaderData(
+  session: {
+    sessionLeaderRole?: SessionLeaderRole;
+    sessionLeaderSince?: number;
+  },
+  user: Doc<"users"> | null,
+) {
+  return user && session.sessionLeaderRole && session.sessionLeaderSince
+    ? {
+        userId: user._id,
+        participantIdentity: user.clerkId,
+        fullName: user.fullName,
+        imageUrl: user.imageUrl,
+        role: session.sessionLeaderRole,
+        since: session.sessionLeaderSince,
+      }
+    : null;
+}
+
 export const sessionLeadershipEventTypeValidator = v.union(
   v.literal("started"),
   v.literal("reopened"),

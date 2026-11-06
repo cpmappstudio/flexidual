@@ -453,6 +453,10 @@ test.each(["teacher", "tutor", "principal"] as const)(
       });
     }
     const sessionArgs = { sessionId: "Public--60000", now: args.now };
+    const leaderArgs = { roomName: sessionArgs.sessionId };
+    expect(
+      await viewer.query(api.schedule.getSessionLeader, leaderArgs),
+    ).toBeNull();
     await t.run((ctx) =>
       ctx.db.insert("whiteboardSessions", {
         roomName: sessionArgs.sessionId,
@@ -523,6 +527,9 @@ test.each(["teacher", "tutor", "principal"] as const)(
     await expect(
       viewer.query(api.schedule.getSessionStatus, sessionArgs),
     ).rejects.toThrow("PERMISSION_DENIED");
+    await expect(
+      viewer.query(api.schedule.getSessionLeader, leaderArgs),
+    ).rejects.toThrow("PERMISSION_DENIED");
     await t.run((ctx) =>
       ctx.db.patch(scheduleId, {
         liveAccess: { mode: "school", allowedGradeCodes: ["08"] },
@@ -556,12 +563,18 @@ test.each(["teacher", "tutor", "principal"] as const)(
     await expect(
       viewer.query(api.schedule.getSessionStatus, sessionArgs),
     ).rejects.toThrow("PERMISSION_DENIED");
+    await expect(
+      viewer.query(api.schedule.getSessionLeader, leaderArgs),
+    ).rejects.toThrow("PERMISSION_DENIED");
     await t.run((ctx) =>
       ctx.db.patch(assignmentId, { orgId: data.secondCampusId }),
     );
     await t.run((ctx) => ctx.db.patch(data.users.teacher, { isActive: false }));
     await expect(
       viewer.query(api.schedule.getSessionStatus, sessionArgs),
+    ).rejects.toThrow();
+    await expect(
+      viewer.query(api.schedule.getSessionLeader, leaderArgs),
     ).rejects.toThrow();
   },
 );

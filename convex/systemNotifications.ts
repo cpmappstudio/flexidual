@@ -4,7 +4,8 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import {
   createSystemNotification,
   deleteStartingSoonNotifications,
@@ -88,6 +89,7 @@ const notificationFields = {
   ...notificationPayloadFields,
   createdAt: v.number(),
   readAt: v.optional(v.number()),
+  chatBadgeRelevant: v.optional(v.boolean()),
 };
 
 const notificationValidator = v.object({

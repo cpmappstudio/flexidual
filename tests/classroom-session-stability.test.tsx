@@ -93,6 +93,7 @@ const testState = vi.hoisted(() => {
     localParticipant: administrativeParticipant,
     participants: [administrativeParticipant],
     qrValue: "",
+    queryCalls: [] as { query: string; args: unknown }[],
     remoteAdministrativeParticipant,
     remoteStudentParticipant,
     studentParticipant,
@@ -126,6 +127,7 @@ vi.mock("@/convex/_generated/api", () => ({
       confirmLiveExtension: "confirmLiveExtension",
       getLiveExtensionContext: "getLiveExtensionContext",
       getSessionLeadership: "getSessionLeadership",
+      getSessionLeader: "getSessionLeader",
       getStudentExtensionContext: "getStudentExtensionContext",
       markLive: "markLive",
       recoverSessionLeadership: "recoverSessionLeadership",
@@ -141,6 +143,7 @@ vi.mock("@/convex/_generated/api", () => ({
       getAttendeeExtensionContext: "getStudentExtensionContext",
       getLiveExtensionContext: "getLiveExtensionContext",
       getSessionLeadership: "getSessionLeadership",
+      getSessionLeader: "getEventSessionLeader",
       recoverSessionLeadership: "recoverSessionLeadership",
       rejectSessionLeadershipTransfer: "rejectSessionLeadershipTransfer",
       requestSessionLeadershipTransfer: "requestSessionLeadershipTransfer",
@@ -153,8 +156,14 @@ vi.mock("@/convex/_generated/api", () => ({
 vi.mock("convex/react", () => ({
   useAction: () => testState.backendCall,
   useMutation: () => testState.backendCall,
-  useQuery: (query: string) => {
+  useQuery: (query: string, args: unknown) => {
+    if (args !== "skip") testState.queryCalls.push({ query, args });
     if (query === "getRecordingOperation") return testState.recordingOperation;
+    if (query === "getSessionLeader" || query === "getEventSessionLeader") {
+      return testState.isLeadershipLoading
+        ? undefined
+        : (testState.leadership?.leader ?? null);
+    }
     if (query === "getSessionLeadership") {
       return testState.isLeadershipLoading ? undefined : testState.leadership;
     }
@@ -529,6 +538,7 @@ describe("classroom session stability", () => {
     testState.room.localParticipant = testState.administrativeParticipant;
     testState.participants = [testState.administrativeParticipant];
     testState.qrValue = "";
+    testState.queryCalls = [];
     testState.backendCall.mockResolvedValue(null);
   });
 
@@ -536,6 +546,58 @@ describe("classroom session stability", () => {
     cleanup();
     vi.unstubAllGlobals();
   });
+
+  it.each([undefined, "event-1"])(
+    "student leader subscriptions keep one argument key across 90 clock ticks (event %s)",
+    (eventId) => {
+      testState.localParticipant = testState.studentParticipant;
+      testState.room.localParticipant = testState.studentParticipant;
+      testState.participants = [
+        testState.studentParticipant,
+        testState.remoteAdministrativeParticipant,
+      ];
+      const student = (offset: number) =>
+        createElement(StudentClassroomUI, {
+          courseId: eventId ? undefined : ("class-1" as never),
+          eventId: eventId as never,
+          roomName: "room-1",
+          sessionNow: INITIAL_NOW + offset,
+        });
+      const view = render(student(0));
+      for (let second = 1; second <= 90; second++) {
+        act(() => view.rerender(student(second * 1_000)));
+      }
+      expect(
+        testState.queryCalls.filter(
+          ({ query }) => query === "getSessionLeadership",
+        ),
+      ).toHaveLength(0);
+      const leaderQueries = testState.queryCalls.filter(
+        ({ query }) =>
+          query === "getSessionLeader" || query === "getEventSessionLeader",
+      );
+      expect(leaderQueries.length).toBeGreaterThan(0);
+      expect(
+        new Set(leaderQueries.map((call) => JSON.stringify(call))),
+      ).toEqual(
+        new Set([
+          JSON.stringify({
+            query: eventId ? "getEventSessionLeader" : "getSessionLeader",
+            args: { roomName: "room-1" },
+          }),
+        ]),
+      );
+      // The student's actual time-dependent extension reader is not frozen.
+      expect(
+        new Set(
+          testState.queryCalls
+            .filter(({ query }) => query === "getStudentExtensionContext")
+            .map(({ args }) => JSON.stringify(args)),
+        ).size,
+      ).toBe(7);
+      expect(screen.queryByText("classroom.waitingForTeacher")).toBeNull();
+    },
+  );
 
   it("requires confirmation for every event end control", () => {
     render(
@@ -557,6 +619,36 @@ describe("classroom session stability", () => {
         .every((button) => button.getAttribute("data-confirm") === "true"),
     ).toBe(true);
   });
+
+  it.each([undefined, "event-1"])(
+    "student leader reacts without a clock tick and cannot leak across rooms (event %s)",
+    (eventId) => {
+      testState.localParticipant = testState.studentParticipant;
+      testState.room.localParticipant = testState.studentParticipant;
+      testState.participants = [
+        testState.studentParticipant,
+        testState.remoteAdministrativeParticipant,
+      ];
+      const student = (roomName = "room-1") =>
+        createElement(StudentClassroomUI, {
+          courseId: eventId ? undefined : ("class-1" as never),
+          eventId: eventId as never,
+          roomName,
+          sessionNow: INITIAL_NOW,
+        });
+      const view = render(student());
+      expect(screen.queryByText("classroom.waitingForTeacher")).toBeNull();
+      testState.leadership = null;
+      act(() => view.rerender(student()));
+      expect(screen.getByText("classroom.waitingForTeacher")).toBeTruthy();
+      testState.leadership = testState.initialLeadership;
+      act(() => view.rerender(student()));
+      expect(screen.queryByText("classroom.waitingForTeacher")).toBeNull();
+      testState.isLeadershipLoading = true;
+      act(() => view.rerender(student("room-2")));
+      expect(screen.getByText("classroom.waitingForTeacher")).toBeTruthy();
+    },
+  );
 
   it("lets session authorities share without granting new permissions", async () => {
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });

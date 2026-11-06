@@ -1,13 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import { HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { components, internal } from "./_generated/api";
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-  type MutationCtx,
-} from "./_generated/server";
+import { internalQuery, query, type MutationCtx } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import type { Id } from "./_generated/dataModel";
 import {
   getSessionVideoReadAccess,
@@ -19,6 +14,8 @@ import {
 } from "./model/classSessionVideos";
 import { getCurrentUserOrThrow } from "./users";
 import { classSessionVideoFields } from "./model/classSessionVideoFields";
+import { isStudentEnrolled } from "./model/enrollments";
+import { validVideoDuration } from "../lib/video-progress";
 import { validateSessionVideoLessons } from "./model/sessionVideoLessons";
 import { getCourseLessonHistory } from "./model/courseProgress";
 import { getClassTimeZone } from "./model/timeZone";
@@ -201,9 +198,16 @@ export const attachUpload = internalMutation({
 });
 
 export const commit = internalMutation({
-  args: { id: v.id("classSessionVideos") },
+  args: {
+    id: v.id("classSessionVideos"),
+    verifiedDurationMs: v.optional(v.number()),
+    progressDurationUnavailable: v.optional(v.boolean()),
+  },
   returns: v.null(),
-  handler: async (ctx, { id }) => {
+  handler: async (
+    ctx,
+    { id, verifiedDurationMs, progressDurationUnavailable },
+  ) => {
     const user = await getCurrentUserOrThrow(ctx);
     const video = await ctx.db.get("classSessionVideos", id);
     if (!video || video.uploadedBy !== user._id)
@@ -226,7 +230,20 @@ export const commit = internalMutation({
     const previous = schedule.prerecordedVideoId
       ? await ctx.db.get("classSessionVideos", schedule.prerecordedVideoId)
       : null;
-    await ctx.db.patch(id, { state: "ready", expiresAt: undefined });
+    if (
+      verifiedDurationMs !== undefined &&
+      !validVideoDuration(verifiedDurationMs)
+    )
+      throw new ConvexError("INVALID_VIDEO_DURATION");
+    await ctx.db.patch(id, {
+      state: "ready",
+      expiresAt: undefined,
+      verifiedDurationMs,
+      progressDurationUnavailable:
+        verifiedDurationMs === undefined
+          ? progressDurationUnavailable
+          : undefined,
+    });
     await ctx.db.patch(schedule._id, { prerecordedVideoId: id });
     await syncPrerecordedRelease(ctx, { ...schedule, prerecordedVideoId: id });
     if (previous) await retireSessionVideo(ctx, previous);
@@ -330,8 +347,12 @@ export const finishCleanup = internalMutation({
   args: { id: v.id("classSessionVideos") },
   returns: v.null(),
   handler: async (ctx, { id }) => {
-    if ((await ctx.db.get("classSessionVideos", id))?.state === "retired")
+    if ((await ctx.db.get("classSessionVideos", id))?.state === "retired") {
+      await ctx.scheduler.runAfter(0, internal.videoViewingProgress.cleanup, {
+        videoId: id,
+      });
       await ctx.db.delete(id);
+    }
     return null;
   },
 });
@@ -344,18 +365,19 @@ export const playbackContext = internalQuery({
     scheduledStart: v.number(),
     canPreview: v.boolean(),
     released: v.boolean(),
+    trackable: v.boolean(),
   }),
   handler: async (ctx, { id }) => {
-    const { video, schedule, canPreview } = await getSessionVideoReadAccess(
-      ctx,
-      id,
-    );
+    const { user, video, schedule, course, canPreview } =
+      await getSessionVideoReadAccess(ctx, id);
     return {
       bucket: video.bucket,
       keyId: id,
       scheduledStart: schedule.scheduledStart,
       canPreview,
       released: schedule.prerecordedVideoReleased === true,
+      trackable:
+        !canPreview && (await isStudentEnrolled(ctx, course, user._id)),
     };
   },
 });

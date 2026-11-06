@@ -3,12 +3,8 @@ import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
-import {
-  query,
-  mutation,
-  internalMutation,
-  internalQuery,
-} from "./_generated/server";
+import { query, internalQuery } from "./_generated/server";
+import { mutation, internalMutation } from "./functions";
 import type { Doc, Id } from "./_generated/dataModel";
 import { currentRun, runArgs } from "./abekaSync";
 import { startAbekaSync } from "./abeka";

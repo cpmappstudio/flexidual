@@ -1266,6 +1266,22 @@ test("an event room admits its current audience and has one transferable leader"
     roomName,
   });
 
+  const attendee = f.t.withIdentity({ subject: "student" });
+  const assertStableLeader = async (userId: Id<"users">) => {
+    const detailed = await attendee.query(api.eventRoom.getSessionLeadership, {
+      roomName,
+      now: Date.now(),
+    });
+    const leader = await attendee.query(api.eventRoom.getSessionLeader, { roomName });
+    expect(leader).toEqual(detailed?.leader);
+    expect(leader?.userId).toBe(userId);
+  };
+  await assertStableLeader(f.teacher);
+  await expect(f.t.query(api.eventRoom.getSessionLeader, { roomName })).rejects.toThrow();
+  await expect(
+    f.t.withIdentity({ subject: "otherStudent" }).query(api.eventRoom.getSessionLeader, { roomName }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+
   const access = (userId: typeof f.teacher) =>
     f.t.query(internal.eventRoom.checkLiveKitAccess, {
       userId,
@@ -1318,6 +1334,7 @@ test("an event room admits its current audience and has one transferable leader"
     roomAdmin: true,
     isSessionLeader: true,
   });
+  await assertStableLeader(f.principal);
   expect(
     (
       await f.t
@@ -1399,6 +1416,10 @@ test("an event room admits its current audience and has one transferable leader"
   expect(
     (await f.t.run((ctx) => ctx.db.get(occurrence!._id)))?.sessionLeaderId,
   ).toBe(f.otherTeacher);
+  await assertStableLeader(f.otherTeacher);
+  // Audience changes revoke the small reactive read just like the detailed one.
+  await f.t.run((ctx) => ctx.db.patch("events", eventId, { gradeCodes: ["12"] }));
+  await expect(attendee.query(api.eventRoom.getSessionLeader, { roomName })).rejects.toThrow("PERMISSION_DENIED");
 });
 
 test("an event closes and reopens without an academic report", async () => {

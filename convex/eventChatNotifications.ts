@@ -5,7 +5,8 @@ import {
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { internalMutation, mutation } from "./functions";
 import { getCurrentUserOrThrow } from "./users";
 import {
   canAccessEvent,
@@ -78,6 +79,7 @@ export const publish = internalMutation({
       const fields = {
         recipientId,
         kind: "event_chat" as const,
+        chatBadgeRelevant: false,
         eventId: event._id,
         eventTitle: event.title,
         eventChatMessageId:
@@ -154,6 +156,7 @@ export const markRead = mutation({
       await ctx.db.insert("systemNotifications", {
         recipientId: user._id,
         kind: "event_chat",
+        chatBadgeRelevant: false,
         eventId: event._id,
         eventTitle: event.title,
         schoolId: event.schoolId,

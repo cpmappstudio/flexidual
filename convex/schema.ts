@@ -35,6 +35,7 @@ import { studentAttendanceStatusValidator } from "./model/studentAttendance";
 import { peopleDirectoryValidator } from "./model/peopleDirectoryFields";
 import { classSessionVideoFields } from "./model/classSessionVideoFields";
 import { chatTargetFields } from "./model/chatTarget";
+import { abekaProgressSummaryFields } from "./model/abekaProgressSummary";
 
 export const surveyCampaignValidator = v.object({
   surveyId: v.string(),
@@ -45,6 +46,13 @@ export const surveyCampaignValidator = v.object({
 });
 
 export default defineSchema({
+  // Readers use canonical data until the explicit, resumable backfill completes.
+  dashboardSummaryState: defineTable({
+    key: v.literal("v1"),
+    ready: v.boolean(),
+    phase: v.number(),
+    cursor: v.union(v.string(), v.null()),
+  }).index("by_key", ["key"]),
   // Only provider backoff metadata. Existing connections and reports are unchanged.
   abekaProviderBackoff: defineTable({ until: v.number() }),
   abekaCourses: defineTable(abekaCourseFields).index(
@@ -84,6 +92,11 @@ export default defineSchema({
     "studentId",
     "subjectId",
   ]),
+  // Dashboard-sized snapshots; full lessons remain in abekaProgress for details.
+  abekaProgressSummaries: defineTable(abekaProgressSummaryFields).index(
+    "by_studentId_and_subjectId",
+    ["studentId", "subjectId"],
+  ),
   abekaProgressHistory: defineTable({
     reportId: v.id("abekaProgress"),
     ...abekaProgressPoint.fields,
@@ -177,6 +190,16 @@ export default defineSchema({
   })
     .index("by_curriculum", ["curriculumId", "order"])
     .index("by_curriculum_active", ["curriculumId", "isActive"]),
+
+  // One small fact per taught class/lesson, regardless of repeat sessions or source.
+  dashboardTaughtLessons: defineTable({
+    classId: v.id("classes"),
+    lessonId: v.id("lessons"),
+    curriculumId: v.id("curriculums"),
+    isActive: v.boolean(),
+  })
+    .index("by_classId_and_lessonId", ["classId", "lessonId"])
+    .index("by_lessonId", ["lessonId"]),
 
   /**
    * CLASSES
@@ -741,6 +764,11 @@ export default defineSchema({
     createdBy: v.id("users"),
   })
     .index("by_class", ["classId", "scheduledStart"])
+    .index("by_classId_and_prerecordedVideoReleased_and_scheduledStart", [
+      "classId",
+      "prerecordedVideoReleased",
+      "scheduledStart",
+    ])
     .index("by_scheduled_start", ["scheduledStart"])
     .index("by_class_and_session_type", ["classId", "sessionType"])
     .index("by_class_and_status_and_session_type_and_scheduled_start", [
@@ -904,12 +932,20 @@ export default defineSchema({
     surveyId: v.optional(v.string()),
     chatMessageCount: v.optional(v.number()),
     chatReadThrough: v.optional(v.number()),
+    // Undefined denotes a pre-indexing row; badge readers retain a legacy lane.
+    chatBadgeRelevant: v.optional(v.boolean()),
     createdAt: v.number(),
     readAt: v.optional(v.number()),
   })
     .index("by_recipient_and_created_at", ["recipientId", "createdAt"])
     .index("by_recipient_and_read_at_and_created_at", [
       "recipientId",
+      "readAt",
+      "createdAt",
+    ])
+    .index("by_recipientId_and_chatBadgeRelevant_and_readAt_and_createdAt", [
+      "recipientId",
+      "chatBadgeRelevant",
       "readAt",
       "createdAt",
     ])
@@ -1268,6 +1304,15 @@ export default defineSchema({
     "by_scheduleId_and_state",
     ["scheduleId", "state"],
   ),
+
+  videoViewingProgress: defineTable({
+    videoId: v.id("classSessionVideos"),
+    studentId: v.id("users"),
+    durationMs: v.number(),
+    coverage: v.bytes(),
+    watchedMs: v.number(),
+    updatedAt: v.number(),
+  }).index("by_videoId_and_studentId", ["videoId", "studentId"]),
 
   classPrerecordedLessonRecords: defineTable({
     classId: v.id("classes"),

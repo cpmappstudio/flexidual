@@ -359,6 +359,7 @@ export function StudentAttendanceSummary({
   verifiedSessions,
   pendingVerification,
   pendingSessions = [],
+  loadPendingOnDemand = false,
   courses = [],
   studentId,
   studentName,
@@ -370,6 +371,7 @@ export function StudentAttendanceSummary({
   verifiedSessions: number;
   pendingVerification: number;
   pendingSessions?: PendingAttendanceSession[];
+  loadPendingOnDemand?: boolean;
   courses?: CourseOption[];
   studentId?: string;
   studentName: string;
@@ -417,9 +419,45 @@ export function StudentAttendanceSummary({
     Boolean(open && recordingScheduleId),
   );
   const recordings = getSessionRecordings(sessionRecord);
-  const visiblePendingSessions = selectedClassId
-    ? pendingSessions.filter((item) => item.classId === selectedClassId)
-    : pendingSessions;
+  const {
+    results: pendingResults,
+    status: pendingStatus,
+    loadMore: loadPendingPage,
+  } = usePaginatedQuery(
+    api.student.listStudentPendingAttendance,
+    loadPendingOnDemand && open && mode === "pending"
+      ? {
+          ...(studentId ? { studentId, orgSlug } : {}),
+          ...(selectedClassId ? { classId: selectedClassId } : {}),
+        }
+      : "skip",
+    { initialNumItems: INITIAL_HISTORY_SIZE },
+  );
+  const visiblePendingSessions = loadPendingOnDemand
+    ? pendingResults
+    : selectedClassId
+      ? pendingSessions.filter((item) => item.classId === selectedClassId)
+      : pendingSessions;
+  const activeQueryStatus = mode === "pending" ? pendingStatus : queryStatus;
+  const loadActivePage = mode === "pending" ? loadPendingPage : loadMore;
+  useEffect(() => {
+    if (
+      loadPendingOnDemand &&
+      open &&
+      mode === "pending" &&
+      pendingResults.length === 0 &&
+      pendingStatus === "CanLoadMore"
+    ) {
+      loadPendingPage(INITIAL_HISTORY_SIZE);
+    }
+  }, [
+    loadPendingOnDemand,
+    open,
+    mode,
+    pendingResults.length,
+    pendingStatus,
+    loadPendingPage,
+  ]);
   const courseOptions = useMemo(
     () => [
       { value: ALL_COURSES, label: historyT("allCourses") },
@@ -499,7 +537,9 @@ export function StudentAttendanceSummary({
     selectedRecordingItem?.className ||
     historyT("sessionFallback");
   const surfaceOpen = open && !recordingOpen && !pendingCloseoutSession;
-  const isLoading = mode === "verified" && queryStatus === "LoadingFirstPage";
+  const isLoading =
+    activeQueryStatus === "LoadingFirstPage" &&
+    (mode === "verified" || loadPendingOnDemand);
   const hasItems =
     mode === "pending" ? visiblePendingSessions.length > 0 : results.length > 0;
   const attendanceStatusButtons = ATTENDANCE_STATUSES.map((status) => {
@@ -743,17 +783,17 @@ export function StudentAttendanceSummary({
                         }}
                       />
                     ))}
-                {mode === "verified" &&
-                  (queryStatus === "CanLoadMore" ||
-                    queryStatus === "LoadingMore") && (
+                {(mode === "verified" || loadPendingOnDemand) &&
+                  (activeQueryStatus === "CanLoadMore" ||
+                    activeQueryStatus === "LoadingMore") && (
                     <div className="flex justify-center pt-2">
                       <Button
                         type="button"
                         variant="outline"
-                        disabled={queryStatus === "LoadingMore"}
-                        onClick={() => loadMore(INITIAL_HISTORY_SIZE)}
+                        disabled={activeQueryStatus === "LoadingMore"}
+                        onClick={() => loadActivePage(INITIAL_HISTORY_SIZE)}
                       >
-                        {queryStatus === "LoadingMore" && (
+                        {activeQueryStatus === "LoadingMore" && (
                           <LoaderCircle
                             className="animate-spin"
                             aria-hidden="true"

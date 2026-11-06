@@ -5,6 +5,12 @@ import schema from "./schema";
 import { modules } from "./test.setup";
 import { listActiveStudentClasses } from "./model/enrollments";
 import { isUpcomingClassSession } from "../lib/class-session";
+import aggregate from "@convex-dev/aggregate/test";
+import { internal } from "./_generated/api";
+import { Triggers } from "convex-helpers/server/triggers";
+import type { DataModel } from "./_generated/dataModel";
+import type { FunctionReturnType } from "convex/server";
+import { registerDashboardAttendanceTriggers } from "./model/dashboardAggregates";
 
 const FROM = Date.UTC(2026, 9, 14);
 const TO = FROM + 24 * 60 * 60_000 - 1;
@@ -297,4 +303,247 @@ test("active-only chat schedule reads only active rows and keeps closed/history 
     now: NOW,
   });
   expect(all).toHaveLength(405);
+});
+
+test("summary backfill is resumable, preserves totals and removes historical dashboard reads", async () => {
+  const { t, ids, student } = await setup();
+  aggregate.register(t, "dashboardAggregate");
+  // Add source data directly, like data predating this release.
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 100; i++)
+      await ctx.db.insert("lessons", {
+        curriculumId: ids.curriculum,
+        title: `Heavy ${i}`,
+        content: "x".repeat(20_000),
+        order: i,
+        isActive: true,
+        createdAt: FROM,
+        createdBy: ids.teacher,
+      });
+    const oldCourse = await ctx.db.insert("classes", {
+      name: "Inactive history",
+      curriculumId: ids.curriculum,
+      campusId: ids.campus,
+      isActive: false,
+      createdAt: FROM,
+      createdBy: ids.teacher,
+    });
+    for (let i = 0; i < 1000; i++) {
+      const scheduleId = await ctx.db.insert("classSchedule", {
+        classId: oldCourse,
+        scheduledStart: FROM - i * 86400000,
+        scheduledEnd: FROM - i * 86400000 + 3600000,
+        roomName: `old-history-${i}`,
+        status: "completed",
+        createdAt: FROM,
+        createdBy: ids.teacher,
+      });
+      await ctx.db.insert("studentAttendanceRecords", {
+        scheduleId,
+        studentId: ids.student,
+        status: "present",
+        confirmedBy: ids.teacher,
+        confirmedAt: FROM,
+        lastUpdatedBy: ids.teacher,
+        lastUpdatedAt: FROM,
+      });
+    }
+  });
+  const baseline = await student.query(async (ctx) => {
+    const data = await ctx.runQuery(api.student.getStudentDashboardStats, {});
+    return { data, metrics: await ctx.meta.getTransactionMetrics() };
+  });
+  const before = baseline.data;
+  const pendingBefore = before!.pendingAttendanceSessions.map(
+    (row) => row.scheduleId,
+  );
+  let done = false;
+  for (let i = 0; i < 500 && !done; i++)
+    done = (await t.mutation(internal.dashboardSummaries.backfill, {})).done;
+  expect(done).toBe(true);
+  expect(
+    (await t.mutation(internal.dashboardSummaries.backfill, {})).done,
+  ).toBe(true);
+  const read = await student.query(async (ctx) => {
+    const data = await ctx.runQuery(api.student.getStudentDashboardStats, {
+      summaryOnly: true,
+    });
+    return { data, metrics: await ctx.meta.getTransactionMetrics() };
+  });
+  expect(read.data!.overall).toEqual(before!.overall);
+  expect(read.data!.classes).toEqual(before!.classes);
+  expect(read.data!.pendingAttendanceSessions).toEqual([]);
+  console.log(
+    "DASHBOARD_LIGHT_READ",
+    JSON.stringify({
+      documents: read.metrics.documentsRead.used,
+      bytes: read.metrics.bytesRead.used,
+      previousDocuments: baseline.metrics.documentsRead.used,
+      previousBytes: baseline.metrics.bytesRead.used,
+    }),
+  );
+  expect(read.metrics.documentsRead.used).toBeLessThan(128);
+  expect(read.metrics.bytesRead.used).toBeLessThan(100_000);
+  expect(read.metrics.bytesRead.used).toBeLessThan(
+    baseline.metrics.bytesRead.used / 20,
+  );
+  const allPending = [];
+  let cursor: string | null = null;
+  for (let i = 0; i < 100; i++) {
+    const page: FunctionReturnType<
+      typeof api.student.listStudentPendingAttendance
+    > = await student.query(api.student.listStudentPendingAttendance, {
+      paginationOpts: { cursor, numItems: 25 },
+    });
+    allPending.push(...page.page.map((row) => row.scheduleId));
+    if (page.isDone) break;
+    cursor = page.continueCursor;
+  }
+  expect(new Set(allPending)).toEqual(new Set(pendingBefore));
+  expect(allPending.length).toBe(pendingBefore.length);
+  await expect(
+    t.query(api.student.listStudentPendingAttendance, {
+      paginationOpts: { cursor: null, numItems: 25 },
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+});
+
+test("attendance backfill bounds indirect schedule reads and preserves native resume cursors", async () => {
+  const { t, ids, student } = await setup();
+  aggregate.register(t, "dashboardAggregate");
+  const before = await student.query(api.student.getStudentDashboardStats, {});
+  for (let i = 0; i < 20; i++)
+    await t.run(async (ctx) => {
+      const scheduleId = await ctx.db.insert("classSchedule", {
+        classId: ids.course,
+        description: "x".repeat(850_000),
+        scheduledStart: FROM,
+        scheduledEnd: NOW,
+        roomName: `large-attendance-${i}`,
+        status: "completed",
+        sessionClosureStatus: "completed",
+        createdAt: FROM,
+        createdBy: ids.teacher,
+      });
+      await ctx.db.insert("studentAttendanceRecords", {
+        scheduleId,
+        studentId: ids.student,
+        status: "present",
+        confirmedBy: ids.teacher,
+        confirmedAt: FROM,
+        lastUpdatedBy: ids.teacher,
+        lastUpdatedAt: FROM,
+      });
+    });
+  let done = false;
+  let attendanceBatches = 0;
+  let maxRead = 0;
+  for (let i = 0; i < 100 && !done; i++) {
+    const state = await t.run((ctx) =>
+      ctx.db.query("dashboardSummaryState").unique(),
+    );
+    const batch = await t.mutation(async (ctx) => {
+      const result = await ctx.runMutation(
+        internal.dashboardSummaries.backfill,
+        {},
+      );
+      return { ...result, metrics: await ctx.meta.getTransactionMetrics() };
+    });
+    maxRead = Math.max(maxRead, batch.metrics.bytesRead.used);
+    if (state?.phase === 1) attendanceBatches++;
+    done = batch.done;
+  }
+  expect(done).toBe(true);
+  expect(attendanceBatches).toBeGreaterThan(1);
+  expect(maxRead).toBeLessThan(5 * 1024 * 1024);
+  const after = await student.query(api.student.getStudentDashboardStats, {
+    summaryOnly: true,
+  });
+  expect(after!.overall).toEqual({
+    ...before!.overall,
+    totalSessions: before!.overall.totalSessions + 20,
+    verifiedSessions: before!.overall.verifiedSessions + 20,
+    attendanceCounts: { ...before!.overall.attendanceCounts, present: 20 },
+  });
+  process.stdout.write(`Large-schedule backfill max bytesRead: ${maxRead}\n`);
+});
+
+test("transactional summaries follow correction, reopen, cancellation and deletion without drift", async () => {
+  const { t, ids, student, teacher } = await setup();
+  aggregate.register(t, "dashboardAggregate");
+  const triggers = new Triggers<DataModel>();
+  registerDashboardAttendanceTriggers(triggers);
+  while (!(await t.mutation(internal.dashboardSummaries.backfill, {})).done) {
+    /* explicit test-only initialization */
+  }
+  const parity = async () => {
+    const reference = await student.query(
+      api.student.getStudentDashboardStats,
+      {},
+    );
+    const summary = await student.query(api.student.getStudentDashboardStats, {
+      summaryOnly: true,
+    });
+    expect(summary!.overall).toEqual(reference!.overall);
+    expect(summary!.classes.map((row) => row.stats)).toEqual(
+      reference!.classes.map((row) => row.stats),
+    );
+  };
+  const attendanceId = await t.run(async (raw) => {
+    const ctx = triggers.wrapDB(raw);
+    await ctx.db.patch("classSchedule", ids.closed, {
+      sessionClosureStatus: "completed",
+    });
+    return ctx.db.insert("studentAttendanceRecords", {
+      scheduleId: ids.closed,
+      studentId: ids.student,
+      status: "present",
+      confirmedBy: ids.teacher,
+      confirmedAt: FROM,
+      lastUpdatedBy: ids.teacher,
+      lastUpdatedAt: FROM,
+    });
+  });
+  await parity();
+  await teacher.mutation(api.schedule.updateAttendance, {
+    scheduleId: ids.closed,
+    studentId: ids.student,
+    status: "excused",
+    excuseReason: "Documented absence",
+  });
+  // Retrying an identical correction must not increment the counters again.
+  await teacher.mutation(api.schedule.updateAttendance, {
+    scheduleId: ids.closed,
+    studentId: ids.student,
+    status: "excused",
+    excuseReason: "Documented absence",
+  });
+  expect(
+    await t.run((ctx) => ctx.db.get("studentAttendanceRecords", attendanceId)),
+  ).toMatchObject({ status: "excused" });
+  await parity();
+  await t.run(async (raw) =>
+    triggers.wrapDB(raw).db.patch("classSchedule", ids.closed, {
+      status: "active",
+      sessionClosureStatus: "pending",
+    }),
+  );
+  await parity();
+  await t.run(async (raw) =>
+    triggers.wrapDB(raw).db.patch("classSchedule", ids.closed, {
+      status: "completed",
+      sessionClosureStatus: "completed",
+    }),
+  );
+  await parity();
+  await t.run(async (raw) =>
+    triggers
+      .wrapDB(raw)
+      .db.patch("classSchedule", ids.closed, { status: "cancelled" }),
+  );
+  await parity();
+  await t.run(async (raw) =>
+    triggers.wrapDB(raw).db.delete("classSchedule", ids.closed),
+  );
+  await parity();
 });

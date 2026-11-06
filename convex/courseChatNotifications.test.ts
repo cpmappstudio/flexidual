@@ -1,4 +1,5 @@
 import { convexTest } from "convex-test";
+import type { FunctionReturnType } from "convex/server";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
@@ -100,6 +101,316 @@ async function setup(studentCount = 1, legacy = false) {
     });
   return { t, ...data, student, teacher, admin, send, deliver, feed, unread };
 }
+
+async function prepareBadgeScope(s: Awaited<ReturnType<typeof setup>>) {
+  return s.t.run(async (ctx) => {
+    const course = (await ctx.db.get("classes", s.classId))!;
+    const assignmentId = await ctx.db.insert("roleAssignments", {
+      userId: s.students[0],
+      orgType: "campus",
+      orgId: course.campusId!,
+      schoolId: course.schoolId,
+      role: "student",
+      gradeCode: "08",
+      assignedBy: s.adminId,
+      assignedAt: Date.now(),
+    });
+    return { course, assignmentId };
+  });
+}
+
+async function readBadgeLanes(
+  s: Awaited<ReturnType<typeof setup>>,
+  orgSlug = "campus",
+) {
+  const items = [];
+  let documentsRead = 0;
+  let bytesRead = 0;
+  let pages = 0;
+  for (const legacy of [false, true]) {
+    let cursor: string | null = null;
+    while (true) {
+      const read = await s.student.query(async (ctx) => {
+        const result = await ctx.runQuery(
+          api.courseChatNotifications.listUnreadForBadges,
+          {
+            orgSlug,
+            legacy,
+            paginationOpts: { cursor, numItems: 50 },
+          },
+        );
+        return { result, metrics: await ctx.meta.getTransactionMetrics() };
+      });
+      documentsRead += read.metrics.documentsRead.used;
+      bytesRead += read.metrics.bytesRead.used;
+      items.push(...read.result.page);
+      pages++;
+      if (read.result.isDone) break;
+      cursor = read.result.continueCursor;
+      expect(pages).toBeLessThan(100);
+    }
+  }
+  return { items, documentsRead, bytesRead, pages };
+}
+
+async function backfillBadgeRows(s: Awaited<ReturnType<typeof setup>>) {
+  let cursor: string | null = null;
+  let updated = 0;
+  while (true) {
+    const page: FunctionReturnType<
+      typeof internal.courseChatNotifications.backfillChatBadgeRelevance
+    > = await s.t.mutation(
+      internal.courseChatNotifications.backfillChatBadgeRelevance,
+      {
+        paginationOpts: { cursor, numItems: 100, maximumRowsRead: 100 },
+      },
+    );
+    expect(page.updated).toBeLessThanOrEqual(100);
+    updated += page.updated;
+    if (page.isDone) break;
+    cursor = page.continueCursor;
+  }
+  return updated;
+}
+
+test("indexed badge lanes preserve legacy counts and avoid 1000 unrelated notice bodies after bounded backfill", async () => {
+  const s = await setup();
+  const { course } = await prepareBadgeScope(s);
+  await s.send("Human chat");
+  await s.deliver();
+  const ids = await s.t.run(async (ctx) => {
+    const ids = [];
+    for (let i = 0; i < 1000; i++) {
+      ids.push(
+        await ctx.db.insert("systemNotifications", {
+          recipientId: s.students[0],
+          kind: "announcement",
+          classId: course._id,
+          campusId: course.campusId,
+          schoolId: course.schoolId,
+          announcementBody: "x".repeat(1000),
+          createdAt: Date.now(),
+          dedupeKey: `legacy-unrelated-${i}`,
+        }),
+      );
+    }
+    const legacyChat = await ctx.db.insert("systemNotifications", {
+      recipientId: s.students[0],
+      kind: "course_chat",
+      classId: course._id,
+      campusId: course.campusId,
+      schoolId: course.schoolId,
+      chatMessageCount: 3,
+      createdAt: Date.now(),
+      dedupeKey: "legacy-chat",
+    });
+    return { ids, legacyChat };
+  });
+  const before = await readBadgeLanes(s);
+  expect(before.items.map((item) => item.count).sort()).toEqual([1, 3]);
+  expect(before.documentsRead).toBeGreaterThan(1000);
+  const original = await s.t.run((ctx) =>
+    ctx.db.get("systemNotifications", ids.legacyChat),
+  );
+  expect(await backfillBadgeRows(s)).toBe(1001);
+  expect(await backfillBadgeRows(s)).toBe(0);
+  const migrated = await s.t.run((ctx) =>
+    ctx.db.get("systemNotifications", ids.legacyChat),
+  );
+  expect(migrated).toEqual({ ...original, chatBadgeRelevant: true });
+  const after = await readBadgeLanes(s);
+  expect(after.items).toEqual(before.items);
+  expect(after.pages).toBe(2);
+  expect(after.documentsRead).toBeLessThan(35);
+  expect(after.bytesRead).toBeLessThan(15_000);
+  // Old clients retain their original endpoint and still see both notices.
+  const oldItems = [];
+  let cursor: string | null = null;
+  while (true) {
+    const page: FunctionReturnType<
+      typeof api.courseChatNotifications.listUnread
+    > = await s.student.query(api.courseChatNotifications.listUnread, {
+      paginationOpts: { cursor, numItems: 50 },
+    });
+    oldItems.push(...page.page);
+    if (page.isDone) break;
+    cursor = page.continueCursor;
+  }
+  expect(oldItems.map((item) => item.count).sort()).toEqual([1, 3]);
+});
+
+test("new unrelated notifications are indexed away without requiring a backfill", async () => {
+  const s = await setup();
+  await prepareBadgeScope(s);
+  await s.send("Human chat");
+  await s.deliver();
+  for (let i = 0; i < 10; i++) {
+    await s.t.run(async (ctx) => {
+      for (let j = 0; j < 100; j++) {
+        await ctx.runMutation(internal.systemNotifications.publish, {
+          recipientId: s.students[0],
+          kind: "announcement",
+          announcementBody: "x".repeat(1000),
+          dedupeKey: `new-unrelated-${i}-${j}`,
+        });
+      }
+    });
+  }
+  const read = await readBadgeLanes(s);
+  expect(read.items.map((item) => item.count)).toEqual([1]);
+  expect(read.pages).toBe(2);
+  expect(read.documentsRead).toBeLessThan(30);
+  expect(read.bytesRead).toBeLessThan(15_000);
+});
+
+test("backfill preserves read-before-delivery watermarks and does not acknowledge later messages", async () => {
+  const s = await setup();
+  await prepareBadgeScope(s);
+  const older = await s.send("Delayed delivery");
+  await s.student.mutation(api.courseChatNotifications.markRead, {
+    messageId: older,
+  });
+  await backfillBadgeRows(s);
+  await s.deliver();
+  expect((await readBadgeLanes(s)).items).toEqual([]);
+  await s.send("New unread message");
+  await s.deliver();
+  await backfillBadgeRows(s);
+  expect((await readBadgeLanes(s)).items.map((item) => item.count)).toEqual([
+    1,
+  ]);
+  // A retried acknowledgement of the older message cannot erase the new badge.
+  await s.student.mutation(api.courseChatNotifications.markRead, {
+    messageId: older,
+  });
+  expect((await readBadgeLanes(s)).items.map((item) => item.count)).toEqual([
+    1,
+  ]);
+});
+
+test("scoped badge lanes include institutional broadcasts and exclude other campuses and revoked access", async () => {
+  const s = await setup();
+  const { course, assignmentId } = await prepareBadgeScope(s);
+  const { institutional, otherCampus } = await s.t.run(async (ctx) => {
+    const campusId = await ctx.db.insert("campuses", {
+      schoolId: course.schoolId!,
+      name: "Other",
+      slug: "other",
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: s.adminId,
+    });
+    const makeBroadcast = async (
+      mode: "private" | "school",
+      campus?: Id<"campuses">,
+    ) => {
+      const broadcastId = await ctx.db.insert("broadcasts", {
+        name: `${mode} broadcast`,
+        schoolId: course.schoolId!,
+        campusId: campus,
+        mode,
+        gradeCodes: ["08"],
+        createdAt: Date.now(),
+        createdBy: s.adminId,
+        professorsMuted: false,
+        professorAttachmentsEnabled: false,
+      });
+      await ctx.db.insert("systemNotifications", {
+        recipientId: s.students[0],
+        kind: "broadcast_chat",
+        broadcastId,
+        schoolId: course.schoolId,
+        campusId: campus,
+        createdAt: Date.now(),
+        chatMessageCount: 2,
+        dedupeKey: broadcastId,
+        chatBadgeRelevant: true,
+      });
+      return broadcastId;
+    };
+    const institutional = await makeBroadcast("school");
+    const otherCampus = await makeBroadcast("private", campusId);
+    // User may read both campuses, but campus-specific badges must not leak across them.
+    await ctx.db.insert("roleAssignments", {
+      userId: s.students[0],
+      orgType: "campus",
+      orgId: campusId,
+      schoolId: course.schoolId,
+      role: "student",
+      gradeCode: "08",
+      assignedAt: Date.now(),
+      assignedBy: s.adminId,
+    });
+    return { institutional, otherCampus };
+  });
+  const current = await readBadgeLanes(s);
+  expect(current.items.map((item) => item.broadcastId)).toEqual([
+    institutional,
+  ]);
+  const other = await readBadgeLanes(s, "other");
+  expect(new Set(other.items.map((item) => item.broadcastId))).toEqual(
+    new Set([institutional, otherCampus]),
+  );
+  await s.t.run((ctx) => ctx.db.delete("roleAssignments", assignmentId));
+  await expect(readBadgeLanes(s)).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    s.t
+      .withIdentity({ subject: "outsider" })
+      .query(api.courseChatNotifications.listUnreadForBadges, {
+        orgSlug: "school",
+        legacy: false,
+        paginationOpts: { cursor: null, numItems: 50 },
+      }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+});
+
+test("badge lanes paginate every relevant row and recheck enrollment after a cursor was issued", async () => {
+  const s = await setup();
+  const { course } = await prepareBadgeScope(s);
+  await s.t.run(async (ctx) => {
+    for (let i = 0; i < 125; i++) {
+      await ctx.db.insert("systemNotifications", {
+        recipientId: s.students[0],
+        kind: "course_chat",
+        classId: s.classId,
+        schoolId: course.schoolId,
+        campusId: course.campusId,
+        chatMessageCount: 1,
+        createdAt: Date.now(),
+        dedupeKey: `page-${i}`,
+        chatBadgeRelevant: true,
+      });
+    }
+  });
+  expect((await readBadgeLanes(s)).items).toHaveLength(125);
+  const first = await s.student.query(
+    api.courseChatNotifications.listUnreadForBadges,
+    {
+      orgSlug: "campus",
+      legacy: false,
+      paginationOpts: { cursor: null, numItems: 50 },
+    },
+  );
+  expect(first.page).toHaveLength(50);
+  expect(first.isDone).toBe(false);
+  await s.t.run(async (ctx) => {
+    const enrollment = await ctx.db
+      .query("classEnrollments")
+      .withIndex("by_class", (q) => q.eq("classId", s.classId))
+      .unique();
+    await ctx.db.delete("classEnrollments", enrollment!._id);
+  });
+  const next = await s.student.query(
+    api.courseChatNotifications.listUnreadForBadges,
+    {
+      orgSlug: "campus",
+      legacy: false,
+      paginationOpts: { cursor: first.continueCursor, numItems: 50 },
+    },
+  );
+  expect(next.page).toEqual([]);
+  expect((await readBadgeLanes(s)).items).toEqual([]);
+});
 
 test.each([false, true])(
   "chat order follows messages for every role (legacy enrollment: %s)",

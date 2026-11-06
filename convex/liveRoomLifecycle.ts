@@ -1,10 +1,6 @@
 import { v } from "convex/values";
-import {
-  internalMutation,
-  internalQuery,
-  query,
-  type MutationCtx,
-} from "./_generated/server";
+import { internalQuery, query, type MutationCtx } from "./_generated/server";
+import { internalMutation } from "./functions";
 import type { Doc } from "./_generated/dataModel";
 import { getCurrentUserFromAuth } from "./users";
 import { canAccessSchedule } from "./model/scheduleAccess";

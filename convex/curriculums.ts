@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { listTeacherClasses } from "./model/courseAssignments";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { query, type MutationCtx } from "./_generated/server";
+import { mutation } from "./functions";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { ConvexError } from "convex/values";
 import {

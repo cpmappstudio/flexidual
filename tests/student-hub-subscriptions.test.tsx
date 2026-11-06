@@ -1,5 +1,11 @@
 import type { ComponentProps, ReactNode } from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { NextIntlClientProvider } from "next-intl";
 import { getFunctionName } from "convex/server";
@@ -32,6 +38,13 @@ const state = vi.hoisted(() => ({
   campusEventOccurrences: [] as DashboardEvent[],
   schoolEventStatus: "Exhausted" as "Exhausted" | "CanLoadMore",
   loadMoreScopes: [] as string[],
+  courses: [] as {
+    classId: string;
+    className: string;
+    timeZone: string;
+    canViewPrerecordedProgress: boolean;
+    teacher: { fullName: string };
+  }[],
 }));
 vi.mock("next/navigation", () => ({
   useParams: () => ({ orgSlug: "campus" }),
@@ -78,7 +91,12 @@ vi.mock("convex/react", () => ({
       return {
         student: { fullName: "Student Test" },
         canEdit: false,
-        classes: [],
+        classes: state.courses,
+        overall: {
+          attendanceCounts: { present: 0, partial: 0, absent: 0, excused: 0 },
+          verifiedSessions: 0,
+          pendingVerification: 0,
+        },
         pendingAttendanceSessions: [],
         upcomingLessons: [],
       };
@@ -95,6 +113,8 @@ vi.mock("convex/react", () => ({
     args: { scope: "school" | "campus" },
   ) => {
     state.requests.push({ name: getFunctionName(query), args });
+    if (getFunctionName(query) === "videoViewingProgress:courseReport")
+      return { results: [], status: "Exhausted", loadMore: vi.fn() };
     return {
       results:
         args.scope === "school"
@@ -118,6 +138,72 @@ afterEach(() => {
   state.campusEventOccurrences = [];
   state.schoolEventStatus = "Exhausted";
   state.loadMoreScopes = [];
+  state.courses = [];
+});
+
+test("the profile offers progress only for permitted courses and removes the action when access is revoked", () => {
+  state.courses = [
+    {
+      classId: "allowed",
+      className: "My course",
+      timeZone: "UTC",
+      canViewPrerecordedProgress: true,
+      teacher: { fullName: "Teacher" },
+    },
+    {
+      classId: "denied",
+      className: "Other course",
+      timeZone: "UTC",
+      canViewPrerecordedProgress: false,
+      teacher: { fullName: "Other teacher" },
+    },
+  ];
+  const page = () => (
+    <NextIntlClientProvider locale="en" timeZone="UTC" messages={messages}>
+      <StudentHubPage studentId="learner" />
+    </NextIntlClientProvider>
+  );
+  const view = render(page());
+  expect(
+    screen.getByRole("button", {
+      name: "Prerecorded class progress · My course",
+    }),
+  ).toBeDefined();
+  expect(
+    screen.queryByRole("button", {
+      name: "Prerecorded class progress · Other course",
+    }),
+  ).toBeNull();
+  expect(
+    state.requests.some(
+      ({ name }) => name === "videoViewingProgress:courseReport",
+    ),
+  ).toBe(false);
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Prerecorded class progress · My course",
+    }),
+  );
+  expect(screen.getByRole("dialog")).toBeDefined();
+  const reportRequests = state.requests.filter(
+    ({ name }) => name === "videoViewingProgress:courseReport",
+  ).length;
+  state.courses = state.courses.map((course) => ({
+    ...course,
+    canViewPrerecordedProgress: false,
+  }));
+  view.rerender(page());
+  expect(
+    screen.queryByRole("button", {
+      name: "Prerecorded class progress · My course",
+    }),
+  ).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(
+    state.requests.filter(
+      ({ name }) => name === "videoViewingProgress:courseReport",
+    ),
+  ).toHaveLength(reportRequests);
 });
 
 test("a class wins an overlapping event, while an event alone gets the focus", () => {

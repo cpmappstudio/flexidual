@@ -1,7 +1,7 @@
 import { MINUTE } from "@convex-dev/rate-limiter";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalMutation } from "./_generated/server";
+import { internalMutation } from "./functions";
 import { getCurrentUserOrThrow } from "./users";
 import { isValidChatFile } from "../lib/chat-attachments";
 import { canAccessEvent } from "./model/eventAccess";

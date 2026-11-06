@@ -6,19 +6,27 @@ import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
-import { query, mutation, type QueryCtx } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
+import { mutation } from "./functions";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserFromAuth } from "./users";
 import { ConvexError, v } from "convex/values";
 import { getInstitutionGrades } from "./model/grades";
 import { getStudentGradeCode } from "./model/membership";
-import { resolveStudentDashboardAccess } from "./model/studentDashboardAccess";
+import {
+  resolveStudentDashboardAccess,
+  studentDashboardTargetValidator,
+} from "./model/studentDashboardAccess";
 import { canAccessEvent } from "./model/eventAccess";
 import {
   isStudentEnrolled,
   listActiveStudentClasses,
 } from "./model/enrollments";
-import { canManageCampusPeople, canManageClasses } from "./permissions";
+import {
+  canAccessClass,
+  canManageCampusPeople,
+  canManageClasses,
+} from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
 import { curriculumIconValidator } from "./model/curriculumIcons";
 import {
@@ -42,6 +50,13 @@ import {
   courseProgressFields,
   getClassCurriculumProgress,
 } from "./model/courseProgress";
+import {
+  dashboardSummariesReady,
+  getDashboardAttendanceStats,
+} from "./model/dashboardAggregates";
+import { getLightCourseProgress } from "./model/courseProgressSummary";
+import { mergedStream, stream } from "convex-helpers/server/stream";
+import schema from "./schema";
 
 const dashboardScheduleValidator = v.object({
   scheduleId: v.id("classSchedule"),
@@ -66,11 +81,6 @@ const dashboardScheduleValidator = v.object({
   attendance: v.literal("upcoming"),
   minutesAttended: v.literal(0),
   isStudentActive: v.literal(false),
-});
-
-const studentDashboardTargetValidator = v.object({
-  studentId: v.optional(v.string()),
-  orgSlug: v.optional(v.string()),
 });
 
 function toDashboardSchedule(
@@ -414,6 +424,7 @@ async function buildAttendanceHistoryItem(
 export const getStudentDashboardStats = query({
   args: {
     now: v.optional(v.number()),
+    summaryOnly: v.optional(v.boolean()),
     ...studentDashboardTargetValidator.fields,
   },
   returns: v.union(
@@ -455,6 +466,7 @@ export const getStudentDashboardStats = query({
         v.object({
           classId: v.id("classes"),
           className: v.string(),
+          canViewPrerecordedProgress: v.boolean(),
           abekaProgress: v.union(
             v.null(),
             v.object({
@@ -574,10 +586,14 @@ export const getStudentDashboardStats = query({
       };
     }
 
-    const attendanceRecords = await ctx.db
-      .query("studentAttendanceRecords")
-      .withIndex("by_student", (q) => q.eq("studentId", user._id))
-      .collect();
+    const useSummary = args.summaryOnly === true;
+    const aggregated = useSummary && (await dashboardSummariesReady(ctx));
+    const attendanceRecords = aggregated
+      ? []
+      : await ctx.db
+          .query("studentAttendanceRecords")
+          .withIndex("by_student", (q) => q.eq("studentId", user._id))
+          .collect();
     const attendanceBySchedule = new Map(
       attendanceRecords.map((record) => [record.scheduleId, record]),
     );
@@ -598,6 +614,7 @@ export const getStudentDashboardStats = query({
           schedules,
           timeZone,
           curriculumProgress,
+          canViewPrerecordedProgress,
         ] = await Promise.all([
           teacherId ? ctx.db.get(teacherId) : null,
           ctx.db.get(classData.curriculumId),
@@ -607,12 +624,20 @@ export const getStudentDashboardStats = query({
               q.eq("studentId", user._id).eq("classId", classData._id),
             )
             .unique(),
-          ctx.db
-            .query("classSchedule")
-            .withIndex("by_class", (q) => q.eq("classId", classData._id))
-            .collect(),
+          aggregated
+            ? Promise.resolve([])
+            : ctx.db
+                .query("classSchedule")
+                .withIndex("by_class", (q) => q.eq("classId", classData._id))
+                .collect(),
           getClassTimeZone(ctx, classData),
-          getClassCurriculumProgress(ctx, classData),
+          useSummary
+            ? getLightCourseProgress(ctx, classData)
+            : getClassCurriculumProgress(ctx, classData),
+          viewer.isActive &&
+            user.isActive &&
+            (viewer._id === user._id ||
+              canAccessClass(ctx, viewer._id, classData)),
         ]);
 
         const countableSchedules = schedules.filter(
@@ -658,7 +683,9 @@ export const getStudentDashboardStats = query({
               classData.campusId,
               classData.schoolId ?? curriculum?.schoolId,
             )));
-        const pendingAttendanceSessions = pendingSchedules.map((schedule) => ({
+        const pendingAttendanceSessions = (
+          useSummary ? [] : pendingSchedules
+        ).map((schedule) => ({
           scheduleId: schedule._id,
           classId: classData._id,
           className: classData.name,
@@ -675,6 +702,7 @@ export const getStudentDashboardStats = query({
           stats: {
             classId: classData._id,
             className: classData.name,
+            canViewPrerecordedProgress,
             abekaProgress: abekaProgress.get(classData._id) ?? null,
             courseProgress: {
               totalLessons: curriculumProgress.totalLessons,
@@ -703,13 +731,15 @@ export const getStudentDashboardStats = query({
                         : "System",
                   imageUrl: undefined,
                 },
-            stats: {
-              totalClasses: countableSchedules.length,
-              verifiedClasses,
-              pendingVerification,
-              upcomingClasses,
-              attendanceCounts,
-            },
+            stats: aggregated
+              ? await getDashboardAttendanceStats(ctx, user._id, classData._id)
+              : {
+                  totalClasses: countableSchedules.length,
+                  verifiedClasses,
+                  pendingVerification,
+                  upcomingClasses,
+                  attendanceCounts,
+                },
             icon: userPreference?.icon || null,
             nextSession:
               now === undefined
@@ -793,6 +823,102 @@ export const getStudentDashboardStats = query({
       pendingAttendanceSessions,
       classes: classStats,
       upcomingLessons,
+    };
+  },
+});
+
+// Independent paginated detail: the dashboard no longer ships every pending
+// closeout while this surface is closed. Merge indexed course streams using the
+// official helper rather than inventing a multi-query cursor protocol.
+export const listStudentPendingAttendance = query({
+  args: {
+    ...studentDashboardTargetValidator.fields,
+    classId: v.optional(v.id("classes")),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(pendingAttendanceSessionValidator),
+  handler: async (ctx, args) => {
+    const access = await resolveStudentDashboardAccess(ctx, args);
+    if (!access) throw new ConvexError("PERMISSION_DENIED");
+    const courses = await listActiveStudentClasses(
+      ctx,
+      access.student._id,
+      access.campus?._id,
+    );
+    const selected = courses.filter(
+      (course) => !args.classId || course._id === args.classId,
+    );
+    if (!selected.length) return { page: [], continueCursor: "", isDone: true };
+    const byId = new Map(selected.map((course) => [course._id, course]));
+    const streams = selected.flatMap((course) =>
+      ([undefined, "live"] as const).map((sessionType) =>
+        stream(ctx.db, schema)
+          .query("classSchedule")
+          .withIndex(
+            "by_class_and_status_and_session_type_and_scheduled_start",
+            (q) =>
+              q
+                .eq("classId", course._id)
+                .eq("status", "completed")
+                .eq("sessionType", sessionType),
+          )
+          .order("desc"),
+      ),
+    );
+    const result = await mergedStream(streams, ["scheduledStart"])
+      .filterWith(async (schedule) => {
+        if (isExternalClassSession(schedule.sessionType)) return false;
+        if (schedule.sessionClosureStatus !== "completed") return true;
+        return !(await ctx.db
+          .query("studentAttendanceRecords")
+          .withIndex("by_schedule_and_student", (q) =>
+            q
+              .eq("scheduleId", schedule._id)
+              .eq("studentId", access.student._id),
+          )
+          .unique());
+      })
+      .paginate({
+        ...args.paginationOpts,
+        maximumRowsRead: Math.min(
+          args.paginationOpts.maximumRowsRead ?? 100,
+          100,
+        ),
+        maximumBytesRead: Math.min(
+          args.paginationOpts.maximumBytesRead ?? 500_000,
+          500_000,
+        ),
+      });
+    return {
+      ...result,
+      page: await Promise.all(
+        result.page.map(async (schedule) => {
+          const course = byId.get(schedule.classId)!;
+          const curriculum = await ctx.db.get(
+            "curriculums",
+            course.curriculumId,
+          );
+          return {
+            scheduleId: schedule._id,
+            classId: course._id,
+            className: course.name,
+            curriculumIconKey: curriculum?.iconKey ?? DEFAULT_CURRICULUM_ICON,
+            sessionTitle: schedule.title ?? null,
+            start: schedule.scheduledStart,
+            end: schedule.scheduledEnd,
+            timeZone: (await getClassTimeZone(ctx, course)) ?? "UTC",
+            roomName: schedule.roomName,
+            canCompleteReport:
+              isCourseTeacher(course, access.viewer._id) ||
+              (await canManageClasses(
+                ctx,
+                access.viewer._id,
+                course.campusId,
+                course.schoolId ?? curriculum?.schoolId,
+              )),
+          };
+        }),
+      ),
     };
   },
 });

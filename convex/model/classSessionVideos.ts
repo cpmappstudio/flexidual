@@ -3,7 +3,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { canAccessClass, canManageClass } from "../permissions";
-import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "../users";
+import { getCurrentUserFromAuth } from "../users";
 import { isCourseTeacher } from "./courseAssignments";
 import { isExternalClassSession } from "../../lib/class-session";
 import { recordPublishedVideoLessons } from "./sessionVideoLessons";
@@ -167,13 +167,13 @@ export async function getSessionVideoReadAccess(
   ctx: QueryCtx,
   id: Id<"classSessionVideos">,
 ) {
-  const user = await getCurrentUserOrThrow(ctx);
+  const user = await getCurrentUserFromAuth(ctx);
+  if (!user) throw new ConvexError("PERMISSION_DENIED");
   const video = await ctx.db.get("classSessionVideos", id);
   const schedule =
     video && (await ctx.db.get("classSchedule", video.scheduleId));
   const course = schedule && (await ctx.db.get("classes", schedule.classId));
   if (
-    !user.isActive ||
     !video ||
     video.state !== "ready" ||
     !schedule ||
@@ -187,5 +187,5 @@ export async function getSessionVideoReadAccess(
   const canPreview =
     isCourseTeacher(course, user._id) ||
     (await canManageClass(ctx, user._id, course));
-  return { video, schedule, canPreview };
+  return { user, video, schedule, course, canPreview };
 }

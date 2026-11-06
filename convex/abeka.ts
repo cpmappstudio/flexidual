@@ -5,12 +5,8 @@ import {
 import { ConvexError, v } from "convex/values";
 import { cancel, start, type WorkflowId } from "@convex-dev/workflow";
 import { HOUR, RateLimiter } from "@convex-dev/rate-limiter";
-import {
-  mutation,
-  query,
-  internalMutation,
-  type MutationCtx,
-} from "./_generated/server";
+import { query, type MutationCtx } from "./_generated/server";
+import { mutation, internalMutation } from "./functions";
 import { internal, components } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {

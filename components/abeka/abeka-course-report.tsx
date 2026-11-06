@@ -6,7 +6,7 @@ import { CheckCircle2 } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { createSortableHeader } from "@/components/table/column-helpers";
 import { DataTable } from "@/components/table/data-table";
-import { Progress } from "@/components/ui/progress";
+import { ProgressPercentage } from "@/components/ui/progress-percentage";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { AbekaProgressTrend } from "./abeka-progress-trend";
 
@@ -55,29 +55,11 @@ export function AbekaCourseReport({
         sortingFn: "basic",
         cell: ({ row }) => {
           const lesson = row.original;
-          const percentage = format.number(lesson.percentage / 100, {
-            style: "percent",
-            maximumFractionDigits: 2,
-          });
           return (
-            <div className="flex min-w-36 items-center gap-1.5 sm:min-w-52">
-              <Progress
-                value={lesson.percentage}
-                aria-label={`${t("lesson")} ${lesson.lessonNumber}: ${t("progress")}`}
-                aria-valuetext={percentage}
-                className="h-2 flex-1 bg-muted"
-                indicatorClassName={`motion-reduce:transition-none ${
-                  lesson.percentage >= 100
-                    ? "bg-green-600"
-                    : lesson.percentage >= 50
-                      ? "bg-primary"
-                      : "bg-amber-500"
-                }`}
-              />
-              <span className="w-12 shrink-0 text-xs font-medium tabular-nums">
-                {percentage}
-              </span>
-            </div>
+            <ProgressPercentage
+              value={lesson.percentage}
+              label={`${t("lesson")} ${lesson.lessonNumber}: ${t("progress")}`}
+            />
           );
         },
       },

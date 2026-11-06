@@ -1,7 +1,8 @@
 import { Presence } from "@convex-dev/presence";
 import { ConvexError, v } from "convex/values";
 import { components } from "./_generated/api";
-import { mutation, query, type QueryCtx } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
+import { mutation } from "./functions";
 import type { Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./users";
 import { canAccessClass } from "./permissions";

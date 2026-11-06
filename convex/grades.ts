@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
-import { internalQuery, mutation, query } from "./_generated/server";
+import { internalQuery, query } from "./_generated/server";
+import { mutation } from "./functions";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getCurrentUserOrThrow } from "./users";

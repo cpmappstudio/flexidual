@@ -6,6 +6,7 @@ import { modules } from "./test.setup";
 import type { Id } from "./_generated/dataModel";
 import { getLiveActivationId } from "./model/liveActivation";
 import { getLiveLifecycleSnapshot } from "./model/liveLifecycle";
+import { canAccessInstitutionalSchedule } from "./model/scheduleAccess";
 import { EgressClient, RoomServiceClient } from "livekit-server-sdk";
 
 // These report/leadership tests simulate the external cleanup boundary; SDK failures
@@ -349,6 +350,284 @@ function buildAttendance(
     },
   ];
 }
+
+test("classroom reads reuse their access snapshot without rereading heavy curriculum context", async () => {
+  const { t, data } = await setupLeadershipTest();
+  await t.run(async (ctx) => {
+    await ctx.db.patch("curriculums", data.curriculumId, {
+      description: "x".repeat(200_000),
+    });
+    await ctx.db.patch("classSchedule", data.teacherScheduleId, {
+      status: "active",
+      isLive: true,
+      sessionLeaderId: data.teacherId,
+      sessionLeaderRole: "teacher",
+      sessionLeaderSince: NOW,
+    });
+  });
+  for (const subject of [
+    "leader-student",
+    "leader-teacher",
+    "leader-principal",
+  ]) {
+    const client = t.withIdentity({ subject });
+    const read = await client.query(async (ctx) => {
+      const result = await ctx.runQuery(api.schedule.getSessionLeadership, {
+        roomName: "teacher-led-room",
+        now: NOW,
+      });
+      return { result, metrics: await ctx.meta.getTransactionMetrics() };
+    });
+    expect(read.result).toMatchObject({
+      leader: { userId: data.teacherId, role: "teacher" },
+      viewer: {
+        isPrimaryTeacher: subject === "leader-teacher",
+        canTransfer: subject === "leader-teacher",
+        canTakeover: false,
+      },
+    });
+    console.log("CLASSROOM_CONTEXT_READ", subject, read.metrics.bytesRead.used);
+    // Admission and legacy time-zone resolution reuse the same curriculum.
+    expect(read.metrics.bytesRead.used).toBeLessThan(250_000);
+    expect(read.metrics.documentsWritten.used).toBe(0);
+  }
+});
+
+test("stable leader reads preserve access, transfers and revocation without temporal or history reads", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const args = { roomName: "teacher-led-room" };
+  const teacher = t.withIdentity({ subject: "leader-teacher" });
+  const principal = t.withIdentity({ subject: "leader-principal" });
+  const student = t.withIdentity({ subject: "leader-student" });
+  await expect(t.query(api.schedule.getSessionLeader, args)).rejects.toThrow();
+  await expect(
+    t
+      .withIdentity({ subject: "leader-out-of-scope-admin" })
+      .query(api.schedule.getSessionLeader, args),
+  ).rejects.toThrow();
+  expect(await student.query(api.schedule.getSessionLeader, args)).toBeNull();
+  expect(
+    await student.query(api.schedule.getSessionLeader, {
+      roomName: "missing-room",
+    }),
+  ).toBeNull();
+  await teacher.mutation(api.schedule.markLive, { ...args, isLive: true });
+  await t.run((ctx) =>
+    ctx.db.patch("curriculums", data.curriculumId, {
+      description: "x".repeat(200_000),
+    }),
+  );
+  for (const client of [student, teacher, principal]) {
+    const detailed = await client.query(api.schedule.getSessionLeadership, {
+      ...args,
+      now: NOW,
+    });
+    expect(await client.query(api.schedule.getSessionLeader, args)).toEqual(
+      detailed?.leader,
+    );
+  }
+  const stable = await student.query(async (ctx) => {
+    const result = await ctx.runQuery(api.schedule.getSessionLeader, args);
+    return { result, metrics: await ctx.meta.getTransactionMetrics() };
+  });
+  const detailed = await student.query(async (ctx) => {
+    await ctx.runQuery(api.schedule.getSessionLeadership, {
+      ...args,
+      now: NOW,
+    });
+    return await ctx.meta.getTransactionMetrics();
+  });
+  // The stable reader needs one curriculum snapshot, not a second copy to
+  // check institutional access after the room context has already loaded it.
+  expect(stable.metrics.bytesRead.used).toBeLessThan(250_000);
+  expect(stable.metrics.bytesRead.used).toBeLessThan(detailed.bytesRead.used);
+  expect(stable.metrics.documentsWritten.used).toBe(0);
+  console.log(
+    "STABLE_LEADER_READ",
+    detailed.bytesRead.used,
+    stable.metrics.bytesRead.used,
+  );
+  await teacher.mutation(api.schedule.requestSessionLeadershipTransfer, {
+    ...args,
+    targetUserId: data.principalId,
+  });
+  await principal.mutation(api.schedule.acceptSessionLeadershipTransfer, args);
+  expect(
+    await student.query(api.schedule.getSessionLeader, args),
+  ).toMatchObject({ userId: data.principalId, role: "principal" });
+  await t.run((ctx) =>
+    ctx.db.patch("users", data.principalId, { fullName: "Updated principal" }),
+  );
+  expect(
+    await student.query(api.schedule.getSessionLeader, args),
+  ).toMatchObject({ fullName: "Updated principal" });
+  await t.run((ctx) => ctx.db.patch("classes", data.classId, { students: [] }));
+  await expect(
+    student.query(api.schedule.getSessionLeader, args),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  expect(
+    await teacher.query(api.schedule.getSessionLeader, args),
+  ).toMatchObject({ userId: data.principalId });
+});
+
+test("temporal classroom reads reuse scope and observe institutional time-zone changes", async () => {
+  const { t, data } = await setupLeadershipTest();
+  const student = t.withIdentity({ subject: "leader-student" });
+  await t.run(async (ctx) => {
+    await ctx.db.patch("curriculums", data.curriculumId, {
+      description: "x".repeat(200_000),
+    });
+    await ctx.db.patch("schools", data.schoolId, {
+      timeZone: "America/New_York",
+    });
+  });
+  const read = await student.query(async (ctx) => {
+    const result = await ctx.runQuery(api.schedule.getSessionStatus, {
+      sessionId: "teacher-led-room",
+      now: NOW,
+    });
+    return { result, metrics: await ctx.meta.getTransactionMetrics() };
+  });
+  expect(read.result).toMatchObject({
+    timeZone: "America/New_York",
+    roomAdmin: false,
+  });
+  expect(read.metrics.bytesRead.used).toBeLessThan(250_000);
+  expect(read.metrics.documentsWritten.used).toBe(0);
+  console.log("TEMPORAL_STATUS_SCOPE_READ", read.metrics.bytesRead.used);
+
+  const readZone = async () =>
+    (
+      await student.query(api.schedule.getSessionStatus, {
+        sessionId: "teacher-led-room",
+        now: NOW,
+      })
+    )?.timeZone;
+  await t.run((ctx) =>
+    ctx.db.patch("schools", data.schoolId, { timeZone: "America/Tegucigalpa" }),
+  );
+  expect(await readZone()).toBe("America/Tegucigalpa");
+  await t.run((ctx) =>
+    ctx.db.patch("campuses", data.campusId, { timeZone: "America/Bogota" }),
+  );
+  expect(await readZone()).toBe("America/Bogota");
+  await t.run((ctx) =>
+    ctx.db.patch("classes", data.classId, { timeZone: "Europe/Madrid" }),
+  );
+  expect(await readZone()).toBe("Europe/Madrid");
+  await t.run(async (ctx) => {
+    await ctx.db.patch("classes", data.classId, { timeZone: undefined });
+    await ctx.db.delete("campuses", data.campusId);
+  });
+  expect(await readZone()).toBe("America/Tegucigalpa");
+  await t.run((ctx) =>
+    ctx.db.patch("schools", data.schoolId, { timeZone: undefined }),
+  );
+  expect(await readZone()).toBe("UTC");
+});
+
+test.each(["present", "missing campus", "missing curriculum", "both missing"])(
+  "reusing institutional scope preserves enrollment, grades, staff and revocation with %s",
+  async (missing) => {
+    const { t, data } = await setupLeadershipTest();
+    await t.run(async (ctx) => {
+      const foreign = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", data.outOfScopeAdminId))
+        .unique();
+      // The legacy class field must not override the campus/curriculum scope
+      // used for institutional admission, even if it points elsewhere.
+      await ctx.db.patch("classes", data.classId, {
+        schoolId: foreign!.schoolId,
+      });
+      await ctx.db.insert("roleAssignments", {
+        userId: data.studentId,
+        role: "student",
+        orgType: "school",
+        orgId: data.schoolId,
+        schoolId: data.schoolId,
+        gradeCode: "08",
+        assignedAt: NOW,
+        assignedBy: data.adminId,
+      });
+      if (missing === "missing campus" || missing === "both missing") {
+        await ctx.db.delete("campuses", data.campusId);
+      }
+      if (missing === "missing curriculum" || missing === "both missing") {
+        await ctx.db.delete("curriculums", data.curriculumId);
+      }
+    });
+
+    const assertAccess = async (userId: Id<"users">, expected: boolean) => {
+      await t.query(async (ctx) => {
+        const classData = (await ctx.db.get("classes", data.classId))!;
+        const schedule = (await ctx.db.get(
+          "classSchedule",
+          data.teacherScheduleId,
+        ))!;
+        const [curriculum, campus] = await Promise.all([
+          ctx.db.get(classData.curriculumId),
+          ctx.db.get(data.campusId),
+        ]);
+        const fallback = await canAccessInstitutionalSchedule(
+          ctx,
+          userId,
+          schedule,
+          classData,
+        );
+        const get = vi.spyOn(ctx.db, "get");
+        try {
+          const reused = await canAccessInstitutionalSchedule(
+            ctx,
+            userId,
+            schedule,
+            classData,
+            { curriculum, campus },
+          );
+          expect(reused).toBe(expected);
+          expect(reused).toBe(fallback);
+          // In particular, a confirmed null must not be looked up again.
+          expect(
+            get.mock.calls.some(
+              ([id]) => id === data.curriculumId || id === data.campusId,
+            ),
+          ).toBe(false);
+        } finally {
+          get.mockRestore();
+        }
+      });
+    };
+
+    await assertAccess(data.studentId, true); // Existing private enrollment.
+    await assertAccess(data.otherTeacherId, false);
+    await t.run(async (ctx) => {
+      await ctx.db.patch("classes", data.classId, { students: [] });
+      await ctx.db.patch("classSchedule", data.teacherScheduleId, {
+        liveAccess: { mode: "school", allowedGradeCodes: ["08"] },
+      });
+    });
+    const hasScope = missing !== "both missing";
+    await assertAccess(data.studentId, hasScope);
+    await assertAccess(data.otherTeacherId, hasScope);
+    await assertAccess(data.outOfScopeAdminId, false);
+    await t.run(async (ctx) => {
+      const memberships = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", data.studentId))
+        .collect();
+      for (const membership of memberships)
+        await ctx.db.delete("roleAssignments", membership._id);
+      const staff = await ctx.db
+        .query("roleAssignments")
+        .withIndex("by_user", (q) => q.eq("userId", data.otherTeacherId))
+        .collect();
+      for (const assignment of staff)
+        await ctx.db.delete("roleAssignments", assignment._id);
+    });
+    await assertAccess(data.studentId, false);
+    await assertAccess(data.otherTeacherId, false);
+  },
+);
 
 test("starting a class assigns one persistent session leader", async () => {
   const { t, data } = await setupLeadershipTest();

@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { query, type MutationCtx } from "./_generated/server";
+import { mutation } from "./functions";
 import { getCurrentUserOrThrow } from "./users";
 import {
   canAccessClass,
