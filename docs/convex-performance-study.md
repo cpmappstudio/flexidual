@@ -1,6 +1,6 @@
 # Estudio de rendimiento y costes de Convex
 
-Fecha de revisión inicial: 2026-11-05; continuación: 2026-11-06. El inventario y las revisiones iniciales se conservan como baseline. Las prioridades 1 y 2 y la reutilización de contexto de CVX-03/CVX-04 están implementadas localmente; véanse las secciones de implementación para validación y activación pendiente. No se han publicado en producción.
+Fecha de revisión inicial: 2026-11-05; continuación y publicación: 2026-11-06. El inventario y las revisiones iniciales se conservan como baseline histórico. Las prioridades 1 y 2 y la reutilización de contexto de CVX-03/CVX-04 se publicaron en el backend de producción `blessed-wombat-104` con el commit `536bad9`. Las referencias posteriores a cambios locales o no publicados describen el estado de cada revisión antes de esa publicación. La activación de los resúmenes requiere completar los lotes descritos abajo; el lector conserva el cálculo canónico hasta `dashboardSummaryState.ready`. La medición del ahorro real sigue pendiente.
 
 ## Alcance, fuentes y límites
 
@@ -638,3 +638,13 @@ Se añaden nueve variantes de zona horaria: curso, campus, institución del camp
 Validación local: `pnpm test`, **2.075 pruebas pasan** (235 unitarias, 1.075 de componentes, 765 de Convex), TypeScript y ESLint de los cinco archivos de código/pruebas modificados, sin errores. Los avisos conocidos del entorno de componentes permanecen visibles. Sin cambios de permisos, contratos públicos, transporte, persistencia de dibujos/imágenes, borradores, QR, puntero, seguimiento o grabaciones. Sin despliegues ni modificaciones de datos de negocio. La investigación de notificaciones/Presence y atribución del I/O de workflows continúa pendiente.
 
 Reevaluación delegada: **99 → 100/100** para este hallazgo, `max(0, 100 − 15×0 − 5×0 − 1×0)`; 69 pruebas focalizadas adicionales pasan. No certifica el backend completo. Advisor/insights de runtime no se ejecutan en esta corrección local sin despliegue ni consultas de producción.
+
+## Publicación autorizada — 2026-11-06
+
+Se publicaron conjuntamente las optimizaciones de lecturas y el progreso de pregrabaciones del commit `536bad9`. La simulación y el despliegue de Convex validaron el esquema existente, añadieron siete índices e instalaron `dashboardAggregate`, sin eliminar índices ni tablas. No se importaron ni sustituyeron datos originales ni se cambiaron secretos, reglas de acceso o configuración de LiveKit/R2.
+
+La comprobación previa detectó que `convex-helpers@0.1.133` requería un Convex más reciente que el instalado. Se fijó `convex-helpers@0.1.120`, compatible con Convex 1.42.3 y los componentes existentes; no se actualizó Convex. Después se repitieron las 2.075 pruebas, TypeScript, ESLint de los 105 archivos TypeScript incluidos y la compilación de producción: todo pasó. Persisten los avisos conocidos del entorno de componentes y los peers antiguos de Radix, sin ocultarlos ni ampliar esta publicación a otra actualización de dependencias.
+
+También pasó `pnpm exec node scripts/audit-video-progress-browser.mjs` en Chrome real: reanudación entre aperturas, corrección de avance, retroceso libre, compatibilidad de IndexedDB v1/v2, aislamiento por identidad y recuperación ante cuota/red. Este ensayo sigue sin sustituir una prueba de llamada real en tablets.
+
+Se inició la inicialización explícita y secuencial de los tres flujos documentados: dashboard, resúmenes de Abeka y relevancia de notificaciones. Cada llamada conserva los límites existentes y escribe solo estado derivado. El frontend es compatible durante el proceso: la ausencia de `ready` conserva el cálculo anterior y las notificaciones antiguas mantienen su carril legacy. Para comprobar la activación, verificar `dashboardSummaryState.ready === true` y la finalización de los otros dos cursores. No reiniciar el estado ni borrar fuentes para repetir la inicialización.
