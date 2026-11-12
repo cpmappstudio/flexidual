@@ -12,6 +12,13 @@ import {
 import { getCurrentUserOrThrow } from "./users";
 import { rescheduleAbekaForSchool } from "./model/abekaScheduling";
 import {
+  getCourseGradingPolicy,
+  gradingPolicyValidator,
+} from "./model/grading";
+import { DEFAULT_GRADING_POLICY, isValidGradingPolicy } from "../lib/grading";
+import { isCourseTeacher } from "./model/courseAssignments";
+import { canManageClass } from "./permissions";
+import {
   DEFAULT_SCHEDULE_END_MINUTES,
   DEFAULT_SCHEDULE_START_MINUTES,
   isValidScheduleWindow,
@@ -125,6 +132,57 @@ export const get = query({
         school.scheduleEndMinutes ?? DEFAULT_SCHEDULE_END_MINUTES,
       timeZone: campus?.timeZone ?? school.timeZone,
     };
+  },
+});
+
+export const getGradingPolicy = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.union(gradingPolicyValidator, v.null()),
+  handler: async (ctx, { schoolId }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    if (!(await canViewInstitutionSettings(ctx, user._id, schoolId)))
+      throw new ConvexError("PERMISSION_DENIED");
+    const school = await ctx.db.get("schools", schoolId);
+    return school ? (school.gradingPolicy ?? DEFAULT_GRADING_POLICY) : null;
+  },
+});
+
+export const getGradingForCourse = query({
+  args: { classId: v.id("classes") },
+  returns: gradingPolicyValidator,
+  handler: async (ctx, { classId }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const course = await ctx.db.get("classes", classId);
+    if (!course) throw new ConvexError("CLASS_NOT_FOUND");
+    if (
+      !isCourseTeacher(course, user._id) &&
+      !(await canManageClass(ctx, user._id, course))
+    )
+      throw new ConvexError("PERMISSION_DENIED");
+    return await getCourseGradingPolicy(ctx, course);
+  },
+});
+
+export const updateGradingPolicy = mutation({
+  args: { schoolId: v.id("schools"), policy: gradingPolicyValidator },
+  returns: v.null(),
+  handler: async (ctx, { schoolId, policy }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    if (!(await canManageInstitution(ctx, user._id, schoolId)))
+      throw new ConvexError("PERMISSION_DENIED");
+    const school = await ctx.db.get("schools", schoolId);
+    if (!school) throw new ConvexError("INSTITUTION_NOT_FOUND");
+    if (!isValidGradingPolicy(policy))
+      throw new ConvexError("INVALID_GRADING_POLICY");
+    const current = school.gradingPolicy;
+    if (
+      current?.scaleMax !== policy.scaleMax ||
+      current.decimalPlaces !== policy.decimalPlaces ||
+      current.defaultMaxPoints !== policy.defaultMaxPoints ||
+      current.passingPercentage !== policy.passingPercentage
+    )
+      await ctx.db.patch("schools", schoolId, { gradingPolicy: policy });
+    return null;
   },
 });
 

@@ -12,6 +12,7 @@ vi.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ getToken: async () => "test-token" }),
 }));
 vi.mock("convex/react", () => ({
+  useQuery: () => ({ scaleMax: 100, decimalPlaces: 2, defaultMaxPoints: 100 }),
   useConvex: () => ({ query: vi.fn() }),
   useMutation: (ref: Parameters<typeof getFunctionName>[0]) =>
     getFunctionName(ref) === "courseTasks:create" ? create : vi.fn(),
@@ -45,6 +46,14 @@ test.each([
     create.mockRejectedValue(new ConvexError("COURSE_CLOSED"));
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
     const onSaved = vi.fn();
     render(
       <NextIntlClientProvider

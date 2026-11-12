@@ -31,6 +31,8 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
     if (typeof data === "string") {
       const knownCodes = [
         "CLASS_NOT_FOUND",
+        "TASK_HAS_GRADES",
+        "COURSE_HAS_GRADES",
         "PERMISSION_DENIED",
         "SESSION_VIDEO_STORAGE_NOT_CONFIGURED",
         "SESSION_VIDEO_UPLOAD_EXPIRED",
@@ -99,6 +101,9 @@ export function getErrorMessage(
   locale?: string,
 ): string {
   switch (error.code) {
+    case "TASK_HAS_GRADES":
+    case "COURSE_HAS_GRADES":
+      return t("errors.hasGrades");
     case "SESSION_VIDEO_STORAGE_NOT_CONFIGURED":
       return t("sessionVideo.storageNotConfigured");
     case "SESSION_VIDEO_UPLOAD_EXPIRED":

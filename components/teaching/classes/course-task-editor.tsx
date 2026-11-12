@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useCurrentMinute } from "@/hooks/use-current-minute";
-import { useConvex, useMutation } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -45,6 +45,7 @@ import {
   type TaskAttachment,
 } from "./course-task-attachments";
 import { useTaskFileRequest } from "@/hooks/use-task-file-request";
+import { isValidPoints } from "@/lib/grading";
 
 export function CourseTaskEditor({
   classId,
@@ -62,6 +63,16 @@ export function CourseTaskEditor({
   onSaved: (id: Id<"courseTasks">) => void;
 }) {
   const t = useTranslations("courseTasks");
+  const gradingT = useTranslations("grading");
+  const policy = useQuery(api.academicSettings.getGradingForCourse, {
+    classId,
+  });
+  const [gradable, setGradable] = useState(!!task?.grading);
+  const [maxPoints, setMaxPoints] = useState<string | undefined>(
+    task?.grading ? String(task.grading.maxPoints) : undefined,
+  );
+  const effectiveMaxPoints =
+    maxPoints ?? String(policy?.defaultMaxPoints ?? "");
   const now = useCurrentMinute();
   const format = useFormatter();
   const convex = useConvex();
@@ -108,6 +119,9 @@ export function CourseTaskEditor({
       return t("invalidDates");
     if (code.includes("COURSE_CLOSED")) return t("courseClosedError");
     if (code.includes("INVALID_TASK_FILES")) return t("materialsUnavailable");
+    if (code.includes("TASK_GRADING_LOCKED"))
+      return gradingT("configurationLocked");
+    if (code.includes("INVALID_TASK_GRADING")) return gradingT("invalidPoints");
     return t("saveError");
   }
 
@@ -128,6 +142,21 @@ export function CourseTaskEditor({
   async function save(confirmed = false) {
     if (saving) return;
     setFormError(undefined);
+    if (
+      gradable &&
+      (!policy ||
+        !effectiveMaxPoints.trim() ||
+        Number(effectiveMaxPoints) <= 0 ||
+        !isValidPoints(
+          Number(effectiveMaxPoints),
+          1000000,
+          task?.grading?.decimalPlaces ?? policy.decimalPlaces,
+        ))
+    ) {
+      setFormError(gradingT("invalidPoints"));
+      return;
+    }
+    const grading = gradable ? { maxPoints: Number(effectiveMaxPoints) } : null;
     if (!title.trim()) {
       setPreviewDeadlineAt(undefined);
       setFormError(t("titleRequired"));
@@ -214,6 +243,7 @@ export function CourseTaskEditor({
           dueAt: deadline,
           allowLateSubmissions: deadline === undefined ? true : allowLate,
           draft: true,
+          ...(grading ? { grading } : {}),
         });
         setAttemptId(id);
         currentAttemptId = id;
@@ -239,6 +269,13 @@ export function CourseTaskEditor({
           dueAt: deadline ?? null,
           allowLateSubmissions: deadline === undefined ? true : allowLate,
           materialFileIds,
+          ...((
+            task.grading
+              ? !grading || grading.maxPoints !== task.grading.maxPoints
+              : !!grading
+          )
+            ? { grading }
+            : {}),
         });
       }
       toast.success(task ? t("updated") : creationSuccessMessage(start));
@@ -318,6 +355,52 @@ export function CourseTaskEditor({
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="task-gradable"
+                    checked={gradable}
+                    onCheckedChange={(checked) => setGradable(checked === true)}
+                    disabled={saving || !policy}
+                  />
+                  <Label htmlFor="task-gradable">{gradingT("gradable")}</Label>
+                </div>
+                {gradable && (
+                  <>
+                    <Label htmlFor="task-max-points">
+                      {gradingT("maxPoints")}
+                    </Label>
+                    <Input
+                      id="task-max-points"
+                      type="number"
+                      min={
+                        10 **
+                        -(
+                          task?.grading?.decimalPlaces ??
+                          policy?.decimalPlaces ??
+                          2
+                        )
+                      }
+                      max={1000000}
+                      step={
+                        10 **
+                        -(
+                          task?.grading?.decimalPlaces ??
+                          policy?.decimalPlaces ??
+                          2
+                        )
+                      }
+                      value={effectiveMaxPoints}
+                      onChange={(event) => setMaxPoints(event.target.value)}
+                      disabled={saving}
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {gradingT("configurationHint")}
+                    </p>
+                  </>
+                )}
+              </div>
               <div className="space-y-2">
                 {task?.releasedAt === undefined ? (
                   <>

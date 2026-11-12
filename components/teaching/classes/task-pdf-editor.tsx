@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import { useEffect, useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import {
   ChevronDown,
   Download,
@@ -44,6 +46,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Item, ItemContent, ItemMedia } from "@/components/ui/item";
 import { useTaskPdfCorrection } from "@/hooks/use-task-pdf-correction";
+import { GradeEditor, type GradeActions } from "./course-task-grade";
 
 const TaskPdfViewer = dynamic(() => import("./task-pdf-viewer"), {
   ssr: false,
@@ -83,6 +86,14 @@ export function TaskPdfEditor({
   const [expanded, setExpanded] = useState(initialEditing);
   const [leaving, setLeaving] = useState(false);
   const [closeRequested, setCloseRequested] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const grade = useQuery(
+    api.courseTaskGrades.get,
+    document && editing
+      ? { taskId: document.taskId, studentId: document.studentId }
+      : "skip",
+  );
+  const gradeForEditing = editing && grade?.grading ? grade : null;
   const unsaved =
     !completed && !leaving && (dirty || Boolean(pending) || saving);
   const submissionHref = document
@@ -106,18 +117,172 @@ export function TaskPdfEditor({
   }, [unsaved]);
 
   useEffect(() => {
-    if (!completed && !leaving) return;
+    if (!leaving) return;
     if (completed) toast.success(t("saved"));
     if (onClose) onClose();
     else router.replace(submissionHref);
   }, [completed, leaving, onClose, submissionHref, router, t]);
 
   function requestClose() {
-    if (saving) return;
+    if (saving || publishing) return;
     if (unsaved) setCloseRequested(true);
     else setLeaving(true);
   }
   const blocked = completed || saving || Boolean(pending) || conflict;
+  const hasPdfChanges = dirty || Boolean(pending);
+  const canSavePdf =
+    ready && !completed && !saving && !conflict && hasPdfChanges;
+
+  async function saveAndReturn() {
+    if (await correction.save()) setLeaving(true);
+  }
+
+  async function saveAndPublish(actions: GradeActions) {
+    setPublishing(true);
+    try {
+      if (
+        await actions.publish(
+          async () => !hasPdfChanges || (await correction.save()),
+        )
+      )
+        setLeaving(true);
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function keepGradeDraft(actions: GradeActions) {
+    if (actions.canSave && !(await actions.saveDraft())) return;
+    if (!hasPdfChanges) setLeaving(true);
+  }
+
+  function fileActions(actions?: GradeActions) {
+    const saveLabel = t(
+      saving || publishing
+        ? "saving"
+        : actions
+          ? "saveAndPublish"
+          : pending
+            ? "retrySave"
+            : "saveAndReturn",
+    );
+    return (
+      <>
+        <ButtonGroup
+          aria-label={t("fileActions")}
+          className={actions ? "max-lg:w-full" : undefined}
+        >
+          {editing ? (
+            <Button
+              type="button"
+              size="sm"
+              className={
+                actions
+                  ? "max-lg:flex-1 pointer-coarse:min-h-11"
+                  : "pointer-coarse:min-h-11"
+              }
+              aria-label={saveLabel}
+              aria-describedby={hasPdfChanges ? saveDescriptionId : undefined}
+              disabled={
+                actions
+                  ? publishing ||
+                    conflict ||
+                    !actions.canPublish ||
+                    (hasPdfChanges && !canSavePdf)
+                  : !canSavePdf
+              }
+              onClick={() =>
+                void (actions ? saveAndPublish(actions) : saveAndReturn())
+              }
+            >
+              {saving || publishing ? (
+                <Spinner aria-hidden="true" />
+              ) : (
+                <Save className="size-4" aria-hidden="true" />
+              )}
+              <span className={actions ? "hidden lg:inline" : undefined}>
+                {saveLabel}
+              </span>
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              className="pointer-coarse:min-h-11"
+              disabled={!ready || conflict}
+              onClick={() => {
+                setEditing(true);
+                setExpanded(true);
+              }}
+            >
+              <Pencil className="size-4" />
+              {t("edit")}
+            </Button>
+          )}
+          <ButtonGroupSeparator className="bg-primary-foreground/25" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                className={
+                  actions
+                    ? "max-lg:w-11 pointer-coarse:size-11"
+                    : "pointer-coarse:size-11"
+                }
+                aria-label={t("fileActions")}
+                disabled={
+                  actions ? saving || publishing : !ready || saving || completed
+                }
+              >
+                <ChevronDown className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {actions && (
+                <>
+                  <DropdownMenuItem
+                    className="min-h-11"
+                    disabled={
+                      actions.busy ||
+                      (!actions.canSave &&
+                        (!actions.canPublish || hasPdfChanges))
+                    }
+                    onSelect={() => void keepGradeDraft(actions)}
+                  >
+                    {t("saveGradeDraft")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="min-h-11"
+                    disabled={!canSavePdf || actions.busy}
+                    onSelect={() => void saveAndReturn()}
+                  >
+                    {t("savePdfOnly")}
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuItem
+                className="min-h-11"
+                disabled={!ready || completed}
+                onSelect={() => void correction.downloadCopy()}
+              >
+                <Download className="size-4" />
+                {editing ? t("downloadCopy") : previewT("download")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </ButtonGroup>
+        {editing && hasPdfChanges && (
+          <p
+            id={saveDescriptionId}
+            className="flex items-center gap-1.5 text-xs leading-normal text-muted-foreground lg:justify-end"
+          >
+            <Info className="size-3.5 shrink-0" aria-hidden="true" />
+            {t("replacementNotice")}
+          </p>
+        )}
+      </>
+    );
+  }
 
   return (
     <Dialog open onOpenChange={(open) => !open && requestClose()}>
@@ -139,7 +304,7 @@ export function TaskPdfEditor({
             : "h-[min(90dvh,900px)] w-[calc(100vw-1rem)] max-w-none sm:w-[min(90vw,1100px)] sm:max-w-none"
         }`}
       >
-        <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b pb-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 border-b pb-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
           <Item className="min-w-0 flex-nowrap items-start gap-3 rounded-none border-0 p-0">
             <ItemMedia className="mt-0.5 text-primary" aria-hidden="true">
               <FileText className="size-5 sm:size-6" />
@@ -170,107 +335,27 @@ export function TaskPdfEditor({
                   </div>
                 )}
               </div>
-              {document && (
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0.5 text-sm leading-normal">
-                  <dt className="text-muted-foreground">
-                    {t("studentLabel")}:
-                  </dt>
-                  <dd className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
-                    {document.studentName}
-                  </dd>
-                  <dt className="text-muted-foreground">
-                    {t("assignmentLabel")}:
-                  </dt>
-                  <dd className="min-w-0 break-words [overflow-wrap:anywhere]">
-                    {document.taskTitle}
-                  </dd>
-                  <dt className="text-muted-foreground">{t("courseLabel")}:</dt>
-                  <dd className="min-w-0 break-words text-muted-foreground [overflow-wrap:anywhere]">
-                    {document.courseName}
-                  </dd>
-                </dl>
-              )}
             </ItemContent>
           </Item>
           {document && (
-            <div className="col-span-2 flex min-w-0 flex-col items-end gap-1.5 justify-self-end lg:col-span-1 lg:col-start-2 lg:row-start-1">
-              <ButtonGroup aria-label={t("fileActions")}>
-                {editing ? (
-                  <Button
-                    size="sm"
-                    className="pointer-coarse:min-h-11"
-                    aria-describedby={saveDescriptionId}
-                    disabled={
-                      !ready ||
-                      completed ||
-                      saving ||
-                      conflict ||
-                      (!dirty && !pending)
-                    }
-                    onClick={() => void correction.save()}
-                  >
-                    {saving ? (
-                      <Spinner aria-hidden="true" />
-                    ) : (
-                      <Save className="size-4" />
-                    )}
-                    {t(
-                      saving
-                        ? "saving"
-                        : pending
-                          ? "retrySave"
-                          : "saveAndReturn",
-                    )}
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="pointer-coarse:min-h-11"
-                    disabled={!ready || conflict}
-                    onClick={() => {
-                      setEditing(true);
-                      setExpanded(true);
-                    }}
-                  >
-                    <Pencil className="size-4" />
-                    {t("edit")}
-                  </Button>
-                )}
-                <ButtonGroupSeparator className="bg-primary-foreground/25" />
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      size="icon-sm"
-                      className="pointer-coarse:size-11"
-                      aria-label={t("fileActions")}
-                      disabled={!ready || saving || completed}
-                    >
-                      <ChevronDown className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      className="min-h-11"
-                      onSelect={() => void correction.downloadCopy()}
-                    >
-                      <Download className="size-4" />
-                      {editing ? t("downloadCopy") : previewT("download")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </ButtonGroup>
-              {editing && (
-                <p
-                  id={saveDescriptionId}
-                  className="flex items-center justify-end gap-1.5 whitespace-nowrap text-xs leading-normal text-muted-foreground"
-                >
-                  <Info className="size-3.5 shrink-0" aria-hidden="true" />
-                  {t("replacementNotice")}
-                </p>
-              )}
-            </div>
+            <dl
+              className={`col-start-1 row-start-2 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2 gap-y-0.5 text-sm leading-normal ${gradeForEditing ? "" : "max-lg:col-span-2"}`}
+            >
+              <dt className="text-muted-foreground">{t("studentLabel")}:</dt>
+              <dd className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
+                {document.studentName}
+              </dd>
+              <dt className="text-muted-foreground">{t("assignmentLabel")}:</dt>
+              <dd className="min-w-0 break-words [overflow-wrap:anywhere]">
+                {document.taskTitle}
+              </dd>
+              <dt className="text-muted-foreground">{t("courseLabel")}:</dt>
+              <dd className="min-w-0 break-words text-muted-foreground [overflow-wrap:anywhere]">
+                {document.courseName}
+              </dd>
+            </dl>
           )}
-          <div className="col-start-2 row-start-1 flex shrink-0 gap-1 lg:col-start-3 lg:border-l lg:pl-3">
+          <div className="col-start-2 row-start-1 flex shrink-0 gap-1 justify-self-end lg:col-start-3 lg:border-l lg:pl-3">
             <Button
               variant="ghost"
               size="icon"
@@ -289,12 +374,34 @@ export function TaskPdfEditor({
               size="icon"
               className="size-11"
               aria-label={t("backToSubmission")}
-              disabled={saving}
+              disabled={saving || publishing}
               onClick={requestClose}
             >
               <X className="size-4" />
             </Button>
           </div>
+          {document && (
+            <div
+              className={`flex min-w-0 flex-col items-start gap-1.5 lg:col-span-1 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:items-end ${
+                gradeForEditing
+                  ? "max-lg:col-start-2 max-lg:row-start-2 max-lg:w-24 max-lg:justify-self-end"
+                  : "max-lg:col-span-2 max-lg:row-start-3"
+              }`}
+            >
+              {gradeForEditing ? (
+                <GradeEditor
+                  taskId={document.taskId}
+                  studentId={document.studentId}
+                  submissionRevision={document.revision}
+                  grade={gradeForEditing}
+                  compact
+                  renderActions={fileActions}
+                />
+              ) : (
+                fileActions()
+              )}
+            </div>
+          )}
         </header>
         <AlertDialog open={closeRequested} onOpenChange={setCloseRequested}>
           <AlertDialogContent>

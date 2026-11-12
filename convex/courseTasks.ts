@@ -27,6 +27,10 @@ import {
 } from "./model/courseTaskFiles";
 import { canManageClass } from "./permissions";
 import { getCurrentUserOrThrow } from "./users";
+import {
+  gradingConfigurationValidator,
+  resolveTaskGrading,
+} from "./model/grading";
 
 const taskValidator = v.object({
   _id: v.id("courseTasks"),
@@ -36,6 +40,7 @@ const taskValidator = v.object({
   isDraft: v.optional(v.boolean()),
   title: v.string(),
   description: v.optional(v.string()),
+  grading: v.optional(gradingConfigurationValidator),
   availableAt: v.optional(v.number()),
   availabilitySortAt: v.optional(v.number()),
   releasedAt: v.optional(v.number()),
@@ -75,6 +80,13 @@ export const removeByClass = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     if (await ctx.db.get("classes", args.classId)) return null;
+    if (
+      await ctx.db
+        .query("courseTaskGrades")
+        .withIndex("by_classId", (q) => q.eq("classId", args.classId))
+        .first()
+    )
+      throw new ConvexError("COURSE_HAS_GRADES");
 
     const task = await ctx.db
       .query("courseTasks")
@@ -153,6 +165,14 @@ export const remove = mutation({
     if (!task || task.isDraft) throw new ConvexError("TASK_NOT_FOUND");
     await requireTaskManager(ctx, task.classId, user._id);
 
+    if (
+      await ctx.db
+        .query("courseTaskGrades")
+        .withIndex("by_taskId_and_studentId", (q) => q.eq("taskId", taskId))
+        .first()
+    )
+      throw new ConvexError("TASK_HAS_GRADES");
+
     if (task.reminderScheduledId) {
       const scheduled = await ctx.db.system.get(
         "_scheduled_functions",
@@ -176,6 +196,13 @@ export const removeDeletedTask = internalMutation({
   returns: v.null(),
   handler: async (ctx, { taskId }) => {
     if (await ctx.db.get("courseTasks", taskId)) return null;
+    if (
+      await ctx.db
+        .query("courseTaskGrades")
+        .withIndex("by_taskId_and_studentId", (q) => q.eq("taskId", taskId))
+        .first()
+    )
+      throw new ConvexError("TASK_HAS_GRADES");
 
     const files = await ctx.db
       .query("courseTaskFiles")
@@ -302,6 +329,7 @@ export const create = mutation({
     dueAt: v.optional(v.number()),
     allowLateSubmissions: v.optional(v.boolean()),
     draft: v.optional(v.boolean()),
+    grading: v.optional(v.union(v.null(), v.object({ maxPoints: v.number() }))),
   },
   returns: v.id("courseTasks"),
   handler: async (ctx, args) => {
@@ -309,6 +337,7 @@ export const create = mutation({
     const course = await requireTaskManager(ctx, args.classId, user._id);
     const now = Date.now();
     const courseEndAt = await requireOpenCourse(ctx, course, now);
+    const grading = await resolveTaskGrading(ctx, course, args.grading);
     const title = args.title.trim();
     if (!title) throw new ConvexError("TASK_TITLE_REQUIRED");
     if (title.length > 160) throw new ConvexError("TASK_TITLE_TOO_LONG");
@@ -332,6 +361,7 @@ export const create = mutation({
       isDraft: args.draft ? true : undefined,
       title,
       description,
+      grading,
       availableAt: args.availableAt,
       availabilitySortAt:
         !args.draft && args.availableAt !== undefined && args.availableAt > now
@@ -371,6 +401,7 @@ export const update = mutation({
     dueAt: v.optional(v.union(v.number(), v.null())),
     allowLateSubmissions: v.optional(v.boolean()),
     materialFileIds: v.optional(v.array(v.id("courseTaskFiles"))),
+    grading: v.optional(v.union(v.null(), v.object({ maxPoints: v.number() }))),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -380,6 +411,7 @@ export const update = mutation({
     const course = await requireTaskManager(ctx, task.classId, user._id);
     const now = Date.now();
     const courseEndAt = await requireOpenCourse(ctx, course, now);
+    const grading = await resolveTaskGrading(ctx, course, args.grading, task);
     const title = args.title === undefined ? task.title : args.title.trim();
     if (!title) throw new ConvexError("TASK_TITLE_REQUIRED");
     if (title.length > 160) throw new ConvexError("TASK_TITLE_TOO_LONG");
@@ -411,6 +443,7 @@ export const update = mutation({
     });
     const updatedTask = {
       ...task,
+      grading,
       title,
       description,
       availableAt,
@@ -430,6 +463,7 @@ export const update = mutation({
     };
     const wasOpen = await canSubmitCourseTask(ctx, course, task, now);
     await ctx.db.patch("courseTasks", task._id, {
+      grading,
       title,
       description,
       availableAt,

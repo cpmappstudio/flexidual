@@ -1,6 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { query, internalQuery, MutationCtx, QueryCtx } from "./_generated/server";
+import {
+  query,
+  internalQuery,
+  MutationCtx,
+  QueryCtx,
+} from "./_generated/server";
 import { mutation } from "./functions";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -2839,6 +2844,14 @@ export const remove = mutation({
       classData._id,
       curriculum?.schoolId,
     );
+
+    if (
+      await ctx.db
+        .query("courseTaskGrades")
+        .withIndex("by_classId", (q) => q.eq("classId", args.id))
+        .first()
+    )
+      throw new ConvexError("COURSE_HAS_GRADES");
 
     const [
       schedules,

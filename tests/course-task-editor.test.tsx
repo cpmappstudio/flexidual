@@ -28,6 +28,11 @@ vi.mock("@clerk/nextjs", () => ({
 vi.mock("convex/react", async () => {
   const { getFunctionName } = await import("convex/server");
   return {
+    useQuery: () => ({
+      scaleMax: 100,
+      decimalPlaces: 2,
+      defaultMaxPoints: 100,
+    }),
     useConvex: () => ({ query: previewQuery }),
     useMutation: (ref: Parameters<typeof getFunctionName>[0]) => {
       const name = getFunctionName(ref).split(":")[1];
@@ -278,13 +283,31 @@ test("explains immediate publication and disables late submissions by default", 
     target: { value: "2099-01-01T12:00" },
   });
   expect(screen.getByText("deadlineHint")).toBeTruthy();
-  expect(screen.getByRole("checkbox").getAttribute("aria-checked")).toBe(
-    "false",
-  );
+  expect(
+    screen
+      .getByRole("checkbox", { name: "allowLate" })
+      .getAttribute("aria-checked"),
+  ).toBe("false");
   fireEvent.click(screen.getByRole("button", { name: "publish" }));
   await waitFor(() => expect(mutations.create).toHaveBeenCalled());
   expect(mutations.create).toHaveBeenCalledWith(
     expect.objectContaining({ allowLateSubmissions: false }),
+  );
+});
+
+test("grading is opt-in and maximum points use the existing creation flow", async () => {
+  renderEditor();
+  fireEvent.click(screen.getByRole("checkbox", { name: "gradable" }));
+  fireEvent.change(screen.getByLabelText("maxPoints"), {
+    target: { value: "20" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "publish" }));
+  await waitFor(() => expect(mutations.create).toHaveBeenCalled());
+  expect(mutations.create).toHaveBeenCalledWith(
+    expect.objectContaining({ grading: { maxPoints: 20 }, draft: true }),
+  );
+  expect(mutations.publish).toHaveBeenCalledWith(
+    expect.objectContaining({ taskId: "task-id" }),
   );
 });
 

@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { pick } from "convex-helpers";
 import { query } from "./_generated/server";
 import { mutation } from "./functions";
 import { internal } from "./_generated/api";
@@ -22,6 +23,14 @@ const schoolValidator = v.object({
   createdAt: v.number(),
   createdBy: v.id("users"),
 });
+
+const schoolFields = Object.keys(schoolValidator.fields) as (
+  keyof typeof schoolValidator.fields
+)[];
+
+function toSchoolView(school: Doc<"schools">) {
+  return pick(school, schoolFields);
+}
 
 function normalizeSchoolName(value: string) {
   const name = value.trim();
@@ -65,7 +74,7 @@ export const list = query({
     const access = await Promise.all(
       schools.map((school) => canAccessSchool(ctx, user._id, school._id)),
     );
-    return schools.filter((_, index) => access[index]);
+    return schools.filter((_, index) => access[index]).map(toSchoolView);
   },
 });
 
@@ -74,12 +83,12 @@ export const get = query({
   returns: v.union(schoolValidator, v.null()),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
-    const school = await ctx.db.get(args.id);
+    const school = await ctx.db.get("schools", args.id);
     if (!school) return null;
     if (!(await canAccessSchool(ctx, user._id, school._id))) {
       throw new ConvexError("PERMISSION_DENIED");
     }
-    return school;
+    return toSchoolView(school);
   },
 });
 

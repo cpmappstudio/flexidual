@@ -17,6 +17,7 @@ import { AbekaLoginProbe } from "@/components/settings/abeka-login-probe";
 import { AbekaSyncSchedule } from "@/components/settings/abeka-sync-schedule";
 import type { Id } from "@/convex/_generated/dataModel";
 import InstitutionSettingsPage from "@/app/[locale]/[orgSlug]/settings/page";
+import AcademicSettingsPage from "@/app/[locale]/[orgSlug]/settings/academic/page";
 import messages from "@/messages/es.json";
 import english from "@/messages/en.json";
 import portuguese from "@/messages/pt-BR.json";
@@ -90,7 +91,16 @@ beforeEach(() => {
   mocks.admin = true;
   mocks.router.push.mockReset();
   mocks.router.replace.mockReset();
-  mocks.query.mockReset().mockReturnValue({ connection: null, run: null });
+  mocks.query.mockReset().mockImplementation((name: string) =>
+    name === "academicSettings:getGradingPolicy"
+      ? {
+          scaleMax: 100,
+          decimalPlaces: 2,
+          defaultMaxPoints: 20,
+          passingPercentage: 70,
+        }
+      : { connection: null, run: null },
+  );
   mocks.mutate.mockReset();
   mocks.error.mockReset();
   vi.stubGlobal(
@@ -508,7 +518,7 @@ test("non-admins cannot render or subscribe to integration data", () => {
   expect(mocks.query).not.toHaveBeenCalled();
 });
 
-test("General places integrations directly after institution details with consistent section headings", () => {
+test("General places integrations after institution settings with consistent section headings", () => {
   renderSettings(<InstitutionSettingsPage />);
   const headings = screen.getAllByRole("heading", { level: 2 });
   expect(headings.map((heading) => heading.textContent)).toEqual([
@@ -519,6 +529,40 @@ test("General places integrations directly after institution details with consis
     expect(heading.classList.contains("text-xl")).toBe(true);
     expect(heading.classList.contains("font-semibold")).toBe(true);
   }
+});
+
+test("General displays the saved grading policy without fetching calendar settings", () => {
+  renderSettings(<InstitutionSettingsPage />);
+  expect(
+    screen.getByRole("heading", { name: messages.grading.settingsTitle }),
+  ).toBeTruthy();
+  expect(
+    screen.getByLabelText<HTMLInputElement>(messages.grading.passingPercentage).value,
+  ).toBe("70");
+  expect(mocks.query).toHaveBeenCalledWith("academicSettings:getGradingPolicy", {
+    schoolId: "school",
+  });
+  expect(mocks.query).not.toHaveBeenCalledWith("academicSettings:get", expect.anything());
+});
+
+test("Academic calendar still shows its schedule but does not render or fetch grading policy", () => {
+  mocks.query.mockReturnValue({
+    periods: [],
+    scheduleStartMinutes: 480,
+    scheduleEndMinutes: 1020,
+    timeZone: "America/Bogota",
+  });
+  renderSettings(<AcademicSettingsPage />);
+  expect(
+    screen.getByLabelText(messages.settings.academic.startTime),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole("heading", { name: messages.grading.settingsTitle }),
+  ).toBeNull();
+  expect(mocks.query).not.toHaveBeenCalledWith(
+    "academicSettings:getGradingPolicy",
+    expect.anything(),
+  );
 });
 
 test("institution save action shares the title row and still submits its associated form", async () => {
@@ -555,6 +599,12 @@ test("read-only institution settings do not expose the save action", () => {
       name: messages.settings.institutionSettings.save,
     }),
   ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: messages.grading.saveSettings }),
+  ).toBeNull();
+  expect(
+    screen.getByLabelText(messages.grading.passingPercentage).closest("fieldset")?.disabled,
+  ).toBe(true);
 });
 
 test("General offers a circular connect action instead of navigation when disconnected", () => {

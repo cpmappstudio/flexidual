@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { FunctionReturnType } from "convex/server";
+import { useAuth } from "@clerk/nextjs";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -56,7 +57,9 @@ import {
 } from "./course-task-attachments";
 import { useTaskFileRequest } from "@/hooks/use-task-file-request";
 import { useTaskFeedbackDraft } from "@/hooks/use-task-feedback-draft";
+import { hasUnloadedTaskGradeDraft } from "@/hooks/use-task-grade-draft";
 import { TaskPreviousCorrection } from "./course-task-previous-correction";
+import { CourseTaskGrade, GradeEditor } from "./course-task-grade";
 
 type SubmissionRow = FunctionReturnType<
   typeof api.courseTaskSubmissions.listForTask
@@ -284,14 +287,24 @@ export function CourseTaskDetail({
             {t("studentsAssignedAtStart")}
           </p>
         ) : (
-          <TeacherTaskSubmissions taskId={taskId} timeZone={timeZone} />
+          <TeacherTaskSubmissions
+            key={taskId}
+            taskId={taskId}
+            timeZone={timeZone}
+            canGrade={!!task.grading}
+          />
         )
       ) : (
-        <StudentTaskSubmission
-          taskId={taskId}
-          canSubmit={status.canSubmit}
-          timeZone={timeZone}
-        />
+        <>
+          {task.grading && (
+            <CourseTaskGrade taskId={taskId} timeZone={timeZone} />
+          )}
+          <StudentTaskSubmission
+            taskId={taskId}
+            canSubmit={status.canSubmit}
+            timeZone={timeZone}
+          />
+        </>
       )}
     </div>
   );
@@ -545,13 +558,17 @@ function StudentTaskSubmission({
 function TeacherTaskSubmissions({
   taskId,
   timeZone,
+  canGrade,
 }: {
   taskId: Id<"courseTasks">;
   timeZone: string;
+  canGrade: boolean;
 }) {
   const t = useTranslations("courseTasks");
   const common = useTranslations("common");
   const format = useFormatter();
+  const gradingT = useTranslations("grading");
+  const { userId } = useAuth();
   const searchParams = useSearchParams();
   const linkedStudentId =
     searchParams.get("task") === taskId ? searchParams.get("student") : null;
@@ -560,6 +577,54 @@ function TeacherTaskSubmissions({
     { taskId },
     { initialNumItems: 20 },
   );
+  const hasPublishableDrafts = useQuery(
+    api.courseTaskGrades.hasPublishableDrafts,
+    canGrade ? { taskId } : "skip",
+  );
+  const publishAll = useMutation(api.courseTaskGrades.publishAll);
+  const publishing = useRef(false);
+  const submissionsRef = useRef<HTMLElement>(null);
+  const [publishingAll, setPublishingAll] = useState(false);
+  const canPublishAll =
+    status !== "LoadingFirstPage" && !!hasPublishableDrafts && !publishingAll;
+
+  async function publishAllGrades() {
+    if (!canPublishAll || publishing.current) return;
+    if (
+      submissionsRef.current?.querySelector("[data-pending-grade]") ||
+      hasUnloadedTaskGradeDraft(
+        userId,
+        taskId,
+        new Set(results.map(({ studentId }) => studentId)),
+      )
+    ) {
+      toast.warning(gradingT("publishAllPending"));
+      return;
+    }
+    publishing.current = true;
+    setPublishingAll(true);
+    let published = 0;
+    let skipped = 0;
+    try {
+      const operationId = crypto.randomUUID();
+      let continuation: NonNullable<
+        FunctionReturnType<typeof api.courseTaskGrades.publishAll>["continuation"]
+      > | undefined;
+      do {
+        const batch = await publishAll({ taskId, operationId, continuation });
+        published += batch.published;
+        skipped += batch.skipped;
+        continuation = batch.continuation ?? undefined;
+      } while (continuation);
+      if (published) toast.success(gradingT("publishedAll", { count: published }));
+      if (skipped) toast.warning(gradingT("publishAllSkipped"));
+    } catch {
+      toast.error(gradingT("publishAllError", { count: published }));
+    } finally {
+      publishing.current = false;
+      setPublishingAll(false);
+    }
+  }
   const [selectedStudent, setSelectedStudent] = useState<
     Id<"users"> | undefined
   >(linkedStudentId ? (linkedStudentId as Id<"users">) : undefined);
@@ -628,6 +693,24 @@ function TeacherTaskSubmissions({
                 timeZone,
               }),
       },
+      ...(canGrade ? [{
+        id: "grade",
+        header: gradingT("title"),
+        cell: ({ row }: { row: { original: SubmissionRow } }) => {
+          const { grade, studentId, studentName, submissionRevision } = row.original;
+          return grade?.grading && selectedStudent !== studentId ? (
+            <GradeEditor
+              key={`${taskId}:${studentId}`}
+              taskId={taskId}
+              studentId={studentId}
+              studentName={studentName}
+              submissionRevision={submissionRevision}
+              grade={grade}
+              compact
+            />
+          ) : "—";
+        },
+      }] : []),
       {
         id: "actions",
         header: () => <div className="text-right">{common("actions")}</div>,
@@ -638,7 +721,7 @@ function TeacherTaskSubmissions({
               size="sm"
               variant="outline"
               className="min-h-11"
-              disabled={row.original.submittedAt === undefined}
+              disabled={!canGrade && row.original.submittedAt === undefined}
               onClick={() => selectStudent(row.original.studentId)}
             >
               {t("review")}
@@ -647,12 +730,25 @@ function TeacherTaskSubmissions({
         ),
       },
     ],
-    [common, format, t, timeZone, selectStudent],
+    [common, format, t, timeZone, selectStudent, canGrade, gradingT, taskId, selectedStudent],
   );
 
   return (
-    <section className="space-y-3 border-t pt-4">
-      <h4 className="font-semibold">{t("submissions")}</h4>
+    <section ref={submissionsRef} className="space-y-3 border-t pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-semibold">{t("submissions")}</h4>
+        {canGrade && (
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canPublishAll}
+            onClick={() => void publishAllGrades()}
+          >
+            {publishingAll && <Spinner aria-hidden="true" />}
+            {gradingT("publishAll")}
+          </Button>
+        )}
+      </div>
       {status === "LoadingFirstPage" ? (
         <Skeleton className="h-56 w-full" />
       ) : (
@@ -674,6 +770,7 @@ function TeacherTaskSubmissions({
           taskId={taskId}
           studentId={selectedStudent}
           timeZone={timeZone}
+          canGrade={canGrade}
           onClose={() => selectStudent()}
         />
       )}
@@ -686,11 +783,13 @@ function TeacherSubmissionReview({
   studentId,
   timeZone,
   onClose,
+  canGrade,
 }: {
   taskId: Id<"courseTasks">;
   studentId: Id<"users">;
   timeZone: string;
   onClose: () => void;
+  canGrade: boolean;
 }) {
   const t = useTranslations("courseTasks");
   const format = useFormatter();
@@ -705,6 +804,7 @@ function TeacherSubmissionReview({
     studentId,
   );
   const [saving, setSaving] = useState(false);
+  const [pdfOpen, setPdfOpen] = useState(false);
   const savedFeedback = submission?.feedback?.text ?? "";
   const currentFeedback = feedback?.text ?? savedFeedback;
   const staleFeedback =
@@ -774,7 +874,13 @@ function TeacherSubmissionReview({
                     : undefined
                 }
               >
-                {t(submission.submittedLate ? "late" : "delivered")}
+                {t(
+                  submission.submittedAt === undefined
+                    ? "pending"
+                    : submission.submittedLate
+                      ? "late"
+                      : "delivered",
+                )}
               </Badge>
             </div>
           )}
@@ -808,96 +914,107 @@ function TeacherSubmissionReview({
                 plain
                 submission
                 editPdfs
+                onPdfOpenChange={setPdfOpen}
               />
             </section>
 
-            <form
-              onSubmit={(event) => void save(event)}
-              className="space-y-3 border-t pt-5"
-            >
-              <div className="space-y-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <label
-                    htmlFor="task-feedback"
-                    className="flex items-center gap-2 text-sm font-semibold text-foreground"
-                  >
-                    <MessageSquareText
-                      className="size-4 text-primary"
-                      aria-hidden="true"
-                    />
-                    {t("feedback")}
-                  </label>
-                  {hasChanges && (
-                    <Badge variant="outline" role="status" aria-atomic="true">
-                      {t("feedbackUnsaved")}
-                    </Badge>
+            {canGrade && !pdfOpen && (
+              <CourseTaskGrade
+                taskId={taskId}
+                studentId={studentId}
+                submissionRevision={submission.submissionRevision}
+                timeZone={timeZone}
+              />
+            )}
+            {submission.submittedAt !== undefined && (
+              <form
+                onSubmit={(event) => void save(event)}
+                className="space-y-3 border-t pt-5"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label
+                      htmlFor="task-feedback"
+                      className="flex items-center gap-2 text-sm font-semibold text-foreground"
+                    >
+                      <MessageSquareText
+                        className="size-4 text-primary"
+                        aria-hidden="true"
+                      />
+                      {t("feedback")}
+                    </label>
+                    {hasChanges && (
+                      <Badge variant="outline" role="status" aria-atomic="true">
+                        {t("feedbackUnsaved")}
+                      </Badge>
+                    )}
+                  </div>
+                  {!hasChanges && submission.feedback && (
+                    <p className="text-xs text-muted-foreground">
+                      {t("feedbackSentAt", {
+                        date: format.dateTime(submission.feedback.updatedAt, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                          timeZone,
+                        }),
+                      })}
+                    </p>
                   )}
                 </div>
-                {!hasChanges && submission.feedback && (
-                  <p className="text-xs text-muted-foreground">
-                    {t("feedbackSentAt", {
-                      date: format.dateTime(submission.feedback.updatedAt, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                        timeZone,
-                      }),
-                    })}
-                  </p>
-                )}
-              </div>
-              {staleFeedback && (
-                <div
-                  role="alert"
-                  className="space-y-2 text-sm text-destructive"
-                >
-                  <p>{t("pdfCorrection.submissionChanged")}</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="min-h-11"
-                    onClick={() => setFeedbackText(undefined)}
+                {staleFeedback && (
+                  <div
+                    role="alert"
+                    className="space-y-2 text-sm text-destructive"
                   >
-                    {t("pdfCorrection.useCurrentSubmission")}
+                    <p>{t("pdfCorrection.submissionChanged")}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="min-h-11"
+                      onClick={() => setFeedbackText(undefined)}
+                    >
+                      {t("pdfCorrection.useCurrentSubmission")}
+                    </Button>
+                  </div>
+                )}
+                <Textarea
+                  id="task-feedback"
+                  maxLength={2000}
+                  rows={4}
+                  value={currentFeedback}
+                  onChange={(event) =>
+                    setFeedbackText({
+                      text: event.target.value,
+                      revision:
+                        feedback?.revision ?? submission.submissionRevision,
+                    })
+                  }
+                  disabled={saving}
+                  placeholder={t("feedbackPlaceholder")}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="pointer-coarse:min-h-11"
+                    disabled={saving || !canSaveFeedback}
+                    variant={
+                      savedFeedback && !currentFeedback.trim()
+                        ? "destructive"
+                        : "default"
+                    }
+                  >
+                    {saving && <Spinner aria-hidden="true" />}
+                    {savedFeedback
+                      ? currentFeedback.trim()
+                        ? t("updateFeedback")
+                        : t("removeFeedback")
+                      : t("sendFeedback")}
                   </Button>
                 </div>
-              )}
-              <Textarea
-                id="task-feedback"
-                maxLength={2000}
-                rows={4}
-                value={currentFeedback}
-                onChange={(event) =>
-                  setFeedbackText({
-                    text: event.target.value,
-                    revision:
-                      feedback?.revision ?? submission.submissionRevision,
-                  })
-                }
-                disabled={saving}
-                placeholder={t("feedbackPlaceholder")}
-              />
-              <div className="flex justify-end">
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="pointer-coarse:min-h-11"
-                  disabled={saving || !canSaveFeedback}
-                  variant={
-                    savedFeedback && !currentFeedback.trim()
-                      ? "destructive"
-                      : "default"
-                  }
-                >
-                  {saving && <Spinner aria-hidden="true" />}
-                  {savedFeedback
-                    ? currentFeedback.trim()
-                      ? t("updateFeedback")
-                      : t("removeFeedback")
-                    : t("sendFeedback")}
-                </Button>
-              </div>
-            </form>
+              </form>
+            )}
             <TaskPreviousCorrection
               correction={submission.previousCorrection}
               timeZone={timeZone}

@@ -36,6 +36,11 @@ import { peopleDirectoryValidator } from "./model/peopleDirectoryFields";
 import { classSessionVideoFields } from "./model/classSessionVideoFields";
 import { chatTargetFields } from "./model/chatTarget";
 import { abekaProgressSummaryFields } from "./model/abekaProgressSummary";
+import {
+  gradeResultValidator,
+  gradingConfigurationValidator,
+  gradingPolicyValidator,
+} from "./model/grading";
 
 export const surveyCampaignValidator = v.object({
   surveyId: v.string(),
@@ -345,6 +350,7 @@ export default defineSchema({
     isDraft: v.optional(v.boolean()),
     title: v.string(),
     description: v.optional(v.string()),
+    grading: v.optional(gradingConfigurationValidator),
     availableAt: v.optional(v.number()),
     availabilitySortAt: v.optional(v.number()),
     releasedAt: v.optional(v.number()),
@@ -442,6 +448,28 @@ export default defineSchema({
   })
     .index("by_taskId_and_kind_and_state", ["taskId", "kind", "state"])
     .index("by_recipientId_and_state", ["recipientId", "state"]),
+
+  courseTaskGrades: defineTable({
+    taskId: v.id("courseTasks"),
+    classId: v.id("classes"),
+    studentId: v.id("users"),
+    recipientId: v.id("courseTaskRecipients"),
+    version: v.number(),
+    draft: v.optional(gradeResultValidator),
+    published: v.optional(gradeResultValidator),
+    lastOperationId: v.string(),
+    lastOperationBy: v.id("users"),
+    lastOperationKind: v.union(v.literal("draft"), v.literal("publish")),
+  })
+    .index("by_taskId_and_studentId", ["taskId", "studentId"])
+    .index("by_taskId_and_draft_updatedAt", ["taskId", "draft.updatedAt"])
+    .index("by_classId", ["classId"]),
+
+  courseTaskGradeHistory: defineTable({
+    gradeId: v.id("courseTaskGrades"),
+    version: v.number(),
+    ...gradeResultValidator.fields,
+  }).index("by_gradeId_and_version", ["gradeId", "version"]),
 
   broadcasts: defineTable({
     name: v.string(),
@@ -1080,6 +1108,7 @@ export default defineSchema({
     scheduleStartMinutes: v.optional(v.number()),
     scheduleEndMinutes: v.optional(v.number()),
     timeZone: v.optional(v.string()),
+    gradingPolicy: v.optional(gradingPolicyValidator),
 
     isActive: v.boolean(),
     createdAt: v.number(),

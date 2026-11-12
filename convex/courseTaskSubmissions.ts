@@ -11,6 +11,11 @@ import {
   getCourseTaskAccess,
 } from "./model/courseTaskAccess";
 import { deleteCourseTaskFile } from "./model/courseTaskFiles";
+import {
+  findTaskGrade,
+  gradeEditorStateValidator,
+  projectGradeEditorState,
+} from "./model/grading";
 import { getCurrentUserOrThrow } from "./users";
 import {
   MAX_TASK_SUBMISSION_FILES,
@@ -222,6 +227,7 @@ export const listForTask = query({
       submittedLate: v.optional(v.boolean()),
       submissionRevision: v.number(),
       hasFeedback: v.boolean(),
+      grade: v.optional(gradeEditorStateValidator),
     }),
   ),
   handler: async (ctx, args) => {
@@ -234,9 +240,14 @@ export const listForTask = query({
       .query("courseTaskRecipients")
       .withIndex("by_taskId_and_studentId", (q) => q.eq("taskId", task._id))
       .paginate(args.paginationOpts);
+    const grading =
+      task.releasedAt !== undefined && !task.isDraft ? task.grading : undefined;
     const rows = await Promise.all(
       page.page.map(async (recipient) => {
-        const student = await ctx.db.get("users", recipient.studentId);
+        const [student, grade] = await Promise.all([
+          ctx.db.get("users", recipient.studentId),
+          grading ? findTaskGrade(ctx, task._id, recipient.studentId) : null,
+        ]);
         return {
           studentId: recipient.studentId,
           studentName: student?.fullName ?? "",
@@ -244,6 +255,14 @@ export const listForTask = query({
           submittedLate: recipient.submittedLate,
           submissionRevision: recipient.submissionRevision,
           hasFeedback: recipient.feedback !== undefined,
+          grade: grading
+            ? projectGradeEditorState(
+                grading,
+                grade,
+                recipient.submissionRevision,
+                true,
+              )
+            : undefined,
         };
       }),
     );

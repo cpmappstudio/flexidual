@@ -60,12 +60,16 @@ const detailState = vi.hoisted(() => ({
   },
 }));
 const feedbackMutation = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const gradeMutation = vi.hoisted(() => vi.fn().mockResolvedValue(1));
+const publishAllMutation = vi.hoisted(() => vi.fn());
 const uploadFiles = vi.hoisted(() => vi.fn());
 const mobileState = vi.hoisted(() => ({ isMobile: false }));
 const queryState = vi.hoisted(() => ({
   now: 1_000,
   statusNow: 0,
   statusLoading: false,
+  submissionsLoading: false,
+  hasPublishableDrafts: false,
 }));
 
 vi.mock("@clerk/nextjs", () => ({
@@ -101,6 +105,16 @@ vi.mock("convex/react", async () => {
           return queryState.statusLoading ? undefined : detailState.status;
         case "courseTaskFiles:listMaterials":
           return detailState.materials;
+        case "courseTaskGrades:get":
+          return {
+            grading: detailState.task.grading,
+            version: 0,
+            draft: null,
+            published: null,
+            needsReview: false,
+          };
+        case "courseTaskGrades:hasPublishableDrafts":
+          return queryState.hasPublishableDrafts;
         case "courseTaskSubmissions:get":
           return {
             ...detailState.reviewSubmission,
@@ -112,14 +126,19 @@ vi.mock("convex/react", async () => {
           throw new Error("Unexpected query");
       }
     },
-    useMutation: (ref: unknown) =>
-      getFunctionName(ref as Parameters<typeof getFunctionName>[0]) ===
-      "courseTaskSubmissions:setFeedback"
-        ? feedbackMutation
-        : vi.fn(),
+    useMutation: (ref: unknown) => {
+      const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+      if (name === "courseTaskSubmissions:setFeedback") return feedbackMutation;
+      if (name === "courseTaskGrades:saveDraft") return gradeMutation;
+      if (name === "courseTaskGrades:publishAll") return publishAllMutation;
+      return vi.fn();
+    },
     usePaginatedQuery: () => ({
-      results: rows,
-      status: "Exhausted",
+      results: detailState.task.grading ? rows.map((row) => ({
+        ...row,
+        grade: { grading: detailState.task.grading, version: 0, draft: null, published: null },
+      })) : rows,
+      status: queryState.submissionsLoading ? "LoadingFirstPage" : "Exhausted",
       loadMore: vi.fn(),
     }),
   };
@@ -202,11 +221,15 @@ afterEach(() => {
     feedback: undefined,
   };
   feedbackMutation.mockClear();
+  gradeMutation.mockClear();
+  publishAllMutation.mockReset();
   uploadFiles.mockReset();
   mobileState.isMobile = false;
   queryState.now = 1_000;
   queryState.statusNow = 0;
+  queryState.submissionsLoading = false;
   queryState.statusLoading = false;
+  queryState.hasPublishableDrafts = false;
   detailState.status = {
     canManage: true,
     canSubmit: false,
@@ -258,6 +281,94 @@ test("shows the delete action only to a course manager", () => {
   detailState.status = { ...detailState.status, canManage: false };
   rerender(<CourseTaskDetail {...props} />);
   expect(screen.queryByRole("button", { name: "deleteTask" })).toBeNull();
+});
+
+test("graded activities allow reviewing an assigned student before a file is submitted", async () => {
+  detailState.task.grading = { maxPoints: 20, scaleMax: 100, decimalPlaces: 2 };
+  detailState.reviewSubmission = {
+    submittedAt: undefined,
+    submittedLate: false,
+    submissionRevision: 0,
+    files: [],
+    feedback: undefined,
+  };
+  render(
+    <CourseTaskDetail
+      classId={"class-id" as Id<"classes">}
+      taskId={"task-id" as Id<"courseTasks">}
+      timeZone="UTC"
+      onEdit={vi.fn()}
+      onDelete={vi.fn()}
+    />,
+  );
+  const student = screen.getByText("Student 0").closest("tr")!;
+  const grade = within(student).getByRole("spinbutton", { name: "studentGrade" });
+  fireEvent.change(grade, { target: { value: "82.5" } });
+  fireEvent.blur(grade);
+  await waitFor(() => expect(gradeMutation).toHaveBeenCalledWith(expect.objectContaining({
+    studentId: "student-0",
+    institutionalPoints: 82.5,
+    expectedSubmissionRevision: 0,
+  })));
+  const review = within(student).getByRole("button", {
+    name: "review",
+  }) as HTMLButtonElement;
+  expect(review.disabled).toBe(false);
+  fireEvent.click(review);
+  expect(await screen.findByRole("spinbutton", { name: "points" })).toBeTruthy();
+  expect(screen.queryByLabelText("task-feedback")).toBeNull();
+});
+
+test("bulk publication uses all server drafts and blocks when a visible grade is invalid", async () => {
+  detailState.task.grading = { maxPoints: 20, scaleMax: 100, decimalPlaces: 2 };
+  const props = {
+    classId: "class-id" as Id<"classes">,
+    taskId: "task-id" as Id<"courseTasks">,
+    timeZone: "UTC",
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+  };
+  const view = render(<CourseTaskDetail {...props} />);
+  const button = screen.getByRole<HTMLButtonElement>("button", { name: "publishAll" });
+  expect(button.disabled).toBe(true);
+  queryState.hasPublishableDrafts = true;
+  queryState.submissionsLoading = true;
+  view.rerender(<CourseTaskDetail {...props} />);
+  expect(button.disabled).toBe(true);
+  queryState.submissionsLoading = false;
+  view.rerender(<CourseTaskDetail {...props} />);
+  expect(button.disabled).toBe(false);
+
+  const row = within(screen.getByText("Student 0").closest("tr")!);
+  const input = row.getByRole("spinbutton", { name: "studentGrade" });
+  fireEvent.change(input, { target: { value: "101" } });
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  expect(row.queryByRole("alert")).toBeNull();
+  expect(row.queryByRole("button", { name: "discardLocal" })).toBeNull();
+  fireEvent.click(button);
+  expect(publishAllMutation).not.toHaveBeenCalled();
+  expect(gradeMutation).not.toHaveBeenCalled();
+
+  fireEvent.change(input, { target: { value: "" } });
+  expect(input.getAttribute("aria-invalid")).toBe("false");
+  const hiddenKey = "flexidual:task-grade:teacher-test:task-id:student-unloaded";
+  window.sessionStorage.setItem(hiddenKey, JSON.stringify({
+    points: "90", comment: "", version: 1, submissionRevision: 0,
+    operationId: "unloaded",
+  }));
+  fireEvent.click(button);
+  expect(publishAllMutation).not.toHaveBeenCalled();
+  window.sessionStorage.removeItem(hiddenKey);
+  const continuation = { cursor: "next", before: 1 };
+  publishAllMutation
+    .mockResolvedValueOnce({ published: 50, skipped: 0, continuation })
+    .mockResolvedValueOnce({ published: 1, skipped: 0, continuation: null });
+  fireEvent.click(button);
+  await waitFor(() => expect(publishAllMutation).toHaveBeenCalledTimes(2));
+  const { operationId } = publishAllMutation.mock.calls[0][0];
+  expect(publishAllMutation).toHaveBeenLastCalledWith({
+    taskId: "task-id", operationId, continuation,
+  });
 });
 
 test("shows every relevant empty assignment field explicitly", () => {

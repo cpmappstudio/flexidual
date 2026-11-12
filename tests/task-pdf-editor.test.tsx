@@ -34,8 +34,20 @@ const state = vi.hoisted(() => ({
   exportPdf: vi.fn(),
   mounts: 0,
   replace: vi.fn(),
+  grade: undefined as Record<string, unknown> | undefined,
+  saveGrade: vi.fn(),
+  publishGrade: vi.fn(),
 }));
-vi.mock("convex/react", () => ({ useQuery: () => state.latest }));
+vi.mock("convex/react", async () => {
+  const { getFunctionName } = await import("convex/server");
+  return {
+    useQuery: (ref: Parameters<typeof getFunctionName>[0]) =>
+      getFunctionName(ref) === "courseTaskGrades:get" ? state.grade : state.latest,
+    useMutation: (ref: Parameters<typeof getFunctionName>[0]) =>
+      getFunctionName(ref) === "courseTaskGrades:publish" ? state.publishGrade : state.saveGrade,
+  };
+});
+vi.mock("@clerk/nextjs", () => ({ useAuth: () => ({ userId: "teacher" }) }));
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
   useFormatter: () => ({ dateTime: (value: number) => String(value) }),
@@ -80,6 +92,10 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TaskPdfEditor } from "@/components/teaching/classes/task-pdf-editor";
 
 beforeEach(() => {
+  sessionStorage.clear();
+  state.grade = undefined;
+  state.saveGrade.mockReset().mockResolvedValue(1);
+  state.publishGrade.mockReset().mockResolvedValue(2);
   state.latest = {
     name: "work.pdf",
     version: "original",
@@ -139,6 +155,47 @@ function browserExitIsBlocked() {
   window.dispatchEvent(event);
   return event.defaultPrevented;
 }
+
+test("the PDF header saves a private grade and publishes only after a successful PDF save", async () => {
+  state.grade = {
+    grading: { maxPoints: 20, scaleMax: 100, decimalPlaces: 2 },
+    version: 0,
+    draft: null,
+    published: null,
+    needsReview: false,
+  };
+  const close = vi.fn();
+  const view = await openEditor({ onClose: close });
+  const points = screen.getByRole("spinbutton", { name: "points" });
+  const publishButton = screen.getByRole("button", { name: "saveAndPublish" });
+  expect(points.closest("form")).toBe(publishButton.closest("form"));
+  expect(points.compareDocumentPosition(publishButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.change(points, { target: { value: "85" } });
+  fireEvent.blur(points);
+  await waitFor(() => expect(state.saveGrade).toHaveBeenCalledWith(expect.objectContaining({
+    institutionalPoints: 85,
+    expectedSubmissionRevision: 1,
+  })));
+  expect(state.publishGrade).not.toHaveBeenCalled();
+  expect(state.exportPdf).not.toHaveBeenCalled();
+  state.grade = { ...state.grade, version: 1, draft: {
+    points: 17, institutionalPoints: 85, submissionRevision: 1,
+  } };
+  view.rerender(<Editor onClose={close} />);
+  fireEvent.click(screen.getByRole("button", { name: "Draw" }));
+  state.request.mockRejectedValueOnce(new Error("offline"));
+  fireEvent.click(screen.getByRole("button", { name: "saveAndPublish" }));
+  await screen.findByText("saveFailed");
+  expect(state.publishGrade).not.toHaveBeenCalled();
+  expect(close).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "saveAndPublish" }));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(state.publishGrade).toHaveBeenCalledWith(expect.objectContaining({
+    expectedVersion: 1,
+    expectedSubmissionRevision: 1,
+  }));
+  expect(state.exportPdf).toHaveBeenCalledOnce();
+});
 
 test.each([false, true])(
   "a clean viewer in editing mode %s installs no unload warning and closes without a prompt",

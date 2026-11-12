@@ -4,6 +4,7 @@ import { getCurrentUserOrThrow } from "./users";
 import {
   canAccessCampus,
   canAccessSchool,
+  canManageInstitution,
   canViewInstitutionSettings,
   hasOrgRole,
   hasStaffAccess,
@@ -310,7 +311,6 @@ export const getSettingsContext = query({
   ),
   handler: async (ctx, args) => {
     const user = await getCurrentUserOrThrow(ctx);
-    const isSuperAdmin = await hasSystemRole(ctx, user._id, ["superadmin"]);
 
     const school = await ctx.db
       .query("schools")
@@ -328,21 +328,19 @@ export const getSettingsContext = query({
 
     if (!institution) return null;
 
-    const hasCurrentOrgAccess = school
-      ? await hasOrgRole(ctx, user._id, school._id, "school", ["admin"])
-      : await hasOrgRole(ctx, user._id, campus!._id, "campus", [
+    const canManage = await canManageInstitution(ctx, user._id, institution._id);
+    if (
+      !canManage &&
+      (!campus ||
+        !(await hasOrgRole(ctx, user._id, campus._id, "campus", [
           "admin",
           "principal",
           "teacher",
           "tutor",
           "student",
-        ]);
-
-    if (!isSuperAdmin && !hasCurrentOrgAccess) return null;
-
-    const canManageInstitution =
-      isSuperAdmin ||
-      (await hasOrgRole(ctx, user._id, institution._id, "school", ["admin"]));
+        ])))
+    )
+      return null;
 
     return {
       institution: {
@@ -352,9 +350,9 @@ export const getSettingsContext = query({
         isActive: institution.isActive,
         timeZone: institution.timeZone,
       },
-      canManageInstitution,
+      canManageInstitution: canManage,
       canViewInstitutionSettings:
-        canManageInstitution ||
+        canManage ||
         (await canViewInstitutionSettings(ctx, user._id, institution._id)),
     };
   },

@@ -317,6 +317,7 @@ export function TaskAttachmentList({
   plain = false,
   submission = false,
   editPdfs = false,
+  onPdfOpenChange,
   compact = false,
 }: {
   files: TaskAttachment[];
@@ -325,6 +326,7 @@ export function TaskAttachmentList({
   plain?: boolean;
   submission?: boolean;
   editPdfs?: boolean;
+  onPdfOpenChange?: (open: boolean) => void;
   compact?: boolean;
 }) {
   const t = useTranslations("courseTasks");
@@ -344,12 +346,14 @@ export function TaskAttachmentList({
       plain &&
       !onRemove &&
       file.contentType === "application/pdf"
-    )
+    ) {
       setPdf({ id: file.id, editing: false, trigger });
-    else setPreviewId(file.id);
+      onPdfOpenChange?.(true);
+    } else setPreviewId(file.id);
   }
   function editPdf(file: TaskAttachment, trigger: HTMLButtonElement) {
     setPdf({ id: file.id, editing: true, trigger });
+    onPdfOpenChange?.(true);
   }
 
   async function download(file: TaskAttachment) {
@@ -547,7 +551,10 @@ export function TaskAttachmentList({
           fileId={pdf.id}
           initialEditing={pdf.editing}
           returnFocus={pdf.trigger}
-          onClose={() => setPdf(undefined)}
+          onClose={() => {
+            setPdf(undefined);
+            onPdfOpenChange?.(false);
+          }}
         />
       )}
       {previewFile && (

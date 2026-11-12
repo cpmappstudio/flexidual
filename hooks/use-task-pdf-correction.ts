@@ -36,7 +36,8 @@ export function useTaskPdfCorrection(fileId: string) {
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<PendingSave>();
   const [saveError, setSaveError] = useState<string>();
-  const [completed, setCompleted] = useState(false);
+  const [savedVersion, setSavedVersion] = useState<string>();
+  const completed = savedVersion !== undefined;
   const busy = useRef(false);
   const viewer = useRef<TaskPdfViewerHandle>(null);
   const sourceVersion = document?.version;
@@ -48,20 +49,16 @@ export function useTaskPdfCorrection(fileId: string) {
         (!latest ||
           latest.revision !== document.revision ||
           (latest.version !== document.version &&
+            latest.version !== savedVersion &&
             !(pending && latest.lastSaveId === pending.saveId))),
     );
 
-  useEffect(() => {
-    if (!document && latest) setDocument(latest);
-  }, [document, latest]);
+  if (!document && latest) setDocument(latest);
 
   useEffect(() => {
     if (!sourceVersion) return;
     const controller = new AbortController();
     let objectUrl: string | undefined;
-    setLoadFailed(false);
-    setUrl(undefined);
-    setReady(false);
     void request(
       { id: fileId, version: sourceVersion },
       { signal: controller.signal },
@@ -90,7 +87,7 @@ export function useTaskPdfCorrection(fileId: string) {
       completed ||
       (!dirty && !pending)
     )
-      return;
+      return false;
     busy.current = true;
     setSaving(true);
     setSaveError(undefined);
@@ -134,7 +131,8 @@ export function useTaskPdfCorrection(fileId: string) {
         throw new Error("UPLOAD_FAILED");
       setPending(undefined);
       setDirty(false);
-      setCompleted(true);
+      setSavedVersion(result.version);
+      return true;
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
       if (code.includes("INVALID_TASK_FILE")) setPending(undefined);
@@ -145,6 +143,7 @@ export function useTaskPdfCorrection(fileId: string) {
             ? "tooLarge"
             : "saveFailed",
       );
+      return false;
     } finally {
       setSaving(false);
       busy.current = false;
@@ -182,7 +181,12 @@ export function useTaskPdfCorrection(fileId: string) {
     viewer,
     save,
     downloadCopy,
-    retryLoad: () => setRetry((value) => value + 1),
+    retryLoad: () => {
+      setLoadFailed(false);
+      setUrl(undefined);
+      setReady(false);
+      setRetry((value) => value + 1);
+    },
     reportLoadError: () => setLoadFailed(true),
   };
 }

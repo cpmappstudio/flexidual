@@ -30,6 +30,7 @@ import { CourseTaskDetail } from "./course-task-detail";
 import { CourseTaskEditor } from "./course-task-editor";
 import { DetailCarousel } from "@/components/detail-carousel";
 import type { TaskAttachment } from "./course-task-attachments";
+import { parseConvexError } from "@/lib/error-utils";
 
 export function CourseTasksTab({
   classId,
@@ -43,6 +44,7 @@ export function CourseTasksTab({
   initialTaskId?: Id<"courseTasks">;
 }) {
   const t = useTranslations("courseTasks");
+  const gradingT = useTranslations("grading");
   const format = useFormatter();
   const removeTask = useMutation(api.courseTasks.remove);
   const { results, status, loadMore } = usePaginatedQuery(
@@ -111,8 +113,12 @@ export function CourseTasksTab({
       }
       setTaskToDelete(undefined);
       toast.success(t("deleteSuccess"));
-    } catch {
-      toast.error(t("deleteFailed"));
+    } catch (error) {
+      toast.error(
+        parseConvexError(error)?.code === "TASK_HAS_GRADES"
+          ? gradingT("hasGrades")
+          : t("deleteFailed"),
+      );
     } finally {
       setDeleting(false);
     }

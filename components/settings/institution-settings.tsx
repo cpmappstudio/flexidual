@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -17,10 +17,17 @@ import {
 } from "@/components/ui/time-zone-input";
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { isValidTimeZone } from "@/lib/time-zone";
+import { GradingSettings } from "./grading-settings";
 
 export function InstitutionSettings() {
   const t = useTranslations("settings.institutionSettings");
   const { context, isLoading } = useSettingsContext();
+  const gradingPolicy = useQuery(
+    api.academicSettings.getGradingPolicy,
+    context?.canViewInstitutionSettings
+      ? { schoolId: context.institution._id }
+      : "skip",
+  );
   const updateInstitution = useMutation(api.schools.updateInstitutionSettings);
   const [name, setName] = React.useState("");
   const [timeZone, setTimeZone] = React.useState("");
@@ -128,6 +135,15 @@ export function InstitutionSettings() {
           </Badge>
         </div>
       </form>
+      {gradingPolicy === undefined && <Skeleton className="h-36 w-full" />}
+      {gradingPolicy && (
+        <GradingSettings
+          key={`${institution._id}:${JSON.stringify(gradingPolicy)}`}
+          schoolId={institution._id}
+          policy={gradingPolicy}
+          readOnly={readOnly}
+        />
+      )}
     </section>
   );
 }
