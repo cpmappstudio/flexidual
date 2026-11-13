@@ -25,6 +25,12 @@ export function NavMain() {
     (role === "admin" || role === "principal" || role === "superadmin");
   const canViewStudents =
     access?.canViewStudents ?? (canViewPeople || role === "teacher");
+  const dashboardPath =
+    role === "student"
+      ? basePath
+      : access?.canViewPeople && basePath !== "/system" && basePath !== "/admin"
+        ? `${basePath}/dashboard`
+        : null;
 
   if (!isLoaded) return null;
 
@@ -36,18 +42,22 @@ export function NavMain() {
         )}
         <SidebarGroupContent>
           <SidebarMenu>
-            {role === "student" && (
+            {dashboardPath && (
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
                   isActive={
-                    pathname === basePath || pathname === `${basePath}/`
+                    pathname === dashboardPath ||
+                    pathname === `${dashboardPath}/`
                   }
                   tooltip={t("navigation.dashboard")}
                   aria-label={t("navigation.dashboard")}
                   className="h-12 gap-3 px-2 text-base group-data-[collapsible=icon]:p-1!"
                 >
-                  <Link href={basePath}>
+                  <Link
+                    href={dashboardPath}
+                    prefetch={role === "student" ? undefined : false}
+                  >
                     <Image
                       src="/home-icon.svg"
                       alt=""

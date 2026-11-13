@@ -7,7 +7,7 @@ import { canAccessClass, canManageClasses } from "./permissions";
 import { getClassTimeZone } from "./model/timeZone";
 import { getCurrentUserFromAuth, getCurrentUserOrThrow } from "./users";
 import { studentAttendanceStatusValidator } from "./model/studentAttendance";
-import { isExternalClassSession } from "../lib/class-session";
+import { isExternalClassSession, isPastClassSession } from "../lib/class-session";
 import { isStudentEnrolled } from "./model/enrollments";
 import {
   getPlayableRecordings,
@@ -100,7 +100,7 @@ const emptyRecordValidator = v.object({
   scheduleId: v.id("classSchedule"),
 });
 
-const sessionRecordValidator = v.union(
+export const sessionRecordValidator = v.union(
   completedRecordValidator,
   pendingRecordValidator,
   emptyRecordValidator,
@@ -138,13 +138,7 @@ export const listRecent = query({
       .order("desc")
       .take(RECENT_SESSION_SCAN_LIMIT);
     const schedules = candidates
-      .filter(
-        (schedule) =>
-          schedule.scheduledEnd <= args.now &&
-          schedule.status !== "cancelled" &&
-          schedule.status !== "active" &&
-          !schedule.isLive,
-      )
+      .filter((schedule) => isPastClassSession(schedule, args.now))
       .slice(0, RECENT_SESSION_LIMIT);
     const timeZone = (await getClassTimeZone(ctx, classData)) ?? "UTC";
 
@@ -218,11 +212,7 @@ export const get = query({
       (await canManageClasses(ctx, user._id, classData.campusId, schoolId));
 
     if (!report) {
-      const isPastSession =
-        schedule.scheduledEnd <= args.now &&
-        schedule.status !== "cancelled" &&
-        schedule.status !== "active" &&
-        !schedule.isLive;
+      const isPastSession = isPastClassSession(schedule, args.now);
       const hasPublishedVideo = recordings.some(
         (part) => part.prerecordedVideoId !== undefined,
       );

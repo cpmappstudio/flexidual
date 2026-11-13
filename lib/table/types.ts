@@ -41,6 +41,8 @@ export interface DataTableProps<TData> {
   initialColumnFilters?: ColumnFiltersState;
   pageSize?: number;
   paginate?: boolean;
+  bordered?: boolean;
+  scrollLabel?: string;
   customFilter?: React.ReactNode;
   createAction?: React.ReactNode;
   onExport?: (rows: TData[]) => void;

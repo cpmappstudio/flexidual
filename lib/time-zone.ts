@@ -131,11 +131,33 @@ export function dateInTimeZone(timestamp: number, timeZone: string) {
   return utcToLocalDateTime(timestamp, timeZone).slice(0, 10);
 }
 
+export function mondayOfCivilWeek(day: string) {
+  return addCivilDays(day, -((new Date(day).getUTCDay() + 6) % 7));
+}
+
+export function getUtcDayStart(date: string, timeZone: string) {
+  const utcDay = civilDayNumber(date);
+  if (!isValidTimeZone(timeZone)) throw new Error("INVALID_LOCAL_DATE_TIME");
+  try {
+    const midnight = localDateTimeToUtc(`${date}T00:00`, timeZone);
+    if (dateInTimeZone(midnight - 1, timeZone) < date) return midnight;
+  } catch {
+    // Some time zones skip midnight; a civil day starts at its first valid time.
+  }
+  let lo = (utcDay - 1) * 1440;
+  let hi = (utcDay + 1) * 1440;
+  while (hi - lo > 1) {
+    const middle = Math.floor((lo + hi) / 2);
+    if (dateInTimeZone(middle * 60_000, timeZone) < date) lo = middle;
+    else hi = middle;
+  }
+  return hi * 60_000;
+}
+
 export function getUtcDayRange(date: string, timeZone: string) {
-  if (!isValidCivilDate(date)) throw new Error("INVALID_CIVIL_DATE");
   return {
-    from: localDateTimeToUtc(`${date}T00:00`, timeZone),
-    to: localDateTimeToUtc(`${addCivilDays(date, 1)}T00:00`, timeZone),
+    from: getUtcDayStart(date, timeZone),
+    to: getUtcDayStart(addCivilDays(date, 1), timeZone),
   };
 }
 

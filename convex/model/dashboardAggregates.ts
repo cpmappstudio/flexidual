@@ -4,6 +4,7 @@ import { components } from "../_generated/api";
 import type { DataModel, Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { isExternalClassSession } from "../../lib/class-session";
+import { verifiedAttendanceCourse as attendanceScope } from "./studentAttendance";
 
 // Namespaces isolate unrelated courses/students; source data remains authoritative.
 export const dashboardAggregate = new DirectAggregate<{
@@ -37,27 +38,14 @@ function scheduleEntry(schedule: Doc<"classSchedule">) {
     id: schedule._id,
   };
 }
-function attendanceScope(schedule: Doc<"classSchedule"> | null) {
-  return schedule &&
-    !isExternalClassSession(schedule.sessionType) &&
-    schedule.status === "completed" &&
-    schedule.sessionClosureStatus === "completed"
-    ? schedule.classId
-    : null;
-}
 function attendanceEntry(
   record: Doc<"studentAttendanceRecords">,
   schedule: Doc<"classSchedule"> | null,
 ) {
-  if (
-    !schedule ||
-    isExternalClassSession(schedule.sessionType) ||
-    schedule.status !== "completed" ||
-    schedule.sessionClosureStatus !== "completed"
-  )
-    return null;
+  const classId = attendanceScope(schedule);
+  if (!classId) return null;
   return {
-    namespace: `attendance:${record.studentId}:${schedule.classId}`,
+    namespace: `attendance:${record.studentId}:${classId}`,
     key: [record.status],
     id: record._id,
   };

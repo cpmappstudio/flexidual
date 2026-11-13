@@ -26,6 +26,10 @@ async function getStatus(ctx: QueryCtx, userId: Id<"users">) {
     : null;
 }
 
+export async function isUserOnline(ctx: QueryCtx, userId: Id<"users">) {
+  return (await presence.listRoom(ctx, userId, true, 1)).length > 0;
+}
+
 export const heartbeat = mutation({
   args: {
     roomId: v.string(),

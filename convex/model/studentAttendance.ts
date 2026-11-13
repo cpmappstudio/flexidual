@@ -1,4 +1,17 @@
 import { v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
+import { isExternalClassSession } from "../../lib/class-session";
+
+export function verifiedAttendanceCourse(
+  schedule: Doc<"classSchedule"> | null,
+) {
+  return schedule &&
+    !isExternalClassSession(schedule.sessionType) &&
+    schedule.status === "completed" &&
+    schedule.sessionClosureStatus === "completed"
+    ? schedule.classId
+    : null;
+}
 
 export const studentAttendanceStatusValidator = v.union(
   v.literal("present"),

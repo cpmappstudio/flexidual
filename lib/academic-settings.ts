@@ -2,6 +2,8 @@ export const DEFAULT_SCHEDULE_START_MINUTES = 7 * 60;
 export const DEFAULT_SCHEDULE_END_MINUTES = 18 * 60;
 export const SCHEDULE_STEP_MINUTES = 15;
 export const COURSE_SCHEDULE_STEP_MINUTES = 5;
+export const COURSE_PROGRESS_PAGE_SIZE = 2;
+export const DASHBOARD_WINDOW_DAYS = 28;
 
 export function isValidScheduleWindow(
   startMinutes: number,

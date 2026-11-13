@@ -102,6 +102,13 @@ test("day ranges follow DST instead of assuming twenty-four hours", () => {
   assert.equal(range.to - range.from, 23 * 60 * 60 * 1000);
 });
 
+test("a day that skips midnight begins at the first valid institutional time", () => {
+  const range = getUtcDayRange("2026-09-06", "America/Santiago");
+  assert.equal(range.from, Date.parse("2026-09-06T04:00:00Z"));
+  assert.equal(range.to, Date.parse("2026-09-07T03:00:00Z"));
+  assert.equal(getUtcDayRange("2026-09-05", "America/Santiago").to, range.from);
+});
+
 test("the same instant belongs to the viewer's local calendar day", () => {
   const instant = Date.parse("2026-07-24T03:00:00.000Z");
   assert.equal(dateInTimeZone(instant, "America/Bogota"), "2026-07-23");

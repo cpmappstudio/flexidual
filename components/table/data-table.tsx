@@ -67,6 +67,8 @@ export function DataTable<TData>({
   initialColumnFilters,
   pageSize,
   paginate = true,
+  bordered = true,
+  scrollLabel,
   customFilter,
   createAction,
   onExport,
@@ -354,8 +356,14 @@ export function DataTable<TData>({
         </div>
       )}
 
-      <div className="min-w-0 overflow-hidden rounded-md border">
-        <Table className="bg-card" aria-busy={server?.isLoading}>
+      <div
+        className={`min-w-0 overflow-hidden rounded-md${bordered ? " border" : ""}`}
+      >
+        <Table
+          className="bg-card"
+          aria-busy={server?.isLoading}
+          scrollLabel={scrollLabel}
+        >
           <TableHeader className="bg-primary/95 sticky top-0 z-10 ">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow

@@ -50,7 +50,61 @@ export const surveyCampaignValidator = v.object({
   origin: v.string(),
 });
 
+export const courseSessionWeekCounts = {
+  scheduled: v.number(),
+  completed: v.number(),
+  cancelled: v.number(),
+  noStart: v.number(),
+  other: v.number(),
+};
+export const courseSessionWeekAttendance = {
+  present: v.number(),
+  partial: v.number(),
+  absent: v.number(),
+  excused: v.number(),
+};
+
 export default defineSchema({
+  courseSessionWeeks: defineTable({
+    academicPeriodId: v.id("academicPeriods"),
+    classId: v.id("classes"),
+    campusId: v.optional(v.id("campuses")),
+    weekStart: v.string(),
+    ...courseSessionWeekCounts,
+    attendance: v.optional(v.object(courseSessionWeekAttendance)),
+  })
+    .index("by_academicPeriodId_and_weekStart", [
+      "academicPeriodId",
+      "weekStart",
+    ])
+    .index("by_academicPeriodId_and_campusId_and_weekStart", [
+      "academicPeriodId",
+      "campusId",
+      "weekStart",
+    ])
+    .index("by_academicPeriodId_and_classId_and_weekStart", [
+      "academicPeriodId",
+      "classId",
+      "weekStart",
+    ]),
+  courseSessionWeekRefreshes: defineTable({
+    academicPeriodId: v.id("academicPeriods"),
+    weekStart: v.string(),
+    timeZone: v.string(),
+    refreshedAt: v.number(),
+    // Older session-only snapshots do not attest to a zero attendance count.
+    attendanceReady: v.optional(v.literal(true)),
+  }).index("by_academicPeriodId_and_weekStart", [
+    "academicPeriodId",
+    "weekStart",
+  ]),
+  courseSessionWeekPending: defineTable({
+    academicPeriodId: v.id("academicPeriods"),
+    weekStart: v.string(),
+    availableAt: v.number(),
+  })
+    .index("by_academicPeriodId_and_weekStart", ["academicPeriodId", "weekStart"])
+    .index("by_availableAt", ["availableAt"]),
   // Readers use canonical data until the explicit, resumable backfill completes.
   dashboardSummaryState: defineTable({
     key: v.literal("v1"),

@@ -37,6 +37,18 @@ export function isUpcomingClassSession(
   );
 }
 
+export function isPastClassSession(
+  session: ClassSessionState & { scheduledEnd: number },
+  now: number,
+) {
+  return (
+    session.scheduledEnd <= now &&
+    session.status !== "cancelled" &&
+    session.status !== "active" &&
+    !session.isLive
+  );
+}
+
 export function isExternalClassSession(
   sessionType: ClassSessionType | undefined,
 ) {

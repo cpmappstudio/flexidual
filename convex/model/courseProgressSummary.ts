@@ -271,6 +271,14 @@ export async function getLightCourseProgress(
       await getClassCurriculumProgress(ctx, classData);
     return { totalLessons, taughtLessons, pendingLessons, percentage };
   }
+  return readIndexedCourseProgress(ctx, classData);
+}
+
+// Call only for an authorized course after checking that the summaries are ready.
+export async function readIndexedCourseProgress(
+  ctx: QueryCtx,
+  classData: Pick<Doc<"classes">, "_id" | "curriculumId">,
+) {
   const [totalLessons, taughtLessons] = await dashboardAggregate.countBatch(
     ctx,
     [

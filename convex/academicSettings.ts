@@ -88,6 +88,7 @@ export const get = query({
       scheduleStartMinutes: v.number(),
       scheduleEndMinutes: v.number(),
       timeZone: v.optional(v.string()),
+      institutionTimeZone: v.union(v.string(), v.null()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -131,6 +132,7 @@ export const get = query({
       scheduleEndMinutes:
         school.scheduleEndMinutes ?? DEFAULT_SCHEDULE_END_MINUTES,
       timeZone: campus?.timeZone ?? school.timeZone,
+      institutionTimeZone: school.timeZone ?? null,
     };
   },
 });

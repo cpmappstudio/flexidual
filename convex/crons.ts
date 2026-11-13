@@ -23,4 +23,10 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "Refresh pending weekly dashboard history",
+  { minutes: 10 },
+  internal.adminSessionDashboard.refreshNextPendingWeek,
+);
+
 export default crons;

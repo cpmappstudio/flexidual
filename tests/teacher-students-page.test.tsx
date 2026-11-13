@@ -104,6 +104,20 @@ test("teacher navigation exposes students but not professors", () => {
   expect(
     screen.queryByRole("link", { name: "navigation.teachers" }),
   ).toBeNull();
+  expect(
+    screen.queryByRole("link", { name: "navigation.dashboard" }),
+  ).toBeNull();
+});
+
+test("the campus principal sees the administrative dashboard link", () => {
+  state.role = "principal";
+  state.canViewPeople = true;
+  render(<NavMain />);
+  expect(
+    screen
+      .getByRole("link", { name: "navigation.dashboard" })
+      .getAttribute("href"),
+  ).toBe("/campus/dashboard");
 });
 
 test("teacher still cannot enter the professor directory", () => {
