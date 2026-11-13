@@ -26,7 +26,12 @@ import { startAbekaSync, abekaConnectLimiter } from "./abeka";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import { ABEKA_REQUEST_INTERVAL_MS } from "../lib/abeka/request-policy";
 import { MAX_SUBJECTS } from "../lib/abeka/report";
-import { dateInTimeZone } from "../lib/time-zone";
+import {
+  addCivilDays,
+  dateInTimeZone,
+  isValidCivilDate,
+  isValidTimeZone,
+} from "../lib/time-zone";
 import { abekaProgressPercentage } from "../lib/abeka/progress-percentage";
 import { saveAbekaProgressHistory } from "./model/abekaProgressHistory";
 import {
@@ -583,6 +588,33 @@ export const studentComplete = internalMutation({
       if (state.run.updateId) await failRun(ctx, args.runId, "SYNC_FAILED");
       return null;
     }
+    const update =
+      state.run.updateId && state.run.updateId !== state.run._id
+        ? await ctx.db.get(state.run.updateId)
+        : state.run;
+    const timeZone = state.school.timeZone;
+    const today =
+      !state.run.studentId && timeZone && isValidTimeZone(timeZone)
+        ? dateInTimeZone(Date.now(), timeZone)
+        : null;
+    const fromDate = today ? addCivilDays(today, -6) : null;
+    const previous = update?.weeklyActivity;
+    // All students must be measured against the same seven civil dates.
+    // Do not mix legacy counts or counts across a local date/zone change.
+    const eligible =
+      !state.run.studentId &&
+      !!update &&
+      !!timeZone &&
+      !!today &&
+      !!fromDate &&
+      dateInTimeZone(update.startedAt, timeZone) === today &&
+      (previous
+        ? "throughDate" in previous &&
+          previous.throughDate === today &&
+          previous.timeZone === timeZone
+        : update.studentsSynced === 0);
+    let viewed = false;
+    let unknown = false;
     for (const subjectId of args.subjectIds) {
       const report = await ctx.db
         .query("abekaProgress")
@@ -594,6 +626,23 @@ export const studentComplete = internalMutation({
         if (state.run.updateId) await failRun(ctx, args.runId, "SYNC_FAILED");
         return null;
       }
+      if (eligible && !viewed) {
+        for (const lesson of report.lessons) {
+          const date = lesson.lastViewed;
+          const valid = date && isValidCivilDate(date) && date <= today;
+          if (valid && date >= fromDate) {
+            viewed = true;
+            break;
+          }
+          if (
+            !valid &&
+            (lesson.completed ||
+              lesson.watchedSeconds > 0 ||
+              lesson.percentage > 0)
+          )
+            unknown = true;
+        }
+      }
     }
     await ctx.db.patch(student._id, {
       lastSyncedAt: Date.now(),
@@ -602,16 +651,24 @@ export const studentComplete = internalMutation({
       syncPending: undefined,
       hasProgress: args.subjectIds.length > 0,
     });
+    const weeklyActivity =
+      eligible && (viewed || !unknown)
+        ? {
+            fromDate,
+            throughDate: today,
+            timeZone,
+            viewers: (previous?.viewers ?? 0) + Number(viewed),
+          }
+        : undefined;
     await ctx.db.patch(state.run._id, {
       studentsSynced: state.run.studentsSynced + 1,
+      ...(update?._id === state.run._id ? { weeklyActivity } : {}),
     });
-    if (state.run.updateId && state.run.updateId !== state.run._id) {
-      const update = await ctx.db.get(state.run.updateId);
-      if (update)
-        await ctx.db.patch(update._id, {
-          studentsSynced: update.studentsSynced + 1,
-        });
-    }
+    if (update && update._id !== state.run._id)
+      await ctx.db.patch(update._id, {
+        studentsSynced: update.studentsSynced + 1,
+        weeklyActivity,
+      });
     await cleanStudentProgress(ctx, {
       ...args,
       paginationOpts: {
@@ -734,17 +791,33 @@ export const onComplete = internalMutation({
             !state.run.authenticate,
           );
         } else if (state.connection.confirmed) {
+          const now = Date.now();
+          const root = state.run.studentId
+            ? null
+            : state.run.updateId && state.run.updateId !== state.run._id
+              ? await ctx.db.get(state.run.updateId)
+              : state.run;
+          const activity = root?.weeklyActivity;
+          const weeklyActivity =
+            activity &&
+            root &&
+            "throughDate" in activity &&
+            activity.timeZone === state.school.timeZone &&
+            activity.throughDate === dateInTimeZone(now, activity.timeZone)
+              ? { ...activity, students: root.studentsSynced, syncedAt: now }
+              : undefined;
           await ctx.db.patch(state.connection._id, {
             status: "connected",
-            ...(state.run.studentId ? {} : { lastSyncedAt: Date.now() }),
+            ...(state.run.studentId ? {} : { lastSyncedAt: now }),
+            ...(weeklyActivity ? { weeklyActivity } : {}),
             ...(state.run.updateId ? { pendingUpdateId: undefined } : {}),
             // Roster-only initialization must not delay the first linked download.
             ...(state.run.updateId && state.run.studentsSynced === 0
               ? { lastAttemptAt: undefined }
               : {}),
           });
-          if (state.run.updateId && state.run.updateId !== state.run._id)
-            await ctx.db.patch(state.run.updateId, {
+          if (root && root._id !== state.run._id)
+            await ctx.db.patch(root._id, {
               status: "completed",
               finishedAt: Date.now(),
               errorCode: undefined,

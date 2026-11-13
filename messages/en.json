@@ -953,6 +953,14 @@
     "periodRemaining": "Time left in the period",
     "daysRemaining": "{count, plural, one {# day} other {# days}}",
     "periodEnds": "End date: {date}",
+    "abekaActivity": {
+      "title": "Abeka activity · last 7 days",
+      "scope": "Entire institution",
+      "viewers": "{viewers, number} of {students, number} synced students viewed at least one lesson",
+      "pending": "No complete activity summary yet.",
+      "summarySync": "Summary from sync on {date}",
+      "lastSync": "Last complete sync: {date}"
+    },
     "attendance": {
       "title": "Confirmed attendance by week",
       "scope": "Records per student and completed class. Pending reports do not count as absences.",
@@ -997,6 +1005,9 @@
     "incompleteTotals": "Totals are unavailable until all selected weeks have summaries.",
     "older": "Previous four weeks",
     "newer": "Next four weeks",
+    "olderWeek": "Previous week",
+    "newerWeek": "Next week",
+    "viewOneWeek": "View one week",
     "week": "Week of",
     "scheduled": "Scheduled",
     "completed": "Completed",

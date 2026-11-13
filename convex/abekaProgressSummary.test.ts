@@ -1,5 +1,6 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
+import type { WorkflowId } from "@convex-dev/workflow";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
@@ -307,6 +308,223 @@ test("backfill is bounded, manually advanced, idempotent, and preserves existing
   expect(
     await f.t.run((ctx) => ctx.db.query("abekaProgress").collect()),
   ).toEqual(before);
+});
+
+test("weekly activity reuses completion writes and exposes only the successful institutional snapshot", async () => {
+  vi.useFakeTimers();
+  const now = Date.parse("2026-11-09T07:00:00Z");
+  vi.setSystemTime(now);
+  const f = await setup();
+  const admin = await f.t.run(async (ctx) => {
+    await ctx.db.patch(f.schoolId, { timeZone: "America/Tegucigalpa" });
+    await ctx.db.patch(f.runId, { updateId: f.runId, startedAt: now });
+    await ctx.db.patch(f.connectionId, {
+      weeklyActivity: {
+        weekStart: "2026-11-02",
+        timeZone: "America/Tegucigalpa",
+        viewers: 1,
+        students: 1,
+        syncedAt: now - 86400000,
+      },
+    });
+    const person = await ctx.db.insert("users", {
+      clerkId: "admin",
+      firstName: "Admin",
+      lastName: "Test",
+      fullName: "Admin Test",
+      isActive: true,
+      createdAt: 1,
+    });
+    await ctx.db.insert("roleAssignments", {
+      userId: person,
+      orgType: "school",
+      orgId: f.schoolId,
+      schoolId: f.schoolId,
+      role: "admin",
+      assignedAt: 1,
+    });
+    await ctx.db.patch(f.reportId, {
+      lessons: lessons.map((lesson) => ({
+        ...lesson,
+        lastViewed: "2026-11-09",
+      })),
+    });
+    const otherReport = (await ctx.db.get(f.reportId))!;
+    await ctx.db.insert("abekaProgress", {
+      studentId: f.studentId,
+      subjectId: "another",
+      subjectName: "Another",
+      runId: f.runId,
+      syncedAt: now,
+      lessons: otherReport.lessons,
+    });
+    return person;
+  });
+  const asAdmin = f.t.withIdentity({ subject: "admin" });
+  const query = api.abeka.getWeeklyActivity;
+  const args = { schoolId: f.schoolId };
+  expect(await asAdmin.query(query, args)).toEqual({
+    snapshot: null,
+    lastSyncedAt: null,
+  });
+  await expect(
+    f.t.withIdentity({ subject: "student" }).query(query, args),
+  ).rejects.toThrow("FORBIDDEN");
+  const complete = {
+    runId: f.runId,
+    studentId: f.studentId,
+    subjectIds: ["math", "another"],
+  };
+  const cost = await f.t.run(async (ctx) => {
+    await ctx.runMutation(internal.abekaSync.studentComplete, complete);
+    return ctx.meta.getTransactionMetrics();
+  });
+  expect(cost.documentsWritten.used).toBe(2);
+  await f.t.mutation(internal.abekaSync.studentComplete, complete);
+  expect(await asAdmin.query(query, args)).toEqual({
+    snapshot: null,
+    lastSyncedAt: null,
+  });
+  await f.t.mutation(internal.abekaSync.onComplete, {
+    workflowId: "test-workflow" as WorkflowId,
+    result: { kind: "success", returnValue: null },
+    context: { runId: f.runId },
+  });
+  const { snapshot, bytes } = await asAdmin.run(async (ctx) => ({
+    snapshot: await ctx.runQuery(query, args),
+    bytes: (await ctx.meta.getTransactionMetrics()).bytesRead.used,
+  }));
+  expect(snapshot).toEqual({
+    lastSyncedAt: now,
+    snapshot: {
+      viewers: 1,
+      students: 1,
+      fromDate: "2026-11-03",
+      throughDate: "2026-11-09",
+      timeZone: "America/Tegucigalpa",
+      syncedAt: now,
+    },
+  });
+  expect(bytes).toBeGreaterThan(0);
+  expect(bytes).toBeLessThan(4 * 1024);
+  process.stdout.write(
+    `Abeka weekly activity bytesRead: ${bytes}; completion writes: ${cost.documentsWritten.used}\n`,
+  );
+  const roles = await f.t.run((ctx) =>
+    ctx.db
+      .query("roleAssignments")
+      .withIndex("by_user", (q) => q.eq("userId", admin))
+      .collect(),
+  );
+  await f.t.run(async (ctx) => {
+    await ctx.db.patch(f.connectionId, { status: "disconnected" });
+  });
+  expect(await asAdmin.query(query, args)).toBeNull();
+  await f.t.run(async (ctx) => {
+    await ctx.db.patch(f.connectionId, { status: "connected" });
+    await ctx.db.patch(roles[0]._id, {
+      role: "principal",
+      orgType: "campus",
+      orgId: f.campusId,
+    });
+  });
+  await expect(asAdmin.query(query, args)).rejects.toThrow("FORBIDDEN");
+});
+
+test.each([
+  { date: "2026-11-02", count: 0 },
+  { date: "2026-11-03", count: 1 },
+  { date: "2026-11-08", count: 1 },
+  { date: "2026-11-09", count: 1 },
+  { date: null, count: null },
+  { date: "2026-11-10", count: null },
+  { date: "2026-11-09T00:00:00Z", count: null },
+])(
+  "weekly activity does not turn ambiguous dates into inactivity ($date)",
+  async ({ date, count }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-11-09T07:00:00Z"));
+    const f = await setup();
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.schoolId, { timeZone: "America/Tegucigalpa" });
+      await ctx.db.patch(f.runId, { startedAt: Date.now() });
+      await ctx.db.patch(f.reportId, {
+        lessons: [{ ...lessons[0], lastViewed: date }],
+      });
+    });
+    await f.t.mutation(internal.abekaSync.studentComplete, {
+      runId: f.runId,
+      studentId: f.studentId,
+      subjectIds: ["math"],
+    });
+    const run = await f.t.run((ctx) => ctx.db.get(f.runId));
+    expect(run?.weeklyActivity?.viewers ?? null).toBe(count);
+  },
+);
+
+test("a resumed update deduplicates retries and retains the last snapshot if it finishes after local midnight", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(Date.parse("2026-11-13T05:59:00Z"));
+  const f = await setup();
+  const timeZone = "America/Tegucigalpa";
+  const previousSnapshot = {
+    timeZone,
+    fromDate: "2026-11-05",
+    throughDate: "2026-11-11",
+    viewers: 1,
+    students: 2,
+    syncedAt: Date.parse("2026-11-12T05:00:00Z"),
+  };
+  const resumed = await f.t.run(async (ctx) => {
+    await ctx.db.patch(f.schoolId, { timeZone });
+    await ctx.db.patch(f.runId, {
+      status: "failed",
+      updateId: f.runId,
+      studentsSynced: 1,
+      startedAt: Date.now(),
+      weeklyActivity: {
+        timeZone,
+        fromDate: "2026-11-06",
+        throughDate: "2026-11-12",
+        viewers: 1,
+      },
+    });
+    const resumed = await ctx.db.insert("abekaSyncRuns", {
+      connectionId: f.connectionId,
+      status: "running",
+      revision: 1,
+      startedAt: Date.now(),
+      updateId: f.runId,
+      studentsSynced: 1,
+    });
+    await ctx.db.patch(f.connectionId, {
+      latestRunId: resumed,
+      rosterRunId: resumed,
+      weeklyActivity: previousSnapshot,
+    });
+    await ctx.db.patch(f.studentId, { rosterRunId: resumed });
+    await ctx.db.patch(f.reportId, {
+      runId: resumed,
+      lessons: [{ ...lessons[0], lastViewed: "2026-11-11" }],
+    });
+    return resumed;
+  });
+  const args = { runId: resumed, studentId: f.studentId, subjectIds: ["math"] };
+  await f.t.mutation(internal.abekaSync.studentComplete, args);
+  await f.t.mutation(internal.abekaSync.studentComplete, args);
+  expect(await f.t.run((ctx) => ctx.db.get(f.runId))).toMatchObject({
+    studentsSynced: 2,
+    weeklyActivity: { viewers: 2 },
+  });
+  vi.setSystemTime(Date.parse("2026-11-13T06:01:00Z"));
+  await f.t.mutation(internal.abekaSync.onComplete, {
+    workflowId: "test-workflow" as WorkflowId,
+    result: { kind: "success", returnValue: null },
+    context: { runId: resumed },
+  });
+  expect(
+    (await f.t.run((ctx) => ctx.db.get(f.connectionId)))?.weeklyActivity,
+  ).toEqual(previousSnapshot);
 });
 
 test("completion cleanup removes obsolete summaries with their reports, retaining current summary and legacy fallback", async () => {

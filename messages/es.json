@@ -953,6 +953,14 @@
     "periodRemaining": "Tiempo restante del período",
     "daysRemaining": "{count, plural, one {# día} other {# días}}",
     "periodEnds": "Fecha de cierre: {date}",
+    "abekaActivity": {
+      "title": "Actividad en Abeka · últimos 7 días",
+      "scope": "Toda la institución",
+      "viewers": "{viewers, number} de {students, number} estudiantes sincronizados vieron al menos una lección",
+      "pending": "Todavía no hay un resumen de actividad completo.",
+      "summarySync": "Resumen de la sincronización del {date}",
+      "lastSync": "Última sincronización completa: {date}"
+    },
     "attendance": {
       "title": "Asistencia confirmada por semana",
       "scope": "Registros por estudiante y clase finalizada. Los informes pendientes no cuentan como faltas.",
@@ -997,6 +1005,9 @@
     "incompleteTotals": "Los totales estarán disponibles cuando todas las semanas seleccionadas tengan un resumen.",
     "older": "Cuatro semanas anteriores",
     "newer": "Cuatro semanas siguientes",
+    "olderWeek": "Semana anterior",
+    "newerWeek": "Semana siguiente",
+    "viewOneWeek": "Ver una semana",
     "week": "Semana del",
     "scheduled": "Programadas",
     "completed": "Completadas",

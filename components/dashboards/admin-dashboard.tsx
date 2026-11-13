@@ -11,7 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
-  type LucideIcon,
 } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import {
@@ -22,6 +21,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { CalendarProviderMark } from "@/components/calendar/calendar-provider-mark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -86,23 +86,132 @@ type Week = FunctionReturnType<typeof summaryQuery>["weeks"][number];
 
 function MetricCard({
   title,
-  icon: Icon,
+  icon,
   children,
 }: {
   title: string;
-  icon: LucideIcon;
+  icon: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Card className="min-w-0 gap-3 p-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-medium">{title}</h2>
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-          <Icon aria-hidden="true" className="size-4" />
+        <span
+          aria-hidden="true"
+          className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
+        >
+          {icon}
         </span>
       </div>
       {children}
     </Card>
+  );
+}
+
+function AbekaWeeklyMetric({
+  schoolId,
+  timeZone,
+}: {
+  schoolId: Id<"schools">;
+  timeZone: string;
+}) {
+  const t = useTranslations("adminDashboard.abekaActivity");
+  const format = useFormatter();
+  const requests = useMemo(
+    () => ({
+      activity: { query: api.abeka.getWeeklyActivity, args: { schoolId } },
+    }),
+    [schoolId],
+  );
+  const { activity } = useQueries(requests) as {
+    activity?: FunctionReturnType<typeof api.abeka.getWeeklyActivity> | Error;
+  };
+  if (!activity || activity instanceof Error) return null;
+  const snapshot = activity.snapshot;
+  const current = snapshot?.timeZone === timeZone ? snapshot : null;
+  const syncedAt = current?.syncedAt ?? activity.lastSyncedAt;
+  const share =
+    current && current.students > 0 ? current.viewers / current.students : null;
+  return (
+    <MetricCard
+      title={t("title")}
+      icon={
+        <CalendarProviderMark
+          sessionType="abeka"
+          className="size-6"
+          sizes="24px"
+        />
+      }
+    >
+      <div className="flex items-center gap-3 sm:gap-5">
+        {share !== null && (
+          <div className="relative grid size-20 shrink-0 place-items-center">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 80 80"
+              className="absolute inset-0 size-full -rotate-90"
+              fill="none"
+              strokeWidth={7}
+            >
+              <circle
+                cx={40}
+                cy={40}
+                r={35}
+                className="stroke-muted-foreground/20"
+              />
+              <circle
+                cx={40}
+                cy={40}
+                r={35}
+                pathLength={100}
+                strokeDasharray={`${share * 100} 100`}
+                stroke="#92278f"
+              />
+            </svg>
+            <span className="text-sm font-semibold tabular-nums">
+              {format.number(share, {
+                style: "percent",
+                maximumFractionDigits: 1,
+              })}
+            </span>
+          </div>
+        )}
+        <div className="min-w-0 space-y-1.5">
+          <p className="text-xs text-muted-foreground">{t("scope")}</p>
+          {current && (
+            <p className="text-xs text-muted-foreground">
+              {format.dateTimeRange(
+                new Date(current.fromDate),
+                new Date(current.throughDate),
+                { timeZone: "UTC", dateStyle: "medium" },
+              )}
+            </p>
+          )}
+          {current && share !== null ? (
+            <p className="text-sm font-semibold tabular-nums sm:text-base">
+              {t("viewers", {
+                viewers: current.viewers,
+                students: current.students,
+              })}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("pending")}</p>
+          )}
+          {syncedAt !== null && (
+            <p className="text-xs text-muted-foreground">
+              {t(current ? "summarySync" : "lastSync", {
+                date: format.dateTime(syncedAt, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                  timeZone,
+                }),
+              })}
+            </p>
+          )}
+        </div>
+      </div>
+    </MetricCard>
   );
 }
 
@@ -122,7 +231,7 @@ function PeopleMetric({ schoolId, campusId }: Scope) {
   };
   const counts = people instanceof Error ? undefined : people;
   return (
-    <MetricCard title={t("peopleOnline")} icon={Users}>
+    <MetricCard title={t("peopleOnline")} icon={<Users className="size-4" />}>
       <div
         aria-live="polite"
         aria-busy={people === undefined}
@@ -381,6 +490,9 @@ export default function AdminDashboard({
           schoolId={schoolId}
         />
       )}
+      {access.canManageInstitution && today && timeZone && (
+        <AbekaWeeklyMetric schoolId={schoolId} timeZone={timeZone} />
+      )}
     </section>
   );
 }
@@ -400,8 +512,10 @@ function WeeklySessions({
 }) {
   const t = useTranslations("adminDashboard");
   const format = useFormatter();
-  const [offset, setOffset] = useState(0);
+  const [offsetDays, setOffsetDays] = useState(0);
+  const [singleWeek, setSingleWeek] = useState(false);
   const [classId, setClassId] = useState<Id<"classes">>();
+  const summaryHeading = useRef<HTMLHeadingElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
   const scope = useMemo(
     () => ({ academicPeriodId: period._id, ...(campusId ? { campusId } : {}) }),
@@ -415,8 +529,9 @@ function WeeklySessions({
   const afterPeriod = addCivilDays(mondayOfCivilWeek(period.endDate), 7);
   const end = currentWeek < afterPeriod ? currentWeek : afterPeriod;
   const first = mondayOfCivilWeek(period.startDate);
-  const windowEnd = addCivilDays(end, offset * DASHBOARD_WINDOW_DAYS);
-  const windowStart = addCivilDays(windowEnd, -DASHBOARD_WINDOW_DAYS);
+  const windowDays = singleWeek ? 7 : DASHBOARD_WINDOW_DAYS;
+  const windowEnd = addCivilDays(end, offsetDays);
+  const windowStart = addCivilDays(windowEnd, -windowDays);
   const weekStart = windowStart > first ? windowStart : first;
   const lastDay = addCivilDays(windowEnd, -1);
   const hasClosedWeeks = first < end;
@@ -444,6 +559,9 @@ function WeeklySessions({
       | Error;
     summary?: FunctionReturnType<typeof summaryQuery> | Error;
   };
+  const overBudget =
+    summary instanceof ConvexError &&
+    summary.data === "DASHBOARD_READ_BUDGET_EXCEEDED";
   if (
     classId &&
     Array.isArray(courses) &&
@@ -573,18 +691,18 @@ function WeeklySessions({
               <Button
                 variant="outline"
                 size="icon"
-                aria-label={t("older")}
+                aria-label={t(singleWeek ? "olderWeek" : "older")}
                 disabled={weekStart <= first}
-                onClick={() => setOffset((value) => value - 1)}
+                onClick={() => setOffsetDays((value) => value - windowDays)}
               >
                 <ChevronLeft aria-hidden />
               </Button>
               <Button
                 variant="outline"
                 size="icon"
-                aria-label={t("newer")}
-                disabled={offset === 0}
-                onClick={() => setOffset((value) => value + 1)}
+                aria-label={t(singleWeek ? "newerWeek" : "newer")}
+                disabled={offsetDays === 0}
+                onClick={() => setOffsetDays((value) => value + windowDays)}
               >
                 <ChevronRight aria-hidden />
               </Button>
@@ -599,14 +717,20 @@ function WeeklySessions({
       </div>
       <div className="grid grid-cols-1 gap-4 @2xl:grid-cols-3">
         <PeopleMetric schoolId={schoolId} campusId={campusId} />
-        <MetricCard title={t("activeCourses")} icon={BookOpen}>
+        <MetricCard
+          title={t("activeCourses")}
+          icon={<BookOpen className="size-4" />}
+        >
           <p className="text-2xl font-semibold tabular-nums">
             {activeCourseCount === undefined
               ? "—"
               : format.number(activeCourseCount)}
           </p>
         </MetricCard>
-        <MetricCard title={t("periodRemaining")} icon={CalendarDays}>
+        <MetricCard
+          title={t("periodRemaining")}
+          icon={<CalendarDays className="size-4" />}
+        >
           <p className="text-2xl font-semibold tabular-nums">
             {t("daysRemaining", { count: daysRemaining })}
           </p>
@@ -628,7 +752,13 @@ function WeeklySessions({
       </div>
       <Card>
         <CardHeader className="px-3 sm:px-6">
-          <h2 className="text-lg font-semibold">{t("weeklySessions")}</h2>
+          <h2
+            ref={summaryHeading}
+            tabIndex={-1}
+            className="text-lg font-semibold"
+          >
+            {t("weeklySessions")}
+          </h2>
         </CardHeader>
         <CardContent className="space-y-5 px-3 sm:px-6">
           {!hasClosedWeeks ? (
@@ -638,12 +768,23 @@ function WeeklySessions({
           ) : (
             <>
               {summary instanceof Error ? (
-                <p role="alert" className="text-sm text-muted-foreground">
-                  {summary instanceof ConvexError &&
-                  summary.data === "DASHBOARD_READ_BUDGET_EXCEEDED"
-                    ? t("overBudget")
-                    : t("loadError")}
-                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <p role="alert" className="text-sm text-muted-foreground">
+                    {t(overBudget ? "overBudget" : "loadError")}
+                  </p>
+                  {overBudget && weekStart < addCivilDays(windowEnd, -7) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSingleWeek(true);
+                        summaryHeading.current?.focus();
+                      }}
+                    >
+                      {t("viewOneWeek")}
+                    </Button>
+                  )}
+                </div>
               ) : !weeks ? (
                 <Skeleton className="h-64 w-full" />
               ) : hasData ? (

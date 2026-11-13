@@ -26,6 +26,7 @@ const state = vi.hoisted(() => ({
   area: vi.fn(),
   bar: vi.fn(),
   canViewPeople: true,
+  canManageInstitution: false,
 }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: state.auth }));
 vi.mock("convex/nextjs", () => ({ fetchQuery: state.fetchQuery }));
@@ -40,7 +41,10 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/hooks/use-staff-access", () => ({
   useStaffAccess: () => ({
-    access: { canViewPeople: state.canViewPeople },
+    access: {
+      canViewPeople: state.canViewPeople,
+      canManageInstitution: state.canManageInstitution,
+    },
     isLoading: false,
   }),
 }));
@@ -92,11 +96,77 @@ afterEach(() => {
   vi.useRealTimers();
   vi.resetAllMocks();
   state.canViewPeople = true;
+  state.canManageInstitution = false;
 });
 
 const schoolId = "school-id" as Id<"schools">;
 const campusId = "campus-id" as Id<"campuses">;
 const params = Promise.resolve({ locale: "en", orgSlug: "campus" });
+
+test("Abeka only subscribes for institutional admins and keeps the dated snapshot after the week changes", () => {
+  const zone = "America/Tegucigalpa";
+  const title = "Abeka activity · last 7 days";
+  state.useQuery.mockReturnValue({ institutionTimeZone: zone, periods: [] });
+  const snapshot = {
+    syncedAt: Date.parse("2026-11-12T09:00:00Z"),
+    fromDate: "2026-11-06",
+    throughDate: "2026-11-12",
+    timeZone: zone,
+    viewers: 0,
+    students: 5,
+  };
+  const dashboard = (today: string) => (
+    <NextIntlClientProvider locale="en" timeZone={zone} messages={messages}>
+      <AdminDashboard
+        key={today}
+        schoolId={schoolId}
+        campusId={campusId}
+        today={today}
+        timeZone={zone}
+      />
+    </NextIntlClientProvider>
+  );
+  const view = render(dashboard("2026-11-13"));
+  expect(state.useQueries).not.toHaveBeenCalled();
+  state.canManageInstitution = true;
+  state.useQueries.mockReturnValue({ activity: null });
+  view.rerender(dashboard("2026-11-13"));
+  expect(screen.queryByRole("heading", { name: title })).toBeNull();
+  expect(state.useQueries).toHaveBeenCalledWith({
+    activity: { query: api.abeka.getWeeklyActivity, args: { schoolId } },
+  });
+  state.useQueries.mockReturnValue({
+    activity: { snapshot, lastSyncedAt: snapshot.syncedAt },
+  });
+  view.rerender(dashboard("2026-11-13"));
+  expect(
+    screen.getByText("0 of 5 synced students viewed at least one lesson"),
+  ).toBeTruthy();
+  expect(screen.getByText("0%")).toBeTruthy();
+  const range = "Nov 6 – 12, 2026";
+  expect(screen.getByText(range)).toBeTruthy();
+  state.useQueries.mockReturnValue({
+    activity: {
+      snapshot: { ...snapshot, viewers: 4 },
+      lastSyncedAt: snapshot.syncedAt,
+    },
+  });
+  view.rerender(dashboard("2026-11-13"));
+  expect(screen.getByText("80%")).toBeTruthy();
+  view.rerender(dashboard("2026-11-16"));
+  expect(screen.getByText(range)).toBeTruthy();
+  expect(screen.getByText("80%")).toBeTruthy();
+  state.useQueries.mockReturnValue({
+    activity: {
+      snapshot: { ...snapshot, timeZone: "UTC" },
+      lastSyncedAt: snapshot.syncedAt,
+    },
+  });
+  view.rerender(dashboard("2026-11-16"));
+  expect(screen.getByText("No complete activity summary yet.")).toBeTruthy();
+  expect(screen.queryByText(range)).toBeNull();
+  expect(screen.queryByText("80%")).toBeNull();
+});
 
 test("checks the administrative role on the server before fetching campus or institution metadata", async () => {
   state.auth.mockResolvedValue({ userId: null });
@@ -186,7 +256,7 @@ test("loads one four-week summary for the campus, preserves zero versus missing 
   const periodRequest = () => state.useQuery.mock.lastCall!;
   expect(getFunctionName(periodRequest()[0])).toBe("academicSettings:get");
   expect(periodRequest()[1]).toEqual({ schoolId, campusId });
-  const expectSummaryRequest = (weekStart: string) => {
+  const expectSummaryRequest = (weekStart: string, weekEnd = "2026-11-09") => {
     const { summary } = state.useQueries.mock.calls.findLast(
       ([q]) => q.summary,
     )![0];
@@ -197,7 +267,7 @@ test("loads one four-week summary for the campus, preserves zero versus missing 
       academicPeriodId: "period",
       campusId,
       weekStart,
-      weekEnd: weekStart === "2026-10-12" ? "2026-11-09" : "2026-10-12",
+      weekEnd,
     });
   };
   expectSummaryRequest("2026-10-12");
@@ -277,10 +347,27 @@ test("loads one four-week summary for the campus, preserves zero versus missing 
     summary: new ConvexError("DASHBOARD_READ_BUDGET_EXCEEDED"),
   });
   fireEvent.click(screen.getByRole("button", { name: "Previous four weeks" }));
-  expectSummaryRequest("2026-09-14");
+  expectSummaryRequest("2026-09-14", "2026-10-12");
   expect(screen.getByRole("alert").textContent).toContain("No partial counts");
   expect(screen.queryByRole("table")).toBeNull();
   expect(screen.queryByLabelText("Totals for the selected weeks")).toBeNull();
+  const viewOneWeek = screen.getByRole("button", { name: "View one week" });
+  viewOneWeek.focus();
+  fireEvent.click(viewOneWeek);
+  expect(document.activeElement).toBe(
+    screen.getByRole("heading", { name: "Weekly live class sessions" }),
+  );
+  expectSummaryRequest("2026-10-05", "2026-10-12");
+  expect(screen.getByRole("alert").textContent).toContain("No partial counts");
+  expect(screen.queryByRole("button", { name: "View one week" })).toBeNull();
+  state.useQueries.mockReturnValue({
+    summary: { ...summary, weeks: [summary.weeks[1]] },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+  expectSummaryRequest("2026-10-12", "2026-10-19");
+  fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+  expectSummaryRequest("2026-10-19", "2026-10-26");
+  expect(screen.getByRole("table")).toBeTruthy();
 
   state.canViewPeople = false;
   state.useQueries.mockClear();
@@ -519,26 +606,29 @@ test("filters the weekly summary and review, and only reads session detail when 
     { classId: "science", name: "Science" },
     { classId: "math", name: "Math" },
   ];
+  let overBudget = false;
   state.useQueries.mockImplementation((requests) => ({
     ...(requests.courses ? { courses } : {}),
     ...(requests.summary
       ? {
-          summary: {
-            timeZone: "America/Tegucigalpa",
-            weeks: [
-              {
-                weekStart: requests.summary.args.weekStart,
-                refreshedAt: 1,
-                counts: null,
-                attendance: {
-                  present: requests.summary.args.classId ? 6 : 15,
-                  partial: 2,
-                  absent: 1,
-                  excused: 0,
-                },
+          summary: overBudget
+            ? new ConvexError("DASHBOARD_READ_BUDGET_EXCEEDED")
+            : {
+                timeZone: "America/Tegucigalpa",
+                weeks: [
+                  {
+                    weekStart: requests.summary.args.weekStart,
+                    refreshedAt: 1,
+                    counts: null,
+                    attendance: {
+                      present: requests.summary.args.classId ? 6 : 15,
+                      partial: 2,
+                      absent: 1,
+                      excused: 0,
+                    },
+                  },
+                ],
               },
-            ],
-          },
         }
       : {}),
     ...(requests.review
@@ -656,6 +746,31 @@ test("filters the weekly summary and review, and only reads session detail when 
   expect(
     screen.getByRole("heading", { name: "Classes requiring review" }),
   ).toBeTruthy();
+  courses = [
+    { classId: "science", name: "Science" },
+    { classId: "math", name: "Math" },
+  ];
+  view.rerender(dashboard());
+  fireEvent.keyDown(screen.getByRole("combobox", { name: "Course" }), {
+    key: "ArrowDown",
+  });
+  fireEvent.click(screen.getByRole("option", { name: "Science" }));
+  overBudget = true;
+  view.rerender(dashboard());
+  overBudget = false;
+  fireEvent.click(screen.getByRole("button", { name: "View one week" }));
+  const narrowedScope = {
+    academicPeriodId: "period",
+    campusId,
+    classId: "science",
+    weekStart: "2026-10-05",
+    weekEnd: "2026-10-12",
+  };
+  expect(lastRequest("summary")?.summary.args).toEqual(narrowedScope);
+  expect(lastRequest("review")?.review.args).toEqual({
+    ...narrowedScope,
+    cursor: null,
+  });
 });
 
 test("shows academic progress immediately, two courses at a time, and honors the course filter", () => {

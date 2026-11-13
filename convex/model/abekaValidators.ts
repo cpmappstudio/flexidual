@@ -41,6 +41,27 @@ export const lessonProgress = v.object({
   subscriptionItem: v.union(v.string(), v.null()),
   subscriptionNumber: v.union(v.string(), v.null()),
 });
+const activityCounts = {
+  timeZone: v.string(),
+  viewers: v.number(),
+};
+const legacyWeeklyActivity = v.object({
+  weekStart: v.string(),
+  ...activityCounts,
+});
+const abekaWeeklyActivity = v.object({
+  fromDate: v.string(),
+  throughDate: v.string(),
+  ...activityCounts,
+});
+const activitySnapshotFields = {
+  students: v.number(),
+  syncedAt: v.number(),
+};
+export const abekaWeeklyActivitySnapshot = abekaWeeklyActivity.extend(
+  activitySnapshotFields,
+);
+
 export const abekaConnectionFields = {
   // Legacy class links remain authoritative until the last migration batch commits.
   curriculumLinksMigratedAt: v.optional(v.number()),
@@ -62,6 +83,12 @@ export const abekaConnectionFields = {
   lastAttemptAt: v.optional(v.number()),
   lastRenewalAttemptAt: v.optional(v.number()),
   lastSyncedAt: v.optional(v.number()),
+  weeklyActivity: v.optional(
+    v.union(
+      abekaWeeklyActivitySnapshot,
+      legacyWeeklyActivity.extend(activitySnapshotFields),
+    ),
+  ),
   nextSyncAt: v.optional(v.number()),
   syncSchedule: v.optional(abekaSchedule),
   syncAcademicPeriodId: v.optional(v.id("academicPeriods")),
@@ -85,6 +112,9 @@ export const abekaStudentFields = {
   completedUpdateId: v.optional(v.id("abekaSyncRuns")),
 };
 export const abekaRunFields = {
+  weeklyActivity: v.optional(
+    v.union(abekaWeeklyActivity, legacyWeeklyActivity),
+  ),
   catalog: v.optional(v.boolean()),
   initializeCatalog: v.optional(v.boolean()),
   authenticate: v.optional(v.boolean()),

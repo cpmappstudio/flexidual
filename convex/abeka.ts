@@ -17,8 +17,13 @@ import {
   abekaProgressPoint,
   encryptedSession,
   abekaSchedule,
+  abekaWeeklyActivitySnapshot,
 } from "./model/abekaValidators";
-import { activeStudent, requireAbekaAdmin } from "./model/abekaAccess";
+import {
+  activeStudent,
+  getManagedAbekaConnection,
+  requireAbekaAdmin,
+} from "./model/abekaAccess";
 import { getAbekaProgressHistory } from "./model/abekaProgressHistory";
 import {
   setAbekaNextSync,
@@ -41,6 +46,27 @@ const runDoc = v.object({
   _id: v.id("abekaSyncRuns"),
   _creationTime: v.number(),
   ...abekaRunFields,
+});
+
+export const getWeeklyActivity = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.union(
+    v.null(),
+    v.object({
+      snapshot: v.union(v.null(), abekaWeeklyActivitySnapshot),
+      lastSyncedAt: v.union(v.null(), v.number()),
+    }),
+  ),
+  handler: async (ctx, { schoolId }) => {
+    const connection = await getManagedAbekaConnection(ctx, schoolId);
+    if (!connection?.confirmed || connection.status !== "connected")
+      return null;
+    const snapshot = connection.weeklyActivity;
+    return {
+      snapshot: snapshot && "throughDate" in snapshot ? snapshot : null,
+      lastSyncedAt: connection.lastSyncedAt ?? null,
+    };
+  },
 });
 const studentDoc = v.object({
   _id: v.id("abekaStudents"),
@@ -583,6 +609,8 @@ export const linkStudent = mutation({
       if (update)
         await ctx.db.patch(update._id, {
           studentsSynced: Math.max(0, update.studentsSynced - 1),
+          // This student may have contributed to the pending activity count.
+          weeklyActivity: undefined,
         });
     }
     // Linking changes only the local association. Existing provider snapshots
