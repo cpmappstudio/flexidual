@@ -534,7 +534,9 @@ test("reactively shows scoped online accounts, active courses and calendar progr
             { classId: "inactive", name: "Inactive course", isActive: false },
           ],
         }
-      : requests.people ? { people } : {},
+      : requests.people
+        ? { people }
+        : {},
   );
   const dashboard = (today: string) => (
     <NextIntlClientProvider locale="en" timeZone="UTC" messages={messages}>
@@ -556,7 +558,8 @@ test("reactively shows scoped online accounts, active courses and calendar progr
     name: "Calendar progress for the period",
   });
   expect(period.getAttribute("aria-valuenow")).toBe("91");
-  const request = state.useQueries.mock.calls.find(([q]) => q.people)?.[0].people;
+  const request = state.useQueries.mock.calls.find(([q]) => q.people)?.[0]
+    .people;
   expect(getFunctionName(request.query)).toBe(
     getFunctionName(api.adminSessionDashboard.getPeopleSnapshot),
   );
@@ -568,7 +571,9 @@ test("reactively shows scoped online accounts, active courses and calendar progr
   expect(screen.getByText("2 online")).toBeTruthy();
   expect(screen.getByText("8 offline")).toBeTruthy();
   expect(screen.queryByText(/Checked at/)).toBeNull();
-  expect(screen.queryByRole("button", { name: "Refresh online users" })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Refresh online users" }),
+  ).toBeNull();
   people = { online: 3, total: 10 };
   vi.setSystemTime(new Date("2026-11-15T12:00:00Z"));
   fireEvent(window, new Event("focus"));
@@ -576,14 +581,18 @@ test("reactively shows scoped online accounts, active courses and calendar progr
   expect(screen.getByText("3 of 10")).toBeTruthy();
   expect(screen.getByText("7 offline")).toBeTruthy();
   expect(
-    screen.getByRole("progressbar", { name: "Users online" }).getAttribute("aria-valuenow"),
+    screen
+      .getByRole("progressbar", { name: "Users online" })
+      .getAttribute("aria-valuenow"),
   ).toBe("30");
   expect(screen.getByText("0 days")).toBeTruthy();
   expect(period.getAttribute("aria-valuenow")).toBe("100");
   people = { online: 0, total: 0 };
   view.rerender(dashboard("2026-11-15"));
   expect(screen.getByText("0 of 0")).toBeTruthy();
-  expect(screen.queryByRole("progressbar", { name: "Users online" })).toBeNull();
+  expect(
+    screen.queryByRole("progressbar", { name: "Users online" }),
+  ).toBeNull();
   people = new ConvexError("DASHBOARD_READ_BUDGET_EXCEEDED");
   view.rerender(dashboard("2026-11-15"));
   expect(screen.getByText("Count unavailable")).toBeTruthy();
@@ -897,7 +906,13 @@ test("refreshes progress at institutional midnight without changing query args d
 
 test("recomputes the day and closed weeks when the institution changes its timezone", () => {
   vi.useFakeTimers({
-    toFake: ["Date", "setInterval", "clearInterval", "setTimeout", "clearTimeout"],
+    toFake: [
+      "Date",
+      "setInterval",
+      "clearInterval",
+      "setTimeout",
+      "clearTimeout",
+    ],
   });
   vi.setSystemTime(new Date("2026-11-16T05:30:00Z"));
   const periods = [
@@ -915,7 +930,9 @@ test("recomputes the day and closed weeks when the institution changes its timez
       timeZone: "America/Bogota",
     });
   state.useQueries.mockImplementation((requests) =>
-    requests.courses ? { courses: [{ classId: "science", name: "Science" }] } : {},
+    requests.courses
+      ? { courses: [{ classId: "science", name: "Science" }] }
+      : {},
   );
   const dashboard = () => (
     <NextIntlClientProvider locale="en" timeZone="UTC" messages={messages}>
@@ -940,9 +957,11 @@ test("recomputes the day and closed weeks when the institution changes its timez
   act(() => vi.advanceTimersByTime(0));
   expect(lastArgs("summary").weekEnd).toBe("2026-11-09");
   expect(lastArgs("progress").today).toBe("2026-11-15");
-  expect(state.useQueries.mock.calls.every(([q]) =>
-    !q.summary || q.summary.args.weekEnd === "2026-11-09",
-  )).toBe(true);
+  expect(
+    state.useQueries.mock.calls.every(
+      ([q]) => !q.summary || q.summary.args.weekEnd === "2026-11-09",
+    ),
+  ).toBe(true);
 
   mockSettings(null);
   state.useQueries.mockClear();

@@ -586,7 +586,9 @@ function WeeklySessions({
   const periodElapsed =
     daysRemaining === 0
       ? 100
-      : Math.floor((100 * Math.max(0, periodDays - daysRemaining)) / periodDays);
+      : Math.floor(
+          (100 * Math.max(0, periodDays - daysRemaining)) / periodDays,
+        );
   const civil = (value: string) =>
     format.dateTime(new Date(value), {
       month: "short",

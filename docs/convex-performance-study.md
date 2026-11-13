@@ -2,6 +2,8 @@
 
 Fecha de revisión inicial: 2026-11-05; continuación y publicación: 2026-11-06. El inventario y las revisiones iniciales se conservan como baseline histórico. Las prioridades 1 y 2 y la reutilización de contexto de CVX-03/CVX-04 se publicaron en el backend de producción `blessed-wombat-104` con el commit `536bad9`. Las referencias posteriores a cambios locales o no publicados describen el estado de cada revisión antes de esa publicación. La activación de los resúmenes requiere completar los lotes descritos abajo; el lector conserva el cálculo canónico hasta `dashboardSummaryState.ready`. La medición del ahorro real sigue pendiente.
 
+**Punto de reanudación vigente (2026-11-10):** [pendientes, límites y criterios de cierre](#punto-de-reanudación--2026-11-10). El trabajo queda pendiente de una ventana sin clases activas; no se ha programado ni iniciado otra activación.
+
 ## Alcance, fuentes y límites
 
 - Carpeta única: `/Users/ulvenforst/Codex/Projects/CPM/flexidual`. Sin cambios de rama ni worktrees.
@@ -652,6 +654,74 @@ Se inició la inicialización explícita y secuencial de los tres flujos documen
 Durante esa activación se detectó y reprodujo una amplificación transitoria: guardar el cursor en el mismo documento que `ready` cambiaba una dependencia de los dashboards en cada lote. Se pausó el operador en su cursor persistido y se separó el estado operativo en `dashboardSummaryBackfill`. El documento de disponibilidad ya no se modifica entre lotes. La reanudación adopta el cursor anterior dentro de la misma transacción y conserva los límites de lectura y la inicialización ya realizada. Dos regresiones verifican la estabilidad de la señal, la equivalencia de resultados, la reanudación desde el backend anterior y cero escrituras al repetir una inicialización completada. Esta corrección no altera datos fuente ni contratos públicos.
 
 Validación posterior de esa separación: 2.077 pruebas pasan (235 unitarias, 1.075 de componentes y 767 de Convex), TypeScript, ESLint focalizado y compilación de producción sin errores. La prueba de estabilidad de `ready` falló antes y pasó después.
+
+## Verificación de producción y activación pendiente — 2026-11-10
+
+La inspección de solo lectura confirmó `dashboardSummaryState.ready === false` y `dashboardSummaryBackfill.phase === 2`. Dos lecturas separadas conservaron la misma huella del cursor: no se estaba avanzando durante la comprobación. En una muestra limitada de 20 reportes de Abeka faltaban dos resúmenes; las 100 notificaciones más antiguas consultadas aún tenían `chatBadgeRelevant` indefinido. Estas muestras no cuantifican el total pendiente.
+
+El despliegue no equivale a la activación completa. Los lectores conservan el cálculo canónico y el carril legacy; no se debe poner `ready` a mano ni eliminar esos respaldos. Entre 17:59:35 y 18:02:32 UTC, una muestra de 1.008 registros de ejecución incluía 30 llamadas al dashboard (cinco desde caché) y 37.834.218 bytes de Database I/O de lectura para esa función. No hubo errores en esa muestra. No es un ensayo antes/después con igual carga ni una predicción mensual.
+
+### Conflictos recuperados, no trabajos perdidos demostrados
+
+Insights mostró tres ejecuciones `occFailedPermanently` de `systemNotifications.markAllReadInternal` y quince de `presence/batchWorker/loop`. Se comprobó el estado final del scheduler en ventanas completas de cuatro minutos alrededor de los tres eventos de notificaciones (Nov9 19:55 y23:54 UTC; Nov10 02:23 UTC): los siete trabajos encontrados terminaron en `success`. Presence tenía runner y monitor programados; el componente instalado ya incluye recuperación del worker. El rótulo de una ejecución no demuestra que el trabajo programado se haya perdido.
+
+La contención sigue siendo una oportunidad de medición, no motivo suficiente para otra cola, reintentos propios o un parche del componente. No se cambia ese código en esta fase. La evaluación delegada acotada queda en **95/100 = 100 − 5 por activación incompleta**; no certifica el backend completo. Las 42 pruebas focalizadas de dashboard, Abeka, notificaciones y Presence pasan.
+
+### Procedimiento para una ventana sin clases activas
+
+Se pospone toda escritura de activación mientras se transmiten clases. Los lotes preservan los datos fuente, pero consumen lecturas, escrituras y capacidad de ejecución compartida: no se garantiza impacto cero en la latencia. Este procedimiento está preparado, **no ejecutado ni programado**.
+
+1. Acordar una ventana tranquila y confirmar el destino de producción `blessed-wombat-104`. Comprobar que no hay otro operador avanzando los mismos lotes. No desplegar código, cambiar dependencias, importar datos ni modificar configuración para esta activación.
+2. Leer el estado persistido antes de empezar:
+
+   ```sh
+   pnpm exec convex run --inline-query 'const state=await ctx.db.query("dashboardSummaryState").withIndex("by_key",q=>q.eq("key","v1")).unique(); const progress=await ctx.db.query("dashboardSummaryBackfill").withIndex("by_key",q=>q.eq("key","v1")).unique(); return {ready:state?.ready??false,phase:progress?.phase??null};' --deployment blessed-wombat-104 --typecheck disable --codegen disable
+   ```
+
+3. Avanzar `dashboardSummaries.backfill({})` secuencialmente hasta `done:true`. El cursor se retoma dentro de la transacción existente; no hay que copiarlo ni reiniciarlo. Comprobar después `ready:true` y fase final5. Repetir una inicialización completada no escribe documentos.
+4. Avanzar `abekaSync.backfillProgressSummaries({cursor})`, conservando cada `continueCursor`, hasta `isDone:true`. Si no se conserva un cursor anterior, se puede empezar con `null`: el helper existente es idempotente y no borra los reportes.
+5. Avanzar `courseChatNotifications.backfillChatBadgeRelevance({paginationOpts:{cursor,numItems:50,maximumRowsRead:50,maximumBytesRead:500000}})` hasta `isDone:true`, conservando cada cursor. También admite repetir desde `null` sin cambiar qué avisos se consideran leídos. No ejecutar los tres flujos en paralelo.
+6. Mantener los tamaños y límites ya probados. Si aparecen clases activas, errores o degradación, detener el operador después del lote en curso y conservar su resultado; no resetear datos ni aumentar lotes para terminar antes. Una respuesta perdida puede repetirse con los mismos argumentos idempotentes.
+7. Registrar la finalización de cada flujo, no solo la salida del proceso. Contrastar totales y permisos de una muestra autorizada con el cálculo canónico. No convertir `ready` en una señal de que Abeka y notificaciones también terminaron: son flujos independientes.
+8. Medir lecturas por ejecución, llamadas, caché y tiempos en ventanas de uso comparables posteriores. Separar el coste extraordinario de inicialización de la carga habitual. Los acumulados del ciclo Oct24–Nov24 y la factura parcial por umbral no demuestran el ahorro atribuible a estos cambios.
+
+No se requiere un nuevo esquema, servicio, sistema de colas ni actualización de componentes para completar esta operación. Las versiones posteriores de Aggregate, Rate Limiter y Workflow requieren versiones de Convex más recientes que la instalada; esa actualización se mantiene fuera de esta activación.
+
+## Punto de reanudación — 2026-11-10
+
+### Decisión y estado al cambiar de tarea
+
+El usuario decidió continuar con otra tarea mientras hay clases transmitiéndose. **No ejecutar escrituras de activación en producción durante esas clases ni interpretar este documento como una autorización futura.** Acordar la ventana al retomar. No hay ninguna automatización programada para hacerlo después.
+
+- Publicado: optimizaciones de dashboard, Abeka, badges y reutilización de contexto/líder, junto con el progreso de pregrabaciones (`536bad9`); documentación (`73d3385`); separación del cursor operativo y la señal de disponibilidad (`f474c75`).
+- Pendiente operativo: completar las tres inicializaciones existentes según el procedimiento anterior. La última observación fue `ready:false`, progreso fase2; comprobar de nuevo antes de actuar, pues no es un estado en vivo.
+- No hace falta cambiar el backend para activarlas. No reiniciar agregados, forzar `ready`, borrar datos ni desplegar de nuevo para intentar resolver una inicialización inconclusa.
+- Verificación más reciente: 2.077 pruebas pasan (235 unitarias, 1.075 componentes, 767 Convex); después se repitieron las 42 pruebas focalizadas y TypeScript, también sin errores. Ninguna de estas pruebas demuestra por sí sola una mejora de latencia de producción.
+- La auditoría del 10 de noviembre solo leyó producción. El procedimiento de reanudación no se ejecutó. Los cambios posteriores de esta preparación son documentales, no de aplicación.
+
+### Ajuste de código acotado aún no implementado
+
+En `components/notifications/system-notification-center.tsx`, `NotificationFeed` llama a `markAllRead({})` desde el botón sin estado de operación pendiente ni manejo del rechazo. Preparar una corrección local que:
+
+1. Evite solicitudes repetidas del mismo botón mientras su mutación está pendiente, muestre el estado ocupado y permita reintentar después de un fallo. Reutilizar `Button`, los patrones existentes de operación pendiente, `sonner` y la traducción `errors.operationFailed`; no crear un framework de mutaciones.
+2. Capture el rechazo y lo comunique sin marcar notificaciones como leídas artificialmente ni descartar el error en silencio.
+3. Añada pruebas de doble clic con respuesta retrasada, éxito, rechazo y reintento, conservando el listado, la paginación y la navegación actuales del feed.
+
+Este ajuste es independiente de la activación de resúmenes. **No promete eliminar la contención entre pestañas/dispositivos ni entre continuaciones del servidor:** la primera mutación retorna después de un lote y puede dejar trabajo programado. No añadir coalescencia de backend, bloqueos globales, rate limits o reintentos propios sin una nueva causa demostrada. Publicar este ajuste, si se implementa, requiere su validación y autorización separadas; no es necesario para ejecutar los lotes ya desplegados.
+
+### Orden al retomar y criterio de cierre
+
+1. Releer este punto y el procedimiento de activación. Mantener la carpeta principal, pnpm y la rama existente; revisar cambios concurrentes antes de editar.
+2. Resolver y probar el ajuste pequeño del botón, sin mezclarlo con transporte de pizarra, vídeo o cambios de permisos.
+3. En una ventana autorizada sin clases activas, completar los lotes secuenciales y comprobar su finalización real. El estado `ready` solo corresponde al dashboard; Abeka y badges necesitan sus comprobaciones independientes.
+4. Contrastar resultados y permisos con las fuentes canónicas, y comprobar recuperación/errores. No presentar los conflictos ya recuperados como pérdida de datos ni como una regresión atribuida al despliegue sin evidencia.
+5. Comparar consumo y tiempos con carga equivalente, separando producción/desarrollo e inicialización/uso habitual. No atribuir ahorro a la variación de acumulados mensuales o facturas parciales.
+
+Este bloque se puede cerrar cuando el ajuste acordado esté validado y las inicializaciones y verificaciones finales estén completas. La cifra de ahorro seguirá pendiente hasta tener la comparación representativa. La optimización general de Convex no se declara terminada: CVX-03/CVX-04 (invalidaciones y consultas de clase), CVX-05 (contención normalizada) y CVX-06 (atribuir consumo a workflows) quedan como investigaciones posteriores condicionadas a mediciones, no como permiso para reescribir esos módulos.
+
+### Límites de observabilidad que no hay que olvidar
+
+El conector PostHog disponible el 10 de noviembre devolvió únicamente el proyecto 708321, no el proyecto FlexiDual 627378. No usar esa conexión para afirmar que FlexiDual no presenta errores. El acceso al panel mediante control de Safari tampoco estaba habilitado; no se obtuvo una comparación diaria antes/después desde el panel. No se validó una llamada real en tablets en esta continuación.
 
 ## Dashboard administrativo: asistencia confirmada
 
