@@ -612,10 +612,10 @@ export const readReviewSessions = internalQuery({
     const campusMatches = new Map<Id<"campuses">, boolean>();
     const courseNames = new Map<Id<"classes">, string | null>();
     if (course) courseNames.set(course._id, course.name);
-    const remaining = (await ctx.meta.getTransactionMetrics()).bytesRead
-      .remaining;
-    const result = await mergedStream(streams, ["scheduledStart"])
-      .map(async (row): Promise<Infer<typeof reviewRowValidator> | null> => {
+    const readBudget = (await ctx.meta.getTransactionMetrics()).bytesRead;
+    const stopAt = readBudget.used + readBudget.remaining / 2;
+    const reviewStream = mergedStream(streams, ["scheduledStart"]).map(
+      async (row): Promise<Infer<typeof reviewRowValidator> | null> => {
         if (
           isExternalClassSession(row.sessionType) ||
           !isPastClassSession(row, now) ||
@@ -650,20 +650,32 @@ export const readReviewSessions = internalQuery({
           roomName: row.roomName,
           reason: row.status === "scheduled" ? "noStart" : "reportPending",
         };
-      })
-      .paginate({
-        cursor: args.cursor,
-        numItems: REVIEW_PAGE_SIZE,
+      },
+    );
+    const rows: Infer<typeof reviewRowValidator>[] = [];
+    let cursor = args.cursor;
+    do {
+      const remaining = (await ctx.meta.getTransactionMetrics()).bytesRead
+        .remaining;
+      const page = await reviewStream.paginate({
+        cursor,
+        numItems: REVIEW_PAGE_SIZE - rows.length,
         // Filtered rows still require schedule/course reads, even on empty pages.
         maximumRowsRead: REVIEW_PAGE_SIZE,
-        // Only schedule bytes count toward this soft limit. Reserve space for
-        // course authorization and stream lookahead under the transaction cap.
-        maximumBytesRead: Math.max(1, Math.floor(remaining / 2)),
+        maximumBytesRead: Math.max(1, Math.floor(remaining / 4)),
       });
+      rows.push(...page.page);
+      cursor = page.isDone ? null : page.continueCursor;
+      // Account for course authorization too, not only the stream's schedule bytes.
+    } while (
+      cursor !== null &&
+      rows.length < REVIEW_PAGE_SIZE &&
+      (await ctx.meta.getTransactionMetrics()).bytesRead.used < stopAt
+    );
     return {
       timeZone,
-      nextCursor: result.isDone ? null : result.continueCursor,
-      rows: result.page,
+      nextCursor: cursor,
+      rows,
     };
   },
 });

@@ -776,6 +776,41 @@ test("pages across a large institution without preloading unrelated courses or r
   );
 });
 
+test("review fills a page across cheap excluded sessions while staying under its read budget", async () => {
+  const f = await fixture();
+  const expected = [];
+  for (let i = 0; i < 20; i++)
+    expected.push(await f.insertSchedule(f.classId, { schoolId: f.schoolId }));
+  await f.t.run(async ({ db }) => {
+    for (let i = 0; i < 180; i++)
+      await db.insert("classSchedule", {
+        classId: f.classId,
+        schoolId: f.schoolId,
+        sessionType: "abeka",
+        scheduledStart: first + 60_000,
+        scheduledEnd: first + 120_000,
+        roomName: `external-${i}`,
+        status: "scheduled",
+        createdAt: 0,
+        createdBy: f.admin,
+      });
+  });
+  const { result, metrics } = await f.as("admin").run(async (ctx) => ({
+    result: await ctx.runQuery(review, {
+      ...f.args,
+      weekEnd: addCivilDays(weekStart, 7),
+      cursor: null,
+    }),
+    metrics: await ctx.meta.getTransactionMetrics(),
+  }));
+  expect(result.rows).toHaveLength(20);
+  expect(new Set(result.rows.map(({ scheduleId }) => scheduleId))).toEqual(
+    new Set(expected),
+  );
+  expect(metrics.bytesRead.used).toBeLessThan(DASHBOARD_READ_BUDGET);
+  expect(metrics.documentsWritten.used).toBe(0);
+});
+
 test.each([7, 28])(
   "review scans stay bounded across filtered courses in a %i-day window without losing pending sessions",
   async (days) => {
@@ -846,7 +881,7 @@ test.each([7, 28])(
     expect(found).toHaveLength(expected.length);
     expect(new Set(found)).toEqual(new Set(expected));
     expect(emptyPages).toBeGreaterThan(0);
-    expect(maxRead).toBeLessThan(DASHBOARD_READ_BUDGET / 2);
+    expect(maxRead).toBeLessThan(DASHBOARD_READ_BUDGET);
   },
 );
 
@@ -1292,7 +1327,7 @@ test("keeps four weeks under 250 KiB including authorization, and refuses partia
       };
     });
   expect(picker).toHaveLength(156);
-  expect(page.rows).toHaveLength(0); // The newest rows are external Abeka sessions.
+  expect(page.rows).toHaveLength(20);
   expect(page.nextCursor).not.toBeNull();
   expect(pickerMetrics.bytesRead.used).toBeLessThan(DASHBOARD_READ_BUDGET);
   expect(
