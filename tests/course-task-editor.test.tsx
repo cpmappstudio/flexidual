@@ -295,9 +295,57 @@ test("explains immediate publication and disables late submissions by default", 
   );
 });
 
-test("grading is opt-in and maximum points use the existing creation flow", async () => {
-  renderEditor();
+test("new assignments default to grading with the course's maximum points", async () => {
+  const { onSaved } = renderEditor();
+  expect(
+    screen
+      .getByRole("checkbox", { name: "gradable" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+  expect(screen.getByLabelText("maxPoints")).toHaveProperty("value", "100");
+  fireEvent.click(screen.getByRole("button", { name: "publish" }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith("task-id"));
+  expect(mutations.create).toHaveBeenCalledWith(
+    expect.objectContaining({ grading: { maxPoints: 100 }, draft: true }),
+  );
+});
+
+test("grading can be disabled for a new assignment and resets on reopening", async () => {
+  const { onSaved, unmount } = renderEditor();
   fireEvent.click(screen.getByRole("checkbox", { name: "gradable" }));
+  expect(screen.queryByLabelText("maxPoints")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "publish" }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith("task-id"));
+  expect(mutations.create.mock.calls[0][0]).not.toHaveProperty("grading");
+  unmount();
+  renderEditor();
+  expect(
+    screen
+      .getByRole("checkbox", { name: "gradable" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+});
+
+test.each([undefined, { maxPoints: 20, scaleMax: 100, decimalPlaces: 2 }])(
+  "editing preserves the saved grading configuration: %j",
+  async (grading) => {
+    renderPublishedEditor({ grading });
+    expect(
+      screen
+        .getByRole("checkbox", { name: "gradable" })
+        .getAttribute("aria-checked"),
+    ).toBe(String(!!grading));
+    if (grading)
+      expect(screen.getByLabelText("maxPoints")).toHaveProperty("value", "20");
+    else expect(screen.queryByLabelText("maxPoints")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => expect(mutations.update).toHaveBeenCalledTimes(1));
+    expect(mutations.update.mock.calls[0][0]).not.toHaveProperty("grading");
+  },
+);
+
+test("custom maximum points use the existing creation flow", async () => {
+  renderEditor();
   fireEvent.change(screen.getByLabelText("maxPoints"), {
     target: { value: "20" },
   });

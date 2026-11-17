@@ -67,7 +67,7 @@ export function CourseTaskEditor({
   const policy = useQuery(api.academicSettings.getGradingForCourse, {
     classId,
   });
-  const [gradable, setGradable] = useState(!!task?.grading);
+  const [gradable, setGradable] = useState(task ? !!task.grading : true);
   const [maxPoints, setMaxPoints] = useState<string | undefined>(
     task?.grading ? String(task.grading.maxPoints) : undefined,
   );
