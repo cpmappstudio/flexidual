@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import DashboardPage from "@/app/[locale]/[orgSlug]/dashboard/page";
 import AdminDashboard from "@/components/dashboards/admin-dashboard";
+import { AdminSessionReview } from "@/components/dashboards/admin-session-review";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import messages from "@/messages/en.json";
@@ -136,13 +137,18 @@ test("Abeka only subscribes for institutional admins and keeps the dated snapsho
     activity: { query: api.abeka.getWeeklyActivity, args: { schoolId } },
   });
   state.useQueries.mockReturnValue({
-    activity: { snapshot, lastSyncedAt: snapshot.syncedAt },
+    activity: {
+      snapshot,
+      lastSyncedAt: snapshot.syncedAt,
+      nextSyncAt: Date.parse("2026-11-17T02:00:00Z"),
+    },
   });
   view.rerender(dashboard("2026-11-13"));
   expect(
     screen.getByText("0 of 5 synced students viewed at least one lesson"),
   ).toBeTruthy();
   expect(screen.getByText("0%")).toBeTruthy();
+  expect(screen.queryByText(/Next scheduled sync:/)).toBeNull();
   const range = "Nov 6 – 12, 2026";
   expect(screen.getByText(range)).toBeTruthy();
   state.useQueries.mockReturnValue({
@@ -160,10 +166,18 @@ test("Abeka only subscribes for institutional admins and keeps the dated snapsho
     activity: {
       snapshot: { ...snapshot, timeZone: "UTC" },
       lastSyncedAt: snapshot.syncedAt,
+      nextSyncAt: Date.parse("2026-11-17T02:00:00Z"),
     },
   });
   view.rerender(dashboard("2026-11-16"));
-  expect(screen.getByText("No complete activity summary yet.")).toBeTruthy();
+  expect(
+    screen.getByText(
+      /The activity summary is generated when a full institution sync/,
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/Next scheduled sync: Nov 16, 2026.*8:00 PM/),
+  ).toBeTruthy();
   expect(screen.queryByText(range)).toBeNull();
   expect(screen.queryByText("80%")).toBeNull();
 });
@@ -597,6 +611,53 @@ test("reactively shows scoped online accounts, active courses and calendar progr
   view.rerender(dashboard("2026-11-15"));
   expect(screen.getByText("Count unavailable")).toBeTruthy();
   expect(screen.queryByText("0 of 0")).toBeNull();
+});
+
+test("review pagination can advance past an empty filtered page and return to it", () => {
+  const row = {
+    scheduleId: "pending-session",
+    className: "Pending science class",
+    start: Date.parse("2026-11-02T14:00Z"),
+    end: Date.parse("2026-11-02T15:00Z"),
+    roomName: "science-room",
+    reason: "reportPending",
+  };
+  state.useQueries.mockImplementation(({ review }) => ({
+    review: {
+      timeZone: "America/Tegucigalpa",
+      rows: review.args.cursor ? [row] : [],
+      nextCursor: review.args.cursor ? null : "after-filtered-rows",
+    },
+  }));
+  render(
+    <NextIntlClientProvider locale="en" timeZone="UTC" messages={messages}>
+      <AdminSessionReview
+        scope={{
+          academicPeriodId: "period" as Id<"academicPeriods">,
+          weekStart: "2026-10-19",
+          weekEnd: "2026-11-16",
+        }}
+        focusFallback={{ current: null }}
+      />
+    </NextIntlClientProvider>,
+  );
+  expect(
+    screen.getByText(messages.adminDashboard.reviewEmptyPage),
+  ).toBeTruthy();
+  expect(screen.queryByText(messages.adminDashboard.reviewEmpty)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  expect(state.useQueries.mock.lastCall?.[0].review.args.cursor).toBe(
+    "after-filtered-rows",
+  );
+  expect(screen.getByText(row.className)).toBeTruthy();
+  expect(
+    screen.getByRole<HTMLButtonElement>("button", { name: "Next" }).disabled,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+  expect(state.useQueries.mock.lastCall?.[0].review.args.cursor).toBeNull();
+  expect(
+    screen.getByText(messages.adminDashboard.reviewEmptyPage),
+  ).toBeTruthy();
 });
 
 test("filters the weekly summary and review, and only reads session detail when opened", () => {

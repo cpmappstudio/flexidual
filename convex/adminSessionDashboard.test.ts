@@ -28,7 +28,8 @@ const review = api.adminSessionDashboard.listReviewSessions;
 const detail = api.adminSessionDashboard.getReviewRecord;
 const refresh = internal.adminSessionDashboard.refreshWeek;
 const refreshPending = internal.adminSessionDashboard.refreshNextPendingWeek;
-const initializeHistory = internal.adminSessionDashboard.initializeWeeklyHistory;
+const initializeHistory =
+  internal.adminSessionDashboard.initializeWeeklyHistory;
 const weekTriggers = new Triggers<DataModel>();
 registerCourseSessionWeekTriggers(weekTriggers);
 
@@ -257,16 +258,17 @@ test("measures scoped presence during a sign-in burst and rejects an oversized d
   const members = await addMembers(300, "Student");
   const scope = { schoolId: f.schoolId, campusId: f.campusId };
   const admin = f.as("admin");
-  const measure = () => admin.run(async (ctx) => {
-    const result = await ctx.runQuery(
-      api.adminSessionDashboard.getPeopleSnapshot,
-      scope,
-    );
-    return {
-      result,
-      bytes: (await ctx.meta.getTransactionMetrics()).bytesRead.used,
-    };
-  });
+  const measure = () =>
+    admin.run(async (ctx) => {
+      const result = await ctx.runQuery(
+        api.adminSessionDashboard.getPeopleSnapshot,
+        scope,
+      );
+      return {
+        result,
+        bytes: (await ctx.meta.getTransactionMetrics()).bytesRead.used,
+      };
+    });
   const { result, bytes } = await measure();
   expect(result).toEqual({ total: 304, online: 0 });
   expect(bytes).toBeLessThan(DASHBOARD_READ_BUDGET);
@@ -604,7 +606,10 @@ test("filters courses and review details to the same administrative scope", asyn
   });
   const neverStarted = await f.insertSchedule(f.classId);
   const otherCampus = await f.insertSchedule(f.otherClassId);
-  const foreign = await f.insertSchedule(f.foreign.classId);
+  const foreign = await f.insertSchedule(f.foreign.classId, {
+    schoolId: f.schoolId, // The index is not an authorization boundary.
+  });
+  await f.insertSchedule(f.foreign.classId); // Legacy row, no schoolId.
   await f.insertSchedule(f.classId, { status: "active", isLive: true });
   await f.insertSchedule(f.classId, { status: "scheduled", isLive: true });
   await f.insertSchedule(f.classId, { status: "cancelled" });
@@ -652,10 +657,12 @@ test("filters courses and review details to the same administrative scope", asyn
     ),
   ).toEqual([f.classId, f.otherClassId]);
   expect(
-    (await admin.query(review, institutionWindow)).rows.map(
-      ({ scheduleId }) => scheduleId,
+    new Set(
+      (await admin.query(review, institutionWindow)).rows.map(
+        ({ scheduleId }) => scheduleId,
+      ),
     ),
-  ).toContain(otherCampus);
+  ).toEqual(new Set([otherCampus, neverStarted, completed]));
   expect(
     (await admin.query(review, { ...institutionWindow, classId: f.classId }))
       .rows,
@@ -701,6 +708,147 @@ test("paginates review rows with equal timestamps without losing rows", async ()
     new Set([...page.rows, ...tail.rows].map(({ scheduleId }) => scheduleId)),
   ).toEqual(new Set(ids));
 });
+
+test("pages across a large institution without preloading unrelated courses or reading session details", async () => {
+  const f = await fixture();
+  const ids = await f.t.run(async ({ db }) => {
+    const ids = [];
+    for (let i = 0; i < 154; i++) {
+      const classId = await db.insert("classes", {
+        name: `Course ${i}`,
+        description: "x".repeat(1900),
+        isActive: true,
+        schoolId: f.schoolId,
+        campusId: f.campusId,
+        academicPeriodId: f.academicPeriodId,
+        curriculumId: f.curriculumId,
+        createdAt: 0,
+        createdBy: f.admin,
+      });
+      const scheduledStart = first + i * 60000;
+      const scheduleId = await db.insert("classSchedule", {
+        classId,
+        schoolId: i % 2 === 0 ? f.schoolId : undefined,
+        sessionType: i % 2 === 0 ? "live" : undefined,
+        scheduledStart,
+        scheduledEnd: scheduledStart + 3600_000,
+        roomName: `room-${i}`,
+        status: "scheduled",
+        createdAt: 0,
+        createdBy: f.admin,
+      });
+      if (i < 20) {
+        await db.insert("classSessionReports", {
+          scheduleId,
+          closedBy: f.admin,
+          closedAt: scheduledStart + 3600_000,
+          notes: "x".repeat(DASHBOARD_READ_BUDGET),
+        });
+      }
+      ids.push(scheduleId);
+    }
+    return ids.reverse();
+  });
+
+  const found: Id<"classSchedule">[] = [];
+  let maxRead = 0;
+  let cursor: string | null = null;
+  for (let pageNumber = 0; pageNumber < 9; pageNumber++) {
+    const { result, metrics } = await f.as("admin").run(async (ctx) => {
+      const result = await ctx.runQuery(review, {
+        ...f.args,
+        weekEnd: addCivilDays(weekStart, 28),
+        cursor,
+      });
+      return { result, metrics: await ctx.meta.getTransactionMetrics() };
+    });
+    expect(metrics.documentsWritten.used).toBe(0);
+    maxRead = Math.max(maxRead, metrics.bytesRead.used);
+    found.push(...result.rows.map(({ scheduleId }) => scheduleId));
+    cursor = result.nextCursor;
+    if (!cursor) break;
+  }
+  expect(cursor).toBeNull();
+  expect(found).toEqual(ids);
+  expect(maxRead).toBeLessThan(DASHBOARD_READ_BUDGET);
+  process.stdout.write(
+    `Dashboard large-institution review max page bytesRead: ${maxRead}\n`,
+  );
+});
+
+test.each([7, 28])(
+  "review scans stay bounded across filtered courses in a %i-day window without losing pending sessions",
+  async (days) => {
+    const f = await fixture();
+    const expected = [
+      await f.insertSchedule(f.classId),
+      await f.insertSchedule(f.classId, {
+        schoolId: f.schoolId,
+        sessionType: "live",
+        status: "completed",
+        sessionClosureStatus: "pending",
+      }),
+    ];
+    await f.t.run(async ({ db }) => {
+      for (let i = 0; i < 120; i++) {
+        const foreign = i % 3 === 0;
+        const classId = await db.insert("classes", {
+          name: `Not in scope ${i}`,
+          description: "x".repeat(3_000),
+          isActive: true,
+          schoolId: foreign ? f.foreign.schoolId : f.schoolId,
+          campusId: foreign ? f.foreign.campusId : f.otherCampusId,
+          academicPeriodId: f.academicPeriodId,
+          curriculumId: foreign ? f.foreign.curriculumId : f.curriculumId,
+          createdAt: 0,
+          createdBy: f.admin,
+        });
+        const scheduledStart = first + 60_000 + (i % days) * 86_400_000;
+        await db.insert("classSchedule", {
+          classId,
+          // Both legacy rows and misleading denormalized school IDs need authorization.
+          schoolId: i % 2 === 0 ? f.schoolId : undefined,
+          sessionType: i % 2 === 0 ? "live" : undefined,
+          scheduledStart,
+          scheduledEnd: scheduledStart + 60_000,
+          roomName: `filtered-${i}`,
+          status: i % 3 === 0 ? "completed" : "scheduled",
+          createdAt: 0,
+          createdBy: f.admin,
+        });
+      }
+    });
+    const found: Id<"classSchedule">[] = [];
+    const cursors = new Set<string>();
+    let cursor: string | null = null;
+    let emptyPages = 0;
+    let maxRead = 0;
+    for (let pageNumber = 0; pageNumber < 20; pageNumber++) {
+      const { result, metrics } = await f.as("principal").run(async (ctx) => ({
+        result: await ctx.runQuery(review, {
+          ...f.args,
+          campusId: f.campusId,
+          weekEnd: addCivilDays(weekStart, days),
+          cursor,
+        }),
+        metrics: await ctx.meta.getTransactionMetrics(),
+      }));
+      expect(metrics.documentsWritten.used).toBe(0);
+      maxRead = Math.max(maxRead, metrics.bytesRead.used);
+      found.push(...result.rows.map(({ scheduleId }) => scheduleId));
+      cursor = result.nextCursor;
+      if (!cursor) break;
+      expect(cursors.has(cursor)).toBe(false);
+      cursors.add(cursor);
+      if (!result.rows.length) emptyPages++;
+    }
+    expect(cursor).toBeNull();
+    expect(found).toHaveLength(expected.length);
+    expect(new Set(found)).toEqual(new Set(expected));
+    expect(emptyPages).toBeGreaterThan(0);
+    expect(maxRead).toBeLessThan(DASHBOARD_READ_BUDGET / 2);
+  },
+);
 
 test("refuses over-budget dashboard reads instead of returning incomplete data", async () => {
   const f = await fixture();
@@ -1144,7 +1292,8 @@ test("keeps four weeks under 250 KiB including authorization, and refuses partia
       };
     });
   expect(picker).toHaveLength(156);
-  expect(page.rows).toHaveLength(20);
+  expect(page.rows).toHaveLength(0); // The newest rows are external Abeka sessions.
+  expect(page.nextCursor).not.toBeNull();
   expect(pickerMetrics.bytesRead.used).toBeLessThan(DASHBOARD_READ_BUDGET);
   expect(
     reviewMetrics.bytesRead.used - pickerMetrics.bytesRead.used,
@@ -1258,7 +1407,9 @@ test("waits until outside the institution window and defers while a class or eve
     isLive: true,
   });
   await f.t.run((ctx) =>
-    weekTriggers.wrapDB(ctx).db.patch("classSchedule", past, { status: "cancelled" }),
+    weekTriggers
+      .wrapDB(ctx)
+      .db.patch("classSchedule", past, { status: "cancelled" }),
   );
   await f.t.mutation(refreshPending, {});
   expect(await summary()).toEqual(before);
@@ -1319,7 +1470,9 @@ test("waits until outside the institution window and defers while a class or eve
   expect(await summary()).toEqual(before);
   await f.t.run(async ({ db }) => {
     await db.patch("liveRoomActivations", closingRoom, { status: "closed" });
-    await db.patch("classSchedule", activeClass, { liveEndClaimId: "legacy-claim" });
+    await db.patch("classSchedule", activeClass, {
+      liveEndClaimId: "legacy-claim",
+    });
   });
   await f.t.mutation(refreshPending, {});
   expect(await summary()).toEqual(before);
@@ -1358,27 +1511,38 @@ test("queues only missing weeks on initialization and waits for institutional we
   await f.insertSchedule(f.classId, { scheduledStart: first + weekMs });
   vi.setSystemTime(new Date("2026-10-22T09:00:00Z"));
   await f.t.mutation(refresh, f.args);
-  const pending = () => f.t.run(({ db }) => db.query("courseSessionWeekPending").collect());
+  const pending = () =>
+    f.t.run(({ db }) => db.query("courseSessionWeekPending").collect());
   for (let i = 0; i < 2; i++) {
-    await f.t.mutation(initializeHistory, { academicPeriodId: f.academicPeriodId });
+    await f.t.mutation(initializeHistory, {
+      academicPeriodId: f.academicPeriodId,
+    });
   }
-  expect(await pending()).toMatchObject([{
-    weekStart: "2026-10-19",
-    availableAt: Date.parse("2026-10-26T06:00:00Z"),
-  }]);
+  expect(await pending()).toMatchObject([
+    {
+      weekStart: "2026-10-19",
+      availableAt: Date.parse("2026-10-26T06:00:00Z"),
+    },
+  ]);
   await f.t.mutation(refreshPending, {});
   expect(await pending()).toHaveLength(1);
-  await f.t.run((ctx) => weekTriggers.wrapDB(ctx).db.patch("classSchedule", readyWeek, {
-    scheduledStart: first + 86_400_000,
-    scheduledEnd: first + 86_400_000 + 7200_000,
-  }));
+  await f.t.run((ctx) =>
+    weekTriggers.wrapDB(ctx).db.patch("classSchedule", readyWeek, {
+      scheduledStart: first + 86_400_000,
+      scheduledEnd: first + 86_400_000 + 7200_000,
+    }),
+  );
   expect(await pending()).toHaveLength(1); // Moving within the same week does not alter counts.
   vi.setSystemTime(new Date("2026-10-26T06:00:00Z"));
   await f.t.mutation(refreshPending, {});
   expect(await pending()).toEqual([]);
   const { weeks } = await f.as("admin").query(read, f.args);
-  expect(weeks.slice(0, 2).map((week) => [week.counts?.scheduled, week.refreshedAt]))
-    .toEqual([[1, Date.parse("2026-10-22T09:00:00Z")], [1, Date.now()]]);
+  expect(
+    weeks.slice(0, 2).map((week) => [week.counts?.scheduled, week.refreshedAt]),
+  ).toEqual([
+    [1, Date.parse("2026-10-22T09:00:00Z")],
+    [1, Date.now()],
+  ]);
   vi.setSystemTime(new Date("2026-10-26T09:00:00Z"));
   await f.t.mutation(refreshPending, {});
   expect((await f.as("admin").query(read, f.args)).weeks).toEqual(weeks);
@@ -1399,8 +1563,12 @@ test("late attendance changes queue one week and do not refresh an untouched wee
   await f.t.mutation(refresh, f.args);
   await f.t.mutation(refresh, other);
   const previous = await f.as("admin").query(read, f.args);
-  const student = await f.t.run(({ db }) => db.query("users")
-    .withIndex("by_clerk_id", (q) => q.eq("clerkId", "student")).unique());
+  const student = await f.t.run(({ db }) =>
+    db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", "student"))
+      .unique(),
+  );
   await f.t.run(async ({ db }) => {
     await db.patch("classes", f.classId, { enrollmentsMigratedAt: Date.now() });
     await db.insert("classEnrollments", {
@@ -1427,24 +1595,33 @@ test("late attendance changes queue one week and do not refresh an untouched wee
       excuseReason: status === "excused" ? "Confirmed late" : undefined,
     });
   }
-  const queue = await f.t.run(({ db }) => db.query("courseSessionWeekPending").collect());
+  const queue = await f.t.run(({ db }) =>
+    db.query("courseSessionWeekPending").collect(),
+  );
   expect(queue).toMatchObject([{ weekStart }]);
   vi.setSystemTime(new Date(+quietTime + 600_000));
   await f.t.mutation(refreshPending, {});
   await f.t.mutation(refreshPending, {});
   const result = await f.as("admin").query(read, f.args);
-  expect(result.weeks[0].attendance).toEqual({ present: 0, absent: 0, partial: 0, excused: 1 });
+  expect(result.weeks[0].attendance).toEqual({
+    present: 0,
+    absent: 0,
+    partial: 0,
+    excused: 1,
+  });
   expect(result.weeks[1]).toEqual(previous.weeks[1]);
 });
 
 test("a new period queues even its empty weeks and a moved session invalidates both weeks", async () => {
   const f = await fixture();
-  const academicPeriodId = await f.as("admin").mutation(api.academicSettings.createPeriod, {
-    schoolId: f.schoolId,
-    name: "New period",
-    startDate: "2027-06-01",
-    endDate: "2027-06-13",
-  });
+  const academicPeriodId = await f
+    .as("admin")
+    .mutation(api.academicSettings.createPeriod, {
+      schoolId: f.schoolId,
+      name: "New period",
+      startDate: "2027-06-01",
+      endDate: "2027-06-13",
+    });
   const schedule = await f.insertSchedule(f.classId);
   const nextWeek = { ...f.args, weekStart: "2026-10-19" };
   await f.t.mutation(refresh, f.args);
@@ -1455,21 +1632,35 @@ test("a new period queues even its empty weeks and a moved session invalidates b
       scheduledEnd: first + weekMs + 3600_000,
     }),
   );
-  const queue = await f.t.run(({ db }) => db.query("courseSessionWeekPending").collect());
-  expect(queue.filter((row) => row.academicPeriodId === academicPeriodId).map((row) => row.weekStart))
-    .toEqual(["2027-05-31", "2027-06-07"]);
-  expect(queue.filter((row) => row.academicPeriodId === f.academicPeriodId).map((row) => row.weekStart))
-    .toEqual([weekStart, nextWeek.weekStart]);
+  const queue = await f.t.run(({ db }) =>
+    db.query("courseSessionWeekPending").collect(),
+  );
+  expect(
+    queue
+      .filter((row) => row.academicPeriodId === academicPeriodId)
+      .map((row) => row.weekStart),
+  ).toEqual(["2027-05-31", "2027-06-07"]);
+  expect(
+    queue
+      .filter((row) => row.academicPeriodId === f.academicPeriodId)
+      .map((row) => row.weekStart),
+  ).toEqual([weekStart, nextWeek.weekStart]);
   await f.t.mutation(refreshPending, {});
   await f.t.mutation(refreshPending, {});
   const { weeks } = await f.as("admin").query(read, f.args);
-  expect(weeks.slice(0, 2).map((week) => week.counts?.scheduled)).toEqual([0, 1]);
+  expect(weeks.slice(0, 2).map((week) => week.counts?.scheduled)).toEqual([
+    0, 1,
+  ]);
 });
 
 test("editing a period only invalidates weeks whose date coverage changes", async () => {
   const f = await fixture();
   const school = f.as("admin");
-  const dates = { name: "Earlier period", startDate: "2026-07-06", endDate: "2026-07-26" };
+  const dates = {
+    name: "Earlier period",
+    startDate: "2026-07-06",
+    endDate: "2026-07-26",
+  };
   const id = await school.mutation(api.academicSettings.createPeriod, {
     schoolId: f.schoolId,
     ...dates,
@@ -1480,8 +1671,12 @@ test("editing a period only invalidates weeks whose date coverage changes", asyn
     id,
     startDate: "2026-07-08",
   });
-  const pending = await f.t.run(({ db }) => db.query("courseSessionWeekPending").collect());
-  expect(pending).toMatchObject([{ academicPeriodId: id, weekStart: "2026-07-06" }]);
+  const pending = await f.t.run(({ db }) =>
+    db.query("courseSessionWeekPending").collect(),
+  );
+  expect(pending).toMatchObject([
+    { academicPeriodId: id, weekStart: "2026-07-06" },
+  ]);
 });
 
 test("a refresh exceeding its byte budget rolls back counts and the refresh date", async () => {
@@ -1492,7 +1687,9 @@ test("a refresh exceeding its byte budget rolls back counts and the refresh date
   const before = await summary();
   vi.setSystemTime(new Date("2026-11-13T09:00:00Z"));
   await f.t.run((ctx) =>
-    weekTriggers.wrapDB(ctx).db.patch("classSchedule", original, { status: "cancelled" }),
+    weekTriggers
+      .wrapDB(ctx)
+      .db.patch("classSchedule", original, { status: "cancelled" }),
   );
   const heavy: Id<"classSchedule">[] = [];
   for (let i = 0; i < 12; i++) {

@@ -30,6 +30,7 @@ import {
   refreshAbekaSchedule,
   selectAbekaPeriod,
   abekaPeriod,
+  sameAbekaSyncDay,
 } from "./model/abekaScheduling";
 import { defaultAbekaSchedule } from "../lib/abeka/schedule";
 import { ABEKA_MANUAL_SYNC_INTERVAL_MS } from "../lib/abeka/request-policy";
@@ -55,6 +56,7 @@ export const getWeeklyActivity = query({
     v.object({
       snapshot: v.union(v.null(), abekaWeeklyActivitySnapshot),
       lastSyncedAt: v.union(v.null(), v.number()),
+      nextSyncAt: v.union(v.null(), v.number()),
     }),
   ),
   handler: async (ctx, { schoolId }) => {
@@ -65,6 +67,9 @@ export const getWeeklyActivity = query({
     return {
       snapshot: snapshot && "throughDate" in snapshot ? snapshot : null,
       lastSyncedAt: connection.lastSyncedAt ?? null,
+      nextSyncAt: connection.scheduledSyncId
+        ? (connection.nextSyncAt ?? null)
+        : null,
     };
   },
 });
@@ -111,8 +116,15 @@ export async function startAbekaSync(
     fullUpdate && connection.pendingUpdateId
       ? await ctx.db.get(connection.pendingUpdateId)
       : null;
+  const now = Date.now();
+  const timeZone = pending
+    ? (await ctx.db.get(connection.schoolId))?.timeZone
+    : undefined;
+  // Yesterday's checkpoint cannot stand in for today's institution-wide update.
   const resume =
-    pending?.connectionId === connection._id && pending.status !== "completed"
+    pending?.connectionId === connection._id &&
+    pending.status !== "completed" &&
+    sameAbekaSyncDay(pending.startedAt, now, timeZone)
       ? pending
       : null;
   if (fullUpdate) await setAbekaNextSync(ctx, connection._id);
@@ -120,7 +132,7 @@ export async function startAbekaSync(
     connectionId: connection._id,
     revision: connection.revision,
     status: "running",
-    startedAt: Date.now(),
+    startedAt: now,
     studentsSynced: resume?.studentsSynced ?? 0,
     ...options,
     ...(fullUpdate
@@ -132,9 +144,9 @@ export async function startAbekaSync(
     latestRunId: runId,
     ...(fullUpdate ? { pendingUpdateId: resume?._id ?? runId } : {}),
     ...(options.catalog
-      ? { catalogAttemptAt: Date.now(), catalogError: undefined }
+      ? { catalogAttemptAt: now, catalogError: undefined }
       : {
-          ...(fullUpdate && !resume ? { lastAttemptAt: Date.now() } : {}),
+          ...(fullUpdate && !resume ? { lastAttemptAt: now } : {}),
           errorCode: undefined,
         }),
   });

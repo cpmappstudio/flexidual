@@ -24,8 +24,10 @@ import {
   refreshAbekaSchedule,
   abekaScheduleAllowsNow,
   selectAbekaPeriod,
+  sameAbekaSyncDay,
+  abekaPeriod,
 } from "./model/abekaScheduling";
-import { defaultAbekaSchedule } from "../lib/abeka/schedule";
+import { defaultAbekaSchedule, nextAbekaSync } from "../lib/abeka/schedule";
 import { startAbekaSync, abekaConnectLimiter } from "./abeka";
 import { RateLimiter } from "@convex-dev/rate-limiter";
 import { ABEKA_REQUEST_INTERVAL_MS } from "../lib/abeka/request-policy";
@@ -802,6 +804,27 @@ export const onComplete = internalMutation({
               ? await ctx.db.get(state.run.updateId)
               : state.run;
           const activity = root?.weeklyActivity;
+          // A pre-upgrade workflow may already be resuming a previous day's cycle.
+          const staleRecovery =
+            root &&
+            root._id !== state.run._id &&
+            !sameAbekaSyncDay(root.startedAt, now, state.school.timeZone);
+          const schedule = state.connection.syncSchedule;
+          const timeZone = state.school.timeZone;
+          // Collapse missed slots into one pass; midnight alone is not a trigger.
+          const nextScheduledSync =
+            root &&
+            schedule &&
+            timeZone &&
+            isValidTimeZone(timeZone) &&
+            (await abekaScheduleAllowsNow(ctx, state.connection, now))
+              ? nextAbekaSync(
+                  schedule,
+                  timeZone,
+                  root.startedAt,
+                  await abekaPeriod(ctx, state.connection),
+                )
+              : undefined;
           const weeklyActivity =
             activity &&
             root &&
@@ -812,7 +835,12 @@ export const onComplete = internalMutation({
               : undefined;
           await ctx.db.patch(state.connection._id, {
             status: "connected",
-            ...(state.run.studentId ? {} : { lastSyncedAt: now }),
+            ...(state.run.studentId
+              ? {}
+              : {
+                  lastSyncedAt: now,
+                  lastSyncStartedAt: root?.startedAt,
+                }),
             ...(weeklyActivity ? { weeklyActivity } : {}),
             ...(state.run.updateId ? { pendingUpdateId: undefined } : {}),
             // Roster-only initialization must not delay the first linked download.
@@ -820,12 +848,6 @@ export const onComplete = internalMutation({
               ? { lastAttemptAt: undefined }
               : {}),
           });
-          if (root && root._id !== state.run._id)
-            await ctx.db.patch(root._id, {
-              status: "completed",
-              finishedAt: Date.now(),
-              errorCode: undefined,
-            });
           await refreshAbekaSchedule(
             ctx,
             state.connection._id,
@@ -835,6 +857,14 @@ export const onComplete = internalMutation({
             !!state.run.studentId,
           );
           if (
+            staleRecovery ||
+            (nextScheduledSync !== undefined && nextScheduledSync <= now)
+          ) {
+            await startAbekaSync(
+              ctx,
+              (await ctx.db.get(state.connection._id))!,
+            );
+          } else if (
             state.run.initializeCatalog &&
             state.connection.catalogSyncedAt === undefined
           ) {

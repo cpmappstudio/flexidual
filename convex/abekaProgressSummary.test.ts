@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
 import type { WorkflowId } from "@convex-dev/workflow";
+import workflow from "@convex-dev/workflow/test";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { modules } from "./test.setup";
@@ -9,6 +10,7 @@ import {
   getAbekaStudentCourseReports,
 } from "./model/abekaStudentProgress";
 import { saveAbekaProgressSummary } from "./model/abekaProgressSummary";
+import { setAbekaNextSync } from "./model/abekaScheduling";
 
 afterEach(() => vi.useRealTimers());
 
@@ -363,9 +365,18 @@ test("weekly activity reuses completion writes and exposes only the successful i
   const asAdmin = f.t.withIdentity({ subject: "admin" });
   const query = api.abeka.getWeeklyActivity;
   const args = { schoolId: f.schoolId };
+  const nextSyncAt = now + 86400_000;
+  await f.t.run((ctx) => ctx.db.patch(f.connectionId, { nextSyncAt }));
   expect(await asAdmin.query(query, args)).toEqual({
     snapshot: null,
     lastSyncedAt: null,
+    nextSyncAt: null,
+  });
+  await f.t.run((ctx) => setAbekaNextSync(ctx, f.connectionId, nextSyncAt));
+  expect(await asAdmin.query(query, args)).toEqual({
+    snapshot: null,
+    lastSyncedAt: null,
+    nextSyncAt,
   });
   await expect(
     f.t.withIdentity({ subject: "student" }).query(query, args),
@@ -384,6 +395,7 @@ test("weekly activity reuses completion writes and exposes only the successful i
   expect(await asAdmin.query(query, args)).toEqual({
     snapshot: null,
     lastSyncedAt: null,
+    nextSyncAt,
   });
   await f.t.mutation(internal.abekaSync.onComplete, {
     workflowId: "test-workflow" as WorkflowId,
@@ -396,6 +408,7 @@ test("weekly activity reuses completion writes and exposes only the successful i
   }));
   expect(snapshot).toEqual({
     lastSyncedAt: now,
+    nextSyncAt: now + 7 * 86400_000,
     snapshot: {
       viewers: 1,
       students: 1,
@@ -466,6 +479,7 @@ test("a resumed update deduplicates retries and retains the last snapshot if it 
   vi.useFakeTimers();
   vi.setSystemTime(Date.parse("2026-11-13T05:59:00Z"));
   const f = await setup();
+  workflow.register(f.t);
   const timeZone = "America/Tegucigalpa";
   const previousSnapshot = {
     timeZone,
@@ -525,6 +539,17 @@ test("a resumed update deduplicates retries and retains the last snapshot if it 
   expect(
     (await f.t.run((ctx) => ctx.db.get(f.connectionId)))?.weeklyActivity,
   ).toEqual(previousSnapshot);
+  const connection = (await f.t.run((ctx) => ctx.db.get(f.connectionId)))!;
+  expect(connection.lastSyncStartedAt).toBe(Date.parse("2026-11-13T05:59:00Z"));
+  expect(connection.latestRunId).not.toBe(resumed);
+  expect(
+    await f.t.run((ctx) => ctx.db.get(connection.latestRunId!)),
+  ).toMatchObject({
+    status: "running",
+    studentsSynced: 0,
+    startedAt: Date.now(),
+  });
+  expect((await f.t.run((ctx) => ctx.db.get(f.runId)))?.status).toBe("failed");
 });
 
 test("completion cleanup removes obsolete summaries with their reports, retaining current summary and legacy fallback", async () => {

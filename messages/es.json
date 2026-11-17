@@ -625,7 +625,9 @@
       "description": "Importa el progreso de videos de Abeka con un horario o bajo demanda. No modifica Abeka ni las matrículas de Flexidual.",
       "confirmSchool": "Comprueba que esta es la cuenta Abeka de tu institución antes de importar sus estudiantes.",
       "confirm": "Confirmar institución",
-      "lastSync": "Última sincronización completa",
+      "lastSync": "Último ciclo completado",
+      "syncWindow": "Intervalo de recopilación de datos",
+      "syncWindowRange": "{from} – {to} · {timeZone}",
       "nextSync": "Próxima sincronización",
       "schedule": {
         "manual": "Manual",
@@ -650,7 +652,7 @@
       "syncNow": "Sincronizar ahora",
       "updateData": "Actualizar datos",
       "pendingSync": "Asociación guardada. Usa Actualizar datos para descargar el progreso pendiente o espera la sincronización programada.",
-      "resumeSync": "Actualización incompleta. Usa Actualizar datos para descargar solo los estudiantes pendientes. Una vez terminada, la próxima actualización volverá a actualizar a todos.",
+      "resumeSync": "Actualización incompleta. Usa Actualizar datos para continuar. Si el ciclo es de hoy, se retoman los estudiantes pendientes; si es de un día anterior, se inicia una actualización completa para todos.",
       "disconnect": "Desconectar",
       "disconnectExplanation": "Se eliminarán las credenciales y la sesión guardadas y se cancelará la sincronización automática. Los reportes ya importados y las vinculaciones se conservarán.",
       "sessionExplanation": "Conexión mediante una sesión autorizada de Abeka. No es una integración oficial ni un inicio de sesión automático. Si la sesión caduca tendrás que renovarla.",
@@ -957,9 +959,10 @@
       "title": "Actividad en Abeka · últimos 7 días",
       "scope": "Toda la institución",
       "viewers": "{viewers, number} de {students, number} estudiantes sincronizados vieron al menos una lección",
-      "pending": "Todavía no hay un resumen de actividad completo.",
+      "pending": "El resumen se genera cuando una sincronización de toda la institución obtiene datos de actividad completos.",
       "summarySync": "Resumen de la sincronización del {date}",
-      "lastSync": "Última sincronización completa: {date}"
+      "lastSync": "Último ciclo completado: {date}",
+      "nextSync": "Próxima sincronización programada: {date}"
     },
     "attendance": {
       "title": "Asistencia confirmada por semana",

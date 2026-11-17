@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
 import workflow from "@convex-dev/workflow/test";
+import type { WorkflowId } from "@convex-dev/workflow";
 import rateLimiter from "@convex-dev/rate-limiter/test";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
@@ -17,6 +18,7 @@ import {
   setAbekaNextSync,
   refreshAbekaSchedule,
   selectAbekaPeriod,
+  sameAbekaSyncDay,
 } from "./model/abekaScheduling";
 import type { AbekaSchedule } from "../lib/abeka/schedule";
 import { startAbekaSync } from "./abeka";
@@ -619,6 +621,7 @@ async function resumableSetup() {
   vi.useFakeTimers();
   const fixture = await renewalSetup();
   const secondUser = await fixture.t.run(async (ctx) => {
+    await ctx.db.patch(fixture.schoolId, { timeZone: "America/Tegucigalpa" });
     await ctx.db.patch(fixture.runId, { status: "completed" });
     await ctx.db.patch(fixture.connectionId, {
       syncSchedule: { ...dailySchedule, mode: "manual" },
@@ -658,6 +661,37 @@ async function twoStudentResponse(url: string) {
   return url.includes("loginId=43")
     ? new Response((await response.text()).replace('value="42"', 'value="43"'))
     : response;
+}
+
+async function interruptedUpdate(first = "2026-11-14T02:00Z") {
+  const fixture = await resumableSetup();
+  vi.setSystemTime(Date.parse(first));
+  await fixture.t.run((ctx) =>
+    ctx.db.patch(fixture.connectionId, {
+      lastSyncedAt: Date.now() - 86_400_000,
+    }),
+  );
+  const provider = { available: false };
+  const request = vi.fn(async (url: string) =>
+    !provider.available && url.includes("loginId=43")
+      ? new Response("Unavailable", { status: 503 })
+      : twoStudentResponse(url),
+  );
+  vi.stubGlobal("fetch", request);
+  await fixture.adminClient.mutation(api.abeka.syncNow, {
+    schoolId: fixture.schoolId,
+  });
+  await finishCurrentSync(fixture.t);
+  const failed = await fixture.adminClient.query(api.abeka.status, {
+    schoolId: fixture.schoolId,
+  });
+  expect(failed.run).toMatchObject({
+    status: "failed",
+    studentsSynced: 1,
+    errorCode: "PROVIDER_UNAVAILABLE",
+  });
+  request.mockClear();
+  return { ...fixture, failed, request, provider };
 }
 
 test("interrupted updates resume only unfinished students, preserve old snapshots, and the next update refreshes everybody", async () => {
@@ -780,6 +814,14 @@ test("interrupted updates resume only unfinished students, preserve old snapshot
   );
   const resumed = await adminClient.query(api.abeka.status, { schoolId });
   expect(resumed.run).toMatchObject({ status: "completed", studentsSynced: 2 });
+  expect(await t.run((ctx) => ctx.db.get(interrupted.run!._id))).toMatchObject({
+    status: interrupted.run!.status,
+    errorCode: interrupted.run!.errorCode,
+    finishedAt: interrupted.run!.finishedAt,
+  });
+  expect(resumed.connection?.lastSyncStartedAt).toBe(
+    interrupted.run?.startedAt,
+  );
   expect(resumed.hasPendingUpdate).toBe(false);
   expect(
     (await t.run((ctx) => ctx.db.get(connectionId)))?.pendingUpdateId,
@@ -793,6 +835,417 @@ test("interrupted updates resume only unfinished students, preserve old snapshot
   const fresh = await adminClient.query(api.abeka.status, { schoolId });
   expect(fresh.run?.updateId).not.toBe(resumed.run?.updateId);
   expect(fresh.run?.studentsSynced).toBe(2);
+});
+
+test.each([
+  {
+    name: "Friday to Monday, manual",
+    first: "2026-11-14T02:00Z",
+    retry: "2026-11-17T02:00Z",
+    resume: false,
+    scheduled: false,
+    timeZone: "America/Tegucigalpa",
+  },
+  {
+    name: "Friday to Monday, scheduled",
+    first: "2026-11-14T02:00Z",
+    retry: "2026-11-17T02:00Z",
+    resume: false,
+    scheduled: true,
+    timeZone: "America/Tegucigalpa",
+  },
+  {
+    name: "UTC midnight, same Honduras day",
+    first: "2026-11-13T23:58Z",
+    retry: "2026-11-14T00:02Z",
+    resume: true,
+    scheduled: false,
+    timeZone: "America/Tegucigalpa",
+  },
+  {
+    name: "Honduras midnight, same UTC day",
+    first: "2026-11-14T05:58Z",
+    retry: "2026-11-14T06:02Z",
+    resume: false,
+    scheduled: false,
+    timeZone: "America/Tegucigalpa",
+  },
+  {
+    name: "unknown institution timezone",
+    first: "2026-11-14T02:00Z",
+    retry: "2026-11-17T02:00Z",
+    resume: false,
+    scheduled: false,
+    timeZone: undefined,
+  },
+])(
+  "update checkpoints respect the institution day: $name",
+  async ({ first, retry, resume, scheduled, timeZone }) => {
+    const {
+      t,
+      adminClient,
+      schoolId,
+      connectionId,
+      studentId,
+      secondId,
+      failed,
+      request,
+      provider,
+    } = await interruptedUpdate(first);
+    const reports = await adminClient.query(api.abeka.progress, { studentId });
+    const original = failed.run!;
+    provider.available = true;
+    vi.setSystemTime(Date.parse(retry));
+    await t.run((ctx) => ctx.db.patch(schoolId, { timeZone }));
+    if (scheduled) {
+      await adminClient.mutation(api.abeka.updateSchedule, {
+        schoolId,
+        schedule: { ...dailySchedule, time: "20:00", stopAtPeriodEnd: false },
+      });
+      await t.run((ctx) => setAbekaNextSync(ctx, connectionId, Date.now()));
+      const connection = (await t.run((ctx) => ctx.db.get(connectionId)))!;
+      await t.mutation(internal.abekaSync.runScheduled, {
+        connectionId,
+        generation: connection.syncScheduleGeneration!,
+      });
+    } else {
+      await adminClient.mutation(api.abeka.syncNow, { schoolId });
+    }
+    const started = await adminClient.query(api.abeka.status, { schoolId });
+    expect(started.run?.updateId === original.updateId).toBe(resume);
+    expect(started.run?.studentsSynced).toBe(resume ? 1 : 0);
+    // Starting a new day must not erase yesterday's visible report or claim success.
+    expect(await adminClient.query(api.abeka.progress, { studentId })).toEqual(
+      reports,
+    );
+    expect(started.connection?.lastSyncedAt).toBe(
+      failed.connection?.lastSyncedAt,
+    );
+    await finishCurrentSync(t);
+    expect(request).toHaveBeenCalledTimes(resume ? 3 : 5);
+    const completed = await adminClient.query(api.abeka.status, { schoolId });
+    expect(completed.run).toMatchObject({
+      status: "completed",
+      studentsSynced: 2,
+    });
+    expect(completed.hasPendingUpdate).toBe(false);
+    expect(completed.connection?.lastSyncStartedAt).toBe(
+      resume ? original.startedAt : started.run?.startedAt,
+    );
+    expect(completed.connection?.lastSyncedAt).toBe(completed.run?.finishedAt);
+    for (const id of [studentId, secondId]) {
+      const report = (
+        await adminClient.query(api.abeka.progress, { studentId: id })
+      )[0];
+      expect(report.runId).toBe(
+        resume && id === studentId ? original._id : completed.run?._id,
+      );
+    }
+    expect(await t.run((ctx) => ctx.db.get(original._id))).toMatchObject({
+      status: original.status,
+      errorCode: original.errorCode,
+      finishedAt: original.finishedAt,
+    });
+  },
+);
+
+test("an invalid timezone cannot reuse a dated checkpoint", () => {
+  expect(sameAbekaSyncDay(1, 1, "Invalid/Zone")).toBe(false);
+});
+
+test("a failed new-day update keeps its own checkpoint and does not advance the completed-cycle date", async () => {
+  const { t, adminClient, schoolId, failed, request } =
+    await interruptedUpdate();
+  vi.setSystemTime(Date.parse("2026-11-17T02:00Z"));
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
+  const started = await adminClient.query(api.abeka.status, { schoolId });
+  expect(started.run?.updateId).not.toBe(failed.run?.updateId);
+  await finishCurrentSync(t);
+  const stopped = await adminClient.query(api.abeka.status, { schoolId });
+  expect(stopped.run).toMatchObject({ status: "failed", studentsSynced: 0 });
+  expect(stopped.connection?.pendingUpdateId).toBe(started.run?._id);
+  expect(stopped.connection?.lastSyncedAt).toBe(
+    failed.connection?.lastSyncedAt,
+  );
+  expect(stopped.connection?.lastSyncStartedAt).toBe(
+    failed.connection?.lastSyncStartedAt,
+  );
+  expect(request.mock.calls.some(([url]) => url.includes("loginId=43"))).toBe(
+    true,
+  );
+  expect(await t.run((ctx) => ctx.db.get(failed.run!._id))).toEqual(failed.run);
+});
+
+test.each(["2026-11-17T02:00Z", "2026-11-14T02:30Z"])(
+  "a legacy recovery started at %s refreshes the completion day once and fences duplicate callbacks",
+  async (startedAt) => {
+    const {
+      t,
+      adminClient,
+      schoolId,
+      connectionId,
+      studentId,
+      failed,
+      provider,
+      request,
+    } = await interruptedUpdate();
+    provider.available = true;
+    vi.setSystemTime(Date.parse(startedAt));
+    await adminClient.mutation(api.abeka.syncNow, { schoolId });
+    const started = await adminClient.query(api.abeka.status, { schoolId });
+    const legacy = started.run!;
+    // Emulate the old deployment's pending cycle without changing its workflow journal.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(legacy._id, {
+        updateId: failed.run!._id,
+        studentsSynced: 1,
+      });
+      await ctx.db.patch(connectionId, { pendingUpdateId: failed.run!._id });
+    });
+    vi.setSystemTime(Date.parse("2026-11-17T02:00Z"));
+    await finishCurrentSync(t);
+    const completed = await adminClient.query(api.abeka.status, { schoolId });
+    expect(request).toHaveBeenCalledTimes(8); // Finish the old student, then one full current-day pass.
+    expect(completed.run?._id).not.toBe(legacy._id);
+    expect(completed.run?.updateId).toBe(completed.run?._id);
+    expect(completed.run?.status).toBe("completed");
+    expect(completed.connection?.lastSyncStartedAt).toBe(
+      completed.run?.startedAt,
+    );
+    expect(
+      (await adminClient.query(api.abeka.progress, { studentId }))[0].runId,
+    ).toBe(completed.run?._id);
+    expect(await t.run((ctx) => ctx.db.get(failed.run!._id))).toMatchObject({
+      status: failed.run!.status,
+      errorCode: failed.run!.errorCode,
+      finishedAt: failed.run!.finishedAt,
+    });
+    const before = await t.run((ctx) =>
+      ctx.db
+        .query("abekaSyncRuns")
+        .withIndex("by_connection", (q) => q.eq("connectionId", connectionId))
+        .take(10),
+    );
+    for (let i = 0; i < 2; i++) {
+      await t.mutation(internal.abekaSync.onComplete, {
+        workflowId: legacy.workflowId as WorkflowId,
+        result: { kind: "success", returnValue: null },
+        context: { runId: legacy._id },
+      });
+    }
+    await finishCurrentSync(t);
+    expect(
+      await t.run((ctx) =>
+        ctx.db
+          .query("abekaSyncRuns")
+          .withIndex("by_connection", (q) => q.eq("connectionId", connectionId))
+          .take(10),
+      ),
+    ).toEqual(before);
+    expect(
+      (await adminClient.query(api.abeka.status, { schoolId })).connection,
+    ).toEqual(completed.connection);
+  },
+);
+
+test.each([
+  {
+    name: "original Friday run finishes after Monday's slot",
+    finished: "2026-11-17T02:02Z",
+    catchUp: true,
+  },
+  {
+    name: "completion exactly at the next slot",
+    finished: "2026-11-17T02:00Z",
+    catchUp: true,
+  },
+  {
+    name: "multiple missed slots collapse into one pass",
+    finished: "2026-11-19T02:02Z",
+    catchUp: true,
+  },
+  {
+    name: "the new pass crosses midnight without starting a third pass",
+    finished: "2026-11-17T05:59Z",
+    crossMidnight: true,
+    catchUp: true,
+  },
+  {
+    name: "same civil day but a scheduled slot elapsed",
+    first: "2026-11-17T01:00Z",
+    finished: "2026-11-17T03:00Z",
+    catchUp: true,
+  },
+  {
+    name: "local midnight is not a missed slot",
+    finished: "2026-11-14T06:02Z",
+    catchUp: false,
+  },
+  {
+    name: "Monday's slot is still in the future",
+    finished: "2026-11-17T01:00Z",
+    catchUp: false,
+  },
+  {
+    name: "weekly slot is still in the future",
+    finished: "2026-11-17T02:02Z",
+    mode: "weekly" as const,
+    catchUp: false,
+  },
+  {
+    name: "manual mode does not create a scheduled catch-up",
+    finished: "2026-11-17T02:02Z",
+    mode: "manual" as const,
+    catchUp: false,
+  },
+  {
+    name: "expired academic period does not restart",
+    first: "2026-11-13T02:00Z",
+    finished: "2026-11-17T02:02Z",
+    endedPeriod: true,
+    catchUp: false,
+  },
+])(
+  "original sync catches up only elapsed scheduled slots: $name",
+  async ({
+    first = "2026-11-14T02:00Z",
+    finished,
+    mode = "weekdays" as const,
+    endedPeriod = false,
+    crossMidnight = false,
+    catchUp,
+  }) => {
+    const { t, adminClient, schoolId, connectionId, studentId } =
+      await resumableSetup();
+    vi.setSystemTime(Date.parse(first));
+    if (endedPeriod) {
+      await adminClient.mutation(api.academicSettings.createPeriod, {
+        schoolId,
+        name: "Ending period",
+        startDate: "2026-11-01",
+        endDate: "2026-11-13",
+      });
+    }
+    await adminClient.mutation(api.abeka.updateSchedule, {
+      schoolId,
+      schedule: {
+        ...dailySchedule,
+        mode,
+        time: "20:00",
+        weekday: 5,
+        stopAtPeriodEnd: endedPeriod,
+      },
+    });
+    const request = vi.fn(twoStudentResponse);
+    if (crossMidnight)
+      request.mockImplementation(async (url) => {
+        if (request.mock.calls.length === 6)
+          vi.setSystemTime(Date.parse(finished) + 120_000);
+        return twoStudentResponse(url);
+      });
+    vi.stubGlobal("fetch", request);
+    await adminClient.mutation(api.abeka.syncNow, { schoolId });
+    const original = (await adminClient.query(api.abeka.status, { schoolId }))
+      .run!;
+    expect(original.updateId).toBe(original._id);
+    vi.setSystemTime(Date.parse(finished));
+    // Another request must not run concurrently with the delayed original.
+    await adminClient.mutation(api.abeka.syncNow, { schoolId });
+    expect(
+      (await adminClient.query(api.abeka.status, { schoolId })).run?._id,
+    ).toBe(original._id);
+    await finishCurrentSync(t);
+    const completed = await adminClient.query(api.abeka.status, { schoolId });
+    expect(completed.run?.status).toBe("completed");
+    expect(completed.run?._id !== original._id).toBe(catchUp);
+    expect(request).toHaveBeenCalledTimes(catchUp ? 10 : 5);
+    const runs = () =>
+      t.run((ctx) =>
+        ctx.db
+          .query("abekaSyncRuns")
+          .withIndex("by_connection", (q) => q.eq("connectionId", connectionId))
+          .take(10),
+      );
+    const before = await runs();
+    expect(before).toHaveLength(catchUp ? 3 : 2); // Historical fixture, original, at most one new pass.
+    expect(completed.connection?.lastSyncStartedAt).toBe(
+      completed.run?.startedAt,
+    );
+    expect(
+      (await adminClient.query(api.abeka.progress, { studentId }))[0].runId,
+    ).toBe(completed.run?._id);
+    for (let i = 0; i < 2; i++) {
+      await t.mutation(internal.abekaSync.onComplete, {
+        workflowId: original.workflowId as WorkflowId,
+        result: { kind: "success", returnValue: null },
+        context: { runId: original._id },
+      });
+    }
+    await finishCurrentSync(t);
+    expect(await runs()).toEqual(before);
+    expect(request).toHaveBeenCalledTimes(catchUp ? 10 : 5);
+    expect(
+      (await adminClient.query(api.abeka.status, { schoolId })).connection,
+    ).toEqual(completed.connection);
+    expect(completed.connection?.nextSyncAt).toEqual(
+      mode === "manual" || endedPeriod ? undefined : expect.any(Number),
+    );
+    if (completed.connection?.nextSyncAt !== undefined)
+      expect(completed.connection.nextSyncAt).toBeGreaterThan(Date.now());
+  },
+);
+
+test("a failed scheduled catch-up preserves the original completion and its own error without looping", async () => {
+  const { t, adminClient, schoolId, connectionId } = await resumableSetup();
+  vi.setSystemTime(Date.parse("2026-11-14T02:00Z"));
+  await adminClient.mutation(api.abeka.updateSchedule, {
+    schoolId,
+    schedule: { ...dailySchedule, time: "20:00", stopAtPeriodEnd: false },
+  });
+  const request = vi.fn(async (url: string) =>
+    request.mock.calls.length > 5
+      ? new Response("Unavailable", { status: 503 })
+      : twoStudentResponse(url),
+  );
+  vi.stubGlobal("fetch", request);
+  await adminClient.mutation(api.abeka.syncNow, { schoolId });
+  const original = (await adminClient.query(api.abeka.status, { schoolId }))
+    .run!;
+  vi.setSystemTime(Date.parse("2026-11-17T02:02Z"));
+  await finishCurrentSync(t);
+  const failed = await adminClient.query(api.abeka.status, { schoolId });
+  expect(failed.run?._id).not.toBe(original._id);
+  expect(failed.run).toMatchObject({
+    status: "failed",
+    errorCode: "PROVIDER_UNAVAILABLE",
+  });
+  expect(failed.connection?.pendingUpdateId).toBe(failed.run?._id);
+  expect(failed.connection?.errorCode).toBe("PROVIDER_UNAVAILABLE");
+  expect(failed.connection?.lastSyncStartedAt).toBe(original.startedAt);
+  const completedOriginal = await t.run((ctx) => ctx.db.get(original._id));
+  expect(completedOriginal?.status).toBe("completed");
+  expect(failed.connection?.lastSyncedAt).toBe(completedOriginal?.finishedAt);
+  await t.mutation(internal.abekaSync.onComplete, {
+    workflowId: original.workflowId as WorkflowId,
+    result: { kind: "success", returnValue: null },
+    context: { runId: original._id },
+  });
+  await finishCurrentSync(t);
+  expect(request).toHaveBeenCalledTimes(6);
+  expect(await adminClient.query(api.abeka.status, { schoolId })).toEqual(
+    failed,
+  );
+  expect(await t.run((ctx) => ctx.db.get(original._id))).toEqual(
+    completedOriginal,
+  );
+  expect(
+    await t.run((ctx) =>
+      ctx.db
+        .query("abekaSyncRuns")
+        .withIndex("by_connection", (q) => q.eq("connectionId", connectionId))
+        .take(10),
+    ),
+  ).toHaveLength(3);
 });
 
 test("pending associations run before old reports, with stable pagination and no second-pass duplicate", async () => {

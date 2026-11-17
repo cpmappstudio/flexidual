@@ -209,6 +209,17 @@ function AbekaWeeklyMetric({
               })}
             </p>
           )}
+          {!current && activity.nextSyncAt != null && (
+            <p className="text-xs text-muted-foreground">
+              {t("nextSync", {
+                date: format.dateTime(activity.nextSyncAt, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                  timeZone,
+                }),
+              })}
+            </p>
+          )}
         </div>
       </div>
     </MetricCard>

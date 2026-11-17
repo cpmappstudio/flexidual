@@ -1,8 +1,24 @@
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { dateInTimeZone, toCivilDate } from "../../lib/time-zone";
+import {
+  dateInTimeZone,
+  isValidTimeZone,
+  toCivilDate,
+} from "../../lib/time-zone";
 import { nextAbekaSync } from "../../lib/abeka/schedule";
+
+export function sameAbekaSyncDay(
+  startedAt: number,
+  now: number,
+  timeZone?: string,
+) {
+  return (
+    !!timeZone &&
+    isValidTimeZone(timeZone) &&
+    dateInTimeZone(startedAt, timeZone) === dateInTimeZone(now, timeZone)
+  );
+}
 
 export async function selectAbekaPeriod(
   ctx: QueryCtx,

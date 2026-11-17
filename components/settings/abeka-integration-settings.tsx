@@ -129,9 +129,14 @@ function AbekaIntegration({
     (student) => student.available && student.linkedName && student.syncPending,
   );
   const hasPendingSync = hasPendingStudents || state.hasPendingUpdate;
+  const timeZone = state.scheduleTimeZone ?? "UTC";
   const date = (value?: number) =>
     value
-      ? format.dateTime(value, { dateStyle: "medium", timeStyle: "short" })
+      ? format.dateTime(value, {
+          dateStyle: "medium",
+          timeStyle: "short",
+          timeZone,
+        })
       : t("never");
   async function perform(
     name: NonNullable<typeof pendingAction>,
@@ -221,7 +226,10 @@ function AbekaIntegration({
               <dl className="grid gap-1">
                 <div className="flex flex-wrap gap-x-2">
                   <dt>{t("lastSync")}:</dt>
-                  <dd>{date(connection.lastSyncedAt)}</dd>
+                  <dd>
+                    {date(connection.lastSyncedAt)}
+                    {connection.lastSyncedAt !== undefined && ` · ${timeZone}`}
+                  </dd>
                 </div>
                 <AbekaSyncSchedule
                   schoolId={schoolId}
@@ -232,6 +240,19 @@ function AbekaIntegration({
                   nextSyncAt={connection.nextSyncAt}
                   disabled={busy || running}
                 />
+                {connection.lastSyncStartedAt !== undefined &&
+                  connection.lastSyncedAt !== undefined && (
+                    <div className="flex flex-wrap gap-x-2">
+                      <dt>{t("syncWindow")}:</dt>
+                      <dd>
+                        {t("syncWindowRange", {
+                          from: date(connection.lastSyncStartedAt),
+                          to: date(connection.lastSyncedAt),
+                          timeZone,
+                        })}
+                      </dd>
+                    </div>
+                  )}
               </dl>
             )}
             <details>

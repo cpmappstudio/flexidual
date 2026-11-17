@@ -1,4 +1,8 @@
-import { mergedStream, stream } from "convex-helpers/server/stream";
+import {
+  mergedStream,
+  stream,
+  type QueryStream,
+} from "convex-helpers/server/stream";
 import { ConvexError, type Infer, v } from "convex/values";
 import { internalQuery, query, type QueryCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
@@ -48,6 +52,7 @@ import {
 export const DASHBOARD_READ_BUDGET = 250 * 1024;
 export const DASHBOARD_REFRESH_READ_BUDGET = 4 * 1024 * 1024;
 const MAX_TIMETABLE_SLOTS = 500;
+const REVIEW_PAGE_SIZE = 20;
 const countsValidator = v.object(courseSessionWeekCounts);
 const scopeArgs = {
   academicPeriodId: v.id("academicPeriods"),
@@ -203,7 +208,9 @@ async function assertQuietWindow(
     !liveEvent &&
     (await ctx.db
       .query("liveRoomActivations")
-      .withIndex("by_status_and_next_cleanup_at", (q) => q.eq("status", "closing"))
+      .withIndex("by_status_and_next_cleanup_at", (q) =>
+        q.eq("status", "closing"),
+      )
       .first());
   // The lifecycle repair job may not have adopted an older end claim yet.
   const legacyEndClaim =
@@ -570,64 +577,93 @@ export const readReviewSessions = internalQuery({
     const now = Date.now();
     if (windowEnd > now) throw new ConvexError("DASHBOARD_WEEK_NOT_FINISHED");
     if (to <= from) return { timeZone, rows: [], nextCursor: null };
-    const courses = course
-      ? [{ classId: course._id, name: course.name }]
-      : await listScopedCourses(ctx, args, period.schoolId);
-    if (!courses.length) return { timeZone, rows: [], nextCursor: null };
-    const byId = new Map(courses.map(({ classId, name }) => [classId, name]));
     const table = stream(ctx.db, schema).query("classSchedule");
-    // Scope the streams before paging, including legacy sessions without schoolId.
-    const streams = courses.flatMap(({ classId }) =>
-      (["scheduled", "completed"] as const).flatMap((status) =>
-        ([undefined, "live"] as const).map((sessionType) =>
-          table
-            .withIndex(
-              "by_class_and_status_and_session_type_and_scheduled_start",
-              (q) =>
+    // Four ranges regardless of the number of courses, including legacy rows.
+    const streams = (["scheduled", "completed"] as const).flatMap<
+      QueryStream<Doc<"classSchedule">>
+    >((status) =>
+      course
+        ? ([undefined, "live"] as const).map((sessionType) =>
+            table
+              .withIndex(
+                "by_class_and_status_and_session_type_and_scheduled_start",
+                (q) =>
+                  q
+                    .eq("classId", course._id)
+                    .eq("status", status)
+                    .eq("sessionType", sessionType)
+                    .gte("scheduledStart", from)
+                    .lt("scheduledStart", to),
+              )
+              .order("desc"),
+          )
+        : [period.schoolId, undefined].map((schoolId) =>
+            table
+              .withIndex("by_school_and_status_and_scheduled_start", (q) =>
                 q
-                  .eq("classId", classId)
+                  .eq("schoolId", schoolId)
                   .eq("status", status)
-                  .eq("sessionType", sessionType)
                   .gte("scheduledStart", from)
                   .lt("scheduledStart", to),
-            )
-            .order("desc"),
-        ),
-      ),
+              )
+              .order("desc"),
+          ),
     );
+    const campusMatches = new Map<Id<"campuses">, boolean>();
+    const courseNames = new Map<Id<"classes">, string | null>();
+    if (course) courseNames.set(course._id, course.name);
     const remaining = (await ctx.meta.getTransactionMetrics()).bytesRead
       .remaining;
     const result = await mergedStream(streams, ["scheduledStart"])
-      .filterWith(
-        async (row) =>
-          byId.has(row.classId) &&
-          row.scheduledStart >= from &&
-          row.scheduledStart < to &&
-          isPastClassSession(row, now) &&
-          row.sessionClosureStatus !== "completed" &&
-          (row.status === "completed" || row.sessionStartedAt === undefined),
-      )
+      .map(async (row): Promise<Infer<typeof reviewRowValidator> | null> => {
+        if (
+          isExternalClassSession(row.sessionType) ||
+          !isPastClassSession(row, now) ||
+          row.sessionClosureStatus === "completed" ||
+          (row.status === "scheduled" && row.sessionStartedAt !== undefined)
+        )
+          return null;
+
+        let className = courseNames.get(row.classId);
+        if (className === undefined) {
+          // The denormalized schedule school is only a lookup hint.
+          const candidate = await ctx.db.get("classes", row.classId);
+          className =
+            candidate &&
+            (await matchesDashboardCourse(
+              ctx,
+              candidate,
+              args,
+              period.schoolId,
+              campusMatches,
+            ))
+              ? candidate.name
+              : null;
+          courseNames.set(row.classId, className);
+        }
+        if (className === null) return null;
+        return {
+          scheduleId: row._id,
+          className,
+          start: row.scheduledStart,
+          end: row.scheduledEnd,
+          roomName: row.roomName,
+          reason: row.status === "scheduled" ? "noStart" : "reportPending",
+        };
+      })
       .paginate({
         cursor: args.cursor,
-        numItems: 20,
-        maximumRowsRead: 256,
-        // Leave headroom for iterator lookahead; the transaction cap still applies.
-        maximumBytesRead: Math.max(1, Math.floor(remaining * 0.8)),
+        numItems: REVIEW_PAGE_SIZE,
+        // Filtered rows still require schedule/course reads, even on empty pages.
+        maximumRowsRead: REVIEW_PAGE_SIZE,
+        // Only schedule bytes count toward this soft limit. Reserve space for
+        // course authorization and stream lookahead under the transaction cap.
+        maximumBytesRead: Math.max(1, Math.floor(remaining / 2)),
       });
     return {
       timeZone,
       nextCursor: result.isDone ? null : result.continueCursor,
-      rows: result.page.map((row) => ({
-        scheduleId: row._id,
-        className: byId.get(row.classId)!,
-        start: row.scheduledStart,
-        end: row.scheduledEnd,
-        roomName: row.roomName,
-        reason:
-          row.status === "scheduled"
-            ? ("noStart" as const)
-            : ("reportPending" as const),
-      })),
+      rows: result.page,
     };
   },
 });

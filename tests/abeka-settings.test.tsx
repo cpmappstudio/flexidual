@@ -793,6 +793,7 @@ test("connection metadata and the single update action stay in the header", () =
   expect(last.nextElementSibling).toBe(next);
   expect(last.querySelector("dd")?.textContent).not.toBe(t.never);
   expect(next.querySelector("dd")?.textContent).not.toBe(t.never);
+  expect(screen.queryByText(`${t.syncWindow}:`)).toBeNull();
   const about = within(header).getByRole("heading", { name: t.detail.title });
   expect(about.closest("summary")).not.toBeNull();
   expect(about.closest("details")?.open).toBe(false);
@@ -801,6 +802,57 @@ test("connection metadata and the single update action stay in the header", () =
   ).toBeTruthy();
   expect(screen.queryByRole("button", { name: t.syncNow })).toBeNull();
 });
+
+test.each([
+  ["es", messages],
+  ["en", english],
+  ["pt-BR", portuguese],
+] as const)(
+  "completed cycle and collection window use institution timezone, not the %s viewer timezone",
+  (locale, translated) => {
+    const timeZone = "America/Tegucigalpa";
+    const startedAt = Date.parse("2026-11-14T02:00:00Z");
+    const finishedAt = Date.parse("2026-11-17T02:02:00Z");
+    mocks.query.mockReturnValue({
+      hasCredentials: true,
+      scheduleTimeZone: timeZone,
+      connection: {
+        status: "connected",
+        confirmed: true,
+        lastSyncStartedAt: startedAt,
+        lastSyncedAt: finishedAt,
+      },
+      run: null,
+    });
+    render(
+      <NextIntlClientProvider
+        locale={locale}
+        messages={translated}
+        timeZone="UTC"
+      >
+        <AbekaIntegrationPage />
+      </NextIntlClientProvider>,
+    );
+    const t = translated.settings.integrations;
+    const format = new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone,
+    });
+    const last = screen.getByText(`${t.lastSync}:`).parentElement!;
+    expect(last.querySelector("dd")?.textContent).toBe(
+      `${format.format(finishedAt)} · ${timeZone}`,
+    );
+    const window = screen.getByText(`${t.syncWindow}:`).parentElement!;
+    expect(window.querySelector("dd")?.textContent).toBe(
+      t.syncWindowRange
+        .replace("{from}", format.format(startedAt))
+        .replace("{to}", format.format(finishedAt))
+        .replace("{timeZone}", timeZone),
+    );
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  },
+);
 
 test("student table uses shared pagination and searches the complete imported roster", async () => {
   mocks.query.mockImplementation((name) =>

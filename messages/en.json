@@ -625,7 +625,9 @@
       "description": "Import Abeka video progress on a schedule or on demand. This does not modify Abeka or Flexidual enrollments.",
       "confirmSchool": "Check that this is your institution's Abeka account before importing students.",
       "confirm": "Confirm institution",
-      "lastSync": "Last complete sync",
+      "lastSync": "Last completed cycle",
+      "syncWindow": "Data collection window",
+      "syncWindowRange": "{from} – {to} · {timeZone}",
       "nextSync": "Next sync",
       "schedule": {
         "manual": "Manual",
@@ -650,7 +652,7 @@
       "syncNow": "Sync now",
       "updateData": "Update data",
       "pendingSync": "Association saved. Use Update data to download pending progress, or wait for the scheduled sync.",
-      "resumeSync": "Update incomplete. Use Update data to download only the remaining students. Once complete, the next update refreshes everyone again.",
+      "resumeSync": "Update incomplete. Use Update data to continue. A cycle from today resumes remaining students; a cycle from an earlier day starts a full update for everyone.",
       "disconnect": "Disconnect",
       "disconnectExplanation": "Saved credentials and session will be deleted and automatic sync canceled. Imported reports and student links will be kept.",
       "sessionExplanation": "Connect using an authorized Abeka session. This is not an official integration or automatic sign-in. You will need to renew the session when it expires.",
@@ -957,9 +959,10 @@
       "title": "Abeka activity · last 7 days",
       "scope": "Entire institution",
       "viewers": "{viewers, number} of {students, number} synced students viewed at least one lesson",
-      "pending": "No complete activity summary yet.",
+      "pending": "The activity summary is generated when a full institution sync has complete activity data.",
       "summarySync": "Summary from sync on {date}",
-      "lastSync": "Last complete sync: {date}"
+      "lastSync": "Last completed cycle: {date}",
+      "nextSync": "Next scheduled sync: {date}"
     },
     "attendance": {
       "title": "Confirmed attendance by week",

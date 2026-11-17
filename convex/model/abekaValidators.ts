@@ -82,6 +82,8 @@ export const abekaConnectionFields = {
   rosterRunId: v.optional(v.id("abekaSyncRuns")),
   lastAttemptAt: v.optional(v.number()),
   lastRenewalAttemptAt: v.optional(v.number()),
+  // Collection window of the last completed full cycle, including same-day retries.
+  lastSyncStartedAt: v.optional(v.number()),
   lastSyncedAt: v.optional(v.number()),
   weeklyActivity: v.optional(
     v.union(

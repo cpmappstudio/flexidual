@@ -626,7 +626,9 @@
       "description": "Importe o progresso de vídeos da Abeka semanalmente ou sob demanda. Isso não altera a Abeka nem as matrículas do Flexidual.",
       "confirmSchool": "Verifique se esta é a conta Abeka da sua instituição antes de importar alunos.",
       "confirm": "Confirmar instituição",
-      "lastSync": "Última sincronização completa",
+      "lastSync": "Último ciclo concluído",
+      "syncWindow": "Intervalo de coleta de dados",
+      "syncWindowRange": "{from} – {to} · {timeZone}",
       "nextSync": "Próxima sincronização",
       "schedule": {
         "manual": "Manual",
@@ -651,7 +653,7 @@
       "syncNow": "Sincronizar agora",
       "updateData": "Atualizar dados",
       "pendingSync": "Vínculo salvo. Use Atualizar dados para baixar o progresso pendente ou aguarde a sincronização programada.",
-      "resumeSync": "Atualização incompleta. Use Atualizar dados para baixar apenas os alunos pendentes. Após concluir, a próxima atualização atualizará todos novamente.",
+      "resumeSync": "Atualização incompleta. Use Atualizar dados para continuar. Um ciclo de hoje retoma os alunos pendentes; um ciclo de um dia anterior inicia uma atualização completa para todos.",
       "disconnect": "Desconectar",
       "disconnectExplanation": "As credenciais e a sessão salvas serão excluídas e a sincronização automática será cancelada. Os relatórios importados e os vínculos serão mantidos.",
       "sessionExplanation": "Conecte usando uma sessão autorizada da Abeka. Esta não é uma integração oficial nem um login automático. Renove a sessão quando ela expirar.",
@@ -955,9 +957,10 @@
       "title": "Atividade no Abeka · últimos 7 dias",
       "scope": "Toda a instituição",
       "viewers": "{viewers, number} de {students, number} estudantes sincronizados assistiram a pelo menos uma lição",
-      "pending": "Ainda não há um resumo de atividade completo.",
+      "pending": "O resumo de atividade é gerado quando uma sincronização de toda a instituição obtém dados de atividade completos.",
       "summarySync": "Resumo da sincronização de {date}",
-      "lastSync": "Última sincronização completa: {date}"
+      "lastSync": "Último ciclo concluído: {date}",
+      "nextSync": "Próxima sincronização programada: {date}"
     },
     "attendance": {
       "title": "Frequência confirmada por semana",
