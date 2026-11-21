@@ -17,7 +17,9 @@ import {
   abekaError,
   encryptedSession,
   lessonProgress,
+  abekaFailure,
 } from "./model/abekaValidators";
+import type { AbekaFailure } from "../lib/abeka/errors";
 import { activeStudent } from "./model/abekaAccess";
 import {
   setAbekaNextSync,
@@ -30,7 +32,12 @@ import {
 import { defaultAbekaSchedule, nextAbekaSync } from "../lib/abeka/schedule";
 import { startAbekaSync, abekaConnectLimiter } from "./abeka";
 import { RateLimiter } from "@convex-dev/rate-limiter";
-import { ABEKA_REQUEST_INTERVAL_MS } from "../lib/abeka/request-policy";
+import {
+  ABEKA_REQUEST_INTERVAL_MS,
+  ABEKA_MAX_AUTOMATIC_RECOVERIES,
+  ABEKA_RECOVERY_DELAY_MS,
+  ABEKA_RECOVERY_MAX_DELAY_MS,
+} from "../lib/abeka/request-policy";
 import { MAX_SUBJECTS } from "../lib/abeka/report";
 import {
   addCivilDays,
@@ -151,22 +158,38 @@ export const claimRenewal = internalMutation({
   args: runArgs,
   returns: v.union(
     v.null(),
-    v.object({ paused: v.literal(true) }),
+    v.object({
+      paused: v.literal(true),
+      reason: v.union(
+        v.literal("SESSION_IN_FLIGHT"),
+        v.literal("SESSION_NO_PROGRESS"),
+        v.literal("SESSION_COOLDOWN"),
+        v.literal("RENEWAL_LIMIT"),
+      ),
+      retryAt: v.optional(v.number()),
+    }),
     v.object({ schoolId: v.id("schools"), credentials: encryptedSession }),
   ),
   handler: async (ctx, { runId }) => {
     const state = await currentRun(ctx, runId);
     if (!state) return null;
-    if (state.run.renewalInFlight) return { paused: true as const };
+    if (state.run.renewalInFlight)
+      return { paused: true as const, reason: "SESSION_IN_FLIGHT" as const };
     if (state.run.updateId) {
-      // A new password attempt requires actual progress since the previous one.
+      if ((state.run.renewals ?? 0) >= 6)
+        return { paused: true as const, reason: "RENEWAL_LIMIT" as const };
+      // Saved subjects are real progress even before the student is complete.
       if (
-        (state.run.renewals ?? 0) >= 6 ||
-        (state.run.renewedAtProgress !== undefined &&
-          state.run.studentsSynced <= state.run.renewedAtProgress)
+        state.run.renewedAtProgress !== undefined &&
+        state.run.studentsSynced <= state.run.renewedAtProgress &&
+        (state.run.reportsSynced ?? 0) <= (state.run.renewedAtReports ?? 0)
       )
-        return { paused: true as const };
-    } else if (state.run.renewalAttempted) return { paused: true as const };
+        return {
+          paused: true as const,
+          reason: "SESSION_NO_PROGRESS" as const,
+        };
+    } else if (state.run.renewalAttempted)
+      return { paused: true as const, reason: "SESSION_NO_PROGRESS" as const };
     const secret = await ctx.db
       .query("abekaSecrets")
       .withIndex("by_connection", (q) =>
@@ -178,16 +201,26 @@ export const claimRenewal = internalMutation({
       state.connection.lastRenewalAttemptAt &&
       Date.now() - state.connection.lastRenewalAttemptAt < 60_000
     )
-      return { paused: true as const };
+      return {
+        paused: true as const,
+        reason: "SESSION_COOLDOWN" as const,
+        retryAt: state.connection.lastRenewalAttemptAt + 60_000,
+      };
     const limit = await abekaConnectLimiter.limit(ctx, "connectAbeka", {
       key: state.connection.schoolId,
     });
-    if (!limit.ok) return { paused: true as const };
+    if (!limit.ok)
+      return {
+        paused: true as const,
+        reason: "SESSION_COOLDOWN" as const,
+        retryAt: Date.now() + (limit.retryAfter ?? 60_000),
+      };
     await ctx.db.patch(runId, {
       renewalAttempted: true,
       renewalInFlight: true,
       renewals: (state.run.renewals ?? 0) + 1,
       renewedAtProgress: state.run.studentsSynced,
+      renewedAtReports: state.run.reportsSynced ?? 0,
     });
     await ctx.db.patch(state.connection._id, {
       lastRenewalAttemptAt: Date.now(),
@@ -433,6 +466,10 @@ export const saveProgress = internalMutation({
     const reportId =
       existing?._id ?? (await ctx.db.insert("abekaProgress", fields));
     if (existing) await ctx.db.patch(existing._id, fields);
+    if (existing?.runId !== args.runId)
+      await ctx.db.patch(args.runId, {
+        reportsSynced: (state.run.reportsSynced ?? 0) + 1,
+      });
     await saveAbekaProgressSummary(ctx, { ...fields, _id: reportId });
     await saveAbekaProgressHistory(ctx, {
       reportId,
@@ -696,6 +733,7 @@ async function failRun(
     | "REPORT_FORMAT_CHANGED"
     | "PROVIDER_UNAVAILABLE"
     | "SYNC_FAILED",
+  failure?: AbekaFailure,
 ) {
   const state = await currentRun(ctx, runId);
   if (!state) return;
@@ -703,6 +741,7 @@ async function failRun(
     status: "failed",
     finishedAt: Date.now(),
     errorCode: code,
+    ...(failure ? { failure } : {}),
   });
   const reconnect = code === "NEEDS_RECONNECT" || code === "SCHOOL_MISMATCH";
   if (state.run.catalog) {
@@ -736,6 +775,39 @@ async function failRun(
       : undefined,
     !!state.run.studentId,
   );
+  const root = state.run.updateId ? await ctx.db.get(state.run.updateId) : null;
+  const recoveries = root?.recoveries ?? 0;
+  if (
+    code === "PROVIDER_UNAVAILABLE" &&
+    root &&
+    !state.run.studentId &&
+    !state.run.catalog &&
+    !state.run.authenticate &&
+    !["RUN_STOPPED", "RENEWAL_LIMIT"].includes(failure?.reason ?? "") &&
+    (failure?.httpStatus === undefined ||
+      failure.httpStatus === 429 ||
+      failure.httpStatus >= 500) &&
+    recoveries < ABEKA_MAX_AUTOMATIC_RECOVERIES
+  ) {
+    const backoff = await ctx.db.query("abekaProviderBackoff").unique();
+    const recoveryAt = Math.max(
+      Date.now() + ABEKA_RECOVERY_DELAY_MS * 2 ** recoveries,
+      failure?.retryAt ?? 0,
+      backoff?.until ?? 0,
+    );
+    // An excessive Retry-After must not roll back the failure or create a years-long job.
+    if (
+      Number.isSafeInteger(recoveryAt) &&
+      recoveryAt - Date.now() <= ABEKA_RECOVERY_MAX_DELAY_MS
+    ) {
+      const recoveryJobId = await ctx.scheduler.runAt(
+        recoveryAt,
+        internal.abekaSync.recover,
+        { runId },
+      );
+      await ctx.db.patch(runId, { recoveryAt, recoveryJobId });
+    }
+  }
   if (reconnect) {
     const secret = await ctx.db
       .query("abekaSecrets")
@@ -752,10 +824,53 @@ async function failRun(
 }
 
 export const fail = internalMutation({
-  args: { ...runArgs, code: abekaError },
+  args: { ...runArgs, code: abekaError, failure: v.optional(abekaFailure) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await failRun(ctx, args.runId, args.code);
+    await failRun(ctx, args.runId, args.code, args.failure);
+    return null;
+  },
+});
+
+export const recover = internalMutation({
+  args: runArgs,
+  returns: v.null(),
+  handler: async (ctx, { runId }) => {
+    const run = await ctx.db.get(runId);
+    const connection = run && (await ctx.db.get(run.connectionId));
+    const root = run?.updateId ? await ctx.db.get(run.updateId) : null;
+    if (
+      !run?.recoveryJobId ||
+      run.recoveryAt === undefined ||
+      run.recoveryAt > Date.now()
+    )
+      return null;
+    // Consume even obsolete jobs so a canceled recovery is not advertised forever.
+    await ctx.db.patch(runId, {
+      recoveryJobId: undefined,
+      recoveryAt: undefined,
+    });
+    if (
+      run.status !== "failed" ||
+      !root ||
+      root.status === "completed" ||
+      !connection?.confirmed ||
+      connection.latestRunId !== runId ||
+      connection.revision !== run.revision ||
+      connection.pendingUpdateId !== root._id ||
+      root.connectionId !== connection._id ||
+      !["connected", "error"].includes(connection.status) ||
+      !(await ctx.db.get(connection.schoolId))?.isActive ||
+      (root.recoveries ?? 0) >= ABEKA_MAX_AUTOMATIC_RECOVERIES
+    )
+      return null;
+    if (
+      connection.syncSchedule?.mode !== "manual" &&
+      !(await abekaScheduleAllowsNow(ctx, connection, Date.now()))
+    )
+      return null;
+    await ctx.db.patch(root._id, { recoveries: (root.recoveries ?? 0) + 1 });
+    await startAbekaSync(ctx, connection, { resumeUpdateId: root._id });
     return null;
   },
 });
@@ -804,19 +919,21 @@ export const onComplete = internalMutation({
               ? await ctx.db.get(state.run.updateId)
               : state.run;
           const activity = root?.weeklyActivity;
-          // A pre-upgrade workflow may already be resuming a previous day's cycle.
+          // Unknown or old recovery dates must not be advertised as today's update.
           const staleRecovery =
             root &&
             root._id !== state.run._id &&
             !sameAbekaSyncDay(root.startedAt, now, state.school.timeZone);
           const schedule = state.connection.syncSchedule;
-          const timeZone = state.school.timeZone;
+          const timeZone =
+            state.school.timeZone && isValidTimeZone(state.school.timeZone)
+              ? state.school.timeZone
+              : undefined;
           // Collapse missed slots into one pass; midnight alone is not a trigger.
           const nextScheduledSync =
             root &&
             schedule &&
             timeZone &&
-            isValidTimeZone(timeZone) &&
             (await abekaScheduleAllowsNow(ctx, state.connection, now))
               ? nextAbekaSync(
                   schedule,
@@ -835,7 +952,7 @@ export const onComplete = internalMutation({
               : undefined;
           await ctx.db.patch(state.connection._id, {
             status: "connected",
-            ...(state.run.studentId
+            ...(state.run.studentId || staleRecovery
               ? {}
               : {
                   lastSyncedAt: now,
@@ -856,13 +973,17 @@ export const onComplete = internalMutation({
               : Date.now() + WEEK,
             !!state.run.studentId,
           );
+          const scheduledUpdateDue =
+            nextScheduledSync !== undefined && nextScheduledSync <= now;
+          // A catch-up gets no date-only successor; due schedule slots remain independent.
           if (
-            staleRecovery ||
-            (nextScheduledSync !== undefined && nextScheduledSync <= now)
+            scheduledUpdateDue ||
+            (staleRecovery && timeZone && !root.catchUp)
           ) {
             await startAbekaSync(
               ctx,
               (await ctx.db.get(state.connection._id))!,
+              { catchUp: true },
             );
           } else if (
             state.run.initializeCatalog &&

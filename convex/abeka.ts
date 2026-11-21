@@ -31,6 +31,7 @@ import {
   selectAbekaPeriod,
   abekaPeriod,
   sameAbekaSyncDay,
+  cancelAbekaRecovery,
 } from "./model/abekaScheduling";
 import { defaultAbekaSchedule } from "../lib/abeka/schedule";
 import { ABEKA_MANUAL_SYNC_INTERVAL_MS } from "../lib/abeka/request-policy";
@@ -104,12 +105,16 @@ export async function startAbekaSync(
     catalog?: boolean;
     initializeCatalog?: boolean;
     authenticate?: boolean;
+    resumeUpdateId?: Id<"abekaSyncRuns">;
+    catchUp?: boolean;
   } = {},
 ) {
+  const { resumeUpdateId, ...runOptions } = options;
   const previous = connection.latestRunId
     ? await ctx.db.get(connection.latestRunId)
     : null;
   if (previous?.status === "running") return previous._id;
+  await cancelAbekaRecovery(ctx, previous);
   const fullUpdate =
     !options.studentId && !options.catalog && !options.authenticate;
   const pending =
@@ -120,11 +125,12 @@ export async function startAbekaSync(
   const timeZone = pending
     ? (await ctx.db.get(connection.schoolId))?.timeZone
     : undefined;
-  // Yesterday's checkpoint cannot stand in for today's institution-wide update.
+  // Only an explicit durable continuation may cross days; completion starts today's pass.
   const resume =
     pending?.connectionId === connection._id &&
     pending.status !== "completed" &&
-    sameAbekaSyncDay(pending.startedAt, now, timeZone)
+    (resumeUpdateId === pending._id ||
+      sameAbekaSyncDay(pending.startedAt, now, timeZone))
       ? pending
       : null;
   if (fullUpdate) await setAbekaNextSync(ctx, connection._id);
@@ -134,7 +140,7 @@ export async function startAbekaSync(
     status: "running",
     startedAt: now,
     studentsSynced: resume?.studentsSynced ?? 0,
-    ...options,
+    ...runOptions,
     ...(fullUpdate
       ? { initializeCatalog: connection.catalogSyncedAt === undefined }
       : {}),
@@ -220,6 +226,7 @@ async function cancelActive(
   const run = connection.latestRunId
     ? await ctx.db.get(connection.latestRunId)
     : null;
+  await cancelAbekaRecovery(ctx, run);
   if (run?.status === "running") {
     await ctx.db.patch(run._id, { status: "canceled", finishedAt: Date.now() });
     if (run.workflowId)

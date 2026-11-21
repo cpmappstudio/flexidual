@@ -203,3 +203,16 @@ export async function setAbekaNextSync(
     syncScheduleGeneration: generation,
   });
 }
+
+export async function cancelAbekaRecovery(
+  ctx: MutationCtx,
+  run: Doc<"abekaSyncRuns"> | null,
+) {
+  if (!run?.recoveryJobId) return;
+  const job = await ctx.db.system.get(run.recoveryJobId);
+  if (job?.state.kind === "pending") await ctx.scheduler.cancel(job._id);
+  await ctx.db.patch(run._id, {
+    recoveryJobId: undefined,
+    recoveryAt: undefined,
+  });
+}

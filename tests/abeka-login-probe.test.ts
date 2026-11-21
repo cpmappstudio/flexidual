@@ -264,9 +264,41 @@ test("network exceptions cannot leak passwords or authentication URLs", async ()
   const request = (async () => {
     throw new Error(credentials.password);
   }) as typeof fetch;
-  await assert.rejects(probeAbekaLogin(credentials, request), {
-    message: "PROVIDER_UNAVAILABLE",
+  await assert.rejects(probeAbekaLogin(credentials, request), (error) => {
+    assert.ok(error instanceof LoginProbeError);
+    assert.equal(error.message, "PROVIDER_UNAVAILABLE");
+    assert.equal(error.failure?.reason, "NETWORK");
+    assert.equal("cause" in error, false);
+    assert.equal(JSON.stringify(error).includes(credentials.password), false);
+    return true;
   });
+});
+
+test("authentication retains safe timeout and HTTP diagnostics", async () => {
+  for (const [request, reason, status] of [
+    [
+      async () => {
+        throw new DOMException(credentials.password, "TimeoutError");
+      },
+      "TIMEOUT",
+      undefined,
+    ],
+    [
+      async () => new Response("private body", { status: 502 }),
+      "HTTP_STATUS",
+      502,
+    ],
+  ] as const) {
+    await assert.rejects(probeAbekaLogin(credentials, request), (error) => {
+      assert.ok(error instanceof LoginProbeError);
+      assert.equal(error.code, "PROVIDER_UNAVAILABLE");
+      assert.equal(error.failure?.reason, reason);
+      assert.equal(error.failure?.httpStatus, status);
+      assert.doesNotMatch(JSON.stringify(error), /private body/);
+      assert.equal(JSON.stringify(error).includes(credentials.password), false);
+      return true;
+    });
+  }
 });
 
 test("credentials have size and type limits", () => {

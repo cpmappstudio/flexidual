@@ -15,6 +15,7 @@ import {
   LoginProbeError,
 } from "../lib/abeka/login-probe";
 import { AuthenticationRequired, ProbeError } from "../lib/abeka/progress";
+import { AbekaRequestError, type AbekaFailureStage } from "../lib/abeka/errors";
 import { abekaFetch } from "./model/abekaTransport";
 import { catalogSubject } from "./model/abekaValidators";
 import type { CatalogSubject } from "../lib/abeka/catalog";
@@ -39,7 +40,7 @@ export const catalogGroups = internalAction({
       }
       return result.groups;
     } catch (error) {
-      await recordFailure(ctx, runId, error);
+      await recordFailure(ctx, runId, error, "catalog");
       return null;
     }
   },
@@ -52,7 +53,7 @@ export const catalogGrades = internalAction({
     try {
       return await withSession(ctx, runId, (c) => c.catalogGrades(groupId));
     } catch (error) {
-      await recordFailure(ctx, runId, error);
+      await recordFailure(ctx, runId, error, "catalog");
       return null;
     }
   },
@@ -70,7 +71,7 @@ export const catalogSubjects = internalAction({
         c.catalogSubjects(groupId, grade),
       );
     } catch (error) {
-      await recordFailure(ctx, runId, error);
+      await recordFailure(ctx, runId, error, "catalog");
       return null;
     }
   },
@@ -94,7 +95,11 @@ async function renew(ctx: ActionCtx, runId: Id<"abekaSyncRuns">) {
     runId,
   });
   if (!claimed) throw new AuthenticationRequired();
-  if ("paused" in claimed) throw new ProbeError("PROVIDER_UNAVAILABLE");
+  if ("paused" in claimed)
+    throw new AbekaRequestError(claimed.reason ?? "SESSION_NO_PROGRESS", {
+      stage: "renewal",
+      retryAt: claimed.retryAt,
+    });
   let credentials;
   try {
     const key = process.env.ABEKA_SESSION_ENCRYPTION_KEY ?? "";
@@ -138,7 +143,14 @@ async function withSession<T>(
   } catch (error) {
     if (!(error instanceof AuthenticationRequired)) throw error;
     await renew(ctx, runId);
-    return await read(await client(ctx, runId));
+    try {
+      return await read(await client(ctx, runId));
+    } catch (retryError) {
+      // A verified login can expire again; that is not a rejected credential.
+      if (retryError instanceof AuthenticationRequired)
+        throw new AbekaRequestError("SESSION_EXPIRED");
+      throw retryError;
+    }
   }
 }
 
@@ -146,6 +158,7 @@ async function recordFailure(
   ctx: ActionCtx,
   runId: Id<"abekaSyncRuns">,
   error: unknown,
+  stage: AbekaFailureStage,
 ) {
   const code =
     error instanceof AuthenticationRequired
@@ -159,7 +172,35 @@ async function recordFailure(
             ? "PROVIDER_UNAVAILABLE"
             : "REPORT_FORMAT_CHANGED"
           : "SYNC_FAILED";
-  await ctx.runMutation(internal.abekaSync.fail, { runId, code });
+  const request =
+    error instanceof AbekaRequestError
+      ? error
+      : error instanceof LoginProbeError
+        ? error.failure
+        : undefined;
+  await ctx.runMutation(internal.abekaSync.fail, {
+    runId,
+    code,
+    failure: {
+      stage:
+        request?.stage ??
+        (error instanceof LoginProbeError ||
+        error instanceof AuthenticationRequired
+          ? "authentication"
+          : stage),
+      reason:
+        request?.reason ??
+        (error instanceof AuthenticationRequired
+          ? "AUTHENTICATION"
+          : code === "REPORT_FORMAT_CHANGED"
+            ? "RESPONSE_FORMAT"
+            : "UNKNOWN"),
+      ...(request?.httpStatus !== undefined
+        ? { httpStatus: request.httpStatus }
+        : {}),
+      ...(request?.retryAt !== undefined ? { retryAt: request.retryAt } : {}),
+    },
+  });
 }
 
 export const authenticate = internalAction({
@@ -170,7 +211,7 @@ export const authenticate = internalAction({
       await renew(ctx, runId);
       return true;
     } catch (error) {
-      await recordFailure(ctx, runId, error);
+      await recordFailure(ctx, runId, error, "authentication");
       return false;
     }
   },
@@ -204,7 +245,7 @@ export const roster = internalAction({
       }
       return await ctx.runMutation(internal.abekaSync.commitRoster, { runId });
     } catch (error) {
-      await recordFailure(ctx, runId, error);
+      await recordFailure(ctx, runId, error, "roster");
       return false;
     }
   },
@@ -243,7 +284,7 @@ export const subjects = internalAction({
         names: Object.fromEntries(subjects.map((s) => [s.id, s.name])),
       };
     } catch (error) {
-      await recordFailure(ctx, args.runId, error);
+      await recordFailure(ctx, args.runId, error, "subjects");
       return null;
     }
   },
@@ -278,7 +319,7 @@ export const progress = internalAction({
         });
       return saved;
     } catch (error) {
-      await recordFailure(ctx, args.runId, error);
+      await recordFailure(ctx, args.runId, error, "progress");
       return false;
     }
   },

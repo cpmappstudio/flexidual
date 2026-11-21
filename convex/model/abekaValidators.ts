@@ -1,4 +1,15 @@
 import { v } from "convex/values";
+import {
+  abekaFailureReasons,
+  abekaFailureStages,
+} from "../../lib/abeka/errors";
+
+export const abekaFailure = v.object({
+  stage: v.union(...abekaFailureStages.map((stage) => v.literal(stage))),
+  reason: v.union(...abekaFailureReasons.map((reason) => v.literal(reason))),
+  httpStatus: v.optional(v.number()),
+  retryAt: v.optional(v.number()),
+});
 
 export const abekaStatus = v.union(
   v.literal("connecting"),
@@ -121,6 +132,8 @@ export const abekaRunFields = {
   initializeCatalog: v.optional(v.boolean()),
   authenticate: v.optional(v.boolean()),
   updateId: v.optional(v.id("abekaSyncRuns")),
+  // A catch-up cannot start a date-only successor when its recovery crosses days.
+  catchUp: v.optional(v.boolean()),
   connectionId: v.id("abekaConnections"),
   revision: v.number(),
   status: v.union(
@@ -139,6 +152,13 @@ export const abekaRunFields = {
   renewals: v.optional(v.number()),
   renewedAtProgress: v.optional(v.number()),
   renewalInFlight: v.optional(v.boolean()),
+  reportsSynced: v.optional(v.number()),
+  renewedAtReports: v.optional(v.number()),
+  // Recovery budget belongs to the logical root, not each physical attempt.
+  recoveries: v.optional(v.number()),
+  recoveryAt: v.optional(v.number()),
+  recoveryJobId: v.optional(v.id("_scheduled_functions")),
+  failure: v.optional(abekaFailure),
   errorCode: v.optional(abekaError),
 };
 export const abekaProgressFields = {

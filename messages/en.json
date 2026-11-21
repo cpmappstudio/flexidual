@@ -653,6 +653,8 @@
       "updateData": "Update data",
       "pendingSync": "Association saved. Use Update data to download pending progress, or wait for the scheduled sync.",
       "resumeSync": "Update incomplete. Use Update data to continue. A cycle from today resumes remaining students; a cycle from an earlier day starts a full update for everyone.",
+      "automaticRecovery": "Update interrupted. Remaining students will resume automatically on {date}. Imported progress is kept.",
+      "renewalPaused": "Session renewal is paused. Imported progress is kept.",
       "disconnect": "Disconnect",
       "disconnectExplanation": "Saved credentials and session will be deleted and automatic sync canceled. Imported reports and student links will be kept.",
       "sessionExplanation": "Connect using an authorized Abeka session. This is not an official integration or automatic sign-in. You will need to renew the session when it expires.",

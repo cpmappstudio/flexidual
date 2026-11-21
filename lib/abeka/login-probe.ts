@@ -3,6 +3,7 @@ import { CookieJar } from "tough-cookie";
 import { REPORT_URL } from "./progress";
 import { parseRoster } from "./report";
 import { readBoundedText, validateCookieHeader } from "./session";
+import { AbekaRequestError, requestFailure } from "./errors";
 
 const LOGIN_ORIGIN = "https://login.abeka.com";
 const SCHOOL_ORIGIN = "https://atschool.abeka.com";
@@ -42,6 +43,7 @@ export class LoginProbeError extends Error {
   constructor(
     readonly code: LoginProbeCode,
     readonly diagnostic?: ProbeDiagnostic,
+    readonly failure?: AbekaRequestError,
   ) {
     super(code);
   }
@@ -128,11 +130,15 @@ export async function signInAbeka(
       headers,
       redirect: "manual",
       signal: controller.signal,
+    }).catch((error: unknown) => {
+      throw requestFailure(error, controller.signal);
     });
     for (const cookie of response.headers.getSetCookie())
       await jar.setCookie(cookie, url);
     if (response.status === 429 || response.status >= 500)
-      throw new LoginProbeError("PROVIDER_UNAVAILABLE");
+      throw new AbekaRequestError("HTTP_STATUS", {
+        httpStatus: response.status,
+      });
     return response;
   }
 
@@ -263,7 +269,15 @@ export async function signInAbeka(
   } catch (error) {
     if (error instanceof LoginProbeError) throw error;
     // fetch and parser errors can contain URLs/tokens. Never propagate those errors.
-    throw new LoginProbeError("PROVIDER_UNAVAILABLE");
+    throw new LoginProbeError(
+      "PROVIDER_UNAVAILABLE",
+      undefined,
+      error instanceof AbekaRequestError
+        ? error
+        : new AbekaRequestError(
+            controller.signal.aborted ? "TIMEOUT" : "RESPONSE_FORMAT",
+          ),
+    );
   } finally {
     credentials.password = "";
     await jar.removeAllCookies();

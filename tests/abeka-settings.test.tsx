@@ -727,6 +727,38 @@ test("Abeka page has a General backlink, detailed information and existing manag
   expect(screen.getByRole("table")).toBeTruthy();
 });
 
+test.each([
+  { stage: "renewal", reason: "SESSION_COOLDOWN" },
+  { stage: "subjects", reason: "SESSION_EXPIRED" },
+])(
+  "a session pause shows the automatic recovery date instead of blaming the provider: $reason",
+  (failure) => {
+    const recoveryAt = Date.parse("2026-11-18T02:01Z");
+    mocks.query.mockReturnValue({
+      hasCredentials: true,
+      hasPendingUpdate: true,
+      connection: {
+        status: "error",
+        confirmed: true,
+        errorCode: "PROVIDER_UNAVAILABLE",
+      },
+      run: {
+        status: "failed",
+        recoveryAt,
+        failure,
+      },
+      scheduleTimeZone: "America/Tegucigalpa",
+    });
+    renderSettings();
+    const t = messages.settings.integrations;
+    expect(screen.getByRole("alert").textContent).toBe(t.renewalPaused);
+    expect(screen.getByRole("status").textContent).toContain("automáticamente");
+    expect(screen.getByRole("status").textContent).toMatch(/20:01|8:01/);
+    expect(screen.queryByText(t.errors.PROVIDER_UNAVAILABLE)).toBeNull();
+    expect(mocks.mutate).not.toHaveBeenCalled();
+  },
+);
+
 test("Abeka header presents its logo, ordered icon actions and keyboard tooltips without an Item", async () => {
   vi.stubGlobal(
     "ResizeObserver",

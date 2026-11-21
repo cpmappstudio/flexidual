@@ -138,6 +138,10 @@ function AbekaIntegration({
           timeZone,
         })
       : t("never");
+  const recoveryMessage =
+    run?.recoveryAt !== undefined
+      ? t("automaticRecovery", { date: date(run.recoveryAt) })
+      : t("resumeSync");
   async function perform(
     name: NonNullable<typeof pendingAction>,
     action: () => Promise<unknown>,
@@ -181,7 +185,9 @@ function AbekaIntegration({
                 label={connectLabel}
                 tooltip={
                   hasPendingSync && !needsCredentials
-                    ? t(state.hasPendingUpdate ? "resumeSync" : "pendingSync")
+                    ? state.hasPendingUpdate
+                      ? recoveryMessage
+                      : t("pendingSync")
                     : undefined
                 }
                 className={
@@ -301,12 +307,15 @@ function AbekaIntegration({
           )}
           {connection?.errorCode && (
             <p role="alert" className="text-sm text-destructive">
-              {t(`errors.${connection.errorCode}`)}
+              {run?.failure?.stage === "renewal" ||
+              run?.failure?.reason === "SESSION_EXPIRED"
+                ? t("renewalPaused")
+                : t(`errors.${connection.errorCode}`)}
             </p>
           )}
           {state.hasPendingUpdate && !running && (
             <p role="status" className="text-sm text-muted-foreground">
-              {t("resumeSync")}
+              {recoveryMessage}
             </p>
           )}
           {running && (

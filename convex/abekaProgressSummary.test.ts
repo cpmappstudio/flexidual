@@ -540,7 +540,7 @@ test("a resumed update deduplicates retries and retains the last snapshot if it 
     (await f.t.run((ctx) => ctx.db.get(f.connectionId)))?.weeklyActivity,
   ).toEqual(previousSnapshot);
   const connection = (await f.t.run((ctx) => ctx.db.get(f.connectionId)))!;
-  expect(connection.lastSyncStartedAt).toBe(Date.parse("2026-11-13T05:59:00Z"));
+  expect(connection.lastSyncStartedAt).toBeUndefined();
   expect(connection.latestRunId).not.toBe(resumed);
   expect(
     await f.t.run((ctx) => ctx.db.get(connection.latestRunId!)),

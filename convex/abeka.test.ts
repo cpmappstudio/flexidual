@@ -13,7 +13,11 @@ import {
   decryptSession,
 } from "../lib/abeka/encryption";
 import * as loginProbe from "../lib/abeka/login-probe";
-import { ABEKA_MANUAL_SYNC_INTERVAL_MS } from "../lib/abeka/request-policy";
+import {
+  ABEKA_MANUAL_SYNC_INTERVAL_MS,
+  ABEKA_MAX_AUTOMATIC_RECOVERIES,
+  ABEKA_RECOVERY_DELAY_MS,
+} from "../lib/abeka/request-policy";
 import {
   setAbekaNextSync,
   refreshAbekaSchedule,
@@ -973,7 +977,15 @@ test("a failed new-day update keeps its own checkpoint and does not advance the 
   expect(request.mock.calls.some(([url]) => url.includes("loginId=43"))).toBe(
     true,
   );
-  expect(await t.run((ctx) => ctx.db.get(failed.run!._id))).toEqual(failed.run);
+  expect(await t.run((ctx) => ctx.db.get(failed.run!._id))).toMatchObject({
+    status: failed.run!.status,
+    errorCode: failed.run!.errorCode,
+    failure: failed.run!.failure,
+    finishedAt: failed.run!.finishedAt,
+  });
+  expect(
+    (await t.run((ctx) => ctx.db.get(failed.run!._id)))?.recoveryJobId,
+  ).toBeUndefined();
 });
 
 test.each(["2026-11-17T02:00Z", "2026-11-14T02:30Z"])(
@@ -1248,6 +1260,599 @@ test("a failed scheduled catch-up preserves the original completion and its own 
   ).toHaveLength(3);
 });
 
+async function recoverQueuedUpdate(
+  f: Pick<Awaited<ReturnType<typeof setup>>, "t" | "adminClient" | "schoolId">,
+) {
+  const before = await f.adminClient.query(api.abeka.status, {
+    schoolId: f.schoolId,
+  });
+  const run = before.run!;
+  expect(run.recoveryJobId).toBeDefined();
+  expect(
+    (await f.t.run((ctx) => ctx.db.system.get(run.recoveryJobId!)))?.state.kind,
+  ).toBe("pending");
+  await vi.advanceTimersByTimeAsync(run.recoveryAt! - Date.now());
+  await finishCurrentSync(f.t);
+  return f.adminClient.query(api.abeka.status, { schoolId: f.schoolId });
+}
+
+test.each([undefined, "America/Tegucigalpa"])(
+  "recoveries cannot chain fresh updates when timezone is %s",
+  async (timeZone) => {
+    const f = await resumableSetup();
+    vi.setSystemTime(Date.parse("2026-11-18T02:00Z"));
+    await f.t.run((ctx) => ctx.db.patch(f.schoolId, { timeZone }));
+    const validTimeZone = timeZone === "America/Tegucigalpa";
+    let rosters = 0;
+    const request = vi.fn(async (url: string) => {
+      if (url.endsWith("StreamingDetails.aspx")) rosters++;
+      if (url.includes("loginId=43") && rosters % 2 === 1)
+        return new Response(null, {
+          status: 503,
+          headers: { "Retry-After": validTimeZone ? "86400" : "60" },
+        });
+      return twoStudentResponse(url);
+    });
+    vi.stubGlobal("fetch", request);
+    await f.adminClient.mutation(api.abeka.syncNow, { schoolId: f.schoolId });
+    await finishCurrentSync(f.t);
+    const original = await f.adminClient.query(api.abeka.status, {
+      schoolId: f.schoolId,
+    });
+    let done = await recoverQueuedUpdate(f);
+    if (validTimeZone) {
+      // One current-day pass is allowed, but its own delayed recovery is terminal.
+      expect(done.run).toMatchObject({ catchUp: true, status: "failed" });
+      const catchUp = done.run!.updateId;
+      expect(catchUp).not.toBe(original.run!.updateId);
+      const firstRecovery = await f.t.run((ctx) =>
+        ctx.db.get(original.run!._id),
+      );
+      expect(firstRecovery?.recoveries).toBe(1);
+      done = await recoverQueuedUpdate(f);
+      expect(done.run?.updateId).toBe(catchUp);
+      expect(rosters).toBe(4);
+    } else {
+      expect(done.run?.updateId).toBe(original.run!.updateId);
+      expect(rosters).toBe(2);
+    }
+    // Old or unknown recovery dates cannot advertise today's data as fresh.
+    expect(done.connection?.lastSyncedAt).toBe(
+      original.connection?.lastSyncedAt,
+    );
+    expect(done.connection?.lastSyncStartedAt).toBe(
+      original.connection?.lastSyncStartedAt,
+    );
+    expect(done.run).toMatchObject({ status: "completed", studentsSynced: 2 });
+    expect(done.hasPendingUpdate).toBe(false);
+    expect(done.connection?.nextSyncAt).toBeUndefined();
+    const calls = request.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(86_400_000);
+    await finishCurrentSync(f.t);
+    expect(request).toHaveBeenCalledTimes(calls);
+    for (let n = 0; n < 2; n++) {
+      await f.t.mutation(internal.abekaSync.onComplete, {
+        workflowId: done.run!.workflowId as WorkflowId,
+        result: { kind: "success", returnValue: null },
+        context: { runId: done.run!._id },
+      });
+    }
+    await finishCurrentSync(f.t);
+    expect(
+      (await f.adminClient.query(api.abeka.status, { schoolId: f.schoolId }))
+        .run?._id,
+    ).toBe(done.run!._id);
+    expect(request).toHaveBeenCalledTimes(calls);
+  },
+);
+
+test("a real scheduled deadline may start a new update after recovering a catch-up", async () => {
+  const f = await interruptedUpdate("2026-11-17T02:00Z");
+  await f.t.run((ctx) => ctx.db.patch(f.failed.run!._id, { catchUp: true }));
+  await f.adminClient.mutation(api.abeka.updateSchedule, {
+    schoolId: f.schoolId,
+    schedule: { ...dailySchedule, time: "20:00", stopAtPeriodEnd: false },
+  });
+  f.provider.available = true;
+  vi.setSystemTime(Date.parse("2026-11-18T02:01Z"));
+  await f.t.mutation(internal.abekaSync.recover, { runId: f.failed.run!._id });
+  await finishCurrentSync(f.t);
+  const done = await f.adminClient.query(api.abeka.status, {
+    schoolId: f.schoolId,
+  });
+  expect(done.run).toMatchObject({ status: "completed", studentsSynced: 2 });
+  expect(done.run?.updateId).toBe(done.run?._id);
+  expect(done.run?.updateId).not.toBe(f.failed.run!._id);
+  expect(done.run?.catchUp).toBe(true);
+  expect(done.connection?.lastSyncStartedAt).toBe(done.run?.startedAt);
+  expect(done.connection?.nextSyncAt).toBe(Date.parse("2026-11-19T02:00Z"));
+  expect(f.request).toHaveBeenCalledTimes(8);
+});
+
+test("recovering a scheduled catch-up after midnight does not create a date-only successor", async () => {
+  const f = await resumableSetup();
+  vi.setSystemTime(Date.parse("2026-11-17T02:00Z"));
+  await f.adminClient.mutation(api.abeka.updateSchedule, {
+    schoolId: f.schoolId,
+    schedule: { ...dailySchedule, time: "20:00", stopAtPeriodEnd: false },
+  });
+  let rosters = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url.endsWith("StreamingDetails.aspx")) rosters++;
+      if (rosters === 2 && url.includes("loginId=43"))
+        return new Response(null, {
+          status: 503,
+          headers: { "Retry-After": "10800" },
+        });
+      return twoStudentResponse(url);
+    }),
+  );
+  await f.adminClient.mutation(api.abeka.syncNow, { schoolId: f.schoolId });
+  vi.setSystemTime(Date.parse("2026-11-18T04:00Z"));
+  await finishCurrentSync(f.t);
+  const catchUp = await f.adminClient.query(api.abeka.status, {
+    schoolId: f.schoolId,
+  });
+  expect(catchUp.run?.status).toBe("failed");
+  const done = await recoverQueuedUpdate(f);
+  expect(done.run).toMatchObject({
+    status: "completed",
+    studentsSynced: 2,
+    updateId: catchUp.run!._id,
+  });
+  expect(rosters).toBe(3);
+  expect(done.connection?.lastSyncedAt).toBe(catchUp.connection?.lastSyncedAt);
+  expect(done.connection?.nextSyncAt).toBe(Date.parse("2026-11-19T02:00Z"));
+});
+
+test("a freshly renewed session that expires resumes pending students without discarding credentials or dates", async () => {
+  const f = await resumableSetup();
+  vi.setSystemTime(Date.parse("2026-11-18T02:00Z"));
+  await f.adminClient.mutation(api.abeka.updateSchedule, {
+    schoolId: f.schoolId,
+    schedule: { ...dailySchedule, time: "20:00", stopAtPeriodEnd: false },
+  });
+  const login = vi
+    .spyOn(loginProbe, "signInAbeka")
+    .mockResolvedValueOnce({ ...verifiedLogin, cookie: "session=first" })
+    .mockResolvedValueOnce({ ...verifiedLogin, cookie: "session=second" });
+  const request = vi.fn(async (url: string, init?: RequestInit) => {
+    const cookie = new Headers(init?.headers).get("Cookie");
+    if (
+      cookie === "session=first" ||
+      (cookie === "session=expired" && url.includes("loginId=43"))
+    )
+      return new Response(null, { status: 302 });
+    return twoStudentResponse(url);
+  });
+  vi.stubGlobal("fetch", request);
+  await f.adminClient.mutation(api.abeka.syncNow, { schoolId: f.schoolId });
+  await finishCurrentSync(f.t);
+  const failed = await f.adminClient.query(api.abeka.status, {
+    schoolId: f.schoolId,
+  });
+  expect(failed.run).toMatchObject({
+    status: "failed",
+    studentsSynced: 1,
+    failure: { stage: "subjects", reason: "SESSION_EXPIRED" },
+  });
+  expect(failed.connection?.status).toBe("error");
+  expect(failed.connection?.scheduledSyncId).toBeDefined();
+  expect(failed.hasCredentials).toBe(true);
+  expect(login).toHaveBeenCalledTimes(1);
+  const firstReport = await f.adminClient.query(api.abeka.progress, {
+    studentId: f.studentId,
+  });
+  const encrypted = await f.t.run(
+    async (ctx) =>
+      (
+        await ctx.db
+          .query("abekaSecrets")
+          .withIndex("by_connection", (q) =>
+            q.eq("connectionId", f.connectionId),
+          )
+          .unique()
+      )?.encrypted,
+  );
+  expect(await decryptSession(encrypted!, testKey, f.schoolId)).toBe(
+    "session=first",
+  );
+  request.mockClear();
+  const done = await recoverQueuedUpdate(f);
+  expect(login).toHaveBeenCalledTimes(2);
+  expect(done.run).toMatchObject({
+    status: "completed",
+    studentsSynced: 2,
+    updateId: failed.run!._id,
+  });
+  expect(request).toHaveBeenCalledTimes(4);
+  expect(request.mock.calls.some(([url]) => url.includes("loginId=42"))).toBe(
+    false,
+  );
+  expect(
+    await f.adminClient.query(api.abeka.progress, { studentId: f.studentId }),
+  ).toEqual(firstReport);
+  expect(await f.t.run((ctx) => ctx.db.get(failed.run!._id))).toMatchObject({
+    status: "failed",
+    failure: failed.run!.failure,
+    finishedAt: failed.run!.finishedAt,
+  });
+  expect(done.connection?.lastSyncedAt).toBe(done.run?.finishedAt);
+});
+
+test("repeated fresh-session expiry exhausts the existing recovery budget without a login loop", async () => {
+  const f = await resumableSetup();
+  const login = vi
+    .spyOn(loginProbe, "signInAbeka")
+    .mockResolvedValue(verifiedLogin);
+  const request = vi.fn(async () => new Response(null, { status: 302 }));
+  vi.stubGlobal("fetch", request);
+  await f.adminClient.mutation(api.abeka.syncNow, { schoolId: f.schoolId });
+  await finishCurrentSync(f.t);
+  let stopped = await f.adminClient.query(api.abeka.status, {
+    schoolId: f.schoolId,
+  });
+  const root = stopped.run!._id;
+  for (let n = 0; n < ABEKA_MAX_AUTOMATIC_RECOVERIES; n++)
+    stopped = await recoverQueuedUpdate(f);
+  expect(stopped.run).toMatchObject({
+    status: "failed",
+    updateId: root,
+    failure: { reason: "SESSION_EXPIRED" },
+  });
+  expect(stopped.run?.recoveryJobId).toBeUndefined();
+  expect(stopped.hasCredentials).toBe(true);
+  expect(login).toHaveBeenCalledTimes(4);
+  expect(request).toHaveBeenCalledTimes(8);
+  await vi.advanceTimersByTimeAsync(86_400_000);
+  await finishCurrentSync(f.t);
+  expect(login).toHaveBeenCalledTimes(4);
+});
+
+test("a timeout automatically resumes only pending students and preserves the failed attempt's evidence", async () => {
+  const f = await interruptedUpdate("2026-11-18T02:00Z");
+  const firstReport = await f.adminClient.query(api.abeka.progress, {
+    studentId: f.studentId,
+  });
+  f.request.mockImplementation(async (url: string) => {
+    if (url.includes("loginId=43"))
+      throw new DOMException("private URL and cookie", "TimeoutError");
+    return twoStudentResponse(url);
+  });
+  const timedOut = await recoverQueuedUpdate(f);
+  expect(timedOut.run).toMatchObject({
+    status: "failed",
+    studentsSynced: 1,
+    updateId: f.failed.run!._id,
+    failure: { stage: "subjects", reason: "TIMEOUT" },
+  });
+  f.request.mockImplementation(twoStudentResponse);
+  f.request.mockClear();
+  const done = await recoverQueuedUpdate(f);
+  expect(done.run).toMatchObject({
+    status: "completed",
+    studentsSynced: 2,
+    updateId: f.failed.run!._id,
+  });
+  expect(f.request).toHaveBeenCalledTimes(3);
+  expect(f.request.mock.calls.some(([url]) => url.includes("loginId=42"))).toBe(
+    false,
+  );
+  expect(
+    await f.adminClient.query(api.abeka.progress, { studentId: f.studentId }),
+  ).toEqual(firstReport);
+  expect(await f.t.run((ctx) => ctx.db.get(timedOut.run!._id))).toMatchObject({
+    status: "failed",
+    errorCode: "PROVIDER_UNAVAILABLE",
+    failure: timedOut.run!.failure,
+    finishedAt: timedOut.run!.finishedAt,
+  });
+  expect(done.hasPendingUpdate).toBe(false);
+});
+
+test("automatic recovery has one shared budget and duplicate jobs or callbacks cannot restart it", async () => {
+  const f = await interruptedUpdate("2026-11-18T02:00Z");
+  let stopped = f.failed;
+  for (let i = 0; i < ABEKA_MAX_AUTOMATIC_RECOVERIES; i++) {
+    const previous = stopped.run!;
+    expect(previous.recoveryAt! - previous.finishedAt!).toBe(
+      ABEKA_RECOVERY_DELAY_MS * 2 ** i,
+    );
+    stopped = await recoverQueuedUpdate(f);
+    await f.t.mutation(internal.abekaSync.recover, { runId: previous._id });
+    await f.t.mutation(internal.abekaSync.onComplete, {
+      workflowId: previous.workflowId as WorkflowId,
+      result: { kind: "success", returnValue: null },
+      context: { runId: previous._id },
+    });
+    await finishCurrentSync(f.t);
+    expect(
+      (await f.adminClient.query(api.abeka.status, { schoolId: f.schoolId }))
+        .run?._id,
+    ).toBe(stopped.run!._id);
+  }
+  expect(stopped.run?.recoveryJobId).toBeUndefined();
+  expect(
+    (await f.t.run((ctx) => ctx.db.get(f.failed.run!._id)))?.recoveries,
+  ).toBe(3);
+  const runs = await f.t.run((ctx) =>
+    ctx.db
+      .query("abekaSyncRuns")
+      .withIndex("by_connection", (q) => q.eq("connectionId", f.connectionId))
+      .take(20),
+  );
+  expect(runs).toHaveLength(5); // Fixture, initial attempt and three continuations.
+  const calls = f.request.mock.calls.length;
+  await vi.advanceTimersByTimeAsync(86_400_000);
+  await finishCurrentSync(f.t);
+  expect(f.request).toHaveBeenCalledTimes(calls);
+  expect(
+    (await f.adminClient.query(api.abeka.status, { schoolId: f.schoolId })).run
+      ?._id,
+  ).toBe(stopped.run!._id);
+});
+
+test("a recovery across Honduras midnight does not replace today's update or publish a false completion date", async () => {
+  const f = await interruptedUpdate("2026-11-18T05:58Z");
+  const old = f.failed.run!;
+  f.request.mockImplementation(async (url: string) => {
+    // The remaining old student works, but today's full pass fails on the first.
+    if (url.includes("loginId=42"))
+      throw new DOMException("read expired", "TimeoutError");
+    return twoStudentResponse(url);
+  });
+  vi.setSystemTime(Date.parse("2026-11-18T06:01Z"));
+  await f.t.mutation(internal.abekaSync.recover, { runId: old._id });
+  const recovery = (
+    await f.adminClient.query(api.abeka.status, { schoolId: f.schoolId })
+  ).run!;
+  expect(recovery.updateId).toBe(old._id);
+  await finishCurrentSync(f.t);
+  const today = await f.adminClient.query(api.abeka.status, {
+    schoolId: f.schoolId,
+  });
+  expect(today.run).toMatchObject({
+    status: "failed",
+    studentsSynced: 0,
+    failure: { reason: "TIMEOUT" },
+  });
+  expect(today.run?.updateId).toBe(today.run?._id);
+  expect(today.run?.updateId).not.toBe(old._id);
+  expect(today.connection?.lastSyncedAt).toBe(
+    f.failed.connection?.lastSyncedAt,
+  );
+  expect(today.connection?.lastSyncStartedAt).toBe(
+    f.failed.connection?.lastSyncStartedAt,
+  );
+  expect(await f.t.run((ctx) => ctx.db.get(old._id))).toMatchObject({
+    status: "failed",
+    errorCode: old.errorCode,
+    finishedAt: old.finishedAt,
+  });
+  await f.t.mutation(internal.abekaSync.onComplete, {
+    workflowId: recovery.workflowId as WorkflowId,
+    result: { kind: "success", returnValue: null },
+    context: { runId: recovery._id },
+  });
+  expect(
+    (await f.adminClient.query(api.abeka.status, { schoolId: f.schoolId })).run
+      ?._id,
+  ).toBe(today.run?._id);
+});
+
+test("saved subjects allow another session renewal before student completion without counting repeated writes", async () => {
+  const f = await resumableSetup();
+  const login = vi
+    .spyOn(loginProbe, "signInAbeka")
+    .mockResolvedValueOnce({ ...verifiedLogin, cookie: "session=first" })
+    .mockResolvedValueOnce({ ...verifiedLogin, cookie: "session=second" });
+  const request = vi.fn(async (url: string, init?: RequestInit) => {
+    const cookie = new Headers(init?.headers).get("Cookie");
+    if (cookie === "session=expired")
+      return new Response(null, { status: 302 });
+    if (url.endsWith("StreamingDetails.aspx")) return new Response(rosterHtml);
+    if (url.includes("?loginId="))
+      return new Response(
+        '<input id="hidLoginId" value="42"><select id="ddlClasses"><option value="117">Math</option><option value="118">English</option></select>',
+      );
+    const subject = JSON.parse(init!.body as string).subjectId;
+    if (subject === "118" && cookie === "session=first")
+      return new Response(null, { status: 302 });
+    if (subject === "117" && cookie === "session=first")
+      vi.advanceTimersByTime(61_000);
+    return reportResponse(url);
+  });
+  vi.stubGlobal("fetch", request);
+  await f.adminClient.mutation(api.abeka.syncNow, { schoolId: f.schoolId });
+  await finishCurrentSync(f.t);
+  const done = await f.adminClient.query(api.abeka.status, {
+    schoolId: f.schoolId,
+  });
+  expect(done.run).toMatchObject({
+    status: "completed",
+    studentsSynced: 1,
+    reportsSynced: 2,
+    renewals: 2,
+  });
+  expect(login).toHaveBeenCalledTimes(2);
+  expect(done.run?.recoveryJobId).toBeUndefined();
+});
+
+test("a repeated report write cannot unlock another password attempt and renewal pauses are diagnosed locally", async () => {
+  vi.useFakeTimers();
+  const f = await renewalSetup();
+  await f.t.run(async (ctx) => {
+    await ctx.db.patch(f.runId, { updateId: f.runId, reportsSynced: 1 });
+    await ctx.db.patch(f.connectionId, { pendingUpdateId: f.runId });
+    await ctx.db.patch(f.studentId, { userId: f.student });
+  });
+  await f.t.mutation(internal.abekaSync.claimRenewal, { runId: f.runId });
+  await f.t.mutation(internal.abekaSync.commitRenewal, {
+    runId: f.runId,
+    externalSchoolId: "123",
+    encrypted: await encryptSession("session=old", testKey, f.schoolId),
+  });
+  await f.t.run((ctx) =>
+    ctx.db.insert("abekaProgress", {
+      studentId: f.studentId,
+      subjectId: "117",
+      subjectName: "Math",
+      runId: f.runId,
+      syncedAt: 1,
+      lessons: [lessonSnapshot],
+    }),
+  );
+  await f.t.mutation(internal.abekaSync.saveProgress, {
+    runId: f.runId,
+    studentId: f.studentId,
+    subjectId: "117",
+    lessons: [lessonSnapshot],
+  });
+  expect((await f.t.run((ctx) => ctx.db.get(f.runId)))?.reportsSynced).toBe(1);
+  vi.advanceTimersByTime(61_000);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(null, { status: 302 })),
+  );
+  const login = vi.spyOn(loginProbe, "signInAbeka");
+  await f.t.action(internal.abekaActions.progress, {
+    runId: f.runId,
+    studentId: f.studentId,
+    subjectId: "118",
+  });
+  const failed = await f.adminClient.query(api.abeka.status, {
+    schoolId: f.schoolId,
+  });
+  expect(failed.run?.failure).toEqual({
+    stage: "renewal",
+    reason: "SESSION_NO_PROGRESS",
+  });
+  expect(failed.run?.recoveryJobId).toBeDefined();
+  expect(login).not.toHaveBeenCalled();
+});
+
+test.each(["disconnect", "revision", "inactive", "new-update"] as const)(
+  "an automatic continuation is fenced after %s",
+  async (change) => {
+    const f = await interruptedUpdate("2026-11-18T02:00Z");
+    const old = f.failed.run!;
+    vi.setSystemTime(old.recoveryAt!);
+    if (change === "disconnect")
+      await f.adminClient.mutation(api.abeka.disconnect, {
+        schoolId: f.schoolId,
+      });
+    if (change === "revision")
+      await f.t.run((ctx) => ctx.db.patch(f.connectionId, { revision: 2 }));
+    if (change === "inactive")
+      await f.t.run((ctx) => ctx.db.patch(f.schoolId, { isActive: false }));
+    if (change === "new-update") {
+      vi.setSystemTime(Date.parse("2026-11-19T02:00Z"));
+      await f.adminClient.mutation(api.abeka.syncNow, { schoolId: f.schoolId });
+    }
+    const latest = (await f.t.run((ctx) => ctx.db.get(f.connectionId)))
+      ?.latestRunId;
+    await f.t.mutation(internal.abekaSync.recover, { runId: old._id });
+    expect(
+      (await f.t.run((ctx) => ctx.db.get(f.connectionId)))?.latestRunId,
+    ).toBe(latest);
+    expect(
+      (await f.t.run((ctx) => ctx.db.get(old._id)))?.recoveries,
+    ).toBeUndefined();
+    if (change === "new-update") await finishCurrentSync(f.t);
+    else expect(f.request).not.toHaveBeenCalled();
+  },
+);
+
+test.each([429, 503])(
+  "automatic recovery respects HTTP %s Retry-After without immediate calls",
+  async (status) => {
+    const f = await resumableSetup();
+    const request = vi.fn(
+      async () =>
+        new Response(null, { status, headers: { "Retry-After": "300" } }),
+    );
+    vi.stubGlobal("fetch", request);
+    await f.adminClient.mutation(api.abeka.syncNow, { schoolId: f.schoolId });
+    await finishCurrentSync(f.t);
+    const failed = await f.adminClient.query(api.abeka.status, {
+      schoolId: f.schoolId,
+    });
+    expect(failed.run?.failure).toMatchObject({
+      stage: "roster",
+      reason: "HTTP_STATUS",
+      httpStatus: status,
+    });
+    expect(failed.run?.recoveryAt).toBeGreaterThanOrEqual(
+      failed.run!.finishedAt! + 300_000,
+    );
+    vi.setSystemTime(failed.run!.recoveryAt! - 1);
+    await f.t.mutation(internal.abekaSync.recover, { runId: failed.run!._id });
+    expect(request).toHaveBeenCalledTimes(1);
+  },
+);
+
+test.each(["format", "not-found", "credentials"] as const)(
+  "automatic recovery does not repeat nonrecoverable %s failures",
+  async (kind) => {
+    const f = await resumableSetup();
+    const login = vi
+      .spyOn(loginProbe, "signInAbeka")
+      .mockRejectedValue(new loginProbe.LoginProbeError("SIGN_IN_REJECTED"));
+    const request = vi.fn(
+      async () =>
+        new Response(kind === "format" ? "<html>changed</html>" : null, {
+          status:
+            kind === "credentials" ? 302 : kind === "not-found" ? 404 : 200,
+        }),
+    );
+    vi.stubGlobal("fetch", request);
+    await f.adminClient.mutation(api.abeka.syncNow, { schoolId: f.schoolId });
+    await finishCurrentSync(f.t);
+    const failed = await f.adminClient.query(api.abeka.status, {
+      schoolId: f.schoolId,
+    });
+    expect(failed.run?.status).toBe("failed");
+    expect(failed.run?.recoveryJobId).toBeUndefined();
+    expect(failed.run?.failure).toMatchObject({
+      reason:
+        kind === "format"
+          ? "RESPONSE_FORMAT"
+          : kind === "not-found"
+            ? "HTTP_STATUS"
+            : "AUTHENTICATION",
+    });
+    expect(login).toHaveBeenCalledTimes(kind === "credentials" ? 1 : 0);
+  },
+);
+
+test("an excessive Retry-After preserves the failure instead of scheduling outside Convex limits", async () => {
+  const f = await resumableSetup();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(null, {
+          status: 503,
+          headers: { "Retry-After": "999999999999" },
+        }),
+    ),
+  );
+  await f.adminClient.mutation(api.abeka.syncNow, { schoolId: f.schoolId });
+  await finishCurrentSync(f.t);
+  const failed = await f.adminClient.query(api.abeka.status, {
+    schoolId: f.schoolId,
+  });
+  expect(failed.run).toMatchObject({
+    status: "failed",
+    errorCode: "PROVIDER_UNAVAILABLE",
+    failure: { reason: "HTTP_STATUS", httpStatus: 503 },
+  });
+  expect(failed.run?.recoveryJobId).toBeUndefined();
+  expect(failed.hasPendingUpdate).toBe(true);
+});
+
 test("pending associations run before old reports, with stable pagination and no second-pass duplicate", async () => {
   const { t, adminClient, schoolId, studentId } = await resumableSetup();
   await t.run((ctx) =>
@@ -1333,6 +1938,7 @@ test("renewal permits another expired session only after student progress, with 
   ).not.toBeNull();
   expect(await t.mutation(internal.abekaSync.claimRenewal, { runId })).toEqual({
     paused: true,
+    reason: "SESSION_IN_FLIGHT",
   });
   await t.mutation(internal.abekaSync.commitRenewal, {
     runId,
@@ -1341,6 +1947,7 @@ test("renewal permits another expired session only after student progress, with 
   });
   expect(await t.mutation(internal.abekaSync.claimRenewal, { runId })).toEqual({
     paused: true,
+    reason: "SESSION_NO_PROGRESS",
   });
   await t.run(async (ctx) => {
     await ctx.db.patch(runId, { studentsSynced: 1 });
@@ -1360,6 +1967,7 @@ test("renewal permits another expired session only after student progress, with 
   );
   expect(await t.mutation(internal.abekaSync.claimRenewal, { runId })).toEqual({
     paused: true,
+    reason: "RENEWAL_LIMIT",
   });
 });
 
@@ -1691,6 +2299,7 @@ test("renewal claims are single-use and late renewal commits are revision-fenced
   ).not.toBeNull();
   expect(await t.mutation(internal.abekaSync.claimRenewal, { runId })).toEqual({
     paused: true,
+    reason: "SESSION_IN_FLIGHT",
   });
   await t.run((ctx) => ctx.db.patch(connectionId, { revision: 2 }));
   expect(

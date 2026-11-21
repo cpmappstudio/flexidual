@@ -8,6 +8,7 @@ import {
   decryptCredentials,
 } from "../lib/abeka/encryption";
 import { AuthenticationRequired } from "../lib/abeka/progress";
+import { AbekaRequestError } from "../lib/abeka/errors";
 
 const row = (id: string, status = "1", role = "Student") =>
   `<tr><td><span id="lbldisplayName">Example &amp; Student</span><input id="hidLoginId" value="${id}"></td><td id="lblUserType">${role}</td><td><ul id="bulUserStatus"><li>${status}</li></ul></td></tr>`;
@@ -126,4 +127,42 @@ test("connector refuses arbitrary student IDs and bounds responses", async () =>
     () => abekaClient("session=test", fake).progress("42", "117"),
     /RESPONSE_TOO_LARGE/,
   );
+});
+
+test("report failures retain safe HTTP, timeout and network diagnostics without provider secrets", async () => {
+  for (const scenario of [
+    {
+      request: async () =>
+        new Response("private student response", { status: 502 }),
+      reason: "HTTP_STATUS",
+      httpStatus: 502,
+    },
+    {
+      request: async () => {
+        throw new DOMException("private URL and token", "TimeoutError");
+      },
+      reason: "TIMEOUT",
+      httpStatus: undefined,
+    },
+    {
+      request: async () => {
+        throw new Error("session=private-password");
+      },
+      reason: "NETWORK",
+      httpStatus: undefined,
+    },
+  ]) {
+    await assert.rejects(
+      () => abekaClient("session=private", scenario.request).roster(),
+      (error) => {
+        assert.ok(error instanceof AbekaRequestError);
+        assert.equal(error.reason, scenario.reason);
+        assert.equal(error.httpStatus, scenario.httpStatus);
+        assert.equal(error.message, "PROVIDER_UNAVAILABLE");
+        assert.equal("cause" in error, false);
+        assert.doesNotMatch(JSON.stringify(error), /private|password|token/i);
+        return true;
+      },
+    );
+  }
 });

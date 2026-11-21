@@ -654,6 +654,8 @@
       "updateData": "Atualizar dados",
       "pendingSync": "Vínculo salvo. Use Atualizar dados para baixar o progresso pendente ou aguarde a sincronização programada.",
       "resumeSync": "Atualização incompleta. Use Atualizar dados para continuar. Um ciclo de hoje retoma os alunos pendentes; um ciclo de um dia anterior inicia uma atualização completa para todos.",
+      "automaticRecovery": "Atualização interrompida. Os alunos pendentes serão retomados automaticamente em {date}. O progresso importado é preservado.",
+      "renewalPaused": "A renovação da sessão está pausada. O progresso importado é preservado.",
       "disconnect": "Desconectar",
       "disconnectExplanation": "As credenciais e a sessão salvas serão excluídas e a sincronização automática será cancelada. Os relatórios importados e os vínculos serão mantidos.",
       "sessionExplanation": "Conecte usando uma sessão autorizada da Abeka. Esta não é uma integração oficial nem um login automático. Renove a sessão quando ela expirar.",

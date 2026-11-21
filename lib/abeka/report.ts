@@ -7,6 +7,7 @@ import {
   parseProgress,
 } from "./progress";
 import { readBoundedText, validateCookieHeader } from "./session";
+import { AbekaRequestError, requestFailure } from "./errors";
 import {
   CATALOG_URL,
   PERMISSIONS_URL,
@@ -94,11 +95,12 @@ export function abekaClient(
   const cookie = validateCookieHeader(cookieInput);
   async function read(url: string, body?: object) {
     let response: Response | undefined;
+    const signal = AbortSignal.timeout(12_000);
     try {
       response = await request(url, {
         method: body ? "POST" : "GET",
         redirect: "manual",
-        signal: AbortSignal.timeout(12_000),
+        signal,
         headers: {
           Cookie: cookie,
           ...(body
@@ -109,7 +111,10 @@ export function abekaClient(
       });
       if ([301, 302, 303, 307, 308, 401, 403].includes(response.status))
         throw new AuthenticationRequired("NEEDS_RECONNECT");
-      if (response.status !== 200) throw new ProbeError("PROVIDER_UNAVAILABLE");
+      if (response.status !== 200)
+        throw new AbekaRequestError("HTTP_STATUS", {
+          httpStatus: response.status,
+        });
       if (
         body &&
         !response.headers.get("content-type")?.includes("application/json")
@@ -118,7 +123,7 @@ export function abekaClient(
       return await readBoundedText(response, body ? 1_000_000 : 8_000_000);
     } catch (error) {
       if (error instanceof ProbeError) throw error;
-      throw new ProbeError("PROVIDER_UNAVAILABLE");
+      throw requestFailure(error, signal);
     } finally {
       if (response?.body && !response.bodyUsed)
         await response.body.cancel().catch(() => undefined);
