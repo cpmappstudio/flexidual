@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import {
   type CarouselApi,
   Carousel,
@@ -17,6 +18,7 @@ import {
 
 export function DetailCarousel({
   title,
+  className,
   showTitle = true,
   olderLabel,
   newerLabel,
@@ -25,6 +27,7 @@ export function DetailCarousel({
   children,
 }: {
   title: string;
+  className?: string;
   showTitle?: boolean;
   olderLabel: string;
   newerLabel: string;
@@ -33,7 +36,12 @@ export function DetailCarousel({
   children: ReactNode;
 }) {
   return (
-    <Card className="min-w-0 gap-0 overflow-hidden rounded-[2rem] border-0 py-5 shadow-md ring-1 ring-border/80">
+    <Card
+      className={cn(
+        "min-w-0 gap-0 overflow-hidden rounded-[2rem] border-0 py-5 shadow-md ring-1 ring-border/80",
+        className,
+      )}
+    >
       <Carousel
         opts={{ align: "start", containScroll: "trimSnaps" }}
         setApi={setApi}

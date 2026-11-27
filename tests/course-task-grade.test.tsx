@@ -13,7 +13,11 @@ import type { GradingConfiguration } from "@/lib/grading";
 const state = vi.hoisted(() => ({
   userId: "teacher-1",
   grade: {
-    grading: { maxPoints: 20, scaleMax: 100, decimalPlaces: 2 } as GradingConfiguration,
+    grading: {
+      maxPoints: 20,
+      scaleMax: 100,
+      decimalPlaces: 2,
+    } as GradingConfiguration,
     version: 0,
     draft: null as null | {
       points: number;
@@ -38,7 +42,13 @@ const saveDraft = vi.hoisted(() => vi.fn());
 const publish = vi.hoisted(() => vi.fn());
 const history = vi.hoisted(() => vi.fn());
 const historyEntries = vi.hoisted(() => [
-  { version: 4, points: 18, institutionalPoints: 90, updatedAt: 20, comment: "Latest publication" },
+  {
+    version: 4,
+    points: 18,
+    institutionalPoints: 90,
+    updatedAt: 20,
+    comment: "Latest publication",
+  },
   { version: 2, points: 10, updatedAt: 10, comment: "First publication" },
 ]);
 vi.mock("@clerk/nextjs", () => ({ useAuth: () => ({ userId: state.userId }) }));
@@ -67,6 +77,18 @@ vi.mock("convex/react", async () => {
   };
 });
 import { CourseTaskGrade } from "@/components/teaching/classes/course-task-grade";
+
+test("a student can receive a quiz waiting message without exposing the teacher's draft", () => {
+  render(
+    <CourseTaskGrade
+      taskId={"task-1" as Id<"courseTasks">}
+      timeZone="UTC"
+      unpublishedContent={<p>Awaiting grade publication</p>}
+    />,
+  );
+  expect(screen.getByText("Awaiting grade publication")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "publish" })).toBeNull();
+});
 
 const taskId = "task-1" as Id<"courseTasks">;
 const studentId = "student-1" as Id<"users">;
@@ -125,7 +147,9 @@ test("a burst of edits autosaves only the last value and never publishes", async
     expect(saveDraft).not.toHaveBeenCalled();
     await act(async () => vi.advanceTimersByTimeAsync(250));
     expect(saveDraft).toHaveBeenCalledOnce();
-    expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({ institutionalPoints: 85 }));
+    expect(saveDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ institutionalPoints: 85 }),
+    );
     expect(publish).not.toHaveBeenCalled();
   } finally {
     vi.useRealTimers();
@@ -194,7 +218,11 @@ test("only a published grade determines the outcome, including the exact thresho
   expect(screen.getByText("passed")).toBeTruthy();
   expect(screen.queryByText("failed")).toBeNull();
 
-  state.grade.published = { ...draft, points: 13.998, institutionalPoints: 69.99 };
+  state.grade.published = {
+    ...draft,
+    points: 13.998,
+    institutionalPoints: 69.99,
+  };
   view.rerender(<CourseTaskGrade taskId={taskId} timeZone="UTC" />);
   expect(screen.getByText("failed")).toBeTruthy();
   expect(screen.queryByText("passed")).toBeNull();
@@ -216,12 +244,18 @@ test("teacher edits on the institutional scale without rewriting the old score w
   expect(input.value).toBe("7");
   expect(screen.queryByText("7 / 10")).toBeNull();
   expect(screen.getByText("failed")).toBeTruthy();
-  fireEvent.change(screen.getByLabelText("comment"), { target: { value: "Feedback" } });
-  await act(async () => fireEvent.submit(screen.getByLabelText("points").closest("form")!));
-  expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({
-    points: 13.9,
-    comment: "Feedback",
-  }));
+  fireEvent.change(screen.getByLabelText("comment"), {
+    target: { value: "Feedback" },
+  });
+  await act(async () =>
+    fireEvent.submit(screen.getByLabelText("points").closest("form")!),
+  );
+  expect(saveDraft).toHaveBeenCalledWith(
+    expect.objectContaining({
+      points: 13.9,
+      comment: "Feedback",
+    }),
+  );
   expect(publish).not.toHaveBeenCalled();
 });
 
@@ -234,7 +268,8 @@ test("failed saves preserve the operation id for retries and prevent parallel sa
   fireEvent.submit(screen.getByLabelText("points").closest("form")!);
   await waitFor(() =>
     expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "retryDraft" }).disabled,
+      screen.getByRole<HTMLButtonElement>("button", { name: "retryDraft" })
+        .disabled,
     ).toBe(false),
   );
   const first = saveDraft.mock.calls[0][0];
@@ -251,12 +286,14 @@ test("failed saves preserve the operation id for retries and prevent parallel sa
   expect(saveDraft.mock.calls[1][0]).toEqual(first);
   complete(1);
   await waitFor(() =>
-    expect(
-      screen.getByLabelText<HTMLInputElement>("points").readOnly,
-    ).toBe(true),
+    expect(screen.getByLabelText<HTMLInputElement>("points").readOnly).toBe(
+      true,
+    ),
   );
   expect(
-    sessionStorage.getItem(`flexidual:task-grade:teacher-1:${taskId}:${studentId}`),
+    sessionStorage.getItem(
+      `flexidual:task-grade:teacher-1:${taskId}:${studentId}`,
+    ),
   ).toBeNull();
 });
 
@@ -264,13 +301,17 @@ test("a late save preserves a newer draft that can be kept and saved privately",
   const response = Promise.withResolvers<number>();
   saveDraft.mockReturnValueOnce(response.promise);
   const first = render(<CourseTaskGrade {...props} />);
-  fireEvent.change(screen.getByLabelText("points"), { target: { value: "14" } });
+  fireEvent.change(screen.getByLabelText("points"), {
+    target: { value: "14" },
+  });
   fireEvent.submit(screen.getByLabelText("points").closest("form")!);
   expect(saveDraft).toHaveBeenCalledOnce();
   first.unmount();
 
   const reopened = render(<CourseTaskGrade {...props} />);
-  fireEvent.change(screen.getByLabelText("points"), { target: { value: "16" } });
+  fireEvent.change(screen.getByLabelText("points"), {
+    target: { value: "16" },
+  });
   await act(async () => response.resolve(1));
   fireEvent.change(screen.getByLabelText("comment"), {
     target: { value: "New private comment" },
@@ -297,15 +338,23 @@ test("a late save preserves a newer draft that can be kept and saved privately",
   render(<CourseTaskGrade {...props} />);
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByLabelText<HTMLInputElement>("points").value).toBe("16");
-  expect(screen.getByLabelText<HTMLTextAreaElement>("comment").value).toBe("New private comment");
-  expect(screen.getByRole<HTMLButtonElement>("button", { name: "publish" }).disabled).toBe(true);
-  await act(async () => fireEvent.submit(screen.getByLabelText("points").closest("form")!));
-  expect(saveDraft).toHaveBeenLastCalledWith(expect.objectContaining({
-    institutionalPoints: 16,
-    comment: "New private comment",
-    expectedVersion: 1,
-    expectedSubmissionRevision: 0,
-  }));
+  expect(screen.getByLabelText<HTMLTextAreaElement>("comment").value).toBe(
+    "New private comment",
+  );
+  expect(
+    screen.getByRole<HTMLButtonElement>("button", { name: "publish" }).disabled,
+  ).toBe(true);
+  await act(async () =>
+    fireEvent.submit(screen.getByLabelText("points").closest("form")!),
+  );
+  expect(saveDraft).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      institutionalPoints: 16,
+      comment: "New private comment",
+      expectedVersion: 1,
+      expectedSubmissionRevision: 0,
+    }),
+  );
   expect(publish).not.toHaveBeenCalled();
 });
 
@@ -330,7 +379,9 @@ test("opening another grading view during a save accepts the matching server con
   next.rerender(<CourseTaskGrade {...props} />);
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByLabelText<HTMLInputElement>("points").value).toBe("85");
-  expect(screen.getByRole<HTMLButtonElement>("button", { name: "publish" }).disabled).toBe(false);
+  expect(
+    screen.getByRole<HTMLButtonElement>("button", { name: "publish" }).disabled,
+  ).toBe(false);
   expect(saveDraft).toHaveBeenCalledOnce();
 });
 
@@ -352,9 +403,7 @@ test("remote edits and new submissions cannot silently reuse an unsaved local gr
   expect((screen.getByLabelText("points") as HTMLInputElement).value).toBe(
     "12",
   );
-  expect(
-    screen.getByLabelText<HTMLInputElement>("points").readOnly,
-  ).toBe(true);
+  expect(screen.getByLabelText<HTMLInputElement>("points").readOnly).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "loadCurrent" }));
   expect((screen.getByLabelText("points") as HTMLInputElement).value).toBe(
     "75",
@@ -377,7 +426,12 @@ test("temporary browser storage failure does not prevent cloud saving", async ()
   await waitFor(() => expect(saveDraft).toHaveBeenCalledOnce());
 });
 
-test.each([{ maxPoints: 100 }, { scaleMax: 20 }, { decimalPlaces: 0 }, { passingPercentage: 70 }])(
+test.each([
+  { maxPoints: 100 },
+  { scaleMax: 20 },
+  { decimalPlaces: 0 },
+  { passingPercentage: 70 },
+])(
   "a grading configuration change cannot reinterpret a local draft: %j",
   (change) => {
     const first = render(<CourseTaskGrade {...props} />);
@@ -392,9 +446,9 @@ test.each([{ maxPoints: 100 }, { scaleMax: 20 }, { decimalPlaces: 0 }, { passing
     );
     expect(screen.getByRole("alert").textContent).toBe("stale");
     expect(screen.queryByRole("button", { name: "keepLocalDraft" })).toBeNull();
-    expect(
-      screen.getByLabelText<HTMLInputElement>("points").readOnly,
-    ).toBe(true);
+    expect(screen.getByLabelText<HTMLInputElement>("points").readOnly).toBe(
+      true,
+    );
     expect(
       (screen.getByRole("button", { name: "publish" }) as HTMLButtonElement)
         .disabled,
@@ -427,35 +481,48 @@ test("legacy drafts without a grading snapshot remain recoverable but require re
   );
   expect(screen.getByRole("alert").textContent).toBe("stale");
   expect(screen.queryByRole("button", { name: "keepLocalDraft" })).toBeNull();
-  expect(
-    screen.getByLabelText<HTMLInputElement>("points").readOnly,
-  ).toBe(true);
+  expect(screen.getByLabelText<HTMLInputElement>("points").readOnly).toBe(true);
 });
 
 test.each([
-  { storedPoints: "17", institutionalScale: undefined, request: { points: 17 } },
-  { storedPoints: "85", institutionalScale: true, request: { institutionalPoints: 85 } },
-])("reopens a local draft without changing its scale ($storedPoints)", async ({ storedPoints, institutionalScale, request }) => {
-  sessionStorage.setItem(
-    `flexidual:task-grade:teacher-1:${taskId}:${studentId}`,
-    JSON.stringify({
-      points: storedPoints,
-      institutionalScale,
-      comment: "Earlier draft",
-      version: 0,
-      submissionRevision: 0,
-      operationId: "earlier-draft",
-      grading: state.grade.grading,
-    }),
-  );
-  render(<CourseTaskGrade {...props} />);
-  expect(screen.getByLabelText<HTMLInputElement>("points").value).toBe("85");
-  await act(async () => fireEvent.submit(screen.getByLabelText("points").closest("form")!));
-  expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({
-    ...request,
-    operationId: "earlier-draft",
-  }));
-});
+  {
+    storedPoints: "17",
+    institutionalScale: undefined,
+    request: { points: 17 },
+  },
+  {
+    storedPoints: "85",
+    institutionalScale: true,
+    request: { institutionalPoints: 85 },
+  },
+])(
+  "reopens a local draft without changing its scale ($storedPoints)",
+  async ({ storedPoints, institutionalScale, request }) => {
+    sessionStorage.setItem(
+      `flexidual:task-grade:teacher-1:${taskId}:${studentId}`,
+      JSON.stringify({
+        points: storedPoints,
+        institutionalScale,
+        comment: "Earlier draft",
+        version: 0,
+        submissionRevision: 0,
+        operationId: "earlier-draft",
+        grading: state.grade.grading,
+      }),
+    );
+    render(<CourseTaskGrade {...props} />);
+    expect(screen.getByLabelText<HTMLInputElement>("points").value).toBe("85");
+    await act(async () =>
+      fireEvent.submit(screen.getByLabelText("points").closest("form")!),
+    );
+    expect(saveDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...request,
+        operationId: "earlier-draft",
+      }),
+    );
+  },
+);
 
 test("reopening restores unsaved input but does not mix students or accounts", () => {
   state.grade.grading.passingPercentage = 70;

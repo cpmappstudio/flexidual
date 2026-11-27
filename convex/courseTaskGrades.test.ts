@@ -5,7 +5,11 @@ import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { modules } from "./test.setup";
 import { ensureCourseTaskRecipient } from "./model/courseTaskRecipients";
-import { DEFAULT_GRADING_POLICY, gradeOutcome, gradeToScale } from "../lib/grading";
+import {
+  DEFAULT_GRADING_POLICY,
+  gradeOutcome,
+  gradeToScale,
+} from "../lib/grading";
 
 async function setup() {
   const t = convexTest(schema, modules);
@@ -122,6 +126,102 @@ async function setup() {
   return { t, ...ids, teacher, student, admin, args };
 }
 
+test("quiz metadata remains readable and general grade APIs never expose stored per-question scores", async () => {
+  const s = await setup();
+  const grading = { maxPoints: 20, scaleMax: 100, decimalPlaces: 2 };
+  await s.t.run(async (ctx) => {
+    await ctx.db.patch("courseTasks", s.taskId, {
+      kind: "quiz",
+      quiz: { durationMinutes: 30 },
+      dueAt: Date.now() + 60_000,
+      allowLateSubmissions: false,
+    });
+    const recipient = await ctx.db
+      .query("courseTaskRecipients")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", s.taskId).eq("studentId", s.users.student),
+      )
+      .unique();
+    const questionId = await ctx.db.insert("courseQuizQuestions", {
+      taskId: s.taskId,
+      order: 0,
+      prompt: "Choose",
+      maxPoints: 20,
+      kind: "single_choice",
+      options: [{ id: "a", label: "A" }],
+      correctOptionId: "a",
+    });
+    const published = {
+      points: 20,
+      source: "automatic" as const,
+      submissionRevision: 0,
+      updatedAt: Date.now(),
+      quizScores: [{ questionId, points: 20 }],
+    };
+    const gradeId = await ctx.db.insert("courseTaskGrades", {
+      taskId: s.taskId,
+      classId: s.classId,
+      studentId: s.users.student,
+      recipientId: recipient!._id,
+      version: 1,
+      lastOperationId: "automatic",
+      lastOperationBy: null,
+      lastOperationKind: "publish",
+      published,
+      draft: {
+        points: 0,
+        submissionRevision: 0,
+        updatedAt: Date.now(),
+        authorId: s.users.teacher,
+        quizScores: [{ questionId, points: null }],
+      },
+    });
+    await ctx.db.insert("courseTaskGradeHistory", {
+      gradeId,
+      version: 1,
+      ...published,
+    });
+  });
+  expect(
+    await s.student.query(api.courseTasks.get, { taskId: s.taskId }),
+  ).toMatchObject({
+    kind: "quiz",
+    quiz: { durationMinutes: 30 },
+    grading,
+  });
+  expect(
+    await s.student.query(api.courseTaskGrades.get, { taskId: s.taskId }),
+  ).toMatchObject({
+    published: null,
+    draft: null,
+    version: 0,
+    needsReview: false,
+  });
+  const studentGrade = await s.teacher.query(api.courseTaskGrades.get, {
+    taskId: s.taskId,
+    studentId: s.users.student,
+  });
+  expect(studentGrade.published).toMatchObject({
+    points: 20,
+    source: "automatic",
+  });
+  expect(studentGrade.published).not.toHaveProperty("quizScores");
+  expect(studentGrade.published).not.toHaveProperty("authorId");
+  const history = await s.teacher.query(api.courseTaskGrades.history, {
+    taskId: s.taskId,
+    studentId: s.users.student,
+    paginationOpts: { cursor: null, numItems: 20 },
+  });
+  expect(history.page).toHaveLength(1);
+  expect(history.page[0]).toMatchObject({
+    version: 1,
+    points: 20,
+    source: "automatic",
+  });
+  expect(history.page[0]).not.toHaveProperty("quizScores");
+  expect(history.page[0]).not.toHaveProperty("gradeId");
+});
+
 test("school reads keep the same contract and access after setting a grading policy", async () => {
   const { t, admin, schoolId } = await setup();
   const schoolArgs = { id: schoolId };
@@ -134,7 +234,9 @@ test("school reads keep the same contract and access after setting a grading pol
     policy,
   });
 
-  expect(await admin.query(api.schools.list, { isActive: true })).toEqual([school]);
+  expect(await admin.query(api.schools.list, { isActive: true })).toEqual([
+    school,
+  ]);
   expect(await admin.query(api.schools.list, {})).toEqual([school]);
   expect(await admin.query(api.schools.get, schoolArgs)).toEqual(school);
   expect(
@@ -142,7 +244,9 @@ test("school reads keep the same contract and access after setting a grading pol
   ).toEqual(policy);
 
   const outsider = t.withIdentity({ subject: "outsider" });
-  expect(await outsider.query(api.schools.list, { isActive: true })).toEqual([]);
+  expect(await outsider.query(api.schools.list, { isActive: true })).toEqual(
+    [],
+  );
   await expect(outsider.query(api.schools.get, schoolArgs)).rejects.toThrow(
     "PERMISSION_DENIED",
   );
@@ -210,9 +314,14 @@ test("drafts remain private; publication and correction preserve previous publis
     institutionalPoints: 85.17,
     version: 4,
   });
-  const updated = await s.student.query(api.courseTaskGrades.get, { taskId: s.taskId });
+  const updated = await s.student.query(api.courseTaskGrades.get, {
+    taskId: s.taskId,
+  });
   expect(updated).toMatchObject({
-    published: { points: expect.closeTo(17.034, 10), institutionalPoints: 85.17 },
+    published: {
+      points: expect.closeTo(17.034, 10),
+      institutionalPoints: 85.17,
+    },
     draft: null,
   });
   // An earlier tab ignores the new field and normalizes activity points itself.
@@ -231,45 +340,93 @@ test("bulk publishing covers all saved drafts in batches and preserves stale and
   const s = await setup();
   const queryArgs = { taskId: s.taskId };
   const publishArgs = { ...queryArgs, operationId: "bulk-publish" };
-  expect(await s.teacher.query(api.courseTaskGrades.hasPublishableDrafts, queryArgs)).toBe(false);
-  await expect(s.student.query(api.courseTaskGrades.hasPublishableDrafts, queryArgs)).rejects.toThrow("PERMISSION_DENIED");
-  await expect(s.student.mutation(api.courseTaskGrades.publishAll, publishArgs)).rejects.toThrow("PERMISSION_DENIED");
+  expect(
+    await s.teacher.query(api.courseTaskGrades.hasPublishableDrafts, queryArgs),
+  ).toBe(false);
+  await expect(
+    s.student.query(api.courseTaskGrades.hasPublishableDrafts, queryArgs),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    s.student.mutation(api.courseTaskGrades.publishAll, publishArgs),
+  ).rejects.toThrow("PERMISSION_DENIED");
 
-  await s.teacher.mutation(api.courseTaskGrades.saveDraft, { ...s.args, points: 10 });
+  await s.teacher.mutation(api.courseTaskGrades.saveDraft, {
+    ...s.args,
+    points: 10,
+  });
   await s.teacher.mutation(api.courseTaskGrades.publish, {
-    ...s.args, expectedVersion: 1, operationId: "publish-old",
+    ...s.args,
+    expectedVersion: 1,
+    operationId: "publish-old",
   });
   await s.teacher.mutation(api.courseTaskGrades.saveDraft, {
-    ...s.args, expectedVersion: 2, operationId: "draft-stale", points: 12,
+    ...s.args,
+    expectedVersion: 2,
+    operationId: "draft-stale",
+    points: 12,
   });
   await s.t.run(async (ctx) => {
-    const studentGrade = await ctx.db.query("courseTaskGrades")
-      .withIndex("by_taskId_and_studentId", (q) => q.eq("taskId", s.taskId).eq("studentId", s.users.student))
+    const studentGrade = await ctx.db
+      .query("courseTaskGrades")
+      .withIndex("by_taskId_and_studentId", (q) =>
+        q.eq("taskId", s.taskId).eq("studentId", s.users.student),
+      )
       .unique();
-    await ctx.db.patch("courseTaskRecipients", studentGrade!.recipientId, { submissionRevision: 1 });
+    await ctx.db.patch("courseTaskRecipients", studentGrade!.recipientId, {
+      submissionRevision: 1,
+    });
   });
-  expect(await s.teacher.query(api.courseTaskGrades.hasPublishableDrafts, queryArgs)).toBe(false);
+  expect(
+    await s.teacher.query(api.courseTaskGrades.hasPublishableDrafts, queryArgs),
+  ).toBe(false);
 
   const [laterGradeId] = await s.t.run(async (ctx) => {
     const ids: Id<"courseTaskGrades">[] = [];
     for (let i = 0; i < 52; i++) {
       const studentId = await ctx.db.insert("users", {
-        clerkId: `bulk-${i}`, firstName: "Bulk", lastName: String(i),
-        fullName: `Bulk ${i}`, isActive: true, createdAt: 1,
+        clerkId: `bulk-${i}`,
+        firstName: "Bulk",
+        lastName: String(i),
+        fullName: `Bulk ${i}`,
+        isActive: true,
+        createdAt: 1,
       });
       const recipientId = await ctx.db.insert("courseTaskRecipients", {
-        taskId: s.taskId, classId: s.classId, studentId, submissionRevision: 0, assignedAt: 1,
+        taskId: s.taskId,
+        classId: s.classId,
+        studentId,
+        submissionRevision: 0,
+        assignedAt: 1,
       });
-      ids.push(await ctx.db.insert("courseTaskGrades", {
-        ...queryArgs, classId: s.classId, studentId, recipientId, version: 1,
-        draft: { points: i, institutionalScale: true, submissionRevision: 0, updatedAt: i + 1, authorId: s.users.teacher },
-        lastOperationId: `draft-${i}`, lastOperationKind: "draft", lastOperationBy: s.users.teacher,
-      }));
+      ids.push(
+        await ctx.db.insert("courseTaskGrades", {
+          ...queryArgs,
+          classId: s.classId,
+          studentId,
+          recipientId,
+          version: 1,
+          draft: {
+            points: i,
+            institutionalScale: true,
+            submissionRevision: 0,
+            updatedAt: i + 1,
+            authorId: s.users.teacher,
+          },
+          lastOperationId: `draft-${i}`,
+          lastOperationKind: "draft",
+          lastOperationBy: s.users.teacher,
+        }),
+      );
     }
     return ids.slice(-1);
   });
-  expect(await s.teacher.query(api.courseTaskGrades.hasPublishableDrafts, queryArgs)).toBe(true);
-  const first = await s.teacher.mutation(api.courseTaskGrades.publishAll, publishArgs);
+  expect(
+    await s.teacher.query(api.courseTaskGrades.hasPublishableDrafts, queryArgs),
+  ).toBe(true);
+  const first = await s.teacher.mutation(
+    api.courseTaskGrades.publishAll,
+    publishArgs,
+  );
   expect(first).toMatchObject({ published: 50, skipped: 0 });
   expect(first.continuation).not.toBeNull();
   await s.t.run(async (ctx) => {
@@ -279,11 +436,16 @@ test("bulk publishing covers all saved drafts in batches and preserves stale and
     });
   });
   const last = await s.teacher.mutation(api.courseTaskGrades.publishAll, {
-    ...publishArgs, continuation: first.continuation!,
+    ...publishArgs,
+    continuation: first.continuation!,
   });
   expect(last).toEqual({ published: 1, skipped: 1, continuation: null });
-  expect(await s.student.query(api.courseTaskGrades.get, queryArgs)).toMatchObject({
-    draft: null, published: { points: 10 }, needsReview: true,
+  expect(
+    await s.student.query(api.courseTaskGrades.get, queryArgs),
+  ).toMatchObject({
+    draft: null,
+    published: { points: 10 },
+    needsReview: true,
   });
   const grades = await s.t.run(async (ctx) => ({
     later: await ctx.db.get("courseTaskGrades", laterGradeId),
@@ -312,51 +474,72 @@ test("neither publication path can expose an invalid stored draft", async () => 
     });
   });
   const task = { taskId: s.taskId };
-  expect(await s.teacher.query(api.courseTaskGrades.hasPublishableDrafts, task))
-    .toBe(false);
-  await expect(s.teacher.mutation(api.courseTaskGrades.publish, {
-    ...s.args,
-    expectedVersion: 1,
-    operationId: "publish-invalid",
-  })).rejects.toThrow("INVALID_TASK_GRADE");
-  expect(await s.teacher.mutation(api.courseTaskGrades.publishAll, {
-    ...task,
-    operationId: "bulk-invalid",
-  })).toEqual({ published: 0, skipped: 1, continuation: null });
+  expect(
+    await s.teacher.query(api.courseTaskGrades.hasPublishableDrafts, task),
+  ).toBe(false);
+  await expect(
+    s.teacher.mutation(api.courseTaskGrades.publish, {
+      ...s.args,
+      expectedVersion: 1,
+      operationId: "publish-invalid",
+    }),
+  ).rejects.toThrow("INVALID_TASK_GRADE");
+  expect(
+    await s.teacher.mutation(api.courseTaskGrades.publishAll, {
+      ...task,
+      operationId: "bulk-invalid",
+    }),
+  ).toEqual({ published: 0, skipped: 1, continuation: null });
   expect(await s.student.query(api.courseTaskGrades.get, task)).toMatchObject({
     draft: null,
     published: null,
   });
-  expect(await s.t.run((ctx) => ctx.db.query("courseTaskGradeHistory").collect()))
-    .toHaveLength(0);
+  expect(
+    await s.t.run((ctx) => ctx.db.query("courseTaskGradeHistory").collect()),
+  ).toHaveLength(0);
 });
 
 test("an older client can keep the exact institutional score in a private comment edit", async () => {
   const s = await setup();
   await s.teacher.mutation(api.courseTaskGrades.saveDraft, {
-    ...s.args, institutionalPoints: 85.17,
+    ...s.args,
+    institutionalPoints: 85.17,
   });
   await s.teacher.mutation(api.courseTaskGrades.publish, {
-    ...s.args, expectedVersion: 1, operationId: "publish-1",
+    ...s.args,
+    expectedVersion: 1,
+    operationId: "publish-1",
   });
   const target = { taskId: s.taskId, studentId: s.users.student };
   const before = await s.teacher.query(api.courseTaskGrades.get, target);
   const edit = {
-    ...s.args, expectedVersion: 2, operationId: "legacy-comment",
-    points: before.published!.points, comment: "Private correction",
+    ...s.args,
+    expectedVersion: 2,
+    operationId: "legacy-comment",
+    points: before.published!.points,
+    comment: "Private correction",
   };
-  await expect(s.teacher.mutation(api.courseTaskGrades.saveDraft, {
-    ...edit, institutionalPoints: 85.17,
-  })).rejects.toThrow("INVALID_TASK_GRADE");
-  expect(await s.teacher.mutation(api.courseTaskGrades.saveDraft, edit)).toBe(3);
-  expect(await s.teacher.mutation(api.courseTaskGrades.saveDraft, edit)).toBe(3);
+  await expect(
+    s.teacher.mutation(api.courseTaskGrades.saveDraft, {
+      ...edit,
+      institutionalPoints: 85.17,
+    }),
+  ).rejects.toThrow("INVALID_TASK_GRADE");
+  expect(await s.teacher.mutation(api.courseTaskGrades.saveDraft, edit)).toBe(
+    3,
+  );
+  expect(await s.teacher.mutation(api.courseTaskGrades.saveDraft, edit)).toBe(
+    3,
+  );
   const teacher = await s.teacher.query(api.courseTaskGrades.get, target);
   expect(teacher.draft).toMatchObject({
     points: before.published!.points,
     institutionalPoints: 85.17,
     comment: "Private correction",
   });
-  const student = await s.student.query(api.courseTaskGrades.get, { taskId: s.taskId });
+  const student = await s.student.query(api.courseTaskGrades.get, {
+    taskId: s.taskId,
+  });
   expect(student.draft).toBeNull();
   expect(student.published).toEqual(before.published);
 });
@@ -367,12 +550,24 @@ test("only task managers receive inline draft grades on the current submissions 
     ...s.args,
     institutionalPoints: 82.5,
   });
-  const args = { taskId: s.taskId, paginationOpts: { cursor: null, numItems: 20 } };
-  const page = await s.teacher.query(api.courseTaskSubmissions.listForTask, args);
-  expect(page.page.find((row) => row.studentId === s.users.student)?.grade)
-    .toMatchObject({ version: 1, draft: { institutionalPoints: 82.5 }, published: null });
-  await expect(s.student.query(api.courseTaskSubmissions.listForTask, args))
-    .rejects.toThrow("PERMISSION_DENIED");
+  const args = {
+    taskId: s.taskId,
+    paginationOpts: { cursor: null, numItems: 20 },
+  };
+  const page = await s.teacher.query(
+    api.courseTaskSubmissions.listForTask,
+    args,
+  );
+  expect(
+    page.page.find((row) => row.studentId === s.users.student)?.grade,
+  ).toMatchObject({
+    version: 1,
+    draft: { institutionalPoints: 82.5 },
+    published: null,
+  });
+  await expect(
+    s.student.query(api.courseTaskSubmissions.listForTask, args),
+  ).rejects.toThrow("PERMISSION_DENIED");
 });
 
 test("saving and publishing retries are idempotent and stale teachers cannot overwrite a winner", async () => {

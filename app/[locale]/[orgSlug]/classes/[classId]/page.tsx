@@ -266,10 +266,13 @@ export default function ClassDetailPage() {
   };
 
   return (
-    <div className="grid gap-5 xl:min-h-[calc(100svh-var(--header-height)-2rem)] xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid gap-5 xl:min-h-[calc(100svh-var(--header-height)-2rem)] xl:grid-cols-[minmax(0,1fr)_360px] has-[[data-quiz-active=true]]:xl:grid-cols-1 has-[[data-quiz-active=true]]:[&>aside]:hidden has-[[data-quiz-active=true]]:[&_[data-course-overview]]:hidden">
       <div className="min-w-0 space-y-6">
         {/* Header Area */}
-        <div className="flex items-center justify-between gap-3">
+        <div
+          data-course-overview
+          className="flex items-center justify-between gap-3"
+        >
           <div className="flex min-w-0 items-center gap-3">
             <CurriculumIcon
               iconKey={classData.curriculumIconKey}
@@ -391,7 +394,7 @@ export default function ClassDetailPage() {
             onValueChange={handleTabChange}
             className="w-full"
           >
-            <div className="mb-2 overflow-x-auto">
+            <div data-course-overview className="mb-2 overflow-x-auto">
               <TabsList className="relative z-10 mb-0 flex h-auto min-h-9 w-full justify-start rounded-none border-b border-border/70 bg-transparent p-0 pb-2.5 text-foreground">
                 <TabsTrigger
                   value="schedule"

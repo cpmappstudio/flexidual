@@ -29,7 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
+import { TaskContentFields, TaskDateFields } from "./course-task-fields";
 import {
   MAX_TASK_MATERIAL_FILES,
   validTaskFileSet,
@@ -329,31 +329,13 @@ export function CourseTaskEditor({
             }}
             className="min-w-0 space-y-5"
           >
-            <div className="space-y-2">
-              <Label htmlFor="task-title">
-                {t("title")}
-                <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="task-title"
-                value={title}
-                maxLength={160}
-                onChange={(event) => setTitle(event.target.value)}
-                required
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="task-description">{t("description")}</Label>
-              <Textarea
-                id="task-description"
-                value={description}
-                maxLength={10_000}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={4}
-                disabled={saving}
-              />
-            </div>
+            <TaskContentFields
+              title={title}
+              description={description}
+              onTitleChange={setTitle}
+              onDescriptionChange={setDescription}
+              disabled={saving}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <div className="flex items-center gap-2">
@@ -401,50 +383,15 @@ export function CourseTaskEditor({
                   </>
                 )}
               </div>
-              <div className="space-y-2">
-                {task?.releasedAt === undefined ? (
-                  <>
-                    <Label htmlFor="task-start">{t("availableAt")}</Label>
-                    <Input
-                      id="task-start"
-                      type="datetime-local"
-                      value={availableAt}
-                      onChange={(event) => setAvailableAt(event.target.value)}
-                      disabled={saving}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {t(
-                        availableAt
-                          ? "scheduledStartHint"
-                          : "immediateStartHint",
-                      )}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <Label>{t("availableFrom")}</Label>
-                    <p className="py-2 text-sm font-medium">
-                      {formatDeadline(task.releasedAt)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {t("releasedStartHint")}
-                    </p>
-                  </>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="task-due">{t("dueAt")}</Label>
-                <Input
-                  id="task-due"
-                  type="datetime-local"
-                  value={dueAt}
-                  onChange={(event) => setDueAt(event.target.value)}
-                  disabled={saving}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t(dueAt ? "deadlineHint" : "noDeadlineHint")}
-                </p>
-              </div>
+              <TaskDateFields
+                task={task}
+                availableAt={availableAt}
+                dueAt={dueAt}
+                onAvailableAtChange={setAvailableAt}
+                onDueAtChange={setDueAt}
+                timeZone={timeZone}
+                disabled={saving}
+              />
             </div>
             {dueAt && (
               <label className="flex items-start gap-2 text-sm">

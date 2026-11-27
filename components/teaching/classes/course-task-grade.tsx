@@ -33,7 +33,7 @@ import {
   type GradingConfiguration,
 } from "@/lib/grading";
 
-function GradeValue({
+export function GradeValue({
   points,
   grading,
   institutionalPoints,
@@ -76,11 +76,13 @@ export function CourseTaskGrade({
   studentId,
   submissionRevision,
   timeZone,
+  unpublishedContent,
 }: {
   taskId: Id<"courseTasks">;
   studentId?: Id<"users">;
   submissionRevision?: number;
   timeZone: string;
+  unpublishedContent?: ReactNode;
 }) {
   const t = useTranslations("grading");
   const format = useFormatter();
@@ -90,7 +92,8 @@ export function CourseTaskGrade({
   });
   const [historyOpen, setHistoryOpen] = useState(false);
   if (grade === undefined) return <Skeleton className="h-24 w-full" />;
-  if (!grade.grading || (!studentId && !grade.published)) return null;
+  if (!grade.grading) return null;
+  if (!studentId && !grade.published) return unpublishedContent ?? null;
   return (
     <section className="grid gap-3 border-t pt-5" aria-label={t("title")}>
       <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -397,7 +400,9 @@ export function GradeEditor({
       }}
     >
       <div
-        className={renderActions ? "grid gap-1 max-lg:justify-items-end" : "grid gap-2"}
+        className={
+          renderActions ? "grid gap-1 max-lg:justify-items-end" : "grid gap-2"
+        }
       >
         <Label
           htmlFor={pointsId}
@@ -470,13 +475,13 @@ export function GradeEditor({
       )}
       {stale || saveFailed ? (
         <p role="alert" className="text-xs text-destructive">
-          {stale
-            ? t(canKeepDraft ? "staleVersion" : "stale")
-            : t("saveError")}
+          {stale ? t(canKeepDraft ? "staleVersion" : "stale") : t("saveError")}
         </p>
       ) : (
         (busy || waiting) && (
-          <p role="status" className="sr-only">{t("savingDraft")}</p>
+          <p role="status" className="sr-only">
+            {t("savingDraft")}
+          </p>
         )
       )}
       {(!compact || stale || saveFailed) && (
@@ -533,7 +538,7 @@ export function GradeEditor({
   );
 }
 
-function GradeHistory({
+export function GradeHistory({
   taskId,
   studentId,
   grading,

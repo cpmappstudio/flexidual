@@ -140,6 +140,7 @@ components/
 2. **Shared components** live at `components/` root or appropriate subfolder
 3. **Atomic UI** stays in `ui/` - primarily shadcn imports
 4. Components should be **small and focused** - split if exceeding ~150 lines
+5. Required form fields must display `<span className="text-destructive">*</span>` in their label. Do not mark optional fields, and retain the control's required validation semantics.
 
 ### Abstracting Reusable Components
 

@@ -1,7 +1,19 @@
 import { ConvexError } from "convex/values";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { isStudentEnrolled } from "./enrollments";
+
+export async function deleteCourseTaskRecipient(
+  ctx: MutationCtx,
+  recipient: Doc<"courseTaskRecipients">,
+) {
+  const jobId = recipient.quizAttempt?.expirationScheduledId;
+  if (jobId) {
+    const job = await ctx.db.system.get("_scheduled_functions", jobId);
+    if (job?.state.kind === "pending") await ctx.scheduler.cancel(jobId);
+  }
+  await ctx.db.delete("courseTaskRecipients", recipient._id);
+}
 
 export async function ensureCourseTaskRecipient(
   ctx: MutationCtx,

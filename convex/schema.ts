@@ -38,9 +38,18 @@ import { chatTargetFields } from "./model/chatTarget";
 import { abekaProgressSummaryFields } from "./model/abekaProgressSummary";
 import {
   gradeResultValidator,
+  gradeHistoryValidator,
+  manualGradeResultValidator,
   gradingConfigurationValidator,
   gradingPolicyValidator,
 } from "./model/grading";
+import {
+  courseTaskKindValidator,
+  courseQuizConfigurationValidator,
+  courseQuizAttemptValidator,
+  courseQuizQuestionValidator,
+  courseQuizAnswerValidator,
+} from "./model/courseQuizValidators";
 
 export const surveyCampaignValidator = v.object({
   surveyId: v.string(),
@@ -401,6 +410,8 @@ export default defineSchema({
   courseTasks: defineTable({
     classId: v.id("classes"),
     createdBy: v.id("users"),
+    kind: v.optional(courseTaskKindValidator),
+    quiz: v.optional(courseQuizConfigurationValidator),
     isDraft: v.optional(v.boolean()),
     title: v.string(),
     description: v.optional(v.string()),
@@ -442,6 +453,7 @@ export default defineSchema({
     submittedAt: v.optional(v.number()),
     submittedLate: v.optional(v.boolean()),
     submissionRevision: v.number(),
+    quizAttempt: v.optional(courseQuizAttemptValidator),
     previousCorrection: v.optional(
       v.object({ revision: v.number(), submittedAt: v.number() }),
     ),
@@ -456,6 +468,7 @@ export default defineSchema({
     ),
   })
     .index("by_taskId_and_studentId", ["taskId", "studentId"])
+    .index("by_taskId_and_submittedAt", ["taskId", "submittedAt"])
     .index("by_studentId_and_taskId", ["studentId", "taskId"])
     .index("by_studentId_and_classId_and_releasedAt", [
       "studentId",
@@ -468,6 +481,16 @@ export default defineSchema({
       "submittedAt",
       "releasedAt",
     ]),
+
+  courseQuizQuestions: defineTable(courseQuizQuestionValidator).index(
+    "by_taskId_and_order",
+    ["taskId", "order"],
+  ),
+
+  courseQuizAnswers: defineTable(courseQuizAnswerValidator).index(
+    "by_taskId_and_recipientId_and_questionId",
+    ["taskId", "recipientId", "questionId"],
+  ),
 
   courseTaskFiles: defineTable({
     taskId: v.id("courseTasks"),
@@ -509,21 +532,20 @@ export default defineSchema({
     studentId: v.id("users"),
     recipientId: v.id("courseTaskRecipients"),
     version: v.number(),
-    draft: v.optional(gradeResultValidator),
+    draft: v.optional(manualGradeResultValidator),
     published: v.optional(gradeResultValidator),
     lastOperationId: v.string(),
-    lastOperationBy: v.id("users"),
+    lastOperationBy: v.union(v.id("users"), v.null()),
     lastOperationKind: v.union(v.literal("draft"), v.literal("publish")),
   })
     .index("by_taskId_and_studentId", ["taskId", "studentId"])
     .index("by_taskId_and_draft_updatedAt", ["taskId", "draft.updatedAt"])
     .index("by_classId", ["classId"]),
 
-  courseTaskGradeHistory: defineTable({
-    gradeId: v.id("courseTaskGrades"),
-    version: v.number(),
-    ...gradeResultValidator.fields,
-  }).index("by_gradeId_and_version", ["gradeId", "version"]),
+  courseTaskGradeHistory: defineTable(gradeHistoryValidator).index(
+    "by_gradeId_and_version",
+    ["gradeId", "version"],
+  ),
 
   broadcasts: defineTable({
     name: v.string(),

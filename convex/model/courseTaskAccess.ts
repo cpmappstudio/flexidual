@@ -1,4 +1,5 @@
 import { isCourseTeacher } from "./courseAssignments";
+import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
@@ -10,6 +11,34 @@ import {
 import { isStudentEnrolled } from "./enrollments";
 import { getClassTimeZone } from "./timeZone";
 import { canManageClass } from "../permissions";
+
+export async function requireTaskManager(
+  ctx: QueryCtx | MutationCtx,
+  classId: Id<"classes">,
+  userId: Id<"users">,
+) {
+  const course = await ctx.db.get("classes", classId);
+  if (!course) throw new ConvexError("CLASS_NOT_FOUND");
+  if (
+    !isCourseTeacher(course, userId) &&
+    !(await canManageClass(ctx, userId, course))
+  ) {
+    throw new ConvexError("PERMISSION_DENIED");
+  }
+  return course;
+}
+
+export async function requireOpenCourse(
+  ctx: QueryCtx | MutationCtx,
+  course: Doc<"classes">,
+  now: number,
+) {
+  const endAt = await getCourseEndAt(ctx, course);
+  if (!course.isActive || endAt === undefined || now > endAt) {
+    throw new ConvexError("COURSE_CLOSED");
+  }
+  return endAt;
+}
 
 export async function getCourseEndAt(
   ctx: QueryCtx | MutationCtx,
@@ -49,6 +78,10 @@ export async function canSubmitCourseTask(
     return false;
   const endAt = await getCourseEndAt(ctx, course);
   if (endAt === undefined || now > endAt) return false;
+  if (task.kind === "quiz")
+    return (
+      task.quiz !== undefined && task.dueAt !== undefined && now < task.dueAt
+    );
   return (
     task.dueAt === undefined || now <= task.dueAt || task.allowLateSubmissions
   );

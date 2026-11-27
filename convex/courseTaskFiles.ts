@@ -26,6 +26,7 @@ export const reserve = internalMutation({
     const task = await ctx.db.get("courseTasks", args.taskId);
     if (!task) throw new ConvexError("TASK_NOT_FOUND");
     const access = await getCourseTaskAccess(ctx, task, user._id);
+    if (task.kind === "quiz") throw new ConvexError("QUIZ_FILES_NOT_SUPPORTED");
     const kind = args.kind ?? "submission";
     if (kind === "submission") {
       if (access.kind !== "student") throw new ConvexError("PERMISSION_DENIED");
@@ -84,6 +85,7 @@ export const complete = internalMutation({
     const task = await ctx.db.get("courseTasks", file.taskId);
     const access = task && (await getCourseTaskAccess(ctx, task, user._id));
     if (!task || !access) throw new ConvexError("PERMISSION_DENIED");
+    if (task.kind === "quiz") throw new ConvexError("QUIZ_FILES_NOT_SUPPORTED");
     if (file.kind === "submission") {
       if (
         access.kind !== "student" ||
