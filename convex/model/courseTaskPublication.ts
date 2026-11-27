@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { canSubmitCourseTask } from "./courseTaskAccess";
 import { ensureCourseTaskRecipient } from "./courseTaskRecipients";
 import { listClassStudentIds } from "./enrollments";
@@ -9,6 +10,17 @@ import {
   deliverCourseTaskEvent,
 } from "./courseChatEvents";
 import { refreshCourseTaskReminder } from "./courseTaskReminders";
+
+export async function scheduleTaskRelease(
+  ctx: MutationCtx,
+  taskId: Id<"courseTasks">,
+  availableAt: number,
+) {
+  await ctx.scheduler.runAt(availableAt, internal.courseTasks.release, {
+    taskId,
+    expectedAvailableAt: availableAt,
+  });
+}
 
 async function assignTaskToStudents(
   ctx: MutationCtx,

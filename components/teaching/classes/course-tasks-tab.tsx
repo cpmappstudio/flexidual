@@ -3,10 +3,17 @@
 import { useEffect, useState } from "react";
 import { useMutation, usePaginatedQuery } from "convex/react";
 import { useFormatter, useTranslations } from "next-intl";
-import { Plus, TriangleAlert } from "lucide-react";
+import Image from "next/image";
+import { ChevronDown, Plus, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -28,6 +35,7 @@ import { carouselCardStyles } from "@/components/ui/carousel-card-styles";
 import { cn } from "@/lib/utils";
 import { CourseTaskDetail } from "./course-task-detail";
 import { CourseTaskEditor } from "./course-task-editor";
+import { CourseQuizEditor } from "./course-quiz-editor";
 import { DetailCarousel } from "@/components/detail-carousel";
 import type { TaskAttachment } from "./course-task-attachments";
 import { parseConvexError } from "@/lib/error-utils";
@@ -45,6 +53,7 @@ export function CourseTasksTab({
 }) {
   const t = useTranslations("courseTasks");
   const gradingT = useTranslations("grading");
+  const quizT = useTranslations("courseQuizzes");
   const format = useFormatter();
   const removeTask = useMutation(api.courseTasks.remove);
   const { results, status, loadMore } = usePaginatedQuery(
@@ -57,6 +66,7 @@ export function CourseTasksTab({
   );
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const [editor, setEditor] = useState<{
+    kind: "files" | "quiz";
     task?: Doc<"courseTasks">;
     materials: TaskAttachment[];
   }>();
@@ -133,17 +143,52 @@ export function CourseTasksTab({
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-5 has-[[data-quiz-active=true]]:[&_[data-quiz-overview]]:hidden">
+      <div
+        data-quiz-overview
+        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      >
         <h2 className="text-lg font-semibold">{t("heading")}</h2>
         {canManage && (
-          <Button type="button" onClick={() => setEditor({ materials: [] })}>
-            <Plus className="size-4" />
-            {t("newTask")}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" className="min-h-11 self-start">
+                <Plus className="size-4" aria-hidden="true" />
+                {t("newActivity")}
+                <ChevronDown className="size-4" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              onCloseAutoFocus={(event) => {
+                if (editor) event.preventDefault();
+              }}
+            >
+              <DropdownMenuItem
+                className="min-h-11"
+                onSelect={() => setEditor({ kind: "files", materials: [] })}
+              >
+                <Image
+                  src="/assigments-icon.svg"
+                  width={20}
+                  height={20}
+                  alt=""
+                />
+                {t("newTask")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="min-h-11"
+                onSelect={() => setEditor({ kind: "quiz", materials: [] })}
+              >
+                <Image src="/quizzes-icon.svg" width={20} height={20} alt="" />
+                {quizT("newQuiz")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
       <DetailCarousel
+        className="has-[[data-quiz-active=true]]:overflow-visible has-[[data-quiz-active=true]]:[&_[data-slot=card-header]]:hidden"
         title={t("heading")}
         showTitle={false}
         olderLabel={t("olderTasks")}
@@ -162,68 +207,87 @@ export function CourseTasksTab({
           </div>
         ) : (
           <div className="space-y-5">
-            <CarouselContent className="-ml-3">
-              {orderedTasks.map((task, index) => {
-                const isSelected = task._id === activeTaskId;
-                const availabilityDate = task.releasedAt ?? task.availableAt;
-                const cardMeta =
-                  availabilityDate === undefined
-                    ? t("noStartDate")
-                    : t("availableOn", {
-                        date: formatTaskDate(availabilityDate),
-                      });
-                const deadline =
-                  task.dueAt === undefined
-                    ? t("noDeadline")
-                    : t("deadline", { date: formatTaskDate(task.dueAt) });
-                return (
-                  <CarouselItem
-                    key={task._id}
-                    className="basis-[80%] pl-3 sm:basis-[48%] 2xl:basis-[34%]"
-                    aria-label={`${index + 1} / ${orderedTasks.length}`}
-                  >
-                    <button
-                      type="button"
-                      aria-pressed={isSelected}
-                      onClick={() => select(task._id)}
-                      className={cn(
-                        "flex h-32 w-full min-w-0 flex-col justify-center gap-1.5 px-4 py-3 text-left",
-                        carouselCardStyles(isSelected ? "accent" : "default"),
-                      )}
+            <div data-quiz-overview className="space-y-5">
+              <CarouselContent className="-ml-3">
+                {orderedTasks.map((task, index) => {
+                  const isSelected = task._id === activeTaskId;
+                  const availabilityDate = task.releasedAt ?? task.availableAt;
+                  const cardMeta =
+                    availabilityDate === undefined
+                      ? t("noStartDate")
+                      : t("availableOn", {
+                          date: formatTaskDate(availabilityDate),
+                        });
+                  const deadline =
+                    task.dueAt === undefined
+                      ? t("noDeadline")
+                      : t("deadline", { date: formatTaskDate(task.dueAt) });
+                  return (
+                    <CarouselItem
+                      key={task._id}
+                      className="basis-[80%] pl-3 sm:basis-[48%] 2xl:basis-[34%]"
+                      aria-label={`${index + 1} / ${orderedTasks.length}`}
                     >
-                      <span className="line-clamp-2 min-w-0 break-words text-sm font-bold [overflow-wrap:anywhere]">
-                        {task.title}
-                      </span>
-                      <span className="block min-w-0 truncate text-xs text-muted-foreground">
-                        {cardMeta}
-                      </span>
-                      <span
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => select(task._id)}
                         className={cn(
-                          "block min-w-0 truncate text-xs",
-                          task.dueAt === undefined
-                            ? "text-muted-foreground"
-                            : "font-medium text-foreground/80",
+                          "flex h-32 w-full min-w-0 flex-col justify-center gap-1.5 px-4 py-3 text-left",
+                          carouselCardStyles(isSelected ? "accent" : "default"),
                         )}
                       >
-                        {deadline}
-                      </span>
-                    </button>
-                  </CarouselItem>
-                );
-              })}
-            </CarouselContent>
-            {status === "CanLoadMore" && (
-              <div className="flex justify-center">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => loadMore(20)}
-                >
-                  {t("loadMore")}
-                </Button>
-              </div>
-            )}
-            <Separator />
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Image
+                            src={
+                              task.kind === "quiz"
+                                ? "/quizzes-icon.svg"
+                                : "/assigments-icon.svg"
+                            }
+                            alt={t(
+                              task.kind === "quiz"
+                                ? "quizType"
+                                : "assignmentType",
+                            )}
+                            width={20}
+                            height={20}
+                            className="size-5 shrink-0"
+                          />
+                          <span className="line-clamp-2 min-w-0 break-words text-sm font-bold [overflow-wrap:anywhere]">
+                            {task.title}
+                          </span>
+                        </span>
+                        <span className="block min-w-0 truncate text-xs text-muted-foreground">
+                          {cardMeta}
+                        </span>
+                        <span
+                          className={cn(
+                            "block min-w-0 truncate text-xs",
+                            task.dueAt === undefined
+                              ? "text-muted-foreground"
+                              : "font-medium text-foreground/80",
+                          )}
+                        >
+                          {deadline}
+                        </span>
+                      </button>
+                    </CarouselItem>
+                  );
+                })}
+              </CarouselContent>
+              {status === "CanLoadMore" && (
+                <div className="flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => loadMore(20)}
+                  >
+                    {t("loadMore")}
+                  </Button>
+                </div>
+              )}
+              <Separator />
+            </div>
             <div className="min-w-0">
               {activeTaskId ? (
                 <CourseTaskDetail
@@ -231,7 +295,13 @@ export function CourseTasksTab({
                   classId={classId}
                   taskId={activeTaskId}
                   timeZone={timeZone}
-                  onEdit={(task, materials) => setEditor({ task, materials })}
+                  onEdit={(task, materials) =>
+                    setEditor({
+                      kind: task.kind === "quiz" ? "quiz" : "files",
+                      task,
+                      materials,
+                    })
+                  }
                   onDelete={setTaskToDelete}
                 />
               ) : (
@@ -243,7 +313,20 @@ export function CourseTasksTab({
           </div>
         )}
       </DetailCarousel>
-      {editor && (
+      {editor?.kind === "quiz" && (
+        <CourseQuizEditor
+          key={editor.task?._id ?? "new-quiz"}
+          classId={classId}
+          task={editor.task}
+          timeZone={timeZone}
+          onClose={() => setEditor(undefined)}
+          onSaved={(id) => {
+            setEditor(undefined);
+            select(id);
+          }}
+        />
+      )}
+      {editor?.kind === "files" && (
         <CourseTaskEditor
           key={editor.task?._id ?? "new"}
           classId={classId}
@@ -268,7 +351,11 @@ export function CourseTasksTab({
             <span className="flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
               <TriangleAlert className="size-5" aria-hidden="true" />
             </span>
-            <AlertDialogTitle>{t("deleteConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {taskToDelete?.kind === "quiz"
+                ? quizT("deleteConfirmTitle")
+                : t("deleteConfirmTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3 text-center">
                 <p>{t("deleteConfirmDescription")}</p>
@@ -290,7 +377,11 @@ export function CourseTasksTab({
               onClick={confirmDelete}
               className="w-full sm:w-auto"
             >
-              {deleting ? t("deletingTask") : t("deleteTask")}
+              {deleting
+                ? t("deletingTask")
+                : taskToDelete?.kind === "quiz"
+                  ? quizT("deleteQuiz")
+                  : t("deleteTask")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

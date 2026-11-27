@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import Image from "next/image";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { FunctionReturnType } from "convex/server";
 import { useAuth } from "@clerk/nextjs";
@@ -10,12 +9,9 @@ import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useFormatter, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
-  CalendarClock,
-  Clock3,
   MessageSquareText,
   Paperclip,
   Pencil,
-  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
@@ -58,8 +54,13 @@ import {
 import { useTaskFileRequest } from "@/hooks/use-task-file-request";
 import { useTaskFeedbackDraft } from "@/hooks/use-task-feedback-draft";
 import { hasUnloadedTaskGradeDraft } from "@/hooks/use-task-grade-draft";
+import { hasLocalQuizReviewDraft } from "@/hooks/use-course-quiz-review-draft";
 import { TaskPreviousCorrection } from "./course-task-previous-correction";
-import { CourseTaskGrade, GradeEditor } from "./course-task-grade";
+import { CourseTaskGrade, GradeEditor, GradeValue } from "./course-task-grade";
+import { CourseTaskHeader } from "./course-task-header";
+import { CourseTaskSummary } from "./course-task-summary";
+import { CourseQuizDetail } from "./course-quiz-detail";
+import { CourseQuizTeacherReview } from "./course-quiz-teacher-review";
 
 type SubmissionRow = FunctionReturnType<
   typeof api.courseTaskSubmissions.listForTask
@@ -79,7 +80,6 @@ export function CourseTaskDetail({
   onDelete: (task: Doc<"courseTasks">) => void;
 }) {
   const t = useTranslations("courseTasks");
-  const format = useFormatter();
   const now = useCurrentTime();
   const task = useQuery(api.courseTasks.get, { taskId });
   const matchesCourse = task?.classId === classId;
@@ -100,81 +100,42 @@ export function CourseTaskDetail({
   if (status === undefined || materials === undefined)
     return <Skeleton className="h-72 w-full" />;
 
-  function formatTaskDate(value: number) {
-    return format.dateTime(value, {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone,
-    });
-  }
-
-  const publicationStatus =
-    task.releasedAt !== undefined
-      ? t(status.submissionsOpen ? "visibleStatus" : "closedStatus")
-      : t("scheduledStatus");
-  const availabilityDate = task.releasedAt ?? task.availableAt;
+  if (task.kind === "quiz")
+    return (
+      <CourseQuizDetail
+        task={task}
+        canManage={status.canManage}
+        submissionsOpen={status.submissionsOpen}
+        timeZone={timeZone}
+        onEdit={() => onEdit(task, materials)}
+        onDelete={() => onDelete(task)}
+      >
+        {task.releasedAt === undefined ? (
+          <p className="text-sm text-muted-foreground">
+            {t("studentsAssignedAtStart")}
+          </p>
+        ) : (
+          <TeacherTaskSubmissions
+            key={taskId}
+            taskId={taskId}
+            timeZone={timeZone}
+            canGrade={!!task.grading}
+            quiz
+          />
+        )}
+      </CourseQuizDetail>
+    );
 
   return (
     <div className="min-w-0 space-y-4 py-2">
       <section className="min-w-0 space-y-4">
-        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-          <Image
-            src="/assigments-icon.svg"
-            alt=""
-            width={60}
-            height={60}
-            className="size-12 shrink-0 sm:size-15"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1.5 sm:gap-x-4">
-              <Badge
-                className={cn(
-                  "col-start-1 row-start-1 justify-self-start font-semibold",
-                  task.releasedAt !== undefined && status.submissionsOpen
-                    ? "bg-primary/10 text-primary"
-                    : "bg-secondary/15 text-secondary-foreground",
-                )}
-              >
-                {publicationStatus}
-              </Badge>
-              <h3 className="col-start-1 row-start-2 min-w-0 break-words text-xl font-bold tracking-tight text-foreground [overflow-wrap:anywhere] sm:text-2xl">
-                {task.title}
-              </h3>
-              {status.canManage && (
-                <div className="col-start-2 row-start-2 flex shrink-0 items-center gap-1 sm:row-start-1">
-                  <Button
-                    type="button"
-                    size="icon-lg"
-                    variant="ghost"
-                    aria-label={t("editTask")}
-                    className="text-foreground hover:bg-primary/5 hover:text-primary sm:h-8 sm:w-auto sm:px-2.5"
-                    onClick={() => onEdit(task, materials)}
-                  >
-                    <Pencil
-                      className="size-4 text-primary"
-                      aria-hidden="true"
-                    />
-                    <span className="hidden sm:inline">{t("editTask")}</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon-lg"
-                    variant="ghost"
-                    aria-label={t("deleteTask")}
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-auto sm:px-2.5"
-                    onClick={() => onDelete(task)}
-                  >
-                    <Trash2
-                      className="size-4 text-destructive"
-                      aria-hidden="true"
-                    />
-                    <span className="hidden sm:inline">{t("deleteTask")}</span>
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <CourseTaskHeader
+          task={task}
+          canManage={status.canManage}
+          submissionsOpen={status.submissionsOpen}
+          onEdit={() => onEdit(task, materials)}
+          onDelete={() => onDelete(task)}
+        />
         <div className="min-w-0 space-y-1">
           <h3 className="font-semibold text-foreground">{t("instructions")}</h3>
           <p
@@ -188,80 +149,11 @@ export function CourseTaskDetail({
         </div>
       </section>
 
-      <section className="space-y-4">
-        <h3 className="font-semibold text-foreground">
-          {t("datesAndAvailability")}
-        </h3>
-        <div className="grid gap-y-4 sm:grid-cols-2">
-          <div className="flex min-w-0 items-start gap-2 py-1">
-            <span
-              className="flex size-9 shrink-0 items-center justify-center"
-              aria-hidden="true"
-            >
-              <CalendarClock className="size-6 text-primary" />
-            </span>
-            <div className="min-w-0 space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">
-                {t("availableFrom")}
-              </p>
-              <p className="break-words text-sm font-semibold text-foreground">
-                {availabilityDate === undefined
-                  ? t("noStartDate")
-                  : formatTaskDate(availabilityDate)}
-              </p>
-            </div>
-          </div>
-          <div className="flex min-w-0 items-start gap-2 py-1">
-            <span
-              className="flex size-9 shrink-0 items-center justify-center"
-              aria-hidden="true"
-            >
-              <CalendarClock className="size-6 text-primary" />
-            </span>
-            <div className="min-w-0 space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">
-                {t("deadlineLabel")}
-              </p>
-              <p className="break-words text-sm font-semibold text-foreground">
-                {task.dueAt === undefined
-                  ? t("noDeadline")
-                  : formatTaskDate(task.dueAt)}
-              </p>
-            </div>
-          </div>
-          {task.manuallyClosedAt !== undefined && (
-            <div className="flex min-w-0 items-start gap-3 py-1">
-              <span
-                className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
-                aria-hidden="true"
-              >
-                <Clock3 className="size-5" />
-              </span>
-              <div className="min-w-0 space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {t("closedAtLabel")}
-                </p>
-                <p className="break-words text-sm font-semibold text-foreground">
-                  {formatTaskDate(task.manuallyClosedAt)}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-        {status.canManage && task.dueAt !== undefined && (
-          <p className="text-sm text-muted-foreground">
-            <span className="font-medium">{t("lateSubmissionsLabel")}: </span>
-            {t(
-              task.allowLateSubmissions
-                ? "lateSubmissionsAllowed"
-                : "lateSubmissionsNotAllowed",
-            )}
-          </p>
-        )}
-        {task.dueAt === undefined && (
-          <p className="text-sm text-muted-foreground">{t("noDeadlineHint")}</p>
-        )}
-      </section>
+      <CourseTaskSummary
+        task={task}
+        timeZone={timeZone}
+        canManage={status.canManage}
+      />
 
       <section className="min-w-0 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -559,15 +451,18 @@ function TeacherTaskSubmissions({
   taskId,
   timeZone,
   canGrade,
+  quiz = false,
 }: {
   taskId: Id<"courseTasks">;
   timeZone: string;
   canGrade: boolean;
+  quiz?: boolean;
 }) {
   const t = useTranslations("courseTasks");
   const common = useTranslations("common");
   const format = useFormatter();
   const gradingT = useTranslations("grading");
+  const quizT = useTranslations("courseQuizzes");
   const { userId } = useAuth();
   const searchParams = useSearchParams();
   const linkedStudentId =
@@ -577,6 +472,8 @@ function TeacherTaskSubmissions({
     { taskId },
     { initialNumItems: 20 },
   );
+  const publicationScheduled =
+    quiz && results.some(({ grade }) => grade?.availableAt !== undefined);
   const hasPublishableDrafts = useQuery(
     api.courseTaskGrades.hasPublishableDrafts,
     canGrade ? { taskId } : "skip",
@@ -592,6 +489,14 @@ function TeacherTaskSubmissions({
     if (!canPublishAll || publishing.current) return;
     if (
       submissionsRef.current?.querySelector("[data-pending-grade]") ||
+      (quiz &&
+        (hasLocalQuizReviewDraft(userId, taskId) ||
+          Array.from(
+            document.querySelectorAll("[data-pending-quiz-review]"),
+          ).some(
+            (element) =>
+              element.getAttribute("data-pending-quiz-review") === taskId,
+          ))) ||
       hasUnloadedTaskGradeDraft(
         userId,
         taskId,
@@ -607,19 +512,32 @@ function TeacherTaskSubmissions({
     let skipped = 0;
     try {
       const operationId = crypto.randomUUID();
-      let continuation: NonNullable<
-        FunctionReturnType<typeof api.courseTaskGrades.publishAll>["continuation"]
-      > | undefined;
+      let continuation:
+        | NonNullable<
+            FunctionReturnType<
+              typeof api.courseTaskGrades.publishAll
+            >["continuation"]
+          >
+        | undefined;
       do {
         const batch = await publishAll({ taskId, operationId, continuation });
         published += batch.published;
         skipped += batch.skipped;
         continuation = batch.continuation ?? undefined;
       } while (continuation);
-      if (published) toast.success(gradingT("publishedAll", { count: published }));
+      if (published)
+        toast.success(
+          publicationScheduled
+            ? quizT("gradesScheduled", { count: published })
+            : gradingT("publishedAll", { count: published }),
+        );
       if (skipped) toast.warning(gradingT("publishAllSkipped"));
     } catch {
-      toast.error(gradingT("publishAllError", { count: published }));
+      toast.error(
+        publicationScheduled
+          ? quizT("gradesScheduleError", { count: published })
+          : gradingT("publishAllError", { count: published }),
+      );
     } finally {
       publishing.current = false;
       setPublishingAll(false);
@@ -693,24 +611,52 @@ function TeacherTaskSubmissions({
                 timeZone,
               }),
       },
-      ...(canGrade ? [{
-        id: "grade",
-        header: gradingT("title"),
-        cell: ({ row }: { row: { original: SubmissionRow } }) => {
-          const { grade, studentId, studentName, submissionRevision } = row.original;
-          return grade?.grading && selectedStudent !== studentId ? (
-            <GradeEditor
-              key={`${taskId}:${studentId}`}
-              taskId={taskId}
-              studentId={studentId}
-              studentName={studentName}
-              submissionRevision={submissionRevision}
-              grade={grade}
-              compact
-            />
-          ) : "—";
-        },
-      }] : []),
+      ...(canGrade
+        ? [
+            {
+              id: "grade",
+              header: gradingT("title"),
+              cell: ({ row }: { row: { original: SubmissionRow } }) => {
+                const { grade, studentId, studentName, submissionRevision } =
+                  row.original;
+                if (quiz)
+                  return (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {grade?.published && grade.grading ? (
+                        <GradeValue
+                          points={grade.published.points}
+                          grading={grade.grading}
+                        />
+                      ) : (
+                        "—"
+                      )}
+                      {grade?.published && grade.availableAt !== undefined && (
+                        <Badge variant="outline">
+                          {quizT("gradeScheduled")}
+                        </Badge>
+                      )}
+                      {grade?.draft && (
+                        <Badge variant="outline">{quizT("privateDraft")}</Badge>
+                      )}
+                    </div>
+                  );
+                return grade?.grading && selectedStudent !== studentId ? (
+                  <GradeEditor
+                    key={`${taskId}:${studentId}`}
+                    taskId={taskId}
+                    studentId={studentId}
+                    studentName={studentName}
+                    submissionRevision={submissionRevision}
+                    grade={grade}
+                    compact
+                  />
+                ) : (
+                  "—"
+                );
+              },
+            },
+          ]
+        : []),
       {
         id: "actions",
         header: () => <div className="text-right">{common("actions")}</div>,
@@ -721,7 +667,9 @@ function TeacherTaskSubmissions({
               size="sm"
               variant="outline"
               className="min-h-11"
-              disabled={!canGrade && row.original.submittedAt === undefined}
+              disabled={
+                (quiz || !canGrade) && row.original.submittedAt === undefined
+              }
               onClick={() => selectStudent(row.original.studentId)}
             >
               {t("review")}
@@ -730,14 +678,26 @@ function TeacherTaskSubmissions({
         ),
       },
     ],
-    [common, format, t, timeZone, selectStudent, canGrade, gradingT, taskId, selectedStudent],
+    [
+      common,
+      format,
+      t,
+      timeZone,
+      selectStudent,
+      canGrade,
+      gradingT,
+      taskId,
+      selectedStudent,
+      quiz,
+      quizT,
+    ],
   );
 
   return (
     <section ref={submissionsRef} className="space-y-3 border-t pt-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-semibold">{t("submissions")}</h4>
-        {canGrade && (
+        {canGrade && (!quiz || hasPublishableDrafts || publishingAll) && (
           <Button
             type="button"
             size="sm"
@@ -745,7 +705,9 @@ function TeacherTaskSubmissions({
             onClick={() => void publishAllGrades()}
           >
             {publishingAll && <Spinner aria-hidden="true" />}
-            {gradingT("publishAll")}
+            {publicationScheduled
+              ? quizT("publishAllAtClose")
+              : gradingT("publishAll")}
           </Button>
         )}
       </div>
@@ -764,16 +726,25 @@ function TeacherTaskSubmissions({
           {t("loadMore")}
         </Button>
       )}
-      {selectedStudent && (
-        <TeacherSubmissionReview
-          key={selectedStudent}
-          taskId={taskId}
-          studentId={selectedStudent}
-          timeZone={timeZone}
-          canGrade={canGrade}
-          onClose={() => selectStudent()}
-        />
-      )}
+      {selectedStudent &&
+        (quiz ? (
+          <CourseQuizTeacherReview
+            key={selectedStudent}
+            taskId={taskId}
+            studentId={selectedStudent}
+            timeZone={timeZone}
+            onClose={() => selectStudent()}
+          />
+        ) : (
+          <TeacherSubmissionReview
+            key={selectedStudent}
+            taskId={taskId}
+            studentId={selectedStudent}
+            timeZone={timeZone}
+            canGrade={canGrade}
+            onClose={() => selectStudent()}
+          />
+        ))}
     </section>
   );
 }

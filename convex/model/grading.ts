@@ -6,6 +6,8 @@ import {
   type GradingConfiguration,
   isValidPoints,
 } from "../../lib/grading";
+import { areQuizResultsAvailable } from "../../lib/course-quizzes";
+import { courseQuizScoreValidator } from "./courseQuizValidators";
 
 export const gradingPolicyValidator = v.object({
   scaleMax: v.number(),
@@ -18,29 +20,190 @@ export const gradingConfigurationValidator = gradingPolicyValidator
   .omit("defaultMaxPoints")
   .extend({ maxPoints: v.number() });
 
-export const gradeResultValidator = v.object({
+export const taskGradeWriteArgs = {
+  taskId: v.id("courseTasks"),
+  studentId: v.id("users"),
+  expectedVersion: v.number(),
+  expectedSubmissionRevision: v.number(),
+  operationId: v.string(),
+  expectedGrading: gradingConfigurationValidator,
+};
+
+export function validateTaskGradeWrite(args: {
+  expectedVersion: number;
+  expectedSubmissionRevision: number;
+  operationId: string;
+}) {
+  if (
+    !Number.isSafeInteger(args.expectedVersion) ||
+    args.expectedVersion < 0 ||
+    !Number.isSafeInteger(args.expectedSubmissionRevision) ||
+    args.expectedSubmissionRevision < 0 ||
+    !args.operationId.trim() ||
+    args.operationId.length > 100
+  )
+    throw new ConvexError("INVALID_GRADE_REQUEST");
+}
+
+const gradeResultFields = {
   points: v.number(),
   // Older results store points on the activity's scale.
   institutionalScale: v.optional(v.literal(true)),
   comment: v.optional(v.string()),
   submissionRevision: v.number(),
-  authorId: v.id("users"),
   updatedAt: v.number(),
+};
+
+export const manualGradeResultValidator = v.object({
+  ...gradeResultFields,
+  authorId: v.id("users"),
+  source: v.optional(v.literal("manual")),
+  quizScores: v.optional(v.array(courseQuizScoreValidator)),
 });
 
-export const gradeViewValidator = gradeResultValidator
-  .omit("institutionalScale")
+const automaticGradeResultValidator = v.object({
+  ...gradeResultFields,
+  source: v.literal("automatic"),
+  quizScores: v.array(courseQuizScoreValidator.extend({ points: v.number() })),
+});
+
+export const gradeResultValidator = v.union(
+  manualGradeResultValidator,
+  automaticGradeResultValidator,
+);
+
+const historyFields = {
+  gradeId: v.id("courseTaskGrades"),
+  version: v.number(),
+};
+
+export const gradeHistoryValidator = v.union(
+  manualGradeResultValidator.extend(historyFields),
+  automaticGradeResultValidator.extend(historyFields),
+);
+
+export const manualGradeViewValidator = manualGradeResultValidator
+  .omit("institutionalScale", "quizScores")
   .extend({ institutionalPoints: v.optional(v.number()) });
 
-export function projectGrade<T extends Infer<typeof gradeResultValidator>>(
-  { institutionalScale, points, ...result }: T,
-  { scaleMax, maxPoints }: GradingConfiguration,
+const automaticGradeViewValidator = automaticGradeResultValidator
+  .omit("institutionalScale", "quizScores")
+  .extend({ institutionalPoints: v.optional(v.number()) });
+
+export const gradeViewValidator = v.union(
+  manualGradeViewValidator,
+  automaticGradeViewValidator,
+);
+
+export const gradeHistoryViewValidator = v.union(
+  manualGradeViewValidator.extend({ version: v.number() }),
+  automaticGradeViewValidator.extend({ version: v.number() }),
+);
+
+export function isValidTaskGrade(
+  grade: Pick<
+    NonNullable<Doc<"courseTaskGrades">["draft"]>,
+    "points" | "institutionalScale" | "comment"
+  >,
+  grading: GradingConfiguration,
 ) {
-  return {
-    ...result,
+  return (
+    isValidPoints(
+      grade.points,
+      grade.institutionalScale ? grading.scaleMax : grading.maxPoints,
+      grading.decimalPlaces,
+    ) &&
+    (grade.comment === undefined || grade.comment.length <= 2_000)
+  );
+}
+
+export async function publishTaskGrade(
+  ctx: MutationCtx,
+  grade: Doc<"courseTaskGrades">,
+  result: Infer<typeof gradeResultValidator>,
+  authorId: Id<"users"> | null,
+  operationId: string,
+) {
+  const version = grade.version + 1;
+  let published: Infer<typeof gradeResultValidator>;
+  if (result.source === "automatic") {
+    if (authorId !== null) throw new ConvexError("INVALID_GRADE_REQUEST");
+    published = { ...result, updatedAt: Date.now() };
+  } else {
+    if (authorId === null) throw new ConvexError("INVALID_GRADE_REQUEST");
+    published = { ...result, authorId, updatedAt: Date.now() };
+  }
+  await ctx.db.patch("courseTaskGrades", grade._id, {
+    published,
+    draft: undefined,
+    version,
+    lastOperationId: operationId,
+    lastOperationBy: authorId,
+    lastOperationKind: "publish",
+  });
+  await ctx.db.insert("courseTaskGradeHistory", {
+    gradeId: grade._id,
+    version,
+    ...published,
+  });
+  return version;
+}
+
+export async function saveTaskGradeDraft(
+  ctx: MutationCtx,
+  {
+    task,
+    recipient,
+    grade,
+    draft,
+    operationId,
+  }: {
+    task: Doc<"courseTasks">;
+    recipient: Doc<"courseTaskRecipients">;
+    grade: Doc<"courseTaskGrades"> | null;
+    draft: Infer<typeof manualGradeResultValidator>;
+    operationId: string;
+  },
+) {
+  const version = (grade?.version ?? 0) + 1;
+  const changes = {
+    draft,
+    version,
+    lastOperationId: operationId,
+    lastOperationBy: draft.authorId,
+    lastOperationKind: "draft" as const,
+  };
+  if (grade) await ctx.db.patch("courseTaskGrades", grade._id, changes);
+  else
+    await ctx.db.insert("courseTaskGrades", {
+      ...changes,
+      taskId: task._id,
+      classId: task.classId,
+      studentId: recipient.studentId,
+      recipientId: recipient._id,
+    });
+  return version;
+}
+
+export function projectGrade(
+  result: Infer<typeof gradeResultValidator>,
+  { scaleMax, maxPoints }: GradingConfiguration,
+): Infer<typeof gradeViewValidator> {
+  const { institutionalScale, points, comment, submissionRevision, updatedAt } =
+    result;
+  const view = {
     // Keep the old API in activity units without rounding away the new score.
     points: institutionalScale ? (points * maxPoints) / scaleMax : points,
     institutionalPoints: institutionalScale ? points : undefined,
+    comment,
+    submissionRevision,
+    updatedAt,
+  };
+  if (result.source === "automatic") return { ...view, source: "automatic" };
+  return {
+    ...view,
+    authorId: result.authorId,
+    ...(result.source === undefined ? {} : { source: result.source }),
   };
 }
 
@@ -50,6 +213,7 @@ export const gradeEditorStateValidator = v.object({
   draft: v.union(gradeViewValidator, v.null()),
   published: v.union(gradeViewValidator, v.null()),
   needsReview: v.boolean(),
+  availableAt: v.optional(v.number()),
 });
 
 export function findTaskGrade(
@@ -66,11 +230,14 @@ export function findTaskGrade(
 }
 
 export function projectGradeEditorState(
-  grading: GradingConfiguration | undefined,
+  task: Pick<Doc<"courseTasks">, "kind" | "quiz" | "dueAt" | "grading">,
   grade: Doc<"courseTaskGrades"> | null,
   submissionRevision: number,
   canManage: boolean,
 ) {
+  const { grading } = task;
+  const scheduled = task.kind === "quiz" && !areQuizResultsAvailable(task);
+  const visibleGrade = canManage || !scheduled ? grade : null;
   return {
     grading: grading ?? null,
     version: canManage ? (grade?.version ?? 0) : 0,
@@ -79,12 +246,22 @@ export function projectGradeEditorState(
         ? projectGrade(grade.draft, grading)
         : null,
     published:
-      grade?.published && grading
-        ? projectGrade(grade.published, grading)
+      visibleGrade?.published && grading
+        ? {
+            ...projectGrade(visibleGrade.published, grading),
+            updatedAt:
+              !canManage && task.kind === "quiz"
+                ? Math.max(
+                    visibleGrade.published.updatedAt,
+                    task.quiz?.closedAt ?? 0,
+                  )
+                : visibleGrade.published.updatedAt,
+          }
         : null,
     needsReview:
-      grade?.published !== undefined &&
-      grade.published.submissionRevision !== submissionRevision,
+      visibleGrade?.published !== undefined &&
+      visibleGrade.published.submissionRevision !== submissionRevision,
+    ...(scheduled ? { availableAt: task.dueAt } : {}),
   };
 }
 

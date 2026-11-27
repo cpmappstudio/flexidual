@@ -75,6 +75,7 @@ export const submit = mutation({
     if (!task) throw new ConvexError("TASK_NOT_FOUND");
     const access = await getCourseTaskAccess(ctx, task, user._id);
     if (access.kind !== "student") throw new ConvexError("PERMISSION_DENIED");
+    if (task.kind === "quiz") throw new ConvexError("QUIZ_REQUIRES_ANSWERS");
     const now = Date.now();
     if (!(await canSubmitCourseTask(ctx, access.course, task, now)))
       throw new ConvexError("TASK_SUBMISSION_CLOSED");
@@ -257,7 +258,7 @@ export const listForTask = query({
           hasFeedback: recipient.feedback !== undefined,
           grade: grading
             ? projectGradeEditorState(
-                grading,
+                task,
                 grade,
                 recipient.submissionRevision,
                 true,

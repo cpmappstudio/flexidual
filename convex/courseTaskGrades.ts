@@ -11,32 +11,22 @@ import { getCourseTaskAccess } from "./model/courseTaskAccess";
 import {
   findTaskGrade,
   gradeEditorStateValidator,
-  gradeViewValidator,
-  gradingConfigurationValidator,
+  gradeHistoryViewValidator,
+  manualGradeViewValidator,
+  isValidTaskGrade,
   projectGrade,
   projectGradeEditorState,
+  publishTaskGrade,
+  saveTaskGradeDraft,
+  taskGradeWriteArgs,
+  validateTaskGradeWrite,
 } from "./model/grading";
 import {
-  isValidPoints,
-  sameGradingConfiguration,
-  type GradingConfiguration,
-} from "../lib/grading";
-
-function isValidGrade(
-  grade: Pick<
-    NonNullable<Doc<"courseTaskGrades">["draft"]>,
-    "points" | "institutionalScale" | "comment"
-  >,
-  grading: GradingConfiguration,
-) {
-  return (
-    isValidPoints(
-      grade.points,
-      grade.institutionalScale ? grading.scaleMax : grading.maxPoints,
-      grading.decimalPlaces,
-    ) && (grade.comment === undefined || grade.comment.length <= 2_000)
-  );
-}
+  isValidQuizGrade,
+  listQuizQuestions,
+  QUIZ_RECIPIENT_BATCH_SIZE,
+} from "./model/courseQuizzes";
+import { sameGradingConfiguration } from "../lib/grading";
 
 async function getTaskAccess(ctx: QueryCtx, taskId: Id<"courseTasks">) {
   const user = await getCurrentUserOrThrow(ctx);
@@ -90,7 +80,7 @@ export const get = query({
       studentId,
     );
     return projectGradeEditorState(
-      task.grading,
+      task,
       grade,
       recipient.submissionRevision,
       access.kind === "manager",
@@ -98,46 +88,22 @@ export const get = query({
   },
 });
 
-const writeArgs = {
-  taskId: v.id("courseTasks"),
-  studentId: v.id("users"),
-  expectedVersion: v.number(),
-  expectedSubmissionRevision: v.number(),
-  operationId: v.string(),
-  expectedGrading: gradingConfigurationValidator,
-};
-
-function validateWrite(args: {
-  expectedVersion: number;
-  expectedSubmissionRevision: number;
-  operationId: string;
-}) {
-  if (
-    !Number.isSafeInteger(args.expectedVersion) ||
-    args.expectedVersion < 0 ||
-    !Number.isSafeInteger(args.expectedSubmissionRevision) ||
-    args.expectedSubmissionRevision < 0 ||
-    !args.operationId.trim() ||
-    args.operationId.length > 100
-  )
-    throw new ConvexError("INVALID_GRADE_REQUEST");
-}
-
 export const saveDraft = mutation({
   args: {
-    ...writeArgs,
+    ...taskGradeWriteArgs,
     points: v.optional(v.number()),
-    ...gradeViewValidator.pick("institutionalPoints", "comment").fields,
+    ...manualGradeViewValidator.pick("institutionalPoints", "comment").fields,
   },
   returns: v.number(),
   handler: async (ctx, args) => {
-    validateWrite(args);
-    const { task, user, access, recipient, grade, studentId } = await getTarget(
+    validateTaskGradeWrite(args);
+    const { task, user, access, recipient, grade } = await getTarget(
       ctx,
       args.taskId,
       args.studentId,
     );
     const grading = requireGradableTask(task, access);
+    if (task.kind === "quiz") throw new ConvexError("QUIZ_REVIEW_REQUIRED");
     if (!sameGradingConfiguration(grading, args.expectedGrading))
       throw new ConvexError("TASK_GRADING_CHANGED");
     if (
@@ -161,7 +127,7 @@ export const saveDraft = mutation({
     const comment = args.comment?.trim() || undefined;
     if (
       points === undefined ||
-      !isValidGrade({ points, institutionalScale, comment }, grading)
+      !isValidTaskGrade({ points, institutionalScale, comment }, grading)
     )
       throw new ConvexError("INVALID_TASK_GRADE");
     if (
@@ -197,32 +163,21 @@ export const saveDraft = mutation({
       authorId: user._id,
       updatedAt: Date.now(),
     };
-    const version = (grade?.version ?? 0) + 1;
-    const changes = {
+    return await saveTaskGradeDraft(ctx, {
+      task,
+      recipient,
+      grade,
       draft,
-      version,
-      lastOperationId: args.operationId,
-      lastOperationBy: user._id,
-      lastOperationKind: "draft" as const,
-    };
-    if (grade) await ctx.db.patch("courseTaskGrades", grade._id, changes);
-    else
-      await ctx.db.insert("courseTaskGrades", {
-        ...changes,
-        taskId: task._id,
-        classId: task.classId,
-        studentId,
-        recipientId: recipient._id,
-      });
-    return version;
+      operationId: args.operationId,
+    });
   },
 });
 
 export const publish = mutation({
-  args: writeArgs,
+  args: taskGradeWriteArgs,
   returns: v.number(),
   handler: async (ctx, args) => {
-    validateWrite(args);
+    validateTaskGradeWrite(args);
     const { task, user, access, recipient, grade } = await getTarget(
       ctx,
       args.taskId,
@@ -247,60 +202,73 @@ export const publish = mutation({
       grade.draft.submissionRevision !== recipient.submissionRevision
     )
       throw new ConvexError("TASK_SUBMISSION_CHANGED");
-    if (!isValidGrade(grade.draft, grading))
+    if (!isValidTaskGrade(grade.draft, grading))
       throw new ConvexError("INVALID_TASK_GRADE");
-    return await publishDraft(
-      ctx, grade, grade.draft, user._id, args.operationId,
+    if (
+      task.kind === "quiz" &&
+      !(await isValidQuizGrade(
+        ctx,
+        task,
+        recipient,
+        grade.draft,
+        await listQuizQuestions(ctx, task._id),
+      ))
+    )
+      throw new ConvexError("QUIZ_REVIEW_INCOMPLETE");
+    return await publishTaskGrade(
+      ctx,
+      grade,
+      grade.draft,
+      user._id,
+      args.operationId,
     );
   },
 });
-
-async function publishDraft(
-  ctx: MutationCtx,
-  grade: Doc<"courseTaskGrades">,
-  draft: NonNullable<Doc<"courseTaskGrades">["draft"]>,
-  authorId: Id<"users">,
-  operationId: string,
-) {
-  const version = grade.version + 1;
-  const published = { ...draft, authorId, updatedAt: Date.now() };
-  await ctx.db.patch("courseTaskGrades", grade._id, {
-    published,
-    draft: undefined,
-    version,
-    lastOperationId: operationId,
-    lastOperationBy: authorId,
-    lastOperationKind: "publish",
-  });
-  await ctx.db.insert("courseTaskGradeHistory", {
-    gradeId: grade._id,
-    version,
-    ...published,
-  });
-  return version;
-}
 
 function taskDrafts(ctx: QueryCtx, taskId: Id<"courseTasks">, before?: number) {
   return ctx.db
     .query("courseTaskGrades")
     .withIndex("by_taskId_and_draft_updatedAt", (q) => {
       const drafts = q.eq("taskId", taskId).gte("draft.updatedAt", 0);
-      return before === undefined ? drafts : drafts.lte("draft.updatedAt", before);
+      return before === undefined
+        ? drafts
+        : drafts.lte("draft.updatedAt", before);
     });
 }
 
 async function publishableDraft(
   ctx: QueryCtx,
   grade: Doc<"courseTaskGrades">,
-  grading: GradingConfiguration,
+  task: Doc<"courseTasks">,
+  questions: Doc<"courseQuizQuestions">[] | null,
 ) {
-  if (!grade.draft || !isValidGrade(grade.draft, grading)) return undefined;
+  if (
+    !task.grading ||
+    !grade.draft ||
+    !isValidTaskGrade(grade.draft, task.grading)
+  )
+    return undefined;
   const recipient = await ctx.db.get("courseTaskRecipients", grade.recipientId);
-  return recipient?.taskId === grade.taskId &&
-    recipient.studentId === grade.studentId &&
-    recipient.submissionRevision === grade.draft.submissionRevision
-    ? grade.draft
-    : undefined;
+  if (
+    !(
+      recipient?.taskId === grade.taskId &&
+      recipient.studentId === grade.studentId &&
+      recipient.submissionRevision === grade.draft.submissionRevision
+    )
+  )
+    return undefined;
+  if (
+    task.kind === "quiz" &&
+    !(await isValidQuizGrade(
+      ctx,
+      task,
+      recipient,
+      grade.draft,
+      questions ?? [],
+    ))
+  )
+    return undefined;
+  return grade.draft;
 }
 
 export const hasPublishableDrafts = query({
@@ -308,9 +276,11 @@ export const hasPublishableDrafts = query({
   returns: v.boolean(),
   handler: async (ctx, { taskId }) => {
     const { task, access } = await getTaskAccess(ctx, taskId);
-    const grading = requireGradableTask(task, access);
+    requireGradableTask(task, access);
+    const questions =
+      task.kind === "quiz" ? await listQuizQuestions(ctx, taskId) : null;
     for await (const grade of taskDrafts(ctx, taskId)) {
-      if (await publishableDraft(ctx, grade, grading)) return true;
+      if (await publishableDraft(ctx, grade, task, questions)) return true;
     }
     return false;
   },
@@ -331,7 +301,7 @@ export const publishAll = mutation({
   }),
   handler: async (ctx, { taskId, operationId, continuation }) => {
     const { task, access, user } = await getTaskAccess(ctx, taskId);
-    const grading = requireGradableTask(task, access);
+    requireGradableTask(task, access);
     const now = Date.now();
     const before = continuation?.before ?? now;
     if (
@@ -343,24 +313,28 @@ export const publishAll = mutation({
     )
       throw new ConvexError("INVALID_GRADE_REQUEST");
 
+    const questions =
+      task.kind === "quiz" ? await listQuizQuestions(ctx, taskId) : null;
     const page = await taskDrafts(ctx, taskId, before).paginate({
       cursor: continuation?.cursor ?? null,
-      numItems: 50,
+      numItems: questions ? QUIZ_RECIPIENT_BATCH_SIZE : 50,
     });
     const drafts = await Promise.all(
-      page.page.map((grade) => publishableDraft(ctx, grade, grading)),
+      page.page.map((grade) => publishableDraft(ctx, grade, task, questions)),
     );
     let published = 0;
     for (const [index, grade] of page.page.entries()) {
       const draft = drafts[index];
       if (!draft) continue;
-      await publishDraft(ctx, grade, draft, user._id, operationId);
+      await publishTaskGrade(ctx, grade, draft, user._id, operationId);
       published++;
     }
     return {
       published,
       skipped: page.page.length - published,
-      continuation: page.isDone ? null : { cursor: page.continueCursor, before },
+      continuation: page.isDone
+        ? null
+        : { cursor: page.continueCursor, before },
     };
   },
 });
@@ -371,9 +345,7 @@ export const history = query({
     studentId: v.id("users"),
     paginationOpts: paginationOptsValidator,
   },
-  returns: paginationResultValidator(
-    gradeViewValidator.extend({ version: v.number() }),
-  ),
+  returns: paginationResultValidator(gradeHistoryViewValidator),
   handler: async (ctx, args) => {
     const { access, grade, task } = await getTarget(
       ctx,
@@ -391,29 +363,10 @@ export const history = query({
       .paginate(args.paginationOpts);
     return {
       ...page,
-      page: page.page.map(
-        ({
-          version,
-          points,
-          institutionalScale,
-          comment,
-          submissionRevision,
-          authorId,
-          updatedAt,
-        }) =>
-          projectGrade(
-            {
-              version,
-              points,
-              institutionalScale,
-              comment,
-              submissionRevision,
-              authorId,
-              updatedAt,
-            },
-            grading,
-          ),
-      ),
+      page: page.page.map((entry) => ({
+        ...projectGrade(entry, grading),
+        version: entry.version,
+      })),
     };
   },
 });

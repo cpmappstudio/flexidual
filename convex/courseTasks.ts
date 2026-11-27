@@ -1,24 +1,43 @@
 import { isCourseTeacher } from "./model/courseAssignments";
+import { MAX_QUIZ_QUESTIONS } from "../lib/course-quizzes";
 import {
   paginationOptsValidator,
   paginationResultValidator,
 } from "convex/server";
 import { ConvexError, v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import { query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { internalMutation, mutation } from "./functions";
 import {
   canSubmitCourseTask,
-  getCourseEndAt,
   getCourseTaskAccess,
+  requireOpenCourse,
+  requireTaskManager,
 } from "./model/courseTaskAccess";
+import { validateTaskDates } from "./model/courseTaskDates";
+import {
+  cancelQuizClose,
+  deleteQuizDataBatch,
+  quizEndsAt,
+  requireQuiz,
+  scheduleQuizClose,
+  validateQuizDuration,
+  updateQuizQuestions,
+} from "./model/courseQuizzes";
+import { deleteCourseTaskRecipient } from "./model/courseTaskRecipients";
+import {
+  courseTaskKindValidator,
+  courseQuizConfigurationValidator,
+  courseQuizQuestionEditValidator,
+} from "./model/courseQuizValidators";
 import { isStudentEnrolled } from "./model/enrollments";
 import { resolveStudentDashboardAccess } from "./model/studentDashboardAccess";
 import { getClassTimeZone } from "./model/timeZone";
 import {
   assignCurrentStudentsToTask,
   releaseCourseTask,
+  scheduleTaskRelease,
 } from "./model/courseTaskPublication";
 import { refreshCourseTaskReminder } from "./model/courseTaskReminders";
 import {
@@ -37,6 +56,8 @@ const taskValidator = v.object({
   _creationTime: v.number(),
   classId: v.id("classes"),
   createdBy: v.id("users"),
+  kind: v.optional(courseTaskKindValidator),
+  quiz: v.optional(courseQuizConfigurationValidator),
   isDraft: v.optional(v.boolean()),
   title: v.string(),
   description: v.optional(v.string()),
@@ -111,7 +132,7 @@ export const removeByClass = internalMutation({
       if (files.length < DELETE_BATCH_SIZE) {
         await Promise.all(
           recipients.map((recipient) =>
-            ctx.db.delete("courseTaskRecipients", recipient._id),
+            deleteCourseTaskRecipient(ctx, recipient),
           ),
         );
         if (recipients.length < DELETE_BATCH_SIZE) {
@@ -124,7 +145,13 @@ export const removeByClass = internalMutation({
               await ctx.scheduler.cancel(task.reminderScheduledId);
             }
           }
+          await cancelQuizClose(ctx, task);
           await ctx.db.delete("courseTasks", task._id);
+          await ctx.scheduler.runAfter(
+            0,
+            internal.courseTasks.removeDeletedTask,
+            { taskId: task._id },
+          );
         }
       }
       await ctx.scheduler.runAfter(0, internal.courseTasks.removeByClass, args);
@@ -183,6 +210,7 @@ export const remove = mutation({
       }
     }
 
+    await cancelQuizClose(ctx, task);
     await ctx.db.delete("courseTasks", taskId);
     await ctx.scheduler.runAfter(0, internal.courseTasks.removeDeletedTask, {
       taskId,
@@ -204,6 +232,13 @@ export const removeDeletedTask = internalMutation({
     )
       throw new ConvexError("TASK_HAS_GRADES");
 
+    if (await deleteQuizDataBatch(ctx, taskId)) {
+      await ctx.scheduler.runAfter(0, internal.courseTasks.removeDeletedTask, {
+        taskId,
+      });
+      return null;
+    }
+
     const files = await ctx.db
       .query("courseTaskFiles")
       .withIndex("by_taskId_and_kind_and_state", (q) => q.eq("taskId", taskId))
@@ -221,9 +256,7 @@ export const removeDeletedTask = internalMutation({
       .withIndex("by_taskId_and_studentId", (q) => q.eq("taskId", taskId))
       .take(DELETE_BATCH_SIZE);
     await Promise.all(
-      recipients.map((recipient) =>
-        ctx.db.delete("courseTaskRecipients", recipient._id),
-      ),
+      recipients.map((recipient) => deleteCourseTaskRecipient(ctx, recipient)),
     );
     if (recipients.length === DELETE_BATCH_SIZE) {
       await ctx.scheduler.runAfter(0, internal.courseTasks.removeDeletedTask, {
@@ -249,76 +282,6 @@ export const removeDeletedTask = internalMutation({
     return null;
   },
 });
-
-async function requireTaskManager(
-  ctx: QueryCtx | MutationCtx,
-  classId: Id<"classes">,
-  userId: Id<"users">,
-) {
-  const course = await ctx.db.get("classes", classId);
-  if (!course) throw new ConvexError("CLASS_NOT_FOUND");
-  if (
-    !isCourseTeacher(course, userId) &&
-    !(await canManageClass(ctx, userId, course))
-  ) {
-    throw new ConvexError("PERMISSION_DENIED");
-  }
-  return course;
-}
-
-async function requireOpenCourse(
-  ctx: QueryCtx | MutationCtx,
-  course: Doc<"classes">,
-  now: number,
-) {
-  const endAt = await getCourseEndAt(ctx, course);
-  if (!course.isActive || endAt === undefined || now > endAt) {
-    throw new ConvexError("COURSE_CLOSED");
-  }
-  return endAt;
-}
-
-function validateTaskDates({
-  availableAt,
-  releasedAt,
-  dueAt,
-  now,
-  courseEndAt,
-  requireFutureDue,
-}: {
-  availableAt: number | undefined;
-  releasedAt?: number;
-  dueAt: number | undefined;
-  now: number;
-  courseEndAt: number;
-  requireFutureDue: boolean;
-}) {
-  const effectiveStartAt = releasedAt ?? availableAt;
-  if (
-    (availableAt !== undefined &&
-      (!Number.isFinite(availableAt) ||
-        availableAt > courseEndAt ||
-        (releasedAt === undefined && availableAt <= now))) ||
-    (dueAt !== undefined &&
-      (!Number.isFinite(dueAt) ||
-        dueAt > courseEndAt ||
-        (effectiveStartAt !== undefined && dueAt <= effectiveStartAt) ||
-        (requireFutureDue && dueAt <= now)))
-  ) {
-    throw new ConvexError("INVALID_TASK_DATES");
-  }
-}
-
-async function scheduleTaskRelease(
-  ctx: MutationCtx,
-  taskId: Id<"courseTasks">,
-  availableAt: number,
-) {
-  await ctx.scheduler.runAt(availableAt, internal.courseTasks.release, {
-    taskId,
-    expectedAvailableAt: availableAt,
-  });
-}
 
 export const create = mutation({
   args: {
@@ -401,6 +364,10 @@ export const update = mutation({
     dueAt: v.optional(v.union(v.number(), v.null())),
     allowLateSubmissions: v.optional(v.boolean()),
     materialFileIds: v.optional(v.array(v.id("courseTaskFiles"))),
+    durationMinutes: v.optional(v.number()),
+    shuffleQuestions: v.optional(v.boolean()),
+    questions: v.optional(v.array(courseQuizQuestionEditValidator)),
+    expectedUpdatedAt: v.optional(v.number()),
     grading: v.optional(v.union(v.null(), v.object({ maxPoints: v.number() }))),
   },
   returns: v.null(),
@@ -411,7 +378,53 @@ export const update = mutation({
     const course = await requireTaskManager(ctx, task.classId, user._id);
     const now = Date.now();
     const courseEndAt = await requireOpenCourse(ctx, course, now);
-    const grading = await resolveTaskGrading(ctx, course, args.grading, task);
+    if (task.kind === "quiz") {
+      requireQuiz(task);
+      if (
+        (args.questions !== undefined ||
+          args.expectedUpdatedAt !== undefined) &&
+        args.expectedUpdatedAt !== task.updatedAt
+      )
+        throw new ConvexError("QUIZ_SETTINGS_CHANGED");
+      if (
+        args.grading !== undefined &&
+        (args.grading === null ||
+          args.grading.maxPoints !== task.grading.maxPoints)
+      )
+        throw new ConvexError("QUIZ_QUESTIONS_LOCKED");
+      if (
+        args.dueAt === null ||
+        args.allowLateSubmissions === true ||
+        (args.materialFileIds?.length ?? 0) > 0
+      )
+        throw new ConvexError("INVALID_QUIZ_SETTINGS");
+      if (
+        args.dueAt !== undefined &&
+        args.dueAt !== task.dueAt &&
+        (now >= task.dueAt || args.dueAt <= now)
+      )
+        throw new ConvexError("QUIZ_CLOSED");
+      if (args.durationMinutes !== undefined) {
+        validateQuizDuration(args.durationMinutes);
+        if (
+          args.durationMinutes !== task.quiz.durationMinutes &&
+          task.quiz.firstStartedAt !== undefined
+        )
+          throw new ConvexError("QUIZ_DURATION_LOCKED");
+      }
+      if (
+        args.shuffleQuestions !== undefined &&
+        args.shuffleQuestions !== (task.quiz.shuffleQuestions ?? false) &&
+        task.quiz.firstStartedAt !== undefined
+      )
+        throw new ConvexError("QUIZ_SHUFFLE_LOCKED");
+    } else if (
+      args.durationMinutes !== undefined ||
+      args.shuffleQuestions !== undefined ||
+      args.questions !== undefined
+    )
+      throw new ConvexError("QUIZ_NOT_FOUND");
+    let grading = await resolveTaskGrading(ctx, course, args.grading, task);
     const title = args.title === undefined ? task.title : args.title.trim();
     if (!title) throw new ConvexError("TASK_TITLE_REQUIRED");
     if (title.length > 160) throw new ConvexError("TASK_TITLE_TOO_LONG");
@@ -441,8 +454,28 @@ export const update = mutation({
       courseEndAt,
       requireFutureDue: task.releasedAt === undefined,
     });
+    if (args.questions !== undefined) {
+      requireQuiz(task);
+      grading = await updateQuizQuestions(ctx, task, args.questions);
+    }
+    const updatedAt =
+      task.kind === "quiz" ? Math.max(now, task.updatedAt + 1) : now;
     const updatedTask = {
       ...task,
+      quiz: task.quiz
+        ? {
+            ...task.quiz,
+            ...(args.questions !== undefined && {
+              questionCount: args.questions.length,
+            }),
+            ...(args.durationMinutes !== undefined && {
+              durationMinutes: args.durationMinutes,
+            }),
+            ...(args.shuffleQuestions !== undefined && {
+              shuffleQuestions: args.shuffleQuestions,
+            }),
+          }
+        : task.quiz,
       grading,
       title,
       description,
@@ -459,10 +492,11 @@ export const update = mutation({
           ? true
           : (args.allowLateSubmissions ??
             (task.dueAt === undefined ? false : task.allowLateSubmissions)),
-      updatedAt: now,
+      updatedAt,
     };
     const wasOpen = await canSubmitCourseTask(ctx, course, task, now);
     await ctx.db.patch("courseTasks", task._id, {
+      quiz: updatedTask.quiz,
       grading,
       title,
       description,
@@ -470,8 +504,12 @@ export const update = mutation({
       availabilitySortAt: updatedTask.availabilitySortAt,
       dueAt,
       allowLateSubmissions: updatedTask.allowLateSubmissions,
-      updatedAt: now,
+      updatedAt,
     });
+    if (task.kind === "quiz" && dueAt !== task.dueAt) {
+      requireQuiz(updatedTask);
+      await scheduleQuizClose(ctx, updatedTask);
+    }
     if (args.materialFileIds !== undefined) {
       await replaceCourseTaskMaterials(
         ctx,
@@ -514,6 +552,15 @@ export const previewDeadlineChange = query({
     const task = await ctx.db.get("courseTasks", taskId);
     if (!task) throw new ConvexError("TASK_NOT_FOUND");
     await requireTaskManager(ctx, task.classId, user._id);
+    if (task.kind === "quiz") {
+      const recipient = await ctx.db
+        .query("courseTaskRecipients")
+        .withIndex("by_taskId_and_submittedAt", (q) =>
+          q.eq("taskId", taskId).gte("submittedAt", 0),
+        )
+        .first();
+      return { hasSubmissions: recipient !== null };
+    }
     const submission = await ctx.db
       .query("courseTaskFiles")
       .withIndex("by_taskId_and_kind_and_state", (q) =>
@@ -611,6 +658,7 @@ export const setClosed = mutation({
     const task = await ctx.db.get("courseTasks", args.taskId);
     if (!task) throw new ConvexError("TASK_NOT_FOUND");
     const course = await requireTaskManager(ctx, task.classId, user._id);
+    if (task.kind === "quiz") throw new ConvexError("QUIZ_USE_CLOSING_DATE");
     await requireOpenCourse(ctx, course, Date.now());
     if (task.releasedAt === undefined)
       throw new ConvexError("TASK_NOT_RELEASED");
@@ -678,6 +726,20 @@ export const get = query({
     if (!task) return null;
     const access = await getCourseTaskAccess(ctx, task, user._id);
     if (access.kind === "none") throw new ConvexError("PERMISSION_DENIED");
+    if (
+      task.kind === "quiz" &&
+      task.quiz &&
+      task.quiz.questionCount === undefined
+    ) {
+      const questions = await ctx.db
+        .query("courseQuizQuestions")
+        .withIndex("by_taskId_and_order", (q) => q.eq("taskId", taskId))
+        .take(MAX_QUIZ_QUESTIONS);
+      return {
+        ...task,
+        quiz: { ...task.quiz, questionCount: questions.length },
+      };
+    }
     return task;
   },
 });
@@ -702,9 +764,18 @@ export const getStatus = query({
       task,
       now,
     );
+    let canSubmit = access.kind === "student" && submissionsOpen;
+    if (task.kind === "quiz" && access.kind === "student") {
+      requireQuiz(task);
+      canSubmit =
+        canSubmit &&
+        access.recipient.quizAttempt !== undefined &&
+        access.recipient.submittedAt === undefined &&
+        now < quizEndsAt(task, access.recipient);
+    }
     return {
       canManage: access.kind === "manager",
-      canSubmit: access.kind === "student" && submissionsOpen,
+      canSubmit,
       submissionsOpen,
       canReopen:
         access.kind === "manager" &&

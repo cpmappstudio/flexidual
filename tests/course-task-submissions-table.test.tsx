@@ -81,7 +81,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next-intl", () => ({
-  useFormatter: () => ({ dateTime: (value: number) => String(value) }),
+  useFormatter: () => ({
+    number: (value: number) => String(value),
+    dateTime: (value: number) => String(value),
+  }),
   useTranslations: () => (key: string) => key,
 }));
 
@@ -127,17 +130,26 @@ vi.mock("convex/react", async () => {
       }
     },
     useMutation: (ref: unknown) => {
-      const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+      const name = getFunctionName(
+        ref as Parameters<typeof getFunctionName>[0],
+      );
       if (name === "courseTaskSubmissions:setFeedback") return feedbackMutation;
       if (name === "courseTaskGrades:saveDraft") return gradeMutation;
       if (name === "courseTaskGrades:publishAll") return publishAllMutation;
       return vi.fn();
     },
     usePaginatedQuery: () => ({
-      results: detailState.task.grading ? rows.map((row) => ({
-        ...row,
-        grade: { grading: detailState.task.grading, version: 0, draft: null, published: null },
-      })) : rows,
+      results: detailState.task.grading
+        ? rows.map((row) => ({
+            ...row,
+            grade: {
+              grading: detailState.task.grading,
+              version: 0,
+              draft: null,
+              published: null,
+            },
+          }))
+        : rows,
       status: queryState.submissionsLoading ? "LoadingFirstPage" : "Exhausted",
       loadMore: vi.fn(),
     }),
@@ -198,6 +210,55 @@ vi.mock("@/hooks/use-task-file-request", () => ({
 }));
 
 import { CourseTaskDetail } from "@/components/teaching/classes/course-task-detail";
+
+vi.mock("@/components/teaching/classes/course-quiz-definition", () => ({
+  CourseQuizDefinition: () => <p>quizDefinition</p>,
+  CourseQuizInstructions: () => null,
+}));
+vi.mock("@/components/teaching/classes/course-quiz-student", () => ({
+  CourseQuizStudent: () => <p>quizAttempt</p>,
+}));
+vi.mock("@/components/teaching/classes/course-quiz-teacher-review", () => ({
+  CourseQuizTeacherReview: () => <p>quizReview</p>,
+}));
+
+test.each([true, false])(
+  "quizzes never render legacy file submissions or scalar grade editors (manager: %s)",
+  (canManage) => {
+    detailState.task = {
+      ...detailState.task,
+      kind: "quiz",
+      quiz: { durationMinutes: 10 },
+      grading: { maxPoints: 2, scaleMax: 100, decimalPlaces: 2 },
+    };
+    detailState.status = { ...detailState.status, canManage };
+    render(
+      <CourseTaskDetail
+        classId={"class-id" as Id<"classes">}
+        taskId={"task-id" as Id<"courseTasks">}
+        timeZone="UTC"
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText(canManage ? "quizDefinition" : "quizAttempt"),
+    ).toBeTruthy();
+    expect(Boolean(screen.queryByRole("table"))).toBe(canManage);
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    if (canManage) {
+      const review = screen.getAllByRole<HTMLButtonElement>("button", {
+        name: "review",
+      });
+      expect(review[0].disabled).toBe(true);
+      expect(review[1].disabled).toBe(false);
+      fireEvent.click(review[1]);
+      expect(screen.getByText("quizReview")).toBeTruthy();
+    }
+    expect(screen.queryByText("materials")).toBeNull();
+    expect(screen.queryByText("filesToSubmit")).toBeNull();
+  },
+);
 
 afterEach(() => {
   cleanup();
@@ -302,20 +363,28 @@ test("graded activities allow reviewing an assigned student before a file is sub
     />,
   );
   const student = screen.getByText("Student 0").closest("tr")!;
-  const grade = within(student).getByRole("spinbutton", { name: "studentGrade" });
+  const grade = within(student).getByRole("spinbutton", {
+    name: "studentGrade",
+  });
   fireEvent.change(grade, { target: { value: "82.5" } });
   fireEvent.blur(grade);
-  await waitFor(() => expect(gradeMutation).toHaveBeenCalledWith(expect.objectContaining({
-    studentId: "student-0",
-    institutionalPoints: 82.5,
-    expectedSubmissionRevision: 0,
-  })));
+  await waitFor(() =>
+    expect(gradeMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        studentId: "student-0",
+        institutionalPoints: 82.5,
+        expectedSubmissionRevision: 0,
+      }),
+    ),
+  );
   const review = within(student).getByRole("button", {
     name: "review",
   }) as HTMLButtonElement;
   expect(review.disabled).toBe(false);
   fireEvent.click(review);
-  expect(await screen.findByRole("spinbutton", { name: "points" })).toBeTruthy();
+  expect(
+    await screen.findByRole("spinbutton", { name: "points" }),
+  ).toBeTruthy();
   expect(screen.queryByLabelText("task-feedback")).toBeNull();
 });
 
@@ -329,7 +398,9 @@ test("bulk publication uses all server drafts and blocks when a visible grade is
     onDelete: vi.fn(),
   };
   const view = render(<CourseTaskDetail {...props} />);
-  const button = screen.getByRole<HTMLButtonElement>("button", { name: "publishAll" });
+  const button = screen.getByRole<HTMLButtonElement>("button", {
+    name: "publishAll",
+  });
   expect(button.disabled).toBe(true);
   queryState.hasPublishableDrafts = true;
   queryState.submissionsLoading = true;
@@ -351,11 +422,18 @@ test("bulk publication uses all server drafts and blocks when a visible grade is
 
   fireEvent.change(input, { target: { value: "" } });
   expect(input.getAttribute("aria-invalid")).toBe("false");
-  const hiddenKey = "flexidual:task-grade:teacher-test:task-id:student-unloaded";
-  window.sessionStorage.setItem(hiddenKey, JSON.stringify({
-    points: "90", comment: "", version: 1, submissionRevision: 0,
-    operationId: "unloaded",
-  }));
+  const hiddenKey =
+    "flexidual:task-grade:teacher-test:task-id:student-unloaded";
+  window.sessionStorage.setItem(
+    hiddenKey,
+    JSON.stringify({
+      points: "90",
+      comment: "",
+      version: 1,
+      submissionRevision: 0,
+      operationId: "unloaded",
+    }),
+  );
   fireEvent.click(button);
   expect(publishAllMutation).not.toHaveBeenCalled();
   window.sessionStorage.removeItem(hiddenKey);
@@ -367,7 +445,9 @@ test("bulk publication uses all server drafts and blocks when a visible grade is
   await waitFor(() => expect(publishAllMutation).toHaveBeenCalledTimes(2));
   const { operationId } = publishAllMutation.mock.calls[0][0];
   expect(publishAllMutation).toHaveBeenLastCalledWith({
-    taskId: "task-id", operationId, continuation,
+    taskId: "task-id",
+    operationId,
+    continuation,
   });
 });
 
@@ -1119,3 +1199,55 @@ test.each([true, false])(
     expect(screen.getByText("new-guide.pdf")).toBeTruthy();
   },
 );
+
+test("quiz bulk publication guards local drafts and pending reviews in portals", async () => {
+  detailState.task = {
+    ...detailState.task,
+    kind: "quiz",
+    quiz: { durationMinutes: 10 },
+    grading: { maxPoints: 2, scaleMax: 100, decimalPlaces: 2 },
+  };
+  queryState.hasPublishableDrafts = true;
+  render(
+    <CourseTaskDetail
+      classId={"class-id" as Id<"classes">}
+      taskId={"task-id" as Id<"courseTasks">}
+      timeZone="UTC"
+      onEdit={vi.fn()}
+      onDelete={vi.fn()}
+    />,
+  );
+  const button = screen.getByRole("button", { name: "publishAll" });
+  const key = "flexidual:quiz-review:teacher-test:task-id:student-1";
+  sessionStorage.setItem(
+    key,
+    JSON.stringify({
+      scores: { q1: "1" },
+      comment: "",
+      version: 0,
+      submissionRevision: 1,
+      grading: detailState.task.grading,
+      operationId: "local-review",
+    }),
+  );
+  fireEvent.click(button);
+  expect(publishAllMutation).not.toHaveBeenCalled();
+  sessionStorage.removeItem(key);
+  const portal = document.createElement("form");
+  portal.setAttribute("data-pending-quiz-review", "task-id");
+  document.body.appendChild(portal);
+  try {
+    fireEvent.click(button);
+    expect(publishAllMutation).not.toHaveBeenCalled();
+    portal.setAttribute("data-pending-quiz-review", "another-task");
+    publishAllMutation.mockResolvedValueOnce({
+      published: 1,
+      skipped: 0,
+      continuation: null,
+    });
+    fireEvent.click(button);
+    await waitFor(() => expect(publishAllMutation).toHaveBeenCalledTimes(1));
+  } finally {
+    portal.remove();
+  }
+});

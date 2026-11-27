@@ -57,12 +57,29 @@ vi.mock("@/components/teaching/classes/course-task-detail", () => ({
   CourseTaskDetail: ({
     taskId,
     onDelete,
+    onEdit,
   }: {
     taskId: string;
     onDelete: (task: Doc<"courseTasks">) => void;
+    onEdit: (task: Doc<"courseTasks">, materials: []) => void;
   }) => (
     <div>
       selected:{taskId}
+      <button
+        type="button"
+        onClick={() =>
+          onEdit(
+            {
+              ...tasks.find((task) => task._id === taskId),
+              kind: "quiz",
+              quiz: { durationMinutes: 10 },
+            } as Doc<"courseTasks">,
+            [],
+          )
+        }
+      >
+        requestQuizEdit
+      </button>
       <button
         type="button"
         onClick={() =>
@@ -78,10 +95,42 @@ vi.mock("@/components/teaching/classes/course-task-detail", () => ({
 }));
 
 vi.mock("@/components/teaching/classes/course-task-editor", () => ({
-  CourseTaskEditor: () => null,
+  CourseTaskEditor: ({ onClose }: { onClose: () => void }) => (
+    <button onClick={onClose}>filesEditor</button>
+  ),
+}));
+vi.mock("@/components/teaching/classes/course-quiz-editor", () => ({
+  CourseQuizEditor: ({ onClose }: { onClose: () => void }) => (
+    <button onClick={onClose}>quizEditor</button>
+  ),
 }));
 
 import { CourseTasksTab } from "@/components/teaching/classes/course-tasks-tab";
+
+test("routes file creation and quiz creation or editing to their corresponding editors", async () => {
+  render(
+    <CourseTasksTab
+      classId={"class-id" as Id<"classes">}
+      canManage
+      timeZone="UTC"
+    />,
+  );
+  fireEvent.keyDown(screen.getByRole("button", { name: "newActivity" }), {
+    key: "ArrowDown",
+  });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "newTask" }));
+  expect(screen.queryByText("quizEditor")).toBeNull();
+  fireEvent.click(screen.getByText("filesEditor"));
+  fireEvent.keyDown(screen.getByRole("button", { name: "newActivity" }), {
+    key: "ArrowDown",
+  });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "newQuiz" }));
+  expect(screen.queryByText("filesEditor")).toBeNull();
+  fireEvent.click(screen.getByText("quizEditor"));
+  fireEvent.click(screen.getByText("requestQuizEdit"));
+  expect(screen.getByText("quizEditor")).toBeTruthy();
+  expect(screen.queryByText("filesEditor")).toBeNull();
+});
 
 beforeEach(() => {
   removeTask.mockClear();
@@ -134,9 +183,11 @@ test.each([true, false])(
     expect(heading.closest('[data-slot="card"]')).toBeNull();
     expect(screen.getAllByText("heading")).toHaveLength(1);
     expect(heading.className).toBe("text-lg font-semibold");
-    const newTask = screen.queryByRole("button", { name: "newTask" });
+    const newTask = screen.queryByRole("button", { name: "newActivity" });
     expect(Boolean(newTask)).toBe(canManage);
-    if (newTask) expect(newTask.parentElement).toBe(heading.parentElement);
+    if (newTask) expect(heading.parentElement?.contains(newTask)).toBe(true);
+    expect(screen.queryByRole("button", { name: "newQuiz" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "newTask" })).toBeNull();
     expect(screen.getByRole("region", { name: "heading" })).toBeTruthy();
   },
 );
@@ -260,4 +311,67 @@ test("switching assignments clears the previously reviewed student", () => {
   const params = new URLSearchParams(window.location.search);
   expect(params.get("task")).toBe("earlier");
   expect(params.has("student")).toBe(false);
+});
+
+test("quiz and assignment cards share height, colors, typography and metadata layout", () => {
+  const quiz = {
+    ...tasks[0],
+    _id: "quiz-card",
+    title: "Quiz title",
+    kind: "quiz",
+    quiz: { durationMinutes: 10 },
+  };
+  tasks.push(quiz);
+  try {
+    render(
+      <CourseTasksTab
+        classId={"class-id" as Id<"classes">}
+        canManage
+        timeZone="UTC"
+      />,
+    );
+    const quizCard = screen.getByRole("button", { name: /Quiz title/ });
+    const fileCard = screen.getByRole("button", {
+      name: /Earlier published assignment/,
+    });
+    expect(quizCard.className).toBe(fileCard.className);
+    expect(quizCard.classList.contains("h-32")).toBe(true);
+    expect(quizCard.querySelector("img")?.getAttribute("src")).toContain(
+      "quizzes-icon.svg",
+    );
+    expect(fileCard.querySelector("img")?.className).toBe(
+      quizCard.querySelector("img")?.className,
+    );
+    expect(quizCard.querySelector(".text-primary")).toBeNull();
+  } finally {
+    tasks.pop();
+  }
+});
+
+test("quiz deletion keeps its own label and cancellation never deletes the activity", () => {
+  const quiz = {
+    ...tasks[0],
+    _id: "quiz-delete",
+    title: "Quiz to delete",
+    kind: "quiz",
+    quiz: { durationMinutes: 10 },
+  };
+  tasks.push(quiz);
+  try {
+    render(
+      <CourseTasksTab
+        classId={"class-id" as Id<"classes">}
+        canManage
+        timeZone="UTC"
+        initialTaskId={"quiz-delete" as Id<"courseTasks">}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "requestDelete" }));
+    expect(screen.getByRole("button", { name: "deleteQuiz" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "deleteTask" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "cancel" }));
+    expect(removeTask).not.toHaveBeenCalled();
+  } finally {
+    tasks.pop();
+  }
 });
