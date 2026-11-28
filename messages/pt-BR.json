@@ -189,6 +189,30 @@
     "saveError": "Não foi possível confirmar o salvamento. Suas alterações continuam aqui; tente novamente."
   },
   "grading": {
+    "weights": {
+      "title": "Ponderação das notas",
+      "description": "Percentuais padrão para todos os cursos sem ponderação própria. As alterações não modificam as notas individuais nem suas escalas.",
+      "courseDescription": "Use os percentuais institucionais atuais ou salve uma distribuição completa para este curso. Esta configuração será usada em relatórios; não calcula uma nota final.",
+      "categories": {
+        "quiz": "Quizzes",
+        "assignment": "Atividades"
+      },
+      "percentage": "Porcentagem (%)",
+      "total": "Total: {total}%.",
+      "validation": "Informe percentuais de 0 a 100 com até duas casas decimais. A soma deve ser exatamente 100%.",
+      "override": "Personalizar ponderação deste curso",
+      "notConfigured": "A instituição ainda não configurou a ponderação.",
+      "save": "Salvar ponderação",
+      "saved": "Ponderação salva.",
+      "saveError": "Não foi possível salvar a ponderação. Verifique suas permissões e se outro editor alterou a configuração.",
+      "stale": "A ponderação salva mudou durante a edição. Seus valores foram preservados. Carregue a configuração atual antes de editar novamente.",
+      "reload": "Carregar ponderação atual",
+      "category": "Categoria de avaliação",
+      "unclassified": "Sem classificação",
+      "categoryHint": "A categoria determina a ponderação usada nos relatórios, independentemente do formato da atividade. As atividades existentes não são classificadas automaticamente.",
+      "categoryLocked": "Esta atividade já tem avaliações. A categoria atribuída não pode ser alterada.",
+      "categoryChanged": "A atividade mudou durante a edição da categoria. Abra-a novamente para carregar a versão atual."
+    },
     "title": "Nota",
     "studentGrade": "Nota de {name} (de {max})",
     "savingDraft": "Salvando rascunho privado…",

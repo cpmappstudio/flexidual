@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
@@ -250,6 +250,109 @@ test("school reads keep the same contract and access after setting a grading pol
   await expect(outsider.query(api.schools.get, schoolArgs)).rejects.toThrow(
     "PERMISSION_DENIED",
   );
+});
+
+test.each([0, 1, 2])(
+  "server configuration rejects sub-unit maxima at precision %s and still publishes a real zero",
+  async (decimalPlaces) => {
+    const s = await setup();
+    const policy = { ...DEFAULT_GRADING_POLICY, decimalPlaces };
+    await s.admin.mutation(api.academicSettings.updateGradingPolicy, {
+      schoolId: s.schoolId,
+      policy,
+    });
+    for (const field of ["scaleMax", "defaultMaxPoints"] as const)
+      await expect(
+        s.admin.mutation(api.academicSettings.updateGradingPolicy, {
+          schoolId: s.schoolId,
+          policy: { ...policy, [field]: 1e-10 },
+        }),
+      ).rejects.toThrow("INVALID_GRADING_POLICY");
+    await expect(
+      s.teacher.mutation(api.courseTasks.create, {
+        classId: s.classId,
+        title: "Unrepresentable maximum",
+        grading: { maxPoints: 1e-10 },
+      }),
+    ).rejects.toThrow("INVALID_TASK_GRADING");
+    await expect(
+      s.teacher.mutation(api.courseTasks.update, {
+        taskId: s.taskId,
+        grading: { maxPoints: 1e-10 },
+      }),
+    ).rejects.toThrow("INVALID_TASK_GRADING");
+    await expect(
+      s.teacher.mutation(api.courseQuizzes.create, {
+        classId: s.classId,
+        title: "Unrepresentable quiz",
+        dueAt: Date.now() + 60_000,
+        durationMinutes: 1,
+        questions: [{ kind: "text", prompt: "Explain", maxPoints: 1e-10 }],
+      }),
+    ).rejects.toThrow("INVALID_QUIZ_QUESTIONS");
+    expect(
+      await s.admin.query(api.academicSettings.getGradingPolicy, {
+        schoolId: s.schoolId,
+      }),
+    ).toEqual(policy);
+    expect(
+      await s.t.run((ctx) => ctx.db.query("courseTasks").collect()),
+    ).toHaveLength(1);
+    const taskId = await s.teacher.mutation(api.courseTasks.create, {
+      classId: s.classId,
+      title: "Smallest valid maximum",
+      grading: { maxPoints: 10 ** -decimalPlaces },
+    });
+    await s.t.run((ctx) =>
+      ensureCourseTaskRecipient(ctx, taskId, s.users.student),
+    );
+    const task = (await s.t.run((ctx) => ctx.db.get("courseTasks", taskId)))!;
+    const args = { ...s.args, taskId, expectedGrading: task.grading! };
+    await expect(
+      s.teacher.mutation(api.courseTaskGrades.saveDraft, {
+        ...args,
+        points: 1e-10,
+      }),
+    ).rejects.toThrow("INVALID_TASK_GRADE");
+    await s.teacher.mutation(api.courseTaskGrades.saveDraft, {
+      ...args,
+      points: 0,
+    });
+    await s.teacher.mutation(api.courseTaskGrades.publish, {
+      ...args,
+      expectedVersion: 1,
+      operationId: "publish-valid-zero",
+    });
+    const view = await s.student.query(api.courseTaskGrades.get, { taskId });
+    expect(view.published?.points).toBe(0);
+    expect(gradeToScale(view.published!.points, view.grading!)).toBe(0);
+  },
+);
+
+test("a historical sub-unit grading snapshot can still publish and display zero without rewriting its configuration", async () => {
+  const s = await setup();
+  const grading = { ...s.args.expectedGrading, maxPoints: 1e-10 };
+  // Simulate a snapshot persisted before positive-unit validation.
+  await s.t.run((ctx) => ctx.db.patch("courseTasks", s.taskId, { grading }));
+  const args = { ...s.args, expectedGrading: grading };
+  await s.teacher.mutation(api.courseTaskGrades.saveDraft, {
+    ...args,
+    points: 0,
+  });
+  await s.teacher.mutation(api.courseTaskGrades.publish, {
+    ...args,
+    expectedVersion: 1,
+    operationId: "publish-historical-zero",
+  });
+  const view = await s.student.query(api.courseTaskGrades.get, {
+    taskId: s.taskId,
+  });
+  expect(view.grading).toEqual(grading);
+  expect(view.published?.points).toBe(0);
+  expect(gradeToScale(view.published!.points, view.grading!)).toBe(0);
+  expect(
+    (await s.t.run((ctx) => ctx.db.get("courseTasks", s.taskId)))?.grading,
+  ).toEqual(grading);
 });
 
 test("drafts remain private; publication and correction preserve previous published results and history", async () => {
@@ -1191,4 +1294,449 @@ test("expected grading is checked on publication and institutional edits do not 
     grading: { maxPoints: 20, scaleMax: 100, decimalPlaces: 2 },
     published: { points: 12.25 },
   });
+});
+
+const weightsForQuiz = (weightBps: number) => [
+  { category: "quiz" as const, weightBps },
+  { category: "assignment" as const, weightBps: 10_000 - weightBps },
+];
+
+async function setupWeighting() {
+  const s = await setup();
+  await s.t.run((ctx) =>
+    ctx.db.patch("classes", s.classId, { gradeAssignments: undefined }),
+  );
+  return s;
+}
+
+test("institution weights are inherited live without writing courses or altering grading snapshots", async () => {
+  const s = await setupWeighting();
+  const read = () =>
+    s.student.query(api.academicSettings.getGradingWeightsForCourse, {
+      classId: s.classId,
+    });
+  expect(await read()).toEqual({
+    weights: null,
+    institutionalWeights: null,
+    overridden: false,
+    version: 0,
+  });
+  await s.teacher.mutation(api.courseTaskGrades.saveDraft, {
+    ...s.args,
+    points: 12.25,
+  });
+  await s.teacher.mutation(api.courseTaskGrades.publish, {
+    ...s.args,
+    expectedVersion: 1,
+    operationId: "published",
+  });
+  const grade = await s.student.query(api.courseTaskGrades.get, {
+    taskId: s.taskId,
+  });
+  await s.admin.mutation(api.academicSettings.updateGradingWeights, {
+    schoolId: s.schoolId,
+    weights: weightsForQuiz(2_000),
+    expectedVersion: 0,
+  });
+  expect(await read()).toMatchObject({
+    weights: weightsForQuiz(2_000),
+    overridden: false,
+  });
+  await s.admin.mutation(api.academicSettings.updateGradingWeights, {
+    schoolId: s.schoolId,
+    weights: weightsForQuiz(4_000),
+    expectedVersion: 1,
+  });
+  expect(await read()).toMatchObject({ weights: weightsForQuiz(4_000) });
+  expect(
+    await s.student.query(api.courseTaskGrades.get, { taskId: s.taskId }),
+  ).toEqual(grade);
+  expect(
+    await s.teacher.query(api.courseTasks.get, { taskId: s.taskId }),
+  ).not.toHaveProperty("gradingCategory");
+  const course = await s.t.run((ctx) => ctx.db.get("classes", s.classId));
+  expect(course).not.toHaveProperty("gradingWeights");
+  expect(
+    await s.teacher.query(api.academicSettings.getGradingForCourse, {
+      classId: s.classId,
+    }),
+  ).toEqual(DEFAULT_GRADING_POLICY);
+});
+
+test("course overrides are independent, survive old clients and can return to current institution defaults", async () => {
+  const s = await setupWeighting();
+  await s.admin.mutation(api.academicSettings.updateGradingWeights, {
+    schoolId: s.schoolId,
+    weights: weightsForQuiz(2_000),
+    expectedVersion: 0,
+  });
+  const override = {
+    classId: s.classId,
+    gradingWeights: weightsForQuiz(7_000),
+    expectedGradingWeightsVersion: 0,
+  };
+  await s.admin.mutation(api.classes.update, override);
+  await s.admin.mutation(api.classes.update, override);
+  await s.admin.mutation(api.classes.update, {
+    classId: s.classId,
+    name: "Renamed",
+  });
+  await s.admin.mutation(api.academicSettings.updateGradingWeights, {
+    schoolId: s.schoolId,
+    weights: weightsForQuiz(4_000),
+    expectedVersion: 1,
+  });
+  expect(
+    await s.teacher.query(api.academicSettings.getGradingWeightsForCourse, {
+      classId: s.classId,
+    }),
+  ).toEqual({
+    weights: weightsForQuiz(7_000),
+    institutionalWeights: weightsForQuiz(4_000),
+    overridden: true,
+    version: 1,
+  });
+  const detail = await s.admin.query(api.classes.get, { id: s.classId });
+  expect(detail).toMatchObject({
+    gradingWeights: weightsForQuiz(7_000),
+    gradingWeightsVersion: 1,
+  });
+  await s.t
+    .withIdentity({ subject: "principal" })
+    .mutation(api.classes.update, {
+      classId: s.classId,
+      gradingWeights: null,
+      expectedGradingWeightsVersion: 1,
+    });
+  expect(
+    await s.student.query(api.academicSettings.getGradingWeightsForCourse, {
+      classId: s.classId,
+    }),
+  ).toMatchObject({
+    weights: weightsForQuiz(4_000),
+    overridden: false,
+    version: 2,
+  });
+});
+
+test("weight permissions preserve institution and course boundaries", async () => {
+  const s = await setupWeighting();
+  for (const subject of [
+    "teacher",
+    "student",
+    "tutor",
+    "outsider",
+    "principal",
+  ])
+    await expect(
+      s.t
+        .withIdentity({ subject })
+        .mutation(api.academicSettings.updateGradingWeights, {
+          schoolId: s.schoolId,
+          weights: weightsForQuiz(2_000),
+          expectedVersion: 0,
+        }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+  for (const subject of ["teacher", "student", "tutor", "outsider"])
+    await expect(
+      s.t.withIdentity({ subject }).mutation(api.classes.update, {
+        classId: s.classId,
+        gradingWeights: weightsForQuiz(2_000),
+        expectedGradingWeightsVersion: 0,
+      }),
+    ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    s.t
+      .withIdentity({ subject: "outsider" })
+      .query(api.academicSettings.getGradingWeightsForCourse, {
+        classId: s.classId,
+      }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    s.t.query(api.academicSettings.getGradingWeightsForCourse, {
+      classId: s.classId,
+    }),
+  ).rejects.toThrow();
+  const otherSchoolId = await s.t.run((ctx) =>
+    ctx.db.insert("schools", {
+      name: "Other",
+      slug: "other",
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: s.users.outsider,
+    }),
+  );
+  await expect(
+    s.admin.mutation(api.academicSettings.updateGradingWeights, {
+      schoolId: otherSchoolId,
+      weights: weightsForQuiz(2_000),
+      expectedVersion: 0,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+  await expect(
+    s.admin.query(api.academicSettings.getGradingWeights, {
+      schoolId: otherSchoolId,
+    }),
+  ).rejects.toThrow("PERMISSION_DENIED");
+});
+
+test("weight writes reject invalid totals and stale versions without partial changes", async () => {
+  const s = await setupWeighting();
+  const initial = {
+    schoolId: s.schoolId,
+    weights: weightsForQuiz(2_000),
+    expectedVersion: 0,
+  };
+  expect(
+    await s.admin.mutation(api.academicSettings.updateGradingWeights, initial),
+  ).toBe(1);
+  expect(
+    await s.admin.mutation(api.academicSettings.updateGradingWeights, initial),
+  ).toBe(1);
+  await expect(
+    s.admin.mutation(api.academicSettings.updateGradingWeights, {
+      ...initial,
+      weights: weightsForQuiz(3_000),
+    }),
+  ).rejects.toThrow("GRADING_WEIGHTS_CHANGED");
+  for (const weights of [
+    [],
+    [{ category: "quiz" as const, weightBps: 9_999 }],
+    [{ category: "quiz" as const, weightBps: NaN }],
+    [{ category: "quiz" as const, weightBps: 10_000.1 }],
+    [
+      { category: "quiz" as const, weightBps: 5_000 },
+      { category: "quiz" as const, weightBps: 5_000 },
+    ],
+  ]) {
+    await expect(
+      s.admin.mutation(api.academicSettings.updateGradingWeights, {
+        ...initial,
+        expectedVersion: 1,
+        weights,
+      }),
+    ).rejects.toThrow("INVALID_GRADING_WEIGHTS");
+    await expect(
+      s.admin.mutation(api.classes.update, {
+        classId: s.classId,
+        name: "Must not change",
+        gradingWeights: weights,
+        expectedGradingWeightsVersion: 0,
+      }),
+    ).rejects.toThrow("INVALID_GRADING_WEIGHTS");
+  }
+  await s.admin.mutation(api.classes.update, {
+    classId: s.classId,
+    gradingWeights: weightsForQuiz(0),
+    expectedGradingWeightsVersion: 0,
+  });
+  await expect(
+    s.admin.mutation(api.classes.update, {
+      classId: s.classId,
+      gradingWeights: null,
+      expectedGradingWeightsVersion: 0,
+    }),
+  ).rejects.toThrow("GRADING_WEIGHTS_CHANGED");
+  await expect(
+    s.admin.mutation(api.classes.update, {
+      classId: s.classId,
+      gradingWeights: weightsForQuiz(3_000),
+    }),
+  ).rejects.toThrow("INVALID_GRADING_WEIGHTS_VERSION");
+  expect(
+    await s.t.run((ctx) => ctx.db.get("classes", s.classId)),
+  ).toMatchObject({
+    name: "Math",
+    gradingWeights: weightsForQuiz(0),
+    gradingWeightsVersion: 1,
+  });
+});
+
+test("categories are independent of format, explicit for legacy activities and locked once assigned and graded", async () => {
+  const s = await setupWeighting();
+  const id = await s.teacher.mutation(api.courseTasks.create, {
+    classId: s.classId,
+    title: "Assessment",
+    grading: { maxPoints: 20 },
+    gradingCategory: "quiz",
+  });
+  expect(
+    await s.teacher.query(api.courseTasks.get, { taskId: id }),
+  ).toMatchObject({
+    gradingCategory: "quiz",
+  });
+  await expect(
+    s.teacher.mutation(api.courseTasks.create, {
+      classId: s.classId,
+      title: "Ungraded",
+      gradingCategory: "assignment",
+    }),
+  ).rejects.toThrow("TASK_NOT_GRADABLE");
+  await s.teacher.mutation(api.courseTaskGrades.saveDraft, {
+    ...s.args,
+    points: 12,
+  });
+  const legacy = (await s.teacher.query(api.courseTasks.get, {
+    taskId: s.taskId,
+  }))!;
+  await s.teacher.mutation(api.courseTasks.update, {
+    taskId: s.taskId,
+    gradingCategory: "assignment",
+    expectedUpdatedAt: legacy.updatedAt,
+  });
+  const classified = (await s.teacher.query(api.courseTasks.get, {
+    taskId: s.taskId,
+  }))!;
+  expect(classified.gradingCategory).toBe("assignment");
+  await expect(
+    s.teacher.mutation(api.courseTasks.update, {
+      taskId: s.taskId,
+      gradingCategory: "quiz",
+      expectedUpdatedAt: legacy.updatedAt,
+    }),
+  ).rejects.toThrow("GRADING_CATEGORY_CHANGED");
+  await expect(
+    s.teacher.mutation(api.courseTasks.update, {
+      taskId: s.taskId,
+      gradingCategory: "quiz",
+      expectedUpdatedAt: classified.updatedAt,
+    }),
+  ).rejects.toThrow("TASK_GRADING_CATEGORY_LOCKED");
+  await s.teacher.mutation(api.courseTaskGrades.publish, {
+    ...s.args,
+    expectedVersion: 1,
+    operationId: "publish-after-classification",
+  });
+  expect(
+    await s.student.query(api.courseTaskGrades.get, {
+      taskId: s.taskId,
+    }),
+  ).toMatchObject({ published: { points: 12 } });
+});
+
+test.each(["metadata", "close", "reopen"] as const)(
+  "%s edits cannot roll back the category version or admit an outdated category edit",
+  async (operation) => {
+    const s = await setup();
+    const original = (await s.t.run((ctx) =>
+      ctx.db.get("courseTasks", s.taskId),
+    ))!;
+    if (operation === "reopen")
+      await s.t.run((ctx) =>
+        ctx.db.patch("courseTasks", s.taskId, {
+          manuallyClosedAt: original.updatedAt,
+          manuallyClosedBy: s.users.teacher,
+        }),
+      );
+    const clock = vi.spyOn(Date, "now").mockReturnValue(original.updatedAt);
+    try {
+      await s.teacher.mutation(api.courseTasks.update, {
+        taskId: s.taskId,
+        gradingCategory: "quiz",
+        expectedUpdatedAt: original.updatedAt,
+      });
+      const classified = (await s.t.run((ctx) =>
+        ctx.db.get("courseTasks", s.taskId),
+      ))!;
+      if (operation === "metadata")
+        await s.teacher.mutation(api.courseTasks.update, {
+          taskId: s.taskId,
+          title: "Updated title",
+        });
+      else
+        await s.teacher.mutation(api.courseTasks.setClosed, {
+          taskId: s.taskId,
+          closed: operation === "close",
+        });
+      const updated = (await s.t.run((ctx) =>
+        ctx.db.get("courseTasks", s.taskId),
+      ))!;
+      expect(updated.updatedAt).toBe(classified.updatedAt + 1);
+      await expect(
+        s.teacher.mutation(api.courseTasks.update, {
+          taskId: s.taskId,
+          gradingCategory: "assignment",
+          expectedUpdatedAt: original.updatedAt,
+        }),
+      ).rejects.toThrow("GRADING_CATEGORY_CHANGED");
+      expect(updated.gradingCategory).toBe("quiz");
+    } finally {
+      clock.mockRestore();
+    }
+  },
+);
+
+test("new quizzes store their category without copying course weights into grading snapshots", async () => {
+  const s = await setupWeighting();
+  await s.admin.mutation(api.academicSettings.updateGradingWeights, {
+    schoolId: s.schoolId,
+    weights: weightsForQuiz(2_000),
+    expectedVersion: 0,
+  });
+  const id = await s.teacher.mutation(api.courseQuizzes.create, {
+    classId: s.classId,
+    title: "Quiz",
+    dueAt: Date.now() + 60_000,
+    durationMinutes: 1,
+    gradingCategory: "quiz",
+    questions: [{ kind: "text", prompt: "Explain", maxPoints: 10 }],
+  });
+  expect(
+    await s.teacher.query(api.courseTasks.get, { taskId: id }),
+  ).toMatchObject({
+    gradingCategory: "quiz",
+    grading: { maxPoints: 10, scaleMax: 100, decimalPlaces: 2 },
+  });
+  expect(
+    (await s.teacher.query(api.courseTasks.get, { taskId: id }))?.grading,
+  ).not.toHaveProperty("gradingWeights");
+});
+
+test("competing institution and course weighting edits admit one complete winner", async () => {
+  const s = await setupWeighting();
+  const institutionResults = await Promise.allSettled(
+    [2_000, 4_000].map((value) =>
+      s.admin.mutation(api.academicSettings.updateGradingWeights, {
+        schoolId: s.schoolId,
+        weights: weightsForQuiz(value),
+        expectedVersion: 0,
+      }),
+    ),
+  );
+  expect(
+    institutionResults.filter(({ status }) => status === "fulfilled"),
+  ).toHaveLength(1);
+  expect(
+    institutionResults.filter(({ status }) => status === "rejected"),
+  ).toHaveLength(1);
+  expect(
+    await s.admin.query(api.academicSettings.getGradingWeights, {
+      schoolId: s.schoolId,
+    }),
+  ).toMatchObject({ version: 1 });
+  const courseResults = await Promise.allSettled(
+    [6_000, 8_000].map((value) =>
+      s.admin.mutation(api.classes.update, {
+        classId: s.classId,
+        gradingWeights: weightsForQuiz(value),
+        expectedGradingWeightsVersion: 0,
+      }),
+    ),
+  );
+  expect(
+    courseResults.filter(({ status }) => status === "fulfilled"),
+  ).toHaveLength(1);
+  expect(
+    courseResults.filter(({ status }) => status === "rejected"),
+  ).toHaveLength(1);
+  const course = await s.admin.query(
+    api.academicSettings.getGradingWeightsForCourse,
+    {
+      classId: s.classId,
+    },
+  );
+  expect(course.version).toBe(1);
+  expect([weightsForQuiz(6_000), weightsForQuiz(8_000)]).toContainEqual(
+    course.weights,
+  );
 });

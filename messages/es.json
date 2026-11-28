@@ -189,6 +189,30 @@
     "saveError": "No pudimos confirmar el guardado. Tus cambios siguen aquí; inténtalo de nuevo."
   },
   "grading": {
+    "weights": {
+      "title": "Ponderación de calificaciones",
+      "description": "Porcentajes predeterminados para todos los cursos sin ponderación propia. Los cambios no modifican las notas individuales ni sus escalas.",
+      "courseDescription": "Usa los porcentajes institucionales vigentes o guarda un reparto completo para este curso. Esta configuración se usará en reportes; no calcula una nota final.",
+      "categories": {
+        "quiz": "Quices",
+        "assignment": "Actividades"
+      },
+      "percentage": "Porcentaje (%)",
+      "total": "Total: {total}%.",
+      "validation": "Indica porcentajes de 0 a 100 con hasta dos decimales. La suma debe ser exactamente 100%.",
+      "override": "Personalizar ponderación de este curso",
+      "notConfigured": "La institución todavía no ha configurado la ponderación.",
+      "save": "Guardar ponderación",
+      "saved": "Ponderación guardada.",
+      "saveError": "No se pudo guardar la ponderación. Revisa tus permisos y si otro editor cambió la configuración.",
+      "stale": "La ponderación guardada cambió mientras editabas. Tus valores se conservan. Carga la configuración actual antes de volver a editar.",
+      "reload": "Cargar ponderación actual",
+      "category": "Categoría de evaluación",
+      "unclassified": "Sin clasificar",
+      "categoryHint": "La categoría determina qué ponderación se aplica en reportes, independientemente del formato de la actividad. Las actividades existentes no se clasifican automáticamente.",
+      "categoryLocked": "Esta actividad ya tiene evaluaciones. No se puede cambiar la categoría asignada.",
+      "categoryChanged": "La actividad cambió mientras editabas su categoría. Ábrela de nuevo para cargar la versión actual."
+    },
     "title": "Calificación",
     "studentGrade": "Calificación de {name} (sobre {max})",
     "savingDraft": "Guardando borrador privado…",

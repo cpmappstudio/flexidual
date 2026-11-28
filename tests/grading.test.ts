@@ -20,6 +20,30 @@ test("grading validates zero, finite ranges and decimal precision", () => {
   assert.equal(isValidPoints(10, Infinity, 2), false);
 });
 
+test("positive values cannot use zero precision units, while real zero and floating-point tolerance remain valid", () => {
+  for (const decimalPlaces of [0, 1, 2]) {
+    const unit = 10 ** -decimalPlaces;
+    assert.equal(isValidPoints(0, 100, decimalPlaces), true);
+    assert.equal(isValidPoints(unit, 100, decimalPlaces), true);
+    assert.equal(
+      isValidPoints(unit - Number.EPSILON * unit, 100, decimalPlaces),
+      true,
+    );
+    for (const tiny of [1e-10, 1e-308, Number.MIN_VALUE]) {
+      assert.equal(isValidPoints(tiny, 100, decimalPlaces), false);
+      for (const field of ["scaleMax", "defaultMaxPoints"] as const)
+        assert.equal(
+          isValidGradingPolicy({
+            ...DEFAULT_GRADING_POLICY,
+            decimalPlaces,
+            [field]: tiny,
+          }),
+          false,
+        );
+    }
+  }
+});
+
 test("institution policy and scale conversion use explicit precision", () => {
   assert.equal(
     isValidGradingPolicy({
@@ -63,6 +87,44 @@ test("institution policy and scale conversion use explicit precision", () => {
   );
 });
 
+test("scale conversion rounds exact decimal ties without floating-point drift", () => {
+  for (const [points, maxPoints, scaleMax, decimalPlaces, expected] of [
+    [0.29, 8, 100, 2, 3.63],
+    [0.1, 4, 10, 1, 0.3],
+    [1, 8, 100, 0, 13],
+    [0, 8, 100, 2, 0],
+    [8, 8, 100, 2, 100],
+    [999999.99, 999999.99, 999999.99, 2, 999999.99],
+    [17.034, 20, 100, 2, 85.17],
+    [1e-10, 0.01, 1000000, 2, 0.01],
+  ]) {
+    assert.equal(
+      gradeToScale(points, { maxPoints, scaleMax, decimalPlaces }),
+      expected,
+    );
+  }
+  const grading = {
+    maxPoints: 8,
+    scaleMax: 100,
+    decimalPlaces: 2,
+    passingPercentage: 3.63,
+  };
+  assert.equal(gradeToScale(0.29, grading), 3.63);
+  assert.equal(gradeOutcome(0.29, grading), "failed");
+});
+
+test("historical sub-unit maxima remain readable without changing their scale", () => {
+  for (const maxPoints of [1e-10, 1e-308, Number.MIN_VALUE]) {
+    const grading = { maxPoints, scaleMax: 100, decimalPlaces: 2 };
+    assert.equal(gradeToScale(0, grading), 0);
+    assert.equal(gradeToScale(maxPoints, grading), 100);
+  }
+  assert.equal(
+    gradeToScale(5e-11, { maxPoints: 1e-10, scaleMax: 100, decimalPlaces: 2 }),
+    50,
+  );
+});
+
 test("grading snapshots compare all evaluation dimensions", () => {
   const original = { maxPoints: 20, scaleMax: 100, decimalPlaces: 2 };
   assert.equal(sameGradingConfiguration(original, { ...original }), true);
@@ -89,13 +151,19 @@ test("passing is optional, inclusive, and independent of display rounding", () =
   const grading = { maxPoints: 20, scaleMax: 10, decimalPlaces: 2 };
   assert.equal(DEFAULT_GRADING_POLICY.passingPercentage, undefined);
   assert.equal(gradeOutcome(14, grading), undefined);
-  assert.equal(gradeOutcome(14, { ...grading, passingPercentage: 70 }), "passed");
+  assert.equal(
+    gradeOutcome(14, { ...grading, passingPercentage: 70 }),
+    "passed",
+  );
   assert.equal(
     gradeOutcome(13.99, { ...grading, passingPercentage: 70 }),
     "failed",
   );
   assert.equal(gradeOutcome(0, { ...grading, passingPercentage: 0 }), "passed");
-  assert.equal(gradeOutcome(20, { ...grading, passingPercentage: 100 }), "passed");
+  assert.equal(
+    gradeOutcome(20, { ...grading, passingPercentage: 100 }),
+    "passed",
+  );
   const large = { ...grading, maxPoints: 100, passingPercentage: 70 };
   assert.equal(gradeToScale(69.99, large), 7);
   assert.equal(gradeOutcome(69.99, large), "failed");

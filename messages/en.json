@@ -189,6 +189,30 @@
     "saveError": "We could not confirm the save. Your changes are still here; please try again."
   },
   "grading": {
+    "weights": {
+      "title": "Grading weights",
+      "description": "Default percentages for all courses without their own weights. Changes do not alter individual grades or their scales.",
+      "courseDescription": "Use the current institutional percentages or save a complete distribution for this course. This configuration will be used for reports; it does not calculate a final grade.",
+      "categories": {
+        "quiz": "Quizzes",
+        "assignment": "Assignments"
+      },
+      "percentage": "Percentage (%)",
+      "total": "Total: {total}%.",
+      "validation": "Enter percentages from 0 to 100 with up to two decimal places. The total must be exactly 100%.",
+      "override": "Customize weights for this course",
+      "notConfigured": "The institution has not configured grading weights yet.",
+      "save": "Save grading weights",
+      "saved": "Grading weights saved.",
+      "saveError": "Could not save the weights. Check your permissions and whether another editor changed the configuration.",
+      "stale": "The saved weights changed while you were editing. Your input is preserved. Load the current configuration before editing again.",
+      "reload": "Load current weights",
+      "category": "Evaluation category",
+      "unclassified": "Unclassified",
+      "categoryHint": "The category determines which report weight applies, independently of the activity format. Existing activities are not classified automatically.",
+      "categoryLocked": "This activity already has evaluations. Its assigned category cannot be changed.",
+      "categoryChanged": "The activity changed while you were editing its category. Reopen it to load the current version."
+    },
     "title": "Grade",
     "studentGrade": "Grade for {name} (out of {max})",
     "savingDraft": "Saving private draft…",

@@ -36,6 +36,7 @@ import {
   courseQuizQuestionViewValidator,
   courseQuizScoreValidator,
 } from "./model/courseQuizValidators";
+import { gradingCategoryValidator } from "./model/gradingWeights";
 import {
   finalizeQuiz,
   isValidQuizGrade,
@@ -83,6 +84,7 @@ export const create = mutation({
     durationMinutes: v.number(),
     shuffleQuestions: v.optional(v.boolean()),
     questions: v.array(courseQuizQuestionInputValidator),
+    gradingCategory: v.optional(gradingCategoryValidator),
   },
   returns: v.id("courseTasks"),
   handler: async (ctx, args) => {
@@ -122,6 +124,7 @@ export const create = mutation({
       title,
       description,
       grading,
+      gradingCategory: args.gradingCategory,
       availableAt: args.availableAt,
       dueAt: args.dueAt,
       availabilitySortAt: args.availableAt,

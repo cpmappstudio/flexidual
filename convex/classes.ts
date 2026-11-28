@@ -34,6 +34,12 @@ import {
 import { getClassTimeZone } from "./model/timeZone";
 import { syncPrerecordedRelease } from "./model/classSessionVideos";
 import { initializeCourseNotebook } from "./courseNotebook";
+import {
+  gradingWeightsFields,
+  gradingWeightsUpdate,
+  gradingWeightsValidator,
+  validateGradingWeights,
+} from "./model/gradingWeights";
 import { assertAbekaClassLinkNotMigrating } from "./model/abekaAccess";
 import { getInstitutionGrades, validateGradeCodes } from "./model/grades";
 import {
@@ -140,6 +146,7 @@ const classFields = {
   notebookInitializedAt: v.optional(v.number()),
   chatLastPinnedAt: v.optional(v.number()),
   chatNotificationsClearedThrough: v.optional(v.number()),
+  ...gradingWeightsFields,
   isActive: v.boolean(),
   createdAt: v.number(),
   createdBy: v.id("users"),
@@ -2156,6 +2163,7 @@ export const createWithSchedule = mutation({
     liveAccess: liveAccessValidator,
     weeklySlots: v.array(courseWeeklySlotValidator),
     approvedScheduleShareIds: v.optional(v.array(v.id("classes"))),
+    gradingWeights: v.optional(gradingWeightsValidator),
   },
   returns: v.object({
     classId: v.id("classes"),
@@ -2218,6 +2226,8 @@ export const createWithSchedule = mutation({
       curriculum.schoolId,
     );
     if (!isAuthorized) throw new ConvexError("PERMISSION_DENIED");
+    if (args.gradingWeights !== undefined)
+      validateGradingWeights(args.gradingWeights);
 
     const teacher = await ctx.db.get(args.teacherId);
     if (
@@ -2337,6 +2347,7 @@ export const createWithSchedule = mutation({
       createdAt: now,
       createdBy: user._id,
       schoolId: curriculum.schoolId,
+      gradingWeights: args.gradingWeights,
     });
 
     const classesCreated = await insertCourseSchedule(ctx, {
@@ -2421,6 +2432,8 @@ export const update = mutation({
     weeklySlots: v.optional(v.array(courseWeeklySlotValidator)),
     scheduleCancellationReason: v.optional(v.string()),
     approvedScheduleShareIds: v.optional(v.array(v.id("classes"))),
+    gradingWeights: v.optional(v.union(gradingWeightsValidator, v.null())),
+    expectedGradingWeightsVersion: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -2443,6 +2456,11 @@ export const update = mutation({
         "PERMISSION_DENIED: Only administrators or campus principals can modify this class.",
       );
     }
+    const weightsChanges = gradingWeightsUpdate(
+      classData,
+      args.gradingWeights,
+      args.expectedGradingWeightsVersion,
+    );
 
     if (
       args.curriculumId !== undefined &&
@@ -2620,7 +2638,7 @@ export const update = mutation({
       });
     }
 
-    const cleanUpdates: Partial<Doc<"classes">> = {};
+    const cleanUpdates: Partial<Doc<"classes">> = { ...weightsChanges };
     if (args.name !== undefined) cleanUpdates.name = name!;
     if (args.description !== undefined) {
       cleanUpdates.description = args.description?.trim() || undefined;

@@ -12,12 +12,6 @@ Convex agent skills for common tasks can be installed by running
 
 <!-- convex-ai-end -->
 
-## Carpeta de trabajo obligatoria
-
-Trabajar exclusivamente en `/Users/ulvenforst/Codex/Projects/CPM/flexidual`.
-Verificar la ruta antes de modificar archivos. No crear ni usar otros worktrees,
-ni cambiar de rama, salvo que el usuario lo solicite explícitamente.
-
 ## Documentación de Next.js
 
 Usar la documentación de la versión instalada en `node_modules/next/dist/docs/`.

@@ -10,6 +10,7 @@ test("Next resolves PostHog and next-intl together, with and without build crede
     ["production", true, "turbopack"],
     ["production", false, "turbopack"],
     ["development", true, "turbopack"],
+    ["development", false, "turbopack"],
   ] as const) {
     // Isolated imports reproduce Next's env-dependent config loading. Only inspect
     // bundler hooks: never run a compiler, upload maps, or use real credentials.
@@ -28,6 +29,7 @@ test("Next resolves PostHog and next-intl together, with and without build crede
           const resolved = await normalizeConfig(dev ? 'phase-development-server' : 'phase-production-build', config);
           assert.equal(typeof resolved, 'object');
           assert.equal(resolved.distDir, dev ? '.next-dev' : '.next');
+          assert.equal(resolved.experimental.agentUpgrade, dev ? false : 'security');
           assert.equal(resolved.images.remotePatterns.length, 4);
           assert.notEqual(resolved.cacheComponents, true);
           assert.notEqual(resolved.reactCompiler, true);

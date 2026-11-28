@@ -265,7 +265,7 @@ export function projectGradeEditorState(
   };
 }
 
-export async function getCourseGradingPolicy(
+export async function getCourseGradingSchool(
   ctx: QueryCtx | MutationCtx,
   course: Doc<"classes">,
 ) {
@@ -276,6 +276,14 @@ export async function getCourseGradingPolicy(
   const schoolId = campus?.schoolId ?? curriculum?.schoolId;
   const school = schoolId ? await ctx.db.get("schools", schoolId) : null;
   if (!school) throw new ConvexError("INSTITUTION_NOT_FOUND");
+  return school;
+}
+
+export async function getCourseGradingPolicy(
+  ctx: QueryCtx | MutationCtx,
+  course: Doc<"classes">,
+) {
+  const school = await getCourseGradingSchool(ctx, course);
   return school.gradingPolicy ?? DEFAULT_GRADING_POLICY;
 }
 

@@ -189,6 +189,26 @@ test("students see the published value, never the private draft or editing actio
   expect(screen.getByText("85.17 / 100", { exact: true })).toBeTruthy();
 });
 
+test.each([
+  [0, 0],
+  [1e-10, 100],
+])(
+  "students can read a historical sub-unit maximum with score %s",
+  (points, expected) => {
+    state.grade.grading.maxPoints = 1e-10;
+    state.grade.published = {
+      points,
+      submissionRevision: 0,
+      authorId: "teacher-1",
+      updatedAt: 1,
+    };
+    render(<CourseTaskGrade taskId={taskId} timeZone="UTC" />);
+    expect(screen.getByText(`${expected} / 100`, { exact: true })).toBeTruthy();
+    expect(saveDraft).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  },
+);
+
 test("only a published grade determines the outcome, including the exact threshold", () => {
   state.grade.grading.passingPercentage = 70;
   const draft = {

@@ -33,6 +33,9 @@ export function parseConvexError(error: unknown): ConvexErrorData | null {
         "CLASS_NOT_FOUND",
         "TASK_HAS_GRADES",
         "COURSE_HAS_GRADES",
+        "GRADING_WEIGHTS_CHANGED",
+        "INVALID_GRADING_WEIGHTS_VERSION",
+        "INVALID_GRADING_WEIGHTS",
         "PERMISSION_DENIED",
         "SESSION_VIDEO_STORAGE_NOT_CONFIGURED",
         "SESSION_VIDEO_UPLOAD_EXPIRED",
@@ -101,6 +104,11 @@ export function getErrorMessage(
   locale?: string,
 ): string {
   switch (error.code) {
+    case "GRADING_WEIGHTS_CHANGED":
+    case "INVALID_GRADING_WEIGHTS_VERSION":
+      return t("grading.weights.stale");
+    case "INVALID_GRADING_WEIGHTS":
+      return t("grading.weights.validation");
     case "TASK_HAS_GRADES":
     case "COURSE_HAS_GRADES":
       return t("errors.hasGrades");

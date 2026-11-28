@@ -100,6 +100,10 @@ beforeEach(() => {
   state.queryCalls = [];
   state.create.mockReset().mockResolvedValue("created-quiz");
   state.update.mockReset().mockResolvedValue(null);
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: vi.fn(),
+  });
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -119,6 +123,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
   vi.unstubAllGlobals();
 });
 
@@ -210,6 +215,42 @@ function scheduledTask() {
     availableAt: Date.UTC(2099, 0, 1, 14),
   });
 }
+
+test.each(["create", "update"] as const)(
+  "%s sends a non-default category and reopens it without losing the selection",
+  async (operation) => {
+    const task =
+      operation === "update"
+        ? publishedTask({ gradingCategory: "quiz", updatedAt: 17 })
+        : undefined;
+    const view = renderEditor(task);
+    if (!task) fillChoice();
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: es.grading.weights.category }),
+      { key: "Enter" },
+    );
+    fireEvent.click(
+      await screen.findByRole("option", {
+        name: es.grading.weights.categories.assignment,
+      }),
+    );
+    submit();
+    const mutation = operation === "create" ? state.create : state.update;
+    await waitFor(() => expect(mutation).toHaveBeenCalledOnce());
+    const saved = mutation.mock.calls[0][0];
+    expect(saved).toMatchObject({
+      gradingCategory: "assignment",
+      ...(operation === "update" && { expectedUpdatedAt: 17 }),
+    });
+    view.unmount();
+    renderEditor(publishedTask({ gradingCategory: saved.gradingCategory }));
+    expect(
+      screen.getByRole("combobox", {
+        name: es.grading.weights.category,
+      }).textContent,
+    ).toContain(es.grading.weights.categories.assignment);
+  },
+);
 
 test("editing waits for one coherent server snapshot instead of mixing old task props with new questions", async () => {
   state.snapshotLoading = true;

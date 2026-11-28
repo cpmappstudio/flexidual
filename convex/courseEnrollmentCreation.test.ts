@@ -216,6 +216,57 @@ async function seedMultiGradeCourse() {
   return { t, data, args, admin: t.withIdentity({ subject: "multi-admin" }) };
 }
 
+test.each([false, true])(
+  "course creation supports inherited or custom weights without changing schedule creation (%s)",
+  async (custom) => {
+    const { t, data, args, admin } = await seedMultiGradeCourse();
+    const weights = [
+      { category: "quiz" as const, weightBps: 2_000 },
+      { category: "assignment" as const, weightBps: 8_000 },
+    ];
+    await admin.mutation(api.academicSettings.updateGradingWeights, {
+      schoolId: data.schoolId,
+      weights,
+      expectedVersion: 0,
+    });
+    const result = await admin.mutation(api.classes.createWithSchedule, {
+      ...args,
+      ...(custom ? { gradingWeights: [...weights].reverse() } : {}),
+    });
+    expect(result.classesCreated).toBeGreaterThan(0);
+    expect(
+      await admin.query(api.academicSettings.getGradingWeightsForCourse, {
+        classId: result.classId,
+      }),
+    ).toMatchObject({
+      weights: custom ? [...weights].reverse() : weights,
+      overridden: custom,
+    });
+    const course = await t.run((ctx) => ctx.db.get("classes", result.classId));
+    if (custom) expect(course?.gradingWeights).toEqual([...weights].reverse());
+    else expect(course).not.toHaveProperty("gradingWeights");
+  },
+);
+
+test("invalid course weights roll back course, enrollment and schedule creation", async () => {
+  const { t, args, admin } = await seedMultiGradeCourse();
+  await expect(
+    admin.mutation(api.classes.createWithSchedule, {
+      ...args,
+      gradingWeights: [{ category: "quiz", weightBps: 9_999 }],
+    }),
+  ).rejects.toThrow("INVALID_GRADING_WEIGHTS");
+  expect(await t.run((ctx) => ctx.db.query("classes").collect())).toHaveLength(
+    0,
+  );
+  expect(
+    await t.run((ctx) => ctx.db.query("classEnrollments").collect()),
+  ).toHaveLength(0);
+  expect(
+    await t.run((ctx) => ctx.db.query("classSchedule").collect()),
+  ).toHaveLength(0);
+});
+
 test("private multi-grade courses retain campus enrollments, per-grade teachers and the same mandatory calendar", async () => {
   const { t, data, args, admin } = await seedMultiGradeCourse();
   const roster = await admin.query(

@@ -17,7 +17,12 @@ import {
 } from "./model/grading";
 import { DEFAULT_GRADING_POLICY, isValidGradingPolicy } from "../lib/grading";
 import { isCourseTeacher } from "./model/courseAssignments";
-import { canManageClass } from "./permissions";
+import { canAccessClass, canManageClass } from "./permissions";
+import {
+  getCourseGradingWeights,
+  gradingWeightsUpdate,
+  gradingWeightsValidator,
+} from "./model/gradingWeights";
 import {
   DEFAULT_SCHEDULE_END_MINUTES,
   DEFAULT_SCHEDULE_START_MINUTES,
@@ -185,6 +190,67 @@ export const updateGradingPolicy = mutation({
     )
       await ctx.db.patch("schools", schoolId, { gradingPolicy: policy });
     return null;
+  },
+});
+
+export const getGradingWeights = query({
+  args: { schoolId: v.id("schools") },
+  returns: v.union(
+    v.object({
+      weights: v.union(gradingWeightsValidator, v.null()),
+      version: v.number(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, { schoolId }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    if (!(await canViewInstitutionSettings(ctx, user._id, schoolId)))
+      throw new ConvexError("PERMISSION_DENIED");
+    const school = await ctx.db.get("schools", schoolId);
+    return school
+      ? {
+          weights: school.gradingWeights ?? null,
+          version: school.gradingWeightsVersion ?? 0,
+        }
+      : null;
+  },
+});
+
+export const getGradingWeightsForCourse = query({
+  args: { classId: v.id("classes") },
+  returns: v.object({
+    weights: v.union(gradingWeightsValidator, v.null()),
+    institutionalWeights: v.union(gradingWeightsValidator, v.null()),
+    overridden: v.boolean(),
+    version: v.number(),
+  }),
+  handler: async (ctx, { classId }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    const course = await ctx.db.get("classes", classId);
+    if (!course) throw new ConvexError("CLASS_NOT_FOUND");
+    if (!(await canAccessClass(ctx, user._id, course)))
+      throw new ConvexError("PERMISSION_DENIED");
+    return await getCourseGradingWeights(ctx, course);
+  },
+});
+
+export const updateGradingWeights = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    weights: gradingWeightsValidator,
+    expectedVersion: v.number(),
+  },
+  returns: v.number(),
+  handler: async (ctx, { schoolId, weights, expectedVersion }) => {
+    const user = await getCurrentUserOrThrow(ctx);
+    if (!(await canManageInstitution(ctx, user._id, schoolId)))
+      throw new ConvexError("PERMISSION_DENIED");
+    const school = await ctx.db.get("schools", schoolId);
+    if (!school) throw new ConvexError("INSTITUTION_NOT_FOUND");
+    const changes = gradingWeightsUpdate(school, weights, expectedVersion);
+    if (Object.keys(changes).length)
+      await ctx.db.patch("schools", schoolId, changes);
+    return changes.gradingWeightsVersion ?? school.gradingWeightsVersion ?? 0;
   },
 });
 

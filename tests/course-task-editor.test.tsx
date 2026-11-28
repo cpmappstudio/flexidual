@@ -55,6 +55,10 @@ import { CourseTaskEditor } from "@/components/teaching/classes/course-task-edit
 
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_CONVEX_SITE_URL", "https://example.convex.site");
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: vi.fn(),
+  });
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -82,6 +86,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
   vi.clearAllMocks();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -127,6 +132,48 @@ function renderPublishedEditor(overrides: Partial<Doc<"courseTasks">> = {}) {
     />,
   );
 }
+
+test.each(["create", "update"] as const)(
+  "%s sends a non-default category and reopens it without losing the selection",
+  async (operation) => {
+    const grading = { maxPoints: 100, scaleMax: 100, decimalPlaces: 2 };
+    const view =
+      operation === "create"
+        ? renderEditor()
+        : renderPublishedEditor({
+            grading,
+            gradingCategory: "assignment",
+            updatedAt: 17,
+          });
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "category" }), {
+      key: "Enter",
+    });
+    fireEvent.click(
+      await screen.findByRole("option", { name: "categories.quiz" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: operation === "create" ? "publish" : "save",
+      }),
+    );
+    const mutation =
+      operation === "create" ? mutations.create : mutations.update;
+    await waitFor(() => expect(mutation).toHaveBeenCalledOnce());
+    const saved = mutation.mock.calls[0][0];
+    expect(saved).toMatchObject({
+      gradingCategory: "quiz",
+      ...(operation === "update" && { expectedUpdatedAt: 17 }),
+    });
+    view.unmount();
+    renderPublishedEditor({
+      grading,
+      gradingCategory: saved.gradingCategory,
+    });
+    expect(
+      screen.getByRole("combobox", { name: "category" }).textContent,
+    ).toContain("categories.quiz");
+  },
+);
 
 test("keeps the form and names a rejected file without publishing a task", async () => {
   vi.stubGlobal(

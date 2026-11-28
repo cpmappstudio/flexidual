@@ -44,11 +44,13 @@ export function isValidPoints(
   )
     return false;
   const factor = 10 ** decimalPlaces;
+  const units = Math.round(points * factor);
   return (
     Number.isFinite(points) &&
     points >= 0 &&
     points <= maxPoints &&
-    Math.abs(points * factor - Math.round(points * factor)) < 1e-7
+    (points === 0 || units > 0) &&
+    Math.abs(points * factor - units) < 1e-7
   );
 }
 
@@ -80,14 +82,30 @@ export function gradeOutcome(
     : "failed";
 }
 
+function decimalParts(value: number) {
+  const [coefficient, exponent] = value.toExponential().split("e");
+  return {
+    coefficient: BigInt(coefficient.replace(".", "")),
+    exponent: Number(exponent) - (coefficient.split(".")[1]?.length ?? 0),
+  };
+}
+
 export function gradeToScale(
   points: number,
   configuration: GradingConfiguration,
 ) {
   const factor = 10 ** configuration.decimalPlaces;
-  return (
-    Math.round(
-      (points / configuration.maxPoints) * configuration.scaleMax * factor,
-    ) / factor
-  );
+  // Preserve legacy maxima and projected scores; round only the final ratio.
+  const earned = decimalParts(points);
+  const maximum = decimalParts(configuration.maxPoints);
+  const scale = decimalParts(configuration.scaleMax);
+  const shift =
+    earned.exponent +
+    scale.exponent -
+    maximum.exponent +
+    configuration.decimalPlaces;
+  const numerator =
+    earned.coefficient * scale.coefficient * 10n ** BigInt(Math.max(shift, 0));
+  const denominator = maximum.coefficient * 10n ** BigInt(Math.max(-shift, 0));
+  return Number((numerator + denominator / 2n) / denominator) / factor;
 }

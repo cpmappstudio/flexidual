@@ -107,6 +107,7 @@ import type * as model_eventRoomAccess from "../model/eventRoomAccess.js";
 import type * as model_fileUploadBody from "../model/fileUploadBody.js";
 import type * as model_grades from "../model/grades.js";
 import type * as model_grading from "../model/grading.js";
+import type * as model_gradingWeights from "../model/gradingWeights.js";
 import type * as model_lessons from "../model/lessons.js";
 import type * as model_liveAccess from "../model/liveAccess.js";
 import type * as model_liveActivation from "../model/liveActivation.js";
@@ -263,6 +264,7 @@ declare const fullApi: ApiFromModules<{
   "model/fileUploadBody": typeof model_fileUploadBody;
   "model/grades": typeof model_grades;
   "model/grading": typeof model_grading;
+  "model/gradingWeights": typeof model_gradingWeights;
   "model/lessons": typeof model_lessons;
   "model/liveAccess": typeof model_liveAccess;
   "model/liveActivation": typeof model_liveActivation;

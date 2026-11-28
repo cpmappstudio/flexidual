@@ -18,6 +18,7 @@ import {
 import { useSettingsContext } from "@/hooks/use-settings-context";
 import { isValidTimeZone } from "@/lib/time-zone";
 import { GradingSettings } from "./grading-settings";
+import { GradingWeightsSettings } from "./grading-weights-settings";
 
 export function InstitutionSettings() {
   const t = useTranslations("settings.institutionSettings");
@@ -144,6 +145,11 @@ export function InstitutionSettings() {
           readOnly={readOnly}
         />
       )}
+      <GradingWeightsSettings
+        key={institution._id}
+        schoolId={institution._id}
+        readOnly={readOnly}
+      />
     </section>
   );
 }

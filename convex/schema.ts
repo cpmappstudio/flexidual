@@ -50,6 +50,10 @@ import {
   courseQuizQuestionValidator,
   courseQuizAnswerValidator,
 } from "./model/courseQuizValidators";
+import {
+  gradingCategoryValidator,
+  gradingWeightsFields,
+} from "./model/gradingWeights";
 
 export const surveyCampaignValidator = v.object({
   surveyId: v.string(),
@@ -112,7 +116,10 @@ export default defineSchema({
     weekStart: v.string(),
     availableAt: v.number(),
   })
-    .index("by_academicPeriodId_and_weekStart", ["academicPeriodId", "weekStart"])
+    .index("by_academicPeriodId_and_weekStart", [
+      "academicPeriodId",
+      "weekStart",
+    ])
     .index("by_availableAt", ["availableAt"]),
   // Readers use canonical data until the explicit, resumable backfill completes.
   dashboardSummaryState: defineTable({
@@ -314,6 +321,7 @@ export default defineSchema({
     notebookInitializedAt: v.optional(v.number()),
     chatLastPinnedAt: v.optional(v.number()),
     chatNotificationsClearedThrough: v.optional(v.number()),
+    ...gradingWeightsFields,
 
     // Status
     isActive: v.boolean(),
@@ -416,6 +424,7 @@ export default defineSchema({
     title: v.string(),
     description: v.optional(v.string()),
     grading: v.optional(gradingConfigurationValidator),
+    gradingCategory: v.optional(gradingCategoryValidator),
     availableAt: v.optional(v.number()),
     availabilitySortAt: v.optional(v.number()),
     releasedAt: v.optional(v.number()),
@@ -1185,6 +1194,7 @@ export default defineSchema({
     scheduleEndMinutes: v.optional(v.number()),
     timeZone: v.optional(v.string()),
     gradingPolicy: v.optional(gradingPolicyValidator),
+    ...gradingWeightsFields,
 
     isActive: v.boolean(),
     createdAt: v.number(),

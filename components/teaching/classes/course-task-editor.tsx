@@ -46,6 +46,8 @@ import {
 } from "./course-task-attachments";
 import { useTaskFileRequest } from "@/hooks/use-task-file-request";
 import { isValidPoints } from "@/lib/grading";
+import type { GradingCategory } from "@/lib/grading-weights";
+import { GradingCategoryField } from "./grading-category-field";
 
 export function CourseTaskEditor({
   classId,
@@ -68,6 +70,9 @@ export function CourseTaskEditor({
     classId,
   });
   const [gradable, setGradable] = useState(task ? !!task.grading : true);
+  const [gradingCategory, setGradingCategory] = useState<GradingCategory | "">(
+    task ? (task.gradingCategory ?? "") : "assignment",
+  );
   const [maxPoints, setMaxPoints] = useState<string | undefined>(
     task?.grading ? String(task.grading.maxPoints) : undefined,
   );
@@ -122,6 +127,10 @@ export function CourseTaskEditor({
     if (code.includes("TASK_GRADING_LOCKED"))
       return gradingT("configurationLocked");
     if (code.includes("INVALID_TASK_GRADING")) return gradingT("invalidPoints");
+    if (code.includes("TASK_GRADING_CATEGORY_LOCKED"))
+      return gradingT("weights.categoryLocked");
+    if (code.includes("GRADING_CATEGORY_CHANGED"))
+      return gradingT("weights.categoryChanged");
     return t("saveError");
   }
 
@@ -244,6 +253,7 @@ export function CourseTaskEditor({
           allowLateSubmissions: deadline === undefined ? true : allowLate,
           draft: true,
           ...(grading ? { grading } : {}),
+          ...(grading && gradingCategory ? { gradingCategory } : {}),
         });
         setAttemptId(id);
         currentAttemptId = id;
@@ -275,6 +285,13 @@ export function CourseTaskEditor({
               : !!grading
           )
             ? { grading }
+            : {}),
+          ...((gradable ? gradingCategory || undefined : undefined) !==
+          task.gradingCategory
+            ? {
+                gradingCategory: gradable ? gradingCategory || null : null,
+                expectedUpdatedAt: task.updatedAt,
+              }
             : {}),
         });
       }
@@ -380,6 +397,11 @@ export function CourseTaskEditor({
                     <p className="text-xs text-muted-foreground">
                       {gradingT("configurationHint")}
                     </p>
+                    <GradingCategoryField
+                      value={gradingCategory}
+                      onChangeAction={setGradingCategory}
+                      disabled={saving}
+                    />
                   </>
                 )}
               </div>

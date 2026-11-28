@@ -50,6 +50,10 @@ import {
   gradingConfigurationValidator,
   resolveTaskGrading,
 } from "./model/grading";
+import {
+  gradingCategoryValidator,
+  resolveTaskGradingCategory,
+} from "./model/gradingWeights";
 
 const taskValidator = v.object({
   _id: v.id("courseTasks"),
@@ -62,6 +66,7 @@ const taskValidator = v.object({
   title: v.string(),
   description: v.optional(v.string()),
   grading: v.optional(gradingConfigurationValidator),
+  gradingCategory: v.optional(gradingCategoryValidator),
   availableAt: v.optional(v.number()),
   availabilitySortAt: v.optional(v.number()),
   releasedAt: v.optional(v.number()),
@@ -293,6 +298,7 @@ export const create = mutation({
     allowLateSubmissions: v.optional(v.boolean()),
     draft: v.optional(v.boolean()),
     grading: v.optional(v.union(v.null(), v.object({ maxPoints: v.number() }))),
+    gradingCategory: v.optional(gradingCategoryValidator),
   },
   returns: v.id("courseTasks"),
   handler: async (ctx, args) => {
@@ -301,6 +307,11 @@ export const create = mutation({
     const now = Date.now();
     const courseEndAt = await requireOpenCourse(ctx, course, now);
     const grading = await resolveTaskGrading(ctx, course, args.grading);
+    const gradingCategory = await resolveTaskGradingCategory(
+      ctx,
+      args.gradingCategory,
+      grading !== undefined,
+    );
     const title = args.title.trim();
     if (!title) throw new ConvexError("TASK_TITLE_REQUIRED");
     if (title.length > 160) throw new ConvexError("TASK_TITLE_TOO_LONG");
@@ -325,6 +336,7 @@ export const create = mutation({
       title,
       description,
       grading,
+      gradingCategory,
       availableAt: args.availableAt,
       availabilitySortAt:
         !args.draft && args.availableAt !== undefined && args.availableAt > now
@@ -369,6 +381,7 @@ export const update = mutation({
     questions: v.optional(v.array(courseQuizQuestionEditValidator)),
     expectedUpdatedAt: v.optional(v.number()),
     grading: v.optional(v.union(v.null(), v.object({ maxPoints: v.number() }))),
+    gradingCategory: v.optional(v.union(gradingCategoryValidator, v.null())),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -378,6 +391,11 @@ export const update = mutation({
     const course = await requireTaskManager(ctx, task.classId, user._id);
     const now = Date.now();
     const courseEndAt = await requireOpenCourse(ctx, course, now);
+    if (
+      args.gradingCategory !== undefined &&
+      args.expectedUpdatedAt !== task.updatedAt
+    )
+      throw new ConvexError("GRADING_CATEGORY_CHANGED");
     if (task.kind === "quiz") {
       requireQuiz(task);
       if (
@@ -458,8 +476,13 @@ export const update = mutation({
       requireQuiz(task);
       grading = await updateQuizQuestions(ctx, task, args.questions);
     }
-    const updatedAt =
-      task.kind === "quiz" ? Math.max(now, task.updatedAt + 1) : now;
+    const gradingCategory = await resolveTaskGradingCategory(
+      ctx,
+      args.gradingCategory,
+      grading !== undefined,
+      task,
+    );
+    const updatedAt = Math.max(now, task.updatedAt + 1);
     const updatedTask = {
       ...task,
       quiz: task.quiz
@@ -477,6 +500,7 @@ export const update = mutation({
           }
         : task.quiz,
       grading,
+      gradingCategory,
       title,
       description,
       availableAt,
@@ -498,6 +522,7 @@ export const update = mutation({
     await ctx.db.patch("courseTasks", task._id, {
       quiz: updatedTask.quiz,
       grading,
+      gradingCategory,
       title,
       description,
       availableAt,
@@ -678,7 +703,7 @@ export const setClosed = mutation({
     await ctx.db.patch("courseTasks", task._id, {
       manuallyClosedAt: args.closed ? now : undefined,
       manuallyClosedBy: args.closed ? user._id : undefined,
-      updatedAt: now,
+      updatedAt: Math.max(now, task.updatedAt + 1),
     });
     await refreshCourseTaskReminder(
       ctx,

@@ -44,6 +44,8 @@ import {
 } from "@/lib/course-quizzes";
 import { localDateTimeToUtc, utcToLocalDateTime } from "@/lib/time-zone";
 import { cn } from "@/lib/utils";
+import type { GradingCategory } from "@/lib/grading-weights";
+import { GradingCategoryField } from "./grading-category-field";
 import { TaskContentFields, TaskDateFields } from "./course-task-fields";
 import {
   QuizAttemptSummary,
@@ -98,6 +100,9 @@ export function CourseQuizEditor({
   );
   const [shuffleQuestions, setShuffleQuestions] = useState(
     task?.quiz?.shuffleQuestions ?? false,
+  );
+  const [gradingCategory, setGradingCategory] = useState<GradingCategory | "">(
+    task ? (task.gradingCategory ?? "") : "quiz",
   );
   const [questions, setQuestions] = useState<QuizQuestionDraft[]>([]);
   const [baselineQuestions, setBaselineQuestions] = useState<
@@ -176,6 +181,7 @@ export function CourseQuizEditor({
     );
     setDuration(String(latest.quiz!.durationMinutes));
     setShuffleQuestions(latest.quiz?.shuffleQuestions ?? false);
+    setGradingCategory(latest.gradingCategory ?? "");
     setQuestions(drafts ?? []);
     setBaselineQuestions(drafts);
     setDirty(false);
@@ -233,6 +239,10 @@ export function CourseQuizEditor({
     if (code === "INVALID_QUIZ_QUESTIONS") return t("invalidQuestions");
     if (code === "INVALID_QUIZ_DURATION") return t("invalidDuration");
     if (code === "COURSE_CLOSED") return t("courseUnavailable");
+    if (code === "TASK_GRADING_CATEGORY_LOCKED")
+      return gradingT("weights.categoryLocked");
+    if (code === "GRADING_CATEGORY_CHANGED")
+      return gradingT("weights.categoryChanged");
     return t("saveError");
   }
 
@@ -326,6 +336,9 @@ export function CourseQuizEditor({
       let id: Id<"courseTasks">;
       if (task && baseline) {
         const changes = {
+          ...(gradingCategory !== (baseline.gradingCategory ?? "") && {
+            gradingCategory: gradingCategory || null,
+          }),
           ...(questionsChanged && { questions: payload }),
           ...(title.trim() !== baseline.title && { title: title.trim() }),
           ...(description.trim() !== (baseline.description ?? "") && {
@@ -361,6 +374,7 @@ export function CourseQuizEditor({
           durationMinutes,
           shuffleQuestions,
           questions: payload,
+          ...(gradingCategory ? { gradingCategory } : {}),
         });
       }
       setDirty(false);
@@ -554,6 +568,14 @@ export function CourseQuizEditor({
                     <h3 className="text-sm font-semibold">
                       {t("generalInformation")}
                     </h3>
+                    <GradingCategoryField
+                      value={gradingCategory}
+                      onChangeAction={(category) => {
+                        setGradingCategory(category);
+                        setDirty(true);
+                      }}
+                      disabled={disabled}
+                    />
                     <TaskContentFields
                       quiz
                       titleError={

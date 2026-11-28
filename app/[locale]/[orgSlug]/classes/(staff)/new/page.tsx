@@ -57,6 +57,13 @@ import {
   hasAcademicPeriodStarted,
   requiresWeeklySlotRemovalConfirmation,
 } from "@/lib/course-schedule-change";
+import { CourseGradingWeightsFields } from "@/components/settings/grading-weights-fields";
+import {
+  gradingWeightInputs,
+  parseGradingWeightInputs,
+  sameGradingWeights,
+  type GradingWeightInputs,
+} from "@/lib/grading-weights";
 
 type CourseDetails = NonNullable<FunctionReturnType<typeof api.classes.get>>;
 
@@ -142,6 +149,40 @@ function CourseEditor({
     api.grades.list,
     isAdmin && schoolId ? { schoolId } : "skip",
   );
+  const institutionalWeights = useQuery(
+    api.academicSettings.getGradingWeights,
+    isAdmin && schoolId && !isEditing ? { schoolId } : "skip",
+  );
+  const courseWeights = useQuery(
+    api.academicSettings.getGradingWeightsForCourse,
+    isAdmin && classToEdit ? { classId: classToEdit._id } : "skip",
+  );
+  const weightsLoading = isEditing
+    ? courseWeights === undefined
+    : institutionalWeights === undefined;
+  const inheritedWeights = isEditing
+    ? (courseWeights?.institutionalWeights ?? null)
+    : (institutionalWeights?.weights ?? null);
+  const [weightsDraft, setWeightsDraft] = useState<{
+    version: number;
+    inputs: GradingWeightInputs | null;
+  }>();
+  const weightsInputs = weightsDraft
+    ? weightsDraft.inputs
+    : classToEdit?.gradingWeights
+      ? gradingWeightInputs(classToEdit.gradingWeights)
+      : null;
+  const weights =
+    weightsInputs === null ? null : parseGradingWeightInputs(weightsInputs);
+  const weightsChanged = !sameGradingWeights(
+    weights,
+    classToEdit?.gradingWeights,
+  );
+  const weightsStale =
+    !!weightsDraft &&
+    weightsDraft.version !== (classToEdit?.gradingWeightsVersion ?? 0) &&
+    weightsChanged;
+  const weightsInvalid = weightsInputs !== null && !weights;
   const createCourse = useMutation(api.classes.createWithSchedule);
   const updateCourse = useMutation(api.classes.update);
   const deleteCourse = useMutation(api.classes.remove);
@@ -369,7 +410,9 @@ function CourseEditor({
     !academicPeriodId ||
     !academicSettings?.timeZone ||
     (!isEditing && weeklySlots.length === 0) ||
-    (isEditing && !classToEdit);
+    (isEditing && !classToEdit) ||
+    weightsInvalid ||
+    weightsStale;
 
   const persistCourse = async (
     studentIds: Id<"users">[] = [],
@@ -407,6 +450,12 @@ function CourseEditor({
             ? scheduleCancellationReason.trim() || undefined
             : undefined,
           ...scheduleShareApproval,
+          ...(weightsDraft && weightsChanged
+            ? {
+                gradingWeights: weights,
+                expectedGradingWeightsVersion: weightsDraft.version,
+              }
+            : {}),
         });
         toast.success(t("class.updated"));
         router.push(`/${orgSlug}/classes/${classToEdit._id}`);
@@ -429,6 +478,7 @@ function CourseEditor({
         academicPeriodId: academicPeriodId as Id<"academicPeriods">,
         weeklySlots: weeklySlotConfigs,
         ...scheduleShareApproval,
+        ...(weights ? { gradingWeights: weights } : {}),
       });
       toast.success(t("class.created"));
       router.push(`/${orgSlug}/classes/${result.classId}`);
@@ -561,6 +611,38 @@ function CourseEditor({
       </header>
 
       <form id="course-form" onSubmit={handleSubmit} className="space-y-10">
+        {weightsLoading ? (
+          <Skeleton className="h-36 w-full" />
+        ) : (
+          <CourseGradingWeightsFields
+            value={weightsInputs}
+            institutionalWeights={inheritedWeights}
+            disabled={isSubmitting || weightsStale}
+            onChangeAction={(inputs) =>
+              setWeightsDraft({
+                version:
+                  weightsDraft && weightsChanged
+                    ? weightsDraft.version
+                    : (classToEdit?.gradingWeightsVersion ?? 0),
+                inputs,
+              })
+            }
+          />
+        )}
+        {weightsStale && (
+          <div className="space-y-2">
+            <p role="alert" className="text-sm text-destructive">
+              {t("grading.weights.stale")}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setWeightsDraft(undefined)}
+            >
+              {t("grading.weights.reload")}
+            </Button>
+          </div>
+        )}
         <section>
           {!campusId && (
             <p className="mb-4 text-sm text-destructive">

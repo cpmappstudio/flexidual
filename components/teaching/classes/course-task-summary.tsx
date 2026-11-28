@@ -16,6 +16,7 @@ export function CourseTaskSummary({
 }) {
   const t = useTranslations("courseTasks");
   const quizT = useTranslations("courseQuizzes");
+  const weightsT = useTranslations("grading.weights");
   const format = useFormatter();
   const date = (value: number | undefined, fallback: string) =>
     value === undefined
@@ -65,6 +66,14 @@ export function CourseTaskSummary({
   ];
   return (
     <section className="space-y-4">
+      {task.grading && (
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium">{weightsT("category")}: </span>
+          {task.gradingCategory
+            ? weightsT(`categories.${task.gradingCategory}`)
+            : weightsT("unclassified")}
+        </p>
+      )}
       <h3 className="font-semibold text-foreground">
         {t("datesAndAvailability")}
       </h3>

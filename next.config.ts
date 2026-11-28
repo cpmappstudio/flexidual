@@ -36,6 +36,10 @@ function config(phase: string): NextConfig {
   return withNextIntl({
     ...nextConfig,
     distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next-dev" : ".next",
+    experimental: {
+      // Keep parallel dev CLIs from competing for terminal input.
+      agentUpgrade: phase === PHASE_DEVELOPMENT_SERVER ? false : "security",
+    },
   });
 }
 
